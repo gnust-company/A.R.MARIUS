@@ -1,0 +1,130 @@
+@import "tailwindcss";
+
+/* ───────────────────────── Modern Scriptorium theme ───────────────────────── */
+:root {
+  --paper: #f3ead6;
+  --paper-2: #ece0c6;
+  --panel: #fbf6ea;
+  --panel-2: #f7efdd;
+  --ink: #2a2017;
+  --ink-soft: #5c4f3c;
+  --ink-faint: #8a7c64;
+  --line: #ddcfb0;
+  --line-soft: #e7dcc2;
+  --gold: #b3812a;
+  --gold-bright: #d8a23a;
+  --blue: #3a5876;
+  --green: #4f7a3f;
+  --rust: #a8492c;
+  --violet: #6b4f86;
+  --slate: #71766f;
+}
+
+@theme {
+  --font-serif: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--ink);
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(circle at 20% -10%, rgba(216, 162, 58, 0.08), transparent 45%),
+    radial-gradient(circle at 95% 0%, rgba(58, 88, 118, 0.06), transparent 40%);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-serif { font-family: var(--font-serif); }
+.font-mono { font-family: var(--font-mono); }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 6px;
+}
+
+@layer components {
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 6px 18px -14px rgba(42, 32, 23, 0.5);
+  }
+
+  .panel-flat {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border-radius: 9px;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.84rem;
+    font-weight: 500;
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--ink);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .btn:hover { background: #fff; border-color: var(--gold); }
+  .btn-primary {
+    background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+    color: #fff8e8;
+    border-color: #9c6f20;
+    box-shadow: 0 8px 16px -10px rgba(179, 129, 42, 0.9);
+  }
+  .btn-primary:hover { filter: brightness(1.05); background: linear-gradient(180deg, var(--gold-bright), var(--gold)); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+    font-weight: 500;
+    padding: 0.12rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--ink-soft);
+  }
+
+  .input {
+    width: 100%;
+    border: 1px solid var(--line);
+    background: #fffdf7;
+    border-radius: 9px;
+    padding: 0.55rem 0.7rem;
+    font-size: 0.88rem;
+    color: var(--ink);
+    outline: none;
+  }
+  .input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(216, 162, 58, 0.18); }
+
+  .rule { height: 1px; background: var(--line-soft); }
+}
+
+/* live pulse for working agents / active runs */
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(216, 162, 58, 0.55); }
+  70% { box-shadow: 0 0 0 6px rgba(216, 162, 58, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(216, 162, 58, 0); }
+}
+.pulse { animation: pulse-ring 1.6s infinite; }
+
+@keyframes blink { 50% { opacity: 0.25; } }
+.blink { animation: blink 1s steps(2) infinite; }

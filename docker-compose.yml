@@ -1,0 +1,47 @@
+# Armarius — full stack. Just run:  docker compose up --build
+# Then open the dashboard at http://localhost:3000 (API at http://localhost:8080).
+# Host ports are overridable via .env (FRONTEND_PORT / BACKEND_PORT / ARMARIUS_API_URL).
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: armarius
+      POSTGRES_PASSWORD: armarius
+      POSTGRES_DB: armarius
+    volumes:
+      - armarius_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U armarius -d armarius"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://armarius:armarius@db:5432/armarius
+      CORS_ORIGINS: "*"
+      ARTIFACT_STORE_ROOT: /data/artifacts
+    volumes:
+      - armarius_artifacts:/data/artifacts
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-8080}:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked into the static bundle at build time; the browser calls the backend here.
+        VITE_API_URL: ${ARMARIUS_API_URL:-http://localhost:8080}
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+
+volumes:
+  armarius_db:
+  armarius_artifacts:

@@ -48,8 +48,8 @@ A task may only reach `in_review`/`done` when a **published artifact** is linked
 - [x] Agent-facing API (claim/update/comment/mention/publish/read_directory) with per-Marius token
 - [x] Live trace SSE endpoint + durable run-event store
 - [x] Demo seed (Settings Redesign scenario) + 20 passing tests
-- [ ] Docker Compose (Postgres + backend + frontend) — out-of-the-box `docker compose up`
-- [ ] Frontend dashboard (Scriptorium UI)
+- [x] Docker Compose (Postgres + backend + frontend) — out-of-the-box `docker compose up`
+- [x] Frontend dashboard (Scriptorium UI: Board, Collaboration Room w/ live trace, Directory, Patron inbox)
 
 ### Phase 1 — Real collaboration
 - [ ] Agent Directory injected into every wake prompt — §3.1
@@ -88,3 +88,18 @@ A task may only reach `in_review`/`done` when a **published artifact** is linked
 - Verified end-to-end (HTTP smoke + 20 pytest): assign/mention → wake → echo run → durable trace
   (`run.started … tool.* … run.completed`) + persisted session for resume.
 - Next: Postgres + Docker Compose stack, then the Scriptorium frontend.
+
+### 2026-06-22 — Postgres + Docker Compose + Scriptorium frontend
+- **One-command stack**: root `docker-compose.yml` brings up Postgres + backend + frontend;
+  `docker compose up --build` → dashboard on :3000, API on :8080 (host ports overridable).
+- Backend `Dockerfile` (installs `.[postgres]`/psycopg) + healthcheck; default prod DB = Postgres.
+- **Frontend** (Vite + React + TS + Tailwind v4, "Modern Scriptorium" theme):
+  - Board (kanban by status + agent directory rail + commission task)
+  - **Collaboration Room** — task context (status/assign/next-action/DoD/artifacts) · thread with
+    @mention highlighting + composer · **live trace via SSE** (run tabs, streaming deltas, tool
+    chips, usage) · approval bar when `in_review`
+  - Directory (Marius cards + "Provision a Marius" → generated token + invite prompt)
+  - Patron inbox (only items needing a human: in_review / blocked)
+- Verified: full stack healthy on Postgres; seed present; wake → echo run → durable trace through
+  the containerised backend. Frontend typechecks + builds clean.
+- The user's real Hermes instance is up on :8642 — `hermes_gateway` adapter ready to point at it.

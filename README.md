@@ -136,30 +136,66 @@ We reject the factory model. We embrace the **workshop model** — where skilled
 
 ## Quick Start
 
-> *Coming soon. The scriptorium is still being built.*
+The whole workshop — Postgres, the Clean-Architecture API, and the Scriptorium
+dashboard — comes up with a single command:
 
 ```bash
-# Install the provisioner
-pip install armarius
-
-# Initialize your workshop
-armarius init
-
-# Commission a task
-armarius task create   --name "Build landing page"   --agents "marius-code,marius-design"   --brief "./brief.md"
-
-# Trace execution
-armarius trace
-
-# Approve and push
-armarius approve --push
+docker compose up --build
 ```
+
+Then open:
+
+- **Dashboard** → http://localhost:3000
+- **API + docs** → http://localhost:8080/docs  ·  health: http://localhost:8080/healthz
+
+A demo workspace (*Settings Redesign*) is seeded on first boot, with four Mariuses and
+tasks spanning every lifecycle state. Wakes use a bundled **echo** runtime, so you can
+drive the full loop — assign / @mention → wake → **watch the live trace** → approve —
+without any external agent. Host ports are overridable: `FRONTEND_PORT`, `BACKEND_PORT`,
+`ARMARIUS_API_URL` (see `docker-compose.yml`).
+
+### Connect a real agent (Hermes)
+
+In **Directory → Provision a Marius**, pick `hermes_gateway` and give the gateway
+`base_url` + `API_SERVER_KEY`. Armarius calls `POST /v1/runs`, tees the SSE `/events`
+stream into the live trace, and persists `{session_id, session_key}` so each
+(agent, task) resumes across wakes.
+
+### Develop without Docker
+
+```bash
+cd backend && uv venv --python 3.12 && uv pip install -e ".[dev]"
+uvicorn armarius.main:app --reload          # SQLite, zero setup
+cd ../frontend && npm install && npm run dev
+```
+
+See [backend/README.md](./backend/README.md), [ROADMAP.md](./ROADMAP.md), and the design
+in [PROJECT_DESCRIPTION.md](./PROJECT_DESCRIPTION.md).
 
 ---
 
 ## Architecture
 
-> *High-level architecture will be documented here. For now, know that Armarius is built on the principles of distributed autonomy, message-passing between agents, and human-centric approval workflows.*
+```
+┌──────────────────────────────┐   REST + SSE   ┌───────────────────────────────┐
+│  Scriptorium UI (React/Vite) │ ◀────────────▶ │  Armarius Core API (FastAPI)  │
+│  Board · Room · Directory    │                │  Clean Architecture:          │
+│  Patron inbox · Live trace   │                │   domain → application →      │
+└──────────────────────────────┘                │   infrastructure → presentation│
+                                                 │  Wake engine · Adapter registry│
+                                                 │  Session store · Run-log tee   │
+                                                 └───────┬───────────────┬────────┘
+                                          adapter.execute │ ↕ SSE tee     │ publish/read
+                                                  ┌───────▼──────┐  ┌─────▼─────────┐
+                                                  │ Hermes / echo│  │ Shared Artifact│
+                                                  │   adapters   │  │ Store (local) │
+                                                  └──────────────┘  └───────────────┘
+                          Postgres ◀── persistence (tasks · sessions · runs · trace)
+```
+
+Built on distributed autonomy, addressed message-passing between agents (mention =
+event-wake), task-owned session resume, and human-centric approval. Full rationale and
+the wake model in [PROJECT_DESCRIPTION.md](./PROJECT_DESCRIPTION.md) §4.3 / §8.1.
 
 ---
 

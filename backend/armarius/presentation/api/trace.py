@@ -47,24 +47,23 @@ async def stream_run_events(
     if run is None:
         raise LookupError("run not found")
 
+    def frame(event_type: str, seq: int | None, payload: dict) -> dict:
+        # Emit as default "message" events so the browser EventSource.onmessage
+        # receives every event type (event names are carried inside the JSON).
+        return {"data": json.dumps({"type": event_type, "seq": seq, "payload": payload})}
+
     async def generator() -> AsyncIterator[dict]:
         for event in await container.runs.events(run_id):
-            yield {
-                "event": event.type,
-                "data": json.dumps({"seq": event.seq, "payload": event.payload}),
-            }
+            yield frame(event.type, event.seq, event.payload)
         fresh = await container.runs.get(run_id)
         if fresh is not None and fresh.status in _TERMINAL:
-            yield {"event": "run.finished", "data": json.dumps({"status": str(fresh.status)})}
+            yield frame("run.finished", None, {"status": str(fresh.status)})
             return
         async for event in container.event_bus.subscribe(run_id):
             if await request.is_disconnected():
                 break
-            yield {
-                "event": event.get("type", "message"),
-                "data": json.dumps(
-                    {"seq": event.get("seq"), "payload": event.get("payload", {})}
-                ),
-            }
+            yield frame(
+                event.get("type", "message"), event.get("seq"), event.get("payload", {})
+            )
 
     return EventSourceResponse(generator())
