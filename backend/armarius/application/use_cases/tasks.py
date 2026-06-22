@@ -1,0 +1,123 @@
+"""Task use cases — create, list, assign (→ event-wake), and gated status transitions."""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from uuid import UUID
+
+from armarius.application.use_cases.types import UowFactory
+from armarius.application.use_cases.wake_engine import WakeEngine
+from armarius.domain.entities.run import WakeSource
+from armarius.domain.entities.task import Task, TaskStatus
+from armarius.shared.clock import utcnow
+
+
+class TaskService:
+    def __init__(self, uow_factory: UowFactory, wake_engine: WakeEngine) -> None:
+        self._uow = uow_factory
+        self._wake = wake_engine
+
+    async def create(
+        self,
+        *,
+        project_id: UUID,
+        title: str,
+        description: str | None = None,
+        created_by_user_id: str | None = None,
+    ) -> Task:
+        async with self._uow() as uow:
+            if await uow.projects.get(project_id) is None:
+                raise LookupError("project not found")
+            now = utcnow()
+            task = Task(
+                project_id=project_id,
+                title=title,
+                description=description,
+                status=TaskStatus.BACKLOG,
+                created_by_user_id=created_by_user_id,
+                created_at=now,
+                updated_at=now,
+            )
+            created = await uow.tasks.add(task)
+            await uow.commit()
+            return created
+
+    async def get(self, task_id: UUID) -> Task | None:
+        async with self._uow() as uow:
+            return await uow.tasks.get(task_id)
+
+    async def list_by_project(
+        self, project_id: UUID, *, statuses: list[str] | None = None
+    ) -> Sequence[Task]:
+        async with self._uow() as uow:
+            return await uow.tasks.list_by_project(project_id, statuses=statuses)
+
+    async def assign(self, task_id: UUID, marius_id: UUID) -> Task:
+        """Assign a Marius and fire an assignment event-wake (§4.3 family 1)."""
+        async with self._uow() as uow:
+            task = await uow.tasks.get(task_id)
+            if task is None:
+                raise LookupError("task not found")
+            if await uow.mariuses.get(marius_id) is None:
+                raise LookupError("marius not found")
+            task.assigned_marius_id = marius_id
+            if task.status == TaskStatus.BACKLOG:
+                task.status = TaskStatus.TODO
+            task.updated_at = utcnow()
+            await uow.tasks.update(task)
+            await uow.commit()
+
+        await self._wake.enqueue(
+            marius_id=marius_id,
+            task_id=task_id,
+            source=WakeSource.ASSIGNMENT,
+            reason="you were assigned to this task",
+        )
+        return task
+
+    async def claim(self, task_id: UUID, marius_id: UUID) -> Task:
+        """Agent claims a task: assign self and start working. No wake is fired
+        (the claiming agent is already awake)."""
+        async with self._uow() as uow:
+            task = await uow.tasks.get(task_id)
+            if task is None:
+                raise LookupError("task not found")
+            task.assigned_marius_id = marius_id
+            if task.status in (TaskStatus.BACKLOG, TaskStatus.TODO):
+                task.transition_to(TaskStatus.IN_PROGRESS, utcnow())
+            task.updated_at = utcnow()
+            updated = await uow.tasks.update(task)
+            await uow.commit()
+            return updated
+
+    async def transition(
+        self,
+        task_id: UUID,
+        target: TaskStatus,
+        *,
+        reason: str | None = None,
+    ) -> Task:
+        """Apply a gated status transition (enforces the artifact rule, §3.4)."""
+        async with self._uow() as uow:
+            task = await uow.tasks.get(task_id)
+            if task is None:
+                raise LookupError("task not found")
+            artifact_count = await uow.artifacts.count_by_task(task_id)
+            task.transition_to(
+                target, utcnow(), has_artifact=artifact_count > 0, reason=reason
+            )
+            task.updated_at = utcnow()
+            updated = await uow.tasks.update(task)
+            await uow.commit()
+            return updated
+
+    async def set_next_action(self, task_id: UUID, next_action: str | None) -> Task:
+        async with self._uow() as uow:
+            task = await uow.tasks.get(task_id)
+            if task is None:
+                raise LookupError("task not found")
+            task.next_action = next_action
+            task.updated_at = utcnow()
+            updated = await uow.tasks.update(task)
+            await uow.commit()
+            return updated
