@@ -103,3 +103,16 @@ A task may only reach `in_review`/`done` when a **published artifact** is linked
 - Verified: full stack healthy on Postgres; seed present; wake → echo run → durable trace through
   the containerised backend. Frontend typechecks + builds clean.
 - The user's real Hermes instance is up on :8642 — `hermes_gateway` adapter ready to point at it.
+
+### 2026-06-23 — Public URL config + server-side invitations + `.env.sample`
+- Separated the two onboarding directions (was conflated): **Armarius→agent** = per-Marius
+  gateway `base_url` (user-supplied, works for remote agents); **agent→Armarius** = a single
+  public callback URL.
+- Added `PUBLIC_BASE_URL` setting (mirrors OpenClaw MC's `BASE_URL`) + `GET /v1/meta`.
+- Invitation prompt now generated **server-side** (`application/use_cases/onboarding.py`) and
+  advertises the configured public URL + full agent-skill endpoints — no more browser-guessed
+  or `host.docker.internal` URLs baked into invites.
+- Root **`.env.sample`** + parameterised `docker-compose.yml` (ports, Postgres creds,
+  `ARMARIUS_PUBLIC_URL`, `ARMARIUS_API_URL`, `CORS_ORIGINS`); `host.docker.internal` demoted to a
+  documented dev-only shortcut.
+- Verified: `/v1/meta` and generated invites reflect a custom `ARMARIUS_PUBLIC_URL` end-to-end.

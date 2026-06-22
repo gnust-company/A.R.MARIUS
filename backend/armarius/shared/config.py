@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./armarius.db"
     cors_origins: str = "*"
 
+    # Public URL of THIS Armarius API that agents call back into (claim/comment/
+    # publish). Embedded into the invitation prompt. Set this to the externally
+    # reachable origin when agents run on other machines (e.g. https://armarius.example.com).
+    public_base_url: str = "http://localhost:8080"
+
     artifact_store_root: str = "./artifacts_store"
 
     wake_max_continuation_attempts: int = 3
@@ -35,6 +40,10 @@ class Settings(BaseSettings):
         if not raw or raw == "*":
             return ["*"]
         return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+    @property
+    def public_api_url(self) -> str:
+        return self.public_base_url.rstrip("/")
 
     @property
     def artifact_store_path(self) -> Path:

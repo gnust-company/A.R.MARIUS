@@ -140,6 +140,7 @@ The whole workshop — Postgres, the Clean-Architecture API, and the Scriptorium
 dashboard — comes up with a single command:
 
 ```bash
+cp .env.sample .env        # optional: tweak ports / public URLs
 docker compose up --build
 ```
 
@@ -154,6 +155,20 @@ drive the full loop — assign / @mention → wake → **watch the live trace** 
 without any external agent. Host ports are overridable: `FRONTEND_PORT`, `BACKEND_PORT`,
 `ARMARIUS_API_URL` (see `docker-compose.yml`).
 
+### Two URLs (because agents run anywhere)
+
+Onboarding involves two directions, configured independently:
+
+| Direction | What it is | Where it's set |
+|---|---|---|
+| **Armarius → agent** (wake/execute) | the agent's gateway, e.g. Hermes `base_url` + `API_SERVER_KEY` | per-Marius, in **Directory → Provision a Marius** |
+| **agent → Armarius** (claim/comment/publish callbacks) | the **public URL of this API**, advertised in the invitation | `ARMARIUS_PUBLIC_URL` (`PUBLIC_BASE_URL`) |
+
+So when a teammate's agent runs on a different machine, set that Marius's `base_url`
+to its own reachable gateway, and set `ARMARIUS_PUBLIC_URL` to Armarius's public origin
+(e.g. `https://armarius.example.com`) so the agent can call back. The invitation prompt
+(generated server-side on provision) embeds that public URL.
+
 ### Connect a real agent (Hermes)
 
 In **Directory → Provision a Marius**, pick `hermes_gateway` and give the gateway
@@ -161,9 +176,9 @@ In **Directory → Provision a Marius**, pick `hermes_gateway` and give the gate
 stream into the live trace, and persists `{session_id, session_key}` so each
 (agent, task) resumes across wakes.
 
-> If Hermes runs on your host (not in this compose network), use
-> `base_url: http://host.docker.internal:8642` — the backend container is wired with a
-> host-gateway mapping for exactly this.
+> **Local-dev shortcut only:** if Hermes runs on the *same host* as this compose, use
+> `base_url: http://host.docker.internal:8642` (the backend container has a host-gateway
+> mapping). This is not needed for remote agents — use their real URL.
 
 ### Develop without Docker
 

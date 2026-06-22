@@ -62,6 +62,13 @@ class MariusOut(_Out):
 
 class MariusCreatedOut(MariusOut):
     agent_token: str | None = None
+    invite: str | None = None
+
+
+class MetaOut(BaseModel):
+    version: str
+    public_base_url: str
+    adapters: list[str]
 
 
 # ------------------------------------------------------------------------- task

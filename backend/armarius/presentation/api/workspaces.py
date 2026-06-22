@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter
 
+from armarius.application.use_cases.onboarding import build_invite_prompt
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
     CreateProjectIn,
@@ -16,6 +17,7 @@ from armarius.presentation.schemas import (
     RegisterMariusIn,
     WorkspaceOut,
 )
+from armarius.shared.config import settings
 
 router = APIRouter(prefix="/v1", tags=["workspaces"])
 
@@ -67,7 +69,8 @@ async def register_marius(
         adapter_config=body.adapter_config,
         owner_user_id=body.owner_user_id,
     )
-    return MariusCreatedOut.model_validate(marius)
+    invite = build_invite_prompt(marius, settings.public_api_url)
+    return MariusCreatedOut.model_validate(marius).model_copy(update={"invite": invite})
 
 
 @router.get("/workspaces/{workspace_id}/mariuses", response_model=list[MariusOut])

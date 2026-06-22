@@ -54,9 +54,10 @@ export const api = {
   registerMarius: (ws: string, body: {
     name: string; role: string; skills: string[]; adapter_type: string; adapter_config: Record<string, string>;
   }) =>
-    req<Marius & { agent_token: string }>(`/v1/workspaces/${ws}/mariuses`, {
+    req<Marius & { agent_token: string; invite: string }>(`/v1/workspaces/${ws}/mariuses`, {
       method: "POST", body: JSON.stringify(body),
     }),
+  meta: () => req<{ version: string; public_base_url: string; adapters: string[] }>("/v1/meta"),
   tasks: (project: string) => req<Task[]>(`/v1/projects/${project}/tasks`),
   task: (id: string) => req<Task>(`/v1/tasks/${id}`),
   createTask: (project: string, title: string, description?: string) =>

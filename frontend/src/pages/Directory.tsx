@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, API_BASE, type Marius } from "../api";
+import { api, type Marius } from "../api";
 import { useApp } from "../store";
 import { Avatar, LivenessDot } from "../ui";
 
@@ -35,7 +35,7 @@ function Provision({ onDone }: { onDone: () => void }) {
   const [adapter, setAdapter] = useState("hermes_gateway");
   const [baseUrl, setBaseUrl] = useState("http://localhost:8642");
   const [apiKey, setApiKey] = useState("");
-  const [token, setToken] = useState<string>();
+  const [invite, setInvite] = useState<string>();
   const [newName, setNewName] = useState("");
 
   const submit = async () => {
@@ -47,19 +47,11 @@ function Provision({ onDone }: { onDone: () => void }) {
       skills: skills.split(",").map((s) => s.trim()).filter(Boolean),
       adapter_type: adapter, adapter_config: cfg,
     });
-    setToken(created.agent_token); setNewName(created.name);
+    setInvite(created.invite); setNewName(created.name);
     setName(""); setRole(""); setSkills(""); onDone();
   };
 
-  if (token) {
-    const invite =
-`You are joining the Armarius workspace as "${newName}".
-1. Save this Armarius token (bearer for the agent API): ${token}
-2. Base API: ${API_BASE}
-3. Install the Armarius skills: claim, comment (@mention), update status,
-   record next_action, and publish_artifact.
-4. When woken, read /agent/tasks/{id}, do the work, publish an artifact, then
-   record a durable next_action before you stop.`;
+  if (invite) {
     return (
       <div className="panel p-4">
         <div className="font-serif text-lg mb-1">Invitation for {newName}</div>
@@ -70,7 +62,7 @@ function Provision({ onDone }: { onDone: () => void }) {
           style={{ background: "var(--paper-2)", border: "1px solid var(--line)" }}>{invite}</pre>
         <div className="flex gap-2 mt-3">
           <button className="btn" onClick={() => navigator.clipboard?.writeText(invite)}>Copy</button>
-          <button className="btn btn-primary" onClick={() => { setToken(undefined); setOpen(false); }}>Done</button>
+          <button className="btn btn-primary" onClick={() => { setInvite(undefined); setOpen(false); }}>Done</button>
         </div>
       </div>
     );

@@ -1,18 +1,18 @@
-# Armarius — full stack. Just run:  docker compose up --build
-# Then open the dashboard at http://localhost:3000 (API at http://localhost:8080).
-# Host ports are overridable via .env (FRONTEND_PORT / BACKEND_PORT / ARMARIUS_API_URL).
+# Armarius — full stack. Copy .env.sample to .env to override, then:
+#   docker compose up --build
+# Dashboard → http://localhost:${FRONTEND_PORT:-3000}   API → http://localhost:${BACKEND_PORT:-8080}
 
 services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: armarius
-      POSTGRES_PASSWORD: armarius
-      POSTGRES_DB: armarius
+      POSTGRES_USER: ${POSTGRES_USER:-armarius}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-armarius}
+      POSTGRES_DB: ${POSTGRES_DB:-armarius}
     volumes:
       - armarius_db:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U armarius -d armarius"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-armarius} -d ${POSTGRES_DB:-armarius}"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -20,13 +20,17 @@ services:
   backend:
     build: ./backend
     environment:
-      DATABASE_URL: postgresql+psycopg://armarius:armarius@db:5432/armarius
-      CORS_ORIGINS: "*"
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-armarius}:${POSTGRES_PASSWORD:-armarius}@db:5432/${POSTGRES_DB:-armarius}
+      # Public URL of THIS API that agents call back into — advertised in invitations.
+      # For remote agents set ARMARIUS_PUBLIC_URL to a reachable origin (e.g. https://armarius.example.com).
+      PUBLIC_BASE_URL: ${ARMARIUS_PUBLIC_URL:-http://localhost:8080}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
       ARTIFACT_STORE_ROOT: /data/artifacts
     volumes:
       - armarius_artifacts:/data/artifacts
-    # Lets a provisioned hermes_gateway Marius reach a Hermes running on the host
-    # (use base_url http://host.docker.internal:8642 in the Provision form).
+    # DEV-ONLY convenience: lets a hermes_gateway Marius reach a Hermes running on the
+    # SAME host as this compose (base_url http://host.docker.internal:8642). For agents
+    # on other machines, just set that Marius's base_url to its own reachable URL.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -39,7 +43,7 @@ services:
     build:
       context: ./frontend
       args:
-        # Baked into the static bundle at build time; the browser calls the backend here.
+        # Browser → API URL, baked into the static bundle at build time.
         VITE_API_URL: ${ARMARIUS_API_URL:-http://localhost:8080}
     depends_on:
       - backend
