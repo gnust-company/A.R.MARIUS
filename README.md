@@ -161,6 +161,10 @@ In **Directory → Provision a Marius**, pick `hermes_gateway` and give the gate
 stream into the live trace, and persists `{session_id, session_key}` so each
 (agent, task) resumes across wakes.
 
+> If Hermes runs on your host (not in this compose network), use
+> `base_url: http://host.docker.internal:8642` — the backend container is wired with a
+> host-gateway mapping for exactly this.
+
 ### Develop without Docker
 
 ```bash

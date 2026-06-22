@@ -25,6 +25,10 @@ services:
       ARTIFACT_STORE_ROOT: /data/artifacts
     volumes:
       - armarius_artifacts:/data/artifacts
+    # Lets a provisioned hermes_gateway Marius reach a Hermes running on the host
+    # (use base_url http://host.docker.internal:8642 in the Provision form).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy
