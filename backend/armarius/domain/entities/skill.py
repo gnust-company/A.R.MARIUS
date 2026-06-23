@@ -1,9 +1,12 @@
-"""Skill entity — an installable capability listed in a workspace's Skill Shop.
+"""Skill entity — an installable capability authored in a workspace's Skill Shop.
 
-A Skill is workspace-scoped (not shared across all workspaces). Every workspace is
-seeded with the built-in `armarius-http` skill; in a later phase users will be able
-to submit their own. When a Marius is provisioned, the skills linked to it drive the
-per-skill install instructions embedded in the invitation prompt.
+A Skill is a small file tree rooted at SKILL.md. `files` maps path → content
+(SKILL.md plus any sibling files/folders the author adds, e.g. scripts/ or
+references/). Built-in skills ship their content; manual skills start from a
+generated SKILL.md template; imported skills are cloned from a GitHub folder. The
+skill's `name`/`description` come from the SKILL.md YAML frontmatter. `source_url`
+records provenance (the GitHub link for imports, the served path for built-ins) and
+is what gets advertised to agents in the invitation.
 """
 
 from __future__ import annotations
@@ -22,21 +25,20 @@ class Skill:
     slug: str = ""
     name: str = ""
     description: str = ""
-    kind: str = "http"  # "http" (direct API) | "mcp" (future MCP server)
-    source: str = "builtin"  # "builtin" | "custom"
-    # Where the SKILL.md lives. A leading "/" means it is served by THIS API
-    # (e.g. /static/skills/armarius-http/SKILL.md) and is resolved against the
-    # public base URL when advertised to an agent.
-    install_url: str | None = None
-    # Optional inline install notes for custom skills.
-    instructions: str | None = None
+    source: str = "builtin"  # "builtin" | "manual" | "imported"
+    # Provenance / agent-facing URL. Relative ("/static/...") for built-ins, absolute
+    # (https://github.com/...) for imports. Resolved against the public base URL.
+    source_url: str = ""
+    # path → content. Rooted at SKILL.md; may include sibling files/folders.
+    files: dict[str, str] = field(default_factory=dict)
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
-    def absolute_install_url(self, public_base_url: str) -> str | None:
-        """Resolve install_url against the public base URL when it is relative."""
-        if not self.install_url:
-            return None
-        if self.install_url.startswith("/"):
-            return f"{public_base_url.rstrip('/')}{self.install_url}"
-        return self.install_url
+    def absolute_source_url(self, public_base_url: str) -> str:
+        """Resolve source_url against the public base URL when it is relative."""
+        if not self.source_url:
+            return ""
+        if self.source_url.startswith("/"):
+            return f"{public_base_url.rstrip('/')}{self.source_url}"
+        return self.source_url
+

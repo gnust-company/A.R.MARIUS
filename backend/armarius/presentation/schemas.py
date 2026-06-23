@@ -45,19 +45,23 @@ class SkillOut(_Out):
     slug: str
     name: str
     description: str = ""
-    kind: str
     source: str
-    install_url: str | None = None
-    instructions: str | None = None
+    source_url: str = ""
+    files: dict[str, str] = Field(default_factory=dict)
     created_at: datetime | None = None
 
 
-class CreateSkillIn(BaseModel):
+class ManualSkillIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str = ""
-    kind: str = "http"
-    install_url: str | None = None
-    instructions: str | None = None
+
+
+class ImportSkillIn(BaseModel):
+    source_url: str = Field(min_length=1, max_length=2000)
+
+
+class UpdateSkillIn(BaseModel):
+    files: dict[str, str] = Field(default_factory=dict)
 
 
 # ----------------------------------------------------------------------- marius

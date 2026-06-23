@@ -189,10 +189,9 @@ class SkillModel(Base):
     slug: Mapped[str] = mapped_column(String(120))
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
-    kind: Mapped[str] = mapped_column(String(20), default="http")
     source: Mapped[str] = mapped_column(String(20), default="builtin")
-    install_url: Mapped[str | None] = mapped_column(Text)
-    instructions: Mapped[str | None] = mapped_column(Text)
+    source_url: Mapped[str] = mapped_column(Text, default="")
+    files: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

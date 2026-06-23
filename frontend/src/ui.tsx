@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { useI18n } from "./i18n";
 import type { TaskStatus } from "./api";
 import type { TranslationKey } from "./i18n";
@@ -51,6 +52,108 @@ export function LivenessDot({ liveness, withLabel }: { liveness: string; withLab
       />
       {withLabel && <span className="text-xs" style={{ color: "var(--ink-faint)" }}>{t(m.key)}</span>}
     </span>
+  );
+}
+
+// Click-outside hook for popovers/dropdowns.
+export function useClickOutside<T extends HTMLElement>(onOut: () => void) {
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onOut();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onOut]);
+  return ref;
+}
+
+// Centered modal overlay. Used for all "create" actions (commission task, provision
+// agent, submit skill, edit agent) so they don't render as cramped inline corner panels.
+export function Modal({
+  title, onClose, children, footer, wide,
+}: {
+  title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode; wide?: boolean;
+}) {
+  const { t } = useI18n();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6"
+      style={{ background: "rgba(40,28,10,0.5)" }} onClick={onClose}>
+      <div className="panel w-full flex flex-col"
+        style={{ maxWidth: wide ? 680 : 460, maxHeight: "85vh", boxShadow: "0 30px 60px -30px rgba(60,40,10,0.5)" }}
+        onClick={(e) => e.stopPropagation()}>
+        <header className="flex items-center gap-3 px-5 py-3.5 shrink-0" style={{ borderBottom: "1px solid var(--line)" }}>
+          <span className="font-serif text-lg font-semibold">{title}</span>
+          <button className="ml-auto text-lg leading-none px-2" onClick={onClose} style={{ color: "var(--ink-faint)" }}>×</button>
+        </header>
+        <div className="flex-1 min-h-0 overflow-auto p-5">{children}</div>
+        {footer && <footer className="px-5 py-3.5 flex gap-2 justify-end shrink-0" style={{ borderTop: "1px solid var(--line)" }}>{footer}</footer>}
+      </div>
+    </div>
+  );
+}
+
+// Multi-select dropdown of checkboxes. Collapsed button → click opens a popover panel;
+// each checked item is selected (drives the install steps in the invitation).
+export function CheckboxDropdown<T extends { id: string }>({
+  label, items, selected, onChange, getKey, getLabel, getSub, emptyText,
+}: {
+  label: string;
+  items: T[];
+  selected: Set<string>;
+  onChange: (next: Set<string>) => void;
+  getKey: (item: T) => string;
+  getLabel: (item: T) => string;
+  getSub?: (item: T) => string | undefined;
+  emptyText: string;
+}) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const ref = useClickOutside<HTMLDivElement>(() => setOpen(false));
+  const toggle = (k: string) => {
+    const next = new Set(selected);
+    next.has(k) ? next.delete(k) : next.add(k);
+    onChange(next);
+  };
+  const count = selected.size;
+  return (
+    <div className="relative" ref={ref}>
+      <button type="button" className="input w-full flex items-center justify-between"
+        onClick={() => setOpen((o) => !o)}>
+        <span className="truncate" style={{ color: count ? "var(--ink)" : "var(--ink-soft)" }}>
+          {count ? t("agent.skillsSelected", { n: count }) : label}
+        </span>
+        <span className="text-xs ml-2 shrink-0" style={{ color: "var(--ink-faint)" }}>{open ? "▴" : "▾"}</span>
+      </button>
+      {open && (
+        <div className="absolute z-40 mt-1 w-full rounded-lg overflow-auto"
+          style={{ background: "var(--panel)", border: "1px solid var(--line)", maxHeight: 240, boxShadow: "0 18px 36px -14px rgba(60,40,10,0.45)" }}>
+          {items.length === 0 && <div className="px-3 py-2.5 text-xs" style={{ color: "var(--ink-faint)" }}>{emptyText}</div>}
+          {items.map((it, i) => {
+            const k = getKey(it);
+            const on = selected.has(k);
+            return (
+              <label key={k} className="flex items-start gap-2.5 px-3 py-2 cursor-pointer"
+                style={{
+                  background: on ? "rgba(216,162,58,0.14)" : "var(--panel)",
+                  borderBottom: i < items.length - 1 ? "1px solid var(--line-soft)" : "none",
+                }}>
+                <input type="checkbox" className="mt-0.5" checked={on} onChange={() => toggle(k)} />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium truncate" style={{ color: "var(--ink)" }}>{getLabel(it)}</div>
+                  {getSub?.(it) && <div className="text-[0.66rem] truncate" style={{ color: "var(--ink-faint)" }}>{getSub(it)}</div>}
+                </div>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 

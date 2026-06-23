@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, type Task } from "../api";
 import { useApp } from "../store";
 import { useI18n } from "../i18n";
-import { Avatar, BOARD_COLUMNS, STATUS_META, relTime } from "../ui";
+import { Avatar, BOARD_COLUMNS, STATUS_META, Modal, relTime } from "../ui";
 
 function TaskCard({ task }: { task: Task }) {
   const { mariusById } = useApp();
@@ -56,6 +56,7 @@ export default function Board() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [composing, setComposing] = useState(false);
   const [title, setTitle] = useState("");
+  const [desc, setDesc] = useState("");
 
   const load = async () => {
     if (project) setTasks(await api.tasks(project.id));
@@ -64,8 +65,8 @@ export default function Board() {
 
   const commission = async () => {
     if (!project || !title.trim()) return;
-    await api.createTask(project.id, title.trim());
-    setTitle(""); setComposing(false); load();
+    await api.createTask(project.id, title.trim(), desc.trim() || undefined);
+    setTitle(""); setDesc(""); setComposing(false); load();
   };
 
   return (
@@ -74,14 +75,7 @@ export default function Board() {
         <h1 className="font-serif text-xl font-semibold">{project?.name ?? t("board.title")}</h1>
         <span className="chip">{t("board.tasks", { n: tasks.length })}</span>
         <div className="ml-auto flex items-center gap-2">
-          {composing && (
-            <input
-              autoFocus className="input !w-64" placeholder={t("board.newTaskPlaceholder")}
-              value={title} onChange={(e) => setTitle(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") commission(); if (e.key === "Escape") setComposing(false); }}
-            />
-          )}
-          <button className="btn btn-primary" onClick={() => (composing ? commission() : setComposing(true))}>
+          <button className="btn btn-primary" onClick={() => setComposing(true)}>
             {t("board.commission")}
           </button>
         </div>
@@ -126,6 +120,32 @@ export default function Board() {
           </div>
         </div>
       </div>
+
+      {composing && (
+        <Modal title={t("board.commission")} onClose={() => { setComposing(false); setTitle(""); setDesc(""); }}
+          footer={<>
+            <button className="btn" onClick={() => { setComposing(false); setTitle(""); setDesc(""); }}>{t("common.cancel")}</button>
+            <button className="btn btn-primary" disabled={!title.trim()} onClick={commission}>{t("board.commission")}</button>
+          </>}>
+          <div className="grid gap-3">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[0.66rem] uppercase tracking-[0.14em]" style={{ color: "var(--ink-faint)" }}>{t("board.titleLabel")}</span>
+              <input
+                autoFocus className="input" placeholder={t("board.newTaskPlaceholder")}
+                value={title} onChange={(e) => setTitle(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && e.metaKey) commission(); }}
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[0.66rem] uppercase tracking-[0.14em]" style={{ color: "var(--ink-faint)" }}>{t("board.descLabel")}</span>
+              <textarea
+                className="input resize-none" rows={4} placeholder={t("board.descPlaceholder")}
+                value={desc} onChange={(e) => setDesc(e.target.value)}
+              />
+            </label>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

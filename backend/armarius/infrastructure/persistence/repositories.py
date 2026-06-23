@@ -579,10 +579,9 @@ class SqlSkillRepository(SkillRepository):
                 slug=skill.slug,
                 name=skill.name,
                 description=skill.description,
-                kind=skill.kind,
                 source=skill.source,
-                install_url=skill.install_url,
-                instructions=skill.instructions,
+                source_url=skill.source_url,
+                files=dict(skill.files),
                 created_at=skill.created_at,
                 updated_at=skill.updated_at,
             )
@@ -593,6 +592,20 @@ class SqlSkillRepository(SkillRepository):
     async def get(self, skill_id: UUID) -> Skill | None:
         m = await self._s.get(SkillModel, skill_id)
         return mappers.skill_to_entity(m) if m else None
+
+    async def update(self, skill: Skill) -> Skill:
+        m = await self._s.get(SkillModel, skill.id)
+        if m is None:
+            raise LookupError("skill not found")
+        m.slug = skill.slug
+        m.name = skill.name
+        m.description = skill.description
+        m.source = skill.source
+        m.source_url = skill.source_url
+        m.files = dict(skill.files)
+        m.updated_at = skill.updated_at
+        await self._s.flush()
+        return skill
 
     async def list_by_workspace(self, workspace_id: UUID) -> Sequence[Skill]:
         rows = (

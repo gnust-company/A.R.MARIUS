@@ -36,7 +36,7 @@ export interface Project {
 }
 export interface Skill {
   id: string; workspace_id: string; slug: string; name: string; description: string;
-  kind: string; source: string; install_url?: string | null; instructions?: string | null;
+  source: string; source_url: string; files: Record<string, string>;
 }
 export interface Marius {
   id: string; workspace_id: string; name: string; role: string; skills: string[];
@@ -139,10 +139,13 @@ export const api = {
     }),
   mariuses: (ws: string) => req<Marius[]>(`/v1/workspaces/${ws}/mariuses`),
   skills: (ws: string) => req<Skill[]>(`/v1/workspaces/${ws}/skills`),
-  createSkill: (ws: string, body: {
-    name: string; description?: string; kind?: string; install_url?: string; instructions?: string;
-  }) =>
-    req<Skill>(`/v1/workspaces/${ws}/skills`, { method: "POST", body: JSON.stringify(body) }),
+  skill: (ws: string, id: string) => req<Skill>(`/v1/workspaces/${ws}/skills/${id}`),
+  createManualSkill: (ws: string, body: { name: string; description?: string }) =>
+    req<Skill>(`/v1/workspaces/${ws}/skills/manual`, { method: "POST", body: JSON.stringify(body) }),
+  importSkill: (ws: string, source_url: string) =>
+    req<Skill>(`/v1/workspaces/${ws}/skills/import`, { method: "POST", body: JSON.stringify({ source_url }) }),
+  updateSkill: (ws: string, id: string, files: Record<string, string>) =>
+    req<Skill>(`/v1/workspaces/${ws}/skills/${id}`, { method: "PUT", body: JSON.stringify({ files }) }),
   registerMarius: (ws: string, body: MariusInput) =>
     req<Marius & { agent_token: string; invite: string }>(`/v1/workspaces/${ws}/mariuses`, {
       method: "POST", body: JSON.stringify(body),

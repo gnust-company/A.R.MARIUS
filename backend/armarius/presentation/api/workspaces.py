@@ -11,14 +11,16 @@ from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
     CreateProjectIn,
-    CreateSkillIn,
     CreateWorkspaceIn,
+    ImportSkillIn,
+    ManualSkillIn,
     MariusCreatedOut,
     MariusOut,
     ProjectOut,
     RegisterMariusIn,
     SkillOut,
     UpdateMariusIn,
+    UpdateSkillIn,
     WorkspaceOut,
 )
 from armarius.shared.config import settings
@@ -147,21 +149,61 @@ async def list_skills(
     return [SkillOut.model_validate(s) for s in items]
 
 
-@router.post(
-    "/workspaces/{workspace_id}/skills", response_model=SkillOut, status_code=201
+@router.get(
+    "/workspaces/{workspace_id}/skills/{skill_id}", response_model=SkillOut
 )
-async def create_skill(
+async def get_skill(
+    workspace_id: UUID, skill_id: UUID, container: ContainerDep, user: CurrentUser
+) -> SkillOut:
+    skill = await container.skills.get_skill(skill_id)
+    if skill is None:
+        raise LookupError("skill not found")
+    return SkillOut.model_validate(skill)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/skills/manual",
+    response_model=SkillOut,
+    status_code=201,
+)
+async def create_manual_skill(
+    workspace_id: UUID, body: ManualSkillIn, container: ContainerDep, user: CurrentUser
+) -> SkillOut:
+    skill = await container.skills.create_manual(
+        workspace_id=workspace_id, name=body.name, description=body.description
+    )
+    return SkillOut.model_validate(skill)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/skills/import",
+    response_model=SkillOut,
+    status_code=201,
+)
+async def import_skill(
+    workspace_id: UUID, body: ImportSkillIn, container: ContainerDep, user: CurrentUser
+) -> SkillOut:
+    try:
+        skill = await container.skills.import_from_url(
+            workspace_id=workspace_id, url=body.source_url
+        )
+    except ValueError as e:
+        raise LookupError(str(e)) from e
+    return SkillOut.model_validate(skill)
+
+
+@router.put(
+    "/workspaces/{workspace_id}/skills/{skill_id}", response_model=SkillOut
+)
+async def update_skill(
     workspace_id: UUID,
-    body: CreateSkillIn,
+    skill_id: UUID,
+    body: UpdateSkillIn,
     container: ContainerDep,
     user: CurrentUser,
 ) -> SkillOut:
-    skill = await container.skills.create_skill(
-        workspace_id=workspace_id,
-        name=body.name,
-        description=body.description,
-        kind=body.kind,
-        install_url=body.install_url,
-        instructions=body.instructions,
-    )
+    try:
+        skill = await container.skills.update_files(skill_id, body.files)
+    except LookupError:
+        raise
     return SkillOut.model_validate(skill)

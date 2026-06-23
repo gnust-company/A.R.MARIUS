@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Workspace } from "../api";
 import { useApp } from "../store";
+import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
+import { Modal } from "../ui";
 
 interface Counts { projects: number; agents: number }
 
@@ -13,14 +15,15 @@ function WorkspaceCard({
 }) {
   const { t } = useI18n();
   return (
-    <div className="panel p-4 flex flex-col gap-3">
+    <button onClick={onOpen} className="panel p-5 flex flex-col gap-3 text-left hover:-translate-y-0.5 transition-transform">
       <div className="flex items-start gap-3">
         <div
-          className="flex items-center justify-center rounded-lg font-serif text-lg shrink-0"
+          className="flex items-center justify-center rounded-lg font-serif text-xl shrink-0"
           style={{
-            width: 40, height: 40,
-            background: "linear-gradient(180deg,#d8a23a,#b3812a)",
-            color: "#fff8e8",
+            width: 46, height: 46,
+            background: personal ? "linear-gradient(180deg,#d8a23a,#b3812a)" : "var(--panel-2)",
+            color: personal ? "#fff8e8" : "var(--ink)",
+            border: personal ? "none" : "1px solid var(--line)",
           }}
         >
           {ws.name.charAt(0).toUpperCase()}
@@ -29,9 +32,7 @@ function WorkspaceCard({
           <div className="font-serif text-lg font-semibold leading-tight truncate">{ws.name}</div>
           <div className="flex items-center gap-1.5 mt-1">
             {personal && <span className="chip">{t("ws.personal")}</span>}
-            {current && (
-              <span className="chip" style={{ background: "var(--panel-2)" }}>{t("ws.current")}</span>
-            )}
+            {current && <span className="chip" style={{ background: "var(--panel-2)" }}>{t("ws.current")}</span>}
           </div>
         </div>
       </div>
@@ -39,16 +40,14 @@ function WorkspaceCard({
       <div className="flex items-center gap-4 text-xs" style={{ color: "var(--ink-faint)" }}>
         <span>{counts ? counts.projects : "—"} {counts && counts.projects === 1 ? t("ws.project") : t("ws.projects")}</span>
         <span>{counts ? counts.agents : "—"} {counts && counts.agents === 1 ? t("ws.agent") : t("ws.agents")}</span>
-        <button className="btn ml-auto" disabled={current} onClick={onOpen}>
-          {current ? t("ws.current") : t("ws.open")}
-        </button>
       </div>
-    </div>
+    </button>
   );
 }
 
 export default function Workspaces() {
   const { workspaces, workspace, setWorkspaceId, reloadWorkspaces } = useApp();
+  const { user, signOut } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
   const [counts, setCounts] = useState<Record<string, Counts>>({});
@@ -56,7 +55,6 @@ export default function Workspaces() {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Load lightweight per-workspace counts (projects + agents).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -92,47 +90,54 @@ export default function Workspaces() {
   const open = (id: string) => { setWorkspaceId(id); navigate("/"); };
 
   return (
-    <div className="h-full overflow-y-auto p-6" style={{ maxWidth: 920, margin: "0 auto" }}>
-      <div className="flex items-center gap-3 mb-1">
-        <h1 className="font-serif text-xl font-semibold">{t("ws.title")}</h1>
-        <span className="chip">{workspaces.length === 1 ? t("ws.countOne") : t("ws.count", { n: workspaces.length })}</span>
-        <div className="ml-auto">
-          {!creating && (
-            <button className="btn btn-primary" onClick={() => setCreating(true)}>＋ {t("ws.create")}</button>
-          )}
+    <div className="h-screen flex flex-col" style={{ background: "var(--panel)" }}>
+      {/* Top bar: brand + user */}
+      <header className="h-16 shrink-0 flex items-center gap-3 px-6" style={{ borderBottom: "1px solid var(--line)" }}>
+        <div className="flex items-center justify-center rounded-lg font-serif text-lg"
+          style={{ width: 34, height: 34, background: "linear-gradient(180deg,#d8a23a,#b3812a)", color: "#fff8e8" }}>A</div>
+        <div className="font-serif text-[1.15rem] font-semibold tracking-tight">Armarius</div>
+        <div className="ml-auto flex items-center gap-2.5">
+          <span className="text-sm" style={{ color: "var(--ink-soft)" }}>{user?.full_name}</span>
+          <button className="btn !py-1 !px-2.5 text-xs" onClick={signOut}>⎋ {t("auth.signOut")}</button>
+        </div>
+      </header>
+
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="max-w-4xl mx-auto px-6 py-10">
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="font-serif text-2xl font-semibold">{t("ws.title")}</h1>
+            <span className="chip">{workspaces.length === 1 ? t("ws.countOne") : t("ws.count", { n: workspaces.length })}</span>
+            <div className="ml-auto">
+              <button className="btn btn-primary" onClick={() => setCreating(true)}>＋ {t("ws.create")}</button>
+            </div>
+          </div>
+          <p className="text-sm mb-6" style={{ color: "var(--ink-soft)" }}>{t("ws.subtitle")}</p>
+
+          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))" }}>
+            {workspaces.map((w, i) => (
+              <WorkspaceCard
+                key={w.id} ws={w} personal={i === 0} current={w.id === workspace?.id}
+                counts={counts[w.id]} onOpen={() => open(w.id)}
+              />
+            ))}
+          </div>
         </div>
       </div>
-      <p className="text-sm mb-5" style={{ color: "var(--ink-soft)" }}>{t("ws.subtitle")}</p>
 
       {creating && (
-        <div className="panel p-4 mb-5 grid gap-2.5" style={{ maxWidth: 460 }}>
-          <div className="font-serif text-lg">{t("ws.createTitle")}</div>
+        <Modal title={t("ws.createTitle")} onClose={() => { setCreating(false); setName(""); }}
+          footer={<>
+            <button className="btn" onClick={() => { setCreating(false); setName(""); }}>{t("ws.cancel")}</button>
+            <button className="btn btn-primary" disabled={!name.trim() || busy} onClick={create}>{t("ws.create")}</button>
+          </>}>
+          <label className="text-[0.66rem] uppercase tracking-[0.14em] mb-1.5 block" style={{ color: "var(--ink-faint)" }}>{t("ws.namePlaceholder")}</label>
           <input
             autoFocus className="input" placeholder={t("ws.namePlaceholder")}
             value={name} onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") create(); if (e.key === "Escape") setCreating(false); }}
+            onKeyDown={(e) => { if (e.key === "Enter") create(); }}
           />
-          <div className="flex gap-2 mt-1">
-            <button className="btn" onClick={() => { setCreating(false); setName(""); }}>{t("ws.cancel")}</button>
-            <button className="btn btn-primary" disabled={!name.trim() || busy} onClick={create}>
-              {t("ws.create")}
-            </button>
-          </div>
-        </div>
+        </Modal>
       )}
-
-      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))" }}>
-        {workspaces.map((w, i) => (
-          <WorkspaceCard
-            key={w.id}
-            ws={w}
-            personal={i === 0}
-            current={w.id === workspace?.id}
-            counts={counts[w.id]}
-            onOpen={() => open(w.id)}
-          />
-        ))}
-      </div>
     </div>
   );
 }

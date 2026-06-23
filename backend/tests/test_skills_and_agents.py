@@ -119,21 +119,39 @@ async def test_edit_agent_updates_skills():
 
 async def test_custom_skill_is_workspace_scoped():
     async with await _client() as c:
-        # User A creates a custom skill
+        # User A authors a skill manually (generated from a SKILL.md template).
         token_a, ws_a = await _register(c, "a@armarius.dev")
         ha = {"Authorization": f"Bearer {token_a}"}
-        await c.post(
-            f"/v1/workspaces/{ws_a}/skills",
+        created = await c.post(
+            f"/v1/workspaces/{ws_a}/skills/manual",
             headers=ha,
-            json={"name": "Secret Sauce", "description": "A-only", "kind": "http"},
+            json={"name": "Secret Sauce", "description": "A-only"},
         )
+        assert created.status_code == 201, created.text
+        sauce = created.json()
+        assert sauce["slug"] == "secret-sauce"
+        assert sauce["source"] == "manual"
+        # A manually authored skill ships a generated SKILL.md the author can edit.
+        assert "SKILL.md" in sauce["files"]
         a_skills = (await c.get(f"/v1/workspaces/{ws_a}/skills", headers=ha)).json()
         assert any(s["slug"] == "secret-sauce" for s in a_skills)
 
-        # User B does not see A's custom skill in their own workspace
+        # Editing files persists and re-derives name/description from the frontmatter.
+        new_files = {"SKILL.md": "---\nname: Renamed Sauce\ndescription: edited\n---\n# body"}
+        edited = await c.put(
+            f"/v1/workspaces/{ws_a}/skills/{sauce['id']}",
+            headers=ha,
+            json={"files": new_files},
+        )
+        assert edited.status_code == 200, edited.text
+        assert edited.json()["name"] == "Renamed Sauce"
+
+        # User B does not see A's skill in their own workspace
         token_b, ws_b = await _register(c, "b@armarius.dev")
         hb = {"Authorization": f"Bearer {token_b}"}
         b_skills = (await c.get(f"/v1/workspaces/{ws_b}/skills", headers=hb)).json()
     assert not any(s["slug"] == "secret-sauce" for s in b_skills)
+    # ...but B still has the built-in
+    assert any(s["slug"] == "armarius-http" for s in b_skills)
     # ...but B still has the built-in
     assert any(s["slug"] == "armarius-http" for s in b_skills)

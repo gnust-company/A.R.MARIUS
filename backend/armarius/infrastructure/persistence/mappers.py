@@ -193,10 +193,9 @@ def skill_to_entity(m: SkillModel) -> Skill:
         slug=m.slug,
         name=m.name,
         description=m.description or "",
-        kind=m.kind,
         source=m.source,
-        install_url=m.install_url,
-        instructions=m.instructions,
+        source_url=m.source_url or "",
+        files=dict(m.files or {}),
         created_at=m.created_at,
         updated_at=m.updated_at,
     )

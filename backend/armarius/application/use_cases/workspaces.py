@@ -31,8 +31,10 @@ class WorkspaceService:
             ws = Workspace(name=name, slug=_slugify(name), owner_user_id=owner_user_id)
             created = await uow.workspaces.add(ws)
             await uow.commit()
-        # Every workspace ships with the built-in Skill Shop entries.
+        # Every workspace ships with the built-in Skill Shop entries + a default
+        # "General" project so tasks always have a home.
         await self._skills.seed_builtins(created.id)
+        await self.ensure_default_project(created.id)
         return created
 
     async def list_workspaces(self, owner_user_id: str | None = None) -> Sequence[Workspace]:
@@ -49,9 +51,9 @@ class WorkspaceService:
     async def ensure_personal_workspace(self, user: User) -> Workspace:
         """Create a user's personal workspace for a newly registered user.
 
-        Named simply "Personal" (not "{name}'s Workspace"). No starter project is
-        created — the frontend provisions a default "General" project on first Board
-        load, so new users land on a clean empty board. Idempotent: if the user
+        Named simply "Personal" (not "{name}'s Workspace"). Seeds the built-in Skill
+        Shop entries and a default "General" project so new users land somewhere
+        ready (no confusing "Getting Started" artefact). Idempotent: if the user
         already owns a workspace, returns the first one.
         """
         async with self._uow() as uow:
@@ -67,8 +69,9 @@ class WorkspaceService:
             ws = await uow.workspaces.add(ws)
             await uow.commit()
 
-        # Seed the built-in Skill Shop entries for the new personal workspace.
+        # Seed the built-in Skill Shop entries + default project for the new workspace.
         await self._skills.seed_builtins(ws.id)
+        await self.ensure_default_project(ws.id)
         return ws
 
     async def ensure_default_project(self, workspace_id: UUID) -> Project:

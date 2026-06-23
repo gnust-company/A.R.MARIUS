@@ -6,6 +6,7 @@ import Board from "./pages/Board";
 import Room from "./pages/Room";
 import Directory from "./pages/Directory";
 import Skills from "./pages/Skills";
+import SkillEditor from "./pages/SkillEditor";
 import Approvals from "./pages/Approvals";
 import Workspaces from "./pages/Workspaces";
 import Auth from "./pages/Auth";
@@ -80,26 +81,30 @@ function LangSwitch() {
   );
 }
 
-// Current workspace indicator (NOT a second list). Shows where you are and links to
-// the Workspaces page, which is the single authoritative list of workspaces.
-function CurrentWorkspace() {
+// "Back" affordance — sits among the nav tabs but its job is to leave the workspace
+// and return to the launcher (the outer workspace list). Shows the current workspace
+// name as context, in a distinct (muted) style so it reads as "exit", not a section.
+function BackToWorkspaces() {
   const { workspace } = useApp();
-  const { t } = useI18n();
-  if (!workspace) return null;
+  const navigate = useNavigate();
   return (
-    <NavLink to="/workspaces" className="mx-3 mb-2 flex items-center gap-2.5 px-2.5 py-2 rounded-lg" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-      <span className="font-serif text-base shrink-0" style={{ color: "var(--gold)" }}>◳</span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[0.6rem] uppercase tracking-[0.14em]" style={{ color: "var(--ink-faint)" }}>{t("nav.workspace")}</span>
-        <span className="block text-sm font-medium truncate" style={{ color: "var(--ink)" }}>{workspace.name}</span>
-      </span>
-    </NavLink>
+    <button
+      onClick={() => navigate("/workspaces")}
+      className="flex items-center gap-2.5 mx-2 px-3 py-2 rounded-lg text-sm transition-colors w-[calc(100%-1rem)]"
+      style={{ color: "var(--ink-soft)", border: "1px solid transparent" }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--panel-2)"; e.currentTarget.style.borderColor = "var(--line)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; }}
+      title={workspace?.name ?? ""}
+    >
+      <span className="text-base w-5 text-center" style={{ color: "var(--ink-faint)" }}>←</span>
+      <span className="truncate">{workspace?.name ?? "Armarius"}</span>
+    </button>
   );
 }
 
 function Sidebar() {
   const { user, signOut } = useAuth();
-  const { t, tEn } = useI18n();
+  const { t } = useI18n();
   return (
     <aside
       className="w-[220px] shrink-0 flex flex-col"
@@ -107,14 +112,13 @@ function Sidebar() {
     >
       <Brand />
       <div className="rule mx-4 mb-2" />
-      <CurrentWorkspace />
       <nav className="flex flex-col gap-0.5">
+        <BackToWorkspaces />
+        <div className="rule mx-4 my-1.5" />
         <NavItem to="/" label={t("nav.board")} icon="▦" />
         <NavItem to="/directory" label={t("nav.directory")} icon="❖" />
         <NavItem to="/skills" label={t("nav.skills")} icon="⚒" />
-        <NavItem to="/workspaces" label={t("nav.workspaces")} icon="◳" />
-        {/* Patron Inbox intentionally stays English regardless of UI language. */}
-        <NavItem to="/approvals" label={tEn("nav.inbox")} icon="✦" />
+        <NavItem to="/approvals" label={t("nav.inbox")} icon="✦" />
       </nav>
       <div className="mt-auto px-4 pb-4">
         <div className="rule mb-3" />
@@ -153,7 +157,7 @@ function Sidebar() {
 
 function TopBar() {
   const { workspace, projects, project, setProjectId } = useApp();
-  const { tEn } = useI18n();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const multiProject = projects.length > 1;
   return (
@@ -175,8 +179,8 @@ function TopBar() {
         </select>
       )}
       <div className="ml-auto flex items-center gap-2.5">
-        {/* Patron Inbox label stays English regardless of UI language. */}
-        <NavLink to="/approvals" className="btn" title={tEn("nav.inbox")}>✦ {tEn("nav.inbox")}</NavLink>
+        {/* Patron Inbox */}
+        <NavLink to="/approvals" className="btn" title={t("nav.inbox")}>✦ {t("nav.inbox")}</NavLink>
       </div>
     </header>
   );
@@ -205,7 +209,7 @@ function Shell() {
               <Route path="/tasks/:taskId" element={<Room />} />
               <Route path="/directory" element={<Directory />} />
               <Route path="/skills" element={<Skills />} />
-              <Route path="/workspaces" element={<Workspaces />} />
+              <Route path="/skills/:skillId" element={<SkillEditor />} />
               <Route path="/approvals" element={<Approvals />} />
             </Routes>
           )}
@@ -239,7 +243,12 @@ export default function App() {
 
   return (
     <AppProvider>
-      <Shell />
+      {/* The workspace launcher is a full-screen OUTER view (no app chrome).
+          Picking a workspace enters the in-workspace Shell. */}
+      <Routes>
+        <Route path="/workspaces" element={<Workspaces />} />
+        <Route path="/*" element={<Shell />} />
+      </Routes>
     </AppProvider>
   );
 }

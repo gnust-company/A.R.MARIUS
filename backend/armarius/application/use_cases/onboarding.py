@@ -37,13 +37,11 @@ def _skill_block(skills: list[Skill], base: str, cred_path: str) -> str:
 
     lines: list[str] = []
     for i, sk in enumerate(skills, start=1):
-        url = sk.absolute_install_url(base) or "(no install URL)"
-        lines.append(f"  {i}. {sk.name}  [{sk.kind}]")
+        url = sk.absolute_source_url(base) or "(no source URL)"
+        lines.append(f"  {i}. {sk.name}")
         if sk.description:
             lines.append(f"     {sk.description}")
-        lines.append(f"     Download the skill from: {url}")
-        if sk.instructions:
-            lines.append(f"     Notes: {sk.instructions}")
+        lines.append(f"     Get the skill from: {url}")
         lines.append("")
     lines.append(f"Each skill reads your credential file at: {cred_path}")
     return "\n".join(lines)

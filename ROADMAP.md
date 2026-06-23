@@ -219,3 +219,29 @@ Follow-up fixes after direct UI review (every visible string now bilingual; UX f
   drove the live UI with headless Chrome (CDP) — screenshotted Workspaces (1 "Personal" card, "1
   project"), Skill Shop (new icon), Provision form (skill **listbox**, no checkboxes/free-text),
   Skill **Preview** modal (renders SKILL.md), and the VI locale (fully translated).
+
+### 2026-06-23 — Skill authoring (manual + GitHub import + editor) + UX fixes
+- **Skill Shop is now an authoring surface**, not just a link list. A skill is a small
+  file tree rooted at `SKILL.md`; `name`/`description` come from its YAML frontmatter.
+  - **Manual**: generates a `SKILL.md` template the author fleshes out; can add sibling
+    files/folders (e.g. `scripts/`, `references/`) because some skills need more.
+  - **Import from GitHub**: paste a folder URL (e.g. `github.com/owner/repo/tree/branch/skills/x`)
+    → the backend detects `SKILL.md`, clones **only that folder** (GitHub Contents API,
+    recursive, files only — no `git` needed), and stores the tree.
+  - **Editor**: a full page (`/skills/:id`) with a file-tree panel + textarea editor +
+    add/delete file + Save (PUT re-derives name/description from the frontmatter).
+  - BE: `Skill.files` (JSON), `SkillService.create_manual` / `import_from_url` /
+    `update_files` / `get_skill`; endpoints `manual`, `import`, `GET/PUT /skills/{id}`.
+    Removed the made-up `http`/`mcp` `kind` (no one asked for it).
+- **Sidebar back button**: removed the standalone "Workspaces" tab; replaced with a
+  back affordance (shows the current workspace name, exits to the launcher) sitting
+  alongside the other tabs.
+- **Patron Inbox is now bilingual** (reverses the earlier English-only decision).
+- **Commission task** modal now takes a **description**, not just a title.
+- **Skill checkbox-dropdown** (agent provision/edit): restyled so it stays crisp after
+  unchecking — solid panel, row separators, gold tint on selected rows.
+- Verification: 32 backend tests pass (incl. manual-template + edit-rederive +
+  workspace scoping), ruff clean, FE typecheck + build clean; live-tested GitHub
+  import of `anthropics/skills/algorithmic-art` (cloned SKILL.md + LICENSE.txt +
+  templates/*). Headless-Chrome screenshots of sidebar (VI), new-skill modal
+  (Manual/Import tabs), skill editor (file tree + editor), commission modal.
