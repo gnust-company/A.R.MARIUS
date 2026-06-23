@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from armarius import __version__
 from armarius.infrastructure.database.engine import init_db
@@ -51,6 +53,12 @@ def create_app() -> FastAPI:
     app.include_router(tasks.router)
     app.include_router(trace.router)
     app.include_router(agent.router)
+
+    # Mount static files for skills, etc.
+    static_dir = Path(__file__).parent.parent / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
     return app
 
 

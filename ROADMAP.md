@@ -116,3 +116,19 @@ A task may only reach `in_review`/`done` when a **published artifact** is linked
   `ARMARIUS_PUBLIC_URL`, `ARMARIUS_API_URL`, `CORS_ORIGINS`); `host.docker.internal` demoted to a
   documented dev-only shortcut.
 - Verified: `/v1/meta` and generated invites reflect a custom `ARMARIUS_PUBLIC_URL` end-to-end.
+
+### 2026-06-23 — Enhanced onboarding with credential file + HTTP skill + MCP deferred
+- **Enhanced invitation prompt** (`onboarding.py`):
+  - Added **STEP 1**: Credential file storage instruction at `~/.armarius/credentials/<workspace>_<agent>.json`
+  - Added **STEP 2**: Online confirmation with `curl /agent/me` to verify token works
+  - Added **STEP 3**: Skill installation guidance with known-good curl examples
+  - Structured prompt with clear sections (credentials, confirm, install, endpoints, rules)
+- **HTTP API skill** (`backend/static/skills/armarius-http/SKILL.md`):
+  - OpenClaw MC-style skill template with credential file reader
+  - Known-good curl examples for all endpoints (me, task, claim, comment, status, next-action, artifact)
+  - Rules that keep this from breaking (no shell variables, literal values, temp files for JSON)
+  - Task workflow rules (claim first, artifact required for review/done, @mention, next_action)
+- **Static file serving**: Added `/static` mount in `main.py` for skills directory
+- **MCP server + skill**: Deferred to GitHub issue #1 (will be implemented separately)
+- Auth pattern reviewed: Armarius uses simple bearer token (sufficient for agent use case; JWT upgrade not needed)
+- Reference: Innovation Hub auth analyzed — JWT with refresh tokens is overkill for long-lived agent tokens.
