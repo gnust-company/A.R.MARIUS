@@ -17,6 +17,7 @@ from armarius.domain.repositories.repositories import (
     RunEventRepository,
     RunRepository,
     SessionRepository,
+    SkillRepository,
     TaskRepository,
     UserRepository,
     WakeupRepository,
@@ -36,6 +37,7 @@ class UnitOfWork(ABC):
     artifacts: ArtifactRepository
     wakeups: WakeupRepository
     users: UserRepository
+    skills: SkillRepository
 
     @abstractmethod
     async def __aenter__(self) -> UnitOfWork: ...

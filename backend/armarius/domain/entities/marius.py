@@ -32,6 +32,9 @@ class Marius:
     name: str = ""
     role: str = ""
     skills: list[str] = field(default_factory=list)
+    # IDs of Skill Shop skills linked to this Marius (drives per-skill install steps
+    # in the invitation prompt). Stored as strings to stay ORM/transport-friendly.
+    skill_ids: list[str] = field(default_factory=list)
     adapter_type: str = "hermes_gateway"
     adapter_config: dict = field(default_factory=dict)
     owner_user_id: str | None = None

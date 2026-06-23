@@ -38,14 +38,46 @@ class ProjectOut(_Out):
     created_at: datetime | None = None
 
 
+# ------------------------------------------------------------------------ skill
+class SkillOut(_Out):
+    id: UUID
+    workspace_id: UUID | None = None
+    slug: str
+    name: str
+    description: str = ""
+    kind: str
+    source: str
+    install_url: str | None = None
+    instructions: str | None = None
+    created_at: datetime | None = None
+
+
+class CreateSkillIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    kind: str = "http"
+    install_url: str | None = None
+    instructions: str | None = None
+
+
 # ----------------------------------------------------------------------- marius
 class RegisterMariusIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     role: str = ""
     skills: list[str] = Field(default_factory=list)
+    skill_ids: list[str] = Field(default_factory=list)
     adapter_type: str = "hermes_gateway"
     adapter_config: dict = Field(default_factory=dict)
     owner_user_id: str | None = None
+
+
+class UpdateMariusIn(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    role: str | None = None
+    skills: list[str] | None = None
+    skill_ids: list[str] | None = None
+    adapter_type: str | None = None
+    adapter_config: dict | None = None
 
 
 class MariusOut(_Out):
@@ -54,6 +86,7 @@ class MariusOut(_Out):
     name: str
     role: str
     skills: list[str]
+    skill_ids: list[str] = Field(default_factory=list)
     adapter_type: str
     liveness: str
     last_seen_at: datetime | None = None

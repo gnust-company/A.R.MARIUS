@@ -12,6 +12,7 @@ from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.run import Run, RunEvent
 from armarius.domain.entities.session import AgentTaskSession
+from armarius.domain.entities.skill import Skill
 from armarius.domain.entities.task import Task
 from armarius.domain.entities.user import User
 from armarius.domain.entities.wakeup import WakeupRequest
@@ -120,6 +121,21 @@ class WakeupRepository(ABC):
     async def list_active_for(
         self, marius_id: UUID, task_id: UUID
     ) -> Sequence[WakeupRequest]: ...
+
+
+class SkillRepository(ABC):
+    """Repository for Skill entities (workspace-scoped Skill Shop)."""
+
+    @abstractmethod
+    async def add(self, skill: Skill) -> Skill: ...
+    @abstractmethod
+    async def get(self, skill_id: UUID) -> Skill | None: ...
+    @abstractmethod
+    async def list_by_workspace(self, workspace_id: UUID) -> Sequence[Skill]: ...
+    @abstractmethod
+    async def get_by_slug(self, workspace_id: UUID, slug: str) -> Skill | None: ...
+    @abstractmethod
+    async def list_by_ids(self, skill_ids: list[UUID]) -> Sequence[Skill]: ...
 
 
 class UserRepository(ABC):

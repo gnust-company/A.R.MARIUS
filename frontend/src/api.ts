@@ -34,9 +34,13 @@ export interface Workspace { id: string; name: string; slug: string }
 export interface Project {
   id: string; workspace_id: string; name: string; slug: string; description?: string | null;
 }
+export interface Skill {
+  id: string; workspace_id: string; slug: string; name: string; description: string;
+  kind: string; source: string; install_url?: string | null; instructions?: string | null;
+}
 export interface Marius {
   id: string; workspace_id: string; name: string; role: string; skills: string[];
-  adapter_type: string; liveness: string; last_seen_at?: string | null;
+  skill_ids: string[]; adapter_type: string; liveness: string; last_seen_at?: string | null;
 }
 export type TaskStatus =
   | "backlog" | "todo" | "in_progress" | "in_review" | "blocked" | "done" | "cancelled";
@@ -108,9 +112,14 @@ async function req<T>(path: string, init?: RequestInit, _retry = true): Promise<
   return res.json() as Promise<T>;
 }
 
+export interface MariusInput {
+  name: string; role: string; skills: string[]; skill_ids: string[];
+  adapter_type: string; adapter_config: Record<string, string>;
+}
+
 export const api = {
-  // Auth (no token needed for register/login/refresh)
-  register: (body: { email: string; username: string; full_name: string; password: string }) =>
+  // Auth (no token needed for register/login/refresh). Login is by email; no username.
+  register: (body: { email: string; full_name: string; password: string }) =>
     req<{ user: User; tokens: AuthTokens }>("/auth/register", {
       method: "POST", body: JSON.stringify(body),
     }),
@@ -121,13 +130,22 @@ export const api = {
   me: () => req<User>("/auth/me"),
 
   workspaces: () => req<Workspace[]>("/v1/workspaces"),
+  createWorkspace: (name: string) =>
+    req<Workspace>("/v1/workspaces", { method: "POST", body: JSON.stringify({ name }) }),
   projects: (ws: string) => req<Project[]>(`/v1/workspaces/${ws}/projects`),
   mariuses: (ws: string) => req<Marius[]>(`/v1/workspaces/${ws}/mariuses`),
-  registerMarius: (ws: string, body: {
-    name: string; role: string; skills: string[]; adapter_type: string; adapter_config: Record<string, string>;
+  skills: (ws: string) => req<Skill[]>(`/v1/workspaces/${ws}/skills`),
+  createSkill: (ws: string, body: {
+    name: string; description?: string; kind?: string; install_url?: string; instructions?: string;
   }) =>
+    req<Skill>(`/v1/workspaces/${ws}/skills`, { method: "POST", body: JSON.stringify(body) }),
+  registerMarius: (ws: string, body: MariusInput) =>
     req<Marius & { agent_token: string; invite: string }>(`/v1/workspaces/${ws}/mariuses`, {
       method: "POST", body: JSON.stringify(body),
+    }),
+  updateMarius: (ws: string, id: string, body: Partial<MariusInput>) =>
+    req<Marius & { agent_token: string; invite: string }>(`/v1/workspaces/${ws}/mariuses/${id}`, {
+      method: "PATCH", body: JSON.stringify(body),
     }),
   meta: () => req<{ version: string; public_base_url: string; adapters: string[] }>("/v1/meta"),
   tasks: (project: string) => req<Task[]>(`/v1/projects/${project}/tasks`),

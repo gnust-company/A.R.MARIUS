@@ -13,6 +13,7 @@ from armarius.application.use_cases.artifacts import ArtifactService
 from armarius.application.use_cases.auth import AuthService
 from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.runs import RunQueryService
+from armarius.application.use_cases.skills import SkillService
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.threads import ThreadService
 from armarius.application.use_cases.wake_engine import WakeEngine
@@ -40,6 +41,7 @@ class Container:
     artifacts: ArtifactService
     runs: RunQueryService
     auth: AuthService
+    skills: SkillService
     jwt_service: JWTService
     uow_factory: object
 
@@ -66,7 +68,8 @@ def build_container() -> Container:
         max_continuation_attempts=settings.wake_max_continuation_attempts,
     )
 
-    workspaces = WorkspaceService(uow_factory)
+    skills = SkillService(uow_factory)
+    workspaces = WorkspaceService(uow_factory, skills)
 
     return Container(
         event_bus=event_bus,
@@ -79,6 +82,7 @@ def build_container() -> Container:
         artifacts=ArtifactService(uow_factory, store),
         runs=RunQueryService(uow_factory),
         auth=AuthService(uow_factory, workspaces, jwt_service, password_service),
+        skills=skills,
         jwt_service=jwt_service,
         uow_factory=uow_factory,
     )

@@ -57,7 +57,7 @@ export default function Auth() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [username, setUsername] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [fullName, setFullName] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -65,10 +65,14 @@ export default function Auth() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    if (mode === "signup" && password !== confirm) {
+      setError(t("auth.passwordMismatch"));
+      return;
+    }
     setBusy(true);
     try {
       if (mode === "signup") {
-        await signUp({ email, username, full_name: fullName, password });
+        await signUp({ email, full_name: fullName, password });
       } else {
         await signIn(email, password);
       }
@@ -103,28 +107,15 @@ export default function Auth() {
 
         <form onSubmit={submit} className="flex flex-col gap-3.5">
           {isSignUp && (
-            <>
-              <Field label={t("auth.fullName")}>
-                <input
-                  className="input"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  required
-                  autoComplete="name"
-                />
-              </Field>
-              <Field label={t("auth.username")}>
-                <input
-                  className="input"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                  minLength={3}
-                  pattern="[-a-zA-Z0-9_]+"
-                  autoComplete="username"
-                />
-              </Field>
-            </>
+            <Field label={t("auth.fullName")}>
+              <input
+                className="input"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required
+                autoComplete="name"
+              />
+            </Field>
           )}
           <Field label={t("auth.email")}>
             <input
@@ -147,6 +138,19 @@ export default function Auth() {
               autoComplete={isSignUp ? "new-password" : "current-password"}
             />
           </Field>
+          {isSignUp && (
+            <Field label={t("auth.confirmPassword")}>
+              <input
+                className="input"
+                type="password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                required
+                minLength={8}
+                autoComplete="new-password"
+              />
+            </Field>
+          )}
 
           {error && (
             <div

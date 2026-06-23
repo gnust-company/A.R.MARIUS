@@ -9,6 +9,7 @@ from armarius.domain.entities.comment import AuthorKind, Comment
 from armarius.domain.entities.marius import Liveness, Marius
 from armarius.domain.entities.run import Run, RunEvent, RunStatus, WakeSource
 from armarius.domain.entities.session import AgentTaskSession
+from armarius.domain.entities.skill import Skill
 from armarius.domain.entities.task import Task, TaskStatus
 from armarius.domain.entities.user import User, UserRole
 from armarius.domain.entities.wakeup import WakeupRequest, WakeupStatus
@@ -21,6 +22,7 @@ from armarius.infrastructure.database.models import (
     RunEventModel,
     RunModel,
     SessionModel,
+    SkillModel,
     TaskModel,
     UserModel,
     WakeupModel,
@@ -58,6 +60,7 @@ def marius_to_entity(m: MariusModel) -> Marius:
         name=m.name,
         role=m.role,
         skills=list(m.skills or []),
+        skill_ids=[str(x) for x in (m.skill_ids or [])],
         adapter_type=m.adapter_type,
         adapter_config=dict(m.adapter_config or {}),
         owner_user_id=m.owner_user_id,
@@ -178,6 +181,22 @@ def wakeup_to_entity(m: WakeupModel) -> WakeupRequest:
         prompt=m.prompt,
         status=WakeupStatus(m.status),
         run_id=m.run_id,
+        created_at=m.created_at,
+        updated_at=m.updated_at,
+    )
+
+
+def skill_to_entity(m: SkillModel) -> Skill:
+    return Skill(
+        id=m.id,
+        workspace_id=m.workspace_id,
+        slug=m.slug,
+        name=m.name,
+        description=m.description or "",
+        kind=m.kind,
+        source=m.source,
+        install_url=m.install_url,
+        instructions=m.instructions,
         created_at=m.created_at,
         updated_at=m.updated_at,
     )

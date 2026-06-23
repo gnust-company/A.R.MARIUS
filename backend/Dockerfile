@@ -11,6 +11,10 @@ COPY pyproject.toml README.md ./
 COPY armarius ./armarius
 RUN pip install --no-cache-dir ".[postgres]"
 
+# Skill files served at /static — agents download SKILL.md from here. The invitation
+# prompt advertises this URL, so it MUST be present in the image.
+COPY static ./static
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \

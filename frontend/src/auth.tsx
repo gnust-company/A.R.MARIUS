@@ -6,7 +6,7 @@ interface AuthState {
   user: User | null;
   loading: boolean; // initial bootstrap
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (body: { email: string; username: string; full_name: string; password: string }) => Promise<void>;
+  signUp: (body: { email: string; full_name: string; password: string }) => Promise<void>;
   signOut: () => void;
 }
 
@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signUp = useCallback(
-    async (body: { email: string; username: string; full_name: string; password: string }) => {
+    async (body: { email: string; full_name: string; password: string }) => {
       const { user, tokens: t } = await api.register(body);
       tokens.set(t.access_token, t.refresh_token);
       setUser(user);

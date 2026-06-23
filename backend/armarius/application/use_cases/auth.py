@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from uuid import UUID
 
 from armarius.application.use_cases.types import UowFactory
@@ -35,6 +36,13 @@ class InvalidCredentialsError(AuthError):
         super().__init__("Invalid email or password", code="invalid_credentials")
 
 
+def _username_from_email(email: str) -> str:
+    """Derive a safe handle from the email local-part (login is by email anyway)."""
+    local = email.split("@", 1)[0]
+    handle = re.sub(r"[^a-zA-Z0-9_-]+", "", local).strip("-_")
+    return handle or "user"
+
+
 class AuthService:
     """Authentication and user registration service."""
 
@@ -53,16 +61,18 @@ class AuthService:
     async def register(
         self,
         email: str,
-        username: str,
         full_name: str,
         password: str,
+        username: str | None = None,
         role: UserRole | None = None,
     ) -> tuple[User, str, str]:
         """Register a new user. Returns (user, access_token, refresh_token).
 
+        Login is by email; `username` is just an internal handle. When omitted it is
+        derived from the email local-part and made unique automatically.
+
         Raises:
             DuplicateEmailError: if email is already registered
-            DuplicateUsernameError: if username is already taken
         """
         async with self._uow() as uow:
             # Check for existing email
@@ -70,10 +80,17 @@ class AuthService:
             if existing_email is not None:
                 raise DuplicateEmailError()
 
-            # Check for existing username
-            existing_username = await uow.users.get_by_username(username)
-            if existing_username is not None:
-                raise DuplicateUsernameError()
+            # Derive a unique internal username from the email if not provided.
+            if username:
+                base = username
+            else:
+                base = _username_from_email(email)
+            candidate = base
+            suffix = 1
+            while await uow.users.get_by_username(candidate) is not None:
+                suffix += 1
+                candidate = f"{base}{suffix}"
+            username = candidate
 
             # Hash the password
             hashed_password = self._pwd.hash(password)

@@ -157,3 +157,36 @@ A task may only reach `in_review`/`done` when a **published artifact** is linked
 - **Design alignment**: `ARMARIUS Design/Armarius.dc.html` reviewed — the existing Scriptorium UI already matches
   the spec (board / collaboration room / directory / patron inbox / invite). Auth + language switcher added
   without diverging from the parchment/ink/gold theme.
+
+### 2026-06-23 — Skill Shop + multi-workspace + agent editing + onboarding fixes
+- **Registration simplified** — login is by email; the `username` field is gone from the UI.
+  - Backend auto-derives a unique internal handle from the email local-part (`AuthService.register`).
+  - Register form now asks for a **password confirmation** (compared client-side) instead of a username.
+- **Skill Shop (workspace-scoped)** — new first-class concept:
+  - Domain `Skill` entity + `SkillRepository` port + `SkillModel` + mapper + `SqlSkillRepository` (wired into UoW).
+  - `SkillService`: every workspace is seeded with the built-in **armarius-http** skill (idempotent; seeded on
+    workspace create, on personal-workspace provision, and lazily on first `list_skills` — backfills old rows).
+    Custom skills can be submitted to a workspace and are **NOT shared** across workspaces.
+  - API: `GET/POST /v1/workspaces/{ws}/skills`. Built-in `install_url` is relative (`/static/...`) and resolved
+    against the public base URL when advertised to an agent.
+  - Frontend: **Skill Shop** page + nav entry below Agent Directory; "Submit a skill" form (built-in vs custom chips).
+- **Agent (Marius) editing + skill linking**:
+  - `Marius.skill_ids` links Skill-Shop entries to an agent; `MariusService.update` + `PATCH .../mariuses/{id}`.
+  - Provision & Edit forms list the workspace's skills as **checkboxes** (built-in armarius-http pre-selected);
+    selected skills drive **per-skill install steps** in the invitation prompt.
+- **Onboarding prompt fixed & enriched**:
+  - Removed a latent crash — `build_invite_prompt` referenced `marius.workspace`/`marius.project` (don't exist);
+    it now takes workspace/project names + resolved `Skill`s explicitly.
+  - STEP 3 now lists each linked skill with a **resolvable download URL** + notes + the credential-file path.
+- **Multi-workspace UX**:
+  - Store loads all owned workspaces; **Personal** workspace is the default. Sidebar workspace switcher
+    (★ marks Personal) + **Workspaces** overview page (per-workspace project/agent counts, create new).
+- **i18n**: EN/VI strings for Workspaces, Skill Shop, agent editing, confirm-password. The **Patron Inbox**
+  view stays **English regardless of language** (`tEn()` for its nav label; the page copy is already English).
+- **Static-asset bug fixed (BE-URL correctness)**: the backend Docker image never `COPY`d `static/`, so the
+  SKILL.md the invite tells agents to download 404'd. Added `COPY static ./static`; verified the advertised
+  URL returns **200** both directly (`:8080`) and through the nginx reverse-proxy (`:3000`).
+- **Verification**: 32 backend tests pass (5 new: builtin-skill seeding, email→handle derivation, provision-links-
+  skill + invite steps, agent edit, custom-skill workspace isolation); ruff clean; FE typecheck + prod build clean;
+  Postgres volume wiped + stack rebuilt; live end-to-end smoke (register→workspace→skill→provision→edit→2nd
+  workspace→tenant isolation→401→static 200) all green.

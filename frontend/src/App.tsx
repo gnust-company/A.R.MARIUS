@@ -5,7 +5,9 @@ import { useI18n, type Lang } from "./i18n";
 import Board from "./pages/Board";
 import Room from "./pages/Room";
 import Directory from "./pages/Directory";
+import Skills from "./pages/Skills";
 import Approvals from "./pages/Approvals";
+import Workspaces from "./pages/Workspaces";
 import Auth from "./pages/Auth";
 
 function Brand() {
@@ -77,9 +79,28 @@ function LangSwitch() {
   );
 }
 
+function WorkspaceSwitch() {
+  const { workspaces, workspace, setWorkspaceId } = useApp();
+  const navigate = useNavigate();
+  if (workspaces.length === 0) return null;
+  return (
+    <div className="px-3 pb-2">
+      <select
+        className="input !w-full !py-1.5 !px-2.5 text-sm font-medium"
+        value={workspace?.id ?? ""}
+        onChange={(e) => { setWorkspaceId(e.target.value); navigate("/"); }}
+      >
+        {workspaces.map((w, i) => (
+          <option key={w.id} value={w.id}>{i === 0 ? `★ ${w.name}` : w.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function Sidebar() {
   const { user, signOut } = useAuth();
-  const { t } = useI18n();
+  const { t, tEn } = useI18n();
   return (
     <aside
       className="w-[220px] shrink-0 flex flex-col"
@@ -87,10 +108,14 @@ function Sidebar() {
     >
       <Brand />
       <div className="rule mx-4 mb-2" />
+      <WorkspaceSwitch />
       <nav className="flex flex-col gap-0.5">
         <NavItem to="/" label={t("nav.board")} icon="▦" />
         <NavItem to="/directory" label={t("nav.directory")} icon="❖" />
-        <NavItem to="/approvals" label={t("nav.inbox")} icon="✦" />
+        <NavItem to="/skills" label={t("nav.skills")} icon="⌁" />
+        <NavItem to="/workspaces" label={t("nav.workspaces")} icon="◳" />
+        {/* Patron Inbox intentionally stays English regardless of UI language. */}
+        <NavItem to="/approvals" label={tEn("nav.inbox")} icon="✦" />
       </nav>
       <div className="mt-auto px-4 pb-4">
         <div className="rule mb-3" />
@@ -176,6 +201,8 @@ function Shell() {
               <Route path="/" element={<Board />} />
               <Route path="/tasks/:taskId" element={<Room />} />
               <Route path="/directory" element={<Directory />} />
+              <Route path="/skills" element={<Skills />} />
+              <Route path="/workspaces" element={<Workspaces />} />
               <Route path="/approvals" element={<Approvals />} />
             </Routes>
           )}

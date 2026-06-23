@@ -10,7 +10,6 @@ from pydantic import BaseModel, EmailStr, Field
 
 from armarius.application.use_cases.auth import (
     DuplicateEmailError,
-    DuplicateUsernameError,
     InvalidCredentialsError,
 )
 from armarius.domain.entities.user import User
@@ -23,9 +22,12 @@ from armarius.presentation.deps import ContainerDep
 
 class UserRegisterIn(BaseModel):
     email: EmailStr
-    username: str = Field(min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9_-]+$")
     full_name: str = Field(min_length=1, max_length=200)
     password: str = Field(min_length=8, max_length=100)
+    # Optional internal handle; derived from the email when omitted. Login is by email.
+    username: str | None = Field(
+        default=None, min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9_-]+$"
+    )
 
 
 class UserLoginIn(BaseModel):
@@ -146,10 +148,6 @@ async def register(
     except DuplicateEmailError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
-        ) from None
-    except DuplicateUsernameError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Username already taken"
         ) from None
 
     return RegisterOut(

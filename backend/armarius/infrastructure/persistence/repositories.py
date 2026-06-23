@@ -13,6 +13,7 @@ from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.run import Run, RunEvent
 from armarius.domain.entities.session import AgentTaskSession
+from armarius.domain.entities.skill import Skill
 from armarius.domain.entities.task import Task
 from armarius.domain.entities.user import User
 from armarius.domain.entities.wakeup import WakeupRequest
@@ -25,6 +26,7 @@ from armarius.domain.repositories.repositories import (
     RunEventRepository,
     RunRepository,
     SessionRepository,
+    SkillRepository,
     TaskRepository,
     UserRepository,
     WakeupRepository,
@@ -38,6 +40,7 @@ from armarius.infrastructure.database.models import (
     RunEventModel,
     RunModel,
     SessionModel,
+    SkillModel,
     TaskModel,
     UserModel,
     WakeupModel,
@@ -127,6 +130,7 @@ class SqlMariusRepository(MariusRepository):
                 skills=list(marius.skills),
                 adapter_type=marius.adapter_type,
                 adapter_config=dict(marius.adapter_config),
+                skill_ids=[str(x) for x in marius.skill_ids],
                 owner_user_id=marius.owner_user_id,
                 agent_token=marius.agent_token,
                 liveness=str(marius.liveness),
@@ -163,6 +167,7 @@ class SqlMariusRepository(MariusRepository):
         m.name = marius.name
         m.role = marius.role
         m.skills = list(marius.skills)
+        m.skill_ids = [str(x) for x in marius.skill_ids]
         m.adapter_type = marius.adapter_type
         m.adapter_config = dict(marius.adapter_config)
         m.owner_user_id = marius.owner_user_id
@@ -558,3 +563,64 @@ class SqlUserRepository(UserRepository):
     async def list(self) -> Sequence[User]:
         rows = (await self._s.execute(select(UserModel))).scalars().all()
         return [mappers.user_to_entity(m) for m in rows]
+
+
+class SqlSkillRepository(SkillRepository):
+    """SQLAlchemy implementation of SkillRepository."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, skill: Skill) -> Skill:
+        self._s.add(
+            SkillModel(
+                id=skill.id,
+                workspace_id=skill.workspace_id,
+                slug=skill.slug,
+                name=skill.name,
+                description=skill.description,
+                kind=skill.kind,
+                source=skill.source,
+                install_url=skill.install_url,
+                instructions=skill.instructions,
+                created_at=skill.created_at,
+                updated_at=skill.updated_at,
+            )
+        )
+        await self._s.flush()
+        return skill
+
+    async def get(self, skill_id: UUID) -> Skill | None:
+        m = await self._s.get(SkillModel, skill_id)
+        return mappers.skill_to_entity(m) if m else None
+
+    async def list_by_workspace(self, workspace_id: UUID) -> Sequence[Skill]:
+        rows = (
+            await self._s.execute(
+                select(SkillModel)
+                .where(SkillModel.workspace_id == workspace_id)
+                .order_by(SkillModel.created_at)
+            )
+        ).scalars().all()
+        return [mappers.skill_to_entity(m) for m in rows]
+
+    async def get_by_slug(self, workspace_id: UUID, slug: str) -> Skill | None:
+        row = (
+            await self._s.execute(
+                select(SkillModel).where(
+                    SkillModel.workspace_id == workspace_id,
+                    SkillModel.slug == slug,
+                )
+            )
+        ).scalar_one_or_none()
+        return mappers.skill_to_entity(row) if row else None
+
+    async def list_by_ids(self, skill_ids: list[UUID]) -> Sequence[Skill]:
+        if not skill_ids:
+            return []
+        rows = (
+            await self._s.execute(
+                select(SkillModel).where(SkillModel.id.in_(skill_ids))
+            )
+        ).scalars().all()
+        return [mappers.skill_to_entity(m) for m in rows]

@@ -11,11 +11,14 @@ from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
     CreateProjectIn,
+    CreateSkillIn,
     CreateWorkspaceIn,
     MariusCreatedOut,
     MariusOut,
     ProjectOut,
     RegisterMariusIn,
+    SkillOut,
+    UpdateMariusIn,
     WorkspaceOut,
 )
 from armarius.shared.config import settings
@@ -61,28 +64,101 @@ async def list_projects(
     return [ProjectOut.model_validate(p) for p in items]
 
 
+async def _build_invite(container: ContainerDep, marius, workspace_id: UUID) -> str:
+    """Assemble the invitation prompt for a Marius (workspace + project + skills)."""
+    ws = await container.workspaces.get_workspace(workspace_id)
+    projects = await container.workspaces.list_projects(workspace_id)
+    linked = await container.skills.resolve(marius.skill_ids)
+    return build_invite_prompt(
+        marius,
+        settings.public_api_url,
+        workspace_name=ws.name if ws else "the workspace",
+        project_name=projects[0].name if projects else "the project",
+        skills=list(linked),
+    )
+
+
 @router.post(
     "/workspaces/{workspace_id}/mariuses",
     response_model=MariusCreatedOut,
     status_code=201,
 )
 async def register_marius(
-    workspace_id: UUID, body: RegisterMariusIn, container: ContainerDep
+    workspace_id: UUID,
+    body: RegisterMariusIn,
+    container: ContainerDep,
+    user: CurrentUser,
 ) -> MariusCreatedOut:
     marius = await container.mariuses.register(
         workspace_id=workspace_id,
         name=body.name,
         role=body.role,
         skills=body.skills,
+        skill_ids=body.skill_ids,
         adapter_type=body.adapter_type,
         adapter_config=body.adapter_config,
-        owner_user_id=body.owner_user_id,
+        owner_user_id=str(user.id),
     )
-    invite = build_invite_prompt(marius, settings.public_api_url)
+    invite = await _build_invite(container, marius, workspace_id)
     return MariusCreatedOut.model_validate(marius).model_copy(update={"invite": invite})
 
 
 @router.get("/workspaces/{workspace_id}/mariuses", response_model=list[MariusOut])
-async def list_directory(workspace_id: UUID, container: ContainerDep) -> list[MariusOut]:
+async def list_directory(
+    workspace_id: UUID, container: ContainerDep, user: CurrentUser
+) -> list[MariusOut]:
     items = await container.mariuses.list_directory(workspace_id)
     return [MariusOut.model_validate(m) for m in items]
+
+
+@router.patch(
+    "/workspaces/{workspace_id}/mariuses/{marius_id}",
+    response_model=MariusCreatedOut,
+)
+async def update_marius(
+    workspace_id: UUID,
+    marius_id: UUID,
+    body: UpdateMariusIn,
+    container: ContainerDep,
+    user: CurrentUser,
+) -> MariusCreatedOut:
+    marius = await container.mariuses.update(
+        marius_id,
+        name=body.name,
+        role=body.role,
+        skills=body.skills,
+        skill_ids=body.skill_ids,
+        adapter_type=body.adapter_type,
+        adapter_config=body.adapter_config,
+    )
+    invite = await _build_invite(container, marius, workspace_id)
+    return MariusCreatedOut.model_validate(marius).model_copy(update={"invite": invite})
+
+
+# ---------------------------------------------------------------------- skills
+@router.get("/workspaces/{workspace_id}/skills", response_model=list[SkillOut])
+async def list_skills(
+    workspace_id: UUID, container: ContainerDep, user: CurrentUser
+) -> list[SkillOut]:
+    items = await container.skills.list_skills(workspace_id)
+    return [SkillOut.model_validate(s) for s in items]
+
+
+@router.post(
+    "/workspaces/{workspace_id}/skills", response_model=SkillOut, status_code=201
+)
+async def create_skill(
+    workspace_id: UUID,
+    body: CreateSkillIn,
+    container: ContainerDep,
+    user: CurrentUser,
+) -> SkillOut:
+    skill = await container.skills.create_skill(
+        workspace_id=workspace_id,
+        name=body.name,
+        description=body.description,
+        kind=body.kind,
+        install_url=body.install_url,
+        instructions=body.instructions,
+    )
+    return SkillOut.model_validate(skill)

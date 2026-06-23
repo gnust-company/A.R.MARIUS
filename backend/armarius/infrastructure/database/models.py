@@ -53,6 +53,7 @@ class MariusModel(Base):
     skills: Mapped[list] = mapped_column(JSON, default=list)
     adapter_type: Mapped[str] = mapped_column(String(80))
     adapter_config: Mapped[dict] = mapped_column(JSON, default=dict)
+    skill_ids: Mapped[list] = mapped_column(JSON, default=list)
     owner_user_id: Mapped[str | None] = mapped_column(String(200))
     agent_token: Mapped[str | None] = mapped_column(String(120), unique=True, index=True)
     liveness: Mapped[str] = mapped_column(String(20), default="offline")
@@ -169,6 +170,29 @@ class WakeupModel(Base):
     prompt: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="queued")
     run_id: Mapped[UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SkillModel(Base):
+    """An installable skill in a workspace's Skill Shop."""
+
+    __tablename__ = "skills"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "slug", name="uq_skill_workspace_slug"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    workspace_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("workspaces.id"), index=True
+    )
+    slug: Mapped[str] = mapped_column(String(120))
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    kind: Mapped[str] = mapped_column(String(20), default="http")
+    source: Mapped[str] = mapped_column(String(20), default="builtin")
+    install_url: Mapped[str | None] = mapped_column(Text)
+    instructions: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
