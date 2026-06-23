@@ -37,8 +37,8 @@ function WorkspaceCard({
       </div>
       <div className="rule" />
       <div className="flex items-center gap-4 text-xs" style={{ color: "var(--ink-faint)" }}>
-        <span>{counts ? counts.projects : "—"} {t("ws.projects")}</span>
-        <span>{counts ? counts.agents : "—"} {t("ws.agents")}</span>
+        <span>{counts ? counts.projects : "—"} {counts && counts.projects === 1 ? t("ws.project") : t("ws.projects")}</span>
+        <span>{counts ? counts.agents : "—"} {counts && counts.agents === 1 ? t("ws.agent") : t("ws.agents")}</span>
         <button className="btn ml-auto" disabled={current} onClick={onOpen}>
           {current ? t("ws.current") : t("ws.open")}
         </button>
@@ -95,7 +95,7 @@ export default function Workspaces() {
     <div className="h-full overflow-y-auto p-6" style={{ maxWidth: 920, margin: "0 auto" }}>
       <div className="flex items-center gap-3 mb-1">
         <h1 className="font-serif text-xl font-semibold">{t("ws.title")}</h1>
-        <span className="chip">{workspaces.length}</span>
+        <span className="chip">{workspaces.length === 1 ? t("ws.countOne") : t("ws.count", { n: workspaces.length })}</span>
         <div className="ml-auto">
           {!creating && (
             <button className="btn btn-primary" onClick={() => setCreating(true)}>＋ {t("ws.create")}</button>

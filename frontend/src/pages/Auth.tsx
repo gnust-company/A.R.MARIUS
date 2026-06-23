@@ -76,9 +76,10 @@ export default function Auth() {
       } else {
         await signIn(email, password);
       }
-      navigate("/");
+      // Land on the workspace overview (the single list of workspaces).
+      navigate("/workspaces");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Authentication failed");
+      setError(err instanceof Error ? err.message : t("auth.failed"));
     } finally {
       setBusy(false);
     }

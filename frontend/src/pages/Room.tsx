@@ -5,6 +5,7 @@ import {
   type Artifact, type Comment, type Run, type RunEvent, type Task, type TaskStatus,
 } from "../api";
 import { useApp } from "../store";
+import { useI18n } from "../i18n";
 import { Avatar, STATUS_META, StatusBadge, relTime } from "../ui";
 
 const ALL_STATUSES: TaskStatus[] = [
@@ -31,13 +32,14 @@ function Mentioned({ body }: { body: string }) {
 function TaskContext({
   task, artifacts, onChange,
 }: { task: Task; artifacts: Artifact[]; onChange: () => void }) {
+  const { t } = useI18n();
   const { mariuses, mariusById, reloadDirectory } = useApp();
   const assignee = mariusById(task.assigned_marius_id);
   const hasArtifact = artifacts.length > 0;
 
   const setStatus = async (status: TaskStatus) => {
     try { await api.transition(task.id, status); onChange(); }
-    catch (e) { alert(e instanceof Error ? e.message : "Cannot change status"); }
+    catch (e) { alert(e instanceof Error ? e.message : t("room.cannotStatus")); }
   };
   const assign = async (mariusId: string) => {
     if (!mariusId) return;
@@ -57,23 +59,23 @@ function TaskContext({
         </p>
       )}
 
-      <Label>Status</Label>
+      <Label>{t("room.status")}</Label>
       <select className="input mb-4" value={task.status}
         onChange={(e) => setStatus(e.target.value as TaskStatus)}>
-        {ALL_STATUSES.map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+        {ALL_STATUSES.map((s) => <option key={s} value={s}>{t(STATUS_META[s].key)}</option>)}
       </select>
 
-      <Label>Assignee</Label>
+      <Label>{t("room.assignee")}</Label>
       <select className="input mb-1" value={task.assigned_marius_id ?? ""}
         onChange={(e) => assign(e.target.value)}>
-        <option value="">— Unassigned —</option>
+        <option value="">{t("room.unassigned")}</option>
         {mariuses.map((m) => <option key={m.id} value={m.id}>{m.name} · {m.role}</option>)}
       </select>
       {assignee && (
         <div className="flex items-center gap-2 mb-4 mt-2">
           <Avatar name={assignee.name} size={24} liveness={assignee.liveness} />
           <span className="text-xs" style={{ color: "var(--ink-faint)" }}>
-            assigning fires an event-wake
+            {t("room.assignWake")}
           </span>
         </div>
       )}
@@ -87,24 +89,24 @@ function TaskContext({
 
       {task.next_action && (
         <>
-          <Label>Recorded next action</Label>
+          <Label>{t("room.recordedNext")}</Label>
           <div className="text-sm italic mb-4 px-3 py-2 panel-flat" style={{ color: "var(--ink-soft)" }}>
             {task.next_action}
           </div>
         </>
       )}
 
-      <Label>Definition of done</Label>
+      <Label>{t("room.dod")}</Label>
       <div className="flex items-center gap-2 text-sm mb-3">
         <span style={{ color: hasArtifact ? "var(--green)" : "var(--ink-faint)" }}>
           {hasArtifact ? "☑" : "☐"}
         </span>
-        <span style={{ color: "var(--ink-soft)" }}>Published artifact in the shared store</span>
+        <span style={{ color: "var(--ink-soft)" }}>{t("room.dodArtifact")}</span>
       </div>
 
-      <Label>Artifacts</Label>
+      <Label>{t("room.artifacts")}</Label>
       {artifacts.length === 0 && (
-        <div className="text-xs" style={{ color: "var(--ink-faint)" }}>None yet.</div>
+        <div className="text-xs" style={{ color: "var(--ink-faint)" }}>{t("room.noneYet")}</div>
       )}
       {artifacts.map((a) => (
         <div key={a.id} className="panel-flat px-3 py-2 mb-2 flex items-center gap-2">
@@ -131,6 +133,7 @@ function Label({ children }: { children: React.ReactNode }) {
 function Thread({
   task, comments, onPosted,
 }: { task: Task; comments: Comment[]; onPosted: () => void }) {
+  const { t } = useI18n();
   const { mariusById } = useApp();
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
@@ -149,11 +152,11 @@ function Thread({
       {task.status === "in_review" && <ApprovalBar task={task} onChange={onPosted} />}
       <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
         <div className="text-[0.66rem] uppercase tracking-[0.14em] mb-4" style={{ color: "var(--ink-faint)" }}>
-          Collaboration thread
+          {t("room.thread")}
         </div>
         {comments.map((c) => {
           const agent = mariusById(c.author_marius_id);
-          const name = agent?.name ?? (c.author_user_id ? "Patron" : "System");
+          const name = agent?.name ?? (c.author_user_id ? t("room.patron") : t("room.system"));
           const isAgent = c.author_kind === "agent";
           return (
             <div key={c.id} className="flex gap-3 mb-5">
@@ -164,9 +167,9 @@ function Thread({
                   <span className="chip !py-0 !text-[0.62rem]"
                     style={{ background: isAgent ? "rgba(58,88,118,0.12)" : "rgba(179,129,42,0.14)",
                              color: isAgent ? "var(--blue)" : "var(--gold)", borderColor: "transparent" }}>
-                    {isAgent ? "agent" : c.author_kind}
+                    {isAgent ? t("room.agent") : c.author_kind}
                   </span>
-                  <span className="text-[0.66rem]" style={{ color: "var(--ink-faint)" }}>{relTime(c.created_at)}</span>
+                  <span className="text-[0.66rem]" style={{ color: "var(--ink-faint)" }}>{relTime(c.created_at, t)}</span>
                 </div>
                 <div className="text-sm leading-relaxed panel-flat px-3.5 py-2.5"
                   style={{ background: "var(--panel)", color: "var(--ink)" }}>
@@ -177,20 +180,20 @@ function Thread({
           );
         })}
         {comments.length === 0 && (
-          <div className="text-sm" style={{ color: "var(--ink-faint)" }}>No messages yet.</div>
+          <div className="text-sm" style={{ color: "var(--ink-faint)" }}>{t("room.noMessages")}</div>
         )}
         <div ref={endRef} />
       </div>
       <div className="p-4" style={{ borderTop: "1px solid var(--line)" }}>
         <textarea
           className="input resize-none" rows={2}
-          placeholder="Message the room — use @Name to wake a specific agent…"
+          placeholder={t("room.messagePlaceholder")}
           value={body} onChange={(e) => setBody(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) post(); }}
         />
         <div className="flex items-center justify-between mt-2">
-          <span className="text-[0.68rem]" style={{ color: "var(--ink-faint)" }}>⌘/Ctrl + Enter to send · @mention wakes</span>
-          <button className="btn btn-primary" disabled={busy || !body.trim()} onClick={post}>Send</button>
+          <span className="text-[0.68rem]" style={{ color: "var(--ink-faint)" }}>{t("room.sendHint")}</span>
+          <button className="btn btn-primary" disabled={busy || !body.trim()} onClick={post}>{t("room.send")}</button>
         </div>
       </div>
     </div>
@@ -198,17 +201,18 @@ function Thread({
 }
 
 function ApprovalBar({ task, onChange }: { task: Task; onChange: () => void }) {
+  const { t } = useI18n();
   const act = async (status: TaskStatus) => {
     try { await api.transition(task.id, status); onChange(); }
-    catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
+    catch (e) { alert(e instanceof Error ? e.message : t("room.failed")); }
   };
   return (
     <div className="flex items-center gap-3 px-6 py-3"
       style={{ background: "rgba(107,79,134,0.1)", borderBottom: "1px solid var(--line)" }}>
-      <span className="text-sm font-medium" style={{ color: "var(--violet)" }}>✦ Awaiting your review</span>
+      <span className="text-sm font-medium" style={{ color: "var(--violet)" }}>{t("room.awaitingReview")}</span>
       <div className="ml-auto flex gap-2">
-        <button className="btn" onClick={() => act("in_progress")}>Request changes</button>
-        <button className="btn btn-primary" onClick={() => act("done")}>Approve &amp; publish</button>
+        <button className="btn" onClick={() => act("in_progress")}>{t("room.requestChanges")}</button>
+        <button className="btn btn-primary" onClick={() => act("done")}>{t("room.approvePublish")}</button>
       </div>
     </div>
   );
@@ -216,6 +220,7 @@ function ApprovalBar({ task, onChange }: { task: Task; onChange: () => void }) {
 
 /* ──────────────────────────── Right: live trace ──────────────────────────── */
 function TracePanel({ task, onActivity }: { task: Task; onActivity: () => void }) {
+  const { t } = useI18n();
   const { mariuses, mariusById } = useApp();
   const [runs, setRuns] = useState<Run[]>([]);
   const [selected, setSelected] = useState<string>();
@@ -262,15 +267,15 @@ function TracePanel({ task, onActivity }: { task: Task; onActivity: () => void }
   return (
     <div className="h-full flex flex-col" style={{ borderLeft: "1px solid var(--line)", background: "var(--panel)" }}>
       <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: "1px solid var(--line)" }}>
-        <span className="font-serif font-semibold">Live trace</span>
-        {live && <span className="text-[0.66rem] blink" style={{ color: "var(--gold)" }}>● streaming</span>}
+        <span className="font-serif font-semibold">{t("room.liveTrace")}</span>
+        {live && <span className="text-[0.66rem] blink" style={{ color: "var(--gold)" }}>{t("room.streaming")}</span>}
         <div className="ml-auto flex items-center gap-1.5">
           <select className="input !w-auto !py-1 !px-2 !text-xs" value={agentId}
             onChange={(e) => setAgentId(e.target.value)}>
-            <option value="">pick agent</option>
+            <option value="">{t("room.pickAgent")}</option>
             {mariuses.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
-          <button className="btn btn-primary !py-1 !px-2.5 !text-xs" onClick={wake}>⚡ Wake</button>
+          <button className="btn btn-primary !py-1 !px-2.5 !text-xs" onClick={wake}>{t("room.wake")}</button>
         </div>
       </div>
 
@@ -284,7 +289,7 @@ function TracePanel({ task, onActivity }: { task: Task; onActivity: () => void }
                 className="chip shrink-0"
                 style={{ borderColor: active ? "var(--gold)" : "var(--line)",
                          background: active ? "rgba(216,162,58,0.14)" : "var(--panel-2)" }}>
-                {who ? who.name : "agent"} · {r.wake_source}
+                {who ? who.name : t("room.agent")} · {r.wake_source}
               </button>
             );
           })}
@@ -292,14 +297,14 @@ function TracePanel({ task, onActivity }: { task: Task; onActivity: () => void }
       )}
 
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 font-mono text-[0.78rem] leading-relaxed">
-        {!selRun && <div style={{ color: "var(--ink-faint)" }}>No runs yet. Wake an agent to watch it work.</div>}
+        {!selRun && <div style={{ color: "var(--ink-faint)" }}>{t("room.noRuns")}</div>}
         {selRun && <TraceTimeline events={events} />}
       </div>
 
       {selRun && (
         <div className="px-4 py-2.5 text-[0.7rem] flex items-center gap-3"
           style={{ borderTop: "1px solid var(--line)", color: "var(--ink-faint)" }}>
-          <span>status: <b style={{ color: "var(--ink-soft)" }}>{selRun.status}</b></span>
+          <span>{t("room.status").toLowerCase()}: <b style={{ color: "var(--ink-soft)" }}>{selRun.status}</b></span>
           {selRun.usage_json?.total_tokens != null && <span>{selRun.usage_json.total_tokens} tok</span>}
           {selRun.error && <span style={{ color: "var(--rust)" }}>{selRun.error}</span>}
         </div>
@@ -309,6 +314,7 @@ function TracePanel({ task, onActivity }: { task: Task; onActivity: () => void }
 }
 
 function TraceTimeline({ events }: { events: RunEvent[] }) {
+  const { t } = useI18n();
   const rows: React.ReactNode[] = [];
   let buffer = "";
   const flush = (key: string) => {
@@ -335,7 +341,7 @@ function TraceTimeline({ events }: { events: RunEvent[] }) {
         <div key={i} className="mb-1.5 flex items-center gap-2">
           <span style={{ color: m.color }}>{m.icon}</span>
           <span style={{ color: m.color }}>{name}</span>
-          {e.payload?.ok === false && <span style={{ color: "var(--rust)" }}>failed</span>}
+          {e.payload?.ok === false && <span style={{ color: "var(--rust)" }}>{t("room.failed").toLowerCase()}</span>}
         </div>
       );
     } else {
@@ -354,6 +360,7 @@ function TraceTimeline({ events }: { events: RunEvent[] }) {
 
 /* ─────────────────────────────────── Room ─────────────────────────────────── */
 export default function Room() {
+  const { t } = useI18n();
   const { taskId } = useParams();
   const navigate = useNavigate();
   const [task, setTask] = useState<Task>();
@@ -364,22 +371,22 @@ export default function Room() {
   const load = async () => {
     if (!taskId) return;
     try {
-      const [t, c, a] = await Promise.all([
+      const [tk, c, a] = await Promise.all([
         api.task(taskId), api.comments(taskId), api.artifacts(taskId),
       ]);
-      setTask(t); setComments(c); setArtifacts(a);
+      setTask(tk); setComments(c); setArtifacts(a);
     } catch { setMissing(true); }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [taskId]);
 
-  if (missing) return <Center>Task not found.</Center>;
-  if (!task) return <Center>Loading task…</Center>;
+  if (missing) return <Center>{t("room.notFound")}</Center>;
+  if (!task) return <Center>{t("room.loadingTask")}</Center>;
 
   return (
     <div className="h-full flex flex-col">
       <div className="px-5 py-2.5 flex items-center gap-2" style={{ borderBottom: "1px solid var(--line)" }}>
-        <button className="btn !py-1 !px-2 !text-xs" onClick={() => navigate("/")}>← Board</button>
-        <span className="text-sm" style={{ color: "var(--ink-faint)" }}>Collaboration room</span>
+        <button className="btn !py-1 !px-2 !text-xs" onClick={() => navigate("/")}>{t("room.backToBoard")}</button>
+        <span className="text-sm" style={{ color: "var(--ink-faint)" }}>{t("room.collaborationRoom")}</span>
       </div>
       <div className="flex-1 min-h-0 grid" style={{ gridTemplateColumns: "300px 1fr 380px" }}>
         <TaskContext task={task} artifacts={artifacts} onChange={load} />

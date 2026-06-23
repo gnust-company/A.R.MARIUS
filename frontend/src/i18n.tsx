@@ -6,15 +6,17 @@ export type Lang = "en" | "vi";
 const LANG_KEY = "armarius_lang";
 
 // ---------------------------------------------------------------------------
-// Translation dictionaries
+// Translation dictionaries — single source of truth for ALL visible strings.
+// Use {param} placeholders for interpolation, e.g. t("x.count", { n: 3 }).
 // ---------------------------------------------------------------------------
 
 const dict = {
   en: {
-    // App
+    // App / chrome
     "app.tagline": "You task. They collaborate. You trace.",
-    "app.commission": "Commission task",
-    "app.inbox": "Inbox",
+    "app.scriptorium": "Scriptorium",
+    "app.loadingScriptorium": "Loading the scriptorium…",
+    "app.loading": "Loading…",
     // Nav
     "nav.board": "Project Board",
     "nav.room": "Collaboration",
@@ -46,6 +48,15 @@ const dict = {
     "auth.passwordMismatch": "Passwords do not match",
     "auth.loading": "Loading…",
     "auth.welcomeBack": "Welcome back",
+    "auth.failed": "Authentication failed",
+    // Common
+    "common.copy": "Copy",
+    "common.done": "Done",
+    "common.cancel": "Cancel",
+    "common.save": "Save",
+    "common.edit": "Edit",
+    "common.open": "Open",
+    "common.loading": "Loading…",
     // Workspaces
     "ws.title": "Your workspaces",
     "ws.subtitle": "Personal space by default. Create more to organise your work.",
@@ -57,7 +68,11 @@ const dict = {
     "ws.current": "Current",
     "ws.cancel": "Cancel",
     "ws.projects": "projects",
+    "ws.project": "project",
     "ws.agents": "agents",
+    "ws.agent": "agent",
+    "ws.countOne": "1 workspace",
+    "ws.count": "{n} workspaces",
     // Skill shop
     "skill.title": "Skill Shop",
     "skill.subtitle": "Capabilities your agents can install. Built-in skills ship with every workspace.",
@@ -67,25 +82,85 @@ const dict = {
     "skill.submitTitle": "Submit a skill",
     "skill.name": "Skill name",
     "skill.desc": "Description",
+    "skill.kind": "Kind",
     "skill.installUrl": "Install URL (optional)",
     "skill.instructions": "Install notes (optional)",
     "skill.save": "Add to shop",
     "skill.cancel": "Cancel",
     "skill.install": "Install reference",
     "skill.empty": "No skills yet.",
-    // Agent editing
-    "agent.edit": "Edit",
+    "skill.preview": "Preview",
+    "skill.previewTitle": "Skill preview",
+    "skill.loading": "Loading skill…",
+    "skill.noContent": "No previewable content for this skill.",
+    "skill.fetchFail": "Could not load the skill file.",
+    "skill.count": "{n} skills",
+    // Agent directory / provision / edit
+    "agent.directory": "Agent directory",
+    "agent.count": "{n} agents",
+    "agent.provision": "❖ Provision a Marius",
+    "agent.provisionTitle": "Provision a Marius",
     "agent.editTitle": "Edit agent",
+    "agent.namePlaceholder": "Name (e.g. Marin)",
+    "agent.rolePlaceholder": "Role (e.g. Backend)",
     "agent.skills": "Skills",
-    "agent.skillsHint": "Linked skills are sent as install steps in the invitation.",
-    "agent.save": "Save",
-    "agent.cancel": "Cancel",
-    // Validation
+    "agent.skillsHint": "Selected skills are sent as install steps in the invitation.",
+    "agent.skillsEmpty": "No skills in this workspace yet. Add one in the Skill Shop.",
+    "agent.adapter": "Adapter",
+    "agent.gatewayUrl": "Gateway base_url",
+    "agent.gatewayKey": "API_SERVER_KEY (bearer)",
+    "agent.createInvite": "Create & invite",
+    "agent.noSkills": "no linked skills",
+    "agent.inviteFor": "Invitation for {name}",
+    "agent.inviteSub": "Paste this to your agent so it joins, saves its token, confirms online, and installs its skills.",
+    "agent.adapterLabel": "adapter",
+    // Board
+    "board.commission": "✑ Commission task",
+    "board.newTaskPlaceholder": "New task title…",
+    "board.tasks": "{n} tasks",
+    "board.inProject": "In this project",
+    "board.unassigned": "Unassigned",
+    "board.title": "Board",
+    "board.empty": "—",
+    // Room / collaboration
+    "room.collaborationRoom": "Collaboration room",
+    "room.backToBoard": "← Board",
+    "room.loadingTask": "Loading task…",
+    "room.notFound": "Task not found.",
+    "room.status": "Status",
+    "room.assignee": "Assignee",
+    "room.unassigned": "— Unassigned —",
+    "room.assignWake": "assigning fires an event-wake",
+    "room.recordedNext": "Recorded next action",
+    "room.dod": "Definition of done",
+    "room.dodArtifact": "Published artifact in the shared store",
+    "room.artifacts": "Artifacts",
+    "room.noneYet": "None yet.",
+    "room.thread": "Collaboration thread",
+    "room.system": "System",
+    "room.patron": "Patron",
+    "room.agent": "agent",
+    "room.noMessages": "No messages yet.",
+    "room.messagePlaceholder": "Message the room — use @Name to wake a specific agent…",
+    "room.sendHint": "⌘/Ctrl + Enter to send · @mention wakes",
+    "room.send": "Send",
+    "room.awaitingReview": "✦ Awaiting your review",
+    "room.requestChanges": "Request changes",
+    "room.approvePublish": "Approve & publish",
+    "room.liveTrace": "Live trace",
+    "room.streaming": "● streaming",
+    "room.noRuns": "No runs yet. Wake an agent to watch it work.",
+    "room.failed": "Failed",
+    "room.cannotStatus": "Cannot change status",
+    "room.pickAgent": "pick agent",
+    "room.wake": "⚡ Wake",
+    // Validation / errors
     "err.required": "This field is required",
     "err.invalidEmail": "Enter a valid email",
     "err.shortPassword": "Password must be at least 8 characters",
-    "err.shortUsername": "Username must be at least 3 characters",
-    // Status
+    "err.noWorkspace": "No workspace found.",
+    "err.failedLoad": "Failed to load",
+    // Task status
     "status.backlog": "Backlog",
     "status.todo": "To do",
     "status.in_progress": "In progress",
@@ -93,12 +168,24 @@ const dict = {
     "status.blocked": "Blocked",
     "status.done": "Done",
     "status.cancelled": "Cancelled",
+    // Liveness
+    "liveness.online": "Online",
+    "liveness.working": "Working",
+    "liveness.idle": "Idle",
+    "liveness.offline": "Offline",
+    "liveness.hung": "Hung",
+    // Relative time
+    "time.secondsAgo": "{n}s ago",
+    "time.minutesAgo": "{n}m ago",
+    "time.hoursAgo": "{n}h ago",
+    "time.daysAgo": "{n}d ago",
   },
   vi: {
-    // App
+    // App / chrome
     "app.tagline": "Bạn giao việc. Họ cộng tác. Bạn giám sát.",
-    "app.commission": "Giao việc",
-    "app.inbox": "Hộp thư",
+    "app.scriptorium": "Scriptorium",
+    "app.loadingScriptorium": "Đang tải scriptorium…",
+    "app.loading": "Đang tải…",
     // Nav
     "nav.board": "Bảng dự án",
     "nav.room": "Cộng tác",
@@ -130,6 +217,15 @@ const dict = {
     "auth.passwordMismatch": "Mật khẩu không khớp",
     "auth.loading": "Đang tải…",
     "auth.welcomeBack": "Chào mừng trở lại",
+    "auth.failed": "Đăng nhập thất bại",
+    // Common
+    "common.copy": "Sao chép",
+    "common.done": "Xong",
+    "common.cancel": "Hủy",
+    "common.save": "Lưu",
+    "common.edit": "Sửa",
+    "common.open": "Mở",
+    "common.loading": "Đang tải…",
     // Workspaces
     "ws.title": "Không gian của bạn",
     "ws.subtitle": "Mặc định là không gian cá nhân. Tạo thêm để sắp xếp công việc.",
@@ -141,7 +237,11 @@ const dict = {
     "ws.current": "Hiện tại",
     "ws.cancel": "Hủy",
     "ws.projects": "dự án",
+    "ws.project": "dự án",
     "ws.agents": "agent",
+    "ws.agent": "agent",
+    "ws.countOne": "1 không gian",
+    "ws.count": "{n} không gian",
     // Skill shop
     "skill.title": "Cửa hàng Skill",
     "skill.subtitle": "Năng lực mà agent có thể cài. Skill tích hợp sẵn có ở mọi không gian.",
@@ -151,25 +251,85 @@ const dict = {
     "skill.submitTitle": "Đăng một skill",
     "skill.name": "Tên skill",
     "skill.desc": "Mô tả",
+    "skill.kind": "Loại",
     "skill.installUrl": "URL cài đặt (tùy chọn)",
     "skill.instructions": "Ghi chú cài đặt (tùy chọn)",
     "skill.save": "Thêm vào cửa hàng",
     "skill.cancel": "Hủy",
     "skill.install": "Tham chiếu cài đặt",
     "skill.empty": "Chưa có skill nào.",
-    // Agent editing
-    "agent.edit": "Sửa",
+    "skill.preview": "Xem trước",
+    "skill.previewTitle": "Xem trước skill",
+    "skill.loading": "Đang tải skill…",
+    "skill.noContent": "Skill này không có nội dung xem trước.",
+    "skill.fetchFail": "Không tải được file skill.",
+    "skill.count": "{n} skill",
+    // Agent directory / provision / edit
+    "agent.directory": "Danh mục agent",
+    "agent.count": "{n} agent",
+    "agent.provision": "❖ Khởi tạo Marius",
+    "agent.provisionTitle": "Khởi tạo Marius",
     "agent.editTitle": "Sửa agent",
+    "agent.namePlaceholder": "Tên (vd Marin)",
+    "agent.rolePlaceholder": "Vai trò (vd Backend)",
     "agent.skills": "Skill",
-    "agent.skillsHint": "Các skill được liên kết sẽ gửi kèm hướng dẫn cài đặt trong lời mời.",
-    "agent.save": "Lưu",
-    "agent.cancel": "Hủy",
-    // Validation
+    "agent.skillsHint": "Các skill được chọn sẽ gửi kèm hướng dẫn cài đặt trong lời mời.",
+    "agent.skillsEmpty": "Không gian này chưa có skill nào. Thêm ở Cửa hàng Skill.",
+    "agent.adapter": "Bộ chuyển đổi",
+    "agent.gatewayUrl": "Gateway base_url",
+    "agent.gatewayKey": "API_SERVER_KEY (bearer)",
+    "agent.createInvite": "Tạo & mời",
+    "agent.noSkills": "chưa liên kết skill",
+    "agent.inviteFor": "Lời mời cho {name}",
+    "agent.inviteSub": "Dán đoạn này cho agent để nó tham gia, lưu token, xác nhận đang online và cài các skill.",
+    "agent.adapterLabel": "bộ chuyển đổi",
+    // Board
+    "board.commission": "✑ Giao việc",
+    "board.newTaskPlaceholder": "Tiêu đề công việc mới…",
+    "board.tasks": "{n} công việc",
+    "board.inProject": "Trong dự án này",
+    "board.unassigned": "Chưa giao",
+    "board.title": "Bảng",
+    "board.empty": "—",
+    // Room / collaboration
+    "room.collaborationRoom": "Phòng cộng tác",
+    "room.backToBoard": "← Bảng",
+    "room.loadingTask": "Đang tải công việc…",
+    "room.notFound": "Không tìm thấy công việc.",
+    "room.status": "Trạng thái",
+    "room.assignee": "Người đảm nhận",
+    "room.unassigned": "— Chưa giao —",
+    "room.assignWake": "giao việc sẽ kích hoạt wake",
+    "room.recordedNext": "Việc tiếp theo đã ghi",
+    "room.dod": "Tiêu chí hoàn thành",
+    "room.dodArtifact": "Đã xuất bản artifact vào kho chung",
+    "room.artifacts": "Artifact",
+    "room.noneYet": "Chưa có.",
+    "room.thread": "Luồng cộng tác",
+    "room.system": "Hệ thống",
+    "room.patron": "Patron",
+    "room.agent": "agent",
+    "room.noMessages": "Chưa có tin nhắn.",
+    "room.messagePlaceholder": "Nhắn trong phòng — dùng @Tên để đánh thức một agent…",
+    "room.sendHint": "⌘/Ctrl + Enter để gửi · @mention đánh thức",
+    "room.send": "Gửi",
+    "room.awaitingReview": "✦ Đang chờ bạn duyệt",
+    "room.requestChanges": "Yêu cầu sửa lại",
+    "room.approvePublish": "Duyệt & xuất bản",
+    "room.liveTrace": "Theo dõi trực tiếp",
+    "room.streaming": "● đang phát",
+    "room.noRuns": "Chưa có lượt chạy. Đánh thức một agent để xem nó làm việc.",
+    "room.failed": "Thất bại",
+    "room.cannotStatus": "Không đổi được trạng thái",
+    "room.pickAgent": "chọn agent",
+    "room.wake": "⚡ Đánh thức",
+    // Validation / errors
     "err.required": "Trường này là bắt buộc",
     "err.invalidEmail": "Nhập email hợp lệ",
     "err.shortPassword": "Mật khẩu phải có ít nhất 8 ký tự",
-    "err.shortUsername": "Tên đăng nhập phải có ít nhất 3 ký tự",
-    // Status
+    "err.noWorkspace": "Không tìm thấy không gian làm việc.",
+    "err.failedLoad": "Tải thất bại",
+    // Task status
     "status.backlog": "Chờ xử lý",
     "status.todo": "Cần làm",
     "status.in_progress": "Đang tiến hành",
@@ -177,6 +337,17 @@ const dict = {
     "status.blocked": "Bị chặn",
     "status.done": "Hoàn thành",
     "status.cancelled": "Đã hủy",
+    // Liveness
+    "liveness.online": "Online",
+    "liveness.working": "Đang làm",
+    "liveness.idle": "Nghỉ",
+    "liveness.offline": "Ngoại tuyến",
+    "liveness.hung": "Treo",
+    // Relative time
+    "time.secondsAgo": "{n} giây trước",
+    "time.minutesAgo": "{n} phút trước",
+    "time.hoursAgo": "{n} giờ trước",
+    "time.daysAgo": "{n} ngày trước",
   },
 } as const;
 
@@ -186,12 +357,14 @@ export type TranslationKey = keyof (typeof dict)["en"];
 // Context
 // ---------------------------------------------------------------------------
 
+type Params = Record<string, string | number>;
+
 interface I18nState {
   lang: Lang;
   setLang: (l: Lang) => void;
-  t: (key: TranslationKey) => string;
+  t: (key: TranslationKey, params?: Params) => string;
   // Always-English lookup. The Patron Inbox view stays English regardless of `lang`.
-  tEn: (key: TranslationKey) => string;
+  tEn: (key: TranslationKey, params?: Params) => string;
 }
 
 const I18nCtx = createContext<I18nState | null>(null);
@@ -199,9 +372,15 @@ const I18nCtx = createContext<I18nState | null>(null);
 function detectLang(): Lang {
   const stored = localStorage.getItem(LANG_KEY) as Lang | null;
   if (stored === "en" || stored === "vi") return stored;
-  // Detect from browser
   const nav = navigator.language?.toLowerCase() ?? "";
   return nav.startsWith("vi") ? "vi" : "en";
+}
+
+function interpolate(template: string, params?: Params): string {
+  if (!params) return template;
+  return template.replace(/\{(\w+)\}/g, (_, k) =>
+    params[k] !== undefined ? String(params[k]) : `{${k}}`,
+  );
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
@@ -214,10 +393,14 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const setLang = useCallback((l: Lang) => setLangState(l), []);
   const t = useCallback(
-    (key: TranslationKey) => dict[lang][key] ?? dict.en[key] ?? key,
+    (key: TranslationKey, params?: Params) =>
+      interpolate((dict[lang][key] ?? dict.en[key] ?? key) as string, params),
     [lang],
   );
-  const tEn = useCallback((key: TranslationKey) => dict.en[key] ?? key, []);
+  const tEn = useCallback(
+    (key: TranslationKey, params?: Params) => interpolate((dict.en[key] ?? key) as string, params),
+    [],
+  );
 
   const value = useMemo(() => ({ lang, setLang, t, tEn }), [lang, setLang, t, tEn]);
   return <I18nCtx.Provider value={value}>{children}</I18nCtx.Provider>;

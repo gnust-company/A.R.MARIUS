@@ -190,3 +190,32 @@ A task may only reach `in_review`/`done` when a **published artifact** is linked
   skill + invite steps, agent edit, custom-skill workspace isolation); ruff clean; FE typecheck + prod build clean;
   Postgres volume wiped + stack rebuilt; live end-to-end smoke (register→workspace→skill→provision→edit→2nd
   workspace→tenant isolation→401→static 200) all green.
+
+### 2026-06-23 — Quality pass: i18n audit, skill listbox, skill preview, workspace UX
+Follow-up fixes after direct UI review (every visible string now bilingual; UX friction removed).
+
+- **Full i18n audit (the big one)** — rewrote `i18n.tsx` with **151 keys × 2 languages** (EN/VI) and
+  `{n}` interpolation; wired `t()` through **every** page (Board, Room, App, Auth, Directory, Skills,
+  Workspaces, store). Task-status & liveness labels and relative time are now translatable
+  (`ui.tsx` resolves `status.*` / `liveness.*` / `time.*` via `t`; `relTime` takes the translator).
+  Singular/plural handled (e.g. "1 project" / "2 projects"). **Patron Inbox stays English** by design
+  (`tEn`). New keys cover Board columns, the entire Collaboration Room (status/assignee/artifacts/
+  thread/trace/wake), agent provision/edit, skill shop, workspaces, common verbs.
+- **Skill field → listbox** — Provision & Edit agent: the old free-text "Skills, comma-separated"
+  field **and** the checkbox grid are gone. Replaced with a native `<select multiple>` **list box**
+  listing the workspace's skills (built-in `armarius-http` pre-selected). No more checkboxes.
+- **Skill preview** — Skill Shop cards now have a **Preview** button opening a modal that `fetch`es
+  the SKILL.md (built-in) or shows inline install notes (custom). Verified rendering the full doc.
+- **Skill Shop icon** — replaced the broken/unreadable `⌁` glyph with a clear tools icon (`⚒`).
+- **One workspace list, not two** — login now **lands on the Workspaces overview**; the redundant
+  sidebar workspace **dropdown switcher is removed** (it was the confusing "second list"). The
+  sidebar now shows just the *current* workspace (links to the overview). Project selector in the
+  top bar is hidden when the workspace has ≤1 project.
+- **"Personal" + no "Getting Started"** — personal workspace is named **"Personal"** (not
+  "{name}'s Workspace"). The confusing "Getting Started" starter project is removed; a neutral
+  **"General"** project is created lazily (on first board load, and on agent provisioning) so tasks
+  always have a home without a confusing seed artefact.
+- **Verification**: 32 backend tests pass, ruff clean, FE typecheck + prod build clean, stack rebuilt;
+  drove the live UI with headless Chrome (CDP) — screenshotted Workspaces (1 "Personal" card, "1
+  project"), Skill Shop (new icon), Provision form (skill **listbox**, no checkboxes/free-text),
+  Skill **Preview** modal (renders SKILL.md), and the VI locale (fully translated).

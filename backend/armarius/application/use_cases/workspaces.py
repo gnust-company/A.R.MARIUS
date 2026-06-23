@@ -47,9 +47,12 @@ class WorkspaceService:
             return await uow.workspaces.get(workspace_id)
 
     async def ensure_personal_workspace(self, user: User) -> Workspace:
-        """Create a personal workspace + starter project for a newly registered user.
+        """Create a user's personal workspace for a newly registered user.
 
-        Idempotent: if the user already owns a workspace, returns the first one.
+        Named simply "Personal" (not "{name}'s Workspace"). No starter project is
+        created — the frontend provisions a default "General" project on first Board
+        load, so new users land on a clean empty board. Idempotent: if the user
+        already owns a workspace, returns the first one.
         """
         async with self._uow() as uow:
             owned = await uow.workspaces.list_by_owner(str(user.id))
@@ -57,25 +60,36 @@ class WorkspaceService:
                 return owned[0]
 
             ws = Workspace(
-                name=f"{user.full_name}'s Workspace",
-                slug=_slugify(f"{user.username}-workspace"),
+                name="Personal",
+                slug="personal",
                 owner_user_id=str(user.id),
             )
             ws = await uow.workspaces.add(ws)
-
-            # Starter empty project so the Board has somewhere to land.
-            starter = Project(
-                workspace_id=ws.id,
-                name="Getting Started",
-                slug="getting-started",
-                description="Your first project. Commission tasks and invite Marius agents here.",
-            )
-            await uow.projects.add(starter)
             await uow.commit()
 
         # Seed the built-in Skill Shop entries for the new personal workspace.
         await self._skills.seed_builtins(ws.id)
         return ws
+
+    async def ensure_default_project(self, workspace_id: UUID) -> Project:
+        """Lazily create the default "General" project for a workspace if it has none.
+
+        Called by the board on first load so tasks always have a home — without
+        seeding a confusing "Getting Started" artefact.
+        """
+        async with self._uow() as uow:
+            existing = await uow.projects.list_by_workspace(workspace_id)
+            if existing:
+                return existing[0]
+            project = Project(
+                workspace_id=workspace_id,
+                name="General",
+                slug="general",
+                description=None,
+            )
+            created = await uow.projects.add(project)
+            await uow.commit()
+            return created
 
     async def create_project(
         self, workspace_id: UUID, name: str, description: str | None = None

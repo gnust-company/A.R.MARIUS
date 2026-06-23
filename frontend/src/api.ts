@@ -133,6 +133,10 @@ export const api = {
   createWorkspace: (name: string) =>
     req<Workspace>("/v1/workspaces", { method: "POST", body: JSON.stringify({ name }) }),
   projects: (ws: string) => req<Project[]>(`/v1/workspaces/${ws}/projects`),
+  createProject: (ws: string, name: string, description?: string) =>
+    req<Project>(`/v1/workspaces/${ws}/projects`, {
+      method: "POST", body: JSON.stringify({ name, description }),
+    }),
   mariuses: (ws: string) => req<Marius[]>(`/v1/workspaces/${ws}/mariuses`),
   skills: (ws: string) => req<Skill[]>(`/v1/workspaces/${ws}/skills`),
   createSkill: (ws: string, body: {

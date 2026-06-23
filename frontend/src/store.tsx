@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { api, type Marius, type Project, type Workspace } from "./api";
+import { useI18n } from "./i18n";
 
 const WS_KEY = "armarius_workspace_id";
 
@@ -23,6 +24,7 @@ interface AppState {
 const Ctx = createContext<AppState | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -43,41 +45,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         const ws = await api.workspaces();
-        if (ws.length === 0) { setError("No workspace found."); setLoading(false); return; }
+        if (ws.length === 0) { setError(t("err.noWorkspace")); setLoading(false); return; }
         setWorkspaces(ws);
         const stored = localStorage.getItem(WS_KEY);
         const pick = ws.find((w) => w.id === stored)?.id ?? ws[0].id;
         setWorkspaceIdState(pick);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load");
+        setError(e instanceof Error ? e.message : t("err.failedLoad"));
         setLoading(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Whenever the active workspace changes, load its projects + directory.
+  // Whenever the active workspace changes, load its projects + directory. If the
+  // workspace has no project yet, lazily create the default "General" one so the
+  // board always has a home (no confusing "Getting Started" artefact).
   useEffect(() => {
     if (!workspace) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        const [projs, mar] = await Promise.all([
-          api.projects(workspace.id),
-          api.mariuses(workspace.id),
-        ]);
+        let projs = await api.projects(workspace.id);
+        if (projs.length === 0) {
+          await api.createProject(workspace.id, "General");
+          projs = await api.projects(workspace.id);
+        }
+        const mar = await api.mariuses(workspace.id);
         if (cancelled) return;
         setProjects(projs);
         setProjectId(projs[0]?.id);
         setMariuses(mar);
         setError(undefined);
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load");
+        if (!cancelled) setError(e instanceof Error ? e.message : t("err.failedLoad"));
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace?.id]);
 
   const reloadWorkspaces = async () => setWorkspaces(await api.workspaces());

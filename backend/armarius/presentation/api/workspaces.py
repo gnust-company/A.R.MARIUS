@@ -99,6 +99,9 @@ async def register_marius(
         adapter_config=body.adapter_config,
         owner_user_id=str(user.id),
     )
+    # Ensure the workspace has a default project so the invitation names a real
+    # project (the board also does this lazily on first load).
+    await container.workspaces.ensure_default_project(workspace_id)
     invite = await _build_invite(container, marius, workspace_id)
     return MariusCreatedOut.model_validate(marius).model_copy(update={"invite": invite})
 

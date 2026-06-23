@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Task } from "../api";
 import { useApp } from "../store";
+import { useI18n } from "../i18n";
 import { Avatar, BOARD_COLUMNS, STATUS_META, relTime } from "../ui";
 
 function TaskCard({ task }: { task: Task }) {
   const { mariusById } = useApp();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const assignee = mariusById(task.assigned_marius_id);
   return (
@@ -34,14 +36,14 @@ function TaskCard({ task }: { task: Task }) {
             <Avatar name={assignee.name} size={22} liveness={assignee.liveness} />
             <span className="text-xs" style={{ color: "var(--ink-soft)" }}>{assignee.name}</span>
             {assignee.liveness === "working" && (
-              <span className="text-[0.66rem] blink" style={{ color: "var(--gold)" }}>● working</span>
+              <span className="text-[0.66rem] blink" style={{ color: "var(--gold)" }}>{t("liveness.working")}</span>
             )}
           </>
         ) : (
-          <span className="text-xs" style={{ color: "var(--ink-faint)" }}>Unassigned</span>
+          <span className="text-xs" style={{ color: "var(--ink-faint)" }}>{t("board.unassigned")}</span>
         )}
         <span className="ml-auto text-[0.66rem]" style={{ color: "var(--ink-faint)" }}>
-          {relTime(task.updated_at)}
+          {relTime(task.updated_at, t)}
         </span>
       </div>
     </button>
@@ -50,6 +52,7 @@ function TaskCard({ task }: { task: Task }) {
 
 export default function Board() {
   const { project, mariuses } = useApp();
+  const { t } = useI18n();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [composing, setComposing] = useState(false);
   const [title, setTitle] = useState("");
@@ -68,40 +71,40 @@ export default function Board() {
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center gap-3 px-6 pt-5 pb-3">
-        <h1 className="font-serif text-xl font-semibold">{project?.name ?? "Board"}</h1>
-        <span className="chip">{tasks.length} tasks</span>
+        <h1 className="font-serif text-xl font-semibold">{project?.name ?? t("board.title")}</h1>
+        <span className="chip">{t("board.tasks", { n: tasks.length })}</span>
         <div className="ml-auto flex items-center gap-2">
           {composing && (
             <input
-              autoFocus className="input !w-64" placeholder="New task title…"
+              autoFocus className="input !w-64" placeholder={t("board.newTaskPlaceholder")}
               value={title} onChange={(e) => setTitle(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") commission(); if (e.key === "Escape") setComposing(false); }}
             />
           )}
           <button className="btn btn-primary" onClick={() => (composing ? commission() : setComposing(true))}>
-            ✑ Commission task
+            {t("board.commission")}
           </button>
         </div>
       </div>
 
       <div className="flex-1 min-h-0 flex gap-3 px-6 pb-5 overflow-x-auto">
         {BOARD_COLUMNS.map((status) => {
-          const items = tasks.filter((t) => t.status === status);
+          const items = tasks.filter((t2) => t2.status === status);
           const meta = STATUS_META[status];
           return (
             <div key={status} className="w-[260px] shrink-0 flex flex-col min-h-0">
               <div className="flex items-center gap-2 mb-2 px-1">
                 <span className="inline-block w-2 h-2 rounded-full" style={{ background: meta.color }} />
-                <span className="text-sm font-medium">{meta.label}</span>
+                <span className="text-sm font-medium">{t(meta.key)}</span>
                 <span className="text-xs ml-auto" style={{ color: "var(--ink-faint)" }}>{items.length}</span>
               </div>
               <div
                 className="flex-1 min-h-0 overflow-y-auto rounded-lg p-1.5"
                 style={{ background: "var(--paper-2)", border: "1px solid var(--line-soft)" }}
               >
-                {items.map((t) => <TaskCard key={t.id} task={t} />)}
+                {items.map((t2) => <TaskCard key={t2.id} task={t2} />)}
                 {items.length === 0 && (
-                  <div className="text-center text-xs py-6" style={{ color: "var(--ink-faint)" }}>—</div>
+                  <div className="text-center text-xs py-6" style={{ color: "var(--ink-faint)" }}>{t("board.empty")}</div>
                 )}
               </div>
             </div>
@@ -109,7 +112,7 @@ export default function Board() {
         })}
 
         <div className="w-[230px] shrink-0 flex flex-col min-h-0">
-          <div className="text-sm font-medium mb-2 px-1">In this project</div>
+          <div className="text-sm font-medium mb-2 px-1">{t("board.inProject")}</div>
           <div className="panel p-2.5 flex-1 min-h-0 overflow-y-auto">
             {mariuses.map((m) => (
               <div key={m.id} className="flex items-center gap-2.5 px-1.5 py-2 rounded-lg">

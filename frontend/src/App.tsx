@@ -11,6 +11,7 @@ import Workspaces from "./pages/Workspaces";
 import Auth from "./pages/Auth";
 
 function Brand() {
+  const { t } = useI18n();
   return (
     <div className="flex items-center gap-2.5 px-4 pt-5 pb-4">
       <div
@@ -26,7 +27,7 @@ function Brand() {
       <div className="leading-tight">
         <div className="font-serif text-[1.15rem] font-semibold tracking-tight">Armarius</div>
         <div className="text-[0.66rem] uppercase tracking-[0.18em]" style={{ color: "var(--ink-faint)" }}>
-          Scriptorium
+          {t("app.scriptorium")}
         </div>
       </div>
     </div>
@@ -79,22 +80,20 @@ function LangSwitch() {
   );
 }
 
-function WorkspaceSwitch() {
-  const { workspaces, workspace, setWorkspaceId } = useApp();
-  const navigate = useNavigate();
-  if (workspaces.length === 0) return null;
+// Current workspace indicator (NOT a second list). Shows where you are and links to
+// the Workspaces page, which is the single authoritative list of workspaces.
+function CurrentWorkspace() {
+  const { workspace } = useApp();
+  const { t } = useI18n();
+  if (!workspace) return null;
   return (
-    <div className="px-3 pb-2">
-      <select
-        className="input !w-full !py-1.5 !px-2.5 text-sm font-medium"
-        value={workspace?.id ?? ""}
-        onChange={(e) => { setWorkspaceId(e.target.value); navigate("/"); }}
-      >
-        {workspaces.map((w, i) => (
-          <option key={w.id} value={w.id}>{i === 0 ? `★ ${w.name}` : w.name}</option>
-        ))}
-      </select>
-    </div>
+    <NavLink to="/workspaces" className="mx-3 mb-2 flex items-center gap-2.5 px-2.5 py-2 rounded-lg" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
+      <span className="font-serif text-base shrink-0" style={{ color: "var(--gold)" }}>◳</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[0.6rem] uppercase tracking-[0.14em]" style={{ color: "var(--ink-faint)" }}>{t("nav.workspace")}</span>
+        <span className="block text-sm font-medium truncate" style={{ color: "var(--ink)" }}>{workspace.name}</span>
+      </span>
+    </NavLink>
   );
 }
 
@@ -108,11 +107,11 @@ function Sidebar() {
     >
       <Brand />
       <div className="rule mx-4 mb-2" />
-      <WorkspaceSwitch />
+      <CurrentWorkspace />
       <nav className="flex flex-col gap-0.5">
         <NavItem to="/" label={t("nav.board")} icon="▦" />
         <NavItem to="/directory" label={t("nav.directory")} icon="❖" />
-        <NavItem to="/skills" label={t("nav.skills")} icon="⌁" />
+        <NavItem to="/skills" label={t("nav.skills")} icon="⚒" />
         <NavItem to="/workspaces" label={t("nav.workspaces")} icon="◳" />
         {/* Patron Inbox intentionally stays English regardless of UI language. */}
         <NavItem to="/approvals" label={tEn("nav.inbox")} icon="✦" />
@@ -154,27 +153,30 @@ function Sidebar() {
 
 function TopBar() {
   const { workspace, projects, project, setProjectId } = useApp();
+  const { tEn } = useI18n();
   const navigate = useNavigate();
+  const multiProject = projects.length > 1;
   return (
     <header
       className="h-14 shrink-0 flex items-center gap-4 px-5"
       style={{ borderBottom: "1px solid var(--line)", background: "var(--panel)" }}
     >
-      <div className="text-sm" style={{ color: "var(--ink-faint)" }}>
+      <div className="text-sm font-medium" style={{ color: "var(--ink-soft)" }}>
         {workspace?.name ?? "—"}
-        <span className="mx-1.5">/</span>
+        {multiProject && <span className="mx-1.5" style={{ color: "var(--ink-faint)" }}>/</span>}
       </div>
-      {projects.length > 0 && (
+      {multiProject && (
         <select
           className="input !w-auto !py-1.5 !px-2.5 font-medium"
-          value={project?.id}
+          value={project?.id ?? ""}
           onChange={(e) => { setProjectId(e.target.value); navigate("/"); }}
         >
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
       )}
       <div className="ml-auto flex items-center gap-2.5">
-        <NavLink to="/approvals" className="btn" title="Patron inbox">✦ Inbox</NavLink>
+        {/* Patron Inbox label stays English regardless of UI language. */}
+        <NavLink to="/approvals" className="btn" title={tEn("nav.inbox")}>✦ {tEn("nav.inbox")}</NavLink>
       </div>
     </header>
   );
@@ -182,6 +184,7 @@ function TopBar() {
 
 function Shell() {
   const { loading, error } = useApp();
+  const { t } = useI18n();
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
@@ -190,7 +193,7 @@ function Shell() {
         <main className="flex-1 min-h-0 overflow-hidden">
           {loading ? (
             <div className="h-full flex items-center justify-center" style={{ color: "var(--ink-faint)" }}>
-              Loading the scriptorium…
+              {t("app.loadingScriptorium")}
             </div>
           ) : error ? (
             <div className="h-full flex items-center justify-center" style={{ color: "var(--rust)" }}>
@@ -214,13 +217,14 @@ function Shell() {
 
 export default function App() {
   const { user, loading } = useAuth();
+  const { t } = useI18n();
 
   // Auth routes (visible when logged out)
   if (!user) {
     if (loading) {
       return (
         <div className="h-screen flex items-center justify-center" style={{ background: "var(--panel)", color: "var(--ink-faint)" }}>
-          Loading…
+          {t("app.loading")}
         </div>
       );
     }
