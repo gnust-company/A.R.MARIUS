@@ -132,3 +132,28 @@ A task may only reach `in_review`/`done` when a **published artifact** is linked
 - **MCP server + skill**: Deferred to GitHub issue #1 (will be implemented separately)
 - Auth pattern reviewed: Armarius uses simple bearer token (sufficient for agent use case; JWT upgrade not needed)
 - Reference: Innovation Hub auth analyzed — JWT with refresh tokens is overkill for long-lived agent tokens.
+
+### 2026-06-23 — Human-user auth (JWT) + i18n (EN/VI) + design alignment
+- **User authentication (Clean Architecture, JWT)** — humans now register/login to access the app:
+  - Domain: `User` entity + `UserRole` (`patron`/`member`/`admin`) + `UserRepository` port.
+  - Infrastructure: `UserModel` (SQLAlchemy), mapper, `SqlUserRepository`, wired into `UnitOfWork` (+`users`).
+  - Security: `JWTService` (python-jose — access + refresh tokens) + `PasswordService` (bcrypt directly;
+    dropped passlib due to passlib/bcrypt-5 incompatibility).
+  - Application: `AuthService` (register/login/refresh with duplicate + invalid-credential errors + timing-safe login).
+  - Presentation: `/auth/{register,login,refresh,me}` endpoints + `get_current_user` Bearer dependency.
+  - Config: `JWT_SECRET`/`JWT_ALGORITHM`/`JWT_ACCESS_EXPIRE_MINUTES`/`JWT_REFRESH_EXPIRE_DAYS` in `.env.sample`.
+  - 7 new auth tests (register/login/me/duplicate/refresh/401s); full suite = 27 passing.
+- **i18n (Vietnamese / English)** — frontend, lightweight self-contained (no extra deps):
+  - `i18n.tsx`: `I18nProvider` + `useT()` + EN/VI dictionaries + browser-lang auto-detect + persisted choice.
+  - Language switcher on the Auth screen and in the Sidebar.
+  - Nav labels, auth copy, validation messages, and task-status labels localized.
+- **Frontend auth flow**:
+  - `api.ts`: token storage (localStorage), auto-attach `Authorization` header, transparent access-token refresh
+    + retry on 401, `register`/`login`/`me` methods. (Also fixed default `API_BASE` → :8080.)
+  - `auth.tsx`: `AuthProvider` bootstraps session via `/auth/me`; `signIn`/`signUp`/`signOut`.
+  - `pages/Auth.tsx`: single Sign-in / Register screen in the Scriptorium theme.
+  - `App.tsx`: gates the app behind auth — logged-out → Auth routes; logged-in → `AppProvider`-wrapped Shell
+    with sidebar user card + sign-out.
+- **Design alignment**: `ARMARIUS Design/Armarius.dc.html` reviewed — the existing Scriptorium UI already matches
+  the spec (board / collaboration room / directory / patron inbox / invite). Auth + language switcher added
+  without diverging from the parchment/ink/gold theme.

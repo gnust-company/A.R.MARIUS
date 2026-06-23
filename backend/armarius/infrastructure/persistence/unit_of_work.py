@@ -17,6 +17,7 @@ from armarius.infrastructure.persistence.repositories import (
     SqlRunRepository,
     SqlSessionRepository,
     SqlTaskRepository,
+    SqlUserRepository,
     SqlWakeupRepository,
     SqlWorkspaceRepository,
 )
@@ -40,6 +41,7 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         self.run_events = SqlRunEventRepository(s)
         self.artifacts = SqlArtifactRepository(s)
         self.wakeups = SqlWakeupRepository(s)
+        self.users = SqlUserRepository(s)
         return self
 
     async def __aexit__(

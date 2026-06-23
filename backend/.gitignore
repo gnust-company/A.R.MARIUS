@@ -6,6 +6,8 @@ __pycache__/
 .mypy_cache/
 *.db
 *.db-journal
+*.db-shm
+*.db-wal
 .env
 artifacts_store/
 uv.lock

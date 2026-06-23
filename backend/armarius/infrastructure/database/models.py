@@ -7,6 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
@@ -169,3 +170,25 @@ class WakeupModel(Base):
     run_id: Mapped[UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class UserModel(Base):
+    """Human users of Armarius (Patrons)."""
+
+    __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("email", name="uq_users_email"),
+        UniqueConstraint("username", name="uq_users_username"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    email: Mapped[str] = mapped_column(String(254), index=True)
+    username: Mapped[str] = mapped_column(String(80))
+    full_name: Mapped[str] = mapped_column(String(200))
+    hashed_password: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(20), default="patron")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

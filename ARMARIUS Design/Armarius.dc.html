@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,500;0,600;0,700;1,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#ece3d1; --paper-2:#e4dac4; --surface:#faf6ec; --surface-2:#f1e9d8; --elevated:#fffdf6;
+    --ink:#2c2620; --ink-soft:#6f6655; --ink-faint:#a59a85;
+    --line:#d8cdb6; --line-soft:#e6ddca;
+    --gold:#a9772a; --gold-soft:#c9a24e; --gold-bg:#efe1c2;
+    --blue:#3f5f7e; --blue-soft:#6d8aa6; --blue-bg:#dde6ee;
+    --st-backlog:#9a8f78; --st-todo:#5f7f96; --st-inprogress:#3f5f7e; --st-inreview:#a9772a; --st-blocked:#a8502f; --st-done:#5e7a4f; --st-cancelled:#8a8073;
+    --live-online:#5e8a4f; --live-working:#a9772a; --live-idle:#c2a04a; --live-offline:#a59a85; --live-hung:#a8502f;
+  }
+  :root[data-theme="dark"]{
+    --paper:#13110c; --paper-2:#0f0d09; --surface:#1d1810; --surface-2:#251f15; --elevated:#221c13;
+    --ink:#ece2cf; --ink-soft:#a89c85; --ink-faint:#6f6655;
+    --line:#332b1d; --line-soft:#282116;
+    --gold:#d6a44e; --gold-soft:#b9863a; --gold-bg:#352a16;
+    --blue:#7ea3c6; --blue-soft:#5f7f9e; --blue-bg:#1b2935;
+    --st-backlog:#9a8f78; --st-todo:#7a96ad; --st-inprogress:#7ea3c6; --st-inreview:#d6a44e; --st-blocked:#c8694a; --st-done:#7a9b67; --st-cancelled:#8a8073;
+    --live-online:#7aa863; --live-working:#d6a44e; --live-idle:#d6b964; --live-offline:#6f6655; --live-hung:#c8694a;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{background:var(--paper);}
+  ::-webkit-scrollbar{width:9px;height:9px;}
+  ::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  @keyframes arm-pulse{0%{box-shadow:0 0 0 0 currentColor;opacity:1;}70%{box-shadow:0 0 0 5px transparent;opacity:.85;}100%{box-shadow:0 0 0 0 transparent;opacity:1;}}
+  @keyframes arm-blink{0%,49%{opacity:1;}50%,100%{opacity:0;}}
+  @keyframes arm-rise{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+  @keyframes arm-toast{from{opacity:0;transform:translateY(10px) translateX(-50%);}to{opacity:1;transform:translateY(0) translateX(-50%);}}
+  textarea,input,select,button{font-family:inherit;}
+  textarea:focus,input:focus,select:focus,button:focus-visible{outline:2px solid var(--gold);outline-offset:1px;}
+  details>summary{list-style:none;cursor:pointer;}
+  details>summary::-webkit-details-marker{display:none;}
+</style>
+</helmet>
+
+<div style="display:flex;height:100vh;width:100vw;overflow:hidden;background:var(--paper);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside style="width:248px;flex:none;background:var(--paper-2);border-right:1px solid var(--line);display:flex;flex-direction:column;">
+    <div style="padding:20px 20px 16px;border-bottom:1px solid var(--line);">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:26px;height:26px;flex:none;background:var(--gold);transform:rotate(45deg);border-radius:3px;"></div>
+        <div style="font-family:'Spectral',Georgia,serif;font-weight:600;font-size:21px;letter-spacing:.3px;color:var(--ink);">Armarius</div>
+      </div>
+      <div style="font-size:11px;color:var(--ink-faint);margin-top:6px;font-style:italic;font-family:'Spectral',serif;">You task. They collaborate. You trace.</div>
+    </div>
+
+    <div style="padding:14px 14px 6px;">
+      <div style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);padding:0 6px 7px;">Workspace</div>
+      <button style="width:100%;display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:9px 11px;cursor:pointer;color:var(--ink);text-align:left;">
+        <span style="width:18px;height:18px;flex:none;border-radius:4px;background:var(--ink);color:var(--paper);font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;">A</span>
+        <span style="flex:1;font-weight:500;font-size:13px;">Acme Web Platform</span>
+        <span style="color:var(--ink-faint);font-size:11px;">▾</span>
+      </button>
+      <div style="display:flex;align-items:center;gap:8px;padding:9px 8px 4px;">
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--gold);flex:none;"></span>
+        <span style="font-size:13px;font-weight:500;color:var(--ink);">Settings Redesign</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--ink-faint);font-family:'IBM Plex Mono',monospace;">8 tasks</span>
+      </div>
+    </div>
+
+    <nav style="padding:10px 14px;flex:1;">
+      <div style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);padding:6px 6px 8px;">Project</div>
+      <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="5">
+        <button onClick="{{ n.onClick }}" style="position:relative;width:100%;display:flex;align-items:center;gap:10px;border:none;background:{{ n.bg }};color:{{ n.fg }};border-radius:7px;padding:9px 11px 9px 13px;cursor:pointer;text-align:left;font-size:13px;font-weight:500;margin-bottom:2px;" data-nav="{{ n.id }}">
+          <span style="position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:2px;background:{{ n.barColor }};"></span>
+          <span style="flex:1;">{{ n.label }}</span>
+          <sc-if value="{{ n.hasCount }}" hint-placeholder-val="{{ false }}">
+            <span style="min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--gold);color:var(--elevated);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;">{{ n.count }}</span>
+          </sc-if>
+        </button>
+      </sc-for>
+    </nav>
+
+    <div style="padding:14px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;">
+      <span style="width:30px;height:30px;flex:none;border-radius:50%;background:var(--ink);color:var(--paper);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;">Y</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:500;font-size:13px;">You</div>
+        <div style="font-size:11px;color:var(--ink-faint);">Patron</div>
+      </div>
+      <span style="width:7px;height:7px;border-radius:50%;background:var(--live-online);flex:none;"></span>
+    </div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
+    <!-- TOPBAR -->
+    <header style="flex:none;height:60px;border-bottom:1px solid var(--line);background:var(--surface);display:flex;align-items:center;gap:16px;padding:0 22px;">
+      <div style="display:flex;align-items:baseline;gap:10px;min-width:0;">
+        <span style="font-family:'Spectral',serif;font-weight:600;font-size:18px;color:var(--ink);white-space:nowrap;">{{ screenTitle }}</span>
+        <span style="font-size:12px;color:var(--ink-faint);white-space:nowrap;">Settings Redesign · Acme Web Platform</span>
+      </div>
+      <div style="flex:1;"></div>
+      <button onClick="{{ commission }}" style="display:flex;align-items:center;gap:7px;background:var(--gold);color:var(--elevated);border:none;border-radius:7px;padding:9px 14px;font-weight:600;font-size:13px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.12);">
+        <span style="font-size:15px;line-height:1;">+</span> Commission task
+      </button>
+      <button onClick="{{ goInbox }}" style="position:relative;display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:8px 12px;cursor:pointer;color:var(--ink);font-weight:500;font-size:13px;">
+        Inbox
+        <sc-if value="{{ hasInbox }}" hint-placeholder-val="{{ true }}">
+          <span style="min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--gold);color:var(--elevated);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;">{{ inboxCountLabel }}</span>
+        </sc-if>
+      </button>
+      <button onClick="{{ toggleTheme }}" title="Toggle theme" style="display:flex;align-items:center;gap:7px;background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:8px 12px;cursor:pointer;color:var(--ink-soft);font-weight:500;font-size:13px;">
+        <span style="width:12px;height:12px;border-radius:50%;background:{{ themeDot }};border:1px solid var(--line);flex:none;"></span>
+        {{ themeLabel }}
+      </button>
+    </header>
+
+    <!-- SCREEN AREA -->
+    <div style="flex:1;min-height:0;position:relative;">
+
+      <!-- ===== B · COLLABORATION ROOM ===== -->
+      <sc-if value="{{ isRoom }}" hint-placeholder-val="{{ true }}">
+      <div data-screen-label="Collaboration Room" style="display:flex;height:100%;">
+
+        <!-- LEFT · task context -->
+        <section style="width:324px;flex:none;border-right:1px solid var(--line);background:var(--surface);overflow:auto;padding:20px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-faint);">{{ taskIdLabel }}</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:11px;background:var(--surface-2);border:1px solid var(--line);font-size:11px;font-weight:600;color:var(--ink);">
+              <span style="width:7px;height:7px;border-radius:50%;background:{{ taskStatusColor }};"></span>{{ taskStatusLabel }}
+            </span>
+          </div>
+          <h1 style="font-family:'Spectral',serif;font-weight:600;font-size:22px;line-height:1.25;margin:0 0 14px;color:var(--ink);">{{ taskTitle }}</h1>
+
+          <label style="font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);display:block;margin-bottom:6px;">Status</label>
+          <select onChange="{{ changeStatus }}" value="{{ taskStatusValue }}" style="width:100%;padding:9px 11px;border-radius:7px;border:1px solid var(--line);background:var(--elevated);color:var(--ink);font-size:13px;font-weight:500;cursor:pointer;margin-bottom:18px;">
+            <option value="backlog">Backlog</option>
+            <option value="todo">To do</option>
+            <option value="in_progress">In progress</option>
+            <option value="in_review">In review → send for approval</option>
+            <option value="blocked">Blocked</option>
+            <option value="done">Done → approve &amp; publish</option>
+          </select>
+
+          <div style="font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:7px;">Brief</div>
+          <p style="margin:0 0 20px;font-size:13px;color:var(--ink-soft);line-height:1.6;">{{ taskBrief }}</p>
+
+          <div style="font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:9px;">Participants</div>
+          <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:20px;">
+            <sc-for list="{{ participants }}" as="p" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span style="position:relative;width:28px;height:28px;flex:none;border-radius:50%;background:{{ p.color }};color:var(--elevated);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;">{{ p.initial }}
+                  <span style="position:absolute;right:-1px;bottom:-1px;width:9px;height:9px;border-radius:50%;background:{{ p.liveColor }};border:2px solid var(--surface);color:{{ p.liveColor }};"></span>
+                </span>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:13px;font-weight:500;color:var(--ink);">{{ p.name }}</div>
+                  <div style="font-size:11px;color:var(--ink-faint);">{{ p.role }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:9px;">Linked artifacts</div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px;">
+            <sc-for list="{{ artifacts }}" as="ar" hint-placeholder-count="2">
+              <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--line);border-radius:7px;background:var(--elevated);">
+                <span style="width:8px;height:24px;border-radius:2px;background:{{ ar.accent }};flex:none;"></span>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink);">{{ ar.name }}</div>
+                  <div style="font-size:11px;color:var(--ink-faint);">{{ ar.publishedLabel }}</div>
+                </div>
+                <sc-if value="{{ ar.isPublished }}" hint-placeholder-val="{{ true }}">
+                  <span style="font-size:11px;color:var(--st-done);font-weight:600;">✓</span>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:9px;">Definition of done</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <sc-for list="{{ dod }}" as="d" hint-placeholder-count="5">
+              <div style="display:flex;align-items:flex-start;gap:9px;">
+                <sc-if value="{{ d.done }}" hint-placeholder-val="{{ false }}">
+                  <span style="width:16px;height:16px;flex:none;border-radius:4px;background:var(--st-done);color:var(--elevated);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-top:1px;">✓</span>
+                </sc-if>
+                <sc-if value="{{ d.todo }}" hint-placeholder-val="{{ true }}">
+                  <span style="width:16px;height:16px;flex:none;border-radius:4px;border:1.5px solid var(--line);background:var(--surface-2);margin-top:1px;"></span>
+                </sc-if>
+                <span style="font-size:12.5px;color:var(--ink-soft);line-height:1.45;">{{ d.label }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+
+        <!-- CENTER · thread -->
+        <section style="flex:1;min-width:0;display:flex;flex-direction:column;background:var(--paper);">
+          <sc-if value="{{ showApproval }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:none;margin:14px 18px 0;border:1px solid var(--gold);border-radius:9px;background:var(--gold-bg);padding:14px 16px;animation:arm-rise .3s ease;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span style="width:9px;height:9px;border-radius:50%;background:var(--gold);flex:none;color:var(--gold);animation:arm-pulse 1.6s infinite;"></span>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:600;font-size:13px;color:var(--ink);">Awaiting your approval — <span style="font-family:'IBM Plex Mono',monospace;">{{ approvalArtifact }}</span></div>
+                  <div style="font-size:12px;color:var(--ink-soft);margin-top:1px;">{{ approvalNote }}</div>
+                </div>
+              </div>
+              <div style="margin:11px 0;border-radius:6px;overflow:hidden;border:1px solid var(--line);font-family:'IBM Plex Mono',monospace;font-size:11.5px;">
+                <sc-for list="{{ diffLines }}" as="dl" hint-placeholder-count="4">
+                  <div style="padding:2px 10px;background:{{ dl.bg }};color:{{ dl.fg }};white-space:pre;">{{ dl.t }}</div>
+                </sc-for>
+              </div>
+              <div style="display:flex;gap:9px;">
+                <button onClick="{{ approve }}" style="background:var(--gold);color:var(--elevated);border:none;border-radius:7px;padding:9px 15px;font-weight:600;font-size:13px;cursor:pointer;">Approve &amp; publish</button>
+                <button onClick="{{ requestChanges }}" style="background:var(--elevated);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:9px 15px;font-weight:500;font-size:13px;cursor:pointer;">Request changes</button>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ published }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:none;margin:14px 18px 0;border:1px solid var(--st-done);border-radius:9px;background:var(--surface);padding:12px 16px;display:flex;align-items:center;gap:10px;animation:arm-rise .3s ease;">
+              <span style="width:18px;height:18px;border-radius:50%;background:var(--st-done);color:var(--elevated);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none;">✓</span>
+              <div style="font-size:13px;color:var(--ink);"><strong>settings-dark.patch</strong> published to the shared store · task marked done</div>
+            </div>
+          </sc-if>
+
+          <div style="flex:1;min-height:0;overflow:auto;padding:18px 22px;display:flex;flex-direction:column;gap:14px;">
+            <sc-for list="{{ messages }}" as="m" hint-placeholder-count="6">
+              <sc-if value="{{ m.isSystem }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:10px;color:var(--ink-faint);font-size:11.5px;">
+                  <span style="flex:1;height:1px;background:var(--line-soft);"></span>
+                  <span style="white-space:nowrap;font-style:italic;font-family:'Spectral',serif;">{{ m.text }}</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;">{{ m.ts }}</span>
+                  <span style="flex:1;height:1px;background:var(--line-soft);"></span>
+                </div>
+              </sc-if>
+              <sc-if value="{{ m.isPerson }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;gap:12px;align-items:flex-start;animation:arm-rise .25s ease;">
+                  <span style="width:32px;height:32px;flex:none;border-radius:50%;background:{{ m.avatarColor }};color:var(--elevated);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;margin-top:1px;">{{ m.initial }}</span>
+                  <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
+                      <span style="font-weight:600;font-size:13px;color:var(--ink);">{{ m.author }}</span>
+                      <span style="font-size:10px;padding:1px 7px;border-radius:9px;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-soft);">{{ m.roleLabel }}</span>
+                      <sc-if value="{{ m.isA2A }}" hint-placeholder-val="{{ false }}">
+                        <span style="font-size:11px;color:var(--blue);font-weight:500;font-family:'IBM Plex Mono',monospace;">{{ m.targetLabel }}</span>
+                      </sc-if>
+                      <span style="margin-left:auto;font-size:10px;color:var(--ink-faint);font-family:'IBM Plex Mono',monospace;">{{ m.ts }}</span>
+                    </div>
+                    <div style="background:var(--surface);border:1px solid var(--line);border-radius:9px;border-top-left-radius:3px;padding:11px 13px;font-size:13.5px;color:var(--ink);line-height:1.55;">{{ m.text }}</div>
+                    <sc-if value="{{ m.hasMention }}" hint-placeholder-val="{{ false }}">
+                      <div style="margin-top:5px;display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--gold);font-weight:600;">
+                        <span style="display:inline-flex;padding:1px 8px;border-radius:9px;background:var(--gold-bg);border:1px solid var(--gold-soft);">{{ m.mentionLabel }}</span> woken
+                      </div>
+                    </sc-if>
+                  </div>
+                </div>
+              </sc-if>
+            </sc-for>
+          </div>
+
+          <div style="flex:none;border-top:1px solid var(--line);background:var(--surface);padding:14px 18px;">
+            <div style="border:1px solid var(--line);border-radius:10px;background:var(--elevated);padding:10px 12px;">
+              <textarea value="{{ composer }}" onInput="{{ setComposer }}" onKeyDown="{{ composerKey }}" placeholder="Reply, or @mention an agent to wake it…  (⌘↵ to send)" rows="2" style="width:100%;border:none;background:transparent;resize:none;color:var(--ink);font-size:13.5px;line-height:1.5;"></textarea>
+              <div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
+                <span style="font-size:11px;color:var(--ink-faint);">Type <span style="font-family:'IBM Plex Mono',monospace;color:var(--gold);">@Bob</span> to wake a participant</span>
+                <button onClick="{{ send }}" style="margin-left:auto;background:var(--ink);color:var(--paper);border:none;border-radius:7px;padding:8px 16px;font-weight:600;font-size:13px;cursor:pointer;">Send</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- RIGHT · live run trace -->
+        <aside style="width:396px;flex:none;border-left:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;">
+          <div style="flex:none;padding:14px 16px 0;">
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;">
+              <span style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);">Live run trace</span>
+              <span style="font-family:'Spectral',serif;font-style:italic;font-size:12px;color:var(--ink-faint);">— you trace</span>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <sc-for list="{{ sessionTabs }}" as="tab" hint-placeholder-count="2">
+                <button onClick="{{ tab.onClick }}" style="display:flex;align-items:center;gap:7px;padding:7px 11px;border-radius:7px 7px 0 0;border:1px solid var(--line);border-bottom:none;background:{{ tab.tabBg }};color:{{ tab.tabFg }};cursor:pointer;font-size:12.5px;font-weight:500;" data-session="{{ tab.id }}">
+                  <span style="width:18px;height:18px;border-radius:50%;background:{{ tab.color }};color:var(--elevated);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;">{{ tab.initial }}</span>
+                  {{ tab.name }}
+                  <sc-if value="{{ tab.live }}" hint-placeholder-val="{{ true }}">
+                    <span style="width:6px;height:6px;border-radius:50%;background:var(--gold);color:var(--gold);animation:arm-pulse 1.5s infinite;"></span>
+                  </sc-if>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="flex:none;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--surface-2);padding:11px 16px;">
+            <div style="display:flex;align-items:center;gap:9px;">
+              <span style="font-weight:600;font-size:13px;color:var(--ink);">{{ runAgentName }}</span>
+              <sc-if value="{{ isLiveSession }}" hint-placeholder-val="{{ true }}">
+                <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--gold);"><span style="width:7px;height:7px;border-radius:50%;background:var(--gold);color:var(--gold);animation:arm-pulse 1.4s infinite;"></span>live</span>
+              </sc-if>
+              <sc-if value="{{ showCompleted }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:11px;font-weight:600;color:var(--ink-faint);">completed</span>
+              </sc-if>
+              <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-soft);">{{ runModel }}</span>
+            </div>
+            <div style="display:flex;gap:16px;margin-top:7px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-faint);">
+              <span>{{ runSid }}</span>
+              <span style="margin-left:auto;">⌬ {{ tokensLabel }} tok</span>
+              <span>◷ {{ elapsedLabel }}</span>
+            </div>
+          </div>
+
+          <div style="flex:1;min-height:0;overflow:auto;padding:16px;">
+            <sc-for list="{{ traceEvents }}" as="ev" hint-placeholder-count="5">
+              <div style="display:flex;gap:11px;">
+                <div style="display:flex;flex-direction:column;align-items:center;flex:none;">
+                  <span style="width:11px;height:11px;border-radius:50%;background:{{ ev.accent }};margin-top:3px;"></span>
+                  <span style="flex:1;width:2px;background:var(--line-soft);margin:3px 0;"></span>
+                </div>
+                <div style="flex:1;min-width:0;padding-bottom:16px;">
+                  <sc-if value="{{ ev.isMarker }}" hint-placeholder-val="{{ false }}">
+                    <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;color:{{ ev.accent }};">{{ ev.kindLabel }}</div>
+                    <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-faint);margin-top:2px;">{{ ev.meta }}</div>
+                  </sc-if>
+                  <sc-if value="{{ ev.isText }}" hint-placeholder-val="{{ true }}">
+                    <div style="font-size:13px;color:var(--ink);line-height:1.55;">{{ ev.body }}</div>
+                  </sc-if>
+                  <sc-if value="{{ ev.isTool }}" hint-placeholder-val="{{ false }}">
+                    <details>
+                      <summary style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink);font-weight:500;">{{ ev.toolHead }}</span>
+                        <span style="font-size:10px;padding:1px 7px;border-radius:9px;background:var(--surface-2);border:1px solid var(--line);color:{{ ev.accent }};font-weight:600;">{{ ev.okLabel }}</span>
+                        <span style="margin-left:auto;color:var(--ink-faint);font-size:10px;">▾</span>
+                      </summary>
+                      <pre style="margin:7px 0 0;padding:9px 11px;background:var(--paper-2);border:1px solid var(--line);border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-soft);white-space:pre-wrap;overflow-x:auto;">{{ ev.payload }}</pre>
+                      <div style="margin-top:5px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:{{ ev.accent }};">→ {{ ev.result }}</div>
+                    </details>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-for>
+            <sc-if value="{{ showStream }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;gap:11px;">
+                <div style="display:flex;flex-direction:column;align-items:center;flex:none;">
+                  <span style="width:11px;height:11px;border-radius:50%;background:var(--blue);color:var(--blue);margin-top:3px;animation:arm-pulse 1.3s infinite;"></span>
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--blue);margin-bottom:3px;">assistant.delta · streaming</div>
+                  <div style="font-size:13px;color:var(--ink);line-height:1.55;">{{ streamText }}<span style="display:inline-block;width:7px;height:14px;background:var(--gold);vertical-align:text-bottom;margin-left:2px;animation:arm-blink 1s steps(1) infinite;"></span></div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </aside>
+
+      </div>
+      </sc-if>
+
+      <!-- ===== A · PROJECT BOARD ===== -->
+      <sc-if value="{{ isBoard }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Project Board" style="display:flex;height:100%;">
+        <div style="flex:1;min-width:0;overflow:auto;padding:20px;">
+          <div style="display:flex;gap:14px;align-items:stretch;min-width:max-content;height:100%;">
+            <sc-for list="{{ columns }}" as="col" hint-placeholder-count="6">
+              <div style="width:266px;flex:none;display:flex;flex-direction:column;min-height:0;">
+                <div style="display:flex;align-items:center;gap:8px;padding:4px 6px 10px;">
+                  <span style="width:8px;height:8px;border-radius:2px;background:{{ col.color }};flex:none;"></span>
+                  <span style="font-weight:600;font-size:13px;color:var(--ink);">{{ col.label }}</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-faint);background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:0 7px;">{{ col.count }}</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:10px;overflow:auto;padding:2px 4px 8px;flex:1;min-height:0;">
+                  <sc-for list="{{ col.cards }}" as="c" hint-placeholder-count="2">
+                    <button onClick="{{ c.open }}" style="text-align:left;width:100%;display:block;background:var(--surface);border:1px solid var(--line);border-left:3px solid {{ c.statusColor }};border-radius:9px;padding:12px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.04);">
+                      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-faint);">{{ c.idLabel }}</span>
+                        <sc-if value="{{ c.live }}" hint-placeholder-val="{{ false }}">
+                          <span style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;color:var(--gold);"><span style="width:6px;height:6px;border-radius:50%;background:var(--gold);color:var(--gold);animation:arm-pulse 1.4s infinite;"></span>working now</span>
+                        </sc-if>
+                      </div>
+                      <div style="font-size:13.5px;font-weight:500;color:var(--ink);line-height:1.4;margin-bottom:9px;">{{ c.title }}</div>
+                      <sc-if value="{{ c.isBlocked }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--st-blocked);background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:5px 8px;margin-bottom:9px;"><span style="width:5px;height:5px;border-radius:50%;background:var(--st-blocked);flex:none;"></span>{{ c.blocked }}</div>
+                      </sc-if>
+                      <div style="display:flex;align-items:center;gap:10px;">
+                        <div style="display:flex;">
+                          <sc-for list="{{ c.avatars }}" as="av" hint-placeholder-count="2">
+                            <span style="position:relative;width:22px;height:22px;border-radius:50%;background:{{ av.color }};color:var(--elevated);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;border:2px solid var(--surface);margin-right:-6px;">{{ av.initial }}
+                              <span style="position:absolute;right:-2px;bottom:-2px;width:7px;height:7px;border-radius:50%;background:{{ av.liveColor }};border:1.5px solid var(--surface);"></span>
+                            </span>
+                          </sc-for>
+                        </div>
+                        <span style="flex:1;"></span>
+                        <sc-if value="{{ c.hasComments }}" hint-placeholder-val="{{ false }}">
+                          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--ink-faint);font-family:'IBM Plex Mono',monospace;">❝ {{ c.commentsLabel }}</span>
+                        </sc-if>
+                        <sc-if value="{{ c.hasArtifacts }}" hint-placeholder-val="{{ false }}">
+                          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--ink-faint);font-family:'IBM Plex Mono',monospace;">◈ {{ c.artifactsLabel }}</span>
+                        </sc-if>
+                      </div>
+                    </button>
+                  </sc-for>
+                  <sc-if value="{{ col.empty }}" hint-placeholder-val="{{ false }}">
+                    <div style="border:1px dashed var(--line);border-radius:9px;padding:14px;text-align:center;font-size:11.5px;color:var(--ink-faint);">No tasks</div>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <aside style="width:272px;flex:none;border-left:1px solid var(--line);background:var(--surface);overflow:auto;padding:18px;">
+          <div style="font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:12px;">Agents in this project</div>
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            <sc-for list="{{ rail }}" as="r" hint-placeholder-count="4">
+              <div style="display:flex;align-items:flex-start;gap:11px;">
+                <span style="position:relative;width:32px;height:32px;flex:none;border-radius:50%;background:{{ r.color }};color:var(--elevated);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;">{{ r.initial }}
+                  <span style="position:absolute;right:-1px;bottom:-1px;width:10px;height:10px;border-radius:50%;background:{{ r.liveColor }};border:2px solid var(--surface);"></span>
+                </span>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:13px;font-weight:500;color:var(--ink);">{{ r.name }}</div>
+                  <div style="font-size:11px;color:var(--ink-faint);">{{ r.role }} · {{ r.liveLabel }}</div>
+                  <div style="font-size:11px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;margin-top:2px;">{{ r.task }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <button onClick="{{ goDirectory }}" style="margin-top:18px;width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:9px;font-size:12.5px;font-weight:500;color:var(--ink-soft);cursor:pointer;">View full directory →</button>
+        </aside>
+      </div>
+      </sc-if>
+
+      <!-- ===== C · AGENT DIRECTORY / ROSTER ===== -->
+      <sc-if value="{{ isDirectory }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Agent Directory" style="height:100%;overflow:auto;">
+        <div style="display:flex;gap:26px;align-items:flex-start;padding:24px;max-width:1240px;">
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:16px;">
+              <h2 style="font-family:'Spectral',serif;font-weight:600;font-size:19px;margin:0;color:var(--ink);">Marius agents</h2>
+              <span style="font-size:12px;color:var(--ink-faint);">4 invited to this project</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:14px;">
+              <sc-for list="{{ agentCards }}" as="a" hint-placeholder-count="4">
+                <div style="border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:16px;">
+                  <div style="display:flex;align-items:center;gap:12px;margin-bottom:13px;">
+                    <span style="position:relative;width:42px;height:42px;flex:none;border-radius:50%;background:{{ a.color }};color:var(--elevated);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:17px;font-family:'Spectral',serif;">{{ a.initial }}
+                      <span style="position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;background:{{ a.liveColor }};border:2.5px solid var(--surface);"></span>
+                    </span>
+                    <div style="flex:1;min-width:0;">
+                      <div style="font-weight:600;font-size:15px;color:var(--ink);">{{ a.name }}</div>
+                      <div style="font-size:12px;color:var(--ink-soft);">{{ a.role }}</div>
+                    </div>
+                    <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--ink-soft);"><span style="width:7px;height:7px;border-radius:50%;background:{{ a.liveColor }};"></span>{{ a.liveLabel }}</span>
+                  </div>
+                  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
+                    <sc-for list="{{ a.skills }}" as="sk" hint-placeholder-count="3">
+                      <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:3px 9px;"><span style="color:var(--st-done);font-weight:700;">✓</span>{{ sk.name }}</span>
+                    </sc-for>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:14px;border-top:1px solid var(--line-soft);padding-top:10px;font-size:11.5px;color:var(--ink-faint);">
+                    <span>Owner <span style="color:var(--ink-soft);font-weight:500;">{{ a.owner }}</span></span>
+                    <span style="font-family:'IBM Plex Mono',monospace;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:1px 7px;color:var(--ink-soft);">{{ a.adapter }}</span>
+                    <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);">{{ a.task }}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <aside style="width:344px;flex:none;">
+            <div style="border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:18px;margin-bottom:16px;">
+              <div style="font-family:'Spectral',serif;font-weight:600;font-size:16px;color:var(--ink);margin-bottom:3px;">Project roster</div>
+              <div style="font-size:12px;color:var(--ink-faint);margin-bottom:15px;">Required roles · agents must qualify for a seat</div>
+              <div style="display:flex;flex-direction:column;gap:12px;">
+                <sc-for list="{{ roster }}" as="r" hint-placeholder-count="4">
+                  <div style="display:flex;align-items:center;gap:11px;">
+                    <div style="flex:1;font-size:13px;font-weight:500;color:var(--ink);">{{ r.role }}</div>
+                    <div style="display:flex;gap:6px;">
+                      <sc-for list="{{ r.seats }}" as="s" hint-placeholder-count="1">
+                        <sc-if value="{{ s.filled }}" hint-placeholder-val="{{ true }}">
+                          <span style="position:relative;width:28px;height:28px;border-radius:50%;background:{{ s.color }};color:var(--elevated);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;" title="{{ s.name }}">{{ s.initial }}</span>
+                        </sc-if>
+                        <sc-if value="{{ s.open }}" hint-placeholder-val="{{ false }}">
+                          <span style="width:28px;height:28px;border-radius:50%;border:1.5px dashed var(--line);display:flex;align-items:center;justify-content:center;color:var(--ink-faint);font-size:14px;">+</span>
+                        </sc-if>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="border:1px solid var(--gold);border-radius:12px;background:var(--gold-bg);padding:18px;">
+              <div style="font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--gold);font-weight:600;margin-bottom:10px;">Applicant · vetting</div>
+              <div style="display:flex;align-items:center;gap:11px;margin-bottom:13px;">
+                <span style="width:36px;height:36px;flex:none;border-radius:50%;background:{{ applicant.color }};color:var(--elevated);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:15px;font-family:'Spectral',serif;">{{ applicant.initial }}</span>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:600;font-size:14px;color:var(--ink);">{{ applicant.name }}</div>
+                  <div style="font-size:11.5px;color:var(--ink-soft);">applying for <strong>{{ applicant.role }}</strong> · <span style="font-family:'IBM Plex Mono',monospace;">{{ applicant.adapter }}</span></div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:14px;">
+                <sc-for list="{{ applicant.skills }}" as="sk" hint-placeholder-count="4">
+                  <div style="display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--ink);">
+                    <sc-if value="{{ sk.ok }}" hint-placeholder-val="{{ true }}">
+                      <span style="width:17px;height:17px;border-radius:5px;background:var(--st-done);color:var(--elevated);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none;">✓</span>
+                    </sc-if>
+                    <sc-if value="{{ sk.bad }}" hint-placeholder-val="{{ false }}">
+                      <span style="width:17px;height:17px;border-radius:5px;background:var(--st-blocked);color:var(--elevated);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none;">✕</span>
+                    </sc-if>
+                    {{ sk.name }}
+                  </div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ applicant.notVetted }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ vetApplicant }}" style="width:100%;background:var(--gold);color:var(--elevated);border:none;border-radius:7px;padding:10px;font-weight:600;font-size:13px;cursor:pointer;">Vet &amp; grant Backend seat</button>
+                <div style="font-size:11px;color:var(--ink-soft);margin-top:8px;text-align:center;">1 skill unverified — granting overrides with patron sign-off</div>
+              </sc-if>
+              <sc-if value="{{ applicant.vetted }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--st-done);border-radius:8px;padding:11px;">
+                  <span style="width:20px;height:20px;border-radius:50%;background:var(--st-done);color:var(--elevated);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none;">✓</span>
+                  <span style="font-size:12.5px;color:var(--ink);font-weight:500;">Seat granted — Quill joined as Backend</span>
+                </div>
+              </sc-if>
+            </div>
+          </aside>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== D · PATRON INBOX / APPROVALS ===== -->
+      <sc-if value="{{ isInbox }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Patron Inbox" style="height:100%;overflow:auto;padding:28px 24px;">
+        <div style="max-width:760px;margin:0 auto;">
+          <div style="display:flex;align-items:baseline;gap:11px;margin-bottom:6px;">
+            <h2 style="font-family:'Spectral',serif;font-weight:600;font-size:21px;margin:0;color:var(--ink);">Needs your decision</h2>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--gold);font-weight:600;">{{ inboxCountLabel }}</span>
+          </div>
+          <p style="margin:0 0 22px;font-size:13px;color:var(--ink-soft);">Only items that gate through you, the patron — finished artifacts, blocked agents, and sensitive actions.</p>
+
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            <sc-for list="{{ inboxItems }}" as="i" hint-placeholder-count="3">
+              <div style="border:1px solid var(--line);border-left:3px solid {{ i.accent }};border-radius:11px;background:var(--surface);padding:18px;animation:arm-rise .25s ease;">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:11px;">
+                  <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:{{ i.accent }};">{{ i.kind }}</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-faint);">{{ i.task }}</span>
+                </div>
+                <div style="font-family:'Spectral',serif;font-weight:600;font-size:16px;color:var(--ink);margin-bottom:11px;line-height:1.3;">{{ i.title }}</div>
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:13px;">
+                  <span style="width:26px;height:26px;flex:none;border-radius:50%;background:{{ i.agentColor }};color:var(--elevated);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:11px;">{{ i.agentInitial }}</span>
+                  <span style="font-size:12.5px;color:var(--ink-soft);"><strong style="color:var(--ink);">{{ i.agentName }}</strong> · {{ i.agentRole }}</span>
+                </div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);background:var(--paper-2);border:1px solid var(--line);border-radius:7px;padding:9px 12px;margin-bottom:13px;">{{ i.preview }}</div>
+                <div style="display:flex;align-items:center;gap:9px;">
+                  <span style="font-size:11.5px;color:var(--ink-faint);font-style:italic;font-family:'Spectral',serif;flex:1;">{{ i.note }}</span>
+                  <button onClick="{{ i.comment }}" style="background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:8px 13px;font-size:12.5px;font-weight:500;color:var(--ink-soft);cursor:pointer;">Comment</button>
+                  <button onClick="{{ i.reject }}" style="background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:8px 13px;font-size:12.5px;font-weight:500;color:var(--st-blocked);cursor:pointer;">Reject</button>
+                  <button onClick="{{ i.approve }}" style="background:var(--gold);color:var(--elevated);border:none;border-radius:7px;padding:8px 15px;font-size:12.5px;font-weight:600;cursor:pointer;">Approve</button>
+                </div>
+              </div>
+            </sc-for>
+            <sc-if value="{{ inboxEmpty }}" hint-placeholder-val="{{ false }}">
+              <div style="text-align:center;padding:54px 20px;border:1px dashed var(--line);border-radius:12px;">
+                <div style="width:44px;height:44px;margin:0 auto 14px;border-radius:50%;background:var(--st-done);color:var(--elevated);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;">✓</div>
+                <div style="font-family:'Spectral',serif;font-size:18px;font-weight:600;color:var(--ink);">Inbox zero</div>
+                <div style="font-size:13px;color:var(--ink-soft);margin-top:4px;">Nothing is waiting on you. The agents are working.</div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== E · INVITE / ONBOARDING ===== -->
+      <sc-if value="{{ isInvite }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Invite an agent" style="height:100%;overflow:auto;padding:28px 24px;">
+        <div style="max-width:680px;margin:0 auto;">
+          <h2 style="font-family:'Spectral',serif;font-weight:600;font-size:21px;margin:0 0 6px;color:var(--ink);">Invite an agent to the scriptorium</h2>
+          <p style="margin:0 0 24px;font-size:13px;color:var(--ink-soft);">Provision an external agent: pick its adapter and the seat it should apply for, then hand it the generated invitation. It installs the Armarius skill, saves a token, and joins.</p>
+
+          <div style="display:flex;gap:14px;margin-bottom:18px;">
+            <div style="flex:1;">
+              <label style="font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);display:block;margin-bottom:7px;">Adapter type</label>
+              <select onChange="{{ setAdapter }}" value="{{ inviteAdapter }}" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--elevated);color:var(--ink);font-size:13px;font-weight:500;cursor:pointer;font-family:'IBM Plex Mono',monospace;">
+                <option value="hermes_gateway">hermes_gateway</option>
+                <option value="openclaw_gateway">openclaw_gateway</option>
+              </select>
+            </div>
+            <div style="flex:1;">
+              <label style="font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);display:block;margin-bottom:7px;">Role / seat</label>
+              <select onChange="{{ setRole }}" value="{{ inviteRole }}" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--elevated);color:var(--ink);font-size:13px;font-weight:500;cursor:pointer;">
+                <option value="Frontend">Frontend</option>
+                <option value="Design">Design</option>
+                <option value="Reviewer · security">Reviewer · security</option>
+                <option value="Backend">Backend</option>
+              </select>
+            </div>
+          </div>
+
+          <label style="font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);display:block;margin-bottom:7px;">Generated invitation</label>
+          <div style="position:relative;border:1px solid var(--line);border-radius:10px;background:var(--paper-2);overflow:hidden;margin-bottom:18px;">
+            <div style="display:flex;align-items:center;gap:7px;padding:9px 13px;border-bottom:1px solid var(--line);background:var(--surface-2);">
+              <span style="width:9px;height:9px;border-radius:50%;background:var(--gold);"></span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-faint);">invitation.prompt</span>
+              <button onClick="{{ copyPrompt }}" style="margin-left:auto;background:var(--ink);color:var(--paper);border:none;border-radius:6px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer;">Copy</button>
+            </div>
+            <pre style="margin:0;padding:15px;font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.7;color:var(--ink);white-space:pre-wrap;">{{ invitePromptText }}</pre>
+          </div>
+
+          <sc-if value="{{ inviteIdle }}" hint-placeholder-val="{{ true }}">
+            <button onClick="{{ sendInvite }}" style="width:100%;background:var(--gold);color:var(--elevated);border:none;border-radius:8px;padding:12px;font-weight:600;font-size:14px;cursor:pointer;">Send invitation</button>
+          </sc-if>
+          <sc-if value="{{ inviteWaiting }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:14px 16px;">
+              <span style="width:11px;height:11px;border-radius:50%;background:var(--gold);color:var(--gold);animation:arm-pulse 1.3s infinite;flex:none;"></span>
+              <span style="font-size:13px;color:var(--ink);font-weight:500;">Waiting for the agent to join…</span>
+              <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-faint);">token ARM-7K2Q-H4VN-9F4D</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ inviteJoined }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:12px;border:1px solid var(--st-done);border-radius:10px;background:var(--surface);padding:14px 16px;animation:arm-rise .3s ease;">
+              <span style="width:36px;height:36px;flex:none;border-radius:50%;background:#7a5e9e;color:var(--elevated);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:15px;font-family:'Spectral',serif;">Q</span>
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;font-size:14px;color:var(--ink);">Quill joined ✓</div>
+                <div style="font-size:12px;color:var(--ink-soft);">Applied for the {{ inviteRole }} seat · awaiting vetting in the roster</div>
+              </div>
+              <button onClick="{{ goDirectory }}" style="background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:8px 13px;font-size:12.5px;font-weight:500;color:var(--ink);cursor:pointer;">Review applicant →</button>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+      </sc-if>
+
+      <!--screens-end--></div>
+  </div>
+
+  <!-- TOAST -->
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:11px 20px;border-radius:9px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.28);animation:arm-toast .28s ease;z-index:100;display:flex;align-items:center;gap:9px;">
+      <span style="width:7px;height:7px;border-radius:50%;background:var(--gold);"></span>{{ toast }}
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  constructor(props){
+    super(props);
+    this.state = {
+      screen:'room', theme:'light', activeSession:'alice', composer:'',
+      toast:null, t42:'in_progress', published:false, cleoJoined:false,
+      streamText:'', tokens:1284, elapsed:47,
+      inviteAdapter:'hermes_gateway', inviteRole:'Backend', inviteWaiting:false, inviteJoined:false,
+      applicantVetted:false, resolved:[],
+      thread:[
+        {kind:'system', text:'Task #42 commissioned by You — Alice assigned, Bob on standby', ts:'09:02'},
+        {kind:'human', author:'You', text:"Alice — implement dark mode for the Settings page. Match Bob's token spec. Persisted theme choice is tracked separately in #44.", ts:'09:03'},
+        {kind:'agent', agentId:'alice', text:"On it. I'll scaffold a theme context and convert the Settings surfaces first. I need the canonical dark values before I touch colors — @Bob can you publish the dark token set?", mentions:['Bob'], ts:'09:05'},
+        {kind:'system', text:'Bob was woken by @mention', ts:'09:05'},
+        {kind:'agent', agentId:'bob', target:'Alice', text:'Published. Surface / elevated / border / ink mapped 1:1 from the light ramp; gold accent shifts +12% lightness in dark. See the theme-tokens.json artifact.', ts:'09:11'},
+        {kind:'agent', agentId:'alice', text:'Got them. Converting the hard-coded greys to semantic tokens and adding the [data-theme] switch now.', ts:'09:13'},
+        {kind:'system', text:'Artifact published — settings-dark.patch', ts:'09:24', artifact:true},
+        {kind:'agent', agentId:'alice', text:'Patch is up. Self-review passed; body contrast ≥ 4.5:1. Ready for security review whenever you want to move it.', ts:'09:25'}
+      ]
+    };
+    this.agents = {
+      alice:{id:'alice', name:'Alice', role:'Frontend', adapter:'hermes_gateway', liveness:'working', color:'#a9772a', owner:'You', skills:['React','TypeScript','CSS architecture'], task:'#42 Dark mode'},
+      bob:{id:'bob', name:'Bob', role:'Design', adapter:'hermes_gateway', liveness:'idle', color:'#3f5f7e', owner:'You', skills:['Design systems','Design tokens','Figma'], task:'#45 Contrast audit'},
+      cleo:{id:'cleo', name:'Cleo', role:'Reviewer · security', adapter:'openclaw_gateway', liveness:'online', color:'#5e7a4f', owner:'M. Reyes', skills:['Security review','AuthN / AuthZ','Secret scanning'], task:'#43 Token audit'},
+      dex:{id:'dex', name:'Dex', role:'Backend', adapter:'hermes_gateway', liveness:'offline', color:'#8a7d6a', owner:'You', skills:['Node','Postgres','API design'], task:'—'}
+    };
+    this.statusMeta = {
+      backlog:{label:'Backlog', color:'var(--st-backlog)'},
+      todo:{label:'To do', color:'var(--st-todo)'},
+      in_progress:{label:'In progress', color:'var(--st-inprogress)'},
+      in_review:{label:'In review', color:'var(--st-inreview)'},
+      blocked:{label:'Blocked', color:'var(--st-blocked)'},
+      done:{label:'Done', color:'var(--st-done)'},
+      cancelled:{label:'Cancelled', color:'var(--st-cancelled)'}
+    };
+    this.liveMeta = {
+      online:{label:'Online', color:'var(--live-online)', pulse:false},
+      working:{label:'Working', color:'var(--live-working)', pulse:true},
+      idle:{label:'Idle', color:'var(--live-idle)', pulse:false},
+      offline:{label:'Offline', color:'var(--live-offline)', pulse:false},
+      hung:{label:'Hung', color:'var(--live-hung)', pulse:true}
+    };
+    this.sessions = {
+      alice:{ agent:'alice', model:'marius-frontend-v2', sid:'a1f3e9', live:true, events:[
+        {type:'marker', kindLabel:'run.started', meta:'session a1f3e9 · model marius-frontend-v2'},
+        {type:'text', body:'Scanning Settings.tsx for hard-coded color literals before introducing semantic tokens.'},
+        {type:'tool', tool:'read_file', payload:'{\n  "path": "src/pages/Settings.tsx"\n}', result:'418 lines · 23 color literals found', ok:true},
+        {type:'tool', tool:'edit_file', payload:'{\n  "path": "src/theme/tokens.css",\n  "ops": 14\n}', result:'+62  −18', ok:true},
+        {type:'text', body:'Tokens wired into every Settings surface. Publishing the patch to the shared store.'},
+        {type:'tool', tool:'publish_artifact', payload:'{\n  "name": "settings-dark.patch",\n  "store": "acme/settings-redesign"\n}', result:'artifact://acme/settings-redesign/settings-dark.patch', ok:true}
+      ]},
+      bob:{ agent:'bob', model:'marius-design-v1', sid:'b7c2', live:false, events:[
+        {type:'marker', kindLabel:'run.started', meta:'session b7c2 · model marius-design-v1'},
+        {type:'text', body:'Mapping the light ramp to a dark token set. Surface / elevated / border / ink mapped 1:1; gold accent +12% lightness.'},
+        {type:'tool', tool:'edit_file', payload:'{\n  "path": "src/theme/tokens.dark.json"\n}', result:'+48  −0', ok:true},
+        {type:'tool', tool:'publish_artifact', payload:'{\n  "name": "theme-tokens.json"\n}', result:'artifact://acme/settings-redesign/theme-tokens.json', ok:true},
+        {type:'marker', kindLabel:'run.completed', meta:'4 events · 1.9k tokens · 38s'}
+      ]},
+      cleo:{ agent:'cleo', model:'marius-secrev-v3', sid:'c4d8', live:true, events:[
+        {type:'marker', kindLabel:'run.started', meta:'session c4d8 · model marius-secrev-v3'},
+        {type:'text', body:'Reviewing settings-dark.patch for unsafe color injection and token leakage.'},
+        {type:'tool', tool:'read_file', payload:'{\n  "path": "settings-dark.patch"\n}', result:'62 additions reviewed', ok:true},
+        {type:'tool', tool:'scan_secrets', payload:'{\n  "scope": "patch"\n}', result:'0 secrets · 0 tokens leaked', ok:true},
+        {type:'text', body:'No security findings. Contrast and token usage conform. Recommending approval.'}
+      ]}
+    };
+    this._target = 'Verifying contrast ratios across body, label and disabled states — body 7.2:1, secondary 4.8:1, all pass WCAG AA.';
+  }
+  componentDidMount(){
+    try{ document.documentElement.setAttribute('data-theme', this.state.theme); }catch(e){}
+    this._char = setInterval(()=>{
+      if(this.state.activeSession!=='alice') return;
+      this.setState(s=>{
+        if(s.streamText.length < this._target.length){
+          return { streamText: this._target.slice(0, s.streamText.length+1), tokens: s.tokens+2 };
+        }
+        if(!this._restart){ this._restart = setTimeout(()=>{ this._restart=null; this.setState({streamText:''}); }, 2800); }
+        return null;
+      });
+    }, 40);
+    this._sec = setInterval(()=> this.setState(s=> ({elapsed:s.elapsed+1})), 1000);
+  }
+  componentWillUnmount(){ clearInterval(this._char); clearInterval(this._sec); clearTimeout(this._restart); }
+  applyTheme(t){ try{ document.documentElement.setAttribute('data-theme', t); }catch(e){} }
+  toggleTheme(){ const t = this.state.theme==='light'?'dark':'light'; this.applyTheme(t); this.setState({theme:t}); }
+  nav(screen){ this.setState({screen}); }
+  toast(msg){ this.setState({toast:msg}); clearTimeout(this._toast); this._toast=setTimeout(()=>this.setState({toast:null}), 2800); }
+  selectSession(id){ this.setState({activeSession:id, streamText:''}); }
+  changeStatus(e){
+    const v = e.target.value;
+    if(v==='in_review'){ this.moveToReview(); return; }
+    if(v==='done'){ this.approve(); return; }
+    this.setState({t42:v});
+  }
+  moveToReview(){
+    this.setState(s=>({
+      t42:'in_review', cleoJoined:true, activeSession:'cleo',
+      thread:[...s.thread,
+        {kind:'system', text:'Status changed to In review by You', ts:'09:31'},
+        {kind:'system', text:'Cleo was assigned for security review', ts:'09:31'},
+        {kind:'agent', agentId:'cleo', text:'Picked up the review. Scanning settings-dark.patch for token leakage and contrast regressions.', ts:'09:32'},
+        {kind:'system', text:'settings-dark.patch sent for approval', ts:'09:34', artifact:true}
+      ]
+    }));
+    this.toast('Cleo woken — security review started');
+  }
+  approve(){
+    this.setState(s=>({
+      t42:'done', published:true,
+      thread:[...s.thread, {kind:'system', text:'Approved by You — settings-dark.patch published to the shared store ✓', ts:'09:38', artifact:true}]
+    }));
+    this.toast('Approved · artifact published to shared store');
+  }
+  requestChanges(){
+    this.setState(s=>({
+      t42:'in_progress',
+      thread:[...s.thread, {kind:'system', text:'Changes requested by You — returned to Alice', ts:'09:36'}]
+    }));
+    this.toast('Changes requested — returned to Alice');
+  }
+  setComposer(e){ this.setState({composer:e.target.value}); }
+  composerKey(e){ if(e.key==='Enter' && (e.metaKey||e.ctrlKey)){ e.preventDefault(); this.send(); } }
+  send(){
+    const txt = (this.state.composer||'').trim();
+    if(!txt) return;
+    const m = txt.match(/@(Alice|Bob|Cleo|Dex)/i);
+    const mention = m ? (m[1][0].toUpperCase()+m[1].slice(1).toLowerCase()) : null;
+    const now = new Date();
+    const ts = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+    this.setState(s=>{
+      const next=[...s.thread, {kind:'human', author:'You', text:txt, ts, mentions: mention?[mention]:undefined}];
+      if(mention) next.push({kind:'system', text:mention+' was woken by @mention', ts});
+      return {thread:next, composer:''};
+    });
+    if(mention) this.toast(mention+' will be woken');
+  }
+  inboxAct(id, action){ this.setState(s=>({resolved:[...s.resolved, id]})); if(id==='art42' && action==='approve'){ this.approve(); } else { this.toast(action==='approve'?'Approved':action==='reject'?'Rejected':'Comment sent'); } }
+  setInvite(field,e){ this.setState({[field]: e.target.value}); }
+  copyPrompt(){ try{ navigator.clipboard.writeText(this.invitePrompt()); }catch(e){} this.toast('Invitation prompt copied'); }
+  invitePrompt(){
+    return 'You are joining the Armarius workspace "Acme Web Platform".\n'
+      +'1. Install the Armarius skill:   marius skill add armarius\n'
+      +'2. Connect through the '+this.state.inviteAdapter+' adapter.\n'
+      +'3. Apply for the '+this.state.inviteRole+' seat on project "Settings Redesign".\n'
+      +'4. Save your join token:   ARM-7K2Q-H4VN-9F4D\n\n'
+      +'You task. They collaborate. You trace.';
+  }
+  sendInvite(){ this.setState({inviteWaiting:true, inviteJoined:false}); clearTimeout(this._join); this._join=setTimeout(()=>{ this.setState({inviteWaiting:false, inviteJoined:true}); this.toast('Quill joined ✓'); }, 2800); }
+  vetApplicant(){ this.setState({applicantVetted:true}); this.toast('Quill vetted — Backend seat granted'); }
+
+  fmt(sec){ const m=Math.floor(sec/60), s=sec%60; return m+':'+String(s).padStart(2,'0'); }
+  ag(id){ return this.agents[id]; }
+
+  renderVals(){
+    const S=this.state, A=this.agents, SM=this.statusMeta, LM=this.liveMeta;
+    const isDark = S.theme==='dark';
+    // ---- tasks master ----
+    const tasksRaw=[
+      {id:42, title:'Add dark mode to Settings page', status:S.t42, agents:['alice','bob'], comments:S.thread.filter(m=>m.kind!=='system').length, artifacts:1, live:true},
+      {id:43, title:'Token audit', status:'in_review', agents:['cleo'], comments:3, artifacts:1, live:false},
+      {id:41, title:'Settings IA', status:'done', agents:['bob'], comments:5, artifacts:1, live:false},
+      {id:44, title:'Persist theme choice', status:'blocked', agents:['dex'], comments:2, artifacts:0, live:false, blocked:'Waiting on Dex · API contract'},
+      {id:45, title:'Audit color contrast', status:'todo', agents:['bob'], comments:0, artifacts:0, live:false},
+      {id:48, title:'Migrate legacy prefs', status:'todo', agents:['dex'], comments:1, artifacts:0, live:false},
+      {id:46, title:'Settings search', status:'backlog', agents:[], comments:0, artifacts:0, live:false},
+      {id:47, title:'Keyboard nav pass', status:'backlog', agents:[], comments:0, artifacts:0, live:false}
+    ];
+    const cardOf=(t)=>({
+      id:t.id, idLabel:'#'+t.id, title:t.title,
+      statusLabel:SM[t.status].label, statusColor:SM[t.status].color,
+      comments:t.comments, commentsLabel:String(t.comments), hasComments:t.comments>0,
+      artifacts:t.artifacts, artifactsLabel:String(t.artifacts), hasArtifacts:t.artifacts>0,
+      isBlocked:t.status==='blocked', blocked:t.blocked||'',
+      live:t.live && t.status==='in_progress',
+      avatars:t.agents.map(id=>({initial:A[id].name[0], color:A[id].color, name:A[id].name, liveColor:LM[A[id].liveness].color, pulse:LM[A[id].liveness].pulse})),
+      open:()=> { if(t.id===42){ this.nav('room'); } else { this.toast('#'+t.id+' — open in Collaboration Room'); } }
+    });
+    const colOrder=['backlog','todo','in_progress','in_review','blocked','done'];
+    const columns=colOrder.map(st=>({
+      key:st, label:SM[st].label, color:SM[st].color,
+      cards: tasksRaw.filter(t=>t.status===st).map(cardOf),
+      count: tasksRaw.filter(t=>t.status===st).length,
+      empty: tasksRaw.filter(t=>t.status===st).length===0
+    }));
+
+    // ---- right rail directory mini ----
+    const rail=['alice','bob','cleo','dex'].map(id=>{const a=A[id];return{
+      initial:a.name[0], color:a.color, name:a.name, role:a.role,
+      liveColor:LM[a.liveness].color, pulse:LM[a.liveness].pulse, liveLabel:LM[a.liveness].label, task:a.task
+    };});
+
+    // ---- room ----
+    const t42status=S.t42;
+    const participants=[{initial:'Y', color:'var(--ink)', name:'You', role:'Patron', liveColor:'var(--live-online)', pulse:false, isHuman:true}]
+      .concat(['alice','bob'].concat(S.cleoJoined?['cleo']:[]).map(id=>{const a=A[id];return{
+        initial:a.name[0], color:a.color, name:a.name, role:a.role, liveColor:LM[a.liveness].color, pulse:LM[a.liveness].pulse, isHuman:false
+      };}));
+    const artifacts=[
+      {name:'settings-dark.patch', kind:'patch', isPublished:S.published, publishedLabel:S.published?'published':'in review', accent:'var(--gold)'},
+      {name:'theme-tokens.json', kind:'tokens', isPublished:true, publishedLabel:'published', accent:'var(--blue)'}
+    ];
+    const dodBase=[
+      {label:'Dark token set published', done:true},
+      {label:'Settings surfaces use semantic tokens', done:true},
+      {label:'Body contrast ≥ 4.5:1 verified', done:true},
+      {label:'Security review passed', done:S.t42==='done'},
+      {label:'Merged to shared store', done:S.published}
+    ];
+    const messages=S.thread.map(m=>{
+      const isSystem=m.kind==='system';
+      const isHuman=m.kind==='human';
+      const a=m.agentId?A[m.agentId]:null;
+      return {
+        isSystem, isPerson:!isSystem, isHuman,
+        isArtifact: !!m.artifact,
+        author: isHuman?'You':(a?a.name:''),
+        roleLabel: isHuman?'Patron':(a?a.role:''),
+        initial: isHuman?'Y':(a?a.name[0]:'·'),
+        avatarColor: isHuman?'var(--ink)':(a?a.color:'var(--ink-soft)'),
+        text:m.text, ts:m.ts||'',
+        hasMention: !!(m.mentions&&m.mentions.length), mentionLabel: m.mentions?('@'+m.mentions[0]):'',
+        isA2A: !!m.target, targetLabel: m.target?('→ @'+m.target):''
+      };
+    });
+    // sessions tabs
+    const tabIds=['alice','bob'].concat(S.cleoJoined?['cleo']:[]);
+    const sessionTabs=tabIds.map(id=>{const a=A[id];const se=this.sessions[id];const on=S.activeSession===id;return{
+      id, name:a.name, color:a.color, active:on, live:se.live, initial:a.name[0],
+      onClick:()=>this.selectSession(id),
+      tabBg: on?'var(--surface)':'var(--surface-2)',
+      tabFg: on?'var(--ink)':'var(--ink-soft)'
+    };});
+    const cur=this.sessions[S.activeSession]||this.sessions.alice;
+    const curAgent=A[cur.agent];
+    const isLiveSession=cur.live;
+    const traceEvents=cur.events.map(ev=>({
+      isMarker:ev.type==='marker', isText:ev.type==='text', isTool:ev.type==='tool',
+      kindLabel:ev.kindLabel||'', meta:ev.meta||'',
+      body:ev.body||'', tool:ev.tool||'', payload:ev.payload||'', result:ev.result||'',
+      ok:!!ev.ok, okLabel:ev.ok?'completed':'failed',
+      accent: ev.type==='tool'?(ev.ok?'var(--st-done)':'var(--st-blocked)') : (ev.type==='marker'?'var(--gold)':'var(--blue)'),
+      toolHead:'tool · '+(ev.tool||'')
+    }));
+
+    // ---- inbox ----
+    const allItems=[];
+    if(S.t42==='in_review' && !S.published) allItems.push({id:'art42', kind:'Artifact ready', accent:'var(--gold)', title:'settings-dark.patch ready to publish', agent:A.alice, task:'#42 Add dark mode to Settings page', preview:'+62  −18 · body contrast 7.2:1 · 0 secrets', note:'Cleo recommends approval'});
+    allItems.push({id:'blk44', kind:'Agent blocked', accent:'var(--st-blocked)', title:'#44 blocked — needs API contract', agent:A.dex, task:'#44 Persist theme choice', preview:'Dex is offline · GET /prefs not specified', note:'Needs your input to unblock'});
+    allItems.push({id:'sen43', kind:'Sensitive action', accent:'var(--blue)', title:'Publish token audit to shared store', agent:A.cleo, task:'#43 Token audit', preview:'write → acme/shared-store/audits', note:'Gated: requires patron approval'});
+    const inboxItems=allItems.filter(i=>!S.resolved.includes(i.id)).map(i=>({
+      id:i.id, kind:i.kind, accent:i.accent, title:i.title, task:i.task, preview:i.preview, note:i.note,
+      agentName:i.agent.name, agentInitial:i.agent.name[0], agentColor:i.agent.color, agentRole:i.agent.role,
+      approve:()=>this.inboxAct(i.id,'approve'), reject:()=>this.inboxAct(i.id,'reject'), comment:()=>this.inboxAct(i.id,'comment')
+    }));
+    const inboxCount=inboxItems.length;
+    const inboxEmpty=inboxCount===0;
+
+    // ---- directory ----
+    const agentCards=['alice','bob','cleo','dex'].map(id=>{const a=A[id];return{
+      id, initial:a.name[0], color:a.color, name:a.name, role:a.role, adapter:a.adapter, owner:a.owner,
+      liveColor:LM[a.liveness].color, pulse:LM[a.liveness].pulse, liveLabel:LM[a.liveness].label, task:a.task,
+      skills:a.skills.map(s=>({name:s}))
+    };});
+    const backFilled = S.applicantVetted;
+    const roster=[
+      {role:'Frontend', seats:[{filled:true, who:A.alice}]},
+      {role:'Design', seats:[{filled:true, who:A.bob}]},
+      {role:'Reviewer · security', seats:[{filled:true, who:A.cleo}]},
+      {role:'Backend', seats:[{filled:backFilled, who: backFilled?{name:'Quill', color:'#7a5e9e'}:null}]}
+    ].map(r=>({role:r.role, seats:r.seats.map(s=>({filled:s.filled, open:!s.filled, initial:s.who?s.who.name[0]:'', color:s.who?s.who.color:'var(--line)', name:s.who?s.who.name:'open seat'}))}));
+    const applicant={
+      name:'Quill', role:'Backend', adapter:'openclaw_gateway', color:'#7a5e9e', initial:'Q',
+      vetted:S.applicantVetted, notVetted:!S.applicantVetted,
+      skills:[{name:'Node', ok:true, bad:false},{name:'Postgres', ok:true, bad:false},{name:'API design', ok:true, bad:false},{name:'Security clearance', ok:false, bad:true}]
+    };
+
+    // ---- nav ----
+    const navItems=[
+      {id:'board', label:'Project Board'},
+      {id:'room', label:'Collaboration'},
+      {id:'directory', label:'Agent Directory'},
+      {id:'inbox', label:'Patron Inbox'},
+      {id:'invite', label:'Invite an agent'}
+    ].map(n=>({id:n.id, label:n.label, active:S.screen===n.id, count: n.id==='inbox'?inboxCount:0, hasCount: n.id==='inbox'&&inboxCount>0,
+      onClick:()=>this.nav(n.id),
+      barColor: S.screen===n.id?'var(--gold)':'transparent',
+      bg: S.screen===n.id?'var(--surface-2)':'transparent',
+      fg: S.screen===n.id?'var(--ink)':'var(--ink-soft)'}));
+    const screenTitleMap={board:'Project Board', room:'Collaboration Room', directory:'Agent Directory & Roster', inbox:'Patron Inbox', invite:'Invite an agent'};
+
+    return {
+      isDark, themeLabel:isDark?'Dark':'Light', themeDot:isDark?'var(--gold)':'var(--ink)',
+      toggleTheme:()=>this.toggleTheme(),
+      nav:(s)=>this.nav(s), navItems,
+      isBoard:S.screen==='board', isRoom:S.screen==='room', isDirectory:S.screen==='directory', isInbox:S.screen==='inbox', isInvite:S.screen==='invite',
+      workspaceName:'Acme Web Platform', projectName:'Settings Redesign', screenTitle:screenTitleMap[S.screen],
+      inboxCount, inboxCountLabel:String(inboxCount), hasInbox:inboxCount>0,
+      goInbox:()=>this.nav('inbox'), goDirectory:()=>this.nav('directory'), commission:()=>this.toast('Commission a task — opens the brief composer'),
+      toast:S.toast,
+      // board
+      columns, rail,
+      // room
+      taskIdLabel:'#42', taskTitle:'Add dark mode to Settings page',
+      taskStatusLabel:SM[t42status].label, taskStatusColor:SM[t42status].color, taskStatusValue:t42status,
+      changeStatus:(e)=>this.changeStatus(e),
+      taskBrief:'Implement a full dark theme for the Settings page using semantic tokens. Match the published token spec, keep contrast at WCAG AA, and publish the patch to the shared store for security review.',
+      participants, artifacts, dod:dodBase, messages,
+      composer:S.composer, setComposer:(e)=>this.setComposer(e), composerKey:(e)=>this.composerKey(e), send:()=>this.send(),
+      showApproval: S.t42==='in_review', published:S.published,
+      approve:()=>this.approve(), requestChanges:()=>this.requestChanges(),
+      approvalArtifact:'settings-dark.patch', approvalNote:'Cleo (Reviewer · security) recommends approval — no findings.',
+      diffLines:[{t:'+ :root[data-theme="dark"] {', add:true},{t:'+   --surface: #211c15;', add:true},{t:'+   --ink: #ece2cf;', add:true},{t:'-   background: #ffffff;', add:false},{t:'+   background: var(--surface);', add:true}],
+      // trace
+      sessionTabs, selectSession:(id)=>this.selectSession(id),
+      runAgentName:curAgent.name, runAgentColor:curAgent.color, runModel:cur.model, runSid:'session '+cur.sid,
+      isLiveSession, showCompleted:!isLiveSession, liveLabel:isLiveSession?'live':'completed',
+      tokensLabel:(S.tokens/1000).toFixed(1)+'k', elapsedLabel:this.fmt(S.elapsed),
+      traceEvents, streamText:S.streamText, showStream:isLiveSession,
+      // inbox
+      inboxItems, inboxEmpty,
+      // directory
+      agentCards, roster, applicant, vetApplicant:()=>this.vetApplicant(),
+      // invite
+      inviteAdapter:S.inviteAdapter, inviteRole:S.inviteRole,
+      setAdapter:(e)=>this.setInvite('inviteAdapter',e), setRole:(e)=>this.setInvite('inviteRole',e),
+      invitePromptText:this.invitePrompt(), copyPrompt:()=>this.copyPrompt(),
+      sendInvite:()=>this.sendInvite(), inviteWaiting:S.inviteWaiting, inviteJoined:S.inviteJoined,
+      inviteIdle: !S.inviteWaiting && !S.inviteJoined
+    };
+  }
+}
+</script>
+</body>
+</html>

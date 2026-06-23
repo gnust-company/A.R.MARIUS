@@ -14,6 +14,7 @@ from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.run import Run, RunEvent
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.task import Task
+from armarius.domain.entities.user import User
 from armarius.domain.entities.wakeup import WakeupRequest
 from armarius.domain.entities.workspace import Project, Workspace
 from armarius.domain.repositories.repositories import (
@@ -25,6 +26,7 @@ from armarius.domain.repositories.repositories import (
     RunRepository,
     SessionRepository,
     TaskRepository,
+    UserRepository,
     WakeupRepository,
     WorkspaceRepository,
 )
@@ -37,6 +39,7 @@ from armarius.infrastructure.database.models import (
     RunModel,
     SessionModel,
     TaskModel,
+    UserModel,
     WakeupModel,
     WorkspaceModel,
 )
@@ -484,3 +487,65 @@ class SqlWakeupRepository(WakeupRepository):
             )
         ).scalars().all()
         return [mappers.wakeup_to_entity(m) for m in rows]
+
+
+class SqlUserRepository(UserRepository):
+    """SQLAlchemy implementation of UserRepository."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, user: User) -> User:
+        self._s.add(
+            UserModel(
+                id=user.id,
+                email=user.email,
+                username=user.username,
+                full_name=user.full_name,
+                hashed_password=user.hashed_password,
+                role=str(user.role),
+                is_active=user.is_active,
+                is_verified=user.is_verified,
+                created_at=user.created_at,
+                updated_at=user.updated_at,
+                last_login_at=user.last_login_at,
+            )
+        )
+        await self._s.flush()
+        return user
+
+    async def get(self, user_id: UUID) -> User | None:
+        m = await self._s.get(UserModel, user_id)
+        return mappers.user_to_entity(m) if m else None
+
+    async def get_by_email(self, email: str) -> User | None:
+        row = (
+            await self._s.execute(select(UserModel).where(UserModel.email == email.lower()))
+        ).scalar_one_or_none()
+        return mappers.user_to_entity(row) if row else None
+
+    async def get_by_username(self, username: str) -> User | None:
+        row = (
+            await self._s.execute(
+                select(UserModel).where(UserModel.username == username)
+            )
+        ).scalar_one_or_none()
+        return mappers.user_to_entity(row) if row else None
+
+    async def update(self, user: User) -> User:
+        m = await self._s.get(UserModel, user.id)
+        if m is None:
+            raise LookupError("user not found")
+        m.full_name = user.full_name
+        m.hashed_password = user.hashed_password
+        m.role = str(user.role)
+        m.is_active = user.is_active
+        m.is_verified = user.is_verified
+        m.updated_at = user.updated_at
+        m.last_login_at = user.last_login_at
+        await self._s.flush()
+        return user
+
+    async def list(self) -> Sequence[User]:
+        rows = (await self._s.execute(select(UserModel))).scalars().all()
+        return [mappers.user_to_entity(m) for m in rows]

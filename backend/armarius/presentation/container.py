@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from armarius.application.ports.event_bus import EventBus
 from armarius.application.use_cases.artifacts import ArtifactService
+from armarius.application.use_cases.auth import AuthService
 from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.runs import RunQueryService
 from armarius.application.use_cases.tasks import TaskService
@@ -21,6 +22,8 @@ from armarius.infrastructure.adapters.hermes_gateway import HermesGatewayAdapter
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.persistence.unit_of_work import make_uow
+from armarius.infrastructure.security.jwt import JWTService
+from armarius.infrastructure.security.password import PasswordService
 from armarius.infrastructure.store.local_store import LocalArtifactStore
 from armarius.shared.config import settings
 
@@ -36,6 +39,9 @@ class Container:
     threads: ThreadService
     artifacts: ArtifactService
     runs: RunQueryService
+    auth: AuthService
+    jwt_service: JWTService
+    uow_factory: object
 
 
 def build_container() -> Container:
@@ -48,6 +54,9 @@ def build_container() -> Container:
     registry.register(EchoAdapter())
 
     store = LocalArtifactStore(settings.artifact_store_path)
+
+    jwt_service = JWTService()
+    password_service = PasswordService()
 
     wake_engine = WakeEngine(
         uow_factory,
@@ -67,4 +76,7 @@ def build_container() -> Container:
         threads=ThreadService(uow_factory, wake_engine),
         artifacts=ArtifactService(uow_factory, store),
         runs=RunQueryService(uow_factory),
+        auth=AuthService(uow_factory, jwt_service, password_service),
+        jwt_service=jwt_service,
+        uow_factory=uow_factory,
     )

@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from armarius import __version__
 from armarius.infrastructure.database.engine import init_db
-from armarius.presentation.api import agent, health, tasks, trace, workspaces
+from armarius.presentation.api import agent, auth, health, tasks, trace, workspaces
 from armarius.presentation.container import build_container
 from armarius.presentation.errors import install_error_handlers
 from armarius.seed import maybe_seed
@@ -49,6 +49,7 @@ def create_app() -> FastAPI:
     )
     install_error_handlers(app)
     app.include_router(health.router)
+    app.include_router(auth.router)
     app.include_router(workspaces.router)
     app.include_router(tasks.router)
     app.include_router(trace.router)

@@ -1,5 +1,31 @@
 export const API_BASE =
-  (import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "http://localhost:8000");
+  (import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "http://localhost:8080");
+
+// ---------------------------------------------------------------------------
+// Token storage — access + refresh, persisted in localStorage
+// ---------------------------------------------------------------------------
+
+const ACCESS_KEY = "armarius_access_token";
+const REFRESH_KEY = "armarius_refresh_token";
+
+export const tokens = {
+  get access(): string | null { return localStorage.getItem(ACCESS_KEY); },
+  get refresh(): string | null { return localStorage.getItem(REFRESH_KEY); },
+  set(access: string, refresh: string): void {
+    localStorage.setItem(ACCESS_KEY, access);
+    localStorage.setItem(REFRESH_KEY, refresh);
+  },
+  clear(): void {
+    localStorage.removeItem(ACCESS_KEY);
+    localStorage.removeItem(REFRESH_KEY);
+  },
+};
+
+export interface User {
+  id: string; email: string; username: string; full_name: string; role: string;
+  is_active: boolean; is_verified: boolean; created_at?: string | null; last_login_at?: string | null;
+}
+export interface AuthTokens { access_token: string; refresh_token: string; token_type: string }
 
 export interface Workspace { id: string; name: string; slug: string }
 export interface Project {
@@ -33,21 +59,64 @@ export interface Run {
 }
 export interface RunEvent { seq: number; type: string; payload: Record<string, any>; created_at?: string | null }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...init,
-  });
+function authHeaders(): Record<string, string> {
+  const t = tokens.access;
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
+
+async function refreshAccessToken(): Promise<boolean> {
+  const rt = tokens.refresh;
+  if (!rt) return false;
+  try {
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: rt }),
+    });
+    if (!res.ok) { tokens.clear(); return false; }
+    const data = await res.json() as AuthTokens;
+    tokens.set(data.access_token, data.refresh_token);
+    return true;
+  } catch {
+    tokens.clear();
+    return false;
+  }
+}
+
+async function req<T>(path: string, init?: RequestInit, _retry = true): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...authHeaders(),
+    ...(init?.headers as Record<string, string> | undefined),
+  };
+  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  // Token expired → try refresh once, then retry the original request
+  if (res.status === 401 && _retry && tokens.refresh) {
+    if (await refreshAccessToken()) return req<T>(path, init, false);
+    tokens.clear();
+    throw new Error("session_expired");
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try { detail = (await res.json()).detail ?? detail; } catch { /* ignore */ }
-    throw new Error(detail);
+    throw new Error(typeof detail === "string" ? detail : "Request failed");
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
 export const api = {
+  // Auth (no token needed for register/login/refresh)
+  register: (body: { email: string; username: string; full_name: string; password: string }) =>
+    req<{ user: User; tokens: AuthTokens }>("/auth/register", {
+      method: "POST", body: JSON.stringify(body),
+    }),
+  login: (email: string, password: string) =>
+    req<{ user: User; tokens: AuthTokens }>("/auth/login", {
+      method: "POST", body: JSON.stringify({ email, password }),
+    }),
+  me: () => req<User>("/auth/me"),
+
   workspaces: () => req<Workspace[]>("/v1/workspaces"),
   projects: (ws: string) => req<Project[]>(`/v1/workspaces/${ws}/projects`),
   mariuses: (ws: string) => req<Marius[]>(`/v1/workspaces/${ws}/mariuses`),

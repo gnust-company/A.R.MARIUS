@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     wake_max_continuation_attempts: int = 3
     run_timeout_seconds: int = 900
 
+    # JWT settings for user authentication
+    jwt_secret: str = "change-me-in-production-use-secrets-manager"
+    jwt_algorithm: str = "HS256"
+    jwt_access_expire_minutes: int = 30
+    jwt_refresh_expire_days: int = 7
+
     @property
     def cors_origin_list(self) -> list[str]:
         raw = self.cors_origins.strip()

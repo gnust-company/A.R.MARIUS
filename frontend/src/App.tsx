@@ -1,9 +1,12 @@
 import { NavLink, Route, Routes, useNavigate } from "react-router-dom";
-import { useApp } from "./store";
+import { AppProvider, useApp } from "./store";
+import { useAuth } from "./auth";
+import { useI18n, type Lang } from "./i18n";
 import Board from "./pages/Board";
 import Room from "./pages/Room";
 import Directory from "./pages/Directory";
 import Approvals from "./pages/Approvals";
+import Auth from "./pages/Auth";
 
 function Brand() {
   return (
@@ -49,7 +52,34 @@ function NavItem({ to, label, icon }: { to: string; label: string; icon: string 
   );
 }
 
+function LangSwitch() {
+  const { lang, setLang } = useI18n();
+  const langs: Lang[] = ["en", "vi"];
+  return (
+    <div
+      className="flex items-center gap-0.5 p-0.5 rounded-md text-[0.66rem] font-semibold"
+      style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}
+    >
+      {langs.map((l) => (
+        <button
+          key={l}
+          onClick={() => setLang(l)}
+          className="px-2 py-1 rounded uppercase tracking-wide"
+          style={{
+            background: lang === l ? "var(--ink)" : "transparent",
+            color: lang === l ? "var(--panel)" : "var(--ink-soft)",
+          }}
+        >
+          {l}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Sidebar() {
+  const { user, signOut } = useAuth();
+  const { t } = useI18n();
   return (
     <aside
       className="w-[220px] shrink-0 flex flex-col"
@@ -58,15 +88,40 @@ function Sidebar() {
       <Brand />
       <div className="rule mx-4 mb-2" />
       <nav className="flex flex-col gap-0.5">
-        <NavItem to="/" label="Board" icon="▦" />
-        <NavItem to="/directory" label="Directory" icon="❖" />
-        <NavItem to="/approvals" label="Patron inbox" icon="✦" />
+        <NavItem to="/" label={t("nav.board")} icon="▦" />
+        <NavItem to="/directory" label={t("nav.directory")} icon="❖" />
+        <NavItem to="/approvals" label={t("nav.inbox")} icon="✦" />
       </nav>
-      <div className="mt-auto px-5 py-4 text-[0.7rem] leading-relaxed" style={{ color: "var(--ink-faint)" }}>
-        <div className="font-serif italic mb-1" style={{ color: "var(--ink-soft)" }}>
-          You task. They collaborate. You trace.
+      <div className="mt-auto px-4 pb-4">
+        <div className="rule mb-3" />
+        <div className="flex items-center gap-2 mb-3">
+          <LangSwitch />
         </div>
-        Commission · Provision · Trace · Approve
+        <div className="flex items-center gap-2.5 mb-2">
+          <div
+            className="flex items-center justify-center rounded-full text-xs font-semibold shrink-0"
+            style={{ width: 30, height: 30, background: "var(--ink)", color: "var(--panel)" }}
+          >
+            {(user?.full_name ?? "Y").charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-medium truncate" style={{ color: "var(--ink)" }}>
+              {user?.full_name ?? "—"}
+            </div>
+            <div className="text-[0.66rem] truncate" style={{ color: "var(--ink-faint)" }}>
+              {user?.email ?? ""}
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={signOut}
+          className="w-full text-left text-xs px-3 py-1.5 rounded-md transition-colors"
+          style={{ color: "var(--ink-soft)" }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--panel-2)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+        >
+          ⎋ {t("auth.signOut")}
+        </button>
       </div>
     </aside>
   );
@@ -100,7 +155,7 @@ function TopBar() {
   );
 }
 
-export default function App() {
+function Shell() {
   const { loading, error } = useApp();
   return (
     <div className="flex h-screen overflow-hidden">
@@ -127,5 +182,33 @@ export default function App() {
         </main>
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  const { user, loading } = useAuth();
+
+  // Auth routes (visible when logged out)
+  if (!user) {
+    if (loading) {
+      return (
+        <div className="h-screen flex items-center justify-center" style={{ background: "var(--panel)", color: "var(--ink-faint)" }}>
+          Loading…
+        </div>
+      );
+    }
+    return (
+      <Routes>
+        <Route path="/login" element={<Auth />} />
+        <Route path="/register" element={<Auth />} />
+        <Route path="*" element={<Auth />} />
+      </Routes>
+    );
+  }
+
+  return (
+    <AppProvider>
+      <Shell />
+    </AppProvider>
   );
 }

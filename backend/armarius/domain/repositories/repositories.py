@@ -13,6 +13,7 @@ from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.run import Run, RunEvent
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.task import Task
+from armarius.domain.entities.user import User
 from armarius.domain.entities.wakeup import WakeupRequest
 from armarius.domain.entities.workspace import Project, Workspace
 
@@ -117,3 +118,25 @@ class WakeupRepository(ABC):
     async def list_active_for(
         self, marius_id: UUID, task_id: UUID
     ) -> Sequence[WakeupRequest]: ...
+
+
+class UserRepository(ABC):
+    """Repository for User entities (human users)."""
+
+    @abstractmethod
+    async def add(self, user: User) -> User: ...
+
+    @abstractmethod
+    async def get(self, user_id: UUID) -> User | None: ...
+
+    @abstractmethod
+    async def get_by_email(self, email: str) -> User | None: ...
+
+    @abstractmethod
+    async def get_by_username(self, username: str) -> User | None: ...
+
+    @abstractmethod
+    async def update(self, user: User) -> User: ...
+
+    @abstractmethod
+    async def list(self) -> Sequence[User]: ...

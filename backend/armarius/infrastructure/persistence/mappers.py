@@ -10,6 +10,7 @@ from armarius.domain.entities.marius import Liveness, Marius
 from armarius.domain.entities.run import Run, RunEvent, RunStatus, WakeSource
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.task import Task, TaskStatus
+from armarius.domain.entities.user import User, UserRole
 from armarius.domain.entities.wakeup import WakeupRequest, WakeupStatus
 from armarius.domain.entities.workspace import Project, Workspace
 from armarius.infrastructure.database.models import (
@@ -21,6 +22,7 @@ from armarius.infrastructure.database.models import (
     RunModel,
     SessionModel,
     TaskModel,
+    UserModel,
     WakeupModel,
     WorkspaceModel,
 )
@@ -173,4 +175,20 @@ def wakeup_to_entity(m: WakeupModel) -> WakeupRequest:
         run_id=m.run_id,
         created_at=m.created_at,
         updated_at=m.updated_at,
+    )
+
+
+def user_to_entity(m: UserModel) -> User:
+    return User(
+        id=m.id,
+        email=m.email,
+        username=m.username,
+        full_name=m.full_name,
+        hashed_password=m.hashed_password,
+        role=UserRole(m.role),
+        is_active=m.is_active,
+        is_verified=m.is_verified,
+        created_at=m.created_at,
+        updated_at=m.updated_at,
+        last_login_at=m.last_login_at,
     )
