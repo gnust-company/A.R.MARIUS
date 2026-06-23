@@ -56,6 +56,7 @@ class SqlWorkspaceRepository(WorkspaceRepository):
                 id=workspace.id,
                 name=workspace.name,
                 slug=workspace.slug,
+                owner_user_id=workspace.owner_user_id,
                 created_at=workspace.created_at,
                 updated_at=workspace.updated_at,
             )
@@ -69,6 +70,14 @@ class SqlWorkspaceRepository(WorkspaceRepository):
 
     async def list(self) -> Sequence[Workspace]:
         rows = (await self._s.execute(select(WorkspaceModel))).scalars().all()
+        return [mappers.workspace_to_entity(m) for m in rows]
+
+    async def list_by_owner(self, owner_user_id: str) -> Sequence[Workspace]:
+        rows = (
+            await self._s.execute(
+                select(WorkspaceModel).where(WorkspaceModel.owner_user_id == owner_user_id)
+            )
+        ).scalars().all()
         return [mappers.workspace_to_entity(m) for m in rows]
 
 

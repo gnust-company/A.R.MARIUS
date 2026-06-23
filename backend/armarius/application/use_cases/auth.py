@@ -5,6 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from armarius.application.use_cases.types import UowFactory
+from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.domain.entities.user import User, UserRole
 from armarius.infrastructure.security.jwt import JWTService
 from armarius.infrastructure.security.password import PasswordService
@@ -40,10 +41,12 @@ class AuthService:
     def __init__(
         self,
         uow_factory: UowFactory,
+        workspaces: WorkspaceService,
         jwt_service: JWTService | None = None,
         password_service: PasswordService | None = None,
     ) -> None:
         self._uow = uow_factory
+        self._workspaces = workspaces
         self._jwt = jwt_service or JWTService()
         self._pwd = password_service or PasswordService()
 
@@ -86,6 +89,10 @@ class AuthService:
 
             user = await uow.users.add(user)
             await uow.commit()
+
+        # Provision a personal workspace so the new user lands somewhere real
+        # (not someone else's demo data). Idempotent.
+        await self._workspaces.ensure_personal_workspace(user)
 
         # Generate tokens
         access_token = self._jwt.create_access_token(user.id)

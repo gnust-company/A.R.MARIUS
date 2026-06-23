@@ -30,7 +30,12 @@ from armarius.infrastructure.database.models import (
 
 def workspace_to_entity(m: WorkspaceModel) -> Workspace:
     return Workspace(
-        id=m.id, name=m.name, slug=m.slug, created_at=m.created_at, updated_at=m.updated_at
+        id=m.id,
+        name=m.name,
+        slug=m.slug,
+        owner_user_id=m.owner_user_id,
+        created_at=m.created_at,
+        updated_at=m.updated_at,
     )
 
 

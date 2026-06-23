@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     wake_max_continuation_attempts: int = 3
     run_timeout_seconds: int = 900
 
+    # Demo seed ("Acme Web Platform" scenario). OFF by default — real users get
+    # their own empty workspace on register. Set ARMARIUS_SEED_DEMO=true to repopulate
+    # the demo story (e.g. for a fresh showcase instance).
+    seed_demo: bool = False
+
     # JWT settings for user authentication
     jwt_secret: str = "change-me-in-production-use-secrets-manager"
     jwt_algorithm: str = "HS256"

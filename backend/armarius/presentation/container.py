@@ -66,17 +66,19 @@ def build_container() -> Container:
         max_continuation_attempts=settings.wake_max_continuation_attempts,
     )
 
+    workspaces = WorkspaceService(uow_factory)
+
     return Container(
         event_bus=event_bus,
         registry=registry,
         wake_engine=wake_engine,
-        workspaces=WorkspaceService(uow_factory),
+        workspaces=workspaces,
         mariuses=MariusService(uow_factory),
         tasks=TaskService(uow_factory, wake_engine),
         threads=ThreadService(uow_factory, wake_engine),
         artifacts=ArtifactService(uow_factory, store),
         runs=RunQueryService(uow_factory),
-        auth=AuthService(uow_factory, jwt_service, password_service),
+        auth=AuthService(uow_factory, workspaces, jwt_service, password_service),
         jwt_service=jwt_service,
         uow_factory=uow_factory,
     )

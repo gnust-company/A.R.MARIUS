@@ -1,0 +1,5 @@
+# Local environment config — never commit (may contain secrets)
+.env
+
+# Scratch / notes
+linhtinh.md

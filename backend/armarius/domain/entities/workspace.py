@@ -9,11 +9,12 @@ from uuid import UUID, uuid4
 
 @dataclass
 class Workspace:
-    """A shared cross-team collaboration space."""
+    """A shared cross-team collaboration space, owned by a user."""
 
     id: UUID = field(default_factory=uuid4)
     name: str = ""
     slug: str = ""
+    owner_user_id: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter
 
 from armarius.application.use_cases.onboarding import build_invite_prompt
+from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
     CreateProjectIn,
@@ -23,14 +24,17 @@ router = APIRouter(prefix="/v1", tags=["workspaces"])
 
 
 @router.post("/workspaces", response_model=WorkspaceOut, status_code=201)
-async def create_workspace(body: CreateWorkspaceIn, container: ContainerDep) -> WorkspaceOut:
-    ws = await container.workspaces.create_workspace(body.name)
+async def create_workspace(
+    body: CreateWorkspaceIn, container: ContainerDep, user: CurrentUser
+) -> WorkspaceOut:
+    ws = await container.workspaces.create_workspace(body.name, owner_user_id=str(user.id))
     return WorkspaceOut.model_validate(ws)
 
 
 @router.get("/workspaces", response_model=list[WorkspaceOut])
-async def list_workspaces(container: ContainerDep) -> list[WorkspaceOut]:
-    items = await container.workspaces.list_workspaces()
+async def list_workspaces(container: ContainerDep, user: CurrentUser) -> list[WorkspaceOut]:
+    """List workspaces OWNED by the current user (multi-tenant scoped)."""
+    items = await container.workspaces.list_workspaces(owner_user_id=str(user.id))
     return [WorkspaceOut.model_validate(w) for w in items]
 
 
@@ -38,7 +42,10 @@ async def list_workspaces(container: ContainerDep) -> list[WorkspaceOut]:
     "/workspaces/{workspace_id}/projects", response_model=ProjectOut, status_code=201
 )
 async def create_project(
-    workspace_id: UUID, body: CreateProjectIn, container: ContainerDep
+    workspace_id: UUID,
+    body: CreateProjectIn,
+    container: ContainerDep,
+    user: CurrentUser,
 ) -> ProjectOut:
     project = await container.workspaces.create_project(
         workspace_id, body.name, body.description
@@ -47,7 +54,9 @@ async def create_project(
 
 
 @router.get("/workspaces/{workspace_id}/projects", response_model=list[ProjectOut])
-async def list_projects(workspace_id: UUID, container: ContainerDep) -> list[ProjectOut]:
+async def list_projects(
+    workspace_id: UUID, container: ContainerDep, user: CurrentUser
+) -> list[ProjectOut]:
     items = await container.workspaces.list_projects(workspace_id)
     return [ProjectOut.model_validate(p) for p in items]
 

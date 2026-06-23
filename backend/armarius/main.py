@@ -28,7 +28,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Armarius %s starting (env=%s)", __version__, settings.environment)
     await init_db()
     app.state.container = build_container()
-    await maybe_seed(app.state.container)
+    # Demo seed is opt-in (ARMARIUS_SEED_DEMO=true). Off by default so real users
+    # get their own empty personal workspace — never someone else's demo data.
+    if settings.seed_demo:
+        await maybe_seed(app.state.container)
     yield
     logger.info("Armarius shutting down")
 
