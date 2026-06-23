@@ -1,5 +1,8 @@
-export const API_BASE =
-  (import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "http://localhost:8080");
+// API base. In the deployed stack nginx proxies the API on the SAME origin, so we
+// default to "" (relative). VITE_API_URL is only an override for bare `npm run dev`
+// (where the dev server and the backend are on different ports). Mirrors OpenClaw MC:
+// no absolute host is baked into the bundle.
+export const API_BASE = import.meta.env.VITE_API_URL?.replace(/\/$/, "") ?? "";
 
 // ---------------------------------------------------------------------------
 // Token storage — access + refresh, persisted in localStorage

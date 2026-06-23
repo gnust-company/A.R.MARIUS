@@ -120,7 +120,7 @@ export default function Auth() {
                   onChange={(e) => setUsername(e.target.value)}
                   required
                   minLength={3}
-                  pattern="[a-zA-Z0-9_-]+"
+                  pattern="[-a-zA-Z0-9_]+"
                   autoComplete="username"
                 />
               </Field>

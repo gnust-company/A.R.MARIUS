@@ -43,8 +43,11 @@ services:
     build:
       context: ./frontend
       args:
-        # Browser → API URL, baked into the static bundle at build time.
-        VITE_API_URL: ${ARMARIUS_API_URL:-http://localhost:8080}
+        # OPTIONAL override: only set VITE_API_URL if the API is NOT served on the
+        # same origin as the UI. The bundled stack reverse-proxies the API through
+        # nginx (same origin), so leave this EMPTY for relative URLs — the UI then
+        # works behind any host/port/domain/proxy with no rebuild.
+        VITE_API_URL: ${VITE_API_URL:-}
     depends_on:
       - backend
     ports:
