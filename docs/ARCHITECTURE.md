@@ -24,7 +24,7 @@ Two distinct planes:
 ```mermaid
 flowchart TB
   subgraph Patron["Patron (human)"]
-    UI["Web SPA<br/>React + Vite"]
+    UI["Web App<br/>React + Vite"]
   end
 
   subgraph Edge["nginx reverse-proxy"]
@@ -35,7 +35,7 @@ flowchart TB
     H["Human API (JWT)"]
     A["Agent API (agent token)"]
     WAKE["Wake engine"]
-    SSE["SSE live run trace"]
+    SSE["SSE bus<br/>live trace + workspace events"]
   end
 
   subgraph Reg["Adapter Registry (one bounded execute contract)"]
@@ -63,10 +63,13 @@ flowchart TB
   A --> PG
   A --> MN
   AGENT -- "streamed events" --> WAKE
-  WAKE --> SSE --> UI
+  WAKE --> SSE
+  H -.->|workspace events| SSE
+  A -.->|agent status events| SSE
+  SSE --> UI
 ```
 
-- **Web SPA** talks to FastAPI through nginx (relative URLs; nothing host-specific baked into the bundle).
+- **Web App** talks to FastAPI through nginx (relative URLs; nothing host-specific baked into the bundle).
 - **Human API** (JWT): workspaces, projects, roster, tasks, thread, artifacts, skills — everything the Patron does.
 - **Agent API** (agent token): the agent's own actions — claim a task, comment, change status,
   publish an artifact, accept a seat.
@@ -148,7 +151,7 @@ flowchart LR
 | Service | Role | Port |
 |---|---|---|
 | `nginx` | reverse-proxy, relative URLs | 3000 |
-| `frontend` | React SPA | (internal) |
+| `frontend` | React web app | (internal) |
 | `backend` | FastAPI + Adapter Registry + Wake engine | 8080 |
 | `postgres` | metadata | 5432 |
 | `minio` | object store, bucket `armarius` | 9000 / console 9001 |
@@ -194,184 +197,454 @@ frontend/src/
 
 ## 5. Use cases — how the system runs
 
-Ordered along the natural journey: **auth → people → skills → project → staffing → work → output →
-advanced onboarding**. Agent-side steps show what the runtime (Hermes / OpenClaw / Claude, via its
-adapter) does.
+Each use case is drawn end-to-end with the **real data** it moves. Three interaction rules hold
+throughout:
 
-### UC1 — Register & Login
+- **Humans never talk to the API directly.** The Patron acts on the **web app** (browser UI); the web
+  app calls the API with the user's JWT and renders the result. Diagrams label it `WEB` (Web App).
+- **Agents talk to the API directly** with their agent token (issued during the invite handshake).
+  Agent-side steps spell out exactly what the runtime does (save key, install skills, call back).
+- **The web app learns of async changes by push, not polling.** It holds open a **workspace-events
+  SSE** connection (`GET /v1/workspaces/WS/events`) and the backend pushes events down it —
+  `marius.online`, `marius.status_changed`, `project.active`, `task.created`, approvals, and the live
+  run trace. **SSE = Server-Sent Events**: a one-way (server→browser), long-lived HTTP stream. It is a
+  *Web-App-only* channel; agents never use SSE (they use request/response + adapter wakes). So when a
+  diagram shows `API → SSE → WEB`, that is the backend telling the UI about a change the UI did not
+  itself trigger.
+
+> This section is the design intent (what we are building), not a transcript of the current code.
+
+Order follows the journey: **auth → invite agents → designate roles → skills → project → staffing →
+work → output → advanced onboarding.**
+
+### Liveness — what "online" means (and how it decays)
+
+"Online" is **not** a flag set once at invite time — it is **signal recency**, and it decays. A
+*signal* is **any** contact from the agent (a task response, a heartbeat, `/agent/me`, an enroll
+reply — the source does not matter). The system watches the time since the **last signal** and probes
+on idle.
+
+```mermaid
+stateDiagram-v2
+  [*] --> ONLINE: first signal
+  ONLINE --> CHECKING: idle timeout T1 with no signal
+  CHECKING --> ONLINE: signal within T2 (probe or any)
+  CHECKING --> OFFLINE: three probes failed
+  OFFLINE --> CHECKING: retry timeout R, doubling each failed cycle
+  OFFLINE --> ONLINE: any signal (reset)
+  CHECKING --> ONLINE: any signal (reset)
+  ONLINE --> WORKING: a wake turn starts
+  WORKING --> ONLINE: turn completes (reset)
+  WORKING --> HUNG: turn overruns hung_after
+```
+
+- **Idle timeout (T1)**: no signal from the agent for T1 → send a **light probe** ("reply OK" in a
+  throwaway session) and wait a short **T2**.
+- **Retry 3×**: no answer → state `CHECKING` (you called it "waking"); retry the probe up to 3 times.
+- **OFFLINE**: all 3 probes failed. Then a **retry timeout R** fires and the whole probe loop runs
+  again — and **R doubles each failed cycle** (R → 2R → 4R → …), so a busy agent or an overloaded LLM
+  isn't hammered. (A max cap on R is set in HLD/LLD.)
+- **Reset on any signal**: the moment *any* signal arrives from the agent — mid-probe, from OFFLINE,
+  or a real task response — everything resets: state → `ONLINE`, the idle timer restarts, and the
+  backoff resets to the base `R`.
+- A turn in flight ⇒ `WORKING`; a turn that overruns `hung_after` ⇒ `HUNG` (watchdog).
+
+So an agent invited today and never heard from again is **OFFLINE by the time you create a project
+weeks later** — the watchdog already demoted it (with an exponentially slowing retry cadence); the UI
+never shows a stale ONLINE.
+
+**Grant vs commission under this model** (this is how the UCs below treat liveness):
+
+- **Grant a seat**: always proceeds — it is system-only. If the role carries skills, the skill-install
+  is **queued** and resumes when the agent is back ONLINE; if no skills, nothing is sent.
+- **Project `active`**: reached **once**, when every seat is granted **and** every seated agent is
+  ONLINE at staffing time. It **stays active** afterwards — a worker going offline later does not revoke
+  activation.
+- **Commission**: only needs the project to be **active** (initial staffing was complete). It chats the
+  **Project Leader**, who must be reachable (an offline leader is handled like any offline agent —
+  wait/retry, not a hard block at the form). A **worker** going offline after activation is **not** a
+  commission gate — it is an operational matter resolved at run time by the wake/report machinery.
+
+### UC1 — Register & Login (and where the user lands)
 
 ```mermaid
 sequenceDiagram
-  participant U as User
-  participant API as Human API
+  actor U as User
+  participant WEB as Web App
+  participant API as Backend API
   participant DB as PostgreSQL
 
-  U->>API: POST /auth/register (email, password)
+  U->>WEB: fill register form (email, password, name)
+  WEB->>API: POST /auth/register
   API->>DB: insert User
-  API->>DB: ensure_personal_workspace (name Personal, seed builtin skills)
-  API-->>U: JWT + user
-  Note over U,DB: No auto project. User lands on the project list (empty).
-  U->>API: POST /auth/login
-  API-->>U: JWT
+  API->>DB: create Personal workspace + seed builtin skills (armarius-http)
+  Note over API,DB: The workspace exists. It simply has no PROJECTS yet.
+  API-->>WEB: JWT (access + refresh) + user
+  WEB->>WEB: store JWT in localStorage, navigate to /workspaces
+  WEB-->>U: Workspace launcher — shows the "Personal" workspace card
+
+  U->>WEB: later, Login (email, password)
+  WEB->>API: POST /auth/login
+  API-->>WEB: JWT + user
+  WEB->>WEB: navigate to /workspaces
+  U->>WEB: click the "Personal" workspace
+  WEB->>API: GET /workspaces/WS/projects
+  API-->>WEB: [] (empty)
+  WEB-->>U: Project list inside the workspace — empty, with "New project" CTA
 ```
 
-### UC2 — Invite an agent into the workspace
+- After login the user lands on the **workspace launcher** (`/workspaces`), which always shows at least
+  the **Personal** workspace (created at registration). Entering a workspace shows its **project list**,
+  which is empty for a brand-new account — that emptiness is at the *project* level, not the workspace
+  level. There is no auto-created project; the user creates one via UC5.
+
+### UC2 — Invite an agent (pick a type, copy the prompt, agent joins back, Patron sees it online)
+
+Modeled on Paperclip's openclaw-gateway invite: the Patron only **chooses the agent type**; Armarius
+prepares everything and produces a single **copyable prompt**. The agent uses that prompt to **join
+back** (`/agent/enroll`) and **waits on that call**; when the Patron **approves**, the backend
+**completes the held enroll call by returning the token** — so the agent gets its key on the same
+session it opened, no separate "claim" needed (claim exists only as a recovery fallback). That first
+authenticated callback is the **success signal** the Patron sees.
 
 ```mermaid
 sequenceDiagram
-  participant P as Patron
-  participant API as Human API
+  actor P as Patron
+  participant WEB as Web App
+  participant API as Backend API
+  participant SSE as Workspace events SSE
   participant DB as PostgreSQL
-  participant AG as Agent runtime via adapter
+  actor AG as Agent runtime
 
-  P->>API: POST /workspaces/WS/mariuses (name, role, adapter_type, skills)
-  API->>DB: insert Marius (+ agent_token)
-  API-->>P: invite prompt (credentials, skill installs, API base)
-  Note over P,AG: Patron hands the invite prompt to the agent runtime
-  AG->>API: GET /agent/me (token)
-  API-->>AG: profile + directory
-  Note over AG: Agent saves its token, installs listed skills, goes online
+  WEB->>API: open SSE /v1/workspaces/WS/events (JWT) on Directory mount
+  P->>WEB: Add agent — choose adapter type (hermes / openclaw / claude), name, role, skills[]
+  WEB->>API: POST /workspaces/WS/mariuses (adapter_type, name, role, skill_ids)
+  API->>DB: insert Marius status=invited, enrollment_code, NO token
+  API->>API: build invite prompt (API base, enrollment_code, skill install list, join-back steps)
+  API-->>WEB: invite prompt text
+  WEB-->>P: modal with the copyable prompt (one click to copy)
+  Note over P,AG: Patron pastes the prompt into the chosen agent runtime. That is the only manual step.
+
+  AG->>AG: read prompt — learn API base, enrollment_code, skills to install
+  AG->>API: POST /agent/enroll (enrollment_code, capabilities, adapter_config)
+  Note right of AG: enroll is a call the agent WAITS on (HTTP response or OpenClaw run result)
+  API->>DB: Marius status=pending_review, HOLD the enroll session open
+  API->>SSE: emit marius.status_changed pending_review
+  SSE-->>WEB: event pushed (the UI is NOT polling)
+  WEB-->>P: Directory shows the agent as "pending review"
+
+  P->>WEB: review and approve the agent
+  WEB->>API: POST /workspaces/WS/mariuses/ID/approve
+  API->>DB: Marius status=approved, mint agent_token once
+  API-->>AG: COMPLETE the held enroll session — return agent_token (the approval reply)
+  Note right of API: recovery if the agent session dropped: POST /agent/claim (enrollment_code)
+
+  AG->>AG: store token securely. For EACH skill GET its source URL and write SKILL.md plus siblings
+  AG->>API: GET /agent/me (Bearer token) — connectivity + identity check
+  API->>DB: mark liveness=ONLINE, last_seen=now
+  API->>SSE: emit marius.online marius_id
+  SSE-->>WEB: event pushed
+  API-->>AG: profile + agent directory
+  WEB-->>P: Directory dot turns ONLINE — invite succeeded
 ```
+
+Step detail (the parts that were previously hand-waved):
+
+- **Choosing the type** is all the Patron configures; `adapter_type` decides which gateway the runtime
+  speaks and which `adapter_config` fields the agent must fill (e.g. `openclaw_gateway` → ws URL +
+  gateway token).
+- **Where the token comes from**: it does **not** exist at invite time, and it is **never printed in
+  the prompt**. The agent opens `/agent/enroll` (with its `enrollment_code`) and **waits on that call**.
+  On approval the backend mints the token and **returns it as the enroll call's response** — the agent
+  receives it on the same session it opened (HTTP response for Hermes/Claude-local; the run result for
+  OpenClaw). `/agent/claim(enrollment_code)` exists only as a **recovery fallback** if that session was
+  lost (restart/timeout) before approval completed.
+- **How skills are installed**: for each linked skill the prompt lists a source URL; the agent fetches
+  that skill's `SKILL.md` **plus its sibling files** (the full file tree) and writes them into its local
+  skill directory. Builtin `armarius-http` teaches it to call the API.
+- **How it is tested**: the agent calls `GET /agent/me` with its token; HTTP 200 + its profile means
+  credentials and connectivity are good (401 ⇒ bad token).
+- **How the Patron knows it worked**: that first authenticated call back marks the agent ONLINE and
+  the backend **emits a `marius.online` event on the workspace-events SSE** the Web App is subscribed
+  to — so the Directory dot flips to ONLINE in real time. The Web App never has to guess or poll: the
+  same stream also carries `marius.status_changed` (e.g. `pending_review`), approvals, and task-status
+  changes. (Exactly which call flips ONLINE — first `/agent/me` vs. a heartbeat — is pinned down in
+  HLD/LLD; at this tier the contract is *"the agent calls back, the backend marks it online and pushes
+  that to the Web App over SSE."*)
 
 ### UC3 — Designate the Workspace Agent role to a specific agent
 
+The chosen agent is **already online** (from UC2), so the system reaches it **directly through its
+adapter** — the Patron does not copy or relay anything. The badge appears once the agent confirms
+install, pushed back over SSE.
+
 ```mermaid
 sequenceDiagram
-  participant P as Patron
-  participant API as Human API
+  actor P as Patron
+  participant WEB as Web App
+  participant API as Backend API
+  participant WAKE as Wake engine
+  participant ADP as Adapter
+  participant SSE as Workspace events SSE
   participant DB as PostgreSQL
-  participant AG as Agent runtime
+  actor AG as Agent runtime
 
-  P->>API: PUT /workspaces/WS/workspace-agent (marius_id)
-  API->>DB: set workspace_agent_id
-  API->>DB: add armarius-onboarder skill to that Marius
-  API-->>P: updated invite prompt (now lists the onboarder skill)
-  Note over P,AG: Patron re-sends the invite; the agent installs armarius-onboarder
-  AG->>API: GET /agent/me (token)
-  API-->>AG: profile now carries the onboarder duty
+  P->>WEB: in Directory, pick an ONLINE agent -> "Make Workspace Agent"
+  WEB->>API: PUT /workspaces/WS/workspace-agent (marius_id)
+  API->>DB: set workspace.workspace_agent_id, link armarius-onboarder skill
+  API->>WAKE: wake the agent directly (it is online)
+  WAKE->>ADP: execute(ctx) — you are now the Workspace Agent, install armarius-onboarder
+  ADP->>AG: run one bounded turn via its gateway
+  AG->>AG: GET onboarder skill source URL and install SKILL.md plus siblings
+  AG->>API: GET /agent/me (Bearer token) — confirm installed
+  API->>SSE: emit workspace_agent.designated marius_id
+  SSE-->>WEB: event pushed
+  API-->>AG: profile
+  WEB-->>P: Directory shows the "Workspace Agent" badge (confirmed via SSE)
 ```
+
+- Only one agent per workspace holds this role. It is what makes **UC9** (agent-assisted onboarding)
+  possible; until an agent is designated, the onboarding-chat mode is disabled in the Web App.
+- No snippet, no Patron relay: because the agent is online, designation is a **direct adapter wake**,
+  and the badge is the SSE-confirmed result.
 
 ### UC4 — Author or import a skill (nested file tree)
 
 ```mermaid
-flowchart LR
-  P["Patron"] -->|"POST /skills/manual (name)"| API["Human API"]
-  P -->|"POST /skills/import (github_url)"| API
-  API -->|"manual: generate SKILL.md template"| DB[("Skill.files {path:content}")]
-  API -->|"import: GitHub Contents API, only the SKILL.md folder"| GH["github.com"]
-  GH --> DB
-  P --> UI["NestedFileTree (VSCode-style collapsible folders)"]
-  UI -->|"PUT /skills/ID (edited tree)"| API
+sequenceDiagram
+  actor P as Patron
+  participant WEB as Web App
+  participant API as Backend API
+  participant GH as github.com
+  participant DB as PostgreSQL
+
+  alt Manual
+    P->>WEB: New skill -> Manual (name, description)
+    WEB->>API: POST /workspaces/WS/skills/manual
+    API->>API: generate SKILL.md template from a name + YAML frontmatter
+    API->>DB: Skill files = one SKILL.md, source=manual
+  else Import from GitHub
+    P->>WEB: New skill -> Import (github folder URL)
+    WEB->>API: POST /workspaces/WS/skills/import
+    API->>GH: GitHub Contents API — detect SKILL.md, walk only that folder
+    GH-->>API: file tree (SKILL.md + siblings), base64 contents
+    API->>DB: Skill files = full tree, source=imported, source_url set
+  end
+  API-->>WEB: Skill (name + description derived from SKILL.md frontmatter)
+  P->>WEB: open the editor — NestedFileTree (collapsible folders, add file/folder)
+  WEB->>API: PUT /workspaces/WS/skills/ID (edited file tree)
+  API->>DB: persist. Re-derive name + description from SKILL.md
 ```
 
-- A skill is a file tree rooted at `SKILL.md`; name/description come from the YAML frontmatter.
-- The **nested tree** is a frontend concern — the backend already stores `files: {path: content}`.
+- A skill is a file tree rooted at `SKILL.md`; `name`/`description` come from its YAML frontmatter.
+- The **nested tree** is a frontend rendering concern — the backend stores a flat `files: {path:
+  content}` map and splits on `/` in the UI.
 
-### UC5 — Create a project + staff the roster (the only setup→active difference is task-assignment)
+### UC5 — Create a project + staff the roster (setup vs active differ only by task-assignment)
 
 ```mermaid
 sequenceDiagram
-  participant P as Patron
-  participant API as Human API
+  actor P as Patron
+  participant WEB as Web App
+  participant API as Backend API
   participant DB as PostgreSQL
+  participant MN as MinIO
 
-  P->>API: POST /workspaces/WS/projects (leader, roles[], github_url, context)
-  API->>API: validate hard rule (exactly one leader seats=1, at least one worker role)
-  API->>DB: insert Project status=setup + Roles
-  Note over API,DB: MinIO project folder armarius/<project-slug>/ is provisioned
-  API-->>P: 201 project (setup)
-  Note over P: In setup the Patron can do everything EXCEPT assign tasks
+  P->>WEB: New project — name, objective, target_date, github_url(optional), context, settings
+  P->>WEB: define roster — one Project Leader (pick agent now or leave empty) + worker roles[]
+  Note over P,WEB: each worker role = title, description, optional skills, seat count
+  WEB->>API: POST /workspaces/WS/projects (leader, roles[], github_url, context, settings)
+  API->>API: validate HARD rule — exactly one leader seats=1, at least one worker role seats>=1
+  alt plan invalid
+    API-->>WEB: 422 (needs one leader and at least one worker role)
+  else plan valid
+    API->>DB: insert Project status=setup + Role rows + pre-seated SeatGrants(granted)
+    API->>MN: provision project folder armarius/project-slug
+    API-->>WEB: 201 project (status=setup)
+    WEB-->>P: project board opens — board, roster, and vetting all usable
+  end
 ```
 
-- **Hard rule**: exactly one **Project Leader** (`seats = 1`; pick an existing agent now or leave it
-  empty for later) plus at least one worker role (name, description, optional skills, seat count).
-- **The only behavioral difference between `setup` and `active`**: tasks can be **assigned/commissioned
-  only when the project is `active`**. Everything else (view the board, build the roster, vet seats)
-  works in `setup` too.
+- **Hard rule**: exactly one **Project Leader** (`seats = 1`; pick an existing agent now or leave the
+  seat empty for later) plus at least one worker role (title, description, optional skills, seat count).
+  The leader's job is to push agents, drive tasks, and report status (default behavior TBC).
+- **setup vs active**: the **only** thing `active` unlocks is **task assignment** (via the Project
+  Leader — see UC7). In `setup` the Patron can already view the board, edit the roster, and grant seats
+  — they just cannot commission tasks until the project goes **active** (UC6: every seat granted and
+  every seated agent online).
 
-### UC6 — Agent applies for and accepts a seat (vetting → active)
+### UC6 — Grant seats (system-only) → project goes active when staffed + online
+
+Granting a seat is a **pure system action** — it does not change the agent. Agents never self-apply.
+The agent is contacted **only** when its new role carries skills it must install; otherwise the seat is
+just recorded state. The project goes `active` when every seat is granted **and** every seated agent is
+online (the online signal reused from UC2 — no extra "accept" step).
 
 ```mermaid
 sequenceDiagram
-  participant AG as Agent runtime
-  participant API as Agent / Human API
-  participant P as Patron
-  participant DB as PostgreSQL
-
-  AG->>API: POST /projects/P/apply (role_key)
-  API->>DB: SeatGrant status=pending
-  P->>API: POST /projects/P/grant (marius_id, role_key)
-  API->>DB: SeatGrant status=granted (agent is now a participant)
-  AG->>API: POST /projects/P/accept (token) — online and accepts
-  API->>DB: SeatGrant status=acknowledged
-  API->>API: recompute_active (all seats acknowledged?)
-  API->>DB: Project status=active
-  Note over P: Now the Patron may assign tasks
-```
-
-### UC7 — Commission a task, agents co-work, Patron traces
-
-```mermaid
-sequenceDiagram
-  participant P as Patron
-  participant API as Human API
-  participant DB as PostgreSQL
+  actor P as Patron
+  participant WEB as Web App
+  participant API as Backend API
   participant WAKE as Wake engine
-  participant ADP as Adapter by adapter_type
-  participant AG as Agent runtime
+  participant ADP as Adapter
+  participant SSE as Workspace events SSE
+  participant DB as PostgreSQL
+  actor AG as Agent runtime
 
-  P->>API: POST /projects/P/tasks (priority, checklist, DoD, deps)
-  API->>API: assert project.status == active
-  API->>DB: insert Task ARM-n + checklist + deps + labels
-  P->>API: POST /tasks/T/participants add A then add B
-  API->>WAKE: wake A and B with task context
-  WAKE->>ADP: execute(ctx) per agent
-  ADP->>AG: run one bounded turn via the runtime gateway
-  AG-->>ADP: streamed events (deltas, tool calls, usage)
-  ADP-->>WAKE: tee events
-  WAKE-->>P: SSE /tasks/T/stream (live trace)
-  AG->>API: POST /agent/tasks/T/comment and mention B (token)
-  AG->>API: POST /agent/tasks/T/next-action
+  P->>WEB: grant a seat (pick an agent + role)
+  WEB->>API: POST /projects/P/grant (marius_id, role_key)
+  API->>DB: SeatGrant status=granted. Agent becomes a project participant (system-only)
+  alt the role carries skills
+    API->>WAKE: wake agent to install those skills
+    WAKE->>ADP: execute(ctx)
+    ADP->>AG: install the role skills
+    AG->>API: GET /agent/me — confirm
+    API->>SSE: emit seat.skills_installed
+    SSE-->>WEB: event pushed
+  else no skills on the role
+    Note over API,DB: nothing is sent to the agent. The seat is pure system state.
+  end
+  API->>API: recompute_active — every seat granted AND every seated agent ONLINE?
+  alt yes
+    API->>DB: Project status=active
+    API->>SSE: emit project.active
+    SSE-->>WEB: event pushed — task commission unlocked
+  else no
+    WEB-->>P: still setup — roster shows unfilled seats
+  end
 ```
+
+- No self-apply; no agent "accept". A seat is `granted` (system) and that is the whole record. If the
+  role has skills, the agent is woken once to install them — the only agent touchpoint. If the agent is
+  **offline** at grant time, that skill-install is **queued** and resumes when it is back ONLINE (see
+  the liveness model above).
+- **`active` = every seat granted and every seated agent ONLINE** (liveness already tracked from the
+  invite). Once activated it stays active; an agent going offline later just shows offline, it does not
+  revoke activation. The role itself is replayed to the agent later whenever it is woken on a task.
+
+### UC7 — Commission a task through the Project Leader (no manual form)
+
+There is **no manual task form**. Because every project has a **Project Leader** agent, "Commission
+task" opens a **chat with the Leader**. The Patron states what they want; the Leader analyzes, asks
+back when there is more than one option, breaks the work down if it is too large, **fills every task
+field** (priority, DoD, checklist, deps, due date), **picks the workers** from the roster, and
+produces a **preview**. The Patron then edits it manually or asks the Leader to refine. Confirming
+creates the task and wakes the chosen workers. This commissioning runs in a **fresh Leader session**
+seeded with the project + roster + worker context.
+
+```mermaid
+sequenceDiagram
+  actor P as Patron
+  participant WEB as Web App
+  participant API as Backend API
+  participant WAKE as Wake engine
+  participant ADP as Adapter
+  participant L as Project Leader agent
+  participant SSE as Workspace events SSE
+  participant DB as PostgreSQL
+
+  P->>WEB: click "Commission task" (project must be active)
+  WEB-->>P: open a chat modal to the Project Leader
+  P->>WEB: type the request
+  WEB->>API: POST /projects/P/commission (message)
+  API->>WAKE: wake Leader in a FRESH session (ctx = project + roster + workers)
+  WAKE->>ADP: execute(ctx) — Leader turn 1
+  ADP->>L: analyze, ask if more than one option, break down, fill fields, pick workers
+  L-->>ADP: reply (clarifying question OR proposed Task preview)
+  ADP-->>API: tee reply and proposed task
+  API->>DB: store Task draft ARM-n with leader-chosen fields and participants
+  API->>SSE: stream Leader chat and task preview
+  SSE-->>WEB: render chat and preview
+  alt Patron asks to refine
+    P->>WEB: reply with a tweak
+    WEB->>API: POST /commission/ID/refine (message)
+    API->>WAKE: resume the Leader session
+    WAKE->>ADP: execute(ctx) — next turn
+    ADP->>L: revise the task
+  else Patron confirms
+    P->>WEB: confirm
+    WEB->>API: POST /tasks/T/confirm
+    API->>DB: Task status=todo, participants = leader-picked workers
+    API->>WAKE: wake the chosen workers with task context
+    API->>SSE: emit task.created
+    SSE-->>WEB: task is live on the board
+  end
+```
+
+- The Patron **never fills task fields** — that is the Leader's job. "You task" is literal: you tell
+  the Leader what you want, the Leader shapes the task.
+- Commission is **not gated on per-worker liveness**: it only needs the project to be **active** (it
+  was staffed online once). If a chosen worker is offline, that is resolved at run time by the
+  wake/report machinery — only the **Leader** must be reachable, because the chat is with it.
+- The Leader can also **edit a confirmed task** later the same way (Patron messages a change → Leader
+  revises). Once work is underway, participants co-work in the task thread (comments, @mentions,
+  `next_action`) and the Patron watches the live trace — that collaboration is UC8-adjacent and the
+  trace panel is unchanged.
 
 ### UC8 — Publish output, then the DONE gate (no local-only output)
 
 ```mermaid
-flowchart LR
-  AG["Agent"] -->|"POST /artifact kind=file (content_b64)"| SVC["ArtifactService"]
-  AG -->|"POST /artifact kind=link (uri)"| SVC
-  SVC -->|"file: decode + verify sha256"| MN[("MinIO armarius/&lt;project&gt;/&lt;task&gt;/&lt;name&gt;")]
-  SVC -->|"link: external URL (PR / deploy)"| EXT["external location"]
-  MN --> DB[("Artifact row uri=key stored=true")]
-  EXT --> DB2[("Artifact row uri stored=false")]
-  AG -->|"POST /tasks/T/status done"| GATE{"has a file or link artifact?"}
-  GATE -->|no| X["409 — publish first"]
-  GATE -->|yes| OK["done"]
+sequenceDiagram
+  actor AG as Agent runtime
+  participant API as Backend API
+  participant SVC as ArtifactService
+  participant MN as MinIO
+  participant DB as PostgreSQL
+
+  alt file artifact
+    AG->>API: POST /agent/tasks/T/artifact (kind=file, name, content_b64, sha256)
+    API->>SVC: publish
+    SVC->>SVC: base64-decode, verify sha256
+    SVC->>MN: put_object armarius/project-slug/T/name
+    SVC->>DB: Artifact uri=object-key, stored=true
+  else link artifact
+    AG->>API: POST /agent/tasks/T/artifact (kind=link, uri=external URL)
+    API->>SVC: publish
+    SVC->>DB: Artifact uri=external, stored=false
+  end
+  AG->>API: POST /agent/tasks/T/status (done)
+  API->>API: gate — does T have a file or link artifact?
+  alt has output
+    API->>DB: status -> in_review / done
+  else no output
+    API-->>AG: 409 publish the output artifact first
+  end
 ```
 
-- A **file** artifact must **upload content** (stored under the project folder in MinIO); a **link**
-  points to an external location (a merged PR). A task **cannot** reach `in_review`/`done` without at
-  least one — output never stays on the agent's local disk.
+- A **file** artifact **uploads content** into the project's MinIO folder
+  (`armarius/<project-slug>/<task>/<name>`); a **link** records an external location (a merged PR). A
+  task **cannot** reach `in_review`/`done` without at least one — output never stays on the agent's
+  local disk.
 
 ### UC9 — Agent-assisted onboarding (Phase G, last / optional)
 
+The Workspace Agent (UC3) runs the project-onboarding chat, then materializes the same project payload
+as the manual UC5 path.
+
 ```mermaid
 sequenceDiagram
-  participant P as Patron
-  participant API as Human API
-  participant WA as Workspace Agent
+  actor P as Patron
+  participant WEB as Web App
+  participant API as Backend API
+  actor WA as Workspace Agent
   participant DB as PostgreSQL
 
-  P->>API: POST /onboarding/sessions (mode agent)
-  API-->>P: session id
+  P->>WEB: New project -> Agent mode
+  WEB->>API: POST /workspaces/WS/onboarding/sessions
+  API->>DB: OnboardingSession status=open
+  API-->>WEB: session id
   loop structured Q and A
-    WA->>P: question (goal, leader, worker roles, counts, context)
-    P->>API: POST /sessions/ID/messages (answer)
+    WA->>API: post next question [agent token]
+    API-->>WEB: render question
+    P->>WEB: answer
+    WEB->>API: POST /sessions/ID/messages (answer)
+    API->>DB: append transcript, update collected plan
   end
-  WA->>API: POST /sessions/ID/finalize (roles, leader, context)
-  API->>API: ProjectService.create (same hard rule as manual)
-  API->>DB: Project status=setup + Roles
-  API-->>P: project created
+  WA->>API: POST /sessions/ID/finalize (collected leader + roles + context)
+  API->>API: ProjectService.create — same HARD rule as UC5
+  API->>DB: OnboardingSession finalized and Project status=setup plus Roles
+  API-->>WEB: project created
+  WEB-->>P: continue staffing via UC6
 ```
 
 ---
@@ -485,21 +758,39 @@ flowchart LR
 1. **Vendor-neutral via adapters** — every runtime (Hermes, OpenClaw, Claude CLI, echo) is wrapped in
    one bounded `execute()` contract resolved through the `AdapterRegistry`. Armarius **owns the wake
    loop**; the runtime is just an executor reached through its gateway via an adapter.
-2. **Roster/seats are the backbone** — a project has exactly one **Project Leader** (pick now or leave
-   empty) plus worker roles (optional skills + seat counts). It becomes `active` only when **every seat
-   is acknowledged**; the **sole** active-vs-setup difference is being allowed to assign tasks.
-3. **Collaboration is first-class** — a task has **multiple participants** co-working in the thread, not
+2. **Invite = enroll-and-wait, not print-a-token** — the Patron only picks the agent type; the agent
+   enrolls and **waits on that call**; on approval the backend **returns the token as the enroll
+   response** (claim exists only as a recovery fallback). The token is never printed in the prompt.
+3. **Roster/seats are the backbone** — a project has exactly one **Project Leader** (pick now or leave
+   empty) plus worker roles (optional skills + seat counts). Granting a seat is **system-only** (no
+   self-apply; the agent is contacted only to install the role's skills, and that is queued if the
+   agent is offline). The project becomes `active` **once** every seat is granted and every seated
+   agent is online; it **stays active** — a worker going offline later is an operational matter, not a
+   revoke. The **sole** active-vs-setup difference is being allowed to commission tasks.
+4. **Liveness is recency + probe, not a sticky flag** — "online" means *a signal was received
+   recently* (any contact — task response, heartbeat, `/agent/me`). After an idle timeout the system
+   sends a light "reply OK" probe (3× retry → offline); OFFLINE then re-probes on a timeout that
+   **doubles each failed cycle**, so a busy agent or overloaded LLM isn't hammered. **Any signal resets
+   everything** (state, idle timer, backoff). So a long-silent agent is OFFLINE by the time you need
+   it; the UI never shows a stale ONLINE. (Full state machine in §5.)
+5. **Commission is leader-mediated, never a manual form** — "Commission task" opens a chat with the
+   **Project Leader**, who analyzes, asks back, breaks the work down, fills every field, and picks the
+   workers; the Patron reviews the preview and refines or confirms. "You task" is literal.
+6. **Collaboration is first-class** — a task has **multiple participants** co-working in the thread, not
    a lone assignee.
-4. **Shared store prevents local-only output** — a `file` artifact must upload content into the
+7. **Shared store prevents local-only output** — a `file` artifact must upload content into the
    project's MinIO folder; a `link` points outward; a task **cannot reach done** without one. This is
    the decisive difference from other multi-agent systems.
-5. **"You trace"** — the **live run trace** (SSE) is retained in the Collaboration Room; it is an
+8. **The UI is push-driven** — the web app holds a **workspace-events SSE** stream; the backend pushes
+   liveness/status/approval/task events (and the live trace) to it. No polling, and no "the UI magically
+   knew" steps.
+9. **"You trace"** — the **live run trace** (SSE) is retained in the Collaboration Room; it is an
    Armarius signature.
-6. **Workspace Agent** — onboarding may be driven by a designated agent via chat, but it is a
-   nice-to-have shipped **last (Phase G)**.
-7. **Clean Architecture** — pure domain; all IO/HTTP in infrastructure/presentation; a single
-   composition root.
-8. **Alembic** — replaces `create_all()` so schema changes ship without nuking data.
+10. **Workspace Agent** — onboarding may be driven by a designated agent via chat, but it is a
+    nice-to-have shipped **last (Phase G)**.
+11. **Clean Architecture** — pure domain; all IO/HTTP in infrastructure/presentation; a single
+    composition root.
+12. **Alembic** — replaces `create_all()` so schema changes ship without nuking data.
 
 ---
 
