@@ -245,3 +245,35 @@ Follow-up fixes after direct UI review (every visible string now bilingual; UX f
   import of `anthropics/skills/algorithmic-art` (cloned SKILL.md + LICENSE.txt +
   templates/*). Headless-Chrome screenshots of sidebar (VI), new-skill modal
   (Manual/Import tabs), skill editor (file tree + editor), commission modal.
+
+### 2026-06-26 — DESIGN: multi-project + onboarding + rich task + collaboration (pre-impl)
+> **Design milestone — no code yet.** The user asked to design the next wave *before* building it,
+> learning from `openclaw-mission-control` (workspace/project UX) and `paperclip` (task schema +
+> task detail). Four needs folded into a new `docs/` design set; full detail there, summary here.
+
+- **New design docs** — [`docs/API_CONTRACT.md`](./docs/API_CONTRACT.md),
+  [`docs/HLD.md`](./docs/HLD.md), [`docs/LLD.md`](./docs/LLD.md),
+  [`docs/DEV_PLAN.md`](./docs/DEV_PLAN.md). HLD/LLD/API-CONTRACT didn't exist before; they now.
+- **Skill nested tree** — imported/manual skills render as a **VSCode/GitHub-style collapsible tree**
+  (add folder/file inside structure), not a flat list. Backend unchanged (stores `files:{path}`).
+- **Multi-project workspaces** — a workspace holds **many projects**; **no more auto "General"** +
+  auto-board. Land on a project list; each project has a **roster of roles/seats** (one leader +
+  worker roles with seat counts) matching the design's *"Required roles · agents must qualify for a
+  seat"* / *"Vet & grant seat"*. **Hard rule**: a project is created only with a complete seat plan;
+  it goes `setup → active` when the leader seat is granted.
+- **Two onboarding modes** — (1) **manual** form: goal, roles + per-role counts + descriptions,
+  context, settings; (2) **agent-assisted**: a designated **Workspace Agent** (gets an
+  `armarius-onboarder` skill) runs an OpenClaw-style chat that finalizes the project plan.
+- **Rich task schema** — inherit Paperclip fields (priority, labels, parent/subtask, dependencies,
+  due date, DoD) + a lightweight **checklist**, and the **Output-Artifact shared-store gate** that
+  structurally prevents the "agent left the output file locally" failure: a `file`/`patch` artifact
+  must **upload content** (server-stored), and a task **cannot reach `in_review`/`done`** without one.
+- **Collaboration Room** — task detail follows the design's *Collaboration* view: participants
+  co-working in the thread + the live run trace + linked artifacts + DoD/checklist
+  (keeps the distinctive trace panel; tagline *"You task. They collaborate. You trace."*).
+- **Infra**: adopt **Alembic** migrations (none existed) to ship the schema deltas safely.
+- **Sequencing** (DEV_PLAN): A) Alembic · B) skill tree · C) project layer + roster · D) manual
+  onboarding + Workspace Agent · E) agent-assisted chat (trails) · F) rich task + artifact gate ·
+  G) Collaboration Room. Each phase ships green + commits to `main`.
+- **Status**: design drafted, awaiting user sign-off on the three open confirmations in DEV_PLAN
+  (hard seat rule; DONE-gate enforcement; manual-onboarding-before-agent ordering).
