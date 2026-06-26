@@ -275,5 +275,55 @@ Follow-up fixes after direct UI review (every visible string now bilingual; UX f
 - **Sequencing** (DEV_PLAN): A) Alembic · B) skill tree · C) project layer + roster · D) manual
   onboarding + Workspace Agent · E) agent-assisted chat (trails) · F) rich task + artifact gate ·
   G) Collaboration Room. Each phase ships green + commits to `main`.
-- **Status**: design drafted, awaiting user sign-off on the three open confirmations in DEV_PLAN
-  (hard seat rule; DONE-gate enforcement; manual-onboarding-before-agent ordering).
+- **Status**: design drafted; the three open confirmations are now **resolved** (see refinement below).
+
+#### 2026-06-26 (refined) — design v2: MinIO, file|link gate, ack-activation, github, ARCHITECTURE doc
+> Owner reviewed v1 and refined the design. Docs updated in place (not yet committed).
+
+- **Resolved decisions**
+  1. **Hard rule (Phase C)** — exactly one **Project Leader** (`seats = 1`): **pick an existing agent now
+     OR leave empty** to add later; a `responsibilities` field (default leader behavior TBC). ≥1 worker
+     role with name/description/**optional skills**/seat count. Project goes `active` only when **all**
+     seats are filled **and acknowledged** (agent came online + accepted).
+  2. **DONE-gate (Phase E)** — supported artifact kinds = **`file`** (upload content → MinIO) **or
+     `link`** (external URL); DONE requires ≥1 file/link. `patch`/`note` dropped.
+  3. **Phase G (agent onboarding) is LAST** — manual is the priority path; the main flow runs first.
+- **Additions**
+  - **Project `github_url`** (optional repo link) added to the project model.
+  - **MinIO** is the Shared Artifact Store (new compose service, bucket **`armarius`**) — holds task
+    output artifacts **and media** (agent avatars, …). Replaces the earlier FS-store design.
+- **New doc** — [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md): higher-level, Mermaid-heavy,
+  **use-case-driven** (one flow diagram per use case: create-project/roster, commission+co-work+trace,
+  publish+DONE-gate, Workspace-Agent onboarding, skill tree), plus component/topology/data-model/phase
+  diagrams. Style follows the `chat-with-documents` ARCHITECTURE reference.
+- **Phase relabel** (DEV_PLAN) for a contiguous main flow: **A** Alembic+MinIO · **B** skill tree ·
+  **C** project+roster · **D** manual onboarding + Workspace Agent · **E** rich task + artifact gate ·
+  **F** Collaboration Room · **G** agent onboarding (last). HLD/LLD/API_CONTRACT updated to match.
+- **NOT committed** (per owner: "ko commit và push nhé"). Changes live in the working tree only.
+
+#### 2026-06-26 (architecture review) — ARCHITECTURE.md fixes + EN-only docs
+> Owner reviewed at the architecture tier; I applied the fixes and propagated the wording down to
+> HLD/LLD/API_CONTRACT/DEV_PLAN. Still **not committed**.
+
+- **All docs are English-only** now (no Vietnamese mixed in) — ARCHITECTURE.md rewritten in EN.
+- **Adapters made first-class** — the diagrams were Hermes-only; now they show the **AdapterRegistry**
+  with `hermes_gateway` (reference), `openclaw_gateway`, `claude_local`, and `echo` (test) behind the
+  single bounded `MariusAdapter.execute(ctx)` contract. The backend **always calls through an adapter →
+  the runtime's gateway**, never a gateway directly. Added an adapter table + a dedicated §2.
+- **Topology fixed** — removed the two-separate-agent-blocks drawing. Now there is **one agent-runtime
+  block**: Armarius drives it through an adapter→gateway (`execute()`), and that same block calls
+  **back** into the Agent API (token). No standalone agent→nginx box wired oddly.
+- **Use cases reordered + expanded** — UCs now follow the journey and number in order: UC1 Register &
+  Login, UC2 Invite an agent, UC3 Designate the Workspace-Agent role, UC4 Author/import skill, UC5
+  Create project + staff roster, UC6 Apply/accept seat → active, UC7 Commission + co-work + trace, UC8
+  Publish + DONE-gate, UC9 Agent-assisted onboarding (last). Agent-side steps show what the runtime
+  (Hermes/OpenClaw/Claude via its adapter) does.
+- **`setup` vs `active`** — clarified the **only** behavioral difference is **task assignment**;
+  everything else works in `setup`. Propagated to HLD §5.2, LLD §3.1, API_CONTRACT §3.1.
+- **Shared store follows the project** — artifacts are no longer a flat `artifacts/<task>/…`; each
+  **project gets a top-level folder** in the bucket and each task with output writes under it
+  (`<project-slug>/<task-id-or-slug>/<name>`); media under `_media/`. Propagated to HLD §6, LLD §6,
+  API_CONTRACT §7, DEV_PLAN A/E.
+- **UC2 Mermaid parse error fixed** — the `participants {A}; {B}` line used `{}`/`;` that GitHub's
+  Mermaid rejects; reworded all sequence messages to plain text (no `{}`, `;`, or parens-as-syntax).
+  Scanned every diagram for the same hazard.

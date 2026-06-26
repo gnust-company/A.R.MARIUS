@@ -98,8 +98,8 @@ We do not believe in digital Taylorism — in rigid, top-down control of every a
                    ▼
 ┌─────────────────────────────────────────────┐
 │                 ARMARIUS                    │
-│           (The Provisioner)                   │
-│   Distribute · Delegate · Trace · Curate  │
+│           (The Provisioner)                 │
+│   Distribute · Delegate · Trace · Curate    │
 └──────────────────┬──────────────────────────┘
                    │
          ┌─────────┴──────────┐
