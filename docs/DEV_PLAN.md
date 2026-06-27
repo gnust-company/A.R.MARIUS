@@ -13,10 +13,11 @@ then build the backend against it.**
 - **FE-first** — the mock-data app *is* the spec. Every screen, flow, and real-time behavior
   (liveness decay, leader commission, live trace) is demonstrated with simulated data *before* a line
   of backend is written. UX problems surface when they are cheap to fix.
-- **Cyberpunk / "virtual world" aesthetic** — the old "Modern Scriptorium" theme is scrapped (owner:
-  "không ưng cái design hiện tại 1 tý nào"). New direction: a cyberpunk UI where every click feels
-  like entering a simulation — glitch transitions, holographic/HUD panels, scanlines, a "jacking-in"
-  boot motion, neon data streams. Defined fully in the new design doc produced by FE-0.
+- **Scriptorium aesthetic (refined)** — the *current* "Modern Scriptorium" implementation is being
+  **re-tuned**, not scrapped (owner: the existing implementation wasn't right). Direction: a warm,
+  editorial **Scriptorium** — parchment, terracotta + manuscript gold, classical high-contrast serifs,
+  and ornamental medieval details — matched to the owner's reference image. (A cyberpunk direction was
+  tried first and set aside.) Defined fully in the design doc produced by FE-0.
 - **BE second** — Clean Architecture + strict TDD, phased so each phase ships green and maps to the
   approved architecture. The mock-data contract (TS types + fixtures + simulated SSE) becomes the
   acceptance bar the real API must satisfy.
@@ -28,29 +29,30 @@ Only the build *sequence* and the *visual layer* change.
 ## 2. Decisions baked into this plan (owner, 2026-06-27)
 
 1. **Build order** — FE mock-data app first; BE after FE freeze.
-2. **Aesthetic** — cyberpunk + a simulation/"virtual world" interaction language (replaces Scriptorium).
+2. **Aesthetic** — warm editorial **Scriptorium** (parchment + terracotta + manuscript gold,
+   classical serif: Fraunces / Spectral / UnifrakturMaguntia-initial), matched to the reference image.
+   (Cyberpunk was tried and set aside.)
 3. **FE stack kept** — React 18 + Vite + TS + Tailwind v4 + React Router stay; only the design system,
-   components, and theme are rebuilt. (A framework swap was rejected — the current structure is clean.)
+   components, and theme are re-tuned. (A framework swap was rejected — the current structure is clean.)
 4. **Mock fidelity** — fully interactive: every flow clickable, real-time behaviors *simulated* (fake
    SSE streams, scripted liveness decay, scripted leader replies) so the demo feels alive.
 5. **BE method** — Clean Architecture + TDD (red→green→refactor per phase); domain pure; Alembic
    revisions for all schema changes after the first.
 6. **Architecture unchanged** — the four approved docs stand; DEV_PLAN/ROADMAP now sequence around them.
 
-## 3. Track FE — Mock-data cyberpunk app (FIRST)
+## 3. Track FE — Mock-data Scriptorium app (FIRST)
 
 Each FE sub-phase ships `tsc --noEmit` + `vite build` clean, EN+VI strings, and a commit. The mock
 data layer is the contract the BE will later satisfy.
 
 ### FE-0 — Design system + interaction language  *(no deps)*
-**Goal:** the cyberpunk design doc that governs everything after.
-- New doc **[docs/FE_DESIGN.md](./FE_DESIGN.md)**: design tokens (neon palette, glass/HUD panels,
-  grid + scanline textures, mono + display type), component primitives (Button, Panel/Card, Chip,
-  Input, Modal, Avatar, LivenessDot, StatusBadge), and a named **interaction/motion language** — the
-  signature "simulation" motions: *jack-in* boot on login, *glitch* transition between routes,
-  *holographic* hover/press, *data-stream* reveal for lists, *neon pulse* for live agents, *scanline
-  sweep* for the live trace.
-- Replace `src/index.css` tokens + `src/ui.tsx` primitives with the new system.
+**Goal:** the Scriptorium design doc that governs everything after.
+- New doc **[docs/FE_DESIGN.md](./FE_DESIGN.md)**: design tokens (warm parchment palette, terracotta +
+  manuscript gold, aged borders, classical + ornamental type), component primitives (Button, Panel/Card,
+  Chip, Input, Modal, Avatar, LivenessDot, StatusBadge, DropCap), and a named **interaction/motion
+  language** — *quill-in* reveal, *scroll-unfurl* modals, *gilt-hover*, *wax-seal* press, *pulse*,
+  *drop-cap*.
+- Re-tune `src/index.css` tokens + `src/ui.tsx` primitives to the reference (parchment/terracotta/serif).
 - One **style playground** page (`/style`) rendering every token + primitive + motion.
 **DoD:** FE_DESIGN.md approved; `/style` renders the full token + primitive + motion set; tsc+build clean.
 
@@ -66,11 +68,11 @@ data layer is the contract the BE will later satisfy.
 **DoD:** app boots with zero backend; demo seed visible; liveness dots decay live; a task trace streams
 fake run events; `MOCK=off` still compiles.
 
-### FE-2 — Rebuild every surface (cyberpunk + simulation motion), in 5 sub-phases
-Old Scriptorium components are cleared/replaced under the new system. Each sub-phase is one commit.
+### FE-2 — Rebuild every surface (Scriptorium styling + motion), in 5 sub-phases
+Old Scriptorium components are re-tuned under the new system. Each sub-phase is one commit.
 
-- **FE-2a Shell + Auth + Workspaces** — App shell (cyberpunk nav/HUD); login/register (jack-in boot
-  on success); Workspaces overview (create, "enter" transition).
+- **FE-2a Shell + Auth + Workspaces** — App shell (Scriptorium nav); login/register (*quill-in*
+  reveal on success); Workspaces overview (create, "enter" transition).
 - **FE-2b Project landing + Roster + Onboarding** — project list + "New project"; onboarding modal:
   **manual** form (goal, leader pick-or-empty + responsibilities, worker roles + counts + optional
   skills, context, github_url, settings) and the **agent-assisted** tab (Workspace Agent chat —
@@ -80,14 +82,14 @@ Old Scriptorium components are cleared/replaced under the new system. Each sub-p
   `leader_state` thinking→waiting, draft preview, refine/confirm, `commission.leader_offline`).
 - **FE-2d Collaboration Room** — task detail: context (title/desc, DoD, checklist, deps, labels,
   participants, status/priority/due), co-work thread (@mention), **per-task live trace** (simulated
-  SSE, holographic timeline), publish artifact (file→MinIO mock card / link), DONE-gate enforcement.
+  SSE, gilt/ink timeline), publish artifact (file→MinIO mock card / link), DONE-gate enforcement.
 - **FE-2e Agent Directory + Skill Shop + Patron Inbox** — Directory: Marius cards, **enroll-and-wait**
   invite (enrollment_code, NO token; approve → token), adapter_type-lock note; Skill Shop +
   **nested file-tree** editor (manual + GitHub import); Patron Inbox approval queue.
 
 **DoD (FE-2):** all surfaces demonstrable end-to-end on mock data; the full journey
 (register → workspace → onboard project → roster active → commission task → co-work + trace → publish
-→ done → approve) plays through with cyberpunk styling + simulation motion; tsc+build clean.
+→ done → approve) plays through in the Scriptorium style + motion; tsc+build clean.
 
 ### FE-3 — Polish + i18n + accessibility  *(deps: FE-2)*
 **Goal:** a production-feel mock demo.

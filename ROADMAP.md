@@ -19,7 +19,7 @@
 | Decision | Choice | Why |
 |---|---|---|
 | Build order | **FE-first (mock data) → BE** | Lock UX before any backend cost; the mock app is the spec the BE implements to |
-| Aesthetic | **Cyberpunk / "virtual world"** | Owner rejected the Scriptorium theme; clicks should feel like entering a simulation |
+| Aesthetic | **Scriptorium (refined)** — warm parchment + terracotta + manuscript gold, classical serif (Fraunces/Spectral) | Re-tuned toward the owner's reference image; cyberpunk was tried and set aside |
 | FE stack | **Keep React 18 + Vite + TS + Tailwind v4 + Router** | Current FE is cleanly structured + mock-swappable; only the design system is rebuilt |
 | Mock fidelity | **Fully interactive, simulated real-time** | Every flow clickable; fake SSE, scripted liveness decay + leader replies |
 | BE method | **Clean Architecture + strict TDD** | Domain pure; red→green→refactor per phase; required by owner |
@@ -48,7 +48,7 @@ A task may reach `in_review`/`done` only with ≥1 artifact of kind **`file` or 
 
 ## Build plan (v3 — FE-first → BE-TDD; mirrors [DEV_PLAN.md](./docs/DEV_PLAN.md))
 
-> Ordering changed 2026-06-27: lock the UX with a mock-data **cyberpunk** frontend first, then build
+> Ordering changed 2026-06-27: lock the UX with a mock-data **Scriptorium** frontend first, then build
 > the backend (Clean Architecture + TDD). The architecture is unchanged; only the sequence + visual
 > layer change. Full detail in [DEV_PLAN.md](./docs/DEV_PLAN.md).
 
@@ -57,9 +57,9 @@ thread CRUD, session store, event-wake + self/liveness-wake, `hermes_gateway` + 
 artifact store, agent API, live-trace SSE, demo seed, docker-compose, and the (now-to-be-replaced)
 Scriptorium frontend. All `[x]`.
 
-### Track FE — Mock-data cyberpunk app (FIRST)
+### Track FE — Mock-data Scriptorium app (FIRST)
 - [ ] **FE-0** Design system + interaction language → [docs/FE_DESIGN.md](./docs/FE_DESIGN.md)
-      (cyberpunk tokens, HUD/glass panels, scanlines, jack-in / glitch / holographic / data-stream motion)
+      (parchment + terracotta + gilt tokens, Fraunces/Spectral, quill-in / scroll-unfurl / gilt-hover / wax-seal motion)
 - [ ] **FE-1** Mock data layer + simulated Hybrid SSE (in-memory store seeded from API_CONTRACT
       shapes; fake liveness decay + per-task trace stream; `MOCK` on/off switch)
 - [ ] **FE-2a** Shell + Auth + Workspaces
@@ -347,11 +347,11 @@ Follow-up fixes after direct UI review (every visible string now bilingual; UX f
   The mock app *is* the spec; UX problems surface before backend cost. Supersedes the v2 BE-centric
   A–G ordering (that content is preserved as the BE track, TDD-reframed). Full detail in
   [DEV_PLAN.md](./docs/DEV_PLAN.md) v3.
-- **Aesthetic reset — cyberpunk / "virtual world"** — the "Modern Scriptorium" (parchment/ink/gold)
-  theme is scrapped (owner: "không ưng cái design hiện tại 1 tý nào"). New direction: a cyberpunk UI
-  where clicks feel like entering a simulation — glitch transitions, holographic/HUD panels,
-  scanlines, a "jacking-in" boot motion, neon data streams. Charter → new FE-0 deliverable
-  [docs/FE_DESIGN.md](./docs/FE_DESIGN.md).
+- **Aesthetic — Scriptorium (refined to the reference)** — the *current* "Modern Scriptorium"
+  implementation is re-tuned (not scrapped) toward the owner's reference image: warm parchment,
+  terracotta + manuscript-gold accents, high-contrast serifs (Fraunces / Spectral / UnifrakturMaguntia
+  initials), ornamental medieval details. (A cyberpunk direction was tried first and set aside.)
+  Charter → FE-0 deliverable [docs/FE_DESIGN.md](./docs/FE_DESIGN.md).
 - **FE stack kept** (React 18 + Vite + TS + Tailwind v4 + React Router); only the design system,
   components, and theme are rebuilt. An audit confirmed the current FE (`api.ts`, providers, routing)
   is cleanly structured and highly swappable to mock data.
