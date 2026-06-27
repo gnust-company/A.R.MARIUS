@@ -10,23 +10,26 @@ import SkillEditor from "./pages/SkillEditor";
 import Approvals from "./pages/Approvals";
 import Workspaces from "./pages/Workspaces";
 import Auth from "./pages/Auth";
+import Style from "./pages/Style";
 
 function Brand() {
   const { t } = useI18n();
   return (
     <div className="flex items-center gap-2.5 px-4 pt-5 pb-4">
       <div
-        className="flex items-center justify-center rounded-lg font-serif text-lg"
+        className="flex items-center justify-center rounded-lg font-display text-lg"
         style={{
           width: 34, height: 34,
-          background: "linear-gradient(180deg,#d8a23a,#b3812a)",
-          color: "#fff8e8", boxShadow: "0 6px 14px -8px rgba(179,129,42,0.9)",
+          background: "linear-gradient(180deg,#D9744E,#C25A3A)",
+          color: "#FBF7EC",
+          border: "1px solid #A8462E",
+          boxShadow: "0 6px 14px -8px rgba(194,90,58,.8), 0 0 0 2px rgba(201,162,39,.35) inset",
         }}
       >
         A
       </div>
       <div className="leading-tight">
-        <div className="font-serif text-[1.15rem] font-semibold tracking-tight">Armarius</div>
+        <div className="font-display text-[1.15rem] font-semibold tracking-tight" style={{ color: "var(--ink)" }}>Armarius</div>
         <div className="text-[0.66rem] uppercase tracking-[0.18em]" style={{ color: "var(--ink-faint)" }}>
           {t("app.scriptorium")}
         </div>
@@ -70,8 +73,8 @@ function LangSwitch() {
           onClick={() => setLang(l)}
           className="px-2 py-1 rounded uppercase tracking-wide"
           style={{
-            background: lang === l ? "var(--ink)" : "transparent",
-            color: lang === l ? "var(--panel)" : "var(--ink-soft)",
+            background: lang === l ? "var(--terra)" : "transparent",
+            color: lang === l ? "#FBF7EC" : "var(--ink-soft)",
           }}
         >
           {l}
@@ -119,6 +122,8 @@ function Sidebar() {
         <NavItem to="/directory" label={t("nav.directory")} icon="❖" />
         <NavItem to="/skills" label={t("nav.skills")} icon="⚒" />
         <NavItem to="/approvals" label={t("nav.inbox")} icon="✦" />
+        <div className="rule mx-4 my-1.5" />
+        <NavItem to="/style" label={t("nav.style")} icon="✎" />
       </nav>
       <div className="mt-auto px-4 pb-4">
         <div className="rule mb-3" />
@@ -127,8 +132,8 @@ function Sidebar() {
         </div>
         <div className="flex items-center gap-2.5 mb-2">
           <div
-            className="flex items-center justify-center rounded-full text-xs font-semibold shrink-0"
-            style={{ width: 30, height: 30, background: "var(--ink)", color: "var(--panel)" }}
+            className="flex items-center justify-center rounded-full text-xs font-semibold shrink-0 font-display"
+            style={{ width: 30, height: 30, background: "var(--terra)", color: "#FBF7EC" }}
           >
             {(user?.full_name ?? "Y").charAt(0).toUpperCase()}
           </div>
@@ -211,6 +216,7 @@ function Shell() {
               <Route path="/skills" element={<Skills />} />
               <Route path="/skills/:skillId" element={<SkillEditor />} />
               <Route path="/approvals" element={<Approvals />} />
+              <Route path="/style" element={<Style />} />
             </Routes>
           )}
         </main>
@@ -236,6 +242,8 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Auth />} />
         <Route path="/register" element={<Auth />} />
+        {/* Public design-system playground — viewable without login. */}
+        <Route path="/style" element={<Style />} />
         <Route path="*" element={<Auth />} />
       </Routes>
     );

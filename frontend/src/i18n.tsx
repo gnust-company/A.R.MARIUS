@@ -28,6 +28,15 @@ const dict = {
     "nav.invite": "Invite an agent",
     "nav.workspace": "Workspace",
     "nav.project": "Project",
+    "nav.style": "Atelier",
+    // Style playground
+    "style.title": "Design Atelier",
+    "style.subtitle": "The Scriptorium design system",
+    "style.palette": "Palette",
+    "style.typography": "Typography",
+    "style.components": "Components",
+    "style.motion": "Motion",
+    "style.bodySample": "Armarius is a scriptorium for agent collaboration — warm parchment, terracotta and gold leaf, classical serifs.",
     // Auth
     "auth.signIn": "Sign in to Armarius",
     "auth.createAccount": "Create your account",
@@ -238,6 +247,15 @@ const dict = {
     "nav.invite": "Mời agent",
     "nav.workspace": "Không gian",
     "nav.project": "Dự án",
+    "nav.style": "Xưởng",
+    // Style playground
+    "style.title": "Xưởng thiết kế",
+    "style.subtitle": "Hệ thống thiết kế Scriptorium",
+    "style.palette": "Bảng màu",
+    "style.typography": "Kiểu chữ",
+    "style.components": "Thành phần",
+    "style.motion": "Chuyển động",
+    "style.bodySample": "Armarius là một scriptorium cho agent cộng tác — giấy parchment ấm, terracotta và vàng hoàng kim, serif cổ điển.",
     // Auth
     "auth.signIn": "Đăng nhập Armarius",
     "auth.createAccount": "Tạo tài khoản",

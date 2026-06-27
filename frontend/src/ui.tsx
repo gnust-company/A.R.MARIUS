@@ -5,14 +5,15 @@ import type { TranslationKey } from "./i18n";
 
 // Colors only — labels are resolved via i18n ("status.*" / "liveness.*") so the UI
 // is fully bilingual. `soft` is the translucent badge background derived from `color`.
+// Palette: warm Scriptorium (see docs/FE_DESIGN.md).
 export const STATUS_META: Record<TaskStatus, { color: string; soft: string; key: TranslationKey }> = {
-  backlog:     { color: "#71766f", soft: "rgba(113,118,111,0.14)", key: "status.backlog" },
-  todo:        { color: "#3a5876", soft: "rgba(58,88,118,0.14)",   key: "status.todo" },
-  in_progress: { color: "#b3812a", soft: "rgba(216,162,58,0.18)",  key: "status.in_progress" },
-  in_review:   { color: "#6b4f86", soft: "rgba(107,79,134,0.16)",  key: "status.in_review" },
-  blocked:     { color: "#a8492c", soft: "rgba(168,73,44,0.15)",   key: "status.blocked" },
-  done:        { color: "#4f7a3f", soft: "rgba(79,122,63,0.16)",   key: "status.done" },
-  cancelled:   { color: "#8a7c64", soft: "rgba(138,124,100,0.14)", key: "status.cancelled" },
+  backlog:     { color: "#857B6A", soft: "rgba(133,123,106,0.15)",  key: "status.backlog" },
+  todo:        { color: "#3A5876", soft: "rgba(58,88,118,0.14)",    key: "status.todo" },
+  in_progress: { color: "#C25A3A", soft: "rgba(194,90,58,0.16)",    key: "status.in_progress" },
+  in_review:   { color: "#7A5A8A", soft: "rgba(122,90,138,0.15)",   key: "status.in_review" },
+  blocked:     { color: "#A8492C", soft: "rgba(168,73,44,0.15)",    key: "status.blocked" },
+  done:        { color: "#5E7A4A", soft: "rgba(94,122,74,0.16)",    key: "status.done" },
+  cancelled:   { color: "#9A8E78", soft: "rgba(154,142,120,0.15)",  key: "status.cancelled" },
 };
 
 export const BOARD_COLUMNS: TaskStatus[] = [
@@ -20,11 +21,11 @@ export const BOARD_COLUMNS: TaskStatus[] = [
 ];
 
 const LIVENESS_META: Record<string, { color: string; key: TranslationKey; pulse?: boolean }> = {
-  online:  { color: "#4f7a3f", key: "liveness.online" },
-  working: { color: "#d8a23a", key: "liveness.working", pulse: true },
-  idle:    { color: "#9a8f78", key: "liveness.idle" },
-  offline: { color: "#b9ad94", key: "liveness.offline" },
-  hung:    { color: "#a8492c", key: "liveness.hung" },
+  online:  { color: "#5E7A4A", key: "liveness.online" },
+  working: { color: "#C25A3A", key: "liveness.working", pulse: true },
+  idle:    { color: "#C9A227", key: "liveness.idle" },
+  offline: { color: "#9A8E78", key: "liveness.offline" },
+  hung:    { color: "#A8492C", key: "liveness.hung" },
 };
 
 export function StatusBadge({ status }: { status: TaskStatus }) {
@@ -51,6 +52,31 @@ export function LivenessDot({ liveness, withLabel }: { liveness: string; withLab
         style={{ background: m.color }}
       />
       {withLabel && <span className="text-xs" style={{ color: "var(--ink-faint)" }}>{t(m.key)}</span>}
+    </span>
+  );
+}
+
+// Decorated manuscript initial (drop-cap). Floats a large Fraunces letter;
+// `blackletter` switches to UnifrakturMaguntia for ornamental flourishes.
+export function DropCap({
+  letter, blackletter = false, size = 46, color = "var(--terra)",
+}: {
+  letter: string; blackletter?: boolean; size?: number; color?: string;
+}) {
+  return (
+    <span
+      className={blackletter ? "font-initial" : "font-display"}
+      style={{
+        float: "left",
+        fontSize: size,
+        lineHeight: 0.8,
+        fontWeight: 700,
+        color,
+        margin: "4px 10px 0 0",
+        textShadow: "0 1px 0 rgba(201,162,39,0.28)",
+      }}
+    >
+      {letter}
     </span>
   );
 }
@@ -83,12 +109,12 @@ export function Modal({
   }, [onClose]);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6"
-      style={{ background: "rgba(40,28,10,0.5)" }} onClick={onClose}>
-      <div className="panel w-full flex flex-col"
-        style={{ maxWidth: wide ? 680 : 460, maxHeight: "85vh", boxShadow: "0 30px 60px -30px rgba(60,40,10,0.5)" }}
+      style={{ background: "rgba(60,45,25,0.45)", backdropFilter: "blur(2px)" }} onClick={onClose}>
+      <div className="panel ornate unfurl w-full flex flex-col"
+        style={{ maxWidth: wide ? 680 : 460, maxHeight: "85vh", boxShadow: "0 30px 60px -30px rgba(60,40,15,0.5)" }}
         onClick={(e) => e.stopPropagation()}>
         <header className="flex items-center gap-3 px-5 py-3.5 shrink-0" style={{ borderBottom: "1px solid var(--line)" }}>
-          <span className="font-serif text-lg font-semibold">{title}</span>
+          <span className="font-display text-lg font-semibold">{title}</span>
           <button className="ml-auto text-lg leading-none px-2" onClick={onClose} style={{ color: "var(--ink-faint)" }}>×</button>
         </header>
         <div className="flex-1 min-h-0 overflow-auto p-5">{children}</div>
@@ -140,7 +166,7 @@ export function CheckboxDropdown<T extends { id: string }>({
             return (
               <label key={k} className="flex items-start gap-2.5 px-3 py-2 cursor-pointer"
                 style={{
-                  background: on ? "rgba(216,162,58,0.14)" : "var(--panel)",
+                  background: on ? "rgba(201,162,39,0.16)" : "var(--panel)",
                   borderBottom: i < items.length - 1 ? "1px solid var(--line-soft)" : "none",
                 }}>
                 <input type="checkbox" className="mt-0.5" checked={on} onChange={() => toggle(k)} />
@@ -157,7 +183,7 @@ export function CheckboxDropdown<T extends { id: string }>({
   );
 }
 
-const AVATAR_COLORS = ["#b3812a", "#3a5876", "#6b4f86", "#4f7a3f", "#a8492c", "#5c4f3c"];
+const AVATAR_COLORS = ["#C25A3A", "#3A5876", "#7A5A8A", "#5E7A4A", "#A8492C", "#8B4513", "#857B6A"];
 function colorFor(name: string): string {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
@@ -169,8 +195,8 @@ export function Avatar({ name, size = 26, liveness }: { name: string; size?: num
   return (
     <span className="relative inline-flex" title={name}>
       <span
-        className="inline-flex items-center justify-center rounded-full font-serif text-white font-medium select-none"
-        style={{ width: size, height: size, background: colorFor(name), fontSize: size * 0.42 }}
+        className="inline-flex items-center justify-center rounded-full font-display text-white font-medium select-none"
+        style={{ width: size, height: size, background: colorFor(name), fontSize: size * 0.42, boxShadow: "0 0 0 1px rgba(201,162,39,0.4)" }}
       >
         {initials}
       </span>

@@ -1,28 +1,46 @@
 @import "tailwindcss";
 
-/* ───────────────────────── Modern Scriptorium theme ───────────────────────── */
+/* ───────────────────────── Scriptorium theme ─────────────────────────
+   Warm parchment + terracotta + manuscript gold; classical serifs.
+   Legacy var names are kept and repointed so existing pages auto-reskin.
+   See docs/FE_DESIGN.md for the governing charter. */
 :root {
-  --paper: #f3ead6;
-  --paper-2: #ece0c6;
-  --panel: #fbf6ea;
-  --panel-2: #f7efdd;
-  --ink: #2a2017;
-  --ink-soft: #5c4f3c;
-  --ink-faint: #8a7c64;
-  --line: #ddcfb0;
-  --line-soft: #e7dcc2;
-  --gold: #b3812a;
-  --gold-bright: #d8a23a;
-  --blue: #3a5876;
-  --green: #4f7a3f;
-  --rust: #a8492c;
-  --violet: #6b4f86;
-  --slate: #71766f;
+  /* surfaces — warm parchment */
+  --paper: #F8F3E6;
+  --paper-2: #F1E9D6;
+  --panel: #FBF7EC;
+  --panel-2: #F6EFD9;
+  --line: #D4B896;
+  --line-soft: #E4D6B8;
+  --gilt: #C9A227;
+  --gilt-bright: #E0B540;
+
+  /* text */
+  --ink: #2B2722;
+  --ink-soft: #6E6258;
+  --ink-faint: #9A8E78;
+
+  /* accents — terracotta primary + manuscript gold highlight */
+  --terra: #C25A3A;
+  --terra-bright: #D9744E;
+  --gold: #C25A3A;          /* legacy alias → terracotta (primary accent) */
+  --gold-bright: #D9744E;
+  --manuscript-gold: #C9A227;
+  --ink-brown: #8B4513;
+  --blue: #3A5876;
+  --green: #5E7A4A;
+  --rust: #A8492C;
+  --violet: #7A5A8A;
+  --slate: #857B6A;
+
+  /* motion */
+  --ease-soft: cubic-bezier(.22, .61, .36, 1);
 }
 
 @theme {
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
   --font-serif: "Fraunces", Georgia, "Times New Roman", serif;
-  --font-sans: "Inter", system-ui, sans-serif;
+  --font-sans: "Spectral", Georgia, "Times New Roman", serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
@@ -37,27 +55,42 @@ body {
   font-family: var(--font-sans);
   color: var(--ink);
   background-color: var(--paper);
+  /* parchment speckle + warm terracotta/gold glows, all behind content */
   background-image:
-    radial-gradient(circle at 20% -10%, rgba(216, 162, 58, 0.08), transparent 45%),
-    radial-gradient(circle at 95% 0%, rgba(58, 88, 118, 0.06), transparent 40%);
+    radial-gradient(rgba(110, 80, 40, 0.045) 1px, transparent 1.3px),
+    radial-gradient(circle at 12% -8%, rgba(194, 90, 58, 0.13), transparent 42%),
+    radial-gradient(circle at 92% -4%, rgba(201, 162, 39, 0.13), transparent 40%),
+    radial-gradient(circle at 50% 118%, rgba(139, 69, 19, 0.06), transparent 55%);
+  background-size: 4px 4px, 100% 100%, 100% 100%, 100% 100%;
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
 }
 
-.font-serif { font-family: var(--font-serif); }
-.font-mono { font-family: var(--font-mono); }
+.font-initial { font-family: "UnifrakturMaguntia", serif; }
+.font-display { font-family: var(--font-display); }
 
-::-webkit-scrollbar { width: 9px; height: 9px; }
+::selection { background: rgba(194, 90, 58, 0.22); color: var(--ink); }
+
+:focus-visible { outline: 2px solid var(--terra); outline-offset: 2px; border-radius: 4px; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--paper-2); }
 ::-webkit-scrollbar-thumb {
   background: var(--line);
   border-radius: 6px;
+  border: 2px solid var(--paper-2);
 }
+::-webkit-scrollbar-thumb:hover { background: var(--gilt); }
 
 @layer components {
   .panel {
+    position: relative;
     background: var(--panel);
     border: 1px solid var(--line);
-    border-radius: 12px;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 6px 18px -14px rgba(42, 32, 23, 0.5);
+    border-radius: 10px;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.55) inset,
+      0 10px 24px -18px rgba(60, 40, 15, 0.55);
   }
 
   .panel-flat {
@@ -66,11 +99,27 @@ body {
     border-radius: 10px;
   }
 
+  /* ornate gilt corner brackets — apply alongside .panel for hero/modal panels */
+  .ornate::before,
+  .ornate::after {
+    content: "";
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    pointer-events: none;
+    border: 1.5px solid var(--gilt);
+    opacity: 0.85;
+  }
+  .ornate::before { top: 8px; left: 8px; border-right: none; border-bottom: none; }
+  .ornate::after { bottom: 8px; right: 8px; border-left: none; border-top: none; }
+
   .btn {
+    position: relative;
+    overflow: hidden;
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    border-radius: 9px;
+    border-radius: 8px;
     padding: 0.45rem 0.85rem;
     font-size: 0.84rem;
     font-weight: 500;
@@ -78,16 +127,31 @@ body {
     background: var(--panel-2);
     color: var(--ink);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all 0.18s var(--ease-soft);
   }
-  .btn:hover { background: #fff; border-color: var(--gold); }
+  .btn:hover { background: var(--panel); border-color: var(--gilt); box-shadow: 0 6px 14px -10px rgba(201, 162, 39, 0.65); }
+  /* gilt sheen sweeps across on hover */
+  .btn::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(115deg, transparent 32%, rgba(224, 181, 64, 0.28) 50%, transparent 68%);
+    transform: translateX(-130%);
+    transition: transform 0.6s var(--ease-soft);
+    pointer-events: none;
+  }
+  .btn:hover::after { transform: translateX(130%); }
   .btn-primary {
-    background: linear-gradient(180deg, var(--gold-bright), var(--gold));
-    color: #fff8e8;
-    border-color: #9c6f20;
-    box-shadow: 0 8px 16px -10px rgba(179, 129, 42, 0.9);
+    background: linear-gradient(180deg, var(--terra-bright), var(--terra));
+    color: #FBF7EC;
+    border-color: #A8462E;
+    box-shadow:
+      0 8px 16px -10px rgba(194, 90, 58, 0.7),
+      0 0 0 1px rgba(224, 181, 64, 0.25) inset;
   }
-  .btn-primary:hover { filter: brightness(1.05); background: linear-gradient(180deg, var(--gold-bright), var(--gold)); }
+  .btn-primary:hover { filter: brightness(1.04); border-color: var(--gilt); }
+  /* wax-seal press */
+  .btn:active { transform: translateY(1px); box-shadow: 0 1px 0 rgba(60, 40, 15, 0.45) inset; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .chip {
@@ -106,25 +170,58 @@ body {
   .input {
     width: 100%;
     border: 1px solid var(--line);
-    background: #fffdf7;
-    border-radius: 9px;
+    background: #FFFDF4;
+    border-radius: 8px;
     padding: 0.55rem 0.7rem;
     font-size: 0.88rem;
     color: var(--ink);
     outline: none;
+    transition: border-color 0.15s var(--ease-soft), box-shadow 0.15s var(--ease-soft);
   }
-  .input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(216, 162, 58, 0.18); }
+  .input:focus { border-color: var(--terra); box-shadow: 0 0 0 3px rgba(194, 90, 58, 0.16); }
+  .input::placeholder { color: var(--ink-faint); }
 
-  .rule { height: 1px; background: var(--line-soft); }
+  .rule { height: 1px; background: linear-gradient(90deg, transparent, var(--line) 14%, var(--line) 86%, transparent); }
 }
 
-/* live pulse for working agents / active runs */
+/* ── motion language (warm, manuscript-like) ── */
+@keyframes quill-in { from { opacity: 0; transform: translateY(6px); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
+.quill-in { animation: quill-in 0.5s var(--ease-soft) both; }
+
+@keyframes unfurl { from { opacity: 0; transform: scale(0.98) translateY(6px); } to { opacity: 1; transform: none; } }
+.unfurl { animation: unfurl 0.28s var(--ease-soft) both; }
+
+/* gilt-hover for cards/panels */
+.gilt { transition: box-shadow 0.2s var(--ease-soft), transform 0.2s var(--ease-soft), border-color 0.2s var(--ease-soft); }
+.gilt:hover { border-color: var(--gilt); box-shadow: 0 12px 26px -18px rgba(201, 162, 39, 0.7); transform: translateY(-2px); }
+
+/* pulse for working agents / active runs (terracotta glow) */
 @keyframes pulse-ring {
-  0% { box-shadow: 0 0 0 0 rgba(216, 162, 58, 0.55); }
-  70% { box-shadow: 0 0 0 6px rgba(216, 162, 58, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(216, 162, 58, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(194, 90, 58, 0.5); }
+  70% { box-shadow: 0 0 0 6px rgba(194, 90, 58, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(194, 90, 58, 0); }
 }
 .pulse { animation: pulse-ring 1.6s infinite; }
 
-@keyframes blink { 50% { opacity: 0.25; } }
+@keyframes blink { 50% { opacity: 0.3; } }
 .blink { animation: blink 1s steps(2) infinite; }
+
+/* drop-cap: decorated initial on a block element */
+.dropcap::first-letter {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  float: left;
+  font-size: 2.7em;
+  line-height: 0.8;
+  padding: 0.05em 0.1em 0 0;
+  color: var(--terra);
+}
+
+/* honor reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
