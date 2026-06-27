@@ -1,9 +1,11 @@
 # Armarius — High-Level Design (HLD)
 
-> Status: **Design draft v2** (2026-06-26). Companion to [API_CONTRACT.md](./API_CONTRACT.md)
-> (interface) and [LLD.md](./LLD.md) (build detail); see [ARCHITECTURE.md](./ARCHITECTURE.md) for the
-> visual, use-case-driven overview. This doc covers **architecture, data model, and key flows** for
-> the "multi-project + onboarding + richer task + collaboration" wave.
+> Status: **Design draft v3** (2026-06-27). Aligned with the approved [ARCHITECTURE.md](./ARCHITECTURE.md):
+> enroll-and-wait invite, system-only seat grants, leader-mediated commission, a workspace-events SSE
+> bus, and a recency-based liveness model. Companion to [API_CONTRACT.md](./API_CONTRACT.md) (interface)
+> and [LLD.md](./LLD.md) (build detail); see [ARCHITECTURE.md](./ARCHITECTURE.md) for the visual,
+> use-case-driven overview. This doc covers **architecture, data model, and key flows** for the
+> "multi-project + onboarding + richer task + collaboration" wave.
 
 ---
 
@@ -49,6 +51,18 @@ single bounded `MariusAdapter.execute(ctx)` contract (`application/ports/adapter
 wake engine **owns the wake loop** and always drives the runtime **through an adapter → that runtime's
 gateway**, never calling a gateway directly. See [ARCHITECTURE.md](./ARCHITECTURE.md) §2.
 
+**Two push channels (both server→consumer).** (1) The **workspace-events SSE bus**
+(`GET /v1/workspaces/{ws}/events`) is **Web-App-only** — the browser holds it open and the backend
+pushes liveness/status/approval/commission/task events (and the live trace) so the UI never polls.
+Agents never read it. (2) The **live run trace** is teed by each adapter back through the wake engine
+and surfaced to the Collaboration Room. See [ARCHITECTURE.md](./ARCHITECTURE.md) §1.
+
+**Liveness is recency, not a flag.** "Online" means *a signal was received recently* (any contact —
+heartbeat, `/agent/me`, a task response). Silence decays ONLINE → CHECKING → OFFLINE (probed 3×), and
+OFFLINE re-probes on a timeout that **doubles each failed cycle**; **any signal resets everything**.
+This is what lets activation key off "online" without a separate ack handshake. Full model:
+[ARCHITECTURE.md](./ARCHITECTURE.md) §5; timers in [LLD.md](./LLD.md) §10.
+
 **Stack**: Python 3.12 · FastAPI · SQLAlchemy 2 (async) · pydantic-settings · `uv` + ruff. Local
 dev = SQLite + aiosqlite; Docker = Postgres + **MinIO** (artifact/media store, bucket `armarius`).
 Frontend = React 18 + Vite + react-router, self-contained i18n (EN/VI), nginx reverse-proxy with
@@ -76,7 +90,7 @@ OnboardingSession 1──1 Project  Task *──* Dependency(blocked_by)
 | **Workspace** | CHANGED | + `workspace_agent_id` (nullable FK→Marius). |
 | **Project** | CHANGED | + `status` (`setup`/`active`/`archived`), `objective`, `success_metrics` (json), `target_date`, `context`, **`github_url`** (optional), `settings` (json). Drops auto-"General". |
 | **Role** (seat definition) | NEW | `project_id`, `key`, `title`, `seats` (int; **leader always 1**), `is_leader`, `description`, `responsibilities` (leader), `skill_ids` (optional). |
-| **SeatGrant** | NEW | `project_id`, `role_key`, `marius_id`, `status` (`pending`→`granted`→`acknowledged`→`revoked`), granted/acknowledged timestamps. |
+| **SeatGrant** | NEW | `project_id`, `role_key`, `marius_id`, `status` (`granted`→`revoked`), `granted_at`. **System-only** — agents never apply; there is no accept step (activation keys off liveness instead). |
 | **Label** | NEW | `workspace_id`, `name`, `color`. |
 | **Task** | CHANGED | + `identifier`, `priority`, `parent_id`, `due_date`, `definition_of_done`; + checklist/deps/labels relations. `assigned_marius_id` superseded by participants. |
 | **TaskParticipant** | NEW | `task_id`, `marius_id`, `joined_at`, `is_primary`. |
@@ -97,14 +111,15 @@ The backbone of "1 leader + N workers" and the user's "roles + worker counts":
    (hard rule, §5.2).
 2. The leader's agent may be **chosen now** (existing workspace agent) or **left empty** for later;
    worker seats may likewise be pre-seated or left empty.
-3. Agents **apply**; the Patron **vets & grants** (`granted`); the agent **accepts** (`acknowledged`
-   — came online + accepted the seat). A granted agent is a **project participant**.
-4. The project moves `setup → active` **only when every seat is filled and acknowledged**.
-5. A **task's participants** are drawn from the project's granted agents; any participant can be
-   woken to co-work the task.
-
-This is the *"Required roles · agents must qualify for a seat"* / *"Vet & grant seat"* /
-*"Project roster"* language in the design file.
+3. The Patron **grants** agents into seats — a **system-only** action (no agent applies, no accept
+   step). A granted agent is a **project participant**. The agent is contacted **only** if its new role
+   carries skills it must install; that install is **queued** if the agent is offline and resumes on its
+   next signal.
+4. The project moves `setup → active` **once**, when **every seat is granted *and* every seated agent is
+   ONLINE** (liveness reused from the invite handshake). It **stays active** — a worker going offline
+   later does not roll it back.
+5. A **task's participants** are picked by the Project Leader during commission (§4.4); any participant
+   can be woken to co-work the task.
 
 ---
 
@@ -117,9 +132,17 @@ register ──► ensure_personal_workspace (named "Personal", seeds builtin sk
           ──► [NO auto project] ──► lands on /workspaces/{ws} (project list / landing)
 ```
 
-### 4.2 Create project — manual onboarding
+### 4.2 Invite agents, then create a project — manual onboarding
 
 ```
+Invite (UC2, enroll-and-wait):
+Patron ─► "Add agent" (choose adapter type only; name, role, skills[])
+        └─► POST /mariuses ── Marius status=invited + enrollment_code (NO token printed)
+Agent  ─► POST /agent/enroll (code) ── held open ── status=pending_review
+Patron ─► approve ── mint agent_token ONCE, returned AS the enroll response
+Agent  ─► store token, install skill file-trees, GET /agent/me ── ONLINE + SSE marius.online
+
+Create project (manual):
 Patron ─► "New project" (mode = manual)
         │  name, objective, target_date, github_url(optional), context,
         │  leader {responsibilities, pick-existing-agent | leave-empty},
@@ -127,8 +150,9 @@ Patron ─► "New project" (mode = manual)
         │  settings
         └─► POST /projects ── validates hard rule ──► project status=setup
                               (supplied agents pre-seated as granted; rest empty)
-Agents accept seats (online + ack) ──► ALL seats filled+acknowledged ──► status=active
-Patron commissions tasks (only while active)
+Patron grants seats (system-only) ── role-skill install queued if agent offline
+ALL seats granted + seated agents ONLINE ──► status=active  (once; stays active)
+Patron commissions tasks through the Leader (only while active) ── §4.4
 ```
 
 ### 4.3 Create project — agent-assisted onboarding (Workspace Agent) — *Phase G, last*
@@ -142,13 +166,17 @@ Workspace Agent asks structured questions (goal → leader → worker roles → 
 Workspace Agent ─► finalize ─► POST /projects ─► project created (status=setup)
 ```
 
-### 4.4 Commission + collaborate + trace + publish
+### 4.4 Commission (through the Leader) + collaborate + trace + publish
 
 ```
-Patron ─► commission task (priority/labels/checklist/DoD/due_date/parent/deps; project must be active)
-        └─► add participants (≥1 from roster) ──► each woken with task context
+Commission (no manual form — a chat with the Project Leader):
+Patron ─► "Commission task" (project must be active) ─► opens a chat to the Leader
+Patron ─► POST /projects/P/commission {message}
+Backend ─► wake Leader in a FRESH session (ctx = project + roster + workers)
+Leader  ─► analyze / ask if >1 option / break down / fill ALL fields / pick workers ─► preview (Task draft)
+Patron  ─► refine (resume Leader session)  OR  confirm ─► Task draft→todo, wake chosen workers
 Participants co-work: comment thread (@mention), update status/next-action, tick checklist
-        └─► Patron watches Live run trace (SSE: deltas, tool calls, usage)
+        └─► Patron watches Live run trace (workspace-events SSE: deltas, tool calls, usage)
 A participant publishes output ─► POST /artifact
         ├─ file  → content uploaded, sha256-verified, stored in MinIO
         └─ link  → external URL (a merged PR)
@@ -166,12 +194,14 @@ roles, labels, skills, tasks all carry `workspace_id` (directly or transitively)
 ### 5.2 Hard team-composition rule (at creation)
 `POST /projects` rejects a plan without **exactly one** Project Leader (`seats = 1`) **and** ≥1 worker
 role with `seats ≥ 1`. The leader's agent may be chosen now or left empty. The seat *plan* is
-enforced at creation; agents fill seats afterward, and the project only goes `active` once **all**
-seats are granted **and acknowledged** (§3.2).
+enforced at creation; seats are filled by the Patron **granting** agents afterward, and the project
+goes `active` **once** when **all seats are granted *and* every seated agent is ONLINE** (§3.2).
 
-**The only behavioral difference between `setup` and `active` is task assignment.** In `setup` the
-Patron can do everything else — view the board, build/edit the roster, vet and grant seats — but
-**tasks may be commissioned/assigned only when the project is `active`** (all seats acknowledged).
+**The only behavioral difference between `setup` and `active` is task commission.** In `setup` the
+Patron can do everything else — view the board, build/edit the roster, grant seats — but **tasks may be
+commissioned only when the project is `active`**, and only **through the Project Leader** (no manual
+form, §4.4). Activation is reached once and **stays**: a worker going offline later does not roll the
+project back to `setup`; it is an operational (wake/report) matter.
 
 ### 5.3 The shared-store DONE gate (anti-local-output)
 - An artifact of kind **`file`** must **upload content** (`content_b64`); bytes are sha256-verified
@@ -188,6 +218,33 @@ Patron can do everything else — view the board, build/edit the roster, vet and
 
 ### 5.5 i18n
 All user-facing strings flow through `t()`/`tEn()` (EN/VI). No hardcoded display strings.
+
+### 5.6 Liveness — "online" is recency + probe, not a sticky flag **[NEW]**
+"Online" means **a signal was received recently** (any contact — a task response, a heartbeat,
+`/agent/me`, an enroll reply — the source does not matter). The backend watches the time since the
+**last signal** and probes on idle:
+
+- **Idle timeout `T1`** → send a **light probe** ("reply OK" in a throwaway session); wait short `T2`.
+- **Retry 3×** → no answer flips the agent to `CHECKING` (a "waking" display) for up to 3 probes.
+- **OFFLINE** after all 3 fail; then a **retry timeout `R`** re-runs the whole probe loop, and **`R`
+  doubles each failed cycle** (R → 2R → 4R, capped) so a busy agent or overloaded LLM isn't hammered.
+- **Reset on any signal**: any contact — mid-probe, from OFFLINE, or a real task response — resets
+  state to `ONLINE`, restarts the idle timer, and resets backoff to base `R`.
+- A turn in flight ⇒ `WORKING`; a turn overrunning `hung_after` ⇒ `HUNG` (watchdog).
+
+This is what makes activation robust: an agent invited today and never heard from again is **OFFLINE**
+by the time a project is staffed weeks later — the UI never shows a stale ONLINE. Timer defaults
+(`T1`, `T2`, `R`, `hung_after`, max-backoff cap) are pinned in [LLD.md](./LLD.md) §10. Full state
+machine: [ARCHITECTURE.md](./ARCHITECTURE.md) §5.
+
+### 5.7 Workspace-events SSE — push, not polling **[NEW]**
+The Web App opens `GET /v1/workspaces/{ws}/events` on workspace mount and keeps it open. The backend
+pushes event frames (`marius.online`, `marius.status_changed`, `marius.liveness`,
+`seat.skills_installed`, `project.active`, `task.created`, `commission.*`, approvals, and the live run
+trace). `Last-Event-ID` is honored for resume. **Web-App-only** — agents never use SSE (they use
+request/response + adapter wakes); so any `API → SSE → WEB` step is the backend telling the UI about a
+change the UI did not itself trigger. The Directory liveness dot, the roster activation flip, and the
+commission preview all arrive over this one stream.
 
 ---
 
