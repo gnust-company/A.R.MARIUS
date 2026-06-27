@@ -2,26 +2,9 @@ import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
 import { useI18n, type Lang } from "../i18n";
+import { DropCap, Icon } from "../ui";
 
 type Mode = "signin" | "signup";
-
-function Brand() {
-  return (
-    <div className="flex items-center gap-3 mb-1">
-      <div
-        className="flex items-center justify-center rounded-md"
-        style={{
-          width: 40, height: 40, transform: "rotate(45deg)",
-          background: "linear-gradient(180deg,#d8a23a,#b3812a)",
-          boxShadow: "0 8px 20px -8px rgba(179,129,42,0.9)",
-        }}
-      />
-      <div className="font-serif text-[1.7rem] font-semibold tracking-tight" style={{ color: "var(--ink)" }}>
-        Armarius
-      </div>
-    </div>
-  );
-}
 
 function LangSwitch() {
   const { lang, setLang } = useI18n();
@@ -76,7 +59,6 @@ export default function Auth() {
       } else {
         await signIn(email, password);
       }
-      // Land on the workspace overview (the single list of workspaces).
       navigate("/workspaces");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("auth.failed"));
@@ -86,23 +68,31 @@ export default function Auth() {
   };
 
   const isSignUp = mode === "signup";
+  const heading = isSignUp ? t("auth.createAccount") : t("auth.signIn");
 
   return (
-    <div
-      className="h-screen w-screen flex flex-col items-center justify-center p-6 relative"
-      style={{ background: "var(--panel)" }}
-    >
+    <div className="h-screen w-screen flex flex-col items-center justify-center p-6 relative">
       <div className="absolute top-5 right-5"><LangSwitch /></div>
 
-      <div
-        className="w-full max-w-[400px] rounded-2xl p-8"
-        style={{ background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "0 30px 60px -30px rgba(60,40,10,0.25)" }}
-      >
-        <Brand />
-        <h1 className="font-serif text-[1.4rem] font-semibold mb-1" style={{ color: "var(--ink)" }}>
-          {isSignUp ? t("auth.createAccount") : t("auth.signIn")}
+      <div className="vellum ornate unfurl w-full max-w-[430px] px-8 py-9">
+        {/* Illuminated initial + wordmark */}
+        <div className="flex items-start gap-3 mb-1">
+          <DropCap letter="A" blackletter size={56} />
+          <div className="pt-1">
+            <div className="font-display text-[1.7rem] font-semibold leading-none tracking-tight" style={{ color: "var(--ink)" }}>
+              Armarius
+            </div>
+            <div className="text-[0.62rem] uppercase tracking-[0.22em] mt-1.5" style={{ color: "var(--ink-faint)" }}>
+              {t("app.scriptorium")}
+            </div>
+          </div>
+        </div>
+        <hr className="illumine my-5" />
+
+        <h1 className="font-display text-[1.4rem] font-semibold mb-1" style={{ color: "var(--ink)" }}>
+          {heading}
         </h1>
-        <p className="text-sm mb-6" style={{ color: "var(--ink-soft)" }}>
+        <p className="text-sm mb-6 leading-relaxed" style={{ color: "var(--ink-soft)" }}>
           {isSignUp ? t("auth.createSub") : t("auth.signInSub")}
         </p>
 
@@ -154,38 +144,27 @@ export default function Auth() {
           )}
 
           {error && (
-            <div
-              className="text-xs rounded-lg px-3 py-2"
-              style={{ color: "var(--rust)", background: "var(--panel-2)", border: "1px solid var(--line)" }}
-            >
+            <div className="text-xs rounded-lg px-3 py-2" style={{ background: "rgba(168,73,44,0.1)", color: "var(--rust)" }}>
               {error}
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="btn mt-1 disabled:opacity-60"
-            style={{ background: "linear-gradient(180deg,#d8a23a,#b3812a)", color: "#fff8e8" }}
-          >
+          <button type="submit" disabled={busy} className="btn btn-primary justify-center !py-2.5 mt-1">
+            <Icon name="seal" size={16} />
             {busy ? t("auth.loading") : (isSignUp ? t("auth.signUpBtn") : t("auth.signInBtn"))}
           </button>
         </form>
 
         <div className="mt-5 text-center text-sm" style={{ color: "var(--ink-soft)" }}>
           {isSignUp ? t("auth.haveAccount") : t("auth.noAccount")}{" "}
-          <a
-            href={isSignUp ? "/login" : "/register"}
-            className="font-medium"
-            style={{ color: "var(--gold)" }}
-          >
+          <a href={isSignUp ? "/login" : "/register"} className="font-medium underline-offset-2 hover:underline" style={{ color: "var(--terra)" }}>
             {isSignUp ? t("auth.signInLink") : t("auth.register")}
           </a>
         </div>
       </div>
 
-      <div className="mt-6 font-serif italic text-sm" style={{ color: "var(--ink-faint)" }}>
-        {t("app.tagline")}
+      <div className="mt-6 font-display italic text-sm flex items-center gap-2" style={{ color: "var(--ink-faint)" }}>
+        <Icon name="quill" size={14} /> {t("app.tagline")}
       </div>
     </div>
   );
@@ -194,7 +173,7 @@ export default function Auth() {
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-[0.66rem] uppercase tracking-[0.14em]" style={{ color: "var(--ink-faint)" }}>
+      <span className="text-[0.62rem] uppercase tracking-[0.16em] font-mono" style={{ color: "var(--ink-faint)" }}>
         {label}
       </span>
       {children}

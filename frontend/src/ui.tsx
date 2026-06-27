@@ -96,11 +96,23 @@ const ICONS: Record<string, React.ReactNode> = {
   wake: (<><path d="M13 3L4.5 13.5h6L9.5 21l9-11.5h-6z" /></>),
   seal: (<><circle cx="12" cy="12" r="7" /><path d="M9 11l2 2 4-4" /></>),
   close: (<><path d="M6 6l12 12M18 6L6 18" /></>),
+  // — added for the FE-2 rebuild —
+  file: (<><path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M14 3v5h5" /></>),
+  folder: (<><path d="M4 7a1 1 0 0 1 1-1h4l2 2h7a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" /></>),
+  link: (<><path d="M10 13.5a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7L11 6.4" /><path d="M14 10.5a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7L13 17.6" /></>),
+  check: (<><path d="M5 12.5l4.5 4.5L19 7" /></>),
+  square: (<><rect x="4.5" y="4.5" width="15" height="15" rx="2.5" /></>),
+  quill: (<><path d="M6 18c7 0 13-5 13-13" /><path d="M6 18l4-4" /><path d="M14 5l3 3" /><path d="M6 18c1.5-5 5-9 10-11" /></>),
+  copy: (<><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" /></>),
+  eye: (<><path d="M2.5 12S6.5 5.5 12 5.5 21.5 12 21.5 12 17.5 18.5 12 18.5 2.5 12 2.5 12z" /><circle cx="12" cy="12" r="2.8" /></>),
+  trash: (<><path d="M5 7h14" /><path d="M9 7V5h6v2" /><path d="M7 7l1 13h8l1-13" /></>),
+  bolt: (<><path d="M13 3L5 13h6l-1.5 8L19 11h-6z" /></>),
+  edit: (<><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="M14 5l4 4" /></>),
 };
-export function Icon({ name, size = 18, className }: { name: string; size?: number; className?: string }) {
+export function Icon({ name, size = 18, className, style }: { name: string; size?: number; className?: string; style?: React.CSSProperties }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
       {ICONS[name] ?? ICONS.board}
     </svg>
   );

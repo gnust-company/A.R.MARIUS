@@ -4,7 +4,7 @@ import {
 } from "../ui";
 
 // /style — the Scriptorium design-system atelier (FE-0). A manuscript-style showcase of
-// the torn/singed parchment material, illuminated initials, wax seals, the icon set,
+// the refined hand-torn parchment material, illuminated initials, wax seals, the icon set,
 // palette, type, components and motion. Dev-facing, viewable without login.
 const SWATCHES: [string, string][] = [
   ["--paper", "#F8F3E6"], ["--panel", "#FBF7EC"], ["--line", "#D4B896"], ["--gilt", "#C9A227"],
@@ -23,7 +23,7 @@ export default function Style() {
   return (
     <div className="h-full overflow-auto">
       <div className="max-w-5xl mx-auto px-8 py-10">
-        {/* Hero — torn, singed banner with illuminated initial */}
+        {/* Hero — hand-torn parchment banner with illuminated initial */}
         <header className="vellum quill-in px-8 py-7 mb-8">
           <DropCap letter="A" blackletter size={64} />
           <h1 className="font-display text-4xl font-semibold leading-none" style={{ color: "var(--ink)" }}>

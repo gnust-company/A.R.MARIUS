@@ -99,21 +99,25 @@ manuscript-like — **no** glitch/scanline/neon.
 - **`<DropCap>`** — decorated initial (Fraunces by default; blackletter variant for flourishes).
 - **`<Avatar>`** — gilt-ringed monogram; liveness dot overlaid.
 
-## 6. Atmosphere — one burnt-edged leaf
+## 6. Atmosphere — a single aged parchment leaf
 
-The whole app sits on a single aged parchment leaf, singed at the edges. Layered on `body`:
-1. `--paper` base, deepened to `#ECE3CB`.
-2. **Fiber speckle** + **sepia foxing stains** (scattered radial blobs).
-3. **Burnt vignette** (a `farthest-side` radial) — paper at center darkening through sepia to a
-   near-black charred rim at all four screen edges.
-Static — no animated grid.
+The whole app sits on one warm, aged parchment leaf — **clean and refined, not burnt**. The owner's
+reference was a crisp handmade paper with a *barely-there* hand-torn deckle, so there is **no singe,
+no charred rim, no dark vignette**. Layered on `body`:
+1. A warm ivory base (`#F3EAD4`).
+2. A fine **fiber speckle** (4px radial dots).
+3. Two very faint **mottles** — soft warm radial blooms top-left / bottom-right, a patina of age.
+Static — no animated grid, no vignette.
 
-The signature surface is **`.vellum`** — a torn, singed parchment *fragment*: ragged deckle edges
-(an SVG turbulence mask) over a charred rim (dark radial singe + inset shadow) with a desk
-drop-shadow. Hero panels, modals, and the atelier use `.vellum`; everyday cards use the softer aged
-`.panel`. **`.illumine`** is a small gilt flourish divider; **wax-seal** accents are terracotta
-embossed discs. The **`<Icon>`** set is a consistent hand-drawn line-icon family (board, directory,
-skills, inbox, atelier, user, …) replacing the old mixed glyphs.
+The signature surface is **`.vellum`** — a refined parchment *fragment*: a **subtle hand-torn deckle
+edge** via an SVG turbulence mask (`feTurbulence` + `feDisplacementMap`, `scale: 6` — a whisper, not a
+ragged tear), a faint 1px neutral rim, and a soft desk drop-shadow. The mask rect is near-full-bleed
+(`x=2 width=156`) so the edge never clips content. Hero bands, the auth card, and the atelier use
+`.vellum`; everyday cards use the softer aged `.panel`. **`.illumine`** is a small gilt flourish
+divider; **wax-seal** accents are terracotta embossed discs. The **`<Icon>`** set is a consistent
+hand-drawn line-icon family (board, directory, skills, inbox, atelier, user, back, signout, plus,
+send, wake, seal, close, file, folder, link, check, square, quill, copy, eye, trash, …) replacing all
+the old mixed emoji glyphs.
 
 ## 7. Accessibility
 

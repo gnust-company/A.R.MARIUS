@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api, type Skill } from "../api";
 import { useApp } from "../store";
 import { useI18n } from "../i18n";
+import { DropCap, Icon } from "../ui";
 
 const SKILL_MD = "SKILL.md";
 
@@ -94,45 +95,66 @@ export default function SkillEditor() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center gap-3 px-6 pt-5 pb-3 shrink-0">
-        <button className="btn !py-1 !px-2 !text-xs" onClick={() => navigate("/skills")}>← {t("nav.skills")}</button>
-        <h1 className="font-serif text-xl font-semibold truncate">{skill.name}</h1>
-        <span className="chip" style={{ background: "var(--panel-2)" }}>{skill.source}</span>
-        <div className="ml-auto flex items-center gap-2">
-          {dirty ? (
-            <span className="text-xs" style={{ color: "var(--gold)" }}>{t("skill.unsaved")}</span>
-          ) : savedAt ? (
-            <span className="text-xs" style={{ color: "var(--ink-faint)" }}>{t("skill.saved")}</span>
-          ) : null}
-          <button className="btn btn-primary" disabled={!dirty || busy} onClick={save}>{t("skill.save")}</button>
+      {/* Illuminated header */}
+      <header className="vellum mx-5 mt-4 px-6 py-4 flex items-center gap-4 shrink-0">
+        <DropCap letter={skill.name.charAt(0)} size={40} />
+        <div className="min-w-0 flex-1">
+          <button className="text-xs flex items-center gap-1 mb-0.5" style={{ color: "var(--ink-faint)" }} onClick={() => navigate("/skills")}>
+            <Icon name="back" size={12} /> {t("nav.skills")}
+          </button>
+          <h1 className="font-display text-xl font-semibold leading-none truncate" style={{ color: "var(--ink)" }}>{skill.name}</h1>
+          <div className="flex items-center gap-2 mt-1.5">
+            <span className="chip" style={{ background: "var(--panel-2)" }}>{skill.source}</span>
+            <span className="text-[0.66rem] font-mono" style={{ color: "var(--ink-faint)" }}>{Object.keys(files).length} {t("skill.files").toLowerCase()}</span>
+          </div>
         </div>
-      </div>
-      {error && <div className="px-6 text-xs" style={{ color: "var(--rust)" }}>{error}</div>}
+        <div className="flex items-center gap-3 shrink-0">
+          {dirty ? (
+            <span className="text-xs flex items-center gap-1.5" style={{ color: "var(--terra)" }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--terra)" }} /> {t("skill.unsaved")}
+            </span>
+          ) : savedAt ? (
+            <span className="text-xs flex items-center gap-1.5" style={{ color: "var(--green)" }}>
+              <Icon name="check" size={12} /> {t("skill.saved")}
+            </span>
+          ) : null}
+          <button className="btn btn-primary" disabled={!dirty || busy} onClick={save}>
+            <Icon name="seal" size={14} /> {t("skill.save")}
+          </button>
+        </div>
+      </header>
+      {error && <div className="px-6 mt-2 text-xs" style={{ color: "var(--rust)" }}>{error}</div>}
 
-      <div className="flex-1 min-h-0 flex gap-3 px-6 pb-5">
+      <div className="flex-1 min-h-0 flex gap-4 px-5 py-4">
         {/* File tree */}
         <div className="w-[230px] shrink-0 flex flex-col min-h-0">
-          <div className="text-[0.66rem] uppercase tracking-[0.14em] mb-2 px-1" style={{ color: "var(--ink-faint)" }}>{t("skill.files")}</div>
+          <div className="text-[0.62rem] uppercase tracking-[0.16em] mb-2 px-1 font-mono" style={{ color: "var(--ink-faint)" }}>{t("skill.files")}</div>
           <div className="panel p-1.5 flex-1 min-h-0 overflow-y-auto">
-            {paths.map((p) => (
-              <div
-                key={p}
-                className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer text-sm"
-                style={{ background: p === selected ? "var(--panel-2)" : "transparent" }}
-                onClick={() => setSelected(p)}
-              >
-                <span style={{ color: "var(--ink-faint)" }}>{p === SKILL_MD ? "❖" : p.includes("/") ? "▤" : "▮"}</span>
-                <span className="truncate font-mono text-[0.78rem] flex-1" style={{ color: p === SKILL_MD ? "var(--ink)" : "var(--ink-soft)" }}>{p}</span>
-                {p !== SKILL_MD && (
-                  <button
-                    className="opacity-0 group-hover:opacity-100 text-[0.66rem] px-1"
-                    style={{ color: "var(--rust)" }}
-                    onClick={(e) => { e.stopPropagation(); delFile(p); }}
-                    title={t("skill.deleteFile")}
-                  >×</button>
-                )}
-              </div>
-            ))}
+            {paths.map((p) => {
+              const isMd = p === SKILL_MD;
+              const isFolder = p.includes("/");
+              const active = p === selected;
+              return (
+                <div
+                  key={p}
+                  className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer text-sm transition-colors"
+                  style={{ background: active ? "rgba(201,162,39,0.16)" : "transparent" }}
+                  onClick={() => setSelected(p)}
+                >
+                  <Icon name={isMd ? "seal" : isFolder ? "folder" : "file"} size={14}
+                    style={{ color: isMd ? "var(--manuscript-gold)" : "var(--ink-faint)" }} />
+                  <span className="truncate font-mono text-[0.76rem] flex-1" style={{ color: active ? "var(--ink)" : "var(--ink-soft)" }}>{p}</span>
+                  {!isMd && (
+                    <button
+                      className="opacity-0 group-hover:opacity-100 p-0.5"
+                      style={{ color: "var(--rust)" }}
+                      onClick={(e) => { e.stopPropagation(); delFile(p); }}
+                      title={t("skill.deleteFile")}
+                    ><Icon name="trash" size={13} /></button>
+                  )}
+                </div>
+              );
+            })}
             {adding ? (
               <div className="flex gap-1 p-1.5">
                 <input
@@ -142,19 +164,22 @@ export default function SkillEditor() {
                 />
               </div>
             ) : (
-              <button className="w-full text-left text-xs px-2 py-1.5 rounded-md" style={{ color: "var(--gold)" }}
-                onClick={() => setAdding(true)}>＋ {t("skill.addFile")}</button>
+              <button className="w-full flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-md" style={{ color: "var(--terra)" }}
+                onClick={() => setAdding(true)}>
+                <Icon name="plus" size={13} /> {t("skill.addFile")}
+              </button>
             )}
           </div>
         </div>
 
         {/* Editor */}
         <div className="flex-1 min-h-0 flex flex-col">
-          <div className="text-[0.66rem] uppercase tracking-[0.14em] mb-2 px-1 font-mono" style={{ color: "var(--ink-faint)" }}>
+          <div className="text-[0.62rem] uppercase tracking-[0.16em] mb-2 px-1 font-mono flex items-center gap-1.5" style={{ color: "var(--ink-faint)" }}>
+            <Icon name="file" size={12} />
             {selected ?? "—"}
           </div>
           <textarea
-            className="input flex-1 min-h-0 resize-none font-mono text-[0.8rem] leading-relaxed"
+            className="input flex-1 min-h-0 resize-none font-mono text-[0.82rem] leading-relaxed"
             spellCheck={false}
             value={selected ? (files[selected] ?? "") : ""}
             onChange={(e) => selected && setContent(selected, e.target.value)}

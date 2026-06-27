@@ -2,6 +2,7 @@ import { NavLink, Route, Routes, useNavigate } from "react-router-dom";
 import { AppProvider, useApp } from "./store";
 import { useAuth } from "./auth";
 import { useI18n, type Lang } from "./i18n";
+import { Avatar, Icon } from "./ui";
 import Board from "./pages/Board";
 import Room from "./pages/Room";
 import Directory from "./pages/Directory";
@@ -10,6 +11,7 @@ import SkillEditor from "./pages/SkillEditor";
 import Approvals from "./pages/Approvals";
 import Workspaces from "./pages/Workspaces";
 import Auth from "./pages/Auth";
+import Profile from "./pages/Profile";
 import Style from "./pages/Style";
 
 function Brand() {
@@ -17,20 +19,21 @@ function Brand() {
   return (
     <div className="flex items-center gap-2.5 px-4 pt-5 pb-4">
       <div
-        className="flex items-center justify-center rounded-lg font-display text-lg"
+        className="flex items-center justify-center rounded-lg font-initial text-xl"
         style={{
-          width: 34, height: 34,
+          width: 36, height: 36,
           background: "linear-gradient(180deg,#D9744E,#C25A3A)",
           color: "#FBF7EC",
           border: "1px solid #A8462E",
           boxShadow: "0 6px 14px -8px rgba(194,90,58,.8), 0 0 0 2px rgba(201,162,39,.35) inset",
         }}
+        aria-hidden="true"
       >
         A
       </div>
       <div className="leading-tight">
         <div className="font-display text-[1.15rem] font-semibold tracking-tight" style={{ color: "var(--ink)" }}>Armarius</div>
-        <div className="text-[0.66rem] uppercase tracking-[0.18em]" style={{ color: "var(--ink-faint)" }}>
+        <div className="text-[0.62rem] uppercase tracking-[0.22em]" style={{ color: "var(--ink-faint)" }}>
           {t("app.scriptorium")}
         </div>
       </div>
@@ -44,7 +47,7 @@ function NavItem({ to, label, icon }: { to: string; label: string; icon: string 
       to={to}
       end={to === "/"}
       className={({ isActive }) =>
-        "flex items-center gap-2.5 mx-2 px-3 py-2 rounded-lg text-sm transition-colors " +
+        "group flex items-center gap-2.5 mx-2 px-3 py-2 rounded-lg text-sm transition-all " +
         (isActive ? "font-medium" : "")
       }
       style={({ isActive }) => ({
@@ -53,8 +56,13 @@ function NavItem({ to, label, icon }: { to: string; label: string; icon: string 
         border: isActive ? "1px solid var(--line)" : "1px solid transparent",
       })}
     >
-      <span className="text-base w-5 text-center">{icon}</span>
-      {label}
+      {({ isActive }) => (
+        <>
+          <Icon name={icon} size={17} className="shrink-0" />
+          <span className="truncate">{label}</span>
+          {isActive && <span className="ml-auto h-1.5 w-1.5 rounded-full" style={{ background: "var(--terra)" }} />}
+        </>
+      )}
     </NavLink>
   );
 }
@@ -71,7 +79,7 @@ function LangSwitch() {
         <button
           key={l}
           onClick={() => setLang(l)}
-          className="px-2 py-1 rounded uppercase tracking-wide"
+          className="px-2 py-1 rounded uppercase tracking-wide transition-colors"
           style={{
             background: lang === l ? "var(--terra)" : "transparent",
             color: lang === l ? "#FBF7EC" : "var(--ink-soft)",
@@ -84,22 +92,21 @@ function LangSwitch() {
   );
 }
 
-// "Back" affordance — sits among the nav tabs but its job is to leave the workspace
-// and return to the launcher (the outer workspace list). Shows the current workspace
-// name as context, in a distinct (muted) style so it reads as "exit", not a section.
+// "Back" affordance — leaves the workspace and returns to the launcher (the outer
+// workspace list). Reads as "exit", not a section: muted, with a back-arrow icon.
 function BackToWorkspaces() {
   const { workspace } = useApp();
   const navigate = useNavigate();
   return (
     <button
       onClick={() => navigate("/workspaces")}
-      className="flex items-center gap-2.5 mx-2 px-3 py-2 rounded-lg text-sm transition-colors w-[calc(100%-1rem)]"
+      className="group flex items-center gap-2.5 mx-2 px-3 py-2 rounded-lg text-sm transition-colors w-[calc(100%-1rem)]"
       style={{ color: "var(--ink-soft)", border: "1px solid transparent" }}
       onMouseEnter={(e) => { e.currentTarget.style.background = "var(--panel-2)"; e.currentTarget.style.borderColor = "var(--line)"; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; }}
       title={workspace?.name ?? ""}
     >
-      <span className="text-base w-5 text-center" style={{ color: "var(--ink-faint)" }}>←</span>
+      <Icon name="back" size={17} className="shrink-0" />
       <span className="truncate">{workspace?.name ?? "Armarius"}</span>
     </button>
   );
@@ -108,9 +115,10 @@ function BackToWorkspaces() {
 function Sidebar() {
   const { user, signOut } = useAuth();
   const { t } = useI18n();
+  const navigate = useNavigate();
   return (
     <aside
-      className="w-[220px] shrink-0 flex flex-col"
+      className="w-[224px] shrink-0 flex flex-col"
       style={{ borderRight: "1px solid var(--line)", background: "var(--panel)" }}
     >
       <Brand />
@@ -118,25 +126,26 @@ function Sidebar() {
       <nav className="flex flex-col gap-0.5">
         <BackToWorkspaces />
         <div className="rule mx-4 my-1.5" />
-        <NavItem to="/" label={t("nav.board")} icon="▦" />
-        <NavItem to="/directory" label={t("nav.directory")} icon="❖" />
-        <NavItem to="/skills" label={t("nav.skills")} icon="⚒" />
-        <NavItem to="/approvals" label={t("nav.inbox")} icon="✦" />
+        <NavItem to="/" label={t("nav.board")} icon="board" />
+        <NavItem to="/directory" label={t("nav.directory")} icon="directory" />
+        <NavItem to="/skills" label={t("nav.skills")} icon="skills" />
+        <NavItem to="/approvals" label={t("nav.inbox")} icon="inbox" />
         <div className="rule mx-4 my-1.5" />
-        <NavItem to="/style" label={t("nav.style")} icon="✎" />
+        <NavItem to="/profile" label={t("nav.profile")} icon="user" />
+        <NavItem to="/style" label={t("nav.style")} icon="atelier" />
       </nav>
       <div className="mt-auto px-4 pb-4">
         <div className="rule mb-3" />
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center justify-between mb-3">
           <LangSwitch />
         </div>
-        <div className="flex items-center gap-2.5 mb-2">
-          <div
-            className="flex items-center justify-center rounded-full text-xs font-semibold shrink-0 font-display"
-            style={{ width: 30, height: 30, background: "var(--terra)", color: "#FBF7EC" }}
-          >
-            {(user?.full_name ?? "Y").charAt(0).toUpperCase()}
-          </div>
+        <button
+          onClick={() => navigate("/profile")}
+          className="w-full flex items-center gap-2.5 mb-2 px-1 py-1 rounded-lg transition-colors text-left"
+          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--panel-2)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+        >
+          <Avatar name={user?.full_name ?? "Y"} size={30} />
           <div className="min-w-0 flex-1">
             <div className="text-xs font-medium truncate" style={{ color: "var(--ink)" }}>
               {user?.full_name ?? "—"}
@@ -145,15 +154,15 @@ function Sidebar() {
               {user?.email ?? ""}
             </div>
           </div>
-        </div>
+        </button>
         <button
           onClick={signOut}
-          className="w-full text-left text-xs px-3 py-1.5 rounded-md transition-colors"
+          className="w-full flex items-center gap-2 text-xs px-3 py-1.5 rounded-md transition-colors"
           style={{ color: "var(--ink-soft)" }}
           onMouseEnter={(e) => { e.currentTarget.style.background = "var(--panel-2)"; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
         >
-          ⎋ {t("auth.signOut")}
+          <Icon name="signout" size={14} /> {t("auth.signOut")}
         </button>
       </div>
     </aside>
@@ -184,8 +193,9 @@ function TopBar() {
         </select>
       )}
       <div className="ml-auto flex items-center gap-2.5">
-        {/* Patron Inbox */}
-        <NavLink to="/approvals" className="btn" title={t("nav.inbox")}>✦ {t("nav.inbox")}</NavLink>
+        <NavLink to="/approvals" className="btn" title={t("nav.inbox")}>
+          <Icon name="inbox" size={15} /> {t("nav.inbox")}
+        </NavLink>
       </div>
     </header>
   );
@@ -201,8 +211,8 @@ function Shell() {
         <TopBar />
         <main className="flex-1 min-h-0 overflow-hidden">
           {loading ? (
-            <div className="h-full flex items-center justify-center" style={{ color: "var(--ink-faint)" }}>
-              {t("app.loadingScriptorium")}
+            <div className="h-full flex items-center justify-center gap-3" style={{ color: "var(--ink-faint)" }}>
+              <span className="font-display italic">{t("app.loadingScriptorium")}</span>
             </div>
           ) : error ? (
             <div className="h-full flex items-center justify-center" style={{ color: "var(--rust)" }}>
@@ -216,6 +226,7 @@ function Shell() {
               <Route path="/skills" element={<Skills />} />
               <Route path="/skills/:skillId" element={<SkillEditor />} />
               <Route path="/approvals" element={<Approvals />} />
+              <Route path="/profile" element={<Profile />} />
               <Route path="/style" element={<Style />} />
             </Routes>
           )}
