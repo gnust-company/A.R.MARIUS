@@ -81,6 +81,31 @@ export function DropCap({
   );
 }
 
+// Inline SVG icon set — consistent hand-drawn line icons (replaces the mixed glyphs).
+const ICONS: Record<string, React.ReactNode> = {
+  board: (<><rect x="3" y="4" width="5" height="16" rx="1" /><rect x="9.5" y="4" width="5" height="11" rx="1" /><rect x="16" y="4" width="5" height="14" rx="1" /></>),
+  directory: (<><circle cx="9" cy="8" r="3" /><path d="M3.5 20c0-3.2 2.8-5 5.5-5s5.5 1.8 5.5 5" /><circle cx="17" cy="6.5" r="2.3" /><path d="M14.5 15c3.6 0 6 1.9 6 5" /></>),
+  skills: (<><path d="M5.5 4H17a1.5 1.5 0 0 1 1.5 1.5v14H7a1.5 1.5 0 0 1-1.5-1.5z" /><path d="M5.5 18.5A1.5 1.5 0 0 1 7 17h11.5" /></>),
+  inbox: (<><rect x="3" y="5" width="18" height="14" rx="1.5" /><path d="M3.5 7.5l8.5 5.5 8.5-5.5" /></>),
+  atelier: (<><path d="M5 19c7 0 13-5 13-13-1 7-6 12-13 13z" /><path d="M5 19l5-5" /><path d="M14 5l3 3" /></>),
+  user: (<><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c0-3.8 3-6 6.5-6s6.5 2.2 6.5 6" /></>),
+  back: (<><path d="M14 5l-7 7 7 7" /></>),
+  signout: (<><path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4" /><path d="M15 16l4-4-4-4" /><path d="M19 12H9" /></>),
+  plus: (<><path d="M12 5v14M5 12h14" /></>),
+  send: (<><path d="M4 11.5l16-7.5-6.5 16-2.8-6.7z" /><path d="M11 13l4-4" /></>),
+  wake: (<><path d="M13 3L4.5 13.5h6L9.5 21l9-11.5h-6z" /></>),
+  seal: (<><circle cx="12" cy="12" r="7" /><path d="M9 11l2 2 4-4" /></>),
+  close: (<><path d="M6 6l12 12M18 6L6 18" /></>),
+};
+export function Icon({ name, size = 18, className }: { name: string; size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      {ICONS[name] ?? ICONS.board}
+    </svg>
+  );
+}
+
 // Click-outside hook for popovers/dropdowns.
 export function useClickOutside<T extends HTMLElement>(onOut: () => void) {
   const ref = useRef<T>(null);

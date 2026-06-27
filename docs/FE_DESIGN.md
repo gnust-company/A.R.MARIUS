@@ -99,14 +99,21 @@ manuscript-like — **no** glitch/scanline/neon.
 - **`<DropCap>`** — decorated initial (Fraunces by default; blackletter variant for flourishes).
 - **`<Avatar>`** — gilt-ringed monogram; liveness dot overlaid.
 
-## 6. Atmosphere (page background)
+## 6. Atmosphere — one burnt-edged leaf
 
-Layered on `body`, all subtle so content stays crisp:
-1. `--paper` parchment base.
-2. **Warm radial glows** — terracotta tint top-left, gold tint top-right (very low opacity).
-3. **Parchment grain** — an inline SVG noise overlay at low opacity (`.grain`).
-4. **Soft vignette** — subtle darkening at the edges.
-Static — **no animated grid** (that was the discarded cyberpunk direction).
+The whole app sits on a single aged parchment leaf, singed at the edges. Layered on `body`:
+1. `--paper` base, deepened to `#ECE3CB`.
+2. **Fiber speckle** + **sepia foxing stains** (scattered radial blobs).
+3. **Burnt vignette** (a `farthest-side` radial) — paper at center darkening through sepia to a
+   near-black charred rim at all four screen edges.
+Static — no animated grid.
+
+The signature surface is **`.vellum`** — a torn, singed parchment *fragment*: ragged deckle edges
+(an SVG turbulence mask) over a charred rim (dark radial singe + inset shadow) with a desk
+drop-shadow. Hero panels, modals, and the atelier use `.vellum`; everyday cards use the softer aged
+`.panel`. **`.illumine`** is a small gilt flourish divider; **wax-seal** accents are terracotta
+embossed discs. The **`<Icon>`** set is a consistent hand-drawn line-icon family (board, directory,
+skills, inbox, atelier, user, …) replacing the old mixed glyphs.
 
 ## 7. Accessibility
 
