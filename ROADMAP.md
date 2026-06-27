@@ -14,6 +14,17 @@
 | Tooling | **uv**, ruff, mypy, pytest | Fast, reproducible |
 | Reference adapter | **`hermes_gateway`** first | Verified HTTP+SSE gateway (§5.3); cleaner than OpenClaw's WS |
 
+## Build-order & UX decisions (locked, 2026-06-27)
+
+| Decision | Choice | Why |
+|---|---|---|
+| Build order | **FE-first (mock data) → BE** | Lock UX before any backend cost; the mock app is the spec the BE implements to |
+| Aesthetic | **Cyberpunk / "virtual world"** | Owner rejected the Scriptorium theme; clicks should feel like entering a simulation |
+| FE stack | **Keep React 18 + Vite + TS + Tailwind v4 + Router** | Current FE is cleanly structured + mock-swappable; only the design system is rebuilt |
+| Mock fidelity | **Fully interactive, simulated real-time** | Every flow clickable; fake SSE, scripted liveness decay + leader replies |
+| BE method | **Clean Architecture + strict TDD** | Domain pure; red→green→refactor per phase; required by owner |
+| Architecture | **Unchanged** (enroll-and-wait, system-only seats, leader commission, Hybrid SSE, probe liveness, file\|link gate) | Already approved in ARCHITECTURE/HLD/LLD/API_CONTRACT |
+
 ## Layer map (`backend/armarius/`)
 
 ```
@@ -27,44 +38,45 @@ shared/          config, logging, clock
 Dependency rule: `presentation → application → domain`; `infrastructure` implements
 `application.ports` / `domain.repositories` and is wired in at `presentation` only.
 
-## Task lifecycle (from §4.3 wake model)
+## Task lifecycle (from API_CONTRACT §5)
 
-`backlog → todo → in_progress → in_review → done`  (+ `blocked`, `cancelled`).
-A task may only reach `in_review`/`done` when a **published artifact** is linked (§3.4).
+`draft → todo → in_progress → in_review → done`  (+ `backlog`, `blocked`, `cancelled`).
+`draft` is created only by a leader commission chat; `draft → todo` only on `/commission/confirm`.
+A task may reach `in_review`/`done` only with ≥1 artifact of kind **`file` or `link`** (DONE-gate).
 
 ---
 
-## Phase plan (mirrors PROJECT_DESCRIPTION §12)
+## Build plan (v3 — FE-first → BE-TDD; mirrors [DEV_PLAN.md](./docs/DEV_PLAN.md))
 
-### Phase 0 — Walking skeleton  ◀ backend complete
-- [x] Decide stack + clean-arch layout + ROADMAP
-- [x] Workspace / Project / Marius / Task / Thread CRUD
-- [x] Session store (agent_task_sessions) keyed by (marius, adapter, task) — §4
-- [x] Event-wake (assign / mention / on_demand) — §4.3 family 1
-- [x] Self/liveness-wake policy (status × run table) + bounded continuation/nudge — §4.3 family 2
-- [x] `hermes_gateway` adapter: `POST /v1/runs` + tee SSE `/events` → run-log + live bus — §8.1
-- [x] `echo` adapter (fake runtime) so the loop is demoable without a gateway
-- [x] Shared Artifact Store (local) + `publish_artifact` + "done needs artifact" rule
-- [x] Agent-facing API (claim/update/comment/mention/publish/read_directory) with per-Marius token
-- [x] Live trace SSE endpoint + durable run-event store
-- [x] Demo seed (Settings Redesign scenario) + 20 passing tests
-- [x] Docker Compose (Postgres + backend + frontend) — out-of-the-box `docker compose up`
-- [x] Frontend dashboard (Scriptorium UI: Board, Collaboration Room w/ live trace, Directory, Patron inbox)
+> Ordering changed 2026-06-27: lock the UX with a mock-data **cyberpunk** frontend first, then build
+> the backend (Clean Architecture + TDD). The architecture is unchanged; only the sequence + visual
+> layer change. Full detail in [DEV_PLAN.md](./docs/DEV_PLAN.md).
 
-### Phase 1 — Real collaboration
-- [ ] Agent Directory injected into every wake prompt — §3.1
-- [ ] `@mention` → event-wake of the mentioned Marius — §3.2
-- [ ] Self/liveness-wake: watchdog + continuation + status-gating + coalescing — §4.3 / §7
-- [ ] Invite + skill install flow — §6.1/6.2
+**Already shipped (backend walking skeleton — the old "Phase 0"):** workspace/project/marius/task/
+thread CRUD, session store, event-wake + self/liveness-wake, `hermes_gateway` + `echo` adapters, local
+artifact store, agent API, live-trace SSE, demo seed, docker-compose, and the (now-to-be-replaced)
+Scriptorium frontend. All `[x]`.
 
-### Phase 2 — Governance & multi-runtime
-- [ ] Roster / role gate + vetting — §6.3
-- [ ] `openclaw_gateway` adapter
-- [ ] Approval engine + patron inbox, wired to Hermes `/v1/runs/{id}/approval` — §8
+### Track FE — Mock-data cyberpunk app (FIRST)
+- [ ] **FE-0** Design system + interaction language → [docs/FE_DESIGN.md](./docs/FE_DESIGN.md)
+      (cyberpunk tokens, HUD/glass panels, scanlines, jack-in / glitch / holographic / data-stream motion)
+- [ ] **FE-1** Mock data layer + simulated Hybrid SSE (in-memory store seeded from API_CONTRACT
+      shapes; fake liveness decay + per-task trace stream; `MOCK` on/off switch)
+- [ ] **FE-2a** Shell + Auth + Workspaces
+- [ ] **FE-2b** Project landing + Roster + Onboarding (manual form + agent-assisted chat)
+- [ ] **FE-2c** Board + Commission chat (leader-mediated, async / `leader_state`)
+- [ ] **FE-2d** Collaboration Room (context + thread + per-task trace + publish + DONE gate)
+- [ ] **FE-2e** Agent Directory (enroll-and-wait) + Skill Shop (nested tree) + Patron Inbox
+- [ ] **FE-3** Polish: EN/VI i18n, reduced-motion, a11y, empty/loading/error states → **FE freeze**
 
-### Phase 3 — Advanced
-- [ ] `gateway_ws` streaming adapter + session broker
-- [ ] Capability probe, per-gateway backpressure
+### Track BE — Clean Architecture + TDD (after FE freeze)
+- [ ] **BE-1** Infra: Alembic + MinIO
+- [ ] **BE-2** Domain core (entities + lifecycle rules — pure, TDD)
+- [ ] **BE-3** Application (ports + use cases + Enrollment + Liveness engine)
+- [ ] **BE-4** Infrastructure (SQLAlchemy repos + adapters + MinIO + migration `0002`)
+- [ ] **BE-5** Presentation (FastAPI routers + composition root + Hybrid SSE)
+- [ ] **BE-6** Commission runtime + Wake engine + Onboarding finalize
+- [ ] **BE-7** Integration: `MOCK=off` → real API; docker-compose full-stack end-to-end
 
 ---
 
@@ -327,3 +339,29 @@ Follow-up fixes after direct UI review (every visible string now bilingual; UX f
 - **UC2 Mermaid parse error fixed** — the `participants {A}; {B}` line used `{}`/`;` that GitHub's
   Mermaid rejects; reworded all sequence messages to plain text (no `{}`, `;`, or parens-as-syntax).
   Scanned every diagram for the same hazard.
+
+### 2026-06-27 — Plan v3: FE-first mock-data → BE Clean-Architecture TDD (planning; pre-impl)
+> Owner reset the build order. **No code yet** — plan + design charter only; pending approval.
+
+- **New order** — build a fully-interactive **mock-data frontend FIRST**, then the backend against it.
+  The mock app *is* the spec; UX problems surface before backend cost. Supersedes the v2 BE-centric
+  A–G ordering (that content is preserved as the BE track, TDD-reframed). Full detail in
+  [DEV_PLAN.md](./docs/DEV_PLAN.md) v3.
+- **Aesthetic reset — cyberpunk / "virtual world"** — the "Modern Scriptorium" (parchment/ink/gold)
+  theme is scrapped (owner: "không ưng cái design hiện tại 1 tý nào"). New direction: a cyberpunk UI
+  where clicks feel like entering a simulation — glitch transitions, holographic/HUD panels,
+  scanlines, a "jacking-in" boot motion, neon data streams. Charter → new FE-0 deliverable
+  [docs/FE_DESIGN.md](./docs/FE_DESIGN.md).
+- **FE stack kept** (React 18 + Vite + TS + Tailwind v4 + React Router); only the design system,
+  components, and theme are rebuilt. An audit confirmed the current FE (`api.ts`, providers, routing)
+  is cleanly structured and highly swappable to mock data.
+- **Mock fidelity** — every flow clickable; real-time behaviors **simulated** (fake SSE, scripted
+  liveness decay, scripted leader commission replies). A `MOCK` toggle lets the same screens later
+  bind to the real API unchanged.
+- **BE method** — Clean Architecture + strict TDD (red→green→refactor per phase); 7 phases BE-1…BE-7
+  mapping the approved architecture (enroll-and-wait, system-only seats, leader commission, Hybrid
+  SSE, system-probe liveness, file|link DONE gate — all unchanged).
+- **Docs** — [DEV_PLAN.md](./docs/DEV_PLAN.md) rewritten v3; this ROADMAP's phase plan, task
+  lifecycle, and locked-decisions table updated. ARCHITECTURE/HLD/LLD/API_CONTRACT untouched (still
+  the source of truth).
+- **Status** — plan drafted, pending owner approval; **not committed**.

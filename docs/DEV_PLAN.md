@@ -1,144 +1,161 @@
 # Armarius — Development Plan
 
-> Status: **Design draft v2** (2026-06-26). Sequencing for the wave in [HLD.md](./HLD.md) /
-> [LLD.md](./LLD.md) / [API_CONTRACT.md](./API_CONTRACT.md). Phases ship in order; each ships green
-> and commits to `main`. Phase **G trails last** (optional nice-to-have); the main flow is **A→F**.
+> Status: **v3 — FE-first mock-data → BE Clean-Architecture TDD** (2026-06-27). Supersedes v2
+> (BE-centric A–G). Source of truth for behavior: [ARCHITECTURE.md](./ARCHITECTURE.md) /
+> [HLD.md](./HLD.md) / [LLD.md](./LLD.md) / [API_CONTRACT.md](./API_CONTRACT.md). This plan is
+> **pending owner approval** before any code or commit.
 
-## The four user asks map here
-- **Skill nested tree** → Phase B (frontend-only).
-- **Multi-project + onboarding** → Phases C (project/roster) + D (manual onboarding + Workspace Agent).
-- **Rich task schema (Paperclip) + Output-Artifact gate** → Phase E.
-- **Collaboration Room task detail** → Phase F.
-- **Agent-assisted onboarding** → Phase G (last).
+## 1. New ordering and why
 
-## Resolved decisions (from the owner)
-1. **Hard rule (Phase C)**: a project declares exactly **one Project Leader** (`seats = 1`, pick an
-   existing agent **or leave empty** for later) + a `responsibilities` field (default leader behavior
-   TBC), and **≥1 worker role** with name/description/optional skills/seat count. The project goes
-   `active` only when **all** seats are filled **and acknowledged** (agent came online + accepted).
-2. **DONE-gate (Phase E)**: supported artifact kinds are **`file`** (upload content → MinIO) and
-   **`link`** (external URL); DONE requires ≥1 file/link. `patch`/`note` dropped.
-3. **Phase G (agent onboarding)** is **last** — manual is the priority path; the main flow must run first.
-4. **Add**: project `github_url` (optional); **MinIO** as the Shared Store (bucket `armarius`) holding
-   artifacts **and media** (agent avatars). The store **follows the project**: one folder per project
-   (`<project-slug>/`), each task with output writes under it (`<project-slug>/<task-id-or-slug>/<name>`);
-   media under `_media/`.
-5. **`setup` vs `active`**: the **only** behavioral difference is **task assignment** — tasks are
-   assignable only when `active`; the board/roster/vetting all work in `setup`.
+The owner reset the build order: **lock the UX with a fully-interactive mock-data frontend FIRST,
+then build the backend against it.**
 
-## Rules
-- Clean Architecture: domain pure; new behavior = new use-case + repo (+ entity if needed).
-- Each phase: backend `pytest` green, `ruff` clean; frontend `tsc --noEmit` + `vite build` clean.
-- Each phase: update `ROADMAP.md` build-log + commit + push to `main`.
-- i18n: every new string lands EN **and** VI in the same commit.
-- After Phase A, all schema changes ship as Alembic revisions (autogenerate, review, never edit a stamped one).
+- **FE-first** — the mock-data app *is* the spec. Every screen, flow, and real-time behavior
+  (liveness decay, leader commission, live trace) is demonstrated with simulated data *before* a line
+  of backend is written. UX problems surface when they are cheap to fix.
+- **Cyberpunk / "virtual world" aesthetic** — the old "Modern Scriptorium" theme is scrapped (owner:
+  "không ưng cái design hiện tại 1 tý nào"). New direction: a cyberpunk UI where every click feels
+  like entering a simulation — glitch transitions, holographic/HUD panels, scanlines, a "jacking-in"
+  boot motion, neon data streams. Defined fully in the new design doc produced by FE-0.
+- **BE second** — Clean Architecture + strict TDD, phased so each phase ships green and maps to the
+  approved architecture. The mock-data contract (TS types + fixtures + simulated SSE) becomes the
+  acceptance bar the real API must satisfy.
 
----
+The previously-approved **architecture** (enroll-and-wait invite, system-only seat grants,
+leader-mediated commission, Hybrid SSE, system-probe liveness, file|link DONE gate) is **unchanged**.
+Only the build *sequence* and the *visual layer* change.
 
-## Phase A — Infra: Alembic + MinIO  *(blocks C, E)*
-**Goal:** safe schema evolution + the object store, ready before they're needed. No app behavior.
-- Add `alembic`; `alembic init alembic` (async `env.py` → `DATABASE_URL`, `target_metadata`).
-- Baseline `0001_baseline` = autogenerate of current models; `alembic stamp head` on existing DBs.
-- Wire startup to `alembic upgrade head` (keep `create_all` only for empty bootstrap).
-- **MinIO**: add `minio` service to `docker-compose.yml` + persistent volume; create bucket `armarius`
-  on boot; per-project folders are logical prefixes (`<project-slug>/<task>/<name>`, media under
-  `_media/`); add `MINIO_*` settings; `backend/README.md` note (run + make/apply migrations + MinIO).
-**DoD:** fresh Postgres + existing SQLite both `upgrade head`; MinIO reachable, bucket `armarius`
-exists; app boots; existing tests pass.
+## 2. Decisions baked into this plan (owner, 2026-06-27)
 
-## Phase B — Skill nested file tree  *(no deps; frontend-only)*
-**Goal:** imported/manual skills render as a VSCode/GitHub-style tree (add folder/file in structure).
-- `components/NestedFileTree.tsx` — tree from flat `files` map; collapsible folders; SKILL.md pinned;
-  collapse state in `localStorage`.
-- Folder actions: new file here / new folder / delete folder. Rewire `pages/SkillEditor.tsx` (left =
-  tree, right = editor; keep dirty/save).
-- `pages/Skills.tsx` preview → reuse the tree read-only. i18n: `skill.newFolder/deleteFolder/emptyFolder`.
-**DoD:** import `anthropics/skills/algorithmic-art` → collapsible `templates/`; add a file under it;
-save persists; typecheck/build clean.
+1. **Build order** — FE mock-data app first; BE after FE freeze.
+2. **Aesthetic** — cyberpunk + a simulation/"virtual world" interaction language (replaces Scriptorium).
+3. **FE stack kept** — React 18 + Vite + TS + Tailwind v4 + React Router stay; only the design system,
+   components, and theme are rebuilt. (A framework swap was rejected — the current structure is clean.)
+4. **Mock fidelity** — fully interactive: every flow clickable, real-time behaviors *simulated* (fake
+   SSE streams, scripted liveness decay, scripted leader replies) so the demo feels alive.
+5. **BE method** — Clean Architecture + TDD (red→green→refactor per phase); domain pure; Alembic
+   revisions for all schema changes after the first.
+6. **Architecture unchanged** — the four approved docs stand; DEV_PLAN/ROADMAP now sequence around them.
 
-## Phase C — Project layer + roster (roles/seats)  *(deps: A)*
-**Goal:** workspace holds many projects; project landing; create-project with a complete seat plan;
-no auto "General".
-- Domain/ORM/migration `0002a`: `Project` new fields + status; `Role`, `SeatGrant` (with `acknowledged`
-  state); `Workspace.workspace_agent_id`.
-- Remove auto-"General": `ensure_personal_workspace`/`register` stop creating the default project.
-- `ProjectService`: `create` (validates hard rule: 1 leader `seats=1` + ≥1 worker role; leader may be
-  empty), `grant_seat`, `accept_seat`, `revoke_seat`, `apply_seat`, role CRUD;
-  `recompute_active()` → `active` only when all seats `acknowledged`.
-- API: `projects.py` router (§API 3) + roster/grant/accept endpoints.
-- Frontend: `pages/ProjectLanding.tsx` (project list + "New project"); insert `/workspaces/{ws}` route;
-  `Board.tsx` → `pages/ProjectBoard.tsx` under `…/projects/{p}`; minimal create form (name + leader +
-  worker roles + seats). Full onboarding UI is Phase D.
-- Tests: `test_project_requires_leader_and_worker_roles`,
-  `test_project_activates_only_when_all_seats_acknowledged`, `test_no_tasks_in_setup_project`,
-  `test_seat_grant_vetting`. i18n: `project.*`, `role.*`.
-**DoD:** new workspace lands on the project list (empty); create a project → `setup`; grant + accept
-all seats → `active`; only then reach the board.
+## 3. Track FE — Mock-data cyberpunk app (FIRST)
 
-## Phase D — Manual onboarding + Workspace Agent designation  *(deps: C)*
-**Goal:** full manual onboarding (goal, leader {pick-or-empty + responsibilities}, worker roles w/
-counts + descriptions + optional skills, context, settings, github_url) + designate Workspace Agent.
-- `components/ProjectOnboardingModal.tsx` replaces Phase C's minimal form (leader block + responsibilities +
-  pick-or-empty; worker-roles editor with skills + counts; github_url; context; settings). Create
-  disabled until the hard rule passes.
-- Workspace Agent: `PUT /workspaces/{ws}/workspace-agent`; designation adds `armarius-onboarder`
-  builtin to the marius's skills + rebuilds the invite prompt. Add
-  `static/skills/armarius-onboarder/SKILL.md` (structured question script + `finalize`).
-- Frontend: designate control in `ProjectLanding` + `Directory` badge; the "Agent" mode tab is
-  disabled with a hint until a Workspace Agent exists (chat itself is Phase G).
-- Tests: `test_workspace_agent_designation_adds_onboarder_skill`,
-  `test_onboarding_manual_creates_project`. i18n: `onboarding.*` (manual side).
-**DoD:** create a project via the full manual form (leader + 2 worker roles + counts + context +
-github_url); designate a Marius as Workspace Agent (invite lists the onboarder skill install).
+Each FE sub-phase ships `tsc --noEmit` + `vite build` clean, EN+VI strings, and a commit. The mock
+data layer is the contract the BE will later satisfy.
 
-## Phase E — Rich task schema + Output-Artifact gate  *(deps: A, C)*
-**Goal:** Paperclip-style task fields + the anti-local-output guarantee, backed by MinIO.
-- **MinIO store**: `domain/services/artifact_store.py` port + `infrastructure/artifacts/store.py`
-  (MinIO/S3); `MINIO_*` config; `GET /artifacts/{id}/content` stream; `POST /workspaces/{ws}/media`.
-- **Artifact**: `publish(kind=file)` requires `content_b64` → decode/verify/`put_object` under
-  `<project-slug>/<task-id-or-slug>/<name>`/`stored=True`; `publish(kind=link)` requires `uri`. Kinds
-  limited to file|link.
-- Task fields / migration `0002c`: `identifier`, `priority`, `parent_id`, `due_date`,
-  `definition_of_done`; `Label`, `task_labels`, `TaskParticipant`, `ChecklistItem`, `TaskDependency`.
-- `TaskService`: `create` (project `active`; assign identifier), `transition` (DONE-gate +
-  dependency-gate), participants add/remove + wake(participant), checklist/deps/labels helpers.
-- API: `PATCH /tasks/{id}`, labels/participants/checklist endpoints, tightened `POST /tasks/{id}/status`.
-- Tests: `test_task_rich_schema`, `test_dependency_blocks_progress`,
-  `test_artifact_file_requires_content_and_link_requires_uri`, `test_done_gate_requires_output`.
-  i18n: `task.priority.*`, `task.checklist.*`, `task.definitionOfDone`, `task.dueDate`, `task.blockedBy`,
-  `task.publishOutput`, `task.gateNeedOutput`, `artifact.*`.
-**DoD:** commission a task with priority+labels+checklist+DoD+deps; add participants; a participant
-publishes a file (uploaded, downloadable from MinIO) and/or a link; DONE blocked (409) until a
-file/link output exists; a blocked task can't go in_progress until its blocker is done.
+### FE-0 — Design system + interaction language  *(no deps)*
+**Goal:** the cyberpunk design doc that governs everything after.
+- New doc **[docs/FE_DESIGN.md](./FE_DESIGN.md)**: design tokens (neon palette, glass/HUD panels,
+  grid + scanline textures, mono + display type), component primitives (Button, Panel/Card, Chip,
+  Input, Modal, Avatar, LivenessDot, StatusBadge), and a named **interaction/motion language** — the
+  signature "simulation" motions: *jack-in* boot on login, *glitch* transition between routes,
+  *holographic* hover/press, *data-stream* reveal for lists, *neon pulse* for live agents, *scanline
+  sweep* for the live trace.
+- Replace `src/index.css` tokens + `src/ui.tsx` primitives with the new system.
+- One **style playground** page (`/style`) rendering every token + primitive + motion.
+**DoD:** FE_DESIGN.md approved; `/style` renders the full token + primitive + motion set; tsc+build clean.
 
-## Phase F — Collaboration Room (task detail)  *(deps: E; frontend-led)*
-**Goal:** task detail follows the design's Collaboration view — co-work thread + participants + trace + shared-store publish.
-- Rework `pages/Room.tsx` → `pages/CollaborationRoom.tsx`:
-  - **Left/Context**: editable title+desc, Definition of Done, Checklist (add/toggle),
-    status/priority/labels/due/deps, linked artifacts + "publish to shared store".
-  - **Center/Thread**: existing comment thread + composer + **Participants bar** (who's on the task,
-    per-participant "wake").
-  - **Right/Trace**: existing live run trace (SSE) — retained.
-- Publish affordance: upload file → stored artifact card + download; transitions to in_review/done
-  disabled with tooltip until a file/link output exists. i18n: `task.participants/wake/publishedToStore`.
-**DoD:** open a task → see participants co-working in the thread, tick the checklist, watch the live
-trace, publish a stored output, then move it to done; visually close to the design's Collaboration view.
+### FE-1 — Mock data layer + simulated real-time  *(deps: FE-0)*
+**Goal:** swap the backend for an in-browser mock that serves the API_CONTRACT shapes and simulates SSE.
+- Keep `src/api.ts` signatures + TS interfaces; back them with an in-memory mock store seeded from
+  fixtures grounded in API_CONTRACT (a demo workspace, a project w/ roster, several tasks across
+  statuses incl. a `draft`, agents in each liveness state, skills, artifacts).
+- **Simulated Hybrid SSE** — a fake event emitter that streams workspace control-plane events
+  (`marius.online`, `marius.liveness` decay ONLINE→CHECKING→OFFLINE, `project.active`, `task.created`,
+  `commission.*`) and a per-task trace stream (`run.delta`/`run.tool`/`run.usage`).
+- A `MOCK` on/off switch so the same screens later bind to the real API unchanged.
+**DoD:** app boots with zero backend; demo seed visible; liveness dots decay live; a task trace streams
+fake run events; `MOCK=off` still compiles.
 
-## Phase G — Agent-assisted onboarding (chat)  *(deps: D; LAST, optional)*
-**Goal:** the Workspace Agent runs OpenClaw-style project onboarding via a chat. Nice-to-have; only
-after the main flow runs end-to-end.
-- Domain/migration: `OnboardingSession` entity/repo/model.
-- API: onboarding-session endpoints (§API 3.4); agent appends messages; `finalize` → `ProjectService.create`.
-- Frontend: chat UI in the onboarding modal's Agent tab; transcript + collected-plan preview + Finalize.
-- `armarius-onboarder SKILL.md`: concrete question script (goal → leader → worker roles → counts →
-  context) + the `finalize` payload shape.
-- Tests: `test_onboarding_agent_finalize` (drive session + finalize → project with correct roster).
-**DoD:** with a designated Workspace Agent, start an onboarding chat, answer the agent, finalize → a
-project is created with the agreed roster.
+### FE-2 — Rebuild every surface (cyberpunk + simulation motion), in 5 sub-phases
+Old Scriptorium components are cleared/replaced under the new system. Each sub-phase is one commit.
 
----
+- **FE-2a Shell + Auth + Workspaces** — App shell (cyberpunk nav/HUD); login/register (jack-in boot
+  on success); Workspaces overview (create, "enter" transition).
+- **FE-2b Project landing + Roster + Onboarding** — project list + "New project"; onboarding modal:
+  **manual** form (goal, leader pick-or-empty + responsibilities, worker roles + counts + optional
+  skills, context, github_url, settings) and the **agent-assisted** tab (Workspace Agent chat —
+  simulated, scripted). Roster: roles/seats, system-only grants, liveness dots.
+- **FE-2c Board + Commission chat** — kanban by status (`backlog/todo/in_progress/in_review/done`;
+  `draft` hidden unless owner); "Commission task" opens the **leader-mediated** chat (async feel:
+  `leader_state` thinking→waiting, draft preview, refine/confirm, `commission.leader_offline`).
+- **FE-2d Collaboration Room** — task detail: context (title/desc, DoD, checklist, deps, labels,
+  participants, status/priority/due), co-work thread (@mention), **per-task live trace** (simulated
+  SSE, holographic timeline), publish artifact (file→MinIO mock card / link), DONE-gate enforcement.
+- **FE-2e Agent Directory + Skill Shop + Patron Inbox** — Directory: Marius cards, **enroll-and-wait**
+  invite (enrollment_code, NO token; approve → token), adapter_type-lock note; Skill Shop +
+  **nested file-tree** editor (manual + GitHub import); Patron Inbox approval queue.
 
-## Out of scope (carried forward)
-- MCP server + MCP skill (standing issue).
-- Full visual reflow of all pages to match `ARMARIUS Design/` pixel-for-pixel (after this wave lands).
-- Drag-and-drop kanban + board grouping (Paperclip-style) — nice-to-have after F.
+**DoD (FE-2):** all surfaces demonstrable end-to-end on mock data; the full journey
+(register → workspace → onboard project → roster active → commission task → co-work + trace → publish
+→ done → approve) plays through with cyberpunk styling + simulation motion; tsc+build clean.
+
+### FE-3 — Polish + i18n + accessibility  *(deps: FE-2)*
+**Goal:** a production-feel mock demo.
+- Full EN+VI string coverage; motion tuning (honor `prefers-reduced-motion`); loading/empty/error
+  states; keyboard nav + focus rings; responsive breakpoints; QA pass + screenshots.
+**DoD:** both languages complete; reduced-motion honored; no console errors; demo screenshotted.
+
+> **FE freeze.** After FE-3 the mock-data app is the frozen UX spec. BE phases implement to match it.
+
+## 4. Track BE — Clean Architecture + TDD (AFTER FE freeze)
+
+Each BE phase: **red→green→refactor** (tests first), domain pure, `pytest` green + `ruff` clean, an
+Alembic revision for schema, then commit + push. Phases ordered by the approved dependency graph.
+
+### BE-1 — Infra: Alembic + MinIO  *(blocks BE-2, BE-5)*
+Alembic init + baseline + `upgrade head` on boot; MinIO service + bucket `armarius`; config wiring.
+**Tests:** fresh Postgres + existing SQLite both `upgrade head`; bucket reachable; app boots.
+
+### BE-2 — Domain core: entities + value objects + lifecycle rules  *(deps: BE-1)*
+**TDD-first.** Pure domain: Project (setup/active/archived), Role/SeatGrant (granted/revoked), Marius
+(invite_status, enrollment_code, liveness, timers), Task (+ `draft`, rich fields),
+TaskParticipant/Checklist/Dependency/Label, OnboardingSession, CommissionSession (+ leader_state),
+Artifact (file|link). Task lifecycle + DONE/dependency gates + `recompute_active` as pure functions.
+**Tests (unit, in-memory):** project activation rule, DONE-gate, dependency gate, invite state machine.
+*No I/O, no ORM yet.*
+
+### BE-3 — Application: ports + use cases + Enrollment + Liveness engine  *(deps: BE-2)*
+Ports (repos, adapter registry, artifact store, event bus, clock, unit-of-work). Use cases:
+EnrollmentService (enroll-and-wait), LivenessEngine (system-probe, **no heartbeat**), MariusService
+(adapter_type lock), ProjectService (grant_seat system-only, recompute_active), SkillService.
+**Tests (fake ports):** enroll-and-wait returns token on approve; claim is recovery-only; liveness
+decay ONLINE→CHECKING→OFFLINE + backoff R→2R→4R + signal reset; system-only grant; skill tree.
+
+### BE-4 — Infrastructure: SQLAlchemy repos + adapters + MinIO + Alembic 0002  *(deps: BE-3)*
+ORM models + mappers + async repos; migration `0002_*` (all new tables/columns incl. commission,
+liveness timers); AdapterRegistry + `hermes_gateway`/`echo` adapters behind `MariusAdapter.execute`;
+MinIO ArtifactStore; in-process EventBus.
+**Tests (integration, Postgres/MinIO):** repo round-trips; migration up/down; adapter execute echoes;
+MinIO put/get.
+
+### BE-5 — Presentation: FastAPI routers + composition root + Hybrid SSE  *(deps: BE-4)*
+Composition root wiring; routers per API_CONTRACT (workspaces, projects, roster, tasks, agent
+enroll/claim/join, commission, artifacts, skills, events). **Hybrid SSE**: workspace control-plane
+(`/workspaces/{ws}/events`) + per-task trace (`/tasks/{id}/stream`); wake-engine trace tee.
+**Tests (API, httpx/ASGI):** contract conformance (statuses, 409 gates), SSE event framing + resume,
+enroll-and-wait holds-then-completes, leader-offline 202 path.
+
+### BE-6 — Commission runtime + Wake engine + Onboarding finalize  *(deps: BE-5)*
+WakeEngine (bounded turns, session resume, skill install on grant, tees trace to SSE);
+CommissionService async (start/refine/edit/confirm, leader_state, `commission_jobs` drains on online);
+OnboardingSession finalize → `ProjectService.create`.
+**Tests (integration):** commission draft→todo wakes workers; leader-offline queues then drains;
+onboarding finalize creates project w/ roster.
+
+### BE-7 — Integration: swap FE mock → real API, end-to-end  *(deps: FE-3, BE-6)*
+Flip `MOCK=off`; bind the frozen FE to the real backend; `docker compose up` full stack (Postgres +
+MinIO + backend + frontend); drive the same journey proven in mock; seed parity.
+**DoD:** the exact journey from FE-3 plays on the real stack; docker-compose one-command green.
+
+## 5. Rules
+- **FE** — tsc + vite build clean per sub-phase; mock layer = the API_CONTRACT contract; EN+VI every string.
+- **BE** — TDD per phase; domain pure; new behavior = use-case + repo (+ entity); `pytest` green +
+  `ruff` clean; all schema changes after BE-1 are Alembic revisions (review, never edit a stamped one).
+- **Both** — commit + push to `main` per phase (per FE sub-phase after FE-0; per BE phase). This plan
+  + the ROADMAP update are **review-first, commit on owner approval.**
+- i18n — every new string lands EN **and** VI in the same commit.
+
+## 6. Out of scope (carried forward)
+- MCP server + MCP skill.
+- `openclaw_gateway` / `claude_local` / websocket adapters beyond registry stubs (after BE-7).
+- Board drag-and-drop + advanced grouping (after BE-7).
