@@ -1,8 +1,13 @@
+import { mockApi } from "./mock/api";
+import { streamRunScripted } from "./mock/bus";
+
 // API base. In the deployed stack nginx proxies the API on the SAME origin, so we
-// default to "" (relative). VITE_API_URL is only an override for bare `npm run dev`
-// (where the dev server and the backend are on different ports). Mirrors OpenClaw MC:
-// no absolute host is baked into the bundle.
+// default to "" (relative). VITE_API_URL is only an override for bare `npm run dev`.
 export const API_BASE = import.meta.env.VITE_API_URL?.replace(/\/$/, "") ?? "";
+
+// MOCK data mode (FE-1). Default ON so the app runs with zero backend; set VITE_MOCK=off
+// to hit the real API. Mirrors the DEV_PLAN FE-1 contract.
+export const MOCK = (import.meta.env.VITE_MOCK ?? "on") !== "off";
 
 // ---------------------------------------------------------------------------
 // Token storage — access + refresh, persisted in localStorage
@@ -117,7 +122,7 @@ export interface MariusInput {
   adapter_type: string; adapter_config: Record<string, string>;
 }
 
-export const api = {
+const realApi = {
   // Auth (no token needed for register/login/refresh). Login is by email; no username.
   register: (body: { email: string; full_name: string; password: string }) =>
     req<{ user: User; tokens: AuthTokens }>("/auth/register", {
@@ -180,7 +185,12 @@ export const api = {
   adapters: () => req<{ adapters: string[] }>("/v1/adapters"),
 };
 
+// FE-1: route to the in-memory mock when MOCK is on, else the real HTTP client.
+export const api = MOCK ? mockApi : realApi;
+
 export function streamRun(runId: string, onEvent: (e: RunEvent & { type: string }) => void): () => void {
+  // FE-1: in MOCK mode, stream a scripted run from the in-process simulator.
+  if (MOCK) return streamRunScripted(runId, onEvent as (e: RunEvent) => void);
   const es = new EventSource(`${API_BASE}/v1/runs/${runId}/stream`);
   es.onmessage = (ev) => {
     try {

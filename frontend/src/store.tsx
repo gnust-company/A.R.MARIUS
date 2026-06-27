@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { api, type Marius, type Project, type Workspace } from "./api";
+import { api, MOCK, type Marius, type Project, type Workspace } from "./api";
+import { bus, ensureSimulator } from "./mock/bus";
 import { useI18n } from "./i18n";
 
 const WS_KEY = "armarius_workspace_id";
@@ -87,6 +88,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace?.id]);
+
+  // FE-1 (MOCK only): subscribe to the simulated workspace event bus so liveness dots
+  // decay live. The real workspace-SSE channel ships with the backend (BE-5).
+  useEffect(() => {
+    if (!MOCK) return;
+    ensureSimulator();
+    return bus.on("marius.liveness", ({ marius_id, liveness }) => {
+      setMariuses((prev) => prev.map((m) => (m.id === marius_id ? { ...m, liveness } : m)));
+    });
+  }, []);
 
   const reloadWorkspaces = async () => setWorkspaces(await api.workspaces());
   const reloadDirectory = async () => {

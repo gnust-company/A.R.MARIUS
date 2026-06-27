@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { api, tokens, type User } from "./api";
+import { api, MOCK, tokens, type User } from "./api";
 
 interface AuthState {
   user: User | null;
@@ -16,10 +16,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Bootstrap: if we have a stored access token, validate it via /auth/me
+  // Bootstrap: if we have a stored access token, validate it via /auth/me.
+  // In MOCK mode the demo session is established automatically (mock-data demo app).
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      if (MOCK) {
+        try { const me = await api.me(); if (!cancelled) setUser(me); }
+        finally { if (!cancelled) setLoading(false); }
+        return;
+      }
       if (!tokens.access) { setLoading(false); return; }
       try {
         const me = await api.me();
