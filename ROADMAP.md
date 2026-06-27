@@ -58,16 +58,18 @@ artifact store, agent API, live-trace SSE, demo seed, docker-compose, and the (n
 Scriptorium frontend. All `[x]`.
 
 ### Track FE — Mock-data Scriptorium app (FIRST)
-- [ ] **FE-0** Design system + interaction language → [docs/FE_DESIGN.md](./docs/FE_DESIGN.md)
+- [x] **FE-0** Design system + interaction language → [docs/FE_DESIGN.md](./docs/FE_DESIGN.md)
       (parchment + terracotta + gilt tokens, Fraunces/Spectral, quill-in / scroll-unfurl / gilt-hover / wax-seal motion)
-- [ ] **FE-1** Mock data layer + simulated Hybrid SSE (in-memory store seeded from API_CONTRACT
+- [x] **FE-1** Mock data layer + simulated Hybrid SSE (in-memory store seeded from API_CONTRACT
       shapes; fake liveness decay + per-task trace stream; `MOCK` on/off switch)
-- [ ] **FE-2a** Shell + Auth + Workspaces
-- [ ] **FE-2b** Project landing + Roster + Onboarding (manual form + agent-assisted chat)
-- [ ] **FE-2c** Board + Commission chat (leader-mediated, async / `leader_state`)
-- [ ] **FE-2d** Collaboration Room (context + thread + per-task trace + publish + DONE gate)
-- [ ] **FE-2e** Agent Directory (enroll-and-wait) + Skill Shop (nested tree) + Patron Inbox
-- [ ] **FE-3** Polish: EN/VI i18n, reduced-motion, a11y, empty/loading/error states → **FE freeze**
+- [x] **FE-2a** Shell + Auth + Workspaces
+- [x] **FE-2b** Project landing + Roster (Board) + Onboarding manual form (Directory provision)
+      + **Profile page** ("trang cá nhân", added per owner). *Agent-assisted onboarding chat
+      deferred to the BE runtime (BE-6 finalize).*
+- [x] **FE-2c** Board + Commission (leader-mediated, async / `leader_state`)
+- [x] **FE-2d** Collaboration Room (context + thread + per-task trace + publish + DONE gate)
+- [x] **FE-2e** Agent Directory (enroll-and-wait) + Skill Shop (nested tree) + Patron Inbox
+- [x] **FE-3** Polish: EN/VI i18n, reduced-motion, a11y, empty/loading/error states → **FE freeze**
 
 ### Track BE — Clean Architecture + TDD (after FE freeze)
 - [ ] **BE-1** Infra: Alembic + MinIO
@@ -365,3 +367,27 @@ Follow-up fixes after direct UI review (every visible string now bilingual; UX f
   lifecycle, and locked-decisions table updated. ARCHITECTURE/HLD/LLD/API_CONTRACT untouched (still
   the source of truth).
 - **Status** — plan drafted, pending owner approval; **not committed**.
+
+### 2026-06-27 — FE track complete: every surface rebuilt in Scriptorium + new Profile page (`cebeec9`)
+- **Material locked (no burn).** Clean warm ivory parchment (#F3EAD4) + fine fiber speckle + faint
+  mottling; `.vellum` = subtle hand-torn deckle (SVG turbulence mask, scale 6) + faint rim + soft
+  drop-shadow. No singe / charred rim / vignette — matches the owner's crisp reference.
+- **Every surface rebuilt fresh** (old layouts deleted), sharing one grammar: illuminated `.vellum`
+  header (DropCap + Fraunces title + status chips + action), `.panel`/`.panel-flat` cards with
+  `.gilt` hover + `.quill-in` stagger, mono for data, earthy status palette.
+  - **Shell** — line-icon nav, terracotta brand, Account/Profile route, icon'd TopBar + sign-out.
+  - **Auth** — illuminated vellum card, terracotta brand; fixed an undefined `--surface` var.
+  - **Workspaces** — vellum header, folio cards with icon counts.
+  - **Board** — illuminated project header + kanban + Scribes roster (committed earlier).
+  - **Room** — vellum task header; reskinned 3-pane (context / thread / live trace) with an icon'd
+    mono tool/delta/usage timeline; approval bar; wake control.
+  - **Directory** — illuminated header, folio agent cards, icon'd skills, copy-feedback invite.
+  - **Skills + SkillEditor** — illuminated headers, icon file tree (file / folder / seal).
+  - **Inbox** — grouped Awaiting-review / Blocked, illuminated header, icon'd states.
+  - **Profile (NEW)** — the Patron's "trang cá nhân": identity + workshop + preferences + session.
+- **Icon family** in `ui.tsx` extended (file/folder/link/check/square/quill/copy/eye/trash/bolt/edit +
+  accept `style`); all emoji glyphs removed.
+- **i18n** — `profile.*`, inbox groups, `agent.copied` added EN+VI; glyph prefixes stripped (icons
+  render them now). `prefers-reduced-motion`, focus rings, loading/empty/error states in place.
+- **Verify** — `tsc --noEmit` clean; `vite build` clean (52 modules). Review screenshots in
+  `docs/preview/04–12` (untracked). **FE freeze.** BE track (BE-1…BE-7) **not started** per owner.
