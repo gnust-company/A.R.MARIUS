@@ -14,7 +14,7 @@
 | Entities | `domain/entities/{workspace,project,role,seat_grant,task,task_participant,checklist_item,task_dependency,label,onboarding_session,artifact,commission_session}.py` | New entities; extend Project/Task/Workspace/Artifact/Marius (enrollment + liveness fields). |
 | Use cases | `application/use_cases/{workspaces,projects(NEW),roster(NEW),tasks,onboarding(extend),artifacts,participants(NEW),enrollment(NEW),commission(NEW)}.py` | New services; extend task/artifact/onboarding. `mariuses.register` becomes invite-and-enroll (no token printed). |
 | Liveness | `application/liveness/engine.py` (NEW) + `domain/services/clock.py` | Recency + probe engine; exponential-backoff retry; reset on signal. §10. |
-| Events/SSE | `application/events/bus.py` (NEW) + `presentation/api/events.py` (NEW) | Workspace-events SSE stream (`/v1/workspaces/{ws}/events`); Web-App-only. §11. |
+| Events/SSE | `application/events/bus.py` (NEW) + `presentation/api/events.py` (NEW) | **Two** Web-App-only SSE channels — workspace control-plane (`/v1/workspaces/{ws}/events`) + per-task trace (`/v1/tasks/{id}/stream`). §11. |
 | Repos | `infrastructure/repositories/*.py` + `domain/repositories/*.py` | New repos (roles/grants/labels/participants/checklist/deps/onboarding/commission). |
 | ORM | `infrastructure/database/models.py` | New `*Model` classes; new columns (enrollment_code, liveness timers, commission sessions). |
 | Migrations | `alembic/` (NEW) + `alembic.ini` + env wiring | Introduce Alembic. |
@@ -639,41 +639,55 @@ Other notes:
 - Concurrency: one outstanding probe per Marius; a late signal arriving during a probe simply resets and
   cancels the failure count (the in-flight `_probe` result is then ignored because state is ONLINE).
 
-## 11. Workspace-events SSE bus (`application/events/bus.py` + `presentation/api/events.py`) **[NEW]**
+## 11. SSE channels — Hybrid (`application/events/bus.py` + `presentation/api/events.py`) **[NEW]**
 
-A single server→browser stream per open workspace. `GET /v1/workspaces/{ws}/events` (JWT) is an
-`StreamingResponse` with `text/event-stream`; the Web App holds it open on workspace mount and
-reconnects on drop (sending `Last-Event-ID` to resume). **Agents never read it.**
+**Two** server→browser SSE channels, both `StreamingResponse` with `text/event-stream`, both
+**Web-App-only** (agents never read SSE), both honoring `Last-Event-ID` for gap-free resume:
+
+1. **Workspace control-plane** — `GET /v1/workspaces/{ws}/events` (JWT). Always-on; the Web App holds
+   it open on workspace mount. Carries light events that belong to no single task.
+2. **Per-task trace** — `GET /v1/tasks/{task_id}/stream` (JWT). Opened by the Collaboration Room only
+   while the task is on screen and closed on leave. Carries that task's heavy run trace.
 
 ```python
-class EventBus:                                     # in-process pub/sub, per workspace
-    async def emit(self, ws_id, type: str, data: dict, event_id: str | None = None): ...
-    async def subscribe(self, ws_id) -> AsyncIterator[SSEFrame]: ...
+class EventBus:                                     # in-process pub/sub
+    async def emit_workspace(self, ws_id, type: str, data: dict, event_id=None): ...
+    async def emit_task(self, task_id, type: str, data: dict, event_id=None): ...   # trace channel
+    async def subscribe_workspace(self, ws_id, after=None) -> AsyncIterator[SSEFrame]: ...
+    async def subscribe_task(self, task_id, after=None) -> AsyncIterator[SSEFrame]: ...
 
-# events.py
+# events.py — one helper renders both
+def _sse(gen):  # id:/event:/data: framing
+    return StreamingResponse(gen, media_type="text/event-stream")
+
 @router.get("/workspaces/{ws_id}/events")
-async def stream(ws_id, user, bus: EventBus):
+async def workspace_events(ws_id, user, bus: EventBus):
     async def gen():
-        last = request.headers.get("Last-Event-ID")
-        async for frame in bus.subscribe(ws_id, after=last):
-            yield f"id: {frame.id}\nevent: {frame.type}\ndata: {json.dumps(frame.data)}\n\n"
-    return StreamingResponse(gen(), media_type="text/event-stream")
+        async for f in bus.subscribe_workspace(ws_id, after=last_event_id()):
+            yield f"id: {f.id}\nevent: {f.type}\ndata: {json.dumps(f.data)}\n\n"
+    return _sse(gen())
+
+@router.get("/tasks/{task_id}/stream")
+async def task_trace(task_id, user, bus: EventBus):
+    async def gen():
+        async for f in bus.subscribe_task(task_id, after=last_event_id()):
+            yield f"id: {f.id}\nevent: {f.type}\ndata: {json.dumps(f.data)}\n\n"
+    return _sse(gen())
 ```
 
-- Producers: `EnrollmentService`, `ProjectService.grant_seat`/`recompute_active`, `LivenessEngine`,
-  `CommissionService`, the wake-engine trace tee. Each `emit` carries a monotonic `event_id` so
-  `Last-Event-ID` resume is gap-free.
-- Event types: `marius.status_changed`, `marius.online`, `marius.liveness`,
-  `seat.skills_installed`, `project.active`, `commission.turn`/`commission.leader_offline`/
-  `commission.ready`, `task.created`, approvals,
-  `run.delta`/`run.tool`/`run.usage` (live trace — fanned out from the adapter's `on_event` callback).
-- **One stream carries the trace too — no per-task SSE.** The live-trace frames are published to the
-  **same** workspace stream, each tagged with `task_id` (and `run_id`) in its `data`; the Collaboration
-  Room subscribes once and filters by the open task. This is the wake engine **teeing** the per-task
-  **agent runtime session** (one session per task/run, unchanged) onto the single browser stream — the
-  two are different layers, not duplicate channels. There is deliberately **no**
-  `/v1/tasks/{id}/stream`.
-- In a multi-worker deploy this needs a shared broker (Redis pub/sub); for the single-uvicorn
+- **Workspace-channel producers**: `EnrollmentService`, `ProjectService.grant_seat`/`recompute_active`,
+  `LivenessEngine`, `CommissionService`. Event types: `marius.status_changed`, `marius.online`,
+  `marius.liveness`, `seat.skills_installed`, `project.active`,
+  `commission.turn`/`commission.leader_offline`/`commission.ready`, `task.created`, approvals.
+- **Task-channel producer**: the **wake-engine trace tee** — the adapter's `on_event` callback fans
+  `run.delta`/`run.tool`/`run.usage` (each carrying `task_id`/`run_id`) onto `emit_task`.
+- **Why two channels (Hybrid), not one.** The trace is heavy and only relevant while a room is open;
+  control-plane events must arrive even with no room open. Splitting keeps the always-on connection cheap
+  (the browser does not download every agent's trace at once) while still streaming each task in
+  real-time. This is distinct from the **agent runtime session** (one per task/run, backend↔agent,
+  unchanged): the wake engine **tees** each session's events onto that task's trace channel. So the
+  browser holds **one** always-on connection plus **at most one** trace connection (the focused task).
+- In a multi-worker deploy both channels need a shared broker (Redis pub/sub); for the single-uvicorn
   compose setup an in-process bus is sufficient and is what Phase A ships.
 
 ## 12. Invite lifecycle — holding the enroll call **[NEW]**

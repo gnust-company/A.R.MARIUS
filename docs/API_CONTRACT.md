@@ -51,25 +51,42 @@ UX north-star (from `ARMARIUS Design/`): **"You task. They collaborate. You trac
 | POST | `/v1/workspaces` | Create a workspace (seeds builtin skills; **no** auto project). |
 | GET  | `/v1/workspaces/{ws}` | Workspace detail, incl. `workspace_agent_id`. **[NEW]** |
 | PUT  | `/v1/workspaces/{ws}/workspace-agent` | Body `{ "marius_id": "<uuid>" \| null }`. Designate/clear the **Workspace Agent**. When set, that Marius receives the **armarius-onboarder** skill install step (a direct adapter wake if it is online; queued otherwise). **[CHANGED]** |
-| SSE  | `/v1/workspaces/{ws}/events` | **Workspace-events stream** — the Web App holds this open (JWT). Server→browser push for `marius.online`, `marius.status_changed`, `marius.liveness`, `project.active`, `task.created`, `commission.*`, approvals, and the live run trace. **[NEW — Web-App-only]** |
+| SSE  | `/v1/workspaces/{ws}/events` | **Workspace control-plane stream** — the Web App holds this open always (JWT). Server→browser push for `marius.online`, `marius.status_changed`, `marius.liveness`, `seat.skills_installed`, `project.active`, `task.created`, `commission.*`, approvals. (The live run trace is **not** here — it has its own per-task stream, §8.) **[NEW — Web-App-only]** |
 
 **[CHANGED] Onboarding side-effect**: a fresh workspace is created **empty of projects**. The old
 auto-"General"-project + auto-board is removed. The user lands on a **project list** and creates a
 project through onboarding (§3).
 
-**Workspace-events SSE (§2).** The Web App opens `/v1/workspaces/{ws}/events` on workspace mount and
-keeps **one** stream open for the whole workspace. The backend pushes events down it so the UI **never
-polls**. The SSE wire format is one frame per event — `event: <type>` then `data: <json-object>`:
+**Two SSE channels (Hybrid).** The Web App uses **two kinds** of server→browser SSE; both are
+Web-App-only (agents never read SSE):
+
+1. **Workspace control-plane stream** (`/v1/workspaces/{ws}/events`, §2) — **one, always-on**, opened on
+   workspace mount. Carries light events that belong to no single task (an agent coming online, a
+   project activating, a task being created, a commission preview). The UI needs this even with no task
+   on screen, so it is a single persistent connection.
+2. **Per-task trace stream** (`/v1/tasks/{task_id}/stream`, §8) — opened **only while a Collaboration
+   Room is on screen** and closed on leave. Carries that task's heavy live run trace
+   (`run.delta`/`run.tool`/`run.usage`). At most one is open at a time (the focused task).
+
+Why split: the trace is heavy and only interesting while you watch a task; keeping it off the always-on
+stream means the browser is not downloading every agent's trace at once. Each stream is independent and
+real-time — multiple agents working one task interleave on that task's stream live. This is distinct
+from the **agent runtime session** (one per task/run, backend↔agent, unchanged); the wake engine
+**tees** each session's events onto that task's trace stream.
+
+The SSE wire format is one frame per event — `event: <type>` then `data: <json-object>`:
 
 ```
+# on the workspace control-plane stream
 event: marius.online
 data: {"marius_id": "…"}
 
+# on a per-task trace stream
 event: run.delta
 data: {"task_id": "…", "run_id": "…", "text": "…"}
 ```
 
-Representative events:
+Representative **workspace** events:
 
 | Event | When | Web App effect |
 |---|---|---|
@@ -78,18 +95,8 @@ Representative events:
 | `seat.skills_installed` | role-skill install completes | roster row re-renders |
 | `project.active` | last seat granted + online | board unlocks task commission |
 | `task.created` / `commission.*` | leader proposes/confirms a task | board card appears, commission modal updates |
-| `run.delta` / `run.tool` / `run.usage` | agent turn streams | Collaboration Room trace panel appends |
 
-`Last-Event-ID` is honored for resume; a dropped stream is reconnected by the Web App. Agents never
-read this stream — they learn of their own changes from the request/response they make.
-
-**One stream, not one-per-task.** The live run trace flows on **this same** workspace stream — there is
-**no** per-task SSE endpoint. Trace frames (`run.delta`/`run.tool`/`run.usage`) carry a **`task_id`**
-(and `run_id`); the Collaboration Room filters to the task it is showing. Workspace-level events
-(`marius.online`, `project.active`) belong to no task, so a single workspace stream is required anyway —
-adding per-task streams would only duplicate it. (This is distinct from the **agent runtime session**,
-which is one-per-task/run on the backend↔agent side and unchanged; its events are teed onto this one
-browser stream, tagged by `task_id`.)
+`Last-Event-ID` is honored for resume on both kinds; a dropped stream is reconnected by the Web App.
 
 ---
 
@@ -408,11 +415,12 @@ or `link` artifact.
 | POST | `/v1/tasks/{task_id}/comments` | Comment. |
 | POST | `/v1/tasks/{task_id}/next-action` | Record next action. |
 | POST | `/v1/tasks/{task_id}/wake` | Wake a participant (§5.2). |
+| SSE  | `/v1/tasks/{task_id}/stream` | **Per-task live run trace** (`run.delta`/`run.tool`/`run.usage`). The Collaboration Room opens this **only while the task is on screen** and closes it on leave — the *second* SSE channel in the Hybrid model (§2). Frames carry `task_id`/`run_id`. `Last-Event-ID` honored. **Web-App-only.** **[NEW]** |
 
-> **The live run trace is not a separate endpoint.** It rides the single workspace-events SSE (§2) as
-> `run.delta`/`run.tool`/`run.usage` frames tagged with `task_id`; the Collaboration Room filters to the
-> open task. (There is **no** `/v1/tasks/{task_id}/stream` — an earlier draft had one; it was dropped to
-> keep a single browser stream.)
+> Two SSE channels (§2): control-plane events ride the always-on **workspace** stream
+> (`/v1/workspaces/{ws}/events`); the heavy **run trace** rides this **per-task** stream, opened on
+> demand. This is separate from the backend↔agent **runtime session** (one per task/run), which the wake
+> engine tees onto this stream.
 
 ---
 

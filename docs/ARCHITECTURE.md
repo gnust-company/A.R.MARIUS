@@ -35,7 +35,8 @@ flowchart TB
     H["Human API (JWT)"]
     A["Agent API (agent token)"]
     WAKE["Wake engine"]
-    SSE["SSE bus<br/>live trace + workspace events"]
+    WSSE["Workspace SSE<br/>control-plane events"]
+    TSSE["Per-task SSE<br/>live run trace"]
   end
 
   subgraph Reg["Adapter Registry (one bounded execute contract)"]
@@ -63,10 +64,11 @@ flowchart TB
   A --> PG
   A --> MN
   AGENT -- "streamed events" --> WAKE
-  WAKE --> SSE
-  H -.->|workspace events| SSE
-  A -.->|agent status events| SSE
-  SSE --> UI
+  WAKE -- "run trace (task_id)" --> TSSE
+  H -.->|control-plane events| WSSE
+  A -.->|agent status events| WSSE
+  WSSE -- "always-on" --> UI
+  TSSE -- "while a task room is open" --> UI
 ```
 
 - **Web App** talks to FastAPI through nginx (relative URLs; nothing host-specific baked into the bundle).
@@ -77,6 +79,11 @@ flowchart TB
 - **Wake engine → Adapter Registry**: Armarius **owns the wake loop**; to run a bounded turn it
   resolves the agent's `adapter_type` to an adapter and calls `execute(ctx)`. The adapter bridges to
   that runtime's gateway and tees streamed events back for the live trace.
+- **Two SSE channels (both server→browser, never agent)**: a single **always-on Workspace SSE** carries
+  light *control-plane* events (agent online, status, `project.active`, `task.created`, commission
+  preview, approvals); a **per-task Trace SSE** is opened **only while a Collaboration Room is open** and
+  carries that task's heavy *live run trace* (`run.delta`/`run.tool`/`run.usage`). This keeps the
+  always-on connection cheap while still streaming every task's work in real time. See §5.
 - **PostgreSQL** is the source of truth for metadata, roster, tasks, thread, trace-log.
 - **MinIO** (bucket `armarius`) is the Shared Artifact Store — a **folder per project** holding task
   outputs, plus media (agent avatars). A task **cannot reach done** until its output is here.
@@ -205,19 +212,23 @@ throughout:
   app calls the API with the user's JWT and renders the result. Diagrams label it `WEB` (Web App).
 - **Agents talk to the API directly** with their agent token (issued during the invite handshake).
   Agent-side steps spell out exactly what the runtime does (save key, install skills, call back).
-- **The web app learns of async changes by push, not polling.** It holds open **one** **workspace-events
-  SSE** connection (`GET /v1/workspaces/WS/events`) and the backend pushes events down it —
-  `marius.online`, `marius.status_changed`, `marius.liveness`, `project.active`, `task.created`,
-  `commission.*`, approvals, and the live run trace. **SSE = Server-Sent Events**: a one-way
-  (server→browser), long-lived HTTP stream. It is a *Web-App-only* channel; agents never use SSE (they
-  use request/response + adapter wakes). So when a diagram shows `API → SSE → WEB`, that is the backend
-  telling the UI about a change the UI did not itself trigger.
-- **One stream, not one-per-task.** There is a **single** workspace SSE — workspace-level events (an
-  agent coming online, a project activating) belong to no task, so the browser needs this stream open
-  even when no task is focused. Live-trace frames carry a **`task_id`** (and `run_id`) so the
-  Collaboration Room filters to the task it is showing. This is separate from the **agent runtime
-  session** (one per task/run, backend↔agent), which is unchanged: each `execute()` is its own session;
-  its streamed events are teed onto this one browser stream, tagged by `task_id`.
+- **The web app learns of async changes by push, not polling.** It holds open an **always-on
+  Workspace SSE** (`GET /v1/workspaces/WS/events`) and the backend pushes *control-plane* events down it
+  — `marius.online`, `marius.status_changed`, `marius.liveness`, `project.active`, `task.created`,
+  `commission.*`, approvals. **SSE = Server-Sent Events**: a one-way (server→browser), long-lived HTTP
+  stream. SSE is a *Web-App-only* family of channels; agents never use SSE (they use request/response +
+  adapter wakes). So when a diagram shows `API → SSE → WEB`, that is the backend telling the UI about a
+  change the UI did not itself trigger.
+- **Two channels (Hybrid): one always-on workspace stream + a per-task trace stream.** The heavy **live
+  run trace** does **not** ride the workspace stream — it has its own **per-task SSE**
+  (`GET /v1/tasks/T/stream`, `run.delta`/`run.tool`/`run.usage`) that the Collaboration Room opens
+  **only while that task is on screen** and closes when you leave. So the browser holds **one** always-on
+  connection plus **at most one** trace connection for the focused task. This is the deliberate split:
+  control-plane events belong to no task and must arrive even with no room open, while a task's trace is
+  only interesting while you are watching it — and not downloading every agent's trace at once keeps the
+  always-on stream cheap. Multiple agents on a task interleave on that task's stream in real time. This
+  is distinct from the **agent runtime session** (one per task/run, backend↔agent) which is unchanged:
+  the wake engine **tees** each session's streamed events onto that task's trace SSE.
 
 > This section is the design intent (what we are building), not a transcript of the current code.
 
@@ -812,11 +823,12 @@ flowchart LR
 7. **Shared store prevents local-only output** — a `file` artifact must upload content into the
    project's MinIO folder; a `link` points outward; a task **cannot reach done** without one. This is
    the decisive difference from other multi-agent systems.
-8. **The UI is push-driven** — the web app holds a **workspace-events SSE** stream; the backend pushes
-   liveness/status/approval/task events (and the live trace) to it. No polling, and no "the UI magically
-   knew" steps.
-9. **"You trace"** — the **live run trace** (SSE) is retained in the Collaboration Room; it is an
-   Armarius signature.
+8. **The UI is push-driven, over two SSE channels (Hybrid)** — an **always-on Workspace SSE** carries
+   control-plane events (liveness/status/approval/`project.active`/`task.created`/`commission.*`), and a
+   **per-task Trace SSE** opened only while a Collaboration Room is on screen carries that task's live
+   run trace. No polling, and no "the UI magically knew" steps.
+9. **"You trace"** — the **live run trace** (the per-task Trace SSE) is retained in the Collaboration
+   Room; it is an Armarius signature.
 10. **Workspace Agent** — onboarding may be driven by a designated agent via chat, but it is a
     nice-to-have shipped **last (Phase G)**.
 11. **Clean Architecture** — pure domain; all IO/HTTP in infrastructure/presentation; a single

@@ -51,11 +51,14 @@ single bounded `MariusAdapter.execute(ctx)` contract (`application/ports/adapter
 wake engine **owns the wake loop** and always drives the runtime **through an adapter → that runtime's
 gateway**, never calling a gateway directly. See [ARCHITECTURE.md](./ARCHITECTURE.md) §2.
 
-**Two push channels (both server→consumer).** (1) The **workspace-events SSE bus**
-(`GET /v1/workspaces/{ws}/events`) is **Web-App-only** — the browser holds it open and the backend
-pushes liveness/status/approval/commission/task events (and the live trace) so the UI never polls.
-Agents never read it. (2) The **live run trace** is teed by each adapter back through the wake engine
-and surfaced to the Collaboration Room. See [ARCHITECTURE.md](./ARCHITECTURE.md) §1.
+**Two SSE channels, both server→browser (Hybrid).** Both are **Web-App-only** — agents never read SSE.
+(1) The **workspace control-plane stream** (`GET /v1/workspaces/{ws}/events`) is **always-on**: the
+browser holds it open and the backend pushes light events that belong to no single task —
+liveness/status/approval/commission-preview/`project.active`/`task.created`. (2) A **per-task trace
+stream** (`GET /v1/tasks/{task_id}/stream`) is opened **only while a Collaboration Room is on screen**
+and carries that task's heavy live run trace (`run.delta`/`run.tool`/`run.usage`), teed by the adapter
+through the wake engine. Keeping the trace off the always-on stream means the browser never downloads
+every agent's trace at once. See [ARCHITECTURE.md](./ARCHITECTURE.md) §1 and §5.7.
 
 **Liveness is recency, not a flag.** "Online" means *a signal was received recently*. The backend
 **probes** an idle agent (a light "reply OK" turn in a throwaway session) — the agent never self-reports,
@@ -179,7 +182,7 @@ Backend ─► wake Leader in a FRESH session (ctx = project + roster + workers)
 Leader  ─► analyze / ask if >1 option / break down / fill ALL fields / pick workers ─► preview (Task draft)
 Patron  ─► refine (resume Leader session)  OR  confirm ─► Task draft→todo, wake chosen workers
 Participants co-work: comment thread (@mention), update status/next-action, tick checklist
-        └─► Patron watches Live run trace (workspace-events SSE: deltas, tool calls, usage)
+        └─► Patron watches Live run trace (per-task SSE /tasks/T/stream: deltas, tool calls, usage)
 A participant publishes output ─► POST /artifact
         ├─ file  → content uploaded, sha256-verified, stored in MinIO
         └─ link  → external URL (a merged PR)
@@ -243,22 +246,29 @@ by the time a project is staffed weeks later — the UI never shows a stale ONLI
 (`T1`, `T2`, `R`, `hung_after`, max-backoff cap) are pinned in [LLD.md](./LLD.md) §10. Full state
 machine: [ARCHITECTURE.md](./ARCHITECTURE.md) §5.
 
-### 5.7 Workspace-events SSE — one stream, push not polling **[NEW]**
-The Web App opens **one** `GET /v1/workspaces/{ws}/events` on workspace mount and keeps it open. The
-backend pushes event frames (`marius.online`, `marius.status_changed`, `marius.liveness`,
-`seat.skills_installed`, `project.active`, `task.created`, `commission.*`, approvals, and the live run
-trace). `Last-Event-ID` is honored for resume. **Web-App-only** — agents never use SSE (they use
-request/response + adapter wakes); so any `API → SSE → WEB` step is the backend telling the UI about a
-change the UI did not itself trigger.
+### 5.7 SSE — two channels (Hybrid), push not polling **[NEW]**
+**Channel 1 — workspace control-plane (always-on).** The Web App opens **one** `GET
+/v1/workspaces/{ws}/events` on workspace mount and keeps it open. The backend pushes light events that
+belong to no single task: `marius.online`, `marius.status_changed`, `marius.liveness`,
+`seat.skills_installed`, `project.active`, `task.created`, `commission.*`, approvals. The UI needs these
+even with no task on screen, so it is one persistent connection.
 
-**One stream, not one-per-task.** Workspace-level events (an agent coming online, a project activating)
-belong to no task, so the browser needs this stream open even when no task is focused — and the **live
-run trace flows on the same stream**, with each `run.*` frame tagged by **`task_id`** (and `run_id`);
-the Collaboration Room filters to the task it shows. There is **no** per-task SSE endpoint. This is
-**not** the same as the agent runtime session: the backend↔agent side still runs **one session per
-task/run** (unchanged); the wake engine merely **tees** those streamed events onto this one browser
-stream, tagged by `task_id`. So "one browser stream" and "one session per task" are both true and do
-not conflict.
+**Channel 2 — per-task trace (on demand).** When a Collaboration Room opens, the Web App also opens
+`GET /v1/tasks/{task_id}/stream` for that task; it carries the heavy live run trace
+(`run.delta`/`run.tool`/`run.usage`) and is **closed when the room is left**. At most one is open (the
+focused task). `Last-Event-ID` is honored for resume on both channels.
+
+Both channels are **Web-App-only** — agents never use SSE (they use request/response + adapter wakes);
+so any `API → SSE → WEB` step is the backend telling the UI about a change the UI did not itself
+trigger.
+
+**Why split (Hybrid), and how it relates to sessions.** Control-plane events must arrive even with no
+room open, while a task's trace is only interesting while you watch it; keeping the trace off the
+always-on stream means the browser never downloads every agent's trace at once. The browser therefore
+holds **one** always-on connection plus **at most one** trace connection. This is **not** the same as
+the agent runtime session: the backend↔agent side still runs **one session per task/run** (unchanged);
+the wake engine **tees** that session's streamed events onto the task's trace channel. So "two browser
+SSE channels" and "one runtime session per task" are different layers and do not conflict.
 
 ---
 
