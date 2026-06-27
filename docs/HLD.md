@@ -57,11 +57,13 @@ pushes liveness/status/approval/commission/task events (and the live trace) so t
 Agents never read it. (2) The **live run trace** is teed by each adapter back through the wake engine
 and surfaced to the Collaboration Room. See [ARCHITECTURE.md](./ARCHITECTURE.md) §1.
 
-**Liveness is recency, not a flag.** "Online" means *a signal was received recently* (any contact —
-heartbeat, `/agent/me`, a task response). Silence decays ONLINE → CHECKING → OFFLINE (probed 3×), and
-OFFLINE re-probes on a timeout that **doubles each failed cycle**; **any signal resets everything**.
-This is what lets activation key off "online" without a separate ack handshake. Full model:
-[ARCHITECTURE.md](./ARCHITECTURE.md) §5; timers in [LLD.md](./LLD.md) §10.
+**Liveness is recency, not a flag.** "Online" means *a signal was received recently*. The backend
+**probes** an idle agent (a light "reply OK" turn in a throwaway session) — the agent never self-reports,
+so there is **no heartbeat endpoint**; incidental agent calls (`/agent/me`, a task response) count as
+signals too. Silence decays ONLINE → CHECKING → OFFLINE (probed 3×), and OFFLINE re-probes on a timeout
+that **doubles each failed cycle**; **any signal resets everything**. This is what lets activation key
+off "online" without a separate ack handshake. Full model: [ARCHITECTURE.md](./ARCHITECTURE.md) §5;
+timers in [LLD.md](./LLD.md) §10.
 
 **Stack**: Python 3.12 · FastAPI · SQLAlchemy 2 (async) · pydantic-settings · `uv` + ruff. Local
 dev = SQLite + aiosqlite; Docker = Postgres + **MinIO** (artifact/media store, bucket `armarius`).
@@ -77,7 +79,8 @@ User 1──* Workspace *──1 (workspace_agent) Marius
 Workspace 1──* Project *──* Role(seat) *──1 SeatGrant *──1 Marius
 Workspace 1──* Label            │
 Workspace 1──* Skill            *──1 Task *──1 TaskParticipant *──1 Marius
-OnboardingSession 1──1 Project  Task *──* Dependency(blocked_by)
+Workspace 1──* OnboardingSession 0..1──* Project   (a session creates 0..1 project)
+Project 1──* CommissionSession 1──1 Task(draft)    Task *──* Dependency(blocked_by)
                                 Task 1──* ChecklistItem
                                 Task 1──* Artifact (Shared Store: MinIO)
                                 Task 1──* Comment   Task 1──* Run(Trace)
@@ -220,9 +223,12 @@ project back to `setup`; it is an operational (wake/report) matter.
 All user-facing strings flow through `t()`/`tEn()` (EN/VI). No hardcoded display strings.
 
 ### 5.6 Liveness — "online" is recency + probe, not a sticky flag **[NEW]**
-"Online" means **a signal was received recently** (any contact — a task response, a heartbeat,
-`/agent/me`, an enroll reply — the source does not matter). The backend watches the time since the
-**last signal** and probes on idle:
+"Online" means **a signal was received recently**. The **deciding mechanism is a system probe**: when
+an agent has been idle, the backend opens a **light throwaway session** asking it to reply "OK" — the
+reply is a signal, then the session is discarded. The agent is **never required to self-report**, so
+**there is no heartbeat endpoint**. Incidental calls the agent makes while working (comment, status,
+`/agent/me`, the enroll reply) are *also* counted as signals — they reset the idle timer and let the
+backend skip a probe. The backend watches the time since the **last signal** and probes on idle:
 
 - **Idle timeout `T1`** → send a **light probe** ("reply OK" in a throwaway session); wait short `T2`.
 - **Retry 3×** → no answer flips the agent to `CHECKING` (a "waking" display) for up to 3 probes.
@@ -237,14 +243,22 @@ by the time a project is staffed weeks later — the UI never shows a stale ONLI
 (`T1`, `T2`, `R`, `hung_after`, max-backoff cap) are pinned in [LLD.md](./LLD.md) §10. Full state
 machine: [ARCHITECTURE.md](./ARCHITECTURE.md) §5.
 
-### 5.7 Workspace-events SSE — push, not polling **[NEW]**
-The Web App opens `GET /v1/workspaces/{ws}/events` on workspace mount and keeps it open. The backend
-pushes event frames (`marius.online`, `marius.status_changed`, `marius.liveness`,
+### 5.7 Workspace-events SSE — one stream, push not polling **[NEW]**
+The Web App opens **one** `GET /v1/workspaces/{ws}/events` on workspace mount and keeps it open. The
+backend pushes event frames (`marius.online`, `marius.status_changed`, `marius.liveness`,
 `seat.skills_installed`, `project.active`, `task.created`, `commission.*`, approvals, and the live run
 trace). `Last-Event-ID` is honored for resume. **Web-App-only** — agents never use SSE (they use
 request/response + adapter wakes); so any `API → SSE → WEB` step is the backend telling the UI about a
-change the UI did not itself trigger. The Directory liveness dot, the roster activation flip, and the
-commission preview all arrive over this one stream.
+change the UI did not itself trigger.
+
+**One stream, not one-per-task.** Workspace-level events (an agent coming online, a project activating)
+belong to no task, so the browser needs this stream open even when no task is focused — and the **live
+run trace flows on the same stream**, with each `run.*` frame tagged by **`task_id`** (and `run_id`);
+the Collaboration Room filters to the task it shows. There is **no** per-task SSE endpoint. This is
+**not** the same as the agent runtime session: the backend↔agent side still runs **one session per
+task/run** (unchanged); the wake engine merely **tees** those streamed events onto this one browser
+stream, tagged by `task_id`. So "one browser stream" and "one session per task" are both true and do
+not conflict.
 
 ---
 

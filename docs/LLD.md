@@ -20,7 +20,7 @@
 | Migrations | `alembic/` (NEW) + `alembic.ini` + env wiring | Introduce Alembic. |
 | Artifact store | `domain/services/artifact_store.py` (port) + `infrastructure/artifacts/store.py` (**MinIO/S3**) | MinIO-backed store, bucket `armarius`. |
 | Schemas | `presentation/schemas.py` | New/changed pydantic schemas. |
-| API | `presentation/api/{workspaces,projects(NEW),tasks,agent(extend enroll/claim),artifacts,events(NEW),commission(NEW)}.py` | New routers; changed task/artifact/agent endpoints. |
+| API | `presentation/api/{workspaces(+approve, lock adapter_type),projects(NEW),tasks,agent(+enroll/claim; rename task `/claim`→`/join`),artifacts,events(NEW),commission(NEW)}.py` | New routers; changed task/artifact/agent endpoints. `agent.py:70` `/tasks/{id}/claim` → `/tasks/{id}/join` (frees the word "claim" for enrollment recovery). |
 | Builtins | `application/use_cases/skills.py` + `static/skills/armarius-onboarder/SKILL.md` (NEW) | Add onboarder builtin. |
 | Config | `config.py` | `MINIO_*`, `LIVENESS_*` (§10), `WORKSPACE_AGENT_SKILL_*`. |
 | Compose | `docker-compose.yml` | Add `minio` service + persistent volume; create bucket on boot. |
@@ -322,6 +322,13 @@ def mark_online(self, marius_id):                    # called from GET /agent/me
     liveness_engine.reset(marius_id)                 # §10: restart idle timer, zero backoff
     events.emit("marius.online", {marius_id})
 
+# MariusService.update — adapter_type is LOCKED after approval
+async def update(self, marius_id, *, name=None, role=None, skills=None, avatar=None,
+                 adapter_type=None, adapter_config=None) -> Marius:
+    if adapter_type is not None and marius.invite_status == APPROVED and adapter_type != marius.adapter_type:
+        raise Conflict("adapter_type is locked after approval; re-invite to change runtime")
+    # name/role/skills/avatar/adapter_config remain editable (e.g. rotated gateway creds)
+
 # CommissionService — leader-mediated, no manual form
 async def start(self, project_id, message) -> CommissionSession:
     assert project.status == ACTIVE
@@ -550,54 +557,87 @@ machine off the clock. See [ARCHITECTURE.md](./ARCHITECTURE.md) §5 for the stat
 ```python
 @dataclass
 class LivenessConfig:
-    idle_timeout: timedelta        = timedelta(seconds=90)    # T1 — no signal ⇒ probe
-    probe_window: timedelta        = timedelta(seconds=30)    # T2 — wait for probe reply
-    max_probe_attempts: int        = 3                        # then OFFLINE
-    retry_base: timedelta          = timedelta(seconds=60)    # R  — OFFLINE re-probe interval
+    idle_timeout: timedelta        = timedelta(seconds=90)    # T1 — no signal ⇒ start probing
+    probe_window: timedelta        = timedelta(seconds=30)    # T2 — gap BETWEEN probe attempts (and per-probe timeout)
+    max_probe_attempts: int        = 3                        # 3 misses ⇒ OFFLINE
+    retry_base: timedelta          = timedelta(seconds=60)    # R  — FIRST OFFLINE re-probe wait
     retry_max: timedelta           = timedelta(minutes=30)    # cap on the doubling backoff
     retry_factor: float            = 2.0                      # R → 2R → 4R …
     hung_after: timedelta          = timedelta(minutes=20)    # WORKING turn watchdog
 
+# Marius liveness bookkeeping (persisted): liveness, last_seen_at, probe_attempts,
+# backoff_step, next_probe_at, offline_since, turn_started_at.
+
 class LivenessEngine:
-    async def record_signal(self, marius_id):        # any contact: /agent/me, heartbeat, task reply, enroll reply
-        marius.liveness = ONLINE; marius.last_seen_at = now
-        marius.probe_attempts = 0; marius.backoff_step = 0   # RESET idle timer + backoff
+    async def record_signal(self, marius_id):        # ANY contact: probe reply, /agent/me, task reply, enroll reply
+        m.liveness = ONLINE; m.last_seen_at = now
+        m.probe_attempts = 0; m.backoff_step = 0; m.next_probe_at = None   # RESET timer + backoff
         events.emit("marius.liveness", {marius_id, "online"})
     async def begin_turn(self, marius_id):           # wake engine calls this when a turn starts
-        marius.liveness = WORKING
+        m.liveness = WORKING; m.turn_started_at = now
     async def end_turn(self, marius_id):
         await self.record_signal(marius_id)          # turn done ⇒ counts as a signal (reset)
-    async def tick(self):                            # background loop, e.g. every 5s
+
+    async def tick(self):                            # background loop, e.g. every 5s — TIME-DRIVEN, never blocks
         for m in mariuses.all():
-            if m.liveness == WORKING and now - turn_started_at > hung_after: m.liveness = HUNG
-            if m.liveness in {ONLINE} and now - m.last_seen_at > T1:
-                m.liveness = CHECKING; await self._probe(m)
-            if m.liveness == CHECKING:
-                if m.probe_attempts < 3: await self._probe(m)        # within T2 windows
-                else: self._go_offline(m)                            # 3 fails ⇒ OFFLINE
-            if m.liveness == OFFLINE and now - m.offline_since > self._retry_interval(m):
-                m.liveness = CHECKING; await self._probe(m)          # re-run the probe loop
+            if m.liveness == WORKING:
+                if now - m.turn_started_at > hung_after: m.liveness = HUNG
+                continue                                                  # a turn IS a signal; don't probe
+            # ONLINE gone quiet past T1 → enter CHECKING and schedule the FIRST probe now
+            if m.liveness == ONLINE and now - m.last_seen_at > T1:
+                m.liveness = CHECKING; m.probe_attempts = 0; m.next_probe_at = now
+            # OFFLINE waiting out its backoff → when the interval elapses, re-enter CHECKING
+            if m.liveness == OFFLINE and now >= m.next_probe_at:
+                m.liveness = CHECKING; m.probe_attempts = 0; m.next_probe_at = now
+            # CHECKING: fire at most ONE probe per due time, spaced by T2
+            if m.liveness == CHECKING and now >= m.next_probe_at:
+                await self._probe(m)                                      # awaits ≤ T2; sets next_probe_at = now + T2
+                if m.liveness == CHECKING and m.probe_attempts >= max_probe_attempts:
+                    self._go_offline(m)
+
     async def _probe(self, m):
-        # a light "reply OK" turn in a throwaway session via the adapter
-        result = await wake_engine.execute(m, ctx=probe_ctx, timeout=int(T2.total_seconds()))
+        # one light "reply OK" turn in a throwaway session via the adapter; bounded by T2
         m.probe_attempts += 1
-        if result.status == COMPLETED: await self.record_signal(m.id)
+        m.next_probe_at = now + probe_window          # the NEXT attempt waits a full T2 (no burst)
+        result = await wake_engine.execute(m, ctx=probe_ctx, timeout=int(T2.total_seconds()))
+        if result.status == COMPLETED:
+            await self.record_signal(m.id)            # success ⇒ reset (cancels the CHECKING cycle)
+
     def _retry_interval(self, m):
-        return min(retry_base * (retry_factor ** m.backoff_step), retry_max)   # R, 2R, 4R … capped
+        # backoff_step is the count of FAILED offline cycles so far: 0 ⇒ R, 1 ⇒ 2R, 2 ⇒ 4R … capped
+        return min(retry_base * (retry_factor ** m.backoff_step), retry_max)
+
     def _go_offline(self, m):
-        m.liveness = OFFLINE; m.offline_since = now; m.backoff_step += 1; events.emit("marius.liveness", {…,"offline"})
+        m.liveness = OFFLINE; m.offline_since = now
+        m.next_probe_at = now + self._retry_interval(m)   # schedule re-probe BEFORE bumping the step
+        m.backoff_step += 1                               # so the FIRST offline wait is exactly R, then 2R, 4R …
+        events.emit("marius.liveness", {marius_id, "offline"})
 ```
 
-- **`record_signal` is the universal reset.** Any contact — even mid-probe, or from OFFLINE — snaps the
-  agent to ONLINE and zeroes `probe_attempts`/`backoff_step`. Activation (§4 `recompute_active`)
-  re-evaluates on the resulting `marius.online` event.
+Two correctness points the prior draft got wrong (reviewer-flagged), now fixed:
+
+- **Probe spacing (`T2` between attempts).** `tick` fires **at most one probe per Marius per due
+  time**, and `_probe` sets `next_probe_at = now + probe_window`, so the 3 attempts are spaced ~`T2`
+  apart — not blasted within one 5-second tick. `tick` itself never blocks the loop on the 3-probe
+  sequence; it advances each Marius by time.
+- **Backoff starts at `R`, not `2R`.** `_go_offline` computes `next_probe_at` with the **current**
+  `backoff_step` (0 ⇒ interval `R`) and **then** increments it. So the first OFFLINE wait is exactly
+  `R`, the next `2R`, then `4R` … capped at `retry_max` — matching ARCHITECTURE §5.
+
+Other notes:
+
+- **`record_signal` is the universal reset.** Any contact — mid-probe, or while OFFLINE — snaps the
+  agent to ONLINE and zeroes `probe_attempts`/`backoff_step`/`next_probe_at`. Activation (§4
+  `recompute_active`) re-evaluates on the resulting `marius.online` event.
+- **No heartbeat endpoint.** The probe is the primary mechanism; the agent is never asked to self-report
+  (ARCHITECTURE §5). Incidental agent calls just route through `record_signal` opportunistically.
 - The `IDLE` enum value from the current code is **deprecated**; `CHECKING` replaces it (map `IDLE→
   CHECKING` in the schema layer, or rename). `HUNG` and `WORKING` are surfaced to the UI liveness dot.
 - The probe is a real adapter `execute()` (so the runtime must answer); `echo` answers instantly
   (useful for tests). Probe turns carry `task_id=None` and a throwaway session so they never pollute a
   task transcript.
-- Concurrency: one outstanding probe per Marius; `tick` is idempotent w.r.t. `last_seen_at`, so a late
-  signal arriving during a probe simply resets and cancels the failure count.
+- Concurrency: one outstanding probe per Marius; a late signal arriving during a probe simply resets and
+  cancels the failure count (the in-flight `_probe` result is then ignored because state is ONLINE).
 
 ## 11. Workspace-events SSE bus (`application/events/bus.py` + `presentation/api/events.py`) **[NEW]**
 
@@ -624,8 +664,15 @@ async def stream(ws_id, user, bus: EventBus):
   `CommissionService`, the wake-engine trace tee. Each `emit` carries a monotonic `event_id` so
   `Last-Event-ID` resume is gap-free.
 - Event types: `marius.status_changed`, `marius.online`, `marius.liveness`,
-  `seat.skills_installed`, `project.active`, `commission.turn`, `task.created`, approvals,
+  `seat.skills_installed`, `project.active`, `commission.turn`/`commission.leader_offline`/
+  `commission.ready`, `task.created`, approvals,
   `run.delta`/`run.tool`/`run.usage` (live trace — fanned out from the adapter's `on_event` callback).
+- **One stream carries the trace too — no per-task SSE.** The live-trace frames are published to the
+  **same** workspace stream, each tagged with `task_id` (and `run_id`) in its `data`; the Collaboration
+  Room subscribes once and filters by the open task. This is the wake engine **teeing** the per-task
+  **agent runtime session** (one session per task/run, unchanged) onto the single browser stream — the
+  two are different layers, not duplicate channels. There is deliberately **no**
+  `/v1/tasks/{id}/stream`.
 - In a multi-worker deploy this needs a shared broker (Redis pub/sub); for the single-uvicorn
   compose setup an in-process bus is sufficient and is what Phase A ships.
 

@@ -59,7 +59,7 @@ flowchart TB
   H --> MN
   WAKE --> Reg
   Reg --> AGENT
-  AGENT -- "claim / comment / status / publish / accept (token)" --> NX --> A
+  AGENT -- "enroll / me / join / comment / status / publish (token)" --> NX --> A
   A --> PG
   A --> MN
   AGENT -- "streamed events" --> WAKE
@@ -71,8 +71,9 @@ flowchart TB
 
 - **Web App** talks to FastAPI through nginx (relative URLs; nothing host-specific baked into the bundle).
 - **Human API** (JWT): workspaces, projects, roster, tasks, thread, artifacts, skills — everything the Patron does.
-- **Agent API** (agent token): the agent's own actions — claim a task, comment, change status,
-  publish an artifact, accept a seat.
+- **Agent API** (agent token): the agent's own actions — enroll, confirm identity (`/agent/me`), join a
+  task, comment, change status, publish an artifact. (There is no "accept a seat" — grants are
+  system-only, §5 UC6.)
 - **Wake engine → Adapter Registry**: Armarius **owns the wake loop**; to run a bounded turn it
   resolves the agent's `adapter_type` to an adapter and calls `execute(ctx)`. The adapter bridges to
   that runtime's gateway and tees streamed events back for the live trace.
@@ -204,13 +205,19 @@ throughout:
   app calls the API with the user's JWT and renders the result. Diagrams label it `WEB` (Web App).
 - **Agents talk to the API directly** with their agent token (issued during the invite handshake).
   Agent-side steps spell out exactly what the runtime does (save key, install skills, call back).
-- **The web app learns of async changes by push, not polling.** It holds open a **workspace-events
+- **The web app learns of async changes by push, not polling.** It holds open **one** **workspace-events
   SSE** connection (`GET /v1/workspaces/WS/events`) and the backend pushes events down it —
-  `marius.online`, `marius.status_changed`, `project.active`, `task.created`, approvals, and the live
-  run trace. **SSE = Server-Sent Events**: a one-way (server→browser), long-lived HTTP stream. It is a
-  *Web-App-only* channel; agents never use SSE (they use request/response + adapter wakes). So when a
-  diagram shows `API → SSE → WEB`, that is the backend telling the UI about a change the UI did not
-  itself trigger.
+  `marius.online`, `marius.status_changed`, `marius.liveness`, `project.active`, `task.created`,
+  `commission.*`, approvals, and the live run trace. **SSE = Server-Sent Events**: a one-way
+  (server→browser), long-lived HTTP stream. It is a *Web-App-only* channel; agents never use SSE (they
+  use request/response + adapter wakes). So when a diagram shows `API → SSE → WEB`, that is the backend
+  telling the UI about a change the UI did not itself trigger.
+- **One stream, not one-per-task.** There is a **single** workspace SSE — workspace-level events (an
+  agent coming online, a project activating) belong to no task, so the browser needs this stream open
+  even when no task is focused. Live-trace frames carry a **`task_id`** (and `run_id`) so the
+  Collaboration Room filters to the task it is showing. This is separate from the **agent runtime
+  session** (one per task/run, backend↔agent), which is unchanged: each `execute()` is its own session;
+  its streamed events are teed onto this one browser stream, tagged by `task_id`.
 
 > This section is the design intent (what we are building), not a transcript of the current code.
 
@@ -220,9 +227,20 @@ work → output → advanced onboarding.**
 ### Liveness — what "online" means (and how it decays)
 
 "Online" is **not** a flag set once at invite time — it is **signal recency**, and it decays. A
-*signal* is **any** contact from the agent (a task response, a heartbeat, `/agent/me`, an enroll
-reply — the source does not matter). The system watches the time since the **last signal** and probes
-on idle.
+*signal* is **any** contact from the agent — the source does not matter. There are two ways a signal
+arrives:
+
+1. **The system probes (primary).** The agent does **not** have to call anything on its own. When an
+   agent has been idle, Armarius **opens a light throwaway session and asks it to reply "OK"**; the
+   reply is a signal, and the session is discarded. This is the mechanism that decides liveness, and it
+   works even for an agent that is sitting completely idle.
+2. **An incidental call counts too (bonus).** While an agent is *already* working a task it naturally
+   calls the API (comment, status, publish, `/agent/me`, the enroll reply). Each such call is **also**
+   counted as a signal, which **resets the idle timer and saves an unnecessary probe**. So there is **no
+   heartbeat endpoint to implement** — the agent is never required to self-report; incidental calls are
+   just opportunistically reused.
+
+The system watches the time since the **last signal** and probes on idle.
 
 ```mermaid
 stateDiagram-v2
@@ -368,9 +386,9 @@ Step detail (the parts that were previously hand-waved):
   the backend **emits a `marius.online` event on the workspace-events SSE** the Web App is subscribed
   to — so the Directory dot flips to ONLINE in real time. The Web App never has to guess or poll: the
   same stream also carries `marius.status_changed` (e.g. `pending_review`), approvals, and task-status
-  changes. (Exactly which call flips ONLINE — first `/agent/me` vs. a heartbeat — is pinned down in
-  HLD/LLD; at this tier the contract is *"the agent calls back, the backend marks it online and pushes
-  that to the Web App over SSE."*)
+  changes. (The first `/agent/me` after approval is what flips ONLINE; thereafter liveness is kept by
+  the system probe — see the Liveness section. At this tier the contract is *"the agent calls back, the
+  backend marks it online and pushes that to the Web App over SSE."*)
 
 ### UC3 — Designate the Workspace Agent role to a specific agent
 
@@ -657,9 +675,12 @@ erDiagram
   workspace ||--o{ marius : has
   workspace ||--o{ label : has
   workspace ||--o{ skill : has
-  workspace ||--o| onboarding_session : runs
+  workspace ||--o{ onboarding_session : runs
+  onboarding_session ||--o| project : creates
   project ||--o{ role : declares
   project ||--o{ task : contains
+  project ||--o{ commission_session : commissions
+  commission_session ||--|| task : drafts
   role ||--o{ seat_grant : seats
   seat_grant }o--|| marius : fills
   task ||--o{ task_participant : has
@@ -675,10 +696,17 @@ erDiagram
   project {
     uuid id PK
     uuid workspace_id FK
-    string status "setup-active-archived"
+    string status "setup or active or archived"
     string github_url "optional"
     string objective
     json settings
+  }
+  marius {
+    uuid id PK
+    string invite_status "invited to pending_review to approved"
+    string enrollment_code "no token until approved"
+    string liveness "online checking offline working hung"
+    datetime last_seen_at
   }
   role {
     uuid id PK
@@ -689,25 +717,26 @@ erDiagram
   }
   seat_grant {
     uuid id PK
-    string status "pending-granted-acknowledged-revoked"
-    datetime acknowledged_at
+    string status "granted or revoked"
+    datetime granted_at
   }
   task {
     uuid id PK
     string identifier "ARM-n"
-    string status
+    string status "draft backlog todo in_progress in_review blocked done cancelled"
     string priority
     string definition_of_done
   }
   artifact {
     uuid id PK
-    string kind "file-link"
+    string kind "file or link"
     string uri "MinIO key or external URL"
     bool stored
   }
 ```
 
-> Field/enum detail: [LLD.md](./LLD.md) §2.
+> Boxes show the **key/changed** fields only — full field and enum detail is in
+> [LLD.md](./LLD.md) §2.
 
 ### Shared store layout (MinIO bucket `armarius`)
 
@@ -768,11 +797,13 @@ flowchart LR
    agent is online; it **stays active** — a worker going offline later is an operational matter, not a
    revoke. The **sole** active-vs-setup difference is being allowed to commission tasks.
 4. **Liveness is recency + probe, not a sticky flag** — "online" means *a signal was received
-   recently* (any contact — task response, heartbeat, `/agent/me`). After an idle timeout the system
-   sends a light "reply OK" probe (3× retry → offline); OFFLINE then re-probes on a timeout that
-   **doubles each failed cycle**, so a busy agent or overloaded LLM isn't hammered. **Any signal resets
-   everything** (state, idle timer, backoff). So a long-silent agent is OFFLINE by the time you need
-   it; the UI never shows a stale ONLINE. (Full state machine in §5.)
+   recently*. The deciding mechanism is a **system probe** (a light "reply OK" turn in a throwaway
+   session) the backend runs on idle — the agent never has to self-report, so **there is no heartbeat
+   endpoint**. After an idle timeout the system probes (3× retry → offline); OFFLINE then re-probes on a
+   timeout that **doubles each failed cycle**, so a busy agent or overloaded LLM isn't hammered. Any
+   incidental agent call (comment/status/`/agent/me`) is *also* counted as a signal so the probe is
+   skipped. **Any signal resets everything** (state, idle timer, backoff). So a long-silent agent is
+   OFFLINE by the time you need it; the UI never shows a stale ONLINE. (Full state machine in §5.)
 5. **Commission is leader-mediated, never a manual form** — "Commission task" opens a chat with the
    **Project Leader**, who analyzes, asks back, breaks the work down, fills every field, and picks the
    workers; the Patron reviews the preview and refines or confirms. "You task" is literal.

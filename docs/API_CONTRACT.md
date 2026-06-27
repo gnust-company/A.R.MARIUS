@@ -23,7 +23,7 @@
 | **Project Leader** | The single leader seat (always `seats = 1`). Drives the project: pushes agents, drives tasks, reports status, and is the agent every **task is commissioned through** (§5.3). |
 | **Marius** | An agent in a workspace. May be designated the **Workspace Agent** (onboarding conductor). |
 | **enrollment_code** | A per-Marius code (not a token) returned at invite time. The agent uses it once on `/agent/enroll`; the real `agent_token` is minted **on approval** and returned as the enroll response (`/agent/claim` is a recovery fallback). |
-| **Liveness** | "Online" is **signal recency**, not a sticky flag. Any contact from the agent (a heartbeat, `/agent/me`, a task response) marks it ONLINE and resets the watchdog; silence decays ONLINE → CHECKING → OFFLINE. See ARCHITECTURE.md §5. |
+| **Liveness** | "Online" is **signal recency**, not a sticky flag. The system **probes** an idle agent (a light "reply OK" turn); any contact — that probe reply, or an incidental `/agent/me`/task call — marks it ONLINE and resets the watchdog. There is **no heartbeat endpoint** (the agent never self-reports). Silence decays ONLINE → CHECKING → OFFLINE. See ARCHITECTURE.md §5. |
 | **Task** | A unit of work inside a project. Has **participants** (co-work), a **checklist**, **dependencies**, and an **output-artifact** gate. Created **only** through a leader-mediated commission chat (§5.3). |
 | **Artifact** | A published output in the **Shared Artifact Store** (MinIO bucket `armarius`). Two kinds: **file** (uploaded content) and **link** (external URL). A task cannot be `done` until ≥1 file/link artifact is published. |
 | **Workspace-events SSE** | A server→browser push stream (`GET /v1/workspaces/{ws}/events`) the Web App holds open. Carries liveness/status/approval/task events and the live trace. **Web-App-only.** |
@@ -58,8 +58,18 @@ auto-"General"-project + auto-board is removed. The user lands on a **project li
 project through onboarding (§3).
 
 **Workspace-events SSE (§2).** The Web App opens `/v1/workspaces/{ws}/events` on workspace mount and
-keeps it open. The backend pushes JSON event frames down it so the UI **never polls**. Representative
-events (envelope `{ "type": "…", "data": {…} }`):
+keeps **one** stream open for the whole workspace. The backend pushes events down it so the UI **never
+polls**. The SSE wire format is one frame per event — `event: <type>` then `data: <json-object>`:
+
+```
+event: marius.online
+data: {"marius_id": "…"}
+
+event: run.delta
+data: {"task_id": "…", "run_id": "…", "text": "…"}
+```
+
+Representative events:
 
 | Event | When | Web App effect |
 |---|---|---|
@@ -73,6 +83,14 @@ events (envelope `{ "type": "…", "data": {…} }`):
 `Last-Event-ID` is honored for resume; a dropped stream is reconnected by the Web App. Agents never
 read this stream — they learn of their own changes from the request/response they make.
 
+**One stream, not one-per-task.** The live run trace flows on **this same** workspace stream — there is
+**no** per-task SSE endpoint. Trace frames (`run.delta`/`run.tool`/`run.usage`) carry a **`task_id`**
+(and `run_id`); the Collaboration Room filters to the task it is showing. Workspace-level events
+(`marius.online`, `project.active`) belong to no task, so a single workspace stream is required anyway —
+adding per-task streams would only duplicate it. (This is distinct from the **agent runtime session**,
+which is one-per-task/run on the backend↔agent side and unchanged; its events are teed onto this one
+browser stream, tagged by `task_id`.)
+
 ---
 
 ## 3. Projects + Roster + Onboarding
@@ -80,8 +98,8 @@ read this stream — they learn of their own changes from the request/response t
 | Method | Path | Purpose |
 |---|---|---|
 | GET  | `/v1/workspaces/{ws}/projects` | List projects. |
-| GET  | `/v1/projects/{project_id}` | Project detail: roster, seat fill, ack state, status. **[NEW]** |
-| POST | `/v1/workspaces/{ws}/projects` | Create a project **with a complete seat plan** (§3.1). **[CHANGED]** |
+| GET  | `/v1/projects/{project_id}` | Project detail: roster, seat fill, seated-agent liveness, status. **[NEW]** |
+| POST | `/v1/workspaces/{ws}/projects` | Create a project **with a complete seat plan** (§3.1). `slug` is auto-generated from `name`, unique per workspace, and used as the MinIO project folder (§7). **[CHANGED]** |
 | PATCH | `/v1/projects/{project_id}` | Edit project fields (objective, success_metrics, target_date, `github_url`, settings). **[NEW]** |
 | DELETE | `/v1/projects/{project_id}` | Delete (owner only). **[NEW]** |
 
@@ -103,7 +121,7 @@ Two onboarding modes (manual is the priority; agent mode is Phase G, **last**). 
     "responsibilities": "Push agents, sequence tasks, report project status. (default behavior TBC)",
     "marius_id": "<uuid>" | null             // pick an existing agent now, OR null to add later
   },
-  "roles": [                                 // 0+ worker roles, each with a seat count
+  "roles": [                                 // AT LEAST ONE worker role required (hard rule below)
     { "title": "Backend",  "seats": 2, "description": "API + data layer.",
       "skill_ids": ["<skill-uuid>"],         // optional — skills this role should carry
       "marius_ids": ["<uuid>", null] },       // optional — pre-seat existing agents (len ≤ seats)
@@ -167,8 +185,12 @@ When `mode: "agent"`, the request is opened by the **Workspace Agent** after a c
 |---|---|---|
 | POST | `/v1/workspaces/{ws}/onboarding/sessions` | Start a session; returns `{ id }`. |
 | GET  | `/v1/workspaces/{ws}/onboarding/sessions/{id}` | Session state: status, transcript, collected plan. |
-| POST | `/v1/workspaces/{ws}/onboarding/sessions/{id}/messages` | Append a message (patron answer / agent question). |
+| POST | `/v1/workspaces/{ws}/onboarding/sessions/{id}/messages` | **Patron** answer (JWT). The Workspace Agent's questions come in on the agent surface — `POST /agent/workspaces/{ws}/onboarding/sessions/{id}/messages` (§9). |
 | POST | `/v1/workspaces/{ws}/onboarding/sessions/{id}/finalize` | Materialize the plan → creates the project (§3.1 payload). |
+
+> Two sides, two surfaces: the `/v1/…/messages` route (JWT) is the **Patron** answering; the
+> `/agent/…/messages` route (agent token, §9) is the **Workspace Agent** asking. Same session, distinct
+> auth.
 
 ---
 
@@ -178,7 +200,7 @@ When `mode: "agent"`, the request is opened by the **Workspace Agent** after a c
 |---|---|---|
 | GET  | `/v1/workspaces/{ws}/mariuses` | Directory of agents (with liveness). |
 | POST | `/v1/workspaces/{ws}/mariuses` | Invite a Marius — Patron picks the **type** only. Returns `enrollment_code` + a copyable prompt; **no token is printed**. **[CHANGED]** |
-| PATCH| `/v1/workspaces/{ws}/mariuses/{marius_id}` | Edit name/role/skills/avatar/adapter. |
+| PATCH| `/v1/workspaces/{ws}/mariuses/{marius_id}` | Edit name/role/skills/avatar. **`adapter_type` is locked once the Marius is `approved`** (the token + runtime are bound to it); changing runtime requires a re-invite. `adapter_config` (e.g. rotated gateway creds) stays editable. **[CHANGED]** |
 | POST | `/v1/workspaces/{ws}/mariuses/{marius_id}/approve` | Patron **approves** a pending enrollment → mints `agent_token` once and **completes the held `/agent/enroll` call with it**. **[NEW]** |
 | GET  | `/v1/projects/{project_id}/agents` | Project participants + role/liveness. **[NEW]** |
 
@@ -253,10 +275,19 @@ GET  /agent/me            (Bearer token)   §9
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET    | `/v1/tasks/{task_id}/participants` | Participants with role + liveness. |
+| GET    | `/v1/tasks/{task_id}/participants` | Participants with role + liveness + `is_primary`. |
 | POST   | `/v1/tasks/{task_id}/participants` | `{ "marius_id": "…" }` — wakes the agent with task context. |
 | DELETE | `/v1/tasks/{task_id}/participants` | `{ "marius_id": "…" }`. |
 | POST   | `/v1/tasks/{task_id}/wake` | Wake a specific participant (`{ "marius_id": "…" }`). |
+
+```jsonc
+// participant object (GET response item)
+{ "marius_id": "…", "name": "Backend-1", "role_key": "backend",
+  "liveness": "online", "is_primary": false, "joined_at": "…" }
+```
+
+> The agent's own way to join is `POST /agent/tasks/{task_id}/join` (§9) — distinct from
+> `/agent/claim` (which recovers the enrollment token, §9).
 
 ### 5.3 Task lifecycle — commission through the Project Leader (no manual form) **[CHANGED]**
 
@@ -268,20 +299,32 @@ back when there is more than one option, breaks the work down if too large, **fi
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST  | `/v1/projects/{project_id}/commission` | `{ "message": "…" }` — wakes the **Project Leader in a fresh session** seeded with project + roster + workers. Returns `{ commission_id, task_id (draft), leader_reply }` and streams the leader's chat + task preview over SSE (`commission.*`). Project must be `active`. **[NEW]** |
-| POST  | `/v1/commission/{commission_id}/refine` | `{ "message": "…" }` — resume the Leader session; it revises the draft task. Streamed over SSE. **[NEW]** |
+| POST  | `/v1/projects/{project_id}/commission` | `{ "message": "…" }` — wakes the **Project Leader in a fresh session** seeded with project + roster + workers. Project must be `active`. **Async**: returns `202 { commission_id, task_id (draft), leader_state }` immediately; the leader's reply + task preview arrive over SSE (`commission.*`). See leader-liveness note below. **[NEW]** |
+| POST  | `/v1/commission/{commission_id}/refine` | `{ "message": "…" }` — resume the Leader session; it revises the draft task. `202`; streamed over SSE. **[NEW]** |
+| GET   | `/v1/commission/{commission_id}` | Commission state: `status`, transcript, current draft preview, `leader_state` (`thinking`/`waiting`/`leader_offline`). **[NEW]** |
 | POST  | `/v1/tasks/{task_id}/confirm` | Patron accepts the preview → Task `draft → todo`, participants = Leader-picked workers, each woken with task context. Emits `task.created`. **[NEW]** |
+| POST  | `/v1/tasks/{task_id}/commission` | Re-open a Leader chat to **edit a confirmed task** (same engine as `/projects/…/commission`, but the session targets an existing task instead of a fresh draft). `202`; streamed over SSE. **[NEW]** |
 | GET   | `/v1/projects/{project_id}/tasks` | List (filter by status/label/assignee; groupable; `draft` hidden unless the caller owns the commission). |
 | GET   | `/v1/tasks/{task_id}` | Detail (participants, checklist, deps). |
 | PATCH | `/v1/tasks/{task_id}` | Edit any writable field (priority, labels, checklist, description…). **[NEW]** |
 | POST  | `/v1/tasks/{task_id}/status` | Transition (LLD §3). **`in_review`/`done` require a published file/link artifact (§7 gate).** Blocked-by deps must be `done` to leave `backlog`/`blocked`. **[CHANGED]** |
 | POST  | `/v1/tasks/{task_id}/checklist` | Append/toggle checklist items. **[NEW]** |
 
+`commission.*` SSE events: `commission.turn` (a leader reply + updated draft preview),
+`commission.leader_offline` (the leader could not be reached this cycle — the wake is being retried),
+`commission.ready` (the draft is awaiting the Patron's confirm/refine).
+
 - The Patron **never fills task fields** — that is the Leader's job. "You task" is literal.
-- Commission is **not gated on per-worker liveness**: it only needs the project to be `active`. If a
-  chosen worker is offline, that is resolved at run time by the wake/report machinery — only the
-  **Leader** must be reachable (the chat is with it). The Leader may also **edit a confirmed task**
-  later the same way (Patron messages a change → Leader revises).
+- **Commission is async because the Leader is an agent.** `POST /commission` returns `202` right away;
+  the actual analysis comes back over SSE. Two `leader_state`s the Patron may see:
+  - `thinking`/`waiting` — the leader is online and processing.
+  - `leader_offline` — **the leader was offline at this cycle.** This is **not** a hard `409` block at
+    the form (per ARCHITECTURE §5 "wait/retry, not a hard block"). The commission stays open, the
+    backend keeps the leader on the normal wake/retry cadence (liveness §4.1), and pushes
+    `commission.turn` once the leader answers. The Patron can leave the chat open.
+- **Commission is not gated on per-worker liveness**: it only needs the project to be `active`. If a
+  chosen *worker* is offline, that is resolved at run time by the wake/report machinery — only the
+  **Leader** must eventually be reachable (the chat is with it).
 
 ### 5.4 Labels **[NEW]** (workspace-scoped)
 
@@ -326,14 +369,24 @@ service. The same bucket holds task outputs **and media** (agent avatars, …). 
 | POST | `/v1/workspaces/{ws}/media` | Upload media (e.g. agent avatar) to the bucket; returns object key/url. **[NEW]** |
 
 ```jsonc
-// file  → content MUST be uploaded (server-stored in MinIO)
+// REQUEST — file  → content MUST be uploaded (server-stored in MinIO)
 { "name": "login-impl.txt", "kind": "file",
   "content_b64": "LS0t …",              // REQUIRED; decoded, sha256-verified, written to bucket
   "content_sha256": "…", "size_bytes": 1234 }
 
-// link  → external location (e.g. a merged PR), no upload
+// REQUEST — link  → external location (e.g. a merged PR), no upload
 { "name": "PR #42", "kind": "link",
   "uri": "https://github.com/acme/web/pull/42" }   // REQUIRED external URL
+```
+
+```jsonc
+// RESPONSE (201) — artifact object, for both kinds
+{ "id": "…", "task_id": "…", "project_id": "…", "marius_id": "…",
+  "name": "login-impl.txt", "kind": "file",
+  "uri": "acme-web/ARM-7/login-impl.txt",   // MinIO key (file) OR external URL (link)
+  "stored": true,                            // true ⇒ bytes live in the bucket (file); false ⇒ link
+  "content_sha256": "…", "size_bytes": 1234,
+  "created_at": "…" }
 ```
 
 - `file`: decoded, sha256-verified, written under the project's folder
@@ -355,7 +408,11 @@ or `link` artifact.
 | POST | `/v1/tasks/{task_id}/comments` | Comment. |
 | POST | `/v1/tasks/{task_id}/next-action` | Record next action. |
 | POST | `/v1/tasks/{task_id}/wake` | Wake a participant (§5.2). |
-| SSE  | `/v1/tasks/{task_id}/stream` | Live run trace (assistant deltas, tool calls, usage). **[NEW]** (formalize existing CDP/SSE trace). |
+
+> **The live run trace is not a separate endpoint.** It rides the single workspace-events SSE (§2) as
+> `run.delta`/`run.tool`/`run.usage` frames tagged with `task_id`; the Collaboration Room filters to the
+> open task. (There is **no** `/v1/tasks/{task_id}/stream` — an earlier draft had one; it was dropped to
+> keep a single browser stream.)
 
 ---
 
@@ -364,10 +421,10 @@ or `link` artifact.
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/agent/enroll` | `{ enrollment_code, capabilities, adapter_config }` — agent's join-back call. **Held open** until the Patron approves, then the response body carries the minted `agent_token`. **[NEW]** |
-| POST | `/agent/claim` | `{ enrollment_code }` — **recovery fallback** only: returns the token if already approved and the enroll session was lost. **[NEW]** |
-| GET  | `/agent/me` | Profile + directory. **Also the success signal**: this first authenticated call marks `liveness=ONLINE`, updates `last_seen_at`, and emits `marius.online` on the workspace-events SSE. **[CHANGED]** |
+| POST | `/agent/claim` | `{ enrollment_code }` — **recovery fallback** only: returns the token if already approved and the enroll session was lost. Distinct from `/agent/tasks/{id}/join`. **[NEW]** |
+| GET  | `/agent/me` | Profile + directory. **Also a signal**: marks `liveness=ONLINE`, updates `last_seen_at`, and (on the first call after approval) emits `marius.online` on the workspace-events SSE. Every agent call is a signal — there is no separate heartbeat endpoint (liveness §4.1, ARCHITECTURE §5). **[CHANGED]** |
 | GET  | `/agent/tasks/{task_id}` | Task view (thread, artifacts, participants, checklist, deps). **[CHANGED]** |
-| POST | `/agent/tasks/{task_id}/claim` | Join as participant. |
+| POST | `/agent/tasks/{task_id}/join` | Join as a participant. **(Renamed from `/claim` to avoid colliding with the enrollment `/agent/claim`.)** **[CHANGED]** |
 | POST | `/agent/tasks/{task_id}/comment` | Comment. |
 | POST | `/agent/tasks/{task_id}/status` | Transition (subject to §7 gate). |
 | POST | `/agent/tasks/{task_id}/next-action` | Record next action. |
