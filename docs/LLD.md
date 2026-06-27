@@ -118,7 +118,7 @@ class Task:
     parent_id: UUID | None = None             # subtask
     due_date: datetime | None = None
     definition_of_done: str | None = None
-    # assigned_marius_id kept for back-comat; superseded by TaskParticipant (primary)
+    # assigned_marius_id kept for back-compat; superseded by TaskParticipant (primary)
 ```
 Relations: `labels` (M2M via `task_labels`), `checklist` (O2M), `dependencies` (blocked_by via
 `task_dependencies`), `participants` (O2M).
@@ -203,19 +203,27 @@ class Marius:
 class CommissionStatus(str, Enum):
     OPEN="open"; CONFIRMED="confirmed"; ABANDONED="abandoned"
 
+class LeaderState(str, Enum):                  # surfaced to the Patron while a turn runs
+    THINKING="thinking"; WAITING="waiting"; LEADER_OFFLINE="leader_offline"
+
 @dataclass
 class CommissionSession:
     id: UUID; project_id: UUID
     leader_marius_id: UUID
-    task_id: UUID                       # the draft Task the Leader is shaping (status=draft)
+    task_id: UUID                       # the Task the Leader is shaping: a fresh draft (new task)
+                                        # OR an existing confirmed task (edit, §4 edit())
     session_params: dict                # native Leader session handle (for resume across refine turns)
     transcript: list[dict]              # [{role:"patron"|"leader", text, ts}]
     status: CommissionStatus = CommissionStatus.OPEN
+    leader_state: LeaderState = LeaderState.THINKING   # async progress for GET /commission/{id}
     created_at / updated_at
 ```
-A commission chat owns one **draft** Task (`Task.status == "draft"`); refine turns resume
-`session_params`; `confirm` flips the task `draft → todo`, fixes participants = Leader-picked workers,
-and wakes them. The draft is hidden from the board list unless the caller owns the commission.
+A commission chat targets **one Task** — a fresh draft (`Task.status == "draft"`) for a new task, or
+an existing **confirmed** task for an edit (§4 `edit`). Refine turns resume `session_params`; `confirm`
+flips a draft `draft → todo`, fixes participants = Leader-picked workers, and wakes them (an edit
+re-applies the proposal in place without a status flip). The draft is hidden from the board list unless
+the caller owns the commission. Because the Leader is an agent, every turn is **async** — the API
+returns `202` immediately and the reply/preview arrive over the workspace SSE (`commission.*`, §11).
 
 ---
 
@@ -317,10 +325,12 @@ async def claim(self, enrollment_code) -> str:      # RECOVERY FALLBACK only
     marius = resolve by enrollment_code; assert invite_status == APPROVED
     return marius.agent_token                         # returns token if the enroll session was lost
 
-def mark_online(self, marius_id):                    # called from GET /agent/me (and any signal)
-    marius.liveness = ONLINE; marius.last_seen_at = now
-    liveness_engine.reset(marius_id)                 # §10: restart idle timer, zero backoff
-    events.emit("marius.online", {marius_id})
+def mark_online(self, marius_id):                    # called from GET /agent/me (first contact after approval)
+    first = (marius.liveness != ONLINE and marius.invite_status == APPROVED)
+    liveness_engine.record_signal(marius_id)         # §10 is the SINGLE funnel: ONLINE + reset timer/backoff
+                                                     # + emit marius.liveness{online}. No duplicate bookkeeping here.
+    if first:
+        events.emit("marius.online", {marius_id})    # one-time "agent is live" milestone for the Directory
 
 # MariusService.update — adapter_type is LOCKED after approval
 async def update(self, marius_id, *, name=None, role=None, skills=None, avatar=None,
@@ -329,31 +339,55 @@ async def update(self, marius_id, *, name=None, role=None, skills=None, avatar=N
         raise Conflict("adapter_type is locked after approval; re-invite to change runtime")
     # name/role/skills/avatar/adapter_config remain editable (e.g. rotated gateway creds)
 
-# CommissionService — leader-mediated, no manual form
-async def start(self, project_id, message) -> CommissionSession:
+# CommissionService — leader-mediated, no manual form. Every turn is ASYNC:
+# the public methods persist the session and SCHEDULE _run_turn, then return at once
+# (the API layer maps that to 202). The actual reply + preview arrive over SSE.
+async def start(self, project_id, message) -> CommissionSession:        # NEW task
     assert project.status == ACTIVE
     leader = project.leader_marius()
     draft = TaskService.new_draft(project_id)        # status=draft, identifier ARM-n assigned
-    sess = CommissionSession(leader_marius_id=leader.id, task_id=draft.id, transcript=[{patron,msg}])
-    result = await wake_engine.execute(leader, ctx=leader_commission_ctx(project, roster, draft, message))
-    TaskService.apply_proposal(draft.id, result.proposal)   # leader-filled fields + picked workers
-    sess.session_params = result.session_params      # for resume
-    events.stream("commission.turn", {leader_reply, task_preview})
-    return sess
+    sess = CommissionSession(leader_marius_id=leader.id, task_id=draft.id,
+                             transcript=[{patron, msg}], leader_state=THINKING)
+    persist(sess)
+    background.spawn(self._run_turn, sess.id, message, resume=False)
+    return sess                                       # → API returns 202 {commission_id, task_id, leader_state}
 
-async def refine(self, commission_id, message) -> CommissionSession:
-    sess = load(commission_id); append transcript
-    result = await wake_engine.execute(leader, resume=sess.session_params, ctx=…)
-    TaskService.apply_proposal(sess.task_id, result.proposal)
-    events.stream("commission.turn", {leader_reply, task_preview})
-    return sess
+async def refine(self, commission_id, message) -> CommissionSession:    # iterate the draft
+    sess = load(commission_id); append transcript; sess.leader_state = THINKING; persist(sess)
+    background.spawn(self._run_turn, sess.id, message, resume=True)
+    return sess                                       # → 202
 
-async def confirm(self, commission_id) -> Task:
+async def edit(self, task_id, message) -> CommissionSession:            # EDIT a confirmed task
+    task = TaskService.get(task_id); assert task.status != DRAFT
+    leader = task.project.leader_marius()
+    sess = CommissionSession(leader_marius_id=leader.id, task_id=task_id,   # targets the EXISTING task
+                             transcript=[{patron, msg}], leader_state=THINKING)
+    persist(sess)
+    background.spawn(self._run_turn, sess.id, message, resume=False)
+    return sess                                       # → 202; POST /v1/tasks/{id}/commission
+
+async def _run_turn(self, commission_id, message, *, resume):
+    sess = load(commission_id); leader = Marius.get(sess.leader_marius_id)
+    if leader.liveness == OFFLINE:                    # wait/retry, NOT a hard 409 (ARCHITECTURE §5)
+        sess.leader_state = LEADER_OFFLINE; persist(sess)
+        events.emit("commission.leader_offline", {commission_id})
+        commission_jobs.enqueue(commission_id, message, resume)   # drained when the leader is ONLINE
+        return                                          # (liveness re-probes per backoff §10; record_signal drains)
+    sess.leader_state = WAITING; persist(sess)
+    ctx = leader_commission_ctx(project, roster, TaskService.get(sess.task_id), message)
+    result = await wake_engine.execute(leader, resume=sess.session_params if resume else None, ctx=ctx)
+    TaskService.apply_proposal(sess.task_id, result.proposal)   # leader-filled fields + picked workers
+    sess.session_params = result.session_params; sess.leader_state = WAITING; persist(sess)
+    events.emit("commission.turn",  {commission_id, leader_reply, task_preview})
+    events.emit("commission.ready", {commission_id})  # draft awaits Patron confirm/refine
+
+async def confirm(self, commission_id) -> Task:        # synchronous (no agent turn)
     sess = load(commission_id); task = TaskService.get(sess.task_id)
-    task.status = TODO; task.participants = leader-picked workers
+    if task.status == DRAFT:                            # new task → publish; edits already live
+        task.status = TODO; events.emit("task.created", {task_id})
+    task.participants = leader-picked workers
     for w in task.participants: wake_engine.wake(w, task_context=task)   # each woken with context
-    sess.status = CONFIRMED
-    events.emit("task.created", {task_id})
+    sess.status = CONFIRMED; persist(sess)
     return task
 
 # TaskService (no Patron-facing manual create — commission owns task creation)
@@ -398,8 +432,10 @@ Today: no migrations; `create_all()` on startup (can't add columns to existing t
    `granted`/`revoked` only), `labels`, `task_labels`,
    `tasks.identifier/priority/parent_id/due_date/definition_of_done` (status enum gains `draft`),
    `task_participants`, `checklist_items`, `task_dependencies`, `artifacts.stored`,
-   `mariuses.invite_status/enrollment_code/approved_at/probe_attempts/backoff_step`,
-   `commission_sessions`. All additive (NULL/new tables/new enum value) — non-destructive.
+   `mariuses.invite_status/enrollment_code/approved_at/probe_attempts/backoff_step/next_probe_at/
+   offline_since`,
+   `commission_sessions` (`project_id`, `leader_marius_id`, `task_id`, `session_params`, `transcript`,
+   `status`, `leader_state`). All additive (NULL/new tables/new enum value) — non-destructive.
 4. Seed step: insert `armarius-onboarder` builtin into existing workspaces (idempotent).
 5. Local: `alembic upgrade head`; CI runs migrations against fresh Postgres.
 
@@ -573,6 +609,8 @@ class LivenessEngine:
         m.liveness = ONLINE; m.last_seen_at = now
         m.probe_attempts = 0; m.backoff_step = 0; m.next_probe_at = None   # RESET timer + backoff
         events.emit("marius.liveness", {marius_id, "online"})
+        drain_offline_jobs(marius_id)                 # resume work queued while offline: skill installs
+                                                       # (grant_seat) + commission turns (commission_jobs)
     async def begin_turn(self, marius_id):           # wake engine calls this when a turn starts
         m.liveness = WORKING; m.turn_started_at = now
     async def end_turn(self, marius_id):
@@ -679,6 +717,8 @@ async def task_trace(task_id, user, bus: EventBus):
   `LivenessEngine`, `CommissionService`. Event types: `marius.status_changed`, `marius.online`,
   `marius.liveness`, `seat.skills_installed`, `project.active`,
   `commission.turn`/`commission.leader_offline`/`commission.ready`, `task.created`, approvals.
+  (The §4/§10 pseudocode writes these as `events.emit(...)` — shorthand for `emit_workspace` on the
+  agent's workspace; only the trace tee uses `emit_task`.)
 - **Task-channel producer**: the **wake-engine trace tee** — the adapter's `on_event` callback fans
   `run.delta`/`run.tool`/`run.usage` (each carrying `task_id`/`run_id`) onto `emit_task`.
 - **Why two channels (Hybrid), not one.** The trace is heavy and only relevant while a room is open;

@@ -26,7 +26,7 @@
 | **Liveness** | "Online" is **signal recency**, not a sticky flag. The system **probes** an idle agent (a light "reply OK" turn); any contact — that probe reply, or an incidental `/agent/me`/task call — marks it ONLINE and resets the watchdog. There is **no heartbeat endpoint** (the agent never self-reports). Silence decays ONLINE → CHECKING → OFFLINE. See ARCHITECTURE.md §5. |
 | **Task** | A unit of work inside a project. Has **participants** (co-work), a **checklist**, **dependencies**, and an **output-artifact** gate. Created **only** through a leader-mediated commission chat (§5.3). |
 | **Artifact** | A published output in the **Shared Artifact Store** (MinIO bucket `armarius`). Two kinds: **file** (uploaded content) and **link** (external URL). A task cannot be `done` until ≥1 file/link artifact is published. |
-| **Workspace-events SSE** | A server→browser push stream (`GET /v1/workspaces/{ws}/events`) the Web App holds open. Carries liveness/status/approval/task events and the live trace. **Web-App-only.** |
+| **Workspace control-plane SSE** | A server→browser push stream (`GET /v1/workspaces/{ws}/events`) the Web App holds open always. Carries light control-plane events (liveness/status/approval/task/commission). The live run trace rides a **separate per-task stream** (§8), not this one. **Web-App-only.** |
 
 UX north-star (from `ARMARIUS Design/`): **"You task. They collaborate. You trace."**
 
@@ -91,7 +91,8 @@ Representative **workspace** events:
 | Event | When | Web App effect |
 |---|---|---|
 | `marius.status_changed` | invite/enroll/approve transitions | Directory badge flips (`invited` → `pending_review` → `approved`) |
-| `marius.online` / `marius.liveness` | any agent signal, or watchdog decay | liveness dot flips `ONLINE`/`CHECKING`/`OFFLINE` |
+| `marius.liveness` | any agent signal, or watchdog decay | liveness dot flips `ONLINE`/`CHECKING`/`OFFLINE` |
+| `marius.online` | first contact after approval (one-time) | Directory marks the agent live |
 | `seat.skills_installed` | role-skill install completes | roster row re-renders |
 | `project.active` | last seat granted + online | board unlocks task commission |
 | `task.created` / `commission.*` | leader proposes/confirms a task | board card appears, commission modal updates |
@@ -193,7 +194,7 @@ When `mode: "agent"`, the request is opened by the **Workspace Agent** after a c
 | POST | `/v1/workspaces/{ws}/onboarding/sessions` | Start a session; returns `{ id }`. |
 | GET  | `/v1/workspaces/{ws}/onboarding/sessions/{id}` | Session state: status, transcript, collected plan. |
 | POST | `/v1/workspaces/{ws}/onboarding/sessions/{id}/messages` | **Patron** answer (JWT). The Workspace Agent's questions come in on the agent surface — `POST /agent/workspaces/{ws}/onboarding/sessions/{id}/messages` (§9). |
-| POST | `/v1/workspaces/{ws}/onboarding/sessions/{id}/finalize` | Materialize the plan → creates the project (§3.1 payload). |
+| POST | `/v1/workspaces/{ws}/onboarding/sessions/{id}/finalize` | Materialize the plan → creates the project and **returns the project object** (§3.1 shape); sets `onboarding_session.created_project_id`. |
 
 > Two sides, two surfaces: the `/v1/…/messages` route (JWT) is the **Patron** answering; the
 > `/agent/…/messages` route (agent token, §9) is the **Workspace Agent** asking. Same session, distinct

@@ -82,7 +82,7 @@ User 1──* Workspace *──1 (workspace_agent) Marius
 Workspace 1──* Project *──* Role(seat) *──1 SeatGrant *──1 Marius
 Workspace 1──* Label            │
 Workspace 1──* Skill            *──1 Task *──1 TaskParticipant *──1 Marius
-Workspace 1──* OnboardingSession 0..1──* Project   (a session creates 0..1 project)
+Workspace 1──* OnboardingSession 1──0..1 Project   (a session creates 0 or 1 project)
 Project 1──* CommissionSession 1──1 Task(draft)    Task *──* Dependency(blocked_by)
                                 Task 1──* ChecklistItem
                                 Task 1──* Artifact (Shared Store: MinIO)
@@ -94,6 +94,7 @@ Project 1──* CommissionSession 1──1 Task(draft)    Task *──* Depende
 | Entity | Status | Notes |
 |---|---|---|
 | **Workspace** | CHANGED | + `workspace_agent_id` (nullable FK→Marius). |
+| **Marius** | CHANGED | + `invite_status` (`invited`/`pending_review`/`approved`/`revoked`), `enrollment_code`, `approved_at`; liveness timers `probe_attempts`, `backoff_step`, `next_probe_at`, `offline_since`. **`agent_token` minted once on approve** (not at invite). `adapter_type` locked after approve. |
 | **Project** | CHANGED | + `status` (`setup`/`active`/`archived`), `objective`, `success_metrics` (json), `target_date`, `context`, **`github_url`** (optional), `settings` (json). Drops auto-"General". |
 | **Role** (seat definition) | NEW | `project_id`, `key`, `title`, `seats` (int; **leader always 1**), `is_leader`, `description`, `responsibilities` (leader), `skill_ids` (optional). |
 | **SeatGrant** | NEW | `project_id`, `role_key`, `marius_id`, `status` (`granted`→`revoked`), `granted_at`. **System-only** — agents never apply; there is no accept step (activation keys off liveness instead). |
@@ -103,6 +104,7 @@ Project 1──* CommissionSession 1──1 Task(draft)    Task *──* Depende
 | **ChecklistItem** | NEW | `task_id`, `text`, `done`, `order`. |
 | **TaskDependency** | NEW | `task_id` blocked_by `blocks_task_id`. |
 | **OnboardingSession** | NEW | `workspace_id`, `status`, `transcript`, `collected`, `created_project_id`. |
+| **CommissionSession** | NEW | `project_id`, `leader_marius_id`, `task_id` (draft or existing task), `session_params`, `transcript`, `status` (`open`/`confirmed`/`abandoned`), `leader_state` (`thinking`/`waiting`/`leader_offline`). Leader-mediated task authoring (§5.3 API). |
 | **Artifact** | CHANGED | kinds narrowed to **`file` \| `link`**; `file` content **stored in MinIO** (bucket `armarius`); `link` carries an external `uri`. |
 
 > Field-level detail, enums, constraints: [LLD.md](./LLD.md) §2.
