@@ -195,6 +195,7 @@ interface MockStoreState {
   traceEvents: TraceEvent[]
   activeWorkspaceId: string | null
   sseConnected: boolean
+  sidebarCollapsed: boolean
 
   // Actions
   inviteAgent: (mariusId: string, workspaceId: string) => void
@@ -202,6 +203,7 @@ interface MockStoreState {
   emitEvent: (event: Omit<StoreEvent, 'id' | 'timestamp'>) => void
   setCurrentUser: (user: User | null) => void
   logout: () => void
+  setSidebarCollapsed: (collapsed: boolean) => void
   updateTask: (taskId: string, updater: SetStateAction<Task>) => void
   addComment: (taskId: string, comment: TaskComment) => void
   publishArtifact: (taskId: string, artifact: TaskArtifact) => void
@@ -585,6 +587,7 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   traceEvents: [],
   activeWorkspaceId: 'w1',
   sseConnected: false,
+  sidebarCollapsed: false,
 
   inviteAgent: (mariusId: string, workspaceId: string) => {
     const state = get()
@@ -613,6 +616,8 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   },
 
   setCurrentUser: (user) => set({ currentUser: user }),
+
+  setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
 
   logout: () => set({ currentUser: null }),
 

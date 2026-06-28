@@ -15,7 +15,7 @@ import { useMockStore, type ProjectSeat, type Marius } from '@/store/mockStore';
 import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
 import Modal from '@/components/Modal';
-import DropCap from '@/components/DropCap';
+import PageTitle from '@/components/PageTitle';
 import { cn } from '@/lib/utils';
 
 // ─── Status Dot ──────────────────────────────────────────────────────────────
@@ -140,10 +140,15 @@ function GrantSeatModal({
       isOpen={isOpen}
       onClose={onClose}
       title={
-        <span>
-          <DropCap text={t('roster.dropCapText')} />
-          {t('roster.grantSeatTitle', { role: roleLabel })}
-        </span>
+        (() => {
+          const full = t('roster.grantSeatTitle', { role: roleLabel });
+          return (
+            <span className="font-display text-ink">
+              <span className="title-initial">{full.charAt(0)}</span>
+              {full.slice(1)}
+            </span>
+          );
+        })()
       }
       footer={
         <>
@@ -302,8 +307,7 @@ export default function Roster() {
         className="flex items-center justify-between"
       >
         <div className="flex items-center gap-3">
-          <DropCap text={t('roster.dropCapText')} />
-          <h1 className="font-display text-display-lg text-ink">{t('roster.title')}</h1>
+          <PageTitle title={t('roster.title')} />
         </div>
         <StatusChip status={project.status} label={t(`projects.status.${project.status}`)} />
       </motion.div>

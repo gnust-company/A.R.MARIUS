@@ -29,7 +29,7 @@ import type { Marius, AgentStatus } from '@/store/mockStore';
 import VellumPanel from '@/components/VellumPanel';
 import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
-import DropCap from '@/components/DropCap';
+import PageTitle from '@/components/PageTitle';
 import { cn } from '@/lib/utils';
 
 // ─── Animation Variants ──────────────────────────────────────────────────────
@@ -576,15 +576,7 @@ export default function Directory() {
         className="flex items-center justify-between mb-6"
       >
         <div className="flex items-center gap-3">
-          <DropCap text="A" className="text-[56px] text-[#D4A843]" />
-          <div>
-            <h1 className="font-['Fraunces',Georgia,serif] text-[36px] font-semibold text-[#2A2318] leading-tight tracking-tight">
-              Agents
-            </h1>
-            <p className="text-[13px] text-[#6B5E4E] font-body">
-              {mariuses.length} agents in workspace
-            </p>
-          </div>
+          <PageTitle title="Agents" subtitle={`${mariuses.length} agents in workspace`} />
         </div>
         <motion.button
           onClick={handleOpenInvite}
@@ -736,12 +728,15 @@ export default function Directory() {
         isOpen={inviteModalOpen}
         onClose={handleCloseInvite}
         title={
-          <span className="flex items-center gap-2">
-            <DropCap text="I" className="text-[42px] text-[#D4A843]" />
-            <span className="font-['Fraunces',Georgia,serif] text-[28px] font-semibold text-[#2A2318]">
-              {inviteStep === 'form' ? 'Invite Agent' : 'Invite Prompt'}
-            </span>
-          </span>
+          (() => {
+            const full = inviteStep === 'form' ? 'Invite Agent' : 'Invite Prompt';
+            return (
+              <span className="font-['Fraunces',Georgia,serif] text-[28px] font-semibold text-[#2A2318]">
+                <span className="title-initial">{full.charAt(0)}</span>
+                {full.slice(1)}
+              </span>
+            );
+          })()
         }
         maxWidth="max-w-xl"
       >

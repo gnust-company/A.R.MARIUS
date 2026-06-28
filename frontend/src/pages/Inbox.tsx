@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
-import DropCap from '@/components/DropCap';
+import PageTitle from '@/components/PageTitle';
 import { useState } from 'react';
 
 const tabClasses = (active: boolean) =>
@@ -149,10 +149,8 @@ export default function Inbox() {
         animate={{ opacity: 1, y: 0 }}
         className="flex items-center gap-3 mb-6"
       >
-        <DropCap text="I" />
         <div className="flex-1">
-          <h1 className="text-3xl font-semibold text-[#2A2318] font-[Fraunces] tracking-tight">Patron Inbox</h1>
-          <p className="text-sm text-[#6B5E4E] mt-0.5">Review and manage tasks across all projects</p>
+          <PageTitle title="Patron Inbox" subtitle="Review and manage tasks across all projects" />
         </div>
         {reviewTasks.length > 0 && (
           <span className="px-2.5 py-1 text-xs font-medium bg-[#C25E3A] text-white rounded-full">

@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useMockStore } from '@/store/mockStore';
 import VellumPanel from '@/components/VellumPanel';
-import DropCap from '@/components/DropCap';
+import PageTitle from '@/components/PageTitle';
 import { cn } from '@/lib/utils';
 
 // ─── Local Commission Session Types ──────────────────────────────────────────
@@ -708,15 +708,10 @@ export default function Commission() {
         className="px-6 pt-6 pb-4 flex-shrink-0"
       >
         <div className="flex items-center gap-3">
-          <DropCap text={t('commission.dropCapText')} />
-          <div>
-            <h1 className="font-display text-display-lg text-ink">
-              {t('commission.title')}
-            </h1>
-            <p className="font-body text-body-sm text-ink-light">
-              {t('commission.subtitle', { leaderName: leader?.displayName || 'Atlas' })}
-            </p>
-          </div>
+          <PageTitle
+            title={t('commission.title')}
+            subtitle={t('commission.subtitle', { leaderName: leader?.displayName || 'Atlas' })}
+          />
         </div>
       </motion.div>
 

@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useMockStore } from '@/store/mockStore';
-import DropCap from '@/components/DropCap';
+import PageTitle from '@/components/PageTitle';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -839,14 +839,11 @@ export default function CreateProject() {
     <div className="max-w-[720px] mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <DropCap text={t('createProject.dropCapText')} />
         <div>
-          <p className="font-body text-body-sm text-ink-light mb-0.5">
+          <p className="font-body text-body-sm text-ink-light mb-1">
             {t('projects.title')} / {t('createProject.breadcrumb')}
           </p>
-          <h1 className="font-display text-display-lg text-ink">
-            {t('createProject.title')}
-          </h1>
+          <PageTitle title={t('createProject.title')} />
         </div>
       </div>
 

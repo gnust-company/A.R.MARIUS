@@ -18,7 +18,7 @@ import type { Skill } from '@/store/mockStore';
 import VellumPanel from '@/components/VellumPanel';
 import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
-import DropCap from '@/components/DropCap';
+import PageTitle from '@/components/PageTitle';
 import { cn } from '@/lib/utils';
 
 // ─── Animation Variants ──────────────────────────────────────────────────────
@@ -178,15 +178,7 @@ export default function Skills() {
         className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6"
       >
         <div className="flex items-center gap-3">
-          <DropCap text="S" className="text-[56px] text-[#D4A843]" />
-          <div>
-            <h1 className="font-['Fraunces',Georgia,serif] text-[36px] font-semibold text-[#2A2318] leading-tight tracking-tight">
-              Skills
-            </h1>
-            <p className="text-[13px] text-[#6B5E4E]">
-              {skills.length} skills available
-            </p>
-          </div>
+          <PageTitle title="Skills" subtitle={`${skills.length} skills available`} />
         </div>
 
         {/* New Skill buttons */}
@@ -343,15 +335,15 @@ export default function Skills() {
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         title={
-          <span className="flex items-center gap-2">
-            <DropCap
-              text="N"
-              className="text-[42px] text-[#D4A843]"
-            />
-            <span className="font-['Fraunces',Georgia,serif] text-[28px] font-semibold text-[#2A2318]">
-              {createMode === 'manual' ? 'New Skill' : 'Import from GitHub'}
-            </span>
-          </span>
+          (() => {
+            const full = createMode === 'manual' ? 'New Skill' : 'Import from GitHub';
+            return (
+              <span className="font-['Fraunces',Georgia,serif] text-[28px] font-semibold text-[#2A2318]">
+                <span className="title-initial">{full.charAt(0)}</span>
+                {full.slice(1)}
+              </span>
+            );
+          })()
         }
         maxWidth="max-w-lg"
         footer={

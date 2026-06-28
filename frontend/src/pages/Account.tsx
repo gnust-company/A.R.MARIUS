@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router';
 import { motion } from 'framer-motion';
 import { LogOut, Globe, User, BookOpen } from 'lucide-react';
 import VellumPanel from '@/components/VellumPanel';
-import DropCap from '@/components/DropCap';
+import PageTitle from '@/components/PageTitle';
 import { useTranslation } from 'react-i18next';
 
 const quillIn = {
@@ -35,11 +35,7 @@ export default function Account() {
         animate={{ opacity: 1, y: 0 }}
         className="flex items-center gap-3 mb-8"
       >
-        <DropCap text="A" />
-        <div>
-          <h1 className="text-3xl font-semibold text-[#2A2318] font-[Fraunces] tracking-tight">Account</h1>
-          <p className="text-sm text-[#6B5E4E] mt-0.5">Manage your preferences and session</p>
-        </div>
+        <PageTitle title="Account" subtitle="Manage your preferences and session" />
       </motion.div>
 
       <div className="space-y-6">

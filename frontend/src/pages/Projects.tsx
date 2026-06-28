@@ -8,7 +8,7 @@ import { useMockStore } from '@/store/mockStore';
 import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
 import EmptyState from '@/components/EmptyState';
-import DropCap from '@/components/DropCap';
+import PageTitle from '@/components/PageTitle';
 
 // ─── Quill-in animation variants ─────────────────────────────────────────────
 
@@ -28,15 +28,6 @@ const quillInVariants = {
     y: 0,
     filter: 'blur(0px)',
     transition: { duration: 0.5, ease: [0, 0, 0.2, 1] as [number, number, number, number] },
-  },
-};
-
-const dropCapVariants = {
-  hidden: { scale: 1.3, opacity: 0 },
-  visible: {
-    scale: 1,
-    opacity: 1,
-    transition: { duration: 0.4, ease: [0, 0, 0.2, 1] as [number, number, number, number] },
   },
 };
 
@@ -88,15 +79,9 @@ export default function Projects() {
         variants={containerVariants}
       >
         <div className="flex items-center gap-3">
-          <motion.div variants={dropCapVariants}>
-            <DropCap text="P" />
+          <motion.div variants={quillInVariants}>
+            <PageTitle title={t('projects.titleInWorkspace', { workspaceName: activeWorkspace?.name || '' })} />
           </motion.div>
-          <motion.h1
-            className="font-display text-display-lg text-ink"
-            variants={quillInVariants}
-          >
-            {t('projects.titleInWorkspace', { workspaceName: activeWorkspace?.name || '' })}
-          </motion.h1>
         </div>
 
         <motion.button
@@ -155,18 +140,16 @@ export default function Projects() {
                 hover
                 className="h-full min-h-[240px] flex flex-col rounded-lg border-[#E3D7BC]"
               >
-                {/* Status chip (top-right) */}
-                <div className="flex justify-end mb-2">
+                {/* Title + status on the same row */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <h2 className="font-display text-display-sm text-ink leading-tight">
+                    {project.name}
+                  </h2>
                   <StatusChip
                     status={project.status}
                     label={t(`projects.status.${project.status}`)}
                   />
                 </div>
-
-                {/* Project name */}
-                <h2 className="font-display text-display-sm text-ink mb-2 leading-tight">
-                  {project.name}
-                </h2>
 
                 {/* Objective */}
                 <p className="font-body text-body-md text-ink-light line-clamp-2 mb-4 flex-1">
