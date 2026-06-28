@@ -188,7 +188,7 @@ uvicorn armarius.main:app --reload          # SQLite, zero setup
 cd ../frontend && npm install && npm run dev
 ```
 
-See [backend/README.md](./backend/README.md), [ROADMAP.md](./ROADMAP.md), and the design
+See [backend/README.md](./backend/README.md), [SPRINT_PLAN.md](./SPRINT_PLAN.md), and the design
 in [PROJECT_DESCRIPTION.md](./PROJECT_DESCRIPTION.md).
 
 ---

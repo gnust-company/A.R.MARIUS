@@ -1,12 +1,51 @@
 from __future__ import annotations
 
+import os
+import pathlib
+import tempfile
 from collections.abc import AsyncIterator, Callable
 
-import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+# ── Test isolation ──────────────────────────────────────────────────────────
+# The HTTP-level tests drive the global `armarius.main.app`, whose engine reads
+# `settings.database_url` (default `./armarius.db` — a persisted file). Running
+# against that file leaks rows between runs (register → 409). Pin every piece of
+# global I/O to a throwaway temp dir BEFORE any `armarius` module is imported, so
+# `Settings()` freezes onto the isolated paths.
+_TMP = pathlib.Path(tempfile.mkdtemp(prefix="armarius-tests-"))
+os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_TMP / 'app.db'}"
+os.environ["ARTIFACT_STORE_ROOT"] = str(_TMP / "artifacts")
+os.environ["SEED_DEMO"] = "false"
 
-from armarius.infrastructure.database.models import Base
-from armarius.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+import pytest_asyncio  # noqa: E402
+from sqlalchemy.ext.asyncio import (  # noqa: E402
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+from armarius.infrastructure.database import engine as engine_mod  # noqa: E402
+from armarius.infrastructure.database.models import Base  # noqa: E402
+from armarius.infrastructure.persistence.unit_of_work import (  # noqa: E402
+    SqlAlchemyUnitOfWork,
+)
+from armarius.main import app  # noqa: E402
+from armarius.presentation.container import build_container  # noqa: E402
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _isolated_app_db() -> AsyncIterator[None]:
+    """Reset the global app schema before each test → full HTTP-level isolation.
+
+    Drops + recreates every table on the shared (temp-file) engine and rebuilds the
+    composition root, so each test starts from an empty database regardless of what
+    ran before it (or in a previous `pytest` invocation).
+    """
+    engine = engine_mod.get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+    app.state.container = build_container()
+    yield
 
 
 @pytest_asyncio.fixture

@@ -7,7 +7,7 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # Install dependencies first (better layer caching), then the package.
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md alembic.ini ./
 COPY armarius ./armarius
 RUN pip install --no-cache-dir ".[postgres]"
 

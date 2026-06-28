@@ -34,8 +34,25 @@ services:
       timeout: 5s
       retries: 12
 
+  # Shared Artifact Store (ARCHITECTURE §7). Internal-only: the backend reaches it at
+  # minio:9000 over the compose network — no host ports published (avoids local 9000/9001
+  # conflicts). To browse the console, add a `ports:` mapping to a free host port.
+  minio:
+    image: minio/minio:latest
+    profiles: ["backend"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-armarius}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-armarius123}
+    volumes:
+      - armarius_minio:/data
+
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      # Build on the host network so pip can reach PyPI even where BuildKit's
+      # isolated build network has no DNS (matches the frontend). Harmless elsewhere.
+      network: host
     profiles: ["backend"]
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-armarius}:${POSTGRES_PASSWORD:-armarius}@db:5432/${POSTGRES_DB:-armarius}
@@ -43,9 +60,13 @@ services:
       # For remote agents set ARMARIUS_PUBLIC_URL to a reachable origin (e.g. https://armarius.example.com).
       PUBLIC_BASE_URL: ${ARMARIUS_PUBLIC_URL:-http://localhost:8080}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
-      ARTIFACT_STORE_ROOT: /data/artifacts
-    volumes:
-      - armarius_artifacts:/data/artifacts
+      # Shared Artifact Store → MinIO (bucket created on boot).
+      ARTIFACT_STORE_BACKEND: minio
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-armarius}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-armarius123}
+      MINIO_BUCKET: ${MINIO_BUCKET:-armarius}
+      MINIO_SECURE: "false"
     # DEV-ONLY convenience: lets a hermes_gateway Marius reach a Hermes running on the
     # SAME host as this compose (base_url http://host.docker.internal:8642). For agents
     # on other machines, just set that Marius's base_url to its own reachable URL.
@@ -54,9 +75,11 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      minio:
+        condition: service_started
     ports:
       - "${BACKEND_PORT:-8080}:8000"
 
 volumes:
   armarius_db:
-  armarius_artifacts:
+  armarius_minio:

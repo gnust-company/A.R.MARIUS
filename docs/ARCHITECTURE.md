@@ -2,7 +2,7 @@
 
 > **High-level (target) architecture** for the "multi-project + onboarding + rich task +
 > collaboration" wave. Lower-level detail lives in [HLD.md](./HLD.md) · [LLD.md](./LLD.md) ·
-> [API_CONTRACT.md](./API_CONTRACT.md) · [DEV_PLAN.md](./DEV_PLAN.md) — if they disagree, **those win**.
+> [API_CONTRACT.md](./API_CONTRACT.md) · [SPRINT_PLAN.md](../SPRINT_PLAN.md) — if they disagree, **those win**.
 > Diagrams favor Mermaid; the system is presented **by use case** — how the system runs for each one.
 
 Armarius is a **provisioner for cross-team multi-agent collaboration**. Core philosophy (from

@@ -328,7 +328,7 @@ broader pixel-match pass is a follow-up.
 
 ---
 
-## 8. Scope & phasing (summary — see DEV_PLAN.md)
+## 8. Scope & phasing (summary — see ../SPRINT_PLAN.md)
 
 A) Alembic + MinIO · B) skill nested tree · C) project layer + roster · D) manual onboarding +
 Workspace Agent designation · E) rich task + Output-Artifact gate · F) Collaboration Room ·

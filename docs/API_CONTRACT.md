@@ -4,7 +4,7 @@
 > enroll-and-wait invite lifecycle, system-only seat grants, leader-mediated commission, a
 > workspace-events SSE bus, and a recency-based liveness model. **[NEW]** not yet implemented;
 > **[CHANGED]** alters existing; untagged exists. Companion to [HLD.md](./HLD.md) · [LLD.md](./LLD.md) ·
-> [DEV_PLAN.md](./DEV_PLAN.md) · [ARCHITECTURE.md](./ARCHITECTURE.md).
+> [SPRINT_PLAN.md](../SPRINT_PLAN.md) · [ARCHITECTURE.md](./ARCHITECTURE.md).
 >
 > Conventions: routes relative to the API base (nginx reverse-proxy). Human routes need a bearer JWT;
 > agent routes need an agent token. Every resource is **scoped to the caller's workspace** —

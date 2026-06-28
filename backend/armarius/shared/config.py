@@ -29,7 +29,16 @@ class Settings(BaseSettings):
     # reachable origin when agents run on other machines (e.g. https://armarius.example.com).
     public_base_url: str = "http://localhost:8080"
 
+    # Shared Artifact Store backend: "local" (filesystem) or "minio" (S3, ARCHITECTURE §7).
+    artifact_store_backend: str = "local"
     artifact_store_root: str = "./artifacts_store"
+
+    # MinIO / S3 — used when artifact_store_backend == "minio".
+    minio_endpoint: str = "localhost:9000"
+    minio_access_key: str = "armarius"
+    minio_secret_key: str = "armarius123"
+    minio_bucket: str = "armarius"
+    minio_secure: bool = False
 
     wake_max_continuation_attempts: int = 3
     run_timeout_seconds: int = 900

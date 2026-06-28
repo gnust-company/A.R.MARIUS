@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from armarius.application.ports.artifact_store import ArtifactStore
 from armarius.application.ports.event_bus import EventBus
 from armarius.application.use_cases.artifacts import ArtifactService
 from armarius.application.use_cases.auth import AuthService
@@ -26,6 +27,7 @@ from armarius.infrastructure.persistence.unit_of_work import make_uow
 from armarius.infrastructure.security.jwt import JWTService
 from armarius.infrastructure.security.password import PasswordService
 from armarius.infrastructure.store.local_store import LocalArtifactStore
+from armarius.infrastructure.store.minio_store import MinioArtifactStore
 from armarius.shared.config import settings
 
 
@@ -39,6 +41,7 @@ class Container:
     tasks: TaskService
     threads: ThreadService
     artifacts: ArtifactService
+    artifact_store: ArtifactStore
     runs: RunQueryService
     auth: AuthService
     skills: SkillService
@@ -55,7 +58,17 @@ def build_container() -> Container:
     registry.register(HermesGatewayAdapter())
     registry.register(EchoAdapter())
 
-    store = LocalArtifactStore(settings.artifact_store_path)
+    store: ArtifactStore
+    if settings.artifact_store_backend == "minio":
+        store = MinioArtifactStore(
+            endpoint=settings.minio_endpoint,
+            access_key=settings.minio_access_key,
+            secret_key=settings.minio_secret_key,
+            bucket=settings.minio_bucket,
+            secure=settings.minio_secure,
+        )
+    else:
+        store = LocalArtifactStore(settings.artifact_store_path)
 
     jwt_service = JWTService()
     password_service = PasswordService()
@@ -80,6 +93,7 @@ def build_container() -> Container:
         tasks=TaskService(uow_factory, wake_engine),
         threads=ThreadService(uow_factory, wake_engine),
         artifacts=ArtifactService(uow_factory, store),
+        artifact_store=store,
         runs=RunQueryService(uow_factory),
         auth=AuthService(uow_factory, workspaces, jwt_service, password_service),
         skills=skills,

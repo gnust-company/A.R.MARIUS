@@ -20,6 +20,8 @@ dependencies = [
     "email-validator==2.2.0",
     # i18n
     "babel==2.16.0",
+    "alembic>=1.18.5",
+    "minio>=7.2.20",
 ]
 
 [project.optional-dependencies]
@@ -41,7 +43,8 @@ packages = ["armarius"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-exclude = [".venv"]
+# Alembic versions are generated; don't lint them.
+exclude = [".venv", "armarius/infrastructure/alembic/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC"]

@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from armarius import __version__
-from armarius.infrastructure.database.engine import init_db
+from armarius.infrastructure.database.migrations import ensure_schema
 from armarius.presentation.api import agent, auth, health, tasks, trace, workspaces
 from armarius.presentation.container import build_container
 from armarius.presentation.errors import install_error_handlers
@@ -26,8 +26,10 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
     logger.info("Armarius %s starting (env=%s)", __version__, settings.environment)
-    await init_db()
+    await ensure_schema()
     app.state.container = build_container()
+    # Provision the Shared Artifact Store (creates the MinIO bucket `armarius` if missing).
+    await app.state.container.artifact_store.ensure_ready()
     # Demo seed is opt-in (ARMARIUS_SEED_DEMO=true). Off by default so real users
     # get their own empty personal workspace — never someone else's demo data.
     if settings.seed_demo:

@@ -3,3 +3,10 @@
 
 # Scratch / notes
 linhtinh.md
+
+# Local dev SQLite + local artifact store (never commit runtime data)
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+backend/artifacts_store/
+.codegraph/

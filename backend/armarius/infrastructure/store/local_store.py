@@ -20,6 +20,9 @@ class LocalArtifactStore(ArtifactStore):
     def __init__(self, root: Path) -> None:
         self._root = root
 
+    async def ensure_ready(self) -> None:
+        self._root.mkdir(parents=True, exist_ok=True)
+
     async def save_bytes(self, project_id: UUID, name: str, data: bytes) -> StoredObject:
         sha = hashlib.sha256(data).hexdigest()
         safe_name = _SAFE.sub("_", name) or "artifact"
