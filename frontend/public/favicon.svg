@@ -1,15 +1,15 @@
-<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Illuminated initial "A" — the Armarius mark, echoing the ARMARIUS wordmark -->
   <defs>
-    <linearGradient id="g" x1="16" y1="0" x2="16" y2="32" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#d8a23a"/>
-      <stop offset="1" stop-color="#b3812a"/>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E8C96A"/>
+      <stop offset="1" stop-color="#C9A227"/>
     </linearGradient>
   </defs>
-  <rect width="32" height="32" rx="8" fill="url(#g)"/>
-  <!-- Serif "A" mark, matching the in-app brand logo -->
-  <g stroke="#fff8e8" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none">
-    <path d="M16 7 L8.5 25"/>
-    <path d="M16 7 L23.5 25"/>
-    <path d="M11.4 19 H20.6"/>
-  </g>
+  <!-- deep-ink manuscript tile with a gilt border -->
+  <rect x="2" y="2" width="60" height="60" rx="13" fill="#1A1410"/>
+  <rect x="2" y="2" width="60" height="60" rx="13" fill="none" stroke="#C9A227" stroke-opacity="0.45" stroke-width="2"/>
+  <!-- the illuminated "A" -->
+  <text x="32" y="33" fill="url(#gold)" font-family="Georgia, 'Times New Roman', serif"
+        font-size="46" font-weight="700" text-anchor="middle" dominant-baseline="central">A</text>
 </svg>

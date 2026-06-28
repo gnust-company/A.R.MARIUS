@@ -1,10 +1,27 @@
-# Armarius — full stack. Copy .env.sample to .env to override, then:
-#   docker compose up --build
+# Armarius. Copy .env.sample to .env to override ports, then:
+#
+#   docker compose up --build            → mock-data UI only (no backend yet)
+#   docker compose --profile backend up --build   → full stack (db + API + UI)
+#
+# The frontend is currently a self-contained MOCK SPA (in-memory store, no API),
+# so the default `up` builds just the UI. The backend (db + API) lives behind the
+# `backend` profile until the BE track is wired in.
+#
 # Dashboard → http://localhost:${FRONTEND_PORT:-3000}   API → http://localhost:${BACKEND_PORT:-8080}
 
 services:
+  frontend:
+    build:
+      context: ./frontend
+      # Build on the host network so npm can reach the registry even where
+      # BuildKit's isolated build network has no DNS. Harmless elsewhere.
+      network: host
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+
   db:
     image: postgres:16-alpine
+    profiles: ["backend"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-armarius}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-armarius}
@@ -19,6 +36,7 @@ services:
 
   backend:
     build: ./backend
+    profiles: ["backend"]
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-armarius}:${POSTGRES_PASSWORD:-armarius}@db:5432/${POSTGRES_DB:-armarius}
       # Public URL of THIS API that agents call back into — advertised in invitations.
@@ -38,20 +56,6 @@ services:
         condition: service_healthy
     ports:
       - "${BACKEND_PORT:-8080}:8000"
-
-  frontend:
-    build:
-      context: ./frontend
-      args:
-        # OPTIONAL override: only set VITE_API_URL if the API is NOT served on the
-        # same origin as the UI. The bundled stack reverse-proxies the API through
-        # nginx (same origin), so leave this EMPTY for relative URLs — the UI then
-        # works behind any host/port/domain/proxy with no rebuild.
-        VITE_API_URL: ${VITE_API_URL:-}
-    depends_on:
-      - backend
-    ports:
-      - "${FRONTEND_PORT:-3000}:80"
 
 volumes:
   armarius_db:

@@ -1,188 +1,520 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { api, type Skill } from "../api";
-import { useApp } from "../store";
-import { useI18n } from "../i18n";
-import { DropCap, Icon, Modal } from "../ui";
+// @ts-nocheck
+import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router';
+import { motion } from 'framer-motion';
+import {
+  Wrench,
+  Plus,
+  Search,
+  Settings,
+  Palette,
+  Github,
+  FileText,
+  Loader2,
+  ChevronRight,
+} from 'lucide-react';
+import { useMockStore } from '@/store/mockStore';
+import type { Skill } from '@/store/mockStore';
+import VellumPanel from '@/components/VellumPanel';
+import EmptyState from '@/components/EmptyState';
+import Modal from '@/components/Modal';
+import DropCap from '@/components/DropCap';
+import { cn } from '@/lib/utils';
 
-const SKILL_MD = "SKILL.md";
+// ─── Animation Variants ──────────────────────────────────────────────────────
 
-function SkillCard({ s, index, onOpen, onPreview }: { s: Skill; index: number; onOpen: () => void; onPreview: () => void }) {
-  const { t } = useI18n();
-  const builtin = s.source === "builtin";
-  return (
-    <div className="panel gilt quill-in p-4 flex flex-col gap-3" style={{ animationDelay: `${index * 0.04}s` }}>
-      <button onClick={onOpen} className="flex items-start gap-3 text-left">
-        <div
-          className="flex items-center justify-center rounded-lg shrink-0"
-          style={{
-            width: 40, height: 40,
-            background: builtin ? "linear-gradient(180deg,#E0B540,#C9A227)" : "var(--panel-2)",
-            color: builtin ? "#FBF7EC" : "var(--ink-soft)",
-            border: builtin ? "1px solid #A8841D" : "1px solid var(--line)",
-          }}
-        >
-          <Icon name="skills" size={20} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="font-display text-base font-semibold leading-tight truncate" style={{ color: "var(--ink)" }}>{s.name}</div>
-          <div className="flex items-center gap-1.5 mt-1">
-            <span className="chip" style={{ background: builtin ? "rgba(201,162,39,0.14)" : "var(--panel-2)", borderColor: "transparent", color: builtin ? "var(--manuscript-gold)" : "var(--ink-soft)" }}>
-              {builtin ? t("skill.builtin") : s.source}
-            </span>
-            <span className="text-[0.66rem] font-mono" style={{ color: "var(--ink-faint)" }}>{Object.keys(s.files).length} {t("skill.files").toLowerCase()}</span>
-          </div>
-        </div>
-      </button>
-      {s.description && <div className="text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>{s.description}</div>}
-      <div className="flex items-center gap-2 mt-auto pt-1">
-        <button className="btn !py-1 !px-2.5 text-xs" onClick={onPreview}>
-          <Icon name="eye" size={13} /> {t("skill.preview")}
-        </button>
-        <button className="btn !py-1 !px-2.5 text-xs ml-auto" onClick={onOpen}>
-          <Icon name="edit" size={13} /> {t("common.edit")}
-        </button>
-      </div>
-    </div>
-  );
-}
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.06, delayChildren: 0.15 },
+  },
+};
 
-function PreviewModal({ s, onClose }: { s: Skill; onClose: () => void }) {
-  const { t } = useI18n();
-  const content = s.files?.[SKILL_MD] ?? Object.values(s.files)[0] ?? "";
-  return (
-    <Modal title={s.name} onClose={onClose} wide
-      footer={<button className="btn" onClick={onClose}>{t("common.done")}</button>}>
-      {content ? (
-        <pre className="font-mono text-[0.76rem] leading-relaxed whitespace-pre-wrap p-4 rounded" style={{ color: "var(--ink)", background: "var(--paper-2)", border: "1px solid var(--line)" }}>{content}</pre>
-      ) : (
-        <div style={{ color: "var(--ink-faint)" }}>{t("skill.noContent")}</div>
-      )}
-    </Modal>
-  );
-}
+const itemVariants = {
+  hidden: { opacity: 0, y: 16, filter: 'blur(2px)' },
+  visible: {
+    opacity: 1,
+    y: 0,
+    filter: 'blur(0px)',
+    transition: { duration: 0.4, ease: [0, 0, 0.2, 1] as [number, number, number, number] },
+  },
+};
 
-function NewSkillModal({ wsId, onClose, onCreated }: { wsId: string; onClose: () => void; onCreated: (s: Skill) => void }) {
-  const { t } = useI18n();
-  const [tab, setTab] = useState<"manual" | "import">("manual");
-  const [name, setName] = useState("");
-  const [desc, setDesc] = useState("");
-  const [url, setUrl] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
+// ─── Skill Source Badge ──────────────────────────────────────────────────────
 
-  const submit = async () => {
-    setBusy(true); setError(undefined);
-    try {
-      const s = tab === "manual"
-        ? await api.createManualSkill(wsId, { name: name.trim(), description: desc.trim() })
-        : await api.importSkill(wsId, url.trim());
-      onCreated(s);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("err.failedLoad"));
-    } finally {
-      setBusy(false);
-    }
+function SourceBadge({ type }: { type: Skill['type'] }) {
+  const config = {
+    builtin: { label: 'Built-in', icon: Settings, color: 'bg-[#E8E0D8] text-[#8B7A6A]' },
+    github: { label: 'Imported', icon: Github, color: 'bg-[#D4E8F0] text-[#2A5A6E]' },
   };
-
-  const canSubmit = tab === "manual" ? name.trim() : url.trim();
-
+  const { label, icon: Icon, color } = config[type] || config.builtin;
   return (
-    <Modal title={t("skill.newSkill")} onClose={onClose}
-      footer={<>
-        <button className="btn" onClick={onClose}>{t("common.cancel")}</button>
-        <button className="btn btn-primary" disabled={!canSubmit || busy} onClick={submit}>
-          <Icon name={tab === "manual" ? "plus" : "link"} size={13} />
-          {busy ? t("skill.importing") : (tab === "manual" ? t("skill.create") : t("skill.importBtn"))}
-        </button>
-      </>}>
-      <div className="flex gap-1 p-1 rounded-lg mb-4" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-        {(["manual", "import"] as const).map((k) => (
-          <button key={k} className="flex-1 py-1.5 rounded-md text-sm transition-colors"
-            style={{ background: tab === k ? "var(--ink)" : "transparent", color: tab === k ? "var(--panel)" : "var(--ink-soft)" }}
-            onClick={() => setTab(k)}>
-            {k === "manual" ? t("skill.newManual") : t("skill.newImport")}
-          </button>
-        ))}
-      </div>
-
-      {tab === "manual" ? (
-        <div className="grid gap-3">
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[0.62rem] uppercase tracking-[0.16em] font-mono" style={{ color: "var(--ink-faint)" }}>{t("skill.name")}</span>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("skill.name")} autoFocus />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[0.62rem] uppercase tracking-[0.16em] font-mono" style={{ color: "var(--ink-faint)" }}>{t("skill.desc")}</span>
-            <textarea className="input resize-none" rows={2} value={desc} onChange={(e) => setDesc(e.target.value)} />
-          </label>
-          <div className="text-[0.68rem]" style={{ color: "var(--ink-faint)" }}>{t("skill.manualHint")}</div>
-        </div>
-      ) : (
-        <div className="grid gap-2.5">
-          <span className="text-[0.62rem] uppercase tracking-[0.16em] font-mono" style={{ color: "var(--ink-faint)" }}>{t("skill.newImport")}</span>
-          <input className="input font-mono text-[0.8rem]" placeholder={t("skill.importPlaceholder")} value={url} onChange={(e) => setUrl(e.target.value)} autoFocus />
-          <div className="text-[0.68rem]" style={{ color: "var(--ink-faint)" }}>{t("skill.importHint")}</div>
-        </div>
-      )}
-      {error && <div className="text-xs mt-3 px-2.5 py-2 rounded" style={{ background: "rgba(168,73,44,0.1)", color: "var(--rust)" }}>{error}</div>}
-    </Modal>
+    <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium', color)}>
+      <Icon className="w-3 h-3" />
+      {label}
+    </span>
   );
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN PAGE: Skills
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export default function Skills() {
-  const { workspace } = useApp();
-  const { t } = useI18n();
   const navigate = useNavigate();
-  const [skills, setSkills] = useState<Skill[]>([]);
-  const [preview, setPreview] = useState<Skill>();
-  const [creating, setCreating] = useState(false);
+  const skills = useMockStore((s) => s.skills);
+  const createSkill = useMockStore((s) => s.createSkill);
 
-  const load = async () => { if (workspace) setSkills(await api.skills(workspace.id)); };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [workspace?.id]);
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<'library' | 'builtin'>('library');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // ── Create Modal State ─────────────────────────────────────────────────────
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createMode, setCreateMode] = useState<'manual' | 'import'>('manual');
+  const [skillName, setSkillName] = useState('');
+  const [skillDesc, setSkillDesc] = useState('');
+  const [githubUrl, setGithubUrl] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [importStep, setImportStep] = useState<'input' | 'preview'>('input');
+  const [importedFiles, setImportedFiles] = useState<{ path: string; content: string; language: string }[]>([]);
+
+  // ── Filter Skills ──────────────────────────────────────────────────────────
+  const filteredSkills = useMemo(() => {
+    let filtered = [...skills];
+
+    if (activeTab === 'builtin') {
+      filtered = filtered.filter((s) => s.type === 'builtin');
+    } else {
+      filtered = filtered.filter((s) => s.type !== 'builtin');
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          (s.description || '').toLowerCase().includes(q)
+      );
+    }
+
+    return filtered;
+  }, [skills, activeTab, searchQuery]);
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
+  const handleOpenCreate = (mode: 'manual' | 'import') => {
+    setCreateMode(mode);
+    setSkillName('');
+    setSkillDesc('');
+    setGithubUrl('');
+    setImportStep('input');
+    setImportedFiles([]);
+    setCreateModalOpen(true);
+  };
+
+  const handleCreateManual = () => {
+    if (!skillName.trim()) return;
+    setCreating(true);
+    setTimeout(() => {
+      const frontmatter = `---\nname: ${skillName.trim()}\ndescription: ${skillDesc.trim() || 'No description'}\nversion: 1.0.0\n---\n`;
+      const newSkill = createSkill({
+        name: skillName.trim().toLowerCase().replace(/\s+/g, '-'),
+        description: skillDesc.trim(),
+        type: 'github',
+        files: [
+          { path: 'SKILL.md', content: frontmatter + '\n# ' + skillName.trim() + '\n\n## Overview\n\n', language: 'markdown' },
+        ],
+      });
+      setCreating(false);
+      setCreateModalOpen(false);
+      navigate(`/skills/${newSkill.id}`);
+    }, 300);
+  };
+
+  const handleImport = () => {
+    if (!githubUrl.trim()) return;
+    setCreating(true);
+    setTimeout(() => {
+      // Simulate GitHub fetch
+      const files = [
+        { path: 'SKILL.md', content: `# ${skillName || 'Imported Skill'}\n\n## Overview\n\nImported from GitHub.\n`, language: 'markdown' },
+        { path: 'src/index.ts', content: '// Auto-generated\nexport {};\n', language: 'typescript' },
+        { path: 'README.md', content: `# README\n\nImported from ${githubUrl}\n`, language: 'markdown' },
+      ];
+      setImportedFiles(files);
+      setImportStep('preview');
+      setCreating(false);
+    }, 1200);
+  };
+
+  const handleConfirmImport = () => {
+    if (importedFiles.length === 0) return;
+    const name = skillName.trim() || githubUrl.split('/').pop() || 'imported-skill';
+    const newSkill = createSkill({
+      name: name.toLowerCase().replace(/\s+/g, '-'),
+      description: skillDesc.trim() || `Imported from ${githubUrl}`,
+      type: 'github',
+      sourceUrl: githubUrl.trim(),
+      files: importedFiles,
+    });
+    setCreateModalOpen(false);
+    navigate(`/skills/${newSkill.id}`);
+  };
+
+  const handleSkillClick = (skillId: string) => {
+    navigate(`/skills/${skillId}`);
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-5xl mx-auto px-6 py-7">
-        {/* Illuminated header */}
-        <header className="vellum quill-in px-7 py-5 mb-6 flex items-start gap-4">
-          <DropCap letter={t("skill.title").charAt(0)} size={48} />
-          <div className="min-w-0 flex-1">
-            <h1 className="font-display text-2xl font-semibold leading-none" style={{ color: "var(--ink)" }}>{t("skill.title")}</h1>
-            <p className="text-sm mt-2 leading-relaxed" style={{ color: "var(--ink-soft)" }}>{t("skill.subtitle")}</p>
-            <div className="flex items-center gap-2 mt-3">
-              <span className="chip">{t("skill.count", { n: skills.length })}</span>
-            </div>
+    <div className="min-h-[100dvh]">
+      {/* Page Header */}
+      <motion.div
+        initial={{ opacity: 0, y: 24, filter: 'blur(2px)' }}
+        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+        transition={{ duration: 0.5, ease: [0, 0, 0.2, 1] as [number, number, number, number] }}
+        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6"
+      >
+        <div className="flex items-center gap-3">
+          <DropCap text="S" className="text-[56px] text-[#D4A843]" />
+          <div>
+            <h1 className="font-['Fraunces',Georgia,serif] text-[36px] font-semibold text-[#2A2318] leading-tight tracking-tight">
+              Skills
+            </h1>
+            <p className="text-[13px] text-[#6B5E4E]">
+              {skills.length} skills available
+            </p>
           </div>
-          {workspace && (
-            <button className="btn btn-primary shrink-0" onClick={() => setCreating(true)}>
-              <Icon name="plus" size={15} /> {t("skill.newSkill")}
-            </button>
-          )}
-        </header>
-
-        {skills.length === 0 && (
-          <div className="panel p-10 text-center" style={{ color: "var(--ink-faint)" }}>{t("skill.empty")}</div>
-        )}
-        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(290px,1fr))" }}>
-          {skills.map((s, i) => (
-            <SkillCard
-              key={s.id} s={s} index={i}
-              onOpen={() => navigate(`/skills/${s.id}`)}
-              onPreview={() => setPreview(s)}
-            />
-          ))}
         </div>
 
-        {preview && <PreviewModal s={preview} onClose={() => setPreview(undefined)} />}
-        {creating && workspace && (
-          <NewSkillModal
-            wsId={workspace.id}
-            onClose={() => setCreating(false)}
-            onCreated={(s) => { setCreating(false); navigate(`/skills/${s.id}`); }}
+        {/* New Skill buttons */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleOpenCreate('manual')}
+            className={cn(
+              'inline-flex items-center gap-2 px-4 py-2.5 rounded-md text-[13px] font-medium',
+              'bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC] transition-all'
+            )}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Manual
+          </button>
+          <button
+            onClick={() => handleOpenCreate('import')}
+            className={cn(
+              'inline-flex items-center gap-2 px-4 py-2.5 rounded-md text-[13px] font-medium',
+              'bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC] transition-all'
+            )}
+          >
+            <Github className="w-3.5 h-3.5" />
+            Import
+          </button>
+          <button
+            onClick={() => handleOpenCreate('manual')}
+            className={cn(
+              'inline-flex items-center gap-2 px-5 py-2.5 rounded-md text-[15px] font-medium',
+              'bg-[#C25E3A] text-white hover:bg-[#D97B5A] transition-all'
+            )}
+          >
+            <Plus className="w-4 h-4" />
+            New Skill
+          </button>
+        </div>
+      </motion.div>
+
+      {/* Tabs */}
+      <div className="flex items-center gap-1 mb-6 border-b border-[#E3D7BC]">
+        {(['library', 'builtin'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={cn(
+              'px-4 py-2.5 text-[13px] font-medium transition-all relative',
+              activeTab === tab
+                ? 'text-[#C25E3A]'
+                : 'text-[#6B5E4E] hover:text-[#2A2318]'
+            )}
+          >
+            {tab === 'library' ? 'Library' : 'Built-in'}
+            {activeTab === tab && (
+              <motion.div
+                layoutId="skills-tab"
+                className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#C25E3A]"
+                transition={{ duration: 0.2 }}
+              />
+            )}
+          </button>
+        ))}
+        {/* Search */}
+        <div className="ml-auto mb-2 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A89880]" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search skills..."
+            className={cn(
+              'pl-9 pr-4 py-2 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[14px] text-[#2A2318]',
+              'placeholder:text-[#A89880] w-48',
+              'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+              'transition-all'
+            )}
           />
-        )}
+        </div>
       </div>
+
+      {/* Skill Cards Grid */}
+      {filteredSkills.length === 0 ? (
+        <EmptyState
+          icon={Wrench}
+          title={activeTab === 'builtin' ? 'No built-in skills' : 'No skills yet'}
+          description={
+            activeTab === 'builtin'
+              ? 'Built-in skills will appear here'
+              : 'Create or import your first skill to get started'
+          }
+          action={
+            activeTab !== 'builtin' && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleOpenCreate('manual')}
+                  className={cn(
+                    'inline-flex items-center gap-2 px-5 py-2.5 rounded-md text-[15px] font-medium',
+                    'bg-[#C25E3A] text-white hover:bg-[#D97B5A] transition-all'
+                  )}
+                >
+                  <Plus className="w-4 h-4" />
+                  Create Skill
+                </button>
+              </div>
+            )
+          }
+        />
+      ) : (
+        <motion.div
+          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          {filteredSkills.map((skill) => (
+            <motion.div
+              key={skill.id}
+              variants={itemVariants}
+              whileHover={{ y: -2, transition: { duration: 0.2 } }}
+              className="cursor-pointer"
+              onClick={() => handleSkillClick(skill.id)}
+            >
+              <VellumPanel>
+                <div className="flex items-start gap-3 mb-3">
+                  {skill.type === 'builtin' ? (
+                    <Settings className="w-5 h-5 text-[#8B7A6A] flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <Palette className="w-5 h-5 text-[#D4A843] flex-shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-['Fraunces',Georgia,serif] text-[18px] font-medium text-[#2A2318] leading-tight">
+                      {skill.name}
+                    </h3>
+                  </div>
+                  <SourceBadge type={skill.type} />
+                </div>
+
+                <p className="text-[13px] text-[#6B5E4E] mb-3 line-clamp-2">
+                  {skill.description}
+                </p>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] font-mono text-[#A89880]">
+                    {(skill.files || []).length} file{(skill.files || []).length !== 1 ? 's' : ''}
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-[#A89880]" />
+                </div>
+              </VellumPanel>
+            </motion.div>
+          ))}
+        </motion.div>
+      )}
+
+      {/* ─── Create/Import Skill Modal ────────────────────────────────────────── */}
+      <Modal
+        isOpen={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        title={
+          <span className="flex items-center gap-2">
+            <DropCap
+              text="N"
+              className="text-[42px] text-[#D4A843]"
+            />
+            <span className="font-['Fraunces',Georgia,serif] text-[28px] font-semibold text-[#2A2318]">
+              {createMode === 'manual' ? 'New Skill' : 'Import from GitHub'}
+            </span>
+          </span>
+        }
+        maxWidth="max-w-lg"
+        footer={
+          createMode === 'manual' ? (
+            <>
+              <button
+                onClick={() => setCreateModalOpen(false)}
+                className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateManual}
+                disabled={!skillName.trim() || creating}
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-all',
+                  skillName.trim() && !creating
+                    ? 'bg-[#C25E3A] text-white hover:bg-[#D97B5A]'
+                    : 'bg-[#E3D7BC] text-[#A89880] cursor-not-allowed'
+                )}
+              >
+                {creating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Create Skill
+              </button>
+            </>
+          ) : importStep === 'input' ? (
+            <>
+              <button
+                onClick={() => setCreateModalOpen(false)}
+                className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleImport}
+                disabled={!githubUrl.trim() || creating}
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-all',
+                  githubUrl.trim() && !creating
+                    ? 'bg-[#C25E3A] text-white hover:bg-[#D97B5A]'
+                    : 'bg-[#E3D7BC] text-[#A89880] cursor-not-allowed'
+                )}
+              >
+                {creating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Import
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setImportStep('input')}
+                className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC] transition-colors"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleConfirmImport}
+                className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#C25E3A] text-white hover:bg-[#D97B5A] transition-colors"
+              >
+                Confirm Import
+              </button>
+            </>
+          )
+        }
+      >
+        {createMode === 'manual' ? (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
+                Skill Name <span className="text-[#C25E3A]">*</span>
+              </label>
+              <input
+                type="text"
+                value={skillName}
+                onChange={(e) => setSkillName(e.target.value)}
+                placeholder="e.g., my-custom-skill"
+                className={cn(
+                  'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
+                  'placeholder:text-[#A89880]',
+                  'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+                  'transition-all'
+                )}
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
+                Description
+              </label>
+              <textarea
+                value={skillDesc}
+                onChange={(e) => setSkillDesc(e.target.value)}
+                placeholder="What this skill does..."
+                rows={3}
+                className={cn(
+                  'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
+                  'placeholder:text-[#A89880]',
+                  'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+                  'transition-all resize-none'
+                )}
+              />
+            </div>
+            <p className="text-[11px] text-[#A89880]">
+              A SKILL.md template with YAML frontmatter will be generated automatically.
+            </p>
+          </div>
+        ) : importStep === 'input' ? (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
+                GitHub Folder URL <span className="text-[#C25E3A]">*</span>
+              </label>
+              <input
+                type="text"
+                value={githubUrl}
+                onChange={(e) => setGithubUrl(e.target.value)}
+                placeholder="https://github.com/user/repo/tree/main/folder"
+                className={cn(
+                  'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
+                  'placeholder:text-[#A89880]',
+                  'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+                  'transition-all'
+                )}
+                autoFocus
+              />
+            </div>
+            {creating && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex items-center gap-2 text-[13px] text-[#6B5E4E]"
+              >
+                <Loader2 className="w-4 h-4 animate-spin text-[#C25E3A]" />
+                Fetching repository...
+              </motion.div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-[13px] text-[#6B5E4E]">
+              Detected <strong>{importedFiles.length}</strong> files from{' '}
+              <span className="text-[#C25E3A] font-mono text-[12px]">{githubUrl}</span>:
+            </p>
+            <div className="bg-[#F7F0E0] border border-[#E3D7BC] rounded-md overflow-hidden">
+              {importedFiles.map((f, i) => (
+                <div
+                  key={f.path}
+                  className={cn(
+                    'flex items-center gap-2 px-3 py-2 text-[13px] font-mono text-[#2A2318]',
+                    i < importedFiles.length - 1 && 'border-b border-[#E3D7BC]'
+                  )}
+                >
+                  <FileText className="w-3.5 h-3.5 text-[#A89880] flex-shrink-0" />
+                  <span className="truncate">{f.path}</span>
+                  <span className="ml-auto text-[11px] text-[#A89880] flex-shrink-0">
+                    {f.language}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
