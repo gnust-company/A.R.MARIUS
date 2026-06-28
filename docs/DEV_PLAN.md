@@ -5,11 +5,12 @@
 > [ARCHITECTURE.md](./ARCHITECTURE.md) / [HLD.md](./HLD.md) / [LLD.md](./LLD.md) /
 > [API_CONTRACT.md](./API_CONTRACT.md).
 >
-> **Where we are (2026-06-28):** the FE was rebuilt as a pure mock SPA on **React 19 / Vite 7 /
-> Tailwind 3 / shadcn** (one `src/store/mockStore.ts` seam). All UC1–UC8 surfaces exist; the
-> simulated Hybrid SSE (liveness decay + per-task live trace) and the setup→active gate are now
-> wired. Remaining before **FE freeze**: full EN/VI string audit, reduced-motion/a11y pass, and a
-> states/QA sweep (FE-3). BE track (BE-1…BE-7) **not started** per owner.
+> **Where we are (2026-06-28): FE FROZEN.** The FE was rebuilt as a pure mock SPA on **React 19 /
+> Vite 7 / Tailwind 3 / shadcn** (one `src/store/mockStore.ts` seam). All UC1–UC8 surfaces exist; the
+> simulated Hybrid SSE (liveness decay + per-task live trace) and the setup→active gate are wired;
+> reduced-motion is honored app-wide. FE-3 was trimmed (most of it moot in a pure mock or already
+> done) — the only carry-forward is completing EN/VI on 6 surfaces (**issue #2**). BE track
+> (BE-1…BE-7) **not started** per owner.
 
 ## 1. New ordering and why
 
@@ -102,13 +103,26 @@ Old Scriptorium components are re-tuned under the new system. Each sub-phase is 
 (register → workspace → onboard project → roster active → commission task → co-work + trace → publish
 → done → approve) plays through in the Scriptorium style + motion; tsc+build clean.
 
-### FE-3 — Polish + i18n + accessibility  *(deps: FE-2)*
+### FE-3 — Polish + i18n + accessibility  *(deps: FE-2)*  — **trimmed & resolved 2026-06-28**
 **Goal:** a production-feel mock demo.
-- Full EN+VI string coverage; motion tuning (honor `prefers-reduced-motion`); loading/empty/error
-  states; keyboard nav + focus rings; responsive breakpoints; QA pass + screenshots.
-**DoD:** both languages complete; reduced-motion honored; no console errors; demo screenshotted.
+A review of the FE-3 checklist against the rebuilt SPA found most of it **already done or moot in a
+pure mock**, so it was trimmed rather than run as a full phase:
+- **Motion / reduced-motion — done.** Global `<MotionConfig reducedMotion="user">` at the app root
+  makes every framer-motion animation honor the OS "reduce motion" setting; Landing already gated its
+  cinematic scroll; the simulator + live-trace stream honor it too.
+- **i18n — partial, remainder deferred.** EN/VI dictionaries are in sync (224/224) and the 6 core flow
+  screens are bilingual, but 6 surfaces (Workspaces, Directory, Skills, SkillEditor, Inbox, Account) +
+  ~25 CollaborationRoom leftovers are still hardcoded EN. The full pass is tracked in **issue #2**
+  (owner chose to freeze now, EN-primary). Landing stays EN (marketing).
+- **Loading / error states — moot now.** The mock store is synchronous; nothing loads or fails. Real
+  loading/error/empty states land with **BE-7** when the HTTP seam exists. Empty-state CTAs already present.
+- **Focus rings / responsive — adequate.** Inputs have terracotta focus rings; layout accepted by owner.
 
-> **FE freeze.** After FE-3 the mock-data app is the frozen UX spec. BE phases implement to match it.
+**DoD (revised):** reduced-motion honored app-wide; core flows bilingual; no console errors; remaining
+i18n captured as a tracked issue. **Met.**
+
+> **FE freeze (2026-06-28).** The mock-data app is the frozen UX spec. BE phases implement to match it.
+> Carry-forward to BE-7: complete i18n (#2), real loading/error states once data is async.
 
 ## 4. Track BE — Clean Architecture + TDD (AFTER FE freeze)
 

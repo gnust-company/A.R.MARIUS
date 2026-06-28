@@ -435,3 +435,20 @@ Follow-up fixes after direct UI review (every visible string now bilingual; UX f
 - **Store contract** — added `setSseConnected`, `simulateLivenessTick`, `appendTrace`; broadened
   `TraceEvent` to the streamed `run.*` shape. Still a pure mock — the single `mockStore.ts` seam.
 - **Verify** — `tsc --noEmit` clean; `vite build` clean. Pushed to `main`.
+
+### 2026-06-28 — FE-3 reviewed, trimmed, and **FE FROZEN**
+> Owner: "I'm very happy with the FE, only a few small things left — check whether FE-3 actually gains
+> anything; if not, fix the plan." A per-item audit showed FE-3 as written gains almost nothing on a
+> pure mock, so it was trimmed instead of run as a phase, and the FE is frozen.
+- **reduced-motion — done.** Added a single global `<MotionConfig reducedMotion="user">` at the app
+  root → every framer-motion animation (16 files) honors the OS "reduce motion" setting. (Landing
+  already gated its scroll; the simulator + trace stream honor it too.)
+- **i18n — measured & deferred.** EN/VI dictionaries are in sync (224/224) and the 6 core flow screens
+  are bilingual, but a `t()` audit found **6 surfaces fully hardcoded EN** (Workspaces, Directory,
+  Skills, SkillEditor, Inbox, Account) + ~25 CollaborationRoom leftovers. Owner chose to **freeze
+  EN-primary** and track the full pass as **issue #2**. Landing stays EN (marketing).
+- **Loading/error states — moot** in a synchronous mock; deferred to BE-7 (when data is async).
+  Empty-state CTAs already present. Focus rings / responsive accepted as-is.
+- **FE FREEZE.** The mock-data SPA is the frozen UX spec; BE-1…BE-7 implement to match it. Carry-forward
+  to BE-7: i18n (#2) + real loading/error states. BE track **not started** per owner.
+- **Verify** — `tsc --noEmit` clean; `vite build` clean. Pushed to `main`.
