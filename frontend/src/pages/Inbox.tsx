@@ -10,6 +10,7 @@ import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
 import PageTitle from '@/components/PageTitle';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const tabClasses = (active: boolean) =>
   `px-4 py-2 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
@@ -29,6 +30,7 @@ const quillIn = {
 export default function Inbox() {
   const { tasks, projects, mariuses, updateTask } = useMockStore();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'review' | 'blocked'>('review');
 
   const safeTasks = tasks || [];
@@ -52,14 +54,14 @@ export default function Inbox() {
         >
           <div className="text-[#A89880] mb-3">{emptyIcon}</div>
           <h3 className="text-lg font-medium text-[#2A2318] font-[Fraunces]">{emptyTitle}</h3>
-          <p className="text-sm text-[#6B5E4E] mt-1">All tasks are in good shape</p>
+          <p className="text-sm text-[#6B5E4E] mt-1">{t('inbox.allGood')}</p>
         </motion.div>
       );
     }
 
     const grouped = list.reduce<Record<string, typeof list>>((acc, task) => {
       const proj = safeProjects.find((p) => p.id === task.projectId);
-      const key = proj?.name || 'Unknown Project';
+      const key = proj?.name || t('inbox.unknownProject');
       if (!acc[key]) acc[key] = [];
       acc[key].push(task);
       return acc;
@@ -118,14 +120,14 @@ export default function Inbox() {
                             onClick={() => navigate(`/tasks/${task.id}`)}
                             className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-[#6B5E4E] bg-[#EDE4CE] hover:bg-[#E3D7BC] rounded-md transition-colors"
                           >
-                            <ExternalLink size={12} /> Open
+                            <ExternalLink size={12} /> {t('inbox.open')}
                           </button>
                           {task.status === 'in_review' && (
                             <button
                               onClick={() => handleApprove(task.id)}
                               className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-[#D4A843] hover:bg-[#E8C96A] rounded-md transition-colors"
                             >
-                              <CheckCircle2 size={12} /> Approve
+                              <CheckCircle2 size={12} /> {t('inbox.approve')}
                             </button>
                           )}
                         </div>
@@ -150,11 +152,11 @@ export default function Inbox() {
         className="flex items-center gap-3 mb-6"
       >
         <div className="flex-1">
-          <PageTitle title="Patron Inbox" subtitle="Review and manage tasks across all projects" />
+          <PageTitle title={t('nav.inbox')} subtitle={t('inbox.subtitle')} />
         </div>
         {reviewTasks.length > 0 && (
           <span className="px-2.5 py-1 text-xs font-medium bg-[#C25E3A] text-white rounded-full">
-            {reviewTasks.length} pending
+            {t('inbox.pendingCount', { count: reviewTasks.length })}
           </span>
         )}
       </motion.div>
@@ -162,17 +164,17 @@ export default function Inbox() {
       {/* Tabs */}
       <div className="flex gap-1 border-b border-[#E3D7BC] mb-6">
         <button className={tabClasses(activeTab === 'review')} onClick={() => setActiveTab('review')}>
-          Needs Review {reviewTasks.length > 0 && `(${reviewTasks.length})`}
+          {t('inbox.needsReview')} {reviewTasks.length > 0 && `(${reviewTasks.length})`}
         </button>
         <button className={tabClasses(activeTab === 'blocked')} onClick={() => setActiveTab('blocked')}>
-          Blocked {blockedTasks.length > 0 && `(${blockedTasks.length})`}
+          {t('inbox.blocked')} {blockedTasks.length > 0 && `(${blockedTasks.length})`}
         </button>
       </div>
 
       {/* Content */}
       {activeTab === 'review'
-        ? renderTaskGroup(reviewTasks, <CheckCircle2 size={48} strokeWidth={1} />, 'All caught up!')
-        : renderTaskGroup(blockedTasks, <AlertTriangle size={48} strokeWidth={1} />, 'No blocked tasks')}
+        ? renderTaskGroup(reviewTasks, <CheckCircle2 size={48} strokeWidth={1} />, t('inbox.allCaughtUp'))
+        : renderTaskGroup(blockedTasks, <AlertTriangle size={48} strokeWidth={1} />, t('inbox.noBlocked'))}
     </div>
   );
 }

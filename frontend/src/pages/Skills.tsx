@@ -20,6 +20,7 @@ import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
 import PageTitle from '@/components/PageTitle';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 // ─── Animation Variants ──────────────────────────────────────────────────────
 
@@ -44,9 +45,10 @@ const itemVariants = {
 // ─── Skill Source Badge ──────────────────────────────────────────────────────
 
 function SourceBadge({ type }: { type: Skill['type'] }) {
+  const { t } = useTranslation();
   const config = {
-    builtin: { label: 'Built-in', icon: Settings, color: 'bg-[#E8E0D8] text-[#8B7A6A]' },
-    github: { label: 'Imported', icon: Github, color: 'bg-[#D4E8F0] text-[#2A5A6E]' },
+    builtin: { label: t('skills.type.builtin'), icon: Settings, color: 'bg-[#E8E0D8] text-[#8B7A6A]' },
+    github: { label: t('skills.imported'), icon: Github, color: 'bg-[#D4E8F0] text-[#2A5A6E]' },
   };
   const { label, icon: Icon, color } = config[type] || config.builtin;
   return (
@@ -63,6 +65,7 @@ function SourceBadge({ type }: { type: Skill['type'] }) {
 
 export default function Skills() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const skills = useMockStore((s) => s.skills);
   const createSkill = useMockStore((s) => s.createSkill);
 
@@ -178,7 +181,7 @@ export default function Skills() {
         className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6"
       >
         <div className="flex items-center gap-3">
-          <PageTitle title="Skills" subtitle={`${skills.length} skills available`} />
+          <PageTitle title={t('skills.title')} subtitle={t('skills.subtitle', { count: skills.length })} />
         </div>
 
         {/* New Skill buttons */}
@@ -191,7 +194,7 @@ export default function Skills() {
             )}
           >
             <Plus className="w-3.5 h-3.5" />
-            Manual
+            {t('skills.manual')}
           </button>
           <button
             onClick={() => handleOpenCreate('import')}
@@ -201,7 +204,7 @@ export default function Skills() {
             )}
           >
             <Github className="w-3.5 h-3.5" />
-            Import
+            {t('skills.import')}
           </button>
           <button
             onClick={() => handleOpenCreate('manual')}
@@ -211,7 +214,7 @@ export default function Skills() {
             )}
           >
             <Plus className="w-4 h-4" />
-            New Skill
+            {t('skills.newSkill')}
           </button>
         </div>
       </motion.div>
@@ -229,7 +232,7 @@ export default function Skills() {
                 : 'text-[#6B5E4E] hover:text-[#2A2318]'
             )}
           >
-            {tab === 'library' ? 'Library' : 'Built-in'}
+            {tab === 'library' ? t('skills.tabLibrary') : t('skills.tabBuiltin')}
             {activeTab === tab && (
               <motion.div
                 layoutId="skills-tab"
@@ -246,7 +249,7 @@ export default function Skills() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search skills..."
+            placeholder={t('skills.searchPlaceholder')}
             className={cn(
               'pl-9 pr-4 py-2 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[14px] text-[#2A2318]',
               'placeholder:text-[#A89880] w-48',
@@ -261,11 +264,11 @@ export default function Skills() {
       {filteredSkills.length === 0 ? (
         <EmptyState
           icon={Wrench}
-          title={activeTab === 'builtin' ? 'No built-in skills' : 'No skills yet'}
+          title={activeTab === 'builtin' ? t('skills.emptyBuiltinTitle') : t('skills.emptyTitle')}
           description={
             activeTab === 'builtin'
-              ? 'Built-in skills will appear here'
-              : 'Create or import your first skill to get started'
+              ? t('skills.emptyBuiltinDescription')
+              : t('skills.emptyLibraryDescription')
           }
           action={
             activeTab !== 'builtin' && (
@@ -278,7 +281,7 @@ export default function Skills() {
                   )}
                 >
                   <Plus className="w-4 h-4" />
-                  Create Skill
+                  {t('skills.createSkill')}
                 </button>
               </div>
             )
@@ -320,7 +323,7 @@ export default function Skills() {
 
                 <div className="flex items-center justify-between">
                   <span className="text-[12px] font-mono text-[#A89880]">
-                    {(skill.files || []).length} file{(skill.files || []).length !== 1 ? 's' : ''}
+                    {t('skills.fileCount', { count: (skill.files || []).length })}
                   </span>
                   <ChevronRight className="w-4 h-4 text-[#A89880]" />
                 </div>
@@ -336,7 +339,7 @@ export default function Skills() {
         onClose={() => setCreateModalOpen(false)}
         title={
           (() => {
-            const full = createMode === 'manual' ? 'New Skill' : 'Import from GitHub';
+            const full = createMode === 'manual' ? t('skills.newSkill') : t('skills.importTitle');
             return (
               <span className="font-['Fraunces',Georgia,serif] text-[28px] font-semibold text-[#2A2318]">
                 <span className="title-initial">{full.charAt(0)}</span>
@@ -353,7 +356,7 @@ export default function Skills() {
                 onClick={() => setCreateModalOpen(false)}
                 className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC] transition-colors"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 onClick={handleCreateManual}
@@ -366,7 +369,7 @@ export default function Skills() {
                 )}
               >
                 {creating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                Create Skill
+                {t('skills.createSkill')}
               </button>
             </>
           ) : importStep === 'input' ? (
@@ -375,7 +378,7 @@ export default function Skills() {
                 onClick={() => setCreateModalOpen(false)}
                 className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC] transition-colors"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 onClick={handleImport}
@@ -388,7 +391,7 @@ export default function Skills() {
                 )}
               >
                 {creating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                Import
+                {t('skills.import')}
               </button>
             </>
           ) : (
@@ -397,13 +400,13 @@ export default function Skills() {
                 onClick={() => setImportStep('input')}
                 className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC] transition-colors"
               >
-                Back
+                {t('common.back')}
               </button>
               <button
                 onClick={handleConfirmImport}
                 className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#C25E3A] text-white hover:bg-[#D97B5A] transition-colors"
               >
-                Confirm Import
+                {t('skills.confirmImport')}
               </button>
             </>
           )
@@ -413,13 +416,13 @@ export default function Skills() {
           <div className="space-y-4">
             <div>
               <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
-                Skill Name <span className="text-[#C25E3A]">*</span>
+                {t('skills.nameLabel')} <span className="text-[#C25E3A]">*</span>
               </label>
               <input
                 type="text"
                 value={skillName}
                 onChange={(e) => setSkillName(e.target.value)}
-                placeholder="e.g., my-custom-skill"
+                placeholder={t('skills.namePlaceholder')}
                 className={cn(
                   'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
                   'placeholder:text-[#A89880]',
@@ -431,12 +434,12 @@ export default function Skills() {
             </div>
             <div>
               <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
-                Description
+                {t('skills.descriptionLabel')}
               </label>
               <textarea
                 value={skillDesc}
                 onChange={(e) => setSkillDesc(e.target.value)}
-                placeholder="What this skill does..."
+                placeholder={t('skills.descriptionPlaceholder')}
                 rows={3}
                 className={cn(
                   'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
@@ -447,20 +450,20 @@ export default function Skills() {
               />
             </div>
             <p className="text-[11px] text-[#A89880]">
-              A SKILL.md template with YAML frontmatter will be generated automatically.
+              {t('skills.manualNote')}
             </p>
           </div>
         ) : importStep === 'input' ? (
           <div className="space-y-4">
             <div>
               <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
-                GitHub Folder URL <span className="text-[#C25E3A]">*</span>
+                {t('skills.githubUrlLabel')} <span className="text-[#C25E3A]">*</span>
               </label>
               <input
                 type="text"
                 value={githubUrl}
                 onChange={(e) => setGithubUrl(e.target.value)}
-                placeholder="https://github.com/user/repo/tree/main/folder"
+                placeholder={t('skills.githubUrlPlaceholder')}
                 className={cn(
                   'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
                   'placeholder:text-[#A89880]',
@@ -477,14 +480,14 @@ export default function Skills() {
                 className="flex items-center gap-2 text-[13px] text-[#6B5E4E]"
               >
                 <Loader2 className="w-4 h-4 animate-spin text-[#C25E3A]" />
-                Fetching repository...
+                {t('skills.fetching')}
               </motion.div>
             )}
           </div>
         ) : (
           <div className="space-y-4">
             <p className="text-[13px] text-[#6B5E4E]">
-              Detected <strong>{importedFiles.length}</strong> files from{' '}
+              {t('skills.detectedFiles', { count: importedFiles.length })}{' '}
               <span className="text-[#C25E3A] font-mono text-[12px]">{githubUrl}</span>:
             </p>
             <div className="bg-[#F7F0E0] border border-[#E3D7BC] rounded-md overflow-hidden">

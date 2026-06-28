@@ -13,6 +13,7 @@ import { useMockStore } from '@/store/mockStore';
 import VellumPanel from '@/components/VellumPanel';
 import Modal from '@/components/Modal';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -37,6 +38,7 @@ const cardVariants = {
 
 export default function Workspaces() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const workspaces = useMockStore((s) => s.workspaces);
   const projects = useMockStore((s) => s.projects);
   const mariuses = useMockStore((s) => s.mariuses);
@@ -105,7 +107,7 @@ export default function Workspaces() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.3 }}
         >
-          &ldquo;You task. They collaborate. You trace.&rdquo;
+          &ldquo;{t('app.tagline')}&rdquo;
         </motion.p>
       </motion.div>
 
@@ -151,12 +153,12 @@ export default function Workspaces() {
                 <div className="flex items-center gap-4 font-body text-body-sm text-ink-light mb-6">
                   <span className="flex items-center gap-1.5">
                     <FolderOpen className="w-4 h-4" />
-                    {wsProjects.length} projects
+                    {t('workspaces.projectsCount', { count: wsProjects.length })}
                   </span>
                   <span className="text-ink-muted">&middot;</span>
                   <span className="flex items-center gap-1.5">
                     <Bot className="w-4 h-4" />
-                    {wsAgents.length} agents
+                    {t('workspaces.agentsCount', { count: wsAgents.length })}
                   </span>
                 </div>
 
@@ -165,7 +167,7 @@ export default function Workspaces() {
                   <button
                     className="group flex items-center gap-1 font-body text-body-md font-medium text-terracotta hover:text-terracotta-light transition-colors"
                   >
-                    Enter
+                    {t('workspaces.enterButton')}
                     <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />
                   </button>
                 </div>
@@ -192,7 +194,7 @@ export default function Workspaces() {
           )}
         >
           <Plus className="w-10 h-10" strokeWidth={1.5} />
-          <span className="font-body text-body-lg font-medium">Create Workspace</span>
+          <span className="font-body text-body-lg font-medium">{t('workspaces.createTitle')}</span>
         </button>
       </motion.div>
 
@@ -205,7 +207,7 @@ export default function Workspaces() {
           setNewWsDesc('');
         }}
         title={
-          <span className="dropcap">Create Workspace</span>
+          <span className="dropcap">{t('workspaces.createTitle')}</span>
         }
         footer={
           <>
@@ -217,7 +219,7 @@ export default function Workspaces() {
               }}
               className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-vellum-deep text-ink border border-vellum-dark hover:bg-vellum-dark transition-colors"
             >
-              Cancel
+              {t('workspaces.cancelButton')}
             </button>
             <button
               onClick={handleCreate}
@@ -229,7 +231,7 @@ export default function Workspaces() {
                   : 'bg-vellum-dark text-ink-muted cursor-not-allowed'
               )}
             >
-              Create
+              {t('workspaces.createButton')}
             </button>
           </>
         }
@@ -237,13 +239,13 @@ export default function Workspaces() {
         <div className="space-y-4">
           <div>
             <label className="block font-body text-body-sm font-medium text-ink mb-1">
-              Workspace Name <span className="text-terracotta">*</span>
+              {t('workspaces.nameLabel')} <span className="text-terracotta">*</span>
             </label>
             <input
               type="text"
               value={newWsName}
               onChange={(e) => setNewWsName(e.target.value)}
-              placeholder="e.g., Design Team"
+              placeholder={t('workspaces.namePlaceholder')}
               className={cn(
                 'w-full px-4 py-2.5 rounded-md bg-vellum border border-vellum-dark',
                 'font-body text-body-md text-ink placeholder:text-ink-muted',
@@ -255,12 +257,12 @@ export default function Workspaces() {
           </div>
           <div>
             <label className="block font-body text-body-sm font-medium text-ink mb-1">
-              Description
+              {t('workspaces.descriptionLabel')}
             </label>
             <textarea
               value={newWsDesc}
               onChange={(e) => setNewWsDesc(e.target.value)}
-              placeholder="What this workspace is for..."
+              placeholder={t('workspaces.descriptionPlaceholder')}
               rows={3}
               className={cn(
                 'w-full px-4 py-2.5 rounded-md bg-vellum border border-vellum-dark',

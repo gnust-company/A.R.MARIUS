@@ -22,6 +22,7 @@ import type { SkillFile } from '@/store/mockStore';
 import VellumPanel from '@/components/VellumPanel';
 import EmptyState from '@/components/EmptyState';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 // ─── Tree Node Types ─────────────────────────────────────────────────────────
 
@@ -201,6 +202,7 @@ function FileTreeNode({
 export default function SkillEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const skills = useMockStore((s) => s.skills);
   const updateSkill = useMockStore((s) => s.updateSkill);
 
@@ -347,8 +349,8 @@ export default function SkillEditor() {
       <div className="min-h-[100dvh] flex items-center justify-center">
         <EmptyState
           icon={ScrollText}
-          title="Skill not found"
-          description="The skill you're looking for doesn't exist"
+          title={t('skills.editor.notFound')}
+          description={t('skills.editor.notFoundDesc')}
           action={
             <button
               onClick={() => navigate('/skills')}
@@ -358,7 +360,7 @@ export default function SkillEditor() {
               )}
             >
               <ArrowLeft className="w-4 h-4" />
-              Back to Skills
+              {t('skills.editor.backToSkills')}
             </button>
           }
         />
@@ -405,7 +407,7 @@ export default function SkillEditor() {
               animate={{ opacity: 1, scale: 1 }}
               className="text-[11px] text-[#C25E3A] font-medium mr-2"
             >
-              Unsaved changes
+              {t('skills.editor.unsaved')}
             </motion.span>
           )}
           <button
@@ -419,7 +421,7 @@ export default function SkillEditor() {
             )}
           >
             <Save className="w-3.5 h-3.5" />
-            Save
+            {t('common.save')}
           </button>
           <button
             onClick={handleDiscard}
@@ -432,7 +434,7 @@ export default function SkillEditor() {
             )}
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            Discard
+            {t('skills.editor.discard')}
           </button>
         </div>
       </motion.div>
@@ -452,14 +454,14 @@ export default function SkillEditor() {
               <button
                 onClick={() => { setShowAddMenu(true); setNewItemType('file'); }}
                 className="p-1.5 rounded-md text-[#6B5E4E] hover:text-[#2A2318] hover:bg-[#EDE4CE] transition-colors"
-                title="Add file"
+                title={t('skills.editor.addFile')}
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => { setShowAddMenu(true); setNewItemType('folder'); }}
                 className="p-1.5 rounded-md text-[#6B5E4E] hover:text-[#2A2318] hover:bg-[#EDE4CE] transition-colors"
-                title="Add folder"
+                title={t('skills.editor.addFolder')}
               >
                 <FolderOpen className="w-3.5 h-3.5" />
               </button>
@@ -473,7 +475,7 @@ export default function SkillEditor() {
                     ? 'text-[#6B5E4E] hover:text-[#8B3A28] hover:bg-[#F5DDD6]'
                     : 'text-[#A89880] cursor-not-allowed'
                 )}
-                title="Delete"
+                title={t('common.delete')}
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -498,7 +500,7 @@ export default function SkillEditor() {
                         if (e.key === 'Enter') handleAddItem();
                         if (e.key === 'Escape') { setShowAddMenu(false); setNewItemType(null); }
                       }}
-                      placeholder={newItemType === 'file' ? 'filename.ts' : 'folder-name/'}
+                      placeholder={newItemType === 'file' ? t('skills.editor.filePlaceholder') : t('skills.editor.folderPlaceholder')}
                       className={cn(
                         'flex-1 px-2 py-1 rounded text-[12px] font-mono bg-[#F7F0E0] border border-[#E3D7BC]',
                         'focus:outline-none focus:border-[#C25E3A]'
@@ -536,7 +538,7 @@ export default function SkillEditor() {
               ))}
               {displayTree.length === 0 && (
                 <div className="text-center py-8 text-[12px] text-[#A89880]">
-                  No files yet
+                  {t('skills.editor.noFiles')}
                 </div>
               )}
             </div>
@@ -583,8 +585,8 @@ export default function SkillEditor() {
             <VellumPanel className="flex-1 flex items-center justify-center" hover={false}>
               <EmptyState
                 icon={ScrollText}
-                title="Select a file"
-                description="Choose a file from the tree to view and edit"
+                title={t('skills.editor.selectFile')}
+                description={t('skills.editor.selectFileDesc')}
               />
             </VellumPanel>
           )}

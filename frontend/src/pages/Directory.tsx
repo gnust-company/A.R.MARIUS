@@ -31,6 +31,7 @@ import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
 import PageTitle from '@/components/PageTitle';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 // ─── Animation Variants ──────────────────────────────────────────────────────
 
@@ -86,6 +87,16 @@ const ROLE_OPTIONS = [
   'QA Engineer',
 ];
 
+// Maps a stored (English) role value → its i18n key. The <option> value stays
+// English (it is persisted on the agent); only the visible label is translated.
+const ROLE_KEY: Record<string, string> = {
+  'Project Leader': 'projectLeader',
+  'Frontend Developer': 'frontendDeveloper',
+  'Backend Developer': 'backendDeveloper',
+  'Designer': 'designer',
+  'QA Engineer': 'qaEngineer',
+};
+
 // ─── Helper: Time Ago ────────────────────────────────────────────────────────
 
 function timeAgo(dateStr: string): string {
@@ -134,6 +145,7 @@ function AgentCard({
   onApprove: (id: string) => void;
   onDesignate: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const config = STATUS_CONFIG[agent.status] || STATUS_CONFIG.offline;
   const [expanded, setExpanded] = useState(false);
   const [approving, setApproving] = useState(false);
@@ -201,7 +213,7 @@ function AgentCard({
                 style={{ color: config.color }}
               >
                 <StatusIcon className="w-3 h-3" />
-                {config.label}
+                {t('directory.status.' + agent.status)}
               </span>
             </div>
           </div>
@@ -229,7 +241,7 @@ function AgentCard({
                       onClick={() => { setExpanded(!expanded); setMenuOpen(false); }}
                       className="w-full text-left px-3 py-2 text-[13px] text-[#2A2318] hover:bg-[#EDE4CE] transition-colors"
                     >
-                      {expanded ? 'Collapse Details' : 'View Details'}
+                      {expanded ? t('directory.collapseDetails') : t('directory.viewDetails')}
                     </button>
                     {agent.status === 'online' && agent.isWorkspaceAgent !== true && (
                       <button
@@ -237,7 +249,7 @@ function AgentCard({
                         className="w-full text-left px-3 py-2 text-[13px] text-[#D4A843] hover:bg-[#EDE4CE] transition-colors"
                       >
                         <span className="flex items-center gap-1.5">
-                          <Star className="w-3.5 h-3.5" /> Make Workspace Agent
+                          <Star className="w-3.5 h-3.5" /> {t('directory.actions.designate')}
                         </span>
                       </button>
                     )}
@@ -253,7 +265,7 @@ function AgentCard({
           <span>{agent.adapterType || '—'}</span>
           <span className="text-[#A89880]">&middot;</span>
           <span className="text-[#A89880]">
-            {agent.status ? `Status: ${agent.status}` : 'Unknown status'}
+            {agent.status ? t('directory.statusLabel', { status: agent.status }) : t('directory.unknownStatus')}
           </span>
         </div>
 
@@ -270,7 +282,7 @@ function AgentCard({
             ))}
             {agentSkills.length > 3 && (
               <span className="px-2 py-0.5 rounded-full text-[11px] font-medium text-[#A89880]">
-                +{agentSkills.length - 3} more
+                {t('directory.moreSkills', { count: agentSkills.length - 3 })}
               </span>
             )}
           </div>
@@ -293,21 +305,21 @@ function AgentCard({
                 ) : (
                   <Check className="w-3.5 h-3.5" />
                 )}
-                Approve
+                {t('directory.actions.approve')}
               </button>
               <button
                 onClick={() => onApprove(agent.id)}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium border border-[#E3D7BC] text-[#6B5E4E] hover:bg-[#F5DDD6] hover:text-[#8B3A28] hover:border-[#E8B8A8] transition-all"
               >
                 <X className="w-3.5 h-3.5" />
-                Reject
+                {t('directory.reject')}
               </button>
             </>
           )}
           {agent.status === 'invited' && (
             <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium text-[#A89880]">
               <Clock className="w-3.5 h-3.5" />
-              Waiting for enrollment&hellip;
+              {t('directory.waitingEnrollment')}
             </span>
           )}
           {agent.status === 'online' && agent.isWorkspaceAgent !== true && (
@@ -316,12 +328,12 @@ function AgentCard({
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium border border-[#D4A843] text-[#D4A843] hover:bg-[#D4A843] hover:text-[#2A2318] transition-all"
             >
               <Star className="w-3.5 h-3.5" />
-              Make Workspace Agent
+              {t('directory.actions.designate')}
             </button>
           )}
           {agent.isWorkspaceAgent === true && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium bg-[#F5E8CC] text-[#8B6A28]">
-              <Star className="w-3 h-3" /> Workspace Agent
+              <Star className="w-3 h-3" /> {t('directory.workspaceAgent')}
             </span>
           )}
         </div>
@@ -339,16 +351,16 @@ function AgentCard({
               <div className="mt-4 pt-4 border-t border-[#E3D7BC]">
                 <div className="text-[12px] font-mono text-[#6B5E4E] space-y-1">
                   <p>
-                    <span className="text-[#A89880]">ID:</span> {agent.id}
+                    <span className="text-[#A89880]">{t('directory.details.id')}:</span> {agent.id}
                   </p>
                   <p>
-                    <span className="text-[#A89880]">Role:</span> {agent.role}
+                    <span className="text-[#A89880]">{t('directory.details.role')}:</span> {agent.role}
                   </p>
                   <p>
-                    <span className="text-[#A89880]">Adapter:</span> {agent.adapterType || '—'}
+                    <span className="text-[#A89880]">{t('directory.details.adapter')}:</span> {agent.adapterType || '—'}
                   </p>
                   <p>
-                    <span className="text-[#A89880]">Workspace:</span> {agent.workspaceId}
+                    <span className="text-[#A89880]">{t('directory.details.workspace')}:</span> {agent.workspaceId}
                   </p>
                 </div>
               </div>
@@ -365,6 +377,7 @@ function AgentCard({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default function Directory() {
+  const { t } = useTranslation();
   const mariuses = useMockStore((s) => s.mariuses);
   const skills = useMockStore((s) => s.skills);
   const inviteAgent = useMockStore((s) => s.inviteAgent);
@@ -576,7 +589,7 @@ export default function Directory() {
         className="flex items-center justify-between mb-6"
       >
         <div className="flex items-center gap-3">
-          <PageTitle title="Agents" subtitle={`${mariuses.length} agents in workspace`} />
+          <PageTitle title={t('directory.pageTitle')} subtitle={t('directory.agentsInWorkspace', { count: mariuses.length })} />
         </div>
         <motion.button
           onClick={handleOpenInvite}
@@ -590,7 +603,7 @@ export default function Directory() {
           )}
         >
           <Plus className="w-4 h-4" />
-          Invite Agent
+          {t('directory.inviteAgent')}
         </motion.button>
       </motion.div>
 
@@ -611,13 +624,13 @@ export default function Directory() {
               'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15'
             )}
           >
-            <option value="all">All ({mariuses.length})</option>
-            <option value="online">Online ({mariuses.filter((m) => m.status === 'online').length})</option>
-            <option value="working">Working ({mariuses.filter((m) => m.status === 'working').length})</option>
-            <option value="idle">Idle ({mariuses.filter((m) => m.status === 'idle').length})</option>
-            <option value="offline">Offline ({mariuses.filter((m) => m.status === 'offline').length})</option>
-            <option value="pending">Pending Review ({mariuses.filter((m) => m.status === 'pending').length})</option>
-            <option value="invited">Invited ({mariuses.filter((m) => m.status === 'invited').length})</option>
+            <option value="all">{t('directory.filter.all')} ({mariuses.length})</option>
+            <option value="online">{t('directory.status.online')} ({mariuses.filter((m) => m.status === 'online').length})</option>
+            <option value="working">{t('directory.status.working')} ({mariuses.filter((m) => m.status === 'working').length})</option>
+            <option value="idle">{t('directory.status.idle')} ({mariuses.filter((m) => m.status === 'idle').length})</option>
+            <option value="offline">{t('directory.status.offline')} ({mariuses.filter((m) => m.status === 'offline').length})</option>
+            <option value="pending">{t('directory.status.pending')} ({mariuses.filter((m) => m.status === 'pending').length})</option>
+            <option value="invited">{t('directory.status.invited')} ({mariuses.filter((m) => m.status === 'invited').length})</option>
           </select>
         </div>
 
@@ -628,7 +641,7 @@ export default function Directory() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search agents..."
+            placeholder={t('directory.searchPlaceholder')}
             className={cn(
               'w-full pl-9 pr-4 py-2 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
               'placeholder:text-[#A89880]',
@@ -650,7 +663,7 @@ export default function Directory() {
             )}
           >
             <Clock className="w-3.5 h-3.5" />
-            Pending ({pendingAgents.length})
+            {t('directory.pending')} ({pendingAgents.length})
             {showPendingOnly ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </button>
         )}
@@ -665,7 +678,7 @@ export default function Directory() {
           className="mb-6"
         >
           <h2 className="text-[13px] font-medium text-[#A89880] uppercase tracking-wider mb-3">
-            Pending Invites
+            {t('directory.pendingInvites')}
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {pendingAgents.map((agent) => (
@@ -684,11 +697,11 @@ export default function Directory() {
       {filteredAgents.length === 0 ? (
         <EmptyState
           icon={Users}
-          title="No agents found"
+          title={t('directory.noAgentsFound')}
           description={
             searchQuery
-              ? 'Try adjusting your search or filters'
-              : 'Invite your first agent to get started'
+              ? t('directory.adjustSearch')
+              : t('directory.inviteFirst')
           }
           action={
             !searchQuery && (
@@ -700,7 +713,7 @@ export default function Directory() {
                 )}
               >
                 <Plus className="w-4 h-4" />
-                Invite Agent
+                {t('directory.inviteAgent')}
               </button>
             )
           }
@@ -729,7 +742,7 @@ export default function Directory() {
         onClose={handleCloseInvite}
         title={
           (() => {
-            const full = inviteStep === 'form' ? 'Invite Agent' : 'Invite Prompt';
+            const full = inviteStep === 'form' ? t('directory.inviteAgent') : t('directory.invitePrompt');
             return (
               <span className="font-['Fraunces',Georgia,serif] text-[28px] font-semibold text-[#2A2318]">
                 <span className="title-initial">{full.charAt(0)}</span>
@@ -753,7 +766,7 @@ export default function Directory() {
               {/* Adapter Type */}
               <div>
                 <label className="block text-[13px] font-medium text-[#2A2318] mb-2">
-                  Adapter Type <span className="text-[#C25E3A]">*</span>
+                  {t('directory.adapterType')} <span className="text-[#C25E3A]">*</span>
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {ADAPTER_OPTIONS.map((opt) => {
@@ -783,9 +796,9 @@ export default function Directory() {
                               selected ? 'text-[#C25E3A]' : 'text-[#2A2318]'
                             )}
                           >
-                            {opt.label}
+                            {t('directory.adapters.' + opt.value + '.label')}
                           </p>
-                          <p className="text-[11px] text-[#A89880]">{opt.desc}</p>
+                          <p className="text-[11px] text-[#A89880]">{t('directory.adapters.' + opt.value + '.desc')}</p>
                         </div>
                       </button>
                     );
@@ -796,13 +809,13 @@ export default function Directory() {
               {/* Agent Name */}
               <div>
                 <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
-                  Agent Name <span className="text-[#C25E3A]">*</span>
+                  {t('directory.agentName')} <span className="text-[#C25E3A]">*</span>
                 </label>
                 <input
                   type="text"
                   value={agentName}
                   onChange={(e) => setAgentName(e.target.value)}
-                  placeholder="e.g., Echo-2"
+                  placeholder={t('directory.agentNamePlaceholder')}
                   className={cn(
                     'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
                     'placeholder:text-[#A89880]',
@@ -815,7 +828,7 @@ export default function Directory() {
               {/* Role */}
               <div>
                 <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
-                  Role <span className="text-[#C25E3A]">*</span>
+                  {t('directory.role')} <span className="text-[#C25E3A]">*</span>
                 </label>
                 <select
                   value={agentRole}
@@ -826,13 +839,13 @@ export default function Directory() {
                     'transition-all'
                   )}
                 >
-                  <option value="">Select a role</option>
+                  <option value="">{t('directory.selectRole')}</option>
                   {ROLE_OPTIONS.map((r) => (
                     <option key={r} value={r}>
-                      {r}
+                      {t('directory.roles.' + ROLE_KEY[r])}
                     </option>
                   ))}
-                  <option value="Custom...">Custom...</option>
+                  <option value="Custom...">{t('directory.custom')}</option>
                 </select>
                 {agentRole === 'Custom...' && (
                   <motion.input
@@ -841,7 +854,7 @@ export default function Directory() {
                     type="text"
                     value={customRole}
                     onChange={(e) => setCustomRole(e.target.value)}
-                    placeholder="Enter custom role"
+                    placeholder={t('directory.customRolePlaceholder')}
                     className={cn(
                       'w-full mt-2 px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
                       'placeholder:text-[#A89880]',
@@ -855,7 +868,7 @@ export default function Directory() {
               {/* Skills */}
               <div>
                 <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
-                  Skills
+                  {t('directory.skills')}
                 </label>
                 <div className="flex flex-wrap gap-1.5">
                   {skills.map((skill) => (
@@ -884,7 +897,7 @@ export default function Directory() {
                   onClick={handleCloseInvite}
                   className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC] transition-colors"
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   onClick={handleGenerateInvite}
@@ -902,7 +915,7 @@ export default function Directory() {
                   )}
                 >
                   {generating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Generate Invite
+                  {t('directory.generateInvite')}
                 </button>
               </div>
             </motion.div>
@@ -950,11 +963,11 @@ export default function Directory() {
                 >
                   {copied ? (
                     <>
-                      <Check className="w-3.5 h-3.5" /> Copied!
+                      <Check className="w-3.5 h-3.5" /> {t('directory.copied')}
                     </>
                   ) : (
                     <>
-                      <Copy className="w-3.5 h-3.5" /> Copy to Clipboard
+                      <Copy className="w-3.5 h-3.5" /> {t('directory.copyClipboard')}
                     </>
                   )}
                 </button>
@@ -962,7 +975,7 @@ export default function Directory() {
                   onClick={handleCloseInvite}
                   className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#C25E3A] text-white hover:bg-[#D97B5A] transition-colors"
                 >
-                  Done
+                  {t('directory.done')}
                 </button>
               </div>
             </motion.div>

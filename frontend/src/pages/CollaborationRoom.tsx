@@ -298,7 +298,7 @@ export default function CollaborationRoom() {
     if (!commentInput.trim() || !task) return;
     store.addComment(task.id, {
       authorId: currentUser?.id || 'user-patron',
-      authorName: currentUser?.name || 'Patron',
+      authorName: currentUser?.name || t('collaborationRoom.patron'),
       content: commentInput.trim(),
     });
     setCommentInput('');
@@ -342,12 +342,12 @@ export default function CollaborationRoom() {
       <div className="flex items-center justify-center h-[60vh]">
         <div className="text-center">
           <Activity className="w-12 h-12 text-ink-muted mx-auto mb-4" />
-          <h2 className="font-display text-display-md text-ink">Task not found</h2>
+          <h2 className="font-display text-display-md text-ink">{t('collaborationRoom.taskNotFound')}</h2>
           <button
             onClick={() => navigate(-1)}
             className="mt-4 px-4 py-2 rounded-md bg-terracotta text-white font-body text-body-md hover:bg-terracotta-light transition-colors"
           >
-            Go Back
+            {t('collaborationRoom.goBack')}
           </button>
         </div>
       </div>
@@ -381,7 +381,7 @@ export default function CollaborationRoom() {
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-success-bg border border-success/20 font-body text-body-xs text-success animate-pulse-dot">
             <span className="w-1.5 h-1.5 rounded-full bg-success" />
-            LIVE
+            {t('collaborationRoom.live')}
           </span>
         </div>
       </motion.div>
@@ -413,7 +413,7 @@ export default function CollaborationRoom() {
             {/* Status */}
             <div>
               <label className="block font-body text-body-xs font-semibold text-ink-light uppercase tracking-wider mb-1.5">
-                Status
+                {t('collaborationRoom.statusLabel')}
               </label>
               <select
                 value={statusValue}
@@ -422,8 +422,8 @@ export default function CollaborationRoom() {
               >
                 {STATUS_OPTIONS.map((s) => (
                   <option key={s} value={s} disabled={(s === 'done' || s === 'in_review') && !hasArtifacts}>
-                    {s.replace(/_/g, ' ')}
-                    {(s === 'done' || s === 'in_review') && !hasArtifacts ? ' (needs artifact)' : ''}
+                    {t('tasks.status.' + s)}
+                    {(s === 'done' || s === 'in_review') && !hasArtifacts ? t('collaborationRoom.needsArtifact') : ''}
                   </option>
                 ))}
               </select>
@@ -649,8 +649,8 @@ export default function CollaborationRoom() {
             {task.comments.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <MessageSquare className="w-10 h-10 text-ink-muted mb-3" strokeWidth={1.5} />
-                <p className="font-body text-body-md text-ink-light">No comments yet</p>
-                <p className="font-body text-body-sm text-ink-muted">Start the conversation</p>
+                <p className="font-body text-body-md text-ink-light">{t('collaborationRoom.noComments')}</p>
+                <p className="font-body text-body-sm text-ink-muted">{t('collaborationRoom.startConversation')}</p>
               </div>
             ) : (
               task.comments.map((comment) => (
@@ -659,7 +659,7 @@ export default function CollaborationRoom() {
                   authorName={comment.authorName}
                   authorId={comment.authorId}
                   authorRole={
-                    store.mariuses.find((m) => m.id === comment.authorId)?.role || 'Patron'
+                    store.mariuses.find((m) => m.id === comment.authorId)?.role || t('collaborationRoom.patron')
                   }
                   content={comment.content}
                   timestamp={comment.timestamp}
@@ -748,21 +748,21 @@ export default function CollaborationRoom() {
                 <button
                   onClick={() => setIsTraceActive(!isTraceActive)}
                   className="p-1.5 rounded-md bg-vellum-dark hover:bg-vellum text-ink transition-colors"
-                  title={isTraceActive ? 'Pause' : 'Resume'}
+                  title={isTraceActive ? t('collaborationRoom.wakeControls.pause') : t('collaborationRoom.wakeControls.resume')}
                 >
                   {isTraceActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
                 </button>
                 <button
                   onClick={() => setIsTraceActive(false)}
                   className="p-1.5 rounded-md bg-vellum-dark hover:bg-error/10 hover:text-error text-ink transition-colors"
-                  title="Stop"
+                  title={t('collaborationRoom.wakeControls.stop')}
                 >
                   <Square className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={() => setIsTraceActive(true)}
                   className="p-1.5 rounded-md bg-vellum-dark hover:bg-vellum text-ink transition-colors"
-                  title="Resume"
+                  title={t('collaborationRoom.wakeControls.resume')}
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                 </button>
@@ -816,7 +816,7 @@ export default function CollaborationRoom() {
                         : 'bg-vellum text-ink border border-vellum-dark hover:bg-vellum-dark'
                     )}
                   >
-                    {type === 'file' ? 'Upload File' : 'Add Link'}
+                    {type === 'file' ? t('collaborationRoom.uploadFile') : t('collaborationRoom.addLink')}
                   </button>
                 ))}
               </div>
@@ -824,20 +824,20 @@ export default function CollaborationRoom() {
               <div className="space-y-3">
                 <div>
                   <label className="block font-body text-body-sm font-medium text-ink mb-1">
-                    Name
+                    {t('collaborationRoom.artifactName')}
                   </label>
                   <input
                     type="text"
                     value={artifactForm.name}
                     onChange={(e) => setArtifactForm((prev) => ({ ...prev, name: e.target.value }))}
-                    placeholder={artifactForm.type === 'file' ? 'e.g., dark-mode.css' : 'e.g., PR #128'}
+                    placeholder={artifactForm.type === 'file' ? t('collaborationRoom.artifactNamePlaceholderFile') : t('collaborationRoom.artifactNamePlaceholderLink')}
                     className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-md font-body text-body-md text-ink placeholder:text-ink-muted focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors"
                   />
                 </div>
 
                 <div>
                   <label className="block font-body text-body-sm font-medium text-ink mb-1">
-                    {artifactForm.type === 'file' ? 'File Path / Key' : 'URL'}
+                    {artifactForm.type === 'file' ? t('collaborationRoom.filePathLabel') : t('collaborationRoom.urlLabel')}
                   </label>
                   <input
                     type="text"
@@ -858,7 +858,7 @@ export default function CollaborationRoom() {
                       : 'bg-vellum-dark text-ink-muted cursor-not-allowed'
                   )}
                 >
-                  Add Artifact
+                  {t('collaborationRoom.context.addArtifact')}
                 </button>
               </div>
             </motion.div>

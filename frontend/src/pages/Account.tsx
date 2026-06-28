@@ -18,7 +18,7 @@ const quillIn = {
 export default function Account() {
   const { currentUser, logout } = useMockStore();
   const navigate = useNavigate();
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
 
   const handleSignOut = () => {
     logout();
@@ -35,7 +35,7 @@ export default function Account() {
         animate={{ opacity: 1, y: 0 }}
         className="flex items-center gap-3 mb-8"
       >
-        <PageTitle title="Account" subtitle="Manage your preferences and session" />
+        <PageTitle title={t('nav.account')} subtitle={t('account.subtitle')} />
       </motion.div>
 
       <div className="space-y-6">
@@ -44,7 +44,7 @@ export default function Account() {
           <VellumPanel>
             <div className="flex items-center gap-2 mb-4">
               <User size={18} className="text-[#C25E3A]" />
-              <h2 className="text-lg font-medium text-[#2A2318] font-[Fraunces]">Profile</h2>
+              <h2 className="text-lg font-medium text-[#2A2318] font-[Fraunces]">{t('account.profile')}</h2>
             </div>
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 rounded-full bg-[#EDE4CE] border-2 border-[#D4A843] flex items-center justify-center text-xl font-[Fraunces] text-[#C25E3A]">
@@ -52,11 +52,11 @@ export default function Account() {
               </div>
               <div>
                 <p className="font-medium text-[#2A2318] font-[Fraunces] text-lg">
-                  {currentUser?.name || 'Patron'}
+                  {currentUser?.name || t('account.patron')}
                 </p>
                 <p className="text-sm text-[#6B5E4E]">{currentUser?.email || 'patron@armarius.local'}</p>
                 <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium bg-[#C25E3A]/10 text-[#C25E3A] rounded-full">
-                  Patron
+                  {t('account.patron')}
                 </span>
               </div>
             </div>
@@ -68,9 +68,9 @@ export default function Account() {
           <VellumPanel>
             <div className="flex items-center gap-2 mb-4">
               <Globe size={18} className="text-[#C25E3A]" />
-              <h2 className="text-lg font-medium text-[#2A2318] font-[Fraunces]">Language / Ngôn ngữ</h2>
+              <h2 className="text-lg font-medium text-[#2A2318] font-[Fraunces]">{t('account.languageSection')}</h2>
             </div>
-            <p className="text-sm text-[#6B5E4E] mb-4">Choose your preferred language. This is the only place to change language.</p>
+            <p className="text-sm text-[#6B5E4E] mb-4">{t('account.languageDesc')}</p>
             <div className="flex gap-3">
               <button
                 onClick={() => i18n.changeLanguage('en')}
@@ -80,7 +80,7 @@ export default function Account() {
                     : 'border-[#E3D7BC] text-[#6B5E4E] hover:border-[#C25E3A]/40 hover:bg-[#EDE4CE]'
                 }`}
               >
-                English
+                {t('account.english')}
               </button>
               <button
                 onClick={() => i18n.changeLanguage('vi')}
@@ -90,7 +90,7 @@ export default function Account() {
                     : 'border-[#E3D7BC] text-[#6B5E4E] hover:border-[#C25E3A]/40 hover:bg-[#EDE4CE]'
                 }`}
               >
-                Tiếng Việt
+                {t('account.vietnamese')}
               </button>
             </div>
           </VellumPanel>
@@ -101,15 +101,15 @@ export default function Account() {
           <VellumPanel>
             <div className="flex items-center gap-2 mb-4">
               <LogOut size={18} className="text-[#C25E3A]" />
-              <h2 className="text-lg font-medium text-[#2A2318] font-[Fraunces]">Session</h2>
+              <h2 className="text-lg font-medium text-[#2A2318] font-[Fraunces]">{t('account.session')}</h2>
             </div>
-            <p className="text-sm text-[#6B5E4E] mb-4">Sign out of your current session.</p>
+            <p className="text-sm text-[#6B5E4E] mb-4">{t('account.sessionDesc')}</p>
             <button
               onClick={handleSignOut}
               className="px-5 py-2.5 text-sm font-medium text-[#C25E3A] border-2 border-[#C25E3A] rounded-lg hover:bg-[#C25E3A] hover:text-white transition-colors"
             >
               <span className="flex items-center gap-2">
-                <LogOut size={16} /> Sign Out
+                <LogOut size={16} /> {t('account.signOut')}
               </span>
             </button>
           </VellumPanel>
@@ -120,17 +120,17 @@ export default function Account() {
           <VellumPanel>
             <div className="flex items-center gap-2 mb-4">
               <BookOpen size={18} className="text-[#D4A843]" />
-              <h2 className="text-lg font-medium text-[#2A2318] font-[Fraunces]">About</h2>
+              <h2 className="text-lg font-medium text-[#2A2318] font-[Fraunces]">{t('account.about')}</h2>
             </div>
             <div className="flex items-center gap-3">
               <span className="text-2xl text-[#D4A843]">&#9670;</span>
               <div>
-                <p className="font-[Fraunces] text-xl text-[#2A2318]">Armarius</p>
+                <p className="font-[Fraunces] text-xl text-[#2A2318]">{t('app.name')}</p>
                 <p className="font-mono text-xs text-[#A89880] mt-0.5">A.R.MARIUS — v1.0.0</p>
               </div>
             </div>
             <p className="text-sm text-[#6B5E4E] mt-3 italic">
-              &ldquo;You task. They collaborate. You trace.&rdquo;
+              &ldquo;{t('app.tagline')}&rdquo;
             </p>
           </VellumPanel>
         </motion.div>

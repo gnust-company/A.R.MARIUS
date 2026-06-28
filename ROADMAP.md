@@ -452,3 +452,18 @@ Follow-up fixes after direct UI review (every visible string now bilingual; UX f
 - **FE FREEZE.** The mock-data SPA is the frozen UX spec; BE-1…BE-7 implement to match it. Carry-forward
   to BE-7: i18n (#2) + real loading/error states. BE track **not started** per owner.
 - **Verify** — `tsc --noEmit` clean; `vite build` clean. Pushed to `main`.
+
+### 2026-06-28 — i18n pass complete (issue #2 resolved)
+> Owner picked "close i18n first" over starting BE. The deferred full EN/VI pass is now done; the FE
+> stays frozen on everything else.
+- **All 6 hardcoded surfaces wired** — Workspaces, Directory, Skills, SkillEditor, Inbox, Account now
+  call `t()`; the ~25 CollaborationRoom leftovers (LIVE, status options, Add-Artifact modal, wake-control
+  titles, empty states) are translated too. No user-facing English remains on the in-app surfaces.
+- **Dictionaries grew 224 → 351 leaf keys**, EN/VI **key-for-key in sync** (parity-checked, 0 asymmetry).
+  New `account` + `inbox` namespaces; `directory`/`skills` extended (status/adapter/role labels, editor).
+  Status labels reuse `tasks.status.*`. Adapter/role **values stay English** (persisted data); only
+  labels translate.
+- **Intentionally still EN:** Landing (marketing), the generated enrollment-prompt payload (machine text),
+  `A.R.MARIUS — v1.0.0` version string, the `WA` badge abbreviation.
+- **Verify** — 165 distinct static `t()` keys all resolve; dynamic key prefixes spot-checked; `tsc
+  --noEmit` clean; `vite build` clean. **FE remains frozen.** BE track still **not started** per owner.

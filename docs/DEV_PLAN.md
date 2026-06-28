@@ -9,7 +9,8 @@
 > Vite 7 / Tailwind 3 / shadcn** (one `src/store/mockStore.ts` seam). All UC1–UC8 surfaces exist; the
 > simulated Hybrid SSE (liveness decay + per-task live trace) and the setup→active gate are wired;
 > reduced-motion is honored app-wide. FE-3 was trimmed (most of it moot in a pure mock or already
-> done) — the only carry-forward is completing EN/VI on 6 surfaces (**issue #2**). BE track
+> done); the one remaining gap — full EN/VI coverage (**issue #2**) — is now **complete** (2026-06-28):
+> all in-app surfaces call `t()`, dictionaries are 351/351 EN↔VI in sync. BE track
 > (BE-1…BE-7) **not started** per owner.
 
 ## 1. New ordering and why
@@ -110,19 +111,22 @@ pure mock**, so it was trimmed rather than run as a full phase:
 - **Motion / reduced-motion — done.** Global `<MotionConfig reducedMotion="user">` at the app root
   makes every framer-motion animation honor the OS "reduce motion" setting; Landing already gated its
   cinematic scroll; the simulator + live-trace stream honor it too.
-- **i18n — partial, remainder deferred.** EN/VI dictionaries are in sync (224/224) and the 6 core flow
-  screens are bilingual, but 6 surfaces (Workspaces, Directory, Skills, SkillEditor, Inbox, Account) +
-  ~25 CollaborationRoom leftovers are still hardcoded EN. The full pass is tracked in **issue #2**
-  (owner chose to freeze now, EN-primary). Landing stays EN (marketing).
+- **i18n — complete (2026-06-28, issue #2 resolved).** Every in-app surface now calls `t()`: the 6
+  formerly-hardcoded screens (Workspaces, Directory, Skills, SkillEditor, Inbox, Account) plus the ~25
+  CollaborationRoom leftovers. Dictionaries grew **224 → 351 leaf keys**, EN/VI **key-for-key in sync**
+  (parity-checked). New `account` + `inbox` namespaces; `directory`/`skills` extended; status labels
+  reuse `tasks.status.*`. Adapter/role **values stay English** (persisted data) — only labels translate.
+  Still EN by design: Landing (marketing), the generated enrollment-prompt payload, the version string.
 - **Loading / error states — moot now.** The mock store is synchronous; nothing loads or fails. Real
   loading/error/empty states land with **BE-7** when the HTTP seam exists. Empty-state CTAs already present.
 - **Focus rings / responsive — adequate.** Inputs have terracotta focus rings; layout accepted by owner.
 
-**DoD (revised):** reduced-motion honored app-wide; core flows bilingual; no console errors; remaining
-i18n captured as a tracked issue. **Met.**
+**DoD (revised):** reduced-motion honored app-wide; **every in-app surface bilingual (EN/VI in sync)**;
+no console errors; `tsc` + `vite build` clean. **Met.**
 
 > **FE freeze (2026-06-28).** The mock-data app is the frozen UX spec. BE phases implement to match it.
-> Carry-forward to BE-7: complete i18n (#2), real loading/error states once data is async.
+> i18n (#2) is now done; the only remaining carry-forward to BE-7 is real loading/error states once
+> data is async.
 
 ## 4. Track BE — Clean Architecture + TDD (AFTER FE freeze)
 
