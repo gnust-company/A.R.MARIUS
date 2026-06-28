@@ -228,14 +228,14 @@ function ChatMessage({
   );
 }
 
-function formatTimeAgo(date: Date, _t: (key: string) => string): string {
+function formatTimeAgo(date: Date, t: (key: string, opts?: Record<string, unknown>) => string): string {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return 'Just now';
+  if (seconds < 60) return t('common.justNow');
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return t('common.minutesAgo', { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+  if (hours < 24) return t('common.hoursAgo', { count: hours });
+  return t('common.daysAgo', { count: Math.floor(hours / 24) });
 }
 
 // ─── Task Preview Pane ───────────────────────────────────────────────────────

@@ -373,7 +373,7 @@ export default function ProjectBoard() {
             <button
               onClick={() => {}}
               className="p-0.5 rounded text-ink-muted hover:text-ink transition-colors"
-              aria-label="Dismiss"
+              aria-label={t('common.dismiss')}
             >
               <X className="w-4 h-4" />
             </button>
@@ -493,6 +493,7 @@ function TabLink({
   active?: boolean;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation();
   if (disabled) {
     return (
       <span
@@ -500,7 +501,7 @@ function TabLink({
           'flex items-center px-4 py-2.5 font-body text-body-md font-medium text-ink-muted',
           'border-b-2 border-transparent cursor-not-allowed'
         )}
-        title="Activate project to commission tasks"
+        title={t('board.commissionLocked')}
       >
         {children}
       </span>

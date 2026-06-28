@@ -2,10 +2,21 @@
 import { useLocation } from 'react-router';
 import { motion } from 'framer-motion';
 import { Search, Wifi, WifiOff } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useMockStore } from '@/store/mockStore';
 import { cn } from '@/lib/utils';
 
+// Known route segments → i18n nav keys (project/workspace names stay as data)
+const SEGMENT_KEYS: Record<string, string> = {
+  projects: 'nav.projects',
+  directory: 'nav.directory',
+  skills: 'nav.skills',
+  inbox: 'nav.inbox',
+  account: 'nav.account',
+};
+
 function useBreadcrumbs() {
+  const { t } = useTranslation();
   const location = useLocation();
   const workspaces = useMockStore((s) => s.workspaces);
   const projects = useMockStore((s) => s.projects);
@@ -16,15 +27,15 @@ function useBreadcrumbs() {
 
   if (segments.length === 0 || location.pathname === '/') {
     const ws = workspaces.find((w) => w.id === activeWorkspaceId);
-    crumbs.push({ label: ws?.name || 'Workspace' });
-    crumbs.push({ label: 'Projects' });
+    crumbs.push({ label: ws?.name || t('nav.workspace') });
+    crumbs.push({ label: t('nav.projects') });
     return crumbs;
   }
 
   // Add workspace name
   if (activeWorkspaceId) {
     const ws = workspaces.find((w) => w.id === activeWorkspaceId);
-    crumbs.push({ label: ws?.name || 'Workspace', path: '/workspaces' });
+    crumbs.push({ label: ws?.name || t('nav.workspace'), path: '/workspaces' });
   }
 
   segments.forEach((seg) => {
@@ -35,7 +46,11 @@ function useBreadcrumbs() {
       return;
     }
     if (seg === 'new') {
-      crumbs.push({ label: 'New' });
+      crumbs.push({ label: t('nav.new') });
+      return;
+    }
+    if (SEGMENT_KEYS[seg]) {
+      crumbs.push({ label: t(SEGMENT_KEYS[seg]) });
       return;
     }
     const label = seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' ');
@@ -46,6 +61,7 @@ function useBreadcrumbs() {
 }
 
 export default function TopBar() {
+  const { t } = useTranslation();
   const sseConnected = useMockStore((s) => s.sseConnected);
   const currentUser = useMockStore((s) => s.currentUser);
   const crumbs = useBreadcrumbs();
@@ -84,12 +100,12 @@ export default function TopBar() {
           {sseConnected ? (
             <>
               <Wifi className="w-3 h-3" />
-              <span>Live</span>
+              <span>{t('topbar.live')}</span>
             </>
           ) : (
             <>
               <WifiOff className="w-3 h-3" />
-              <span>Reconnecting</span>
+              <span>{t('topbar.reconnecting')}</span>
             </>
           )}
         </motion.div>
@@ -97,7 +113,7 @@ export default function TopBar() {
         {/* Search */}
         <button
           className="p-2 rounded-md text-ink-muted hover:text-terracotta hover:bg-vellum-deep transition-colors"
-          aria-label="Search"
+          aria-label={t('common.search')}
         >
           <Search className="w-[18px] h-[18px]" />
         </button>

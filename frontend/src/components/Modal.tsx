@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 interface ModalProps {
@@ -15,6 +16,7 @@ interface ModalProps {
 }
 
 export default function Modal({ isOpen, onClose, title, children, footer, maxWidth = 'max-w-lg', className }: ModalProps) {
+  const { t } = useTranslation();
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -67,7 +69,7 @@ export default function Modal({ isOpen, onClose, title, children, footer, maxWid
                 <button
                   onClick={onClose}
                   className="p-1 rounded-md text-ink-muted hover:text-ink hover:bg-vellum-dark transition-colors"
-                  aria-label="Close dialog"
+                  aria-label={t('common.closeDialog')}
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -79,7 +81,7 @@ export default function Modal({ isOpen, onClose, title, children, footer, maxWid
               <button
                 onClick={onClose}
                 className="absolute top-4 right-4 p-1 rounded-md text-ink-muted hover:text-ink hover:bg-vellum-dark transition-colors"
-                aria-label="Close dialog"
+                aria-label={t('common.closeDialog')}
               >
                 <X className="w-5 h-5" />
               </button>

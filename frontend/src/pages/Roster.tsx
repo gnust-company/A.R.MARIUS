@@ -333,7 +333,7 @@ export default function Roster() {
                   isActive ? 'text-success' : isSetup ? 'text-warning' : 'text-ink-muted'
                 )}
               >
-                {isActive ? 'Project ACTIVE' : 'Project SETUP'}
+                {isActive ? t('projects.status.active') : t('projects.status.setup')}
               </span>
             </p>
             <span className="font-mono text-mono-md text-ink">{Math.round(progressPercent)}%</span>
@@ -414,10 +414,10 @@ export default function Roster() {
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-display text-display-sm text-ink">
-                          {group.roleLabelDisplayDisplay}
+                          {group.roleLabel}
                         </h3>
                         <span className="font-mono text-mono-sm text-ink-muted">
-                          {group.seats.length} seats
+                          {t('roster.seatsUnit', { count: group.seats.length })}
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-1.5 mb-1">
@@ -459,7 +459,7 @@ export default function Roster() {
                               onGrant={() =>
                                 setGrantModalRole({
                                   roleKey: seat.role,
-                                  roleLabel: group.roleLabelDisplayDisplay,
+                                  roleLabel: group.roleLabel,
                                   skillsRequired: [],
                                 })
                               }

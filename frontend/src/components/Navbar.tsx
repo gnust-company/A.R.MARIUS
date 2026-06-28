@@ -14,23 +14,25 @@ import {
   ChevronDown,
   Check,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useMockStore } from '@/store/mockStore';
 import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
-  { path: '/projects', label: 'Projects', icon: LayoutDashboard },
-  { path: '/directory', label: 'Agents', icon: Users },
-  { path: '/skills', label: 'Skills', icon: Wrench },
-  { path: '/inbox', label: 'Patron Inbox', icon: Inbox, badge: true },
+  { path: '/projects', labelKey: 'nav.projects', icon: LayoutDashboard },
+  { path: '/directory', labelKey: 'nav.directory', icon: Users },
+  { path: '/skills', labelKey: 'nav.skills', icon: Wrench },
+  { path: '/inbox', labelKey: 'nav.inbox', icon: Inbox, badge: true },
 ];
 
 const BOTTOM_ITEMS = [
-  { path: '/account', label: 'Account', icon: Settings },
-  { path: '/workspaces', label: 'Atelier', icon: Palette },
+  { path: '/account', labelKey: 'nav.account', icon: Settings },
+  { path: '/workspaces', labelKey: 'nav.atelier', icon: Palette },
 ];
 
 /** Workspace switcher — a droplist below the brand that swaps the active workspace. */
 function WorkspaceSwitcher() {
+  const { t } = useTranslation();
   const workspaces = useMockStore((s) => s.workspaces);
   const activeWorkspaceId = useMockStore((s) => s.activeWorkspaceId);
   const setActiveWorkspace = useMockStore((s) => s.setActiveWorkspace);
@@ -50,7 +52,7 @@ function WorkspaceSwitcher() {
   return (
     <div ref={ref} className="relative px-3 pt-3">
       <p className="font-body text-body-xs text-ink-muted px-1 mb-1.5 uppercase tracking-[0.08em]">
-        Workspace
+        {t('nav.workspace')}
       </p>
       <button
         onClick={() => setOpen((v) => !v)}
@@ -63,7 +65,7 @@ function WorkspaceSwitcher() {
         <span className="flex items-center gap-2 min-w-0">
           <span className="w-2 h-2 rounded-full bg-terracotta shrink-0" />
           <span className="font-display text-body-md font-semibold text-ink truncate">
-            {active?.name || 'Select workspace'}
+            {active?.name || t('nav.selectWorkspace')}
           </span>
         </span>
         <ChevronDown
@@ -113,6 +115,7 @@ function WorkspaceSwitcher() {
 }
 
 export default function Navbar() {
+  const { t } = useTranslation();
   const location = useLocation();
   const collapsed = useMockStore((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useMockStore((s) => s.setSidebarCollapsed);
@@ -176,7 +179,7 @@ export default function Navbar() {
           'hover:text-terracotta hover:border-gold-muted hover:bg-vellum-deep',
           'shadow-sm transition-colors'
         )}
-        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        aria-label={collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')}
       >
         {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
       </button>
@@ -204,14 +207,14 @@ export default function Navbar() {
                     : 'text-ink-light hover:bg-vellum-deep hover:text-ink border-l-[3px] border-transparent',
                   collapsed && 'justify-center px-2'
                 )}
-                title={collapsed ? item.label : undefined}
+                title={collapsed ? t(item.labelKey) : undefined}
               >
                 <item.icon
                   className={cn('w-[18px] h-[18px] flex-shrink-0', active ? 'text-terracotta' : 'text-ink-light')}
                 />
                 {!collapsed && (
                   <span className="truncate">
-                    {item.label}
+                    {t(item.labelKey)}
                     {item.badge && <span className="ml-2 inline-flex w-2 h-2 rounded-full bg-terracotta" />}
                   </span>
                 )}
@@ -241,12 +244,12 @@ export default function Navbar() {
                     : 'text-ink-light hover:bg-vellum-deep hover:text-ink border-l-[3px] border-transparent',
                   collapsed && 'justify-center px-2'
                 )}
-                title={collapsed ? item.label : undefined}
+                title={collapsed ? t(item.labelKey) : undefined}
               >
                 <item.icon
                   className={cn('w-[18px] h-[18px] flex-shrink-0', active ? 'text-terracotta' : 'text-ink-light')}
                 />
-                {!collapsed && <span>{item.label}</span>}
+                {!collapsed && <span>{t(item.labelKey)}</span>}
               </Link>
             </motion.div>
           );
