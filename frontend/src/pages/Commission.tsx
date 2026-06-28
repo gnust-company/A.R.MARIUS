@@ -641,7 +641,7 @@ export default function Commission() {
       description: draftTask.description,
       priority: draftTask.priority,
       projectId: projectId || 'p1',
-      status: 'pending',
+      status: 'todo',
       identifier: draftTask.identifier,
       definitionOfDone: draftTask.definitionOfDone,
       checklist: draftTask.checklist.map((item, i) => ({

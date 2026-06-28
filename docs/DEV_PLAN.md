@@ -1,9 +1,15 @@
 # Armarius — Development Plan
 
-> Status: **v3 — FE-first mock-data → BE Clean-Architecture TDD** (2026-06-27). Supersedes v2
-> (BE-centric A–G). Source of truth for behavior: [ARCHITECTURE.md](./ARCHITECTURE.md) /
-> [HLD.md](./HLD.md) / [LLD.md](./LLD.md) / [API_CONTRACT.md](./API_CONTRACT.md). This plan is
-> **pending owner approval** before any code or commit.
+> Status: **v3 — FE-first mock-data → BE Clean-Architecture TDD** (2026-06-27; FE in progress as of
+> 2026-06-28). Supersedes v2 (BE-centric A–G). Source of truth for behavior:
+> [ARCHITECTURE.md](./ARCHITECTURE.md) / [HLD.md](./HLD.md) / [LLD.md](./LLD.md) /
+> [API_CONTRACT.md](./API_CONTRACT.md).
+>
+> **Where we are (2026-06-28):** the FE was rebuilt as a pure mock SPA on **React 19 / Vite 7 /
+> Tailwind 3 / shadcn** (one `src/store/mockStore.ts` seam). All UC1–UC8 surfaces exist; the
+> simulated Hybrid SSE (liveness decay + per-task live trace) and the setup→active gate are now
+> wired. Remaining before **FE freeze**: full EN/VI string audit, reduced-motion/a11y pass, and a
+> states/QA sweep (FE-3). BE track (BE-1…BE-7) **not started** per owner.
 
 ## 1. New ordering and why
 
@@ -32,8 +38,9 @@ Only the build *sequence* and the *visual layer* change.
 2. **Aesthetic** — warm editorial **Scriptorium** (parchment + terracotta + manuscript gold,
    classical serif: Fraunces / Spectral / UnifrakturMaguntia-initial), matched to the reference image.
    (Cyberpunk was tried and set aside.)
-3. **FE stack kept** — React 18 + Vite + TS + Tailwind v4 + React Router stay; only the design system,
-   components, and theme are re-tuned. (A framework swap was rejected — the current structure is clean.)
+3. **FE stack** — rebuilt 2026-06-28 on **React 19 + Vite 7 + TS + Tailwind 3 + shadcn/radix +
+   React Router**. (The original plan kept React 18 + Tailwind v4; the owner rebuilt fresh instead.
+   Still a clean, mock-swappable structure: a single `mockStore.ts` is the only data source.)
 4. **Mock fidelity** — fully interactive: every flow clickable, real-time behaviors *simulated* (fake
    SSE streams, scripted liveness decay, scripted leader replies) so the demo feels alive.
 5. **BE method** — Clean Architecture + TDD (red→green→refactor per phase); domain pure; Alembic
@@ -67,6 +74,10 @@ data layer is the contract the BE will later satisfy.
 - A `MOCK` on/off switch so the same screens later bind to the real API unchanged.
 **DoD:** app boots with zero backend; demo seed visible; liveness dots decay live; a task trace streams
 fake run events; `MOCK=off` still compiles.
+**Status — done (2026-06-28):** pure mock store seeded per §7; `useMockSimulator()` decays liveness on
+the workspace channel; the Collaboration Room streams per-task `run.*` trace events; setup→active gate
+recomputes on seat grant. (No `MOCK` *toggle* yet — the app is mock-only; the toggle/HTTP seam lands
+with BE-7.)
 
 ### FE-2 — Rebuild every surface (Scriptorium styling + motion), in 5 sub-phases
 Old Scriptorium components are re-tuned under the new system. Each sub-phase is one commit.

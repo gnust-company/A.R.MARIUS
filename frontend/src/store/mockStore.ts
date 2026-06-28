@@ -59,15 +59,31 @@ export interface TaskArtifact {
   path?: string
 }
 
+export type TraceEventType =
+  | 'run.delta'
+  | 'run.tool'
+  | 'run.usage'
+  | 'run.complete'
+  | 'run.error'
+  | 'agent.comment'
+  | 'agent.status'
+  // legacy shapes kept so older fixtures still type-check
+  | 'thought'
+  | 'tool_call'
+  | 'tool_result'
+  | 'message'
+  | 'comment'
+  | 'status_change'
+
 export interface TraceEvent {
   id: string
   taskId: string
-  type: 'thought' | 'tool_call' | 'tool_result' | 'message' | 'comment' | 'status_change'
+  type: TraceEventType
   agentId?: string
   content: string
   timestamp: string
   model?: string
-  tokens?: { input?: number; output?: number }
+  tokens?: { input?: number; output?: number; used?: number; total?: number; prompt?: number; completion?: number }
   toolName?: string
   args?: Record<string, unknown>
 }
@@ -76,6 +92,7 @@ export interface TaskComment {
   id: string
   taskId: string
   authorId: string
+  authorName?: string
   content: string
   timestamp: string
 }
@@ -204,8 +221,13 @@ interface MockStoreState {
   setCurrentUser: (user: User | null) => void
   logout: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
+  setSseConnected: (connected: boolean) => void
+  /** Simulated workspace control-plane SSE — cycle one agent's liveness per tick. */
+  simulateLivenessTick: () => void
   updateTask: (taskId: string, updater: SetStateAction<Task>) => void
-  addComment: (taskId: string, comment: TaskComment) => void
+  addComment: (taskId: string, comment: Partial<TaskComment> & { authorId: string; content: string }) => void
+  /** Simulated per-task trace SSE — append one streamed run event. */
+  appendTrace: (taskId: string, event: Partial<TraceEvent> & { type: TraceEvent['type']; content: string }) => void
   publishArtifact: (taskId: string, artifact: TaskArtifact) => void
   createSkill: (skill: Skill) => void
   updateSkill: (skillId: string, skill: Partial<Skill>) => void
@@ -415,7 +437,13 @@ const dummyTasks: Task[] = [
     artifacts: [
       { id: 'a2', taskId: 't2', type: 'code', title: 'ThemeContext.tsx', name: 'ThemeContext.tsx' },
     ],
-    trace: [],
+    trace: [
+      { id: 'tr1', taskId: 't2', type: 'run.delta', agentId: 'm2', model: 'gpt-4o', content: 'Reviewing the existing theme handling. The old approach toggles a class on <body>; I will replace it with a ThemeContext + CSS custom properties so it works across every route.', timestamp: '2026-06-22T13:55:02Z' },
+      { id: 'tr2', taskId: 't2', type: 'run.tool', agentId: 'm2', toolName: 'read_file', content: 'Read src/theme/legacy-theme.js', args: { path: 'src/theme/legacy-theme.js' }, timestamp: '2026-06-22T13:55:08Z' },
+      { id: 'tr3', taskId: 't2', type: 'run.tool', agentId: 'm2', toolName: 'write_file', content: 'Created src/theme/ThemeContext.tsx with a provider + useTheme() hook persisting to localStorage.', args: { path: 'src/theme/ThemeContext.tsx', bytes: 1840 }, timestamp: '2026-06-22T13:56:10Z' },
+      { id: 'tr4', taskId: 't2', type: 'run.delta', agentId: 'm2', model: 'gpt-4o', content: 'Wiring the toggle switch into the settings header and defaulting to the system preference via prefers-color-scheme.', timestamp: '2026-06-22T13:56:44Z' },
+      { id: 'tr5', taskId: 't2', type: 'run.usage', agentId: 'm2', model: 'gpt-4o', content: 'turn usage', tokens: { used: 3120, total: 128000, prompt: 2440, completion: 680 }, timestamp: '2026-06-22T13:56:45Z' },
+    ],
     participants: [
       { id: 'm2', name: 'Vega', role: 'Frontend Developer' },
       { id: 'm4', name: 'Lyra', role: 'Designer' },
@@ -439,7 +467,10 @@ const dummyTasks: Task[] = [
     ],
     comments: [],
     artifacts: [],
-    trace: [],
+    trace: [
+      { id: 'tr6', taskId: 't3', type: 'run.delta', agentId: 'm4', model: 'gpt-4o', content: 'Designing the responsive breakpoints: a slide-over drawer under 768px and a persistent rail above it. Checking the active-route indicator next.', timestamp: '2026-06-22T15:10:00Z' },
+      { id: 'tr7', taskId: 't3', type: 'run.tool', agentId: 'm4', toolName: 'write_file', content: 'Updated src/components/Sidebar.tsx with the collapsible drawer.', args: { path: 'src/components/Sidebar.tsx', bytes: 2210 }, timestamp: '2026-06-22T15:11:20Z' },
+    ],
     participants: [
       { id: 'm4', name: 'Lyra', role: 'Designer' },
       { id: 'm2', name: 'Vega', role: 'Frontend Developer' },
@@ -497,7 +528,11 @@ const dummyTasks: Task[] = [
       { id: 'a5', taskId: 't5', type: 'code', title: 'preferences.routes.ts', name: 'preferences.routes.ts' },
       { id: 'a6', taskId: 't5', type: 'code', title: 'preferences.test.ts', name: 'preferences.test.ts' },
     ],
-    trace: [],
+    trace: [
+      { id: 'tr8', taskId: 't5', type: 'run.delta', agentId: 'm3', model: 'gpt-4o', content: 'Both endpoints are implemented and validated against the JSON schema. Now adding integration tests to push coverage above 90%.', timestamp: '2026-06-22T16:02:00Z' },
+      { id: 'tr9', taskId: 't5', type: 'run.tool', agentId: 'm3', toolName: 'run_tests', content: 'pytest tests/preferences — 11 passed, coverage 87%.', args: { suite: 'preferences', passed: 11, coverage: 0.87 }, timestamp: '2026-06-22T16:03:30Z' },
+      { id: 'tr10', taskId: 't5', type: 'run.usage', agentId: 'm3', model: 'gpt-4o', content: 'turn usage', tokens: { used: 5400, total: 128000, prompt: 4100, completion: 1300 }, timestamp: '2026-06-22T16:03:31Z' },
+    ],
     participants: [
       { id: 'm3', name: 'Orion', role: 'Backend Developer' },
     ],
@@ -600,9 +635,11 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   approveAgent: (mariusId: string) => {
     const state = get()
     const updated = state.mariuses.map((m) =>
-      m.id === mariusId ? { ...m, status: 'idle' as AgentStatus } : m
+      m.id === mariusId ? { ...m, status: 'online' as AgentStatus, lastSeen: new Date().toISOString() } : m
     )
     set({ mariuses: updated })
+    // Simulated workspace SSE: approving an agent flips it ONLINE.
+    get().emitEvent({ type: 'marius.online', payload: { mariusId } })
   },
 
   emitEvent: (event) => {
@@ -619,6 +656,34 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
 
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
 
+  setSseConnected: (connected) => set({ sseConnected: connected }),
+
+  // Simulated Hybrid SSE — workspace control-plane channel. Each tick decays one
+  // agent's liveness ONLINE → idle(checking) → offline, occasionally reviving it,
+  // so the directory dots feel alive without a backend.
+  simulateLivenessTick: () => {
+    const state = get()
+    // Only cycle agents that are part of the workspace (skip invited/pending/revoked).
+    const cyclable = state.mariuses.filter(
+      (m) => !['invited', 'pending', 'revoked'].includes(m.status)
+    )
+    if (cyclable.length === 0) return
+    const target = cyclable[Math.floor(Math.random() * cyclable.length)]
+    const decay: Record<string, AgentStatus> = {
+      online: 'idle',
+      working: 'online',
+      idle: 'offline',
+      offline: 'online',
+    }
+    const next = decay[target.status] ?? 'online'
+    set({
+      mariuses: state.mariuses.map((m) =>
+        m.id === target.id ? { ...m, status: next, lastSeen: new Date().toISOString() } : m
+      ),
+    })
+    get().emitEvent({ type: 'marius.liveness', payload: { mariusId: target.id, status: next } })
+  },
+
   logout: () => set({ currentUser: null }),
 
   updateTask: (taskId: string, updater: SetStateAction<Task>) => {
@@ -631,11 +696,40 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     set({ tasks: updatedTasks })
   },
 
-  addComment: (taskId: string, comment: TaskComment) => {
+  addComment: (taskId, comment) => {
     const state = get()
+    const full: TaskComment = {
+      id: comment.id ?? `cm_${Date.now()}`,
+      taskId,
+      authorId: comment.authorId,
+      authorName: comment.authorName,
+      content: comment.content,
+      timestamp: comment.timestamp ?? new Date().toISOString(),
+    }
     const updatedTasks = state.tasks.map((t) => {
       if (t.id !== taskId) return t
-      return { ...t, comments: [...(t.comments || []), comment] }
+      return { ...t, comments: [...(t.comments || []), full] }
+    })
+    set({ tasks: updatedTasks })
+  },
+
+  appendTrace: (taskId, event) => {
+    const state = get()
+    const full: TraceEvent = {
+      id: event.id ?? `tr_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      taskId,
+      type: event.type,
+      agentId: event.agentId,
+      content: event.content,
+      timestamp: event.timestamp ?? new Date().toISOString(),
+      model: event.model,
+      tokens: event.tokens,
+      toolName: event.toolName,
+      args: event.args,
+    }
+    const updatedTasks = state.tasks.map((t) => {
+      if (t.id !== taskId) return t
+      return { ...t, trace: [...(t.trace || []), full] }
     })
     set({ tasks: updatedTasks })
   },
@@ -691,10 +785,18 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
         updatedSeats[idx] = { ...firstEmpty, mariusId }
       }
     }
+    // Recompute the setup→active gate: a project goes active once every seat is filled.
+    const allSeated = updatedSeats.length > 0 && updatedSeats.every((s) => s.mariusId)
+    const nextStatus = allSeated && project.status === 'setup' ? 'active' : project.status
+    const becameActive = nextStatus === 'active' && project.status === 'setup'
     const updatedProjects = state.projects.map((p) =>
-      p.id === projectId ? { ...p, seats: updatedSeats } : p
+      p.id === projectId ? { ...p, seats: updatedSeats, status: nextStatus } : p
     )
     set({ projects: updatedProjects })
+    if (becameActive) {
+      // Simulated workspace SSE: roster complete → project unlocks Commission.
+      get().emitEvent({ type: 'project.active', payload: { projectId } })
+    }
   },
 
   createTask: (task) => {

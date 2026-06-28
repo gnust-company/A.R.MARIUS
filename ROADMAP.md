@@ -20,7 +20,7 @@
 |---|---|---|
 | Build order | **FE-first (mock data) → BE** | Lock UX before any backend cost; the mock app is the spec the BE implements to |
 | Aesthetic | **Scriptorium (refined)** — warm parchment + terracotta + manuscript gold, classical serif (Fraunces/Spectral) | Re-tuned toward the owner's reference image; cyberpunk was tried and set aside |
-| FE stack | **Keep React 18 + Vite + TS + Tailwind v4 + Router** | Current FE is cleanly structured + mock-swappable; only the design system is rebuilt |
+| FE stack | **React 19 + Vite 7 + TS + Tailwind 3 + shadcn/radix + Router** (rebuilt 2026-06-28) | The mock SPA was rebuilt fresh on this stack; cleanly structured + mock-swappable (single `mockStore.ts` seam). Earlier plan said "keep React 18 + Tailwind v4"; superseded by the rebuild. |
 | Mock fidelity | **Fully interactive, simulated real-time** | Every flow clickable; fake SSE, scripted liveness decay + leader replies |
 | BE method | **Clean Architecture + strict TDD** | Domain pure; red→green→refactor per phase; required by owner |
 | Architecture | **Unchanged** (enroll-and-wait, system-only seats, leader commission, Hybrid SSE, probe liveness, file\|link gate) | Already approved in ARCHITECTURE/HLD/LLD/API_CONTRACT |
@@ -391,3 +391,47 @@ Follow-up fixes after direct UI review (every visible string now bilingual; UX f
   render them now). `prefers-reduced-motion`, focus rings, loading/empty/error states in place.
 - **Verify** — `tsc --noEmit` clean; `vite build` clean (52 modules). Review screenshots in
   `docs/preview/04–12` (untracked). **FE freeze.** BE track (BE-1…BE-7) **not started** per owner.
+
+### 2026-06-28 — FE rebuilt as a pure mock SPA (React 19 / Vite 7 / Tailwind 3 / shadcn) + docker compose (`1345088`)
+> The owner re-implemented the whole frontend on a new stack (the cebeec9 freeze above was the
+> *previous* React 18 / Tailwind v4 build). It is now a **pure mock SPA** — no `fetch`, no
+> `import.meta.env`, no API client; one in-memory **`src/store/mockStore.ts`** (zustand) is the only
+> data source and the single swap-seam the BE will later satisfy.
+- **Stack** — React 19 + Vite 7 + TypeScript 5.9 + Tailwind CSS 3 + shadcn/radix-ui + framer-motion +
+  gsap + react-router (BrowserRouter). Every UC1–UC8 surface present: Landing, Workspaces, Projects,
+  CreateProject, ProjectBoard, Roster, Commission, Directory, Skills + SkillEditor, Inbox, Account,
+  CollaborationRoom.
+- **Docker** — root `docker-compose.yml` builds the FE by default (Node 22 → nginx, SPA fallback,
+  no API proxy while mock); `db` + `backend` gated behind `profiles: ["backend"]`. Fixes baked in:
+  regenerated `package-lock.json` off the public registry (was pinned to a dead build-farm mirror),
+  `network: host` on the build (this host's BuildKit has no DNS), and `Cache-Control: no-cache` on
+  `index.html` (the "/`→`/workspaces` phantom redirect" was a stale-bundle cache illusion, not a redirect).
+- **Branding** — gilt "A" of ARMARIUS as the browser favicon; the workspace launcher + in-app logo use
+  a single wordmark (gilt initial **A** + `rmarius`), no duplicated/black A.
+- **UI polish** (`6f9b138`) — illuminated **PageTitle** (gilt first letter inline, 56px Fraunces;
+  replaces the DropCap + `<h1>` first-letter duplication) across every surface; **sidebar redesign**
+  (brand row aligned to the TopBar, workspace-switcher droplist, floating collapse toggle, agent
+  mini-bar removed, collapse no longer leaves a header gap — margin tracks `sidebarCollapsed`);
+  project cards put title + status chip on one row.
+- **Verify** — `tsc --noEmit` clean; `vite build` clean. Pushed to `main`.
+
+### 2026-06-28 — FE-1 simulated Hybrid SSE actually wired (liveness decay · live trace · setup→active gate)
+> The rebuilt SPA had every surface but the **simulated real-time layer was inert**: `sseConnected`
+> was always false, agent liveness was static, and the signature **"You trace"** pane showed the empty
+> state on every task (all seed `trace: []`). This change makes the mock feel alive — the FE-1 DoD.
+- **Workspace control-plane channel** — new `useMockSimulator()` hook (mounted once in `App`) marks the
+  SSE link connected and, on a ~4.5s tick, decays one agent's liveness ONLINE → idle(checking) →
+  offline → back, emitting `marius.liveness` store events (honours `prefers-reduced-motion`). The
+  TopBar "connected" badge and Directory dots now move on their own.
+- **Per-task trace channel** — the Collaboration Room streams scripted `run.delta`/`run.tool`/`run.usage`
+  events into the open `in_progress` task while the wake control is "running" (bounded, pause/stop aware).
+  Seeded the three in-progress tasks with realistic trace history so the pane is populated on first view.
+- **setup→active gate (F2)** — `grantSeat` now recomputes status: a `setup` project flips to **active**
+  once every seat is filled, emitting `project.active` (this unlocks Commission — previously the seats
+  filled but the project never activated).
+- **Correctness** — `approveAgent` now flips an agent **ONLINE** (+ `marius.online` event) per UC2 (was
+  `idle`); Commission confirm creates the task as **`todo`** (was `pending`, which fell off the board);
+  `addComment`/`appendTrace` fill `id`/`timestamp` so thread timestamps render (fixes Invalid Date).
+- **Store contract** — added `setSseConnected`, `simulateLivenessTick`, `appendTrace`; broadened
+  `TraceEvent` to the streamed `run.*` shape. Still a pure mock — the single `mockStore.ts` seam.
+- **Verify** — `tsc --noEmit` clean; `vite build` clean. Pushed to `main`.

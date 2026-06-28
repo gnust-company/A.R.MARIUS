@@ -13,8 +13,12 @@ import SkillEditor from './pages/SkillEditor'
 import Inbox from './pages/Inbox'
 import Account from './pages/Account'
 import CollaborationRoom from './pages/CollaborationRoom'
+import { useMockSimulator } from './hooks/use-mock-simulator'
 
 export default function App() {
+  // Simulated workspace control-plane SSE (liveness decay + connection state).
+  useMockSimulator()
+
   return (
     <Routes>
       {/* Landing page — cinematic scroll storytelling (default) */}

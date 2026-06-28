@@ -226,6 +226,7 @@ export default function CollaborationRoom() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const store = useMockStore();
+  const appendTrace = useMockStore((s) => s.appendTrace);
   const task = store.tasks.find((t) => t.id === taskId);
 
   const [commentInput, setCommentInput] = useState('');
@@ -256,6 +257,32 @@ export default function CollaborationRoom() {
   useEffect(() => {
     traceEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [task?.trace.length]);
+
+  // Simulated per-task trace SSE: while the task is in progress and the stream is
+  // "running" (wake controls), append scripted run events so the trace feels live.
+  useEffect(() => {
+    if (!task || task.status !== 'in_progress' || !isTraceActive) return;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) return;
+    const agentId = task.assigneeId || task.participants?.[0]?.id;
+    const tId = task.id;
+    const script: Array<{ type: TraceEvent['type']; content: string } & Partial<TraceEvent>> = [
+      { type: 'run.delta', agentId, model: 'gpt-4o', content: 'Re-reading the definition of done and the open checklist items to decide the next edit.' },
+      { type: 'run.tool', agentId, toolName: 'grep', content: 'Searched the workspace for the symbols this change touches.', args: { pattern: 'theme|preference|nav' } },
+      { type: 'run.delta', agentId, model: 'gpt-4o', content: 'Applying the change in a small, reviewable diff and updating the checklist.' },
+      { type: 'run.usage', agentId, model: 'gpt-4o', content: 'turn usage', tokens: { used: 1820, total: 128000, prompt: 1400, completion: 420 } },
+    ];
+    let i = 0;
+    const id = window.setInterval(() => {
+      // Cap growth so a long-open room never accumulates unbounded events.
+      const current = useMockStore.getState().tasks.find((x) => x.id === tId);
+      if ((current?.trace?.length ?? 0) > 28) return;
+      appendTrace(tId, script[i % script.length]);
+      i += 1;
+    }, 3800);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.id, task?.status, isTraceActive, appendTrace]);
 
   const handleStatusChange = useCallback((newStatus: string) => {
     if (!task) return;
@@ -635,7 +662,7 @@ export default function CollaborationRoom() {
                     store.mariuses.find((m) => m.id === comment.authorId)?.role || 'Patron'
                   }
                   content={comment.content}
-                  timestamp={comment.createdAt}
+                  timestamp={comment.timestamp}
                 />
               ))
             )}
