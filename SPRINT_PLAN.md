@@ -181,6 +181,29 @@ The mock-data Scriptorium SPA is the frozen UX spec. All sub-phases shipped gree
 
 ## Build log
 
+### 2026-06-28 — **Sprint 1 done**: domain core (rich, pure entities + lifecycle rules, TDD) · issue #4
+> Owner approved continuing to the next sprint ("tiếp tục sprint và issue tiếp theo, nhớ luôn đồng bộ").
+> Pure domain only — **no I/O, no ORM** (ports + use cases are Sprint 2). Behaviour bound to LLD §2/§3/§10.
+- **Entities (rich, pure dataclasses).** Split `Project` out of `workspace.py` → `project.py` with
+  `ProjectStatus(setup/active/archived)` + objective/success_metrics/target_date/github_url/context/settings;
+  `workspace.py` gains `workspace_agent_id` and re-exports `Project` (back-compat). New: `Role`,
+  `SeatGrant(+SeatGrantStatus, revoke)`, `Label`, `TaskParticipant`, `ChecklistItem`,
+  `TaskDependency(self-loop guard)`, `OnboardingSession(+FSM)`, `CommissionSession(+LeaderState)`. Extended:
+  `Task` (`DRAFT` status, `TaskPriority`, identifier/parent_id/due_date/definition_of_done),
+  `Artifact` (`stored`, kinds file|link via `ArtifactKind`), `Marius` (`InviteStatus` + enrollment_code/
+  approved_at + liveness `CHECKING` + probe bookkeeping).
+- **Pure rules.** `domain/services/project_rules.py` — `validate_plan` (exactly 1 leader seats==1 + ≥1
+  worker) and `recompute_active` (setup→active once: all seats granted AND all seated ONLINE; never rolls
+  back). `domain/services/liveness_fsm.py` — the §10 FSM as pure functions (`plan_tick`/`register_probe`/
+  `on_probe_result`/`go_offline`/`on_signal`): ONLINE→CHECKING→OFFLINE, 3 probes spaced ~T2, backoff
+  R→2R→4R capped, signal-reset, WORKING→HUNG. Invite FSM as pure `Marius` methods (`begin_enroll`/
+  `approve`/`revoke`/`token_for_claim`); task DONE-gate + dependency-gate enforced in `Task.transition_to`.
+- **TDD.** New `test_project_rules.py`, `test_invite_fsm.py`, `test_liveness_fsm.py`; extended
+  `test_task_rules.py` (draft + dep-gate). **DoD covered**: activation rule, DONE-gate, dep-gate, invite
+  FSM, liveness FSM (incl. first-wait-R + probe-spacing + cap).
+- **Verify** — `pytest` **76 passed** (was 34, +42); `ruff` clean. No infra/ORM touched (Sprint 3). Paused
+  for owner review of issue #4 before Sprint 2.
+
 ### 2026-06-28 — Plan consolidation: SPRINT_PLAN.md + GitHub-issue sync; **Sprint 0 done**
 > Owner: "FE đã oke; lên plan bám sát ARCHITECT + design docs, chia sprint, báo cáo." Merged
 > `docs/DEV_PLAN.md` + `ROADMAP.md` into this **SPRINT_PLAN.md**; reconciled the plan with the
@@ -199,8 +222,9 @@ The mock-data Scriptorium SPA is the frozen UX spec. All sub-phases shipped gree
   (bucket `armarius` created on boot, with boot-retry); container selects local|minio via
   `ARTIFACT_STORE_BACKEND`; `GET /health` → `{status, db, minio}`. Compose gains an internal-only `minio`
   service (no host ports → no 9000/9001 clash). Real-MinIO roundtrip verified (bucket create + put + readback).
-- **Verify** — `pytest` **34 passed**; `ruff` clean; `docker compose --profile backend config` valid.
-  Not yet committed (awaiting owner review of issue #3).
+- **Verify** — `pytest` **34 passed**; `ruff` clean; `docker compose --profile backend config` valid;
+  real Postgres fresh `upgrade head` → 13 tables; MinIO bucket `armarius` auto-created; `/health` →
+  `{status:ok, db:up, minio:up}`. Shipped as commit `abf08e0` (BE) + `362a7c7` (FE i18n).
 
 ### 2026-06-28 — i18n pass complete (issue #2 resolved)
 > Owner picked "close i18n first" over starting BE. The deferred full EN/VI pass is now done; the FE
