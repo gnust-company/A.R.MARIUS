@@ -10,7 +10,9 @@ from uuid import UUID
 from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.marius import Marius
+from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import Run, RunEvent
+from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.skill import Skill
 from armarius.domain.entities.task import Task
@@ -37,6 +39,34 @@ class ProjectRepository(ABC):
     async def get(self, project_id: UUID) -> Project | None: ...
     @abstractmethod
     async def list_by_workspace(self, workspace_id: UUID) -> Sequence[Project]: ...
+
+
+class RoleRepository(ABC):
+    """Roster seats of a project (LLD §2.3)."""
+
+    @abstractmethod
+    async def add(self, role: Role) -> Role: ...
+    @abstractmethod
+    async def get(self, role_id: UUID) -> Role | None: ...
+    @abstractmethod
+    async def list_by_project(self, project_id: UUID) -> Sequence[Role]: ...
+    @abstractmethod
+    async def update(self, role: Role) -> Role: ...
+    @abstractmethod
+    async def remove(self, role_id: UUID) -> None: ...
+
+
+class SeatGrantRepository(ABC):
+    """System-only seat assignments (LLD §2.4, §3.3)."""
+
+    @abstractmethod
+    async def add(self, grant: SeatGrant) -> SeatGrant: ...
+    @abstractmethod
+    async def get(self, grant_id: UUID) -> SeatGrant | None: ...
+    @abstractmethod
+    async def list_by_project(self, project_id: UUID) -> Sequence[SeatGrant]: ...
+    @abstractmethod
+    async def update(self, grant: SeatGrant) -> SeatGrant: ...
 
 
 class MariusRepository(ABC):

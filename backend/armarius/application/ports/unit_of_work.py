@@ -14,8 +14,10 @@ from armarius.domain.repositories.repositories import (
     CommentRepository,
     MariusRepository,
     ProjectRepository,
+    RoleRepository,
     RunEventRepository,
     RunRepository,
+    SeatGrantRepository,
     SessionRepository,
     SkillRepository,
     TaskRepository,
@@ -28,6 +30,8 @@ from armarius.domain.repositories.repositories import (
 class UnitOfWork(ABC):
     workspaces: WorkspaceRepository
     projects: ProjectRepository
+    roles: RoleRepository
+    seat_grants: SeatGrantRepository
     mariuses: MariusRepository
     tasks: TaskRepository
     comments: CommentRepository

@@ -181,6 +181,34 @@ The mock-data Scriptorium SPA is the frozen UX spec. All sub-phases shipped gree
 
 ## Build log
 
+### 2026-06-29 — **Sprint 2 done**: application ports + use cases (Project/Roster/Enroll/Liveness) · issue #5
+> Owner approved continuing ("Oke và tiếp tục sprint 2") + two new rules: **use CodeGraph to navigate**, and
+> **`codegraph sync` after every sprint**. Application layer only, exercised on **fake in-memory ports** —
+> no SQL/HTTP wiring (those are later infra/presentation sprints). Behaviour bound to LLD §3/§4/§10/§12.
+- **New ports.** `domain/repositories` gains `RoleRepository` + `SeatGrantRepository`; both wired into the
+  `UnitOfWork` port. New `application/ports/liveness_probe.py::LivenessProbe` (bounded "are you there?" — no
+  heartbeat). The SQLAlchemy UoW keeps satisfying the ABC (annotations, not abstract methods); real repos
+  land in the infra sprint.
+- **ProjectService** (`application/use_cases/projects.py`) — `create_project` enforces the hard roster rule
+  via `validate_plan` (1 leader seats==1 + ≥1 worker) and is born in SETUP; `grant_seat`/`revoke_seat` are
+  **system-only** (`SystemOnlyOperation` otherwise); roster CRUD (`add/list/update/remove_role`);
+  `recompute_active` flips SETUP→ACTIVE once (all seats granted AND all seated ONLINE), never rolls back.
+- **EnrollmentService** (`enrollment.py`) — **enroll-and-wait**: `enroll` flips PENDING_REVIEW, commits, then
+  awaits a per-Marius `asyncio.Future` (DB tx not held); `approve` mints the token once and completes the
+  held call; `claim` is recovery-only (token iff approved). Bad code / illegal step → `EnrollmentError`.
+- **LivenessEngine** (`liveness.py`) — wraps the pure §10 FSM with the clock + `LivenessProbe` + persistence:
+  `record_signal` (any contact → ONLINE+reset), `begin_turn` (→WORKING), `tick`/`advance` (plan → register
+  the attempt → fire one probe outside the tx → fold the result back). Decay→OFFLINE, backoff R→2R, signal
+  reset all verified.
+- **WorkspaceAgentService** (`workspace_agent.py`) — idempotently designates the host **Workspace Agent**
+  Marius and materialises + links the built-in **`armarius-onboarder`** skill (skill-tree round-trip).
+- **TDD.** New `tests/support/fakes.py` (shared-store `FakeUnitOfWork` + `FakeLivenessProbe`) and
+  `test_project_service.py` (10), `test_enrollment_service.py` (7), `test_liveness_engine.py` (6),
+  `test_workspace_agent.py` (4). **DoD covered**: enroll-and-wait returns token on approve; liveness decay +
+  backoff + signal reset; system-only grant; skill tree round-trip.
+- **Verify** — `pytest` **103 passed** (was 76, +27); `ruff` clean; `codegraph sync` (303 nodes). No
+  infra/ORM/HTTP touched. Paused for owner review of issue #5 before Sprint 3.
+
 ### 2026-06-28 — **Sprint 1 done**: domain core (rich, pure entities + lifecycle rules, TDD) · issue #4
 > Owner approved continuing to the next sprint ("tiếp tục sprint và issue tiếp theo, nhớ luôn đồng bộ").
 > Pure domain only — **no I/O, no ORM** (ports + use cases are Sprint 2). Behaviour bound to LLD §2/§3/§10.
