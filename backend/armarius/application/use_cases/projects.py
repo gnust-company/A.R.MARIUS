@@ -226,4 +226,10 @@ class ProjectService:
             marius = await uow.mariuses.get(g.marius_id)
             if marius is not None:
                 liveness_by_marius[g.marius_id] = marius.liveness
-        return project_rules.recompute_active(project, roles, grants, liveness_by_marius)
+        flipped = project_rules.recompute_active(
+            project, roles, grants, liveness_by_marius
+        )
+        if flipped:
+            project.updated_at = utcnow()
+            await uow.projects.update(project)
+        return flipped

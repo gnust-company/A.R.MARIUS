@@ -6,21 +6,30 @@ from uuid import UUID
 
 from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.comment import AuthorKind, Comment
-from armarius.domain.entities.marius import Liveness, Marius
+from armarius.domain.entities.marius import InviteStatus, Liveness, Marius
+from armarius.domain.entities.project import (
+    Project,
+    ProjectStatus,
+    default_project_settings,
+)
+from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import Run, RunEvent, RunStatus, WakeSource
+from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.skill import Skill
 from armarius.domain.entities.task import Task, TaskStatus
 from armarius.domain.entities.user import User, UserRole
 from armarius.domain.entities.wakeup import WakeupRequest, WakeupStatus
-from armarius.domain.entities.workspace import Project, Workspace
+from armarius.domain.entities.workspace import Workspace
 from armarius.infrastructure.database.models import (
     ArtifactModel,
     CommentModel,
     MariusModel,
     ProjectModel,
+    RoleModel,
     RunEventModel,
     RunModel,
+    SeatGrantModel,
     SessionModel,
     SkillModel,
     TaskModel,
@@ -48,8 +57,43 @@ def project_to_entity(m: ProjectModel) -> Project:
         name=m.name,
         slug=m.slug,
         description=m.description,
+        objective=m.objective,
+        success_metrics=dict(m.success_metrics) if m.success_metrics else None,
+        target_date=m.target_date,
+        github_url=m.github_url,
+        context=m.context,
+        settings=dict(m.settings) if m.settings else default_project_settings(),
+        status=ProjectStatus(m.status) if m.status else ProjectStatus.SETUP,
+        created_by_user_id=m.created_by_user_id,
         created_at=m.created_at,
         updated_at=m.updated_at,
+    )
+
+
+def role_to_entity(m: RoleModel) -> Role:
+    return Role(
+        id=m.id,
+        project_id=m.project_id,
+        key=m.key,
+        title=m.title,
+        seats=m.seats,
+        is_leader=m.is_leader,
+        description=m.description or "",
+        responsibilities=m.responsibilities or "",
+        skill_ids=[str(x) for x in (m.skill_ids or [])],
+        created_at=m.created_at,
+    )
+
+
+def seat_grant_to_entity(m: SeatGrantModel) -> SeatGrant:
+    return SeatGrant(
+        id=m.id,
+        project_id=m.project_id,
+        role_key=m.role_key,
+        marius_id=m.marius_id,
+        status=SeatGrantStatus(m.status),
+        granted_at=m.granted_at,
+        created_at=m.created_at,
     )
 
 
@@ -65,8 +109,16 @@ def marius_to_entity(m: MariusModel) -> Marius:
         adapter_config=dict(m.adapter_config or {}),
         owner_user_id=m.owner_user_id,
         agent_token=m.agent_token,
+        invite_status=InviteStatus(m.invite_status) if m.invite_status else InviteStatus.INVITED,
+        enrollment_code=m.enrollment_code,
+        approved_at=m.approved_at,
         liveness=Liveness(m.liveness),
         last_seen_at=m.last_seen_at,
+        probe_attempts=m.probe_attempts or 0,
+        backoff_step=m.backoff_step or 0,
+        next_probe_at=m.next_probe_at,
+        offline_since=m.offline_since,
+        turn_started_at=m.turn_started_at,
         created_at=m.created_at,
         updated_at=m.updated_at,
     )

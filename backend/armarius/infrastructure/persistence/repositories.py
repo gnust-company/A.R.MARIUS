@@ -11,7 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.marius import Marius
+from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import Run, RunEvent
+from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.skill import Skill
 from armarius.domain.entities.task import Task
@@ -23,8 +25,10 @@ from armarius.domain.repositories.repositories import (
     CommentRepository,
     MariusRepository,
     ProjectRepository,
+    RoleRepository,
     RunEventRepository,
     RunRepository,
+    SeatGrantRepository,
     SessionRepository,
     SkillRepository,
     TaskRepository,
@@ -37,8 +41,10 @@ from armarius.infrastructure.database.models import (
     CommentModel,
     MariusModel,
     ProjectModel,
+    RoleModel,
     RunEventModel,
     RunModel,
+    SeatGrantModel,
     SessionModel,
     SkillModel,
     TaskModel,
@@ -96,6 +102,14 @@ class SqlProjectRepository(ProjectRepository):
                 name=project.name,
                 slug=project.slug,
                 description=project.description,
+                status=str(project.status),
+                objective=project.objective,
+                success_metrics=project.success_metrics,
+                target_date=project.target_date,
+                github_url=project.github_url,
+                context=project.context,
+                settings=dict(project.settings) if project.settings else None,
+                created_by_user_id=project.created_by_user_id,
                 created_at=project.created_at,
                 updated_at=project.updated_at,
             )
@@ -115,6 +129,126 @@ class SqlProjectRepository(ProjectRepository):
         ).scalars().all()
         return [mappers.project_to_entity(m) for m in rows]
 
+    async def update(self, project: Project) -> Project:
+        m = await self._s.get(ProjectModel, project.id)
+        if m is None:
+            raise LookupError("project not found")
+        m.name = project.name
+        m.slug = project.slug
+        m.description = project.description
+        m.status = str(project.status)
+        m.objective = project.objective
+        m.success_metrics = project.success_metrics
+        m.target_date = project.target_date
+        m.github_url = project.github_url
+        m.context = project.context
+        m.settings = dict(project.settings) if project.settings else None
+        m.updated_at = project.updated_at
+        await self._s.flush()
+        return project
+
+
+class SqlRoleRepository(RoleRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, role: Role) -> Role:
+        self._s.add(
+            RoleModel(
+                id=role.id,
+                project_id=role.project_id,
+                key=role.key,
+                title=role.title,
+                seats=role.seats,
+                is_leader=role.is_leader,
+                description=role.description,
+                responsibilities=role.responsibilities,
+                skill_ids=[str(x) for x in role.skill_ids],
+                created_at=role.created_at,
+            )
+        )
+        await self._s.flush()
+        return role
+
+    async def get(self, role_id: UUID) -> Role | None:
+        m = await self._s.get(RoleModel, role_id)
+        return mappers.role_to_entity(m) if m else None
+
+    async def list_by_project(self, project_id: UUID) -> Sequence[Role]:
+        rows = (
+            await self._s.execute(
+                select(RoleModel)
+                .where(RoleModel.project_id == project_id)
+                .order_by(RoleModel.created_at)
+            )
+        ).scalars().all()
+        return [mappers.role_to_entity(m) for m in rows]
+
+    async def update(self, role: Role) -> Role:
+        m = await self._s.get(RoleModel, role.id)
+        if m is None:
+            raise LookupError("role not found")
+        m.key = role.key
+        m.title = role.title
+        m.seats = role.seats
+        m.is_leader = role.is_leader
+        m.description = role.description
+        m.responsibilities = role.responsibilities
+        m.skill_ids = [str(x) for x in role.skill_ids]
+        await self._s.flush()
+        return role
+
+    async def remove(self, role_id: UUID) -> None:
+        m = await self._s.get(RoleModel, role_id)
+        if m is not None:
+            await self._s.delete(m)
+            await self._s.flush()
+
+
+class SqlSeatGrantRepository(SeatGrantRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, grant: SeatGrant) -> SeatGrant:
+        self._s.add(
+            SeatGrantModel(
+                id=grant.id,
+                project_id=grant.project_id,
+                role_key=grant.role_key,
+                marius_id=grant.marius_id,
+                status=str(grant.status),
+                granted_at=grant.granted_at,
+                created_at=grant.created_at,
+            )
+        )
+        await self._s.flush()
+        return grant
+
+    async def get(self, grant_id: UUID) -> SeatGrant | None:
+        m = await self._s.get(SeatGrantModel, grant_id)
+        return mappers.seat_grant_to_entity(m) if m else None
+
+    async def list_by_project(self, project_id: UUID) -> Sequence[SeatGrant]:
+        rows = (
+            await self._s.execute(
+                select(SeatGrantModel)
+                .where(SeatGrantModel.project_id == project_id)
+                .order_by(SeatGrantModel.created_at)
+            )
+        ).scalars().all()
+        return [mappers.seat_grant_to_entity(m) for m in rows]
+
+    async def update(self, grant: SeatGrant) -> SeatGrant:
+        m = await self._s.get(SeatGrantModel, grant.id)
+        if m is None:
+            raise LookupError("seat grant not found")
+        m.role_key = grant.role_key
+        m.marius_id = grant.marius_id
+        m.status = str(grant.status)
+        m.granted_at = grant.granted_at
+        await self._s.flush()
+        return grant
+
 
 class SqlMariusRepository(MariusRepository):
     def __init__(self, session: AsyncSession) -> None:
@@ -133,8 +267,16 @@ class SqlMariusRepository(MariusRepository):
                 skill_ids=[str(x) for x in marius.skill_ids],
                 owner_user_id=marius.owner_user_id,
                 agent_token=marius.agent_token,
+                invite_status=str(marius.invite_status),
+                enrollment_code=marius.enrollment_code,
+                approved_at=marius.approved_at,
                 liveness=str(marius.liveness),
                 last_seen_at=marius.last_seen_at,
+                probe_attempts=marius.probe_attempts,
+                backoff_step=marius.backoff_step,
+                next_probe_at=marius.next_probe_at,
+                offline_since=marius.offline_since,
+                turn_started_at=marius.turn_started_at,
                 created_at=marius.created_at,
                 updated_at=marius.updated_at,
             )
@@ -171,8 +313,17 @@ class SqlMariusRepository(MariusRepository):
         m.adapter_type = marius.adapter_type
         m.adapter_config = dict(marius.adapter_config)
         m.owner_user_id = marius.owner_user_id
+        m.agent_token = marius.agent_token
+        m.invite_status = str(marius.invite_status)
+        m.enrollment_code = marius.enrollment_code
+        m.approved_at = marius.approved_at
         m.liveness = str(marius.liveness)
         m.last_seen_at = marius.last_seen_at
+        m.probe_attempts = marius.probe_attempts
+        m.backoff_step = marius.backoff_step
+        m.next_probe_at = marius.next_probe_at
+        m.offline_since = marius.offline_since
+        m.turn_started_at = marius.turn_started_at
         m.updated_at = marius.updated_at
         await self._s.flush()
         return marius

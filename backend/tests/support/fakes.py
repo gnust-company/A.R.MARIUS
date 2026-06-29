@@ -62,6 +62,10 @@ class _FakeProjectRepo:
     async def list_by_workspace(self, workspace_id: UUID) -> list[Project]:
         return [p for p in self._s.projects.values() if p.workspace_id == workspace_id]
 
+    async def update(self, project: Project) -> Project:
+        self._s.projects[project.id] = project
+        return project
+
 
 class _FakeRoleRepo:
     def __init__(self, store: _Store) -> None:

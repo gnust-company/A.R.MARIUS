@@ -40,8 +40,47 @@ class ProjectModel(Base):
     name: Mapped[str] = mapped_column(String(200))
     slug: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text)
+    # Lifecycle (LLD §3.1): setup → active → archived. Activation is one-way.
+    status: Mapped[str] = mapped_column(String(20), default="setup", index=True)
+    # Commission/brief context (Patron-supplied, all optional).
+    objective: Mapped[str | None] = mapped_column(Text)
+    success_metrics: Mapped[dict | None] = mapped_column(JSON)
+    target_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    github_url: Mapped[str | None] = mapped_column(Text)
+    context: Mapped[str | None] = mapped_column(Text)
+    settings: Mapped[dict | None] = mapped_column(JSON, default=dict)
+    created_by_user_id: Mapped[str | None] = mapped_column(String(200))
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RoleModel(Base):
+    """A roster seat definition inside a project (LLD §2.3)."""
+
+    __tablename__ = "roles"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("projects.id"), index=True)
+    key: Mapped[str] = mapped_column(String(120))
+    title: Mapped[str] = mapped_column(String(200), default="")
+    seats: Mapped[int] = mapped_column(Integer, default=1)
+    is_leader: Mapped[bool] = mapped_column(Boolean, default=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    responsibilities: Mapped[str] = mapped_column(Text, default="")
+    skill_ids: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SeatGrantModel(Base):
+    """A system-only seat assignment of a Marius to a role (LLD §2.4, §3.3)."""
+
+    __tablename__ = "seat_grants"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("projects.id"), index=True)
+    role_key: Mapped[str] = mapped_column(String(120))
+    marius_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="granted")
+    granted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class MariusModel(Base):
@@ -56,8 +95,18 @@ class MariusModel(Base):
     skill_ids: Mapped[list] = mapped_column(JSON, default=list)
     owner_user_id: Mapped[str | None] = mapped_column(String(200))
     agent_token: Mapped[str | None] = mapped_column(String(120), unique=True, index=True)
+    # Invite lifecycle (LLD §3.4) — enroll-and-wait.
+    invite_status: Mapped[str] = mapped_column(String(20), default="invited")
+    enrollment_code: Mapped[str | None] = mapped_column(String(120))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Liveness bookkeeping (LLD §10) — driven by LivenessEngine via liveness_fsm.
     liveness: Mapped[str] = mapped_column(String(20), default="offline")
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    probe_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    backoff_step: Mapped[int] = mapped_column(Integer, default=0)
+    next_probe_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    offline_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    turn_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
