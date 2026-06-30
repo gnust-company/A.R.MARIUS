@@ -12,7 +12,11 @@ from armarius.application.ports.artifact_store import ArtifactStore
 from armarius.application.ports.event_bus import EventBus
 from armarius.application.use_cases.artifacts import ArtifactService
 from armarius.application.use_cases.auth import AuthService
+from armarius.application.use_cases.enrollment import EnrollmentService
+from armarius.application.use_cases.labels import LabelService
+from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.mariuses import MariusService
+from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.runs import RunQueryService
 from armarius.application.use_cases.skills import SkillService
 from armarius.application.use_cases.tasks import TaskService
@@ -21,8 +25,10 @@ from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.adapters.hermes_gateway import HermesGatewayAdapter
+from armarius.infrastructure.adapters.liveness_probe import PlaceholderLivenessProbe
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
+from armarius.infrastructure.events.topic_bus import TopicEventBus
 from armarius.infrastructure.persistence.unit_of_work import make_uow
 from armarius.infrastructure.security.jwt import JWTService
 from armarius.infrastructure.security.password import PasswordService
@@ -34,9 +40,14 @@ from armarius.shared.config import settings
 @dataclass
 class Container:
     event_bus: EventBus
+    control_bus: TopicEventBus
     registry: InMemoryAdapterRegistry
     wake_engine: WakeEngine
     workspaces: WorkspaceService
+    projects: ProjectService
+    enrollment: EnrollmentService
+    liveness: LivenessEngine
+    labels: LabelService
     mariuses: MariusService
     tasks: TaskService
     threads: ThreadService
@@ -53,6 +64,7 @@ def build_container() -> Container:
     uow_factory = make_uow
 
     event_bus = InMemoryEventBus()
+    control_bus = TopicEventBus()
 
     registry = InMemoryAdapterRegistry()
     registry.register(HermesGatewayAdapter())
@@ -86,9 +98,14 @@ def build_container() -> Container:
 
     return Container(
         event_bus=event_bus,
+        control_bus=control_bus,
         registry=registry,
         wake_engine=wake_engine,
         workspaces=workspaces,
+        projects=ProjectService(uow_factory),
+        enrollment=EnrollmentService(uow_factory),
+        liveness=LivenessEngine(uow_factory, PlaceholderLivenessProbe()),
+        labels=LabelService(uow_factory),
         mariuses=MariusService(uow_factory),
         tasks=TaskService(uow_factory, wake_engine),
         threads=ThreadService(uow_factory, wake_engine),

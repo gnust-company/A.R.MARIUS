@@ -26,7 +26,7 @@ def test_migrations_upgrade_head_then_downgrade_base(tmp_path, monkeypatch) -> N
 
     insp = inspect(create_engine(f"sqlite:///{db}"))
     tables = set(insp.get_table_names())
-    assert {"roles", "seat_grants"} <= tables
+    assert {"roles", "seat_grants", "labels"} <= tables
     project_cols = {c["name"] for c in insp.get_columns("projects")}
     assert {"status", "objective", "settings", "created_by_user_id"} <= project_cols
     marius_cols = {c["name"] for c in insp.get_columns("mariuses")}
@@ -39,6 +39,7 @@ def test_migrations_upgrade_head_then_downgrade_base(tmp_path, monkeypatch) -> N
     tables2 = set(insp2.get_table_names())
     assert "roles" not in tables2
     assert "seat_grants" not in tables2
+    assert "labels" not in tables2
     assert "projects" in tables2
     assert "status" not in {c["name"] for c in insp2.get_columns("projects")}
     insp2.bind.dispose()

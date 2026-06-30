@@ -12,24 +12,55 @@ from uuid import UUID
 from fastapi import APIRouter
 
 from armarius.domain.entities.comment import AuthorKind
+from armarius.domain.entities.marius import Liveness
 from armarius.domain.entities.task import TaskStatus
 from armarius.presentation.deps import ContainerDep, CurrentMarius
 from armarius.presentation.schemas import (
     AgentArtifactIn,
+    AgentClaimIn,
     AgentCommentIn,
+    AgentEnrollIn,
+    AgentTokenOut,
     ArtifactOut,
     CommentOut,
     MariusOut,
     NextActionIn,
     TaskOut,
     TransitionIn,
+    decode_artifact_content,
 )
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
 
+# ── enroll-and-wait (pre-token; API_CONTRACT §4.1, §9) ───────────────────────
+@router.post("/enroll", response_model=AgentTokenOut)
+async def enroll(body: AgentEnrollIn, container: ContainerDep) -> AgentTokenOut:
+    """Present the enrollment_code and **hold** until the Patron approves; the minted
+    agent_token is returned on this same call."""
+    token = await container.enrollment.enroll(body.marius_id, body.enrollment_code)
+    return AgentTokenOut(agent_token=token)
+
+
+@router.post("/claim", response_model=AgentTokenOut)
+async def claim(body: AgentClaimIn, container: ContainerDep) -> AgentTokenOut:
+    """Recovery fallback: return the token iff already approved (enroll session lost)."""
+    token = await container.enrollment.claim(body.marius_id, body.enrollment_code)
+    return AgentTokenOut(agent_token=token)
+
+
 @router.get("/me")
 async def whoami(marius: CurrentMarius, container: ContainerDep) -> dict:
+    # Every agent call is a liveness signal (API_CONTRACT §9): fold it in → ONLINE.
+    was_online = marius.liveness == Liveness.ONLINE
+    marius = await container.liveness.record_signal(marius.id)
+    if not was_online:
+        # First contact (or a return from silence) → control-plane ping (§2).
+        await container.control_bus.publish(
+            f"ws:{marius.workspace_id}",
+            "marius.online",
+            {"marius_id": str(marius.id)},
+        )
     directory = await container.mariuses.list_directory(marius.workspace_id)
     return {
         "marius": MariusOut.model_validate(marius).model_dump(mode="json"),
@@ -116,7 +147,11 @@ async def publish_artifact(
         task_id=task_id,
         name=body.name,
         kind=body.kind,
-        content=body.content.encode("utf-8") if body.content is not None else None,
+        content=decode_artifact_content(
+            content_b64=body.content_b64,
+            content=body.content,
+            content_sha256=body.content_sha256,
+        ),
         uri=body.uri,
         marius_id=marius.id,
     )

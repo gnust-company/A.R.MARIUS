@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.comment import Comment
+from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import Run, RunEvent
@@ -23,6 +24,7 @@ from armarius.domain.entities.workspace import Project, Workspace
 from armarius.domain.repositories.repositories import (
     ArtifactRepository,
     CommentRepository,
+    LabelRepository,
     MariusRepository,
     ProjectRepository,
     RoleRepository,
@@ -39,6 +41,7 @@ from armarius.domain.repositories.repositories import (
 from armarius.infrastructure.database.models import (
     ArtifactModel,
     CommentModel,
+    LabelModel,
     MariusModel,
     ProjectModel,
     RoleModel,
@@ -88,6 +91,34 @@ class SqlWorkspaceRepository(WorkspaceRepository):
             )
         ).scalars().all()
         return [mappers.workspace_to_entity(m) for m in rows]
+
+
+class SqlLabelRepository(LabelRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, label: Label) -> Label:
+        self._s.add(
+            LabelModel(
+                id=label.id,
+                workspace_id=label.workspace_id,
+                name=label.name,
+                color=label.color,
+                created_at=label.created_at,
+            )
+        )
+        await self._s.flush()
+        return label
+
+    async def list_by_workspace(self, workspace_id: UUID) -> Sequence[Label]:
+        rows = (
+            await self._s.execute(
+                select(LabelModel)
+                .where(LabelModel.workspace_id == workspace_id)
+                .order_by(LabelModel.created_at)
+            )
+        ).scalars().all()
+        return [mappers.label_to_entity(m) for m in rows]
 
 
 class SqlProjectRepository(ProjectRepository):
@@ -146,6 +177,12 @@ class SqlProjectRepository(ProjectRepository):
         m.updated_at = project.updated_at
         await self._s.flush()
         return project
+
+    async def remove(self, project_id: UUID) -> None:
+        m = await self._s.get(ProjectModel, project_id)
+        if m is not None:
+            await self._s.delete(m)
+            await self._s.flush()
 
 
 class SqlRoleRepository(RoleRepository):

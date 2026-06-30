@@ -181,6 +181,41 @@ The mock-data Scriptorium SPA is the frozen UX spec. All sub-phases shipped gree
 
 ## Build log
 
+### 2026-06-30 — **Sprint 4 done**: presentation — routers + Hybrid SSE · issue #7
+> Owner approved continuing ("Tiếp tục đi, bạn vẫn nhớ flow và rule"). First time the fully-built Sprint-2
+> services (roster-driven `ProjectService`, enroll-and-wait `EnrollmentService`) are **exposed over HTTP** —
+> Sprint 4 is mostly presentation wiring + contract-conformance tests + the two SSE channels. Scoped to the
+> "presentation + Hybrid SSE" spine; the wake-coupled rich-task bits are deferred to where they belong (below).
+- **Projects + Roster + Grant** (new `presentation/api/projects.py`): create-with-seat-plan (hard **422**
+  composition rule), project detail with roster + seat liveness, PATCH brief, DELETE, roster CRUD by `role_key`,
+  **system-only** grant/revoke, `/agents`. Every route workspace-scoped (cross-workspace → **404**). `ProjectService`
+  grows `get/update/delete_project`, `get_roster`, `list_agents`, role-by-key edit/remove, `revoke_seat_by_role`;
+  `ProjectRepository` gains `remove`.
+- **Mariuses → enroll-and-wait** (§4.1): `POST /mariuses` now returns an `enrollment_code` + copyable prompt and
+  **no token**; `POST /mariuses/{id}/approve` mints the token once and **completes the held `/agent/enroll`** call;
+  `/agent/claim` is the recovery fallback. `/agent/me` is now a real liveness **signal** (LivenessEngine wired → the
+  agent flips ONLINE), which makes SETUP→ACTIVE activation real end-to-end over HTTP.
+- **Hybrid SSE** (§2/§8): new `TopicEventBus` (per-topic monotonic seq + bounded replay) backs `GET
+  /v1/workspaces/{ws}/events` (control-plane) and `GET /v1/tasks/{id}/stream` (per-task trace); **`Last-Event-ID`
+  resume** on both; routers publish `marius.status_changed` / `marius.online` / `project.active`. A `?live=0`
+  **catch-up** mode (finite long-poll fallback) keeps the path deterministically testable under httpx
+  `ASGITransport` (which buffers infinite streams).
+- **Artifacts → contract** (§7): publish accepts `content_b64` (base64-decoded, **sha256-verified**), response
+  carries `stored`; the **409 DONE-gate** (no `in_review`/`done` without a file/link artifact) is now covered by a
+  conformance test.
+- **Labels** (§5.4): full vertical slice (entity/ORM/mapper/`LabelRepository`/`SqlLabelRepository`/UoW/fake/
+  `LabelService`) + `GET|POST /v1/workspaces/{ws}/labels`. **Alembic `0003`** (`c3a7d9e1b2f4`, `labels` table)
+  verified up→down→up; `alembic check` reports **no drift**.
+- **Error mapping** (`presentation/errors.py`): `InvalidProjectPlan`→422, `SystemOnlyOperation`→403,
+  `SeatGrantError`/`InviteError`→409, `EnrollmentError`→400.
+- **TDD.** New suites: `test_projects_api` (8), `test_mariuses_api` (7), `test_events_api` (7), `test_artifacts_api`
+  (3), `test_labels_api` (3) + migration-0003 assertions. pytest **137 passed** (was 109, **+28**); ruff clean;
+  `codegraph sync`.
+- **Deferred (documented, not dropped):** commission §5.3 (leader-mediated, async) → **Sprint 5** with the wake
+  engine; task **participants/checklist** §5.2/§5.3 → **Sprint 5** (they wake agents and need the still-port-less
+  `TaskParticipant`/`ChecklistItem` persistence Sprint 3 deferred); onboarding sessions §3.4 + workspace-agent
+  designation → **Sprint 7**; media upload + artifact content download → **Sprint 6** (FE integration).
+
 ### 2026-06-29 — **Sprint 3 done**: infrastructure — SQL persistence for roster/brief/liveness + Alembic 0002 · issue #6
 > Owner approved continuing ("Tiếp tục với sprint tiếp theo"). Made the Sprint-2 ports **real on SQL**: the
 > roster (Role/SeatGrant) and the new Project/Marius state now persist, so Project/Enroll/Liveness use cases

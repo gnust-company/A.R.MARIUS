@@ -9,6 +9,7 @@ from uuid import UUID
 
 from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.comment import Comment
+from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import Run, RunEvent
@@ -41,6 +42,8 @@ class ProjectRepository(ABC):
     async def list_by_workspace(self, workspace_id: UUID) -> Sequence[Project]: ...
     @abstractmethod
     async def update(self, project: Project) -> Project: ...
+    @abstractmethod
+    async def remove(self, project_id: UUID) -> None: ...
 
 
 class RoleRepository(ABC):
@@ -69,6 +72,15 @@ class SeatGrantRepository(ABC):
     async def list_by_project(self, project_id: UUID) -> Sequence[SeatGrant]: ...
     @abstractmethod
     async def update(self, grant: SeatGrant) -> SeatGrant: ...
+
+
+class LabelRepository(ABC):
+    """Workspace-scoped task tags (API_CONTRACT §5.4)."""
+
+    @abstractmethod
+    async def add(self, label: Label) -> Label: ...
+    @abstractmethod
+    async def list_by_workspace(self, workspace_id: UUID) -> Sequence[Label]: ...
 
 
 class MariusRepository(ABC):

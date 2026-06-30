@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from uuid import UUID, uuid4
 
 
@@ -12,3 +13,4 @@ class Label:
     workspace_id: UUID | None = None
     name: str = ""
     color: str = ""  # hex, e.g. "#8a6d3b"
+    created_at: datetime | None = None

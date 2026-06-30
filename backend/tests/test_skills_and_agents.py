@@ -82,8 +82,13 @@ async def test_provision_agent_links_skill_and_invite_has_steps():
     assert created.status_code == 201, created.text
     data = created.json()
     assert data["skill_ids"] == [skill_id]
-    assert data["agent_token"]
-    # Invite advertises the skill install + the credential file.
+    # Enroll-and-wait (API_CONTRACT §4.1): no token at invite — an enrollment_code instead.
+    assert data["agent_token"] is None
+    assert data["enrollment_code"]
+    assert data["invite_status"] == "invited"
+    # Invite advertises enroll-and-wait + the skill install + the credential file.
+    assert "ENROLL AND WAIT" in data["invite"]
+    assert data["enrollment_code"] in data["invite"]
     assert "INSTALL YOUR SKILLS" in data["invite"]
     assert "Armarius HTTP API" in data["invite"]
     assert "~/.armarius/credentials/" in data["invite"]
