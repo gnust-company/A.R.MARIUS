@@ -33,6 +33,19 @@ class WorkspaceModel(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class LabelModel(Base):
+    """Workspace-scoped task tag (API_CONTRACT §5.4)."""
+
+    __tablename__ = "labels"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    workspace_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("workspaces.id"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    color: Mapped[str] = mapped_column(String(20), default="")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class ProjectModel(Base):
     __tablename__ = "projects"
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)

@@ -47,6 +47,31 @@ class RoleSpec:
     skill_ids: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class SeatView:
+    """A granted agent in a role, with its current liveness (API_CONTRACT §3.3)."""
+
+    marius_id: UUID
+    name: str
+    role_key: str
+    liveness: str
+    is_primary: bool
+
+
+@dataclass(frozen=True)
+class RosterRoleView:
+    """A roster role with its seat fill and seated agents (API_CONTRACT §3.3)."""
+
+    key: str
+    title: str
+    seats: int
+    is_leader: bool
+    description: str
+    skill_ids: list[str]
+    filled: int
+    seated: list[SeatView]
+
+
 class ProjectService:
     def __init__(self, uow_factory: UowFactory) -> None:
         self._uow = uow_factory
@@ -151,6 +176,129 @@ class ProjectService:
             await uow.roles.remove(role_id)
             await uow.commit()
 
+    # ── project detail / brief / delete ──────────────────────────────────────────
+    async def get_project(self, project_id: UUID) -> Project | None:
+        async with self._uow() as uow:
+            return await uow.projects.get(project_id)
+
+    async def update_project(
+        self,
+        project_id: UUID,
+        *,
+        description: str | None = None,
+        objective: str | None = None,
+        success_metrics: dict | None = None,
+        target_date=None,
+        github_url: str | None = None,
+        context: str | None = None,
+        settings: dict | None = None,
+    ) -> Project:
+        """Edit project brief fields (API_CONTRACT §3). Only non-None fields change."""
+        async with self._uow() as uow:
+            project = await uow.projects.get(project_id)
+            if project is None:
+                raise LookupError("project not found")
+            if description is not None:
+                project.description = description
+            if objective is not None:
+                project.objective = objective
+            if success_metrics is not None:
+                project.success_metrics = success_metrics
+            if target_date is not None:
+                project.target_date = target_date
+            if github_url is not None:
+                project.github_url = github_url
+            if context is not None:
+                project.context = context
+            if settings is not None:
+                project.settings = settings
+            project.updated_at = utcnow()
+            updated = await uow.projects.update(project)
+            await uow.commit()
+            return updated
+
+    async def delete_project(self, project_id: UUID) -> None:
+        async with self._uow() as uow:
+            if await uow.projects.get(project_id) is None:
+                raise LookupError("project not found")
+            await uow.projects.remove(project_id)
+            await uow.commit()
+
+    # ── roster / participant views ────────────────────────────────────────────────
+    async def get_roster(self, project_id: UUID) -> list[RosterRoleView]:
+        """Roles with seat fill + seated agents and their liveness (API_CONTRACT §3.3)."""
+        async with self._uow() as uow:
+            if await uow.projects.get(project_id) is None:
+                raise LookupError("project not found")
+            roles = await uow.roles.list_by_project(project_id)
+            grants = await uow.seat_grants.list_by_project(project_id)
+            views: list[RosterRoleView] = []
+            for role in roles:
+                seated: list[SeatView] = []
+                for g in grants:
+                    if g.status != SeatGrantStatus.GRANTED or g.role_key != role.key:
+                        continue
+                    if g.marius_id is None:
+                        continue
+                    marius = await uow.mariuses.get(g.marius_id)
+                    if marius is None:
+                        continue
+                    seated.append(
+                        SeatView(
+                            marius_id=marius.id,
+                            name=marius.name,
+                            role_key=role.key,
+                            liveness=str(marius.liveness),
+                            is_primary=role.is_leader,
+                        )
+                    )
+                views.append(
+                    RosterRoleView(
+                        key=role.key,
+                        title=role.title,
+                        seats=role.seats,
+                        is_leader=role.is_leader,
+                        description=role.description,
+                        skill_ids=[str(x) for x in role.skill_ids],
+                        filled=len(seated),
+                        seated=seated,
+                    )
+                )
+            return views
+
+    async def list_agents(self, project_id: UUID) -> list[SeatView]:
+        """Flat list of project participants (granted seats) — API_CONTRACT §4."""
+        roster = await self.get_roster(project_id)
+        return [seat for role in roster for seat in role.seated]
+
+    # ── roster CRUD by role_key (the contract addresses roles by key) ─────────────
+    async def _role_by_key(self, uow, project_id: UUID, role_key: str) -> Role:
+        roles = await uow.roles.list_by_project(project_id)
+        role = next((r for r in roles if r.key == role_key), None)
+        if role is None:
+            raise LookupError(f"role '{role_key}' not in project roster")
+        return role
+
+    async def update_role_by_key(
+        self, project_id: UUID, role_key: str, **changes
+    ) -> Role:
+        async with self._uow() as uow:
+            role = await self._role_by_key(uow, project_id, role_key)
+        return await self.update_role(role.id, **changes)
+
+    async def remove_role_by_key(self, project_id: UUID, role_key: str) -> None:
+        """Remove a role — only if no agent currently holds a seat in it (§3.3)."""
+        async with self._uow() as uow:
+            role = await self._role_by_key(uow, project_id, role_key)
+            grants = await uow.seat_grants.list_by_project(project_id)
+            if any(
+                g.status == SeatGrantStatus.GRANTED and g.role_key == role_key
+                for g in grants
+            ):
+                raise ValueError("Cannot remove a role while an agent holds its seat.")
+            await uow.roles.remove(role.id)
+            await uow.commit()
+
     # ── system-only seat grants ─────────────────────────────────────────────────
     async def grant_seat(
         self,
@@ -198,6 +346,36 @@ class ProjectService:
             if grant is None:
                 raise LookupError("seat grant not found")
             grant.revoke()  # raises SeatGrantError if already revoked
+            updated = await uow.seat_grants.update(grant)
+            await uow.commit()
+            return updated
+
+    async def revoke_seat_by_role(
+        self,
+        project_id: UUID,
+        marius_id: UUID,
+        role_key: str,
+        *,
+        system: bool = False,
+    ) -> SeatGrant:
+        """Revoke the GRANTED seat for (marius, role) in a project. SYSTEM-ONLY (§3.3)."""
+        if not system:
+            raise SystemOnlyOperation("Seat revokes are issued by the system only.")
+        async with self._uow() as uow:
+            grants = await uow.seat_grants.list_by_project(project_id)
+            grant = next(
+                (
+                    g
+                    for g in grants
+                    if g.marius_id == marius_id
+                    and g.role_key == role_key
+                    and g.status == SeatGrantStatus.GRANTED
+                ),
+                None,
+            )
+            if grant is None:
+                raise LookupError("no granted seat for that agent/role")
+            grant.revoke()
             updated = await uow.seat_grants.update(grant)
             await uow.commit()
             return updated

@@ -54,10 +54,15 @@ def build_invite_prompt(
     workspace_name: str = "the workspace",
     project_name: str = "the project",
     skills: list[Skill] | None = None,
+    enrollment_code: str | None = None,
 ) -> str:
-    """Build the invitation prompt with credential storage + per-skill install steps."""
+    """Build the invitation prompt with credential storage + per-skill install steps.
+
+    Enroll-and-wait (API_CONTRACT §4.1): when `enrollment_code` is given, the prompt
+    carries the **code** (never a token) and tells the agent to POST `/agent/enroll`
+    and hold — the minted `agent_token` is returned on that call once the Patron approves.
+    """
     base = public_base_url.rstrip("/")
-    token = marius.agent_token or "<token>"
     workspace_slug = _slugify(workspace_name)
     cred_path = _credential_file_path(marius, workspace_slug)
     skills = skills or []
@@ -66,12 +71,33 @@ def build_invite_prompt(
     safe_role = marius.role.replace('"', '\\"')
     skill_block = _skill_block(skills, base, cred_path)
 
+    if enrollment_code:
+        token = "<the agent_token returned by your enroll call>"
+        enroll_step = f"""━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 0 — ENROLL AND WAIT FOR APPROVAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+You do NOT have a token yet. Present your enrollment code and hold — the call returns
+your `agent_token` once your patron approves you:
+
+  curl -sS -X POST "{base}/agent/enroll" \\
+    -H "Content-Type: application/json" \\
+    -d '{{"marius_id": "{marius.id}", "enrollment_code": "{enrollment_code}"}}'
+
+The response body carries {{"agent_token": "..."}}. Save it in STEP 1. (If the session
+drops before approval, recover the token later with POST {base}/agent/claim.)
+
+"""
+    else:
+        token = marius.agent_token or "<token>"
+        enroll_step = ""
+
     return f"""You are joining an Armarius workspace as the agent "{safe_name}" ({safe_role}).
 
 Armarius is a shared workspace where you collaborate with other agents and humans.
 You will be woken with a task context; do the work, talk to others, and publish results.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{enroll_step}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 1 — SAVE YOUR CREDENTIALS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

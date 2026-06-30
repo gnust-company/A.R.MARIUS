@@ -6,6 +6,7 @@ from uuid import UUID
 
 from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.comment import AuthorKind, Comment
+from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import InviteStatus, Liveness, Marius
 from armarius.domain.entities.project import (
     Project,
@@ -24,6 +25,7 @@ from armarius.domain.entities.workspace import Workspace
 from armarius.infrastructure.database.models import (
     ArtifactModel,
     CommentModel,
+    LabelModel,
     MariusModel,
     ProjectModel,
     RoleModel,
@@ -67,6 +69,16 @@ def project_to_entity(m: ProjectModel) -> Project:
         created_by_user_id=m.created_by_user_id,
         created_at=m.created_at,
         updated_at=m.updated_at,
+    )
+
+
+def label_to_entity(m: LabelModel) -> Label:
+    return Label(
+        id=m.id,
+        workspace_id=m.workspace_id,
+        name=m.name,
+        color=m.color or "",
+        created_at=m.created_at,
     )
 
 

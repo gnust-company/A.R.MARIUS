@@ -10,13 +10,13 @@ from armarius.application.use_cases.onboarding import build_invite_prompt
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
-    CreateProjectIn,
+    CreateLabelIn,
     CreateWorkspaceIn,
     ImportSkillIn,
+    LabelOut,
     ManualSkillIn,
     MariusCreatedOut,
     MariusOut,
-    ProjectOut,
     RegisterMariusIn,
     SkillOut,
     UpdateMariusIn,
@@ -43,31 +43,23 @@ async def list_workspaces(container: ContainerDep, user: CurrentUser) -> list[Wo
     return [WorkspaceOut.model_validate(w) for w in items]
 
 
-@router.post(
-    "/workspaces/{workspace_id}/projects", response_model=ProjectOut, status_code=201
-)
-async def create_project(
-    workspace_id: UUID,
-    body: CreateProjectIn,
-    container: ContainerDep,
-    user: CurrentUser,
-) -> ProjectOut:
-    project = await container.workspaces.create_project(
-        workspace_id, body.name, body.description
-    )
-    return ProjectOut.model_validate(project)
+# Project + roster + grant routes live in `presentation/api/projects.py`
+# (the roster-driven ProjectService surface, API_CONTRACT §3).
 
 
-@router.get("/workspaces/{workspace_id}/projects", response_model=list[ProjectOut])
-async def list_projects(
-    workspace_id: UUID, container: ContainerDep, user: CurrentUser
-) -> list[ProjectOut]:
-    items = await container.workspaces.list_projects(workspace_id)
-    return [ProjectOut.model_validate(p) for p in items]
+async def _require_owned_workspace(container, user, workspace_id: UUID):
+    ws = await container.workspaces.get_workspace(workspace_id)
+    if ws is None or ws.owner_user_id != str(user.id):
+        raise LookupError("workspace not found")
+    return ws
 
 
 async def _build_invite(container: ContainerDep, marius, workspace_id: UUID) -> str:
-    """Assemble the invitation prompt for a Marius (workspace + project + skills)."""
+    """Assemble the invitation prompt for a Marius (workspace + project + skills).
+
+    Carries the **enrollment_code** (enroll-and-wait) until a token has been minted;
+    after approval the prompt would carry the live token instead.
+    """
     ws = await container.workspaces.get_workspace(workspace_id)
     projects = await container.workspaces.list_projects(workspace_id)
     linked = await container.skills.resolve(marius.skill_ids)
@@ -77,6 +69,7 @@ async def _build_invite(container: ContainerDep, marius, workspace_id: UUID) -> 
         workspace_name=ws.name if ws else "the workspace",
         project_name=projects[0].name if projects else "the project",
         skills=list(linked),
+        enrollment_code=marius.enrollment_code if marius.agent_token is None else None,
     )
 
 
@@ -85,16 +78,19 @@ async def _build_invite(container: ContainerDep, marius, workspace_id: UUID) -> 
     response_model=MariusCreatedOut,
     status_code=201,
 )
-async def register_marius(
+async def invite_marius(
     workspace_id: UUID,
     body: RegisterMariusIn,
     container: ContainerDep,
     user: CurrentUser,
 ) -> MariusCreatedOut:
-    marius = await container.mariuses.register(
-        workspace_id=workspace_id,
-        name=body.name,
-        role=body.role,
+    """Invite a Marius — enroll-and-wait (API_CONTRACT §4.1). Returns an enrollment_code
+    and a copyable prompt; the agent_token is **not** minted until approval."""
+    await _require_owned_workspace(container, user, workspace_id)
+    marius = await container.enrollment.invite(
+        workspace_id,
+        body.name,
+        body.role,
         skills=body.skills,
         skill_ids=body.skill_ids,
         adapter_type=body.adapter_type,
@@ -105,7 +101,34 @@ async def register_marius(
     # project (the board also does this lazily on first load).
     await container.workspaces.ensure_default_project(workspace_id)
     invite = await _build_invite(container, marius, workspace_id)
+    await container.control_bus.publish(
+        f"ws:{workspace_id}",
+        "marius.status_changed",
+        {"marius_id": str(marius.id), "status": "invited"},
+    )
     return MariusCreatedOut.model_validate(marius).model_copy(update={"invite": invite})
+
+
+@router.post(
+    "/workspaces/{workspace_id}/mariuses/{marius_id}/approve",
+    response_model=MariusCreatedOut,
+)
+async def approve_marius(
+    workspace_id: UUID,
+    marius_id: UUID,
+    container: ContainerDep,
+    user: CurrentUser,
+) -> MariusCreatedOut:
+    """Approve a pending enrollment → mint the agent_token once and complete any held
+    `/agent/enroll` call (API_CONTRACT §4.1)."""
+    await _require_owned_workspace(container, user, workspace_id)
+    marius = await container.enrollment.approve(marius_id)
+    await container.control_bus.publish(
+        f"ws:{workspace_id}",
+        "marius.status_changed",
+        {"marius_id": str(marius.id), "status": "approved"},
+    )
+    return MariusCreatedOut.model_validate(marius)
 
 
 @router.get("/workspaces/{workspace_id}/mariuses", response_model=list[MariusOut])
@@ -114,6 +137,30 @@ async def list_directory(
 ) -> list[MariusOut]:
     items = await container.mariuses.list_directory(workspace_id)
     return [MariusOut.model_validate(m) for m in items]
+
+
+# ---------------------------------------------------------------------- labels
+@router.get("/workspaces/{workspace_id}/labels", response_model=list[LabelOut])
+async def list_labels(
+    workspace_id: UUID, container: ContainerDep, user: CurrentUser
+) -> list[LabelOut]:
+    await _require_owned_workspace(container, user, workspace_id)
+    items = await container.labels.list_labels(workspace_id)
+    return [LabelOut.model_validate(label) for label in items]
+
+
+@router.post(
+    "/workspaces/{workspace_id}/labels", response_model=LabelOut, status_code=201
+)
+async def create_label(
+    workspace_id: UUID,
+    body: CreateLabelIn,
+    container: ContainerDep,
+    user: CurrentUser,
+) -> LabelOut:
+    await _require_owned_workspace(container, user, workspace_id)
+    label = await container.labels.create(workspace_id, body.name, body.color)
+    return LabelOut.model_validate(label)
 
 
 @router.patch(

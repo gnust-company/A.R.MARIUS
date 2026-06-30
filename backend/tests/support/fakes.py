@@ -13,6 +13,7 @@ from uuid import UUID
 
 from armarius.application.ports.liveness_probe import LivenessProbe
 from armarius.application.ports.unit_of_work import UnitOfWork
+from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.seat_grant import SeatGrant
@@ -23,6 +24,7 @@ from armarius.domain.entities.workspace import Project, Workspace
 @dataclass
 class _Store:
     workspaces: dict[UUID, Workspace] = field(default_factory=dict)
+    labels: dict[UUID, Label] = field(default_factory=dict)
     projects: dict[UUID, Project] = field(default_factory=dict)
     roles: dict[UUID, Role] = field(default_factory=dict)
     seat_grants: dict[UUID, SeatGrant] = field(default_factory=dict)
@@ -48,6 +50,18 @@ class _FakeWorkspaceRepo:
         return [w for w in self._s.workspaces.values() if w.owner_user_id == owner_user_id]
 
 
+class _FakeLabelRepo:
+    def __init__(self, store: _Store) -> None:
+        self._s = store
+
+    async def add(self, label: Label) -> Label:
+        self._s.labels[label.id] = label
+        return label
+
+    async def list_by_workspace(self, workspace_id: UUID) -> list[Label]:
+        return [x for x in self._s.labels.values() if x.workspace_id == workspace_id]
+
+
 class _FakeProjectRepo:
     def __init__(self, store: _Store) -> None:
         self._s = store
@@ -65,6 +79,9 @@ class _FakeProjectRepo:
     async def update(self, project: Project) -> Project:
         self._s.projects[project.id] = project
         return project
+
+    async def remove(self, project_id: UUID) -> None:
+        self._s.projects.pop(project_id, None)
 
 
 class _FakeRoleRepo:
@@ -172,6 +189,7 @@ class FakeUnitOfWork(UnitOfWork):
     async def __aenter__(self) -> FakeUnitOfWork:
         s = self._store
         self.workspaces = _FakeWorkspaceRepo(s)  # type: ignore[assignment]
+        self.labels = _FakeLabelRepo(s)  # type: ignore[assignment]
         self.projects = _FakeProjectRepo(s)  # type: ignore[assignment]
         self.roles = _FakeRoleRepo(s)  # type: ignore[assignment]
         self.seat_grants = _FakeSeatGrantRepo(s)  # type: ignore[assignment]

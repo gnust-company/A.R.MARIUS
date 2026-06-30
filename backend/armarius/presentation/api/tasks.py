@@ -22,6 +22,7 @@ from armarius.presentation.schemas import (
     TaskOut,
     TransitionIn,
     WakeIn,
+    decode_artifact_content,
 )
 
 router = APIRouter(prefix="/v1", tags=["tasks"])
@@ -122,7 +123,11 @@ async def publish_artifact(
         task_id=task_id,
         name=body.name,
         kind=body.kind,
-        content=body.content.encode("utf-8") if body.content is not None else None,
+        content=decode_artifact_content(
+            content_b64=body.content_b64,
+            content=body.content,
+            content_sha256=body.content_sha256,
+        ),
         uri=body.uri,
     )
     return ArtifactOut.model_validate(artifact)
