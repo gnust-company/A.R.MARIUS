@@ -5,8 +5,14 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from armarius.application.use_cases.commission import (
+    CommissionError as CommissionOpError,
+)
 from armarius.application.use_cases.enrollment import EnrollmentError
 from armarius.application.use_cases.projects import DuplicateRoleKey, SystemOnlyOperation
+from armarius.domain.entities.commission import (
+    CommissionError as CommissionStateError,
+)
 from armarius.domain.entities.marius import InviteError
 from armarius.domain.entities.seat_grant import SeatGrantError
 from armarius.domain.entities.task import ArtifactRequiredError, TaskTransitionError
@@ -37,6 +43,14 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(DuplicateRoleKey)
     async def _duplicate_role_key(_: Request, exc: DuplicateRoleKey) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(CommissionOpError)
+    async def _commission_op(_: Request, exc: CommissionOpError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(CommissionStateError)
+    async def _commission_state(_: Request, exc: CommissionStateError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(SeatGrantError)

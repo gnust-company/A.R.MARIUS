@@ -15,6 +15,7 @@ from armarius.infrastructure.database.migrations import ensure_schema
 from armarius.presentation.api import (
     agent,
     auth,
+    commission,
     events,
     health,
     projects,
@@ -43,7 +44,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # get their own empty personal workspace — never someone else's demo data.
     if settings.seed_demo:
         await maybe_seed(app.state.container)
+    # Start the liveness watchdog — the background clock that decays silent agents (§10).
+    app.state.container.liveness_watchdog.start()
     yield
+    await app.state.container.liveness_watchdog.stop()
     logger.info("Armarius shutting down")
 
 
@@ -66,6 +70,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(workspaces.router)
     app.include_router(projects.router)
+    app.include_router(commission.router)
     app.include_router(events.router)
     app.include_router(tasks.router)
     app.include_router(trace.router)

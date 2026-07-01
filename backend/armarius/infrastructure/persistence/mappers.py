@@ -6,6 +6,11 @@ from uuid import UUID
 
 from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.comment import AuthorKind, Comment
+from armarius.domain.entities.commission import (
+    CommissionSession,
+    CommissionStatus,
+    LeaderState,
+)
 from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import InviteStatus, Liveness, Marius
 from armarius.domain.entities.project import (
@@ -25,6 +30,7 @@ from armarius.domain.entities.workspace import Workspace
 from armarius.infrastructure.database.models import (
     ArtifactModel,
     CommentModel,
+    CommissionModel,
     LabelModel,
     MariusModel,
     ProjectModel,
@@ -165,6 +171,21 @@ def comment_to_entity(m: CommentModel) -> Comment:
         body=m.body,
         mentions=[UUID(x) for x in (m.mentions or [])],
         created_at=m.created_at,
+    )
+
+
+def commission_to_entity(m: CommissionModel) -> CommissionSession:
+    return CommissionSession(
+        id=m.id,
+        project_id=m.project_id,
+        leader_marius_id=m.leader_marius_id,
+        task_id=m.task_id,
+        session_params=dict(m.session_params or {}),
+        transcript=list(m.transcript or []),
+        status=CommissionStatus(m.status),
+        leader_state=LeaderState(m.leader_state),
+        created_at=m.created_at,
+        updated_at=m.updated_at,
     )
 
 

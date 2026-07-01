@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.comment import Comment
+from armarius.domain.entities.commission import CommissionSession
 from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.role import Role
@@ -24,6 +25,7 @@ from armarius.domain.entities.workspace import Project, Workspace
 from armarius.domain.repositories.repositories import (
     ArtifactRepository,
     CommentRepository,
+    CommissionRepository,
     LabelRepository,
     MariusRepository,
     ProjectRepository,
@@ -41,6 +43,7 @@ from armarius.domain.repositories.repositories import (
 from armarius.infrastructure.database.models import (
     ArtifactModel,
     CommentModel,
+    CommissionModel,
     LabelModel,
     MariusModel,
     ProjectModel,
@@ -119,6 +122,61 @@ class SqlLabelRepository(LabelRepository):
             )
         ).scalars().all()
         return [mappers.label_to_entity(m) for m in rows]
+
+
+class SqlCommissionRepository(CommissionRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, session: CommissionSession) -> CommissionSession:
+        self._s.add(
+            CommissionModel(
+                id=session.id,
+                project_id=session.project_id,
+                leader_marius_id=session.leader_marius_id,
+                task_id=session.task_id,
+                session_params=dict(session.session_params),
+                transcript=list(session.transcript),
+                status=str(session.status),
+                leader_state=str(session.leader_state),
+                created_at=session.created_at,
+                updated_at=session.updated_at,
+            )
+        )
+        await self._s.flush()
+        return session
+
+    async def get(self, session_id: UUID) -> CommissionSession | None:
+        m = await self._s.get(CommissionModel, session_id)
+        return mappers.commission_to_entity(m) if m else None
+
+    async def update(self, session: CommissionSession) -> CommissionSession:
+        m = await self._s.get(CommissionModel, session.id)
+        if m is None:
+            raise LookupError("commission session not found")
+        m.task_id = session.task_id
+        m.session_params = dict(session.session_params)
+        m.transcript = list(session.transcript)
+        m.status = str(session.status)
+        m.leader_state = str(session.leader_state)
+        m.updated_at = session.updated_at
+        await self._s.flush()
+        return session
+
+    async def list_open_by_leader(
+        self, leader_marius_id: UUID
+    ) -> Sequence[CommissionSession]:
+        rows = (
+            await self._s.execute(
+                select(CommissionModel)
+                .where(
+                    CommissionModel.leader_marius_id == leader_marius_id,
+                    CommissionModel.status == "open",
+                )
+                .order_by(CommissionModel.created_at)
+            )
+        ).scalars().all()
+        return [mappers.commission_to_entity(m) for m in rows]
 
 
 class SqlProjectRepository(ProjectRepository):
