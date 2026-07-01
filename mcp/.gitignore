@@ -1,0 +1,14 @@
+.venv/
+uv.lock
+__pycache__/
+*.pyc
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+*.egg-info/
