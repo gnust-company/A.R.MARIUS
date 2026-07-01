@@ -13,7 +13,8 @@
 // The caller receives typed payloads via `onMessage({ type, data, id })`. Higher‑level hooks
 // (`use-workspace-events`, `use-task-stream`) map these to store actions.
 
-import { getToken } from './auth'
+import { getToken, refreshAccessToken } from './auth'
+import { API_BASE } from './env'
 import { traceEventFromVM, workspaceEventFromVM } from './mappers'
 
 export interface SSEMessage {
@@ -47,6 +48,10 @@ export function subscribeSSE(
   const maxBackoff = options?.reconnectInterval ?? 30000
   let aborted = false
   let controller: AbortController | null = null
+  // One refresh attempt per live connection: a mid-stream 401 (token expired while the stream
+  // was open) triggers a token refresh + immediate reconnect. Reset on every successful connect
+  // so a later expiry can refresh again; guards against a fresh token that still 401s.
+  let refreshedThisConnect = false
 
   async function run(): Promise<void> {
     while (!aborted) {
@@ -68,9 +73,16 @@ export function subscribeSSE(
         const res = await fetch(url, { headers, signal })
 
         if (!res.ok) {
-          // 401 → token expired; do NOT retry (auth layer will log out).
+          // 401 → the access token likely expired mid-stream. Try a single refresh and
+          // reconnect immediately; only give up (fatal onError) if the refresh itself fails
+          // or a freshly refreshed token still 401s.
           if (res.status === 401) {
-            throw new Error('Unauthorized (401)')
+            if (!refreshedThisConnect && (await refreshAccessToken())) {
+              refreshedThisConnect = true
+              continue // reconnect now with the new token (skip backoff)
+            }
+            onError?.(new Error('Unauthorized (401)'))
+            return
           }
           throw new Error(`SSE ${res.status}: ${res.statusText}`)
         }
@@ -79,8 +91,9 @@ export function subscribeSSE(
           throw new Error('SSE response body is null')
         }
 
-        // Success → reset backoff.
+        // Success → reset backoff and re-arm the one-shot refresh for the next expiry.
         backoff = 1000
+        refreshedThisConnect = false
 
         const reader = res.body.getReader()
         const decoder = new TextDecoder()
@@ -129,10 +142,6 @@ export function subscribeSSE(
       } catch (e) {
         if (aborted) return
         const err = e instanceof Error ? e : new Error(String(e))
-        if (err.message === 'Unauthorized (401)') {
-          onError?.(err)
-          return
-        }
         onError?.(err)
       }
 
@@ -170,7 +179,7 @@ export function subscribeWorkspaceEvents(
   onEvent: (event: { type: string; payload: Record<string, unknown> }) => void,
   onError?: (error: Error) => void,
 ): () => void {
-  const url = `${import.meta.env.VITE_API_BASE ?? ''}/v1/workspaces/${workspaceId}/events`
+  const url = `${API_BASE}/v1/workspaces/${workspaceId}/events`
   return subscribeSSE(
     url,
     (msg) => {
@@ -192,14 +201,13 @@ export function subscribeTaskTrace(
   onError?: (error: Error) => void,
   lastEventId?: string | number,
 ): () => void {
-  const url = `${import.meta.env.VITE_API_BASE ?? ''}/v1/tasks/${taskId}/stream`
+  const url = `${API_BASE}/v1/tasks/${taskId}/stream`
   return subscribeSSE(
     url,
     (msg) => {
       const parsed = parseData(msg.data)
       const event = traceEventFromVM({ event_type: msg.type, payload: parsed })
       if (event) onTrace(event)
-      lastEventId = msg.id
     },
     onError,
     { lastEventId },

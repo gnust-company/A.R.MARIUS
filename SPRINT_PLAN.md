@@ -181,6 +181,29 @@ The mock-data Scriptorium SPA is the frozen UX spec. All sub-phases shipped gree
 
 ## Build log
 
+### 2026-07-01 — **Sprint 6 review fixes — round 3 (code review)** (PR #13 · issue #9)
+> Owner's written PR review (checked out the branch, ran both suites — pytest 161 ✅, `npm run build` ✅) raised
+> one **blocking** concern + three non-blocking suggestions, all in the FE data layer. Verified each against the
+> code; all four accurate. Fixed on the Sprint 6 branch; FE `npm run build` green, `eslint src/lib/*` clean (no
+> backend change → suites unaffected).
+>
+> 1. **[blocking] Token-refresh race in `fetchWithAuth`** (`frontend/src/lib/api.ts`) — a module-global
+>    `isRefreshing` boolean meant that when several authenticated requests 401 at once (this app fans out
+>    `Promise.all` GETs on every hydrate, so an F5 after the 30-min access token expires hits it), the first
+>    request refreshed while the rest saw `isRefreshing === true`, **skipped the whole block**, and returned the
+>    stale 401 → spurious `ApiError(401)` / logout. Replaced the boolean with a **single-flight shared promise**
+>    (`refreshOnce()`): every 401'd caller awaits the *same* refresh, then each retries once. Correct single-retry
+>    semantics preserved (the retry is an inline `fetch`, never re-enters the block).
+> 2. **[nit] `sse.ts` bypassed `API_BASE`** — `subscribeWorkspaceEvents`/`subscribeTaskTrace` built URLs from raw
+>    `import.meta.env.VITE_API_BASE ?? ''` instead of the centralised `API_BASE` (which strips trailing slashes),
+>    so a `VITE_API_BASE=…/` would yield `//v1/…`. Now use `API_BASE`.
+> 3. **[nit] SSE treated 401 as fatal** — a mid-stream token expiry called `onError` and stopped, so a Room/board
+>    left open >30 min silently lost live updates. `subscribeSSE` now does a **one-shot refresh + immediate
+>    reconnect** on 401 (re-armed on each successful connect; bails only if the refresh fails or a fresh token
+>    still 401s — no tight loop).
+> 4. **[nit] Dead `lastEventId` shadowing** in `subscribeTaskTrace` — the callback reassigned the outer param with
+>    no effect (the reader tracks its own `lastId`). Removed.
+
 ### 2026-07-01 — **Sprint 6 review fixes — round 2** (PR #13 · issue #9)
 > Second owner pass (live click-through of the real stack) surfaced three more UX defects + two count/status
 > gaps. All fixed on the Sprint 6 branch; re-verified: backend **pytest 161 passed**, ruff clean; FE

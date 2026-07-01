@@ -20,7 +20,25 @@ export class ApiError extends Error {
   }
 }
 
-let isRefreshing = false
+// Single-flight token refresh. When several authenticated requests 401 at once (common on an
+// F5 that fans out many GETs after the access token expired), they must all await the SAME
+// refresh and then retry — not race. A boolean guard let the first request refresh while the
+// rest skipped it and returned the stale 401 (spurious failures / logout). A shared promise
+// makes every 401'd caller wait for one refresh, then each retries once.
+let refreshPromise: Promise<boolean> | null = null
+
+function refreshOnce(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        return await refreshAccessToken()
+      } finally {
+        refreshPromise = null
+      }
+    })()
+  }
+  return refreshPromise
+}
 
 async function fetchWithAuth(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   let token = getToken()
@@ -41,11 +59,9 @@ async function fetchWithAuth(input: RequestInfo | URL, init?: RequestInit): Prom
     headers,
   })
 
-  // 401 → try once to refresh the token, then retry the original request.
-  if (res.status === 401 && token && !isRefreshing) {
-    isRefreshing = true
-    const ok = await refreshAccessToken()
-    isRefreshing = false
+  // 401 → refresh once (shared across concurrent callers), then retry the original request.
+  if (res.status === 401 && token) {
+    const ok = await refreshOnce()
 
     if (ok) {
       token = getToken()
