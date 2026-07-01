@@ -36,6 +36,13 @@ class _RecordingWake:
         return any(c["marius_id"] == marius_id for c in self.calls)
 
 
+class _FailingWake:
+    """A wake backend that is down — every enqueue raises."""
+
+    async def enqueue(self, **_kwargs) -> UUID:
+        raise RuntimeError("wake backend unavailable")
+
+
 async def _seed(leader_liveness: Liveness):
     factory = FakeUowFactory()
     ws = Workspace(name="Studio", slug="studio", owner_user_id="u1")
@@ -97,6 +104,21 @@ async def test_offline_commission_drains_when_leader_comes_online() -> None:
     assert wake.woke(leader_id)  # the queued turn was re-enqueued
     refreshed = await commission.get(session.id)
     assert refreshed.leader_state == LeaderState.THINKING
+
+
+async def test_drain_leaves_session_queued_when_wake_fails() -> None:
+    # A failed wake must NOT strand the turn as THINKING-but-never-woken — it stays queued
+    # so the next drain retries it (no silently lost commission turn).
+    factory, commission, _wake, pid, leader_id, _worker = await _seed(Liveness.OFFLINE)
+    session = await commission.commission(project_id=pid, message="Build /login")
+    assert session.leader_state == LeaderState.LEADER_OFFLINE
+
+    failing = CommissionService(factory, _FailingWake())  # type: ignore[arg-type]
+    drained = await failing.on_leader_online(leader_id)
+
+    assert drained == 0
+    refreshed = await failing.get(session.id)
+    assert refreshed.leader_state == LeaderState.LEADER_OFFLINE  # still queued → retryable
 
 
 async def test_confirm_flips_draft_to_todo_and_wakes_workers() -> None:
