@@ -181,6 +181,30 @@ The mock-data Scriptorium SPA is the frozen UX spec. All sub-phases shipped gree
 
 ## Build log
 
+### 2026-07-01 — **Sprint 5 done**: commission runtime + wake tee + liveness watchdog · issue #8
+> **Audit first (owner rule: keep what still follows the architecture, else delete + redo).** The pre-reset
+> backend (commit `d7fbb8c`, older than Sprint 0) already carried a `WakeEngine`, liveness engine/FSM,
+> wake policy/prompt, Hermes/echo adapters and threads — all wired, green and conforming to the sprint-1–4
+> clean architecture (ports · use-case transaction boundaries · pure domain services). Verdict: **kept as-is**;
+> the only architectural gap was *integration* (two disjoint SSE systems), not a violation. So Sprint 5 built
+> the genuine gaps:
+> - **CommissionService** (LLD §2.13) — the orphan `CommissionSession` entity got a full vertical slice:
+>   `commission_sessions` table + Alembic `d5b1f0a2c9e7` (verified up/down/up, no drift), repo (port/Sql/Fake),
+>   mapper, UoW wiring. The service shapes one Task via the project's **Leader agent**, fully async: it wakes the
+>   Leader through the WakeEngine and surfaces `leader_state` (thinking/waiting/leader_offline). A turn requested
+>   while the Leader is **offline is queued** on the open session and **drains** (re-enqueues) when the Leader
+>   comes online (hooked into `/agent/me`). `confirm` flips the draft `draft → todo` and wakes seated workers.
+>   New `/v1/commissions` router (start/edit/get/refine/confirm/abandon), schemas, `CommissionError → 409`.
+> - **Wake trace tee → per-task SSE** — new `TaskTracePublisher` port + `ControlBusTaskTrace` adapter; the
+>   WakeEngine now mirrors run events onto the Sprint-4 `task:{id}` channel (§8.1) without the application layer
+>   touching `TopicEventBus`. The two SSE systems are now one stream for the Room.
+> - **Liveness watchdog** — `LivenessWatchdog` background loop drives `LivenessEngine.tick()` across every
+>   workspace on a cadence, started/stopped in the app lifespan; silent agents decay ONLINE → CHECKING → OFFLINE.
+>
+> Added a `_FakeTaskRepo`/`_FakeCommissionRepo` to the test fakes. DoD proven end-to-end over the real stack
+> (`test_integration_commission`: confirm→todo wakes workers; offline-leader queues then drains on online) plus
+> `test_liveness_watchdog` (decay) and the per-task SSE tee test. pytest **156 passed** (+13); ruff clean.
+
 ### 2026-07-01 — **Sprint 4 review fixes** (PR #11 · issue #7)
 > Addressed all 8 findings from @kpollz's review on PR #11. **Correctness/security:** (#1) `approve` is now
 > workspace-scoped — a cross-workspace approval is 404, closing a token-minting gap; (#2) `add_role` rejects a

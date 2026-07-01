@@ -12,6 +12,7 @@ from types import TracebackType
 from armarius.domain.repositories.repositories import (
     ArtifactRepository,
     CommentRepository,
+    CommissionRepository,
     LabelRepository,
     MariusRepository,
     ProjectRepository,
@@ -31,6 +32,7 @@ from armarius.domain.repositories.repositories import (
 class UnitOfWork(ABC):
     workspaces: WorkspaceRepository
     labels: LabelRepository
+    commissions: CommissionRepository
     projects: ProjectRepository
     roles: RoleRepository
     seat_grants: SeatGrantRepository

@@ -42,6 +42,8 @@ class Settings(BaseSettings):
 
     wake_max_continuation_attempts: int = 3
     run_timeout_seconds: int = 900
+    # Liveness watchdog cadence — how often the background loop advances every Marius.
+    liveness_watchdog_interval_seconds: float = 30.0
 
     # Demo seed ("Acme Web Platform" scenario). OFF by default — real users get
     # their own empty workspace on register. Set ARMARIUS_SEED_DEMO=true to repopulate

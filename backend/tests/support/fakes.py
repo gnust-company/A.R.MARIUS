@@ -13,11 +13,13 @@ from uuid import UUID
 
 from armarius.application.ports.liveness_probe import LivenessProbe
 from armarius.application.ports.unit_of_work import UnitOfWork
+from armarius.domain.entities.commission import CommissionSession, CommissionStatus
 from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.entities.skill import Skill
+from armarius.domain.entities.task import Task
 from armarius.domain.entities.workspace import Project, Workspace
 
 
@@ -25,7 +27,9 @@ from armarius.domain.entities.workspace import Project, Workspace
 class _Store:
     workspaces: dict[UUID, Workspace] = field(default_factory=dict)
     labels: dict[UUID, Label] = field(default_factory=dict)
+    commissions: dict[UUID, CommissionSession] = field(default_factory=dict)
     projects: dict[UUID, Project] = field(default_factory=dict)
+    tasks: dict[UUID, Task] = field(default_factory=dict)
     roles: dict[UUID, Role] = field(default_factory=dict)
     seat_grants: dict[UUID, SeatGrant] = field(default_factory=dict)
     mariuses: dict[UUID, Marius] = field(default_factory=dict)
@@ -60,6 +64,56 @@ class _FakeLabelRepo:
 
     async def list_by_workspace(self, workspace_id: UUID) -> list[Label]:
         return [x for x in self._s.labels.values() if x.workspace_id == workspace_id]
+
+
+class _FakeCommissionRepo:
+    def __init__(self, store: _Store) -> None:
+        self._s = store
+
+    async def add(self, session: CommissionSession) -> CommissionSession:
+        self._s.commissions[session.id] = session
+        return session
+
+    async def get(self, session_id: UUID) -> CommissionSession | None:
+        return self._s.commissions.get(session_id)
+
+    async def update(self, session: CommissionSession) -> CommissionSession:
+        self._s.commissions[session.id] = session
+        return session
+
+    async def list_open_by_leader(
+        self, leader_marius_id: UUID
+    ) -> list[CommissionSession]:
+        return [
+            c
+            for c in self._s.commissions.values()
+            if c.leader_marius_id == leader_marius_id
+            and c.status == CommissionStatus.OPEN
+        ]
+
+
+class _FakeTaskRepo:
+    def __init__(self, store: _Store) -> None:
+        self._s = store
+
+    async def add(self, task: Task) -> Task:
+        self._s.tasks[task.id] = task
+        return task
+
+    async def get(self, task_id: UUID) -> Task | None:
+        return self._s.tasks.get(task_id)
+
+    async def list_by_project(
+        self, project_id: UUID, *, statuses: list[str] | None = None
+    ) -> list[Task]:
+        items = [t for t in self._s.tasks.values() if t.project_id == project_id]
+        if statuses:
+            items = [t for t in items if str(t.status) in statuses]
+        return items
+
+    async def update(self, task: Task) -> Task:
+        self._s.tasks[task.id] = task
+        return task
 
 
 class _FakeProjectRepo:
@@ -201,7 +255,9 @@ class FakeUnitOfWork(UnitOfWork):
         s = self._store
         self.workspaces = _FakeWorkspaceRepo(s)  # type: ignore[assignment]
         self.labels = _FakeLabelRepo(s)  # type: ignore[assignment]
+        self.commissions = _FakeCommissionRepo(s)  # type: ignore[assignment]
         self.projects = _FakeProjectRepo(s)  # type: ignore[assignment]
+        self.tasks = _FakeTaskRepo(s)  # type: ignore[assignment]
         self.roles = _FakeRoleRepo(s)  # type: ignore[assignment]
         self.seat_grants = _FakeSeatGrantRepo(s)  # type: ignore[assignment]
         self.mariuses = _FakeMariusRepo(s)  # type: ignore[assignment]

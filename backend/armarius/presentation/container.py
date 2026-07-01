@@ -12,9 +12,11 @@ from armarius.application.ports.artifact_store import ArtifactStore
 from armarius.application.ports.event_bus import EventBus
 from armarius.application.use_cases.artifacts import ArtifactService
 from armarius.application.use_cases.auth import AuthService
+from armarius.application.use_cases.commission import CommissionService
 from armarius.application.use_cases.enrollment import EnrollmentService
 from armarius.application.use_cases.labels import LabelService
 from armarius.application.use_cases.liveness import LivenessEngine
+from armarius.application.use_cases.liveness_watchdog import LivenessWatchdog
 from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.runs import RunQueryService
@@ -28,6 +30,7 @@ from armarius.infrastructure.adapters.hermes_gateway import HermesGatewayAdapter
 from armarius.infrastructure.adapters.liveness_probe import PlaceholderLivenessProbe
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
+from armarius.infrastructure.events.task_trace import ControlBusTaskTrace
 from armarius.infrastructure.events.topic_bus import TopicEventBus
 from armarius.infrastructure.persistence.unit_of_work import make_uow
 from armarius.infrastructure.security.jwt import JWTService
@@ -46,7 +49,9 @@ class Container:
     workspaces: WorkspaceService
     projects: ProjectService
     enrollment: EnrollmentService
+    commission: CommissionService
     liveness: LivenessEngine
+    liveness_watchdog: LivenessWatchdog
     labels: LabelService
     mariuses: MariusService
     tasks: TaskService
@@ -91,10 +96,18 @@ def build_container() -> Container:
         event_bus,
         run_timeout_seconds=settings.run_timeout_seconds,
         max_continuation_attempts=settings.wake_max_continuation_attempts,
+        task_trace=ControlBusTaskTrace(control_bus),
     )
 
     skills = SkillService(uow_factory)
     workspaces = WorkspaceService(uow_factory, skills)
+
+    liveness = LivenessEngine(uow_factory, PlaceholderLivenessProbe())
+    liveness_watchdog = LivenessWatchdog(
+        uow_factory,
+        liveness,
+        interval_seconds=settings.liveness_watchdog_interval_seconds,
+    )
 
     return Container(
         event_bus=event_bus,
@@ -104,7 +117,9 @@ def build_container() -> Container:
         workspaces=workspaces,
         projects=ProjectService(uow_factory),
         enrollment=EnrollmentService(uow_factory),
-        liveness=LivenessEngine(uow_factory, PlaceholderLivenessProbe()),
+        commission=CommissionService(uow_factory, wake_engine),
+        liveness=liveness,
+        liveness_watchdog=liveness_watchdog,
         labels=LabelService(uow_factory),
         mariuses=MariusService(uow_factory),
         tasks=TaskService(uow_factory, wake_engine),

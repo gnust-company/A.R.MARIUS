@@ -420,3 +420,31 @@ class AgentArtifactIn(BaseModel):
     content: str | None = None
     content_sha256: str | None = None
     uri: str | None = None
+
+
+# ------------------------------------------------------------------- commission
+class CommissionStartIn(BaseModel):
+    project_id: UUID
+    message: str = Field(min_length=1)
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+
+
+class CommissionRefineIn(BaseModel):
+    message: str = Field(min_length=1)
+
+
+class CommissionEditIn(BaseModel):
+    task_id: UUID
+    message: str = Field(min_length=1)
+
+
+class CommissionOut(_Out):
+    id: UUID
+    project_id: UUID | None = None
+    leader_marius_id: UUID | None = None
+    task_id: UUID | None = None
+    status: str
+    leader_state: str
+    transcript: list[dict] = Field(default_factory=list)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None

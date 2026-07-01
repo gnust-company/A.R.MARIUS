@@ -20,6 +20,7 @@ from uuid import UUID
 
 from armarius.application.ports.adapter import AdapterRegistry, ExecContext, ExecResult
 from armarius.application.ports.event_bus import EventBus
+from armarius.application.ports.task_trace import TaskTracePublisher
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.marius import Liveness, Marius
@@ -54,10 +55,13 @@ class WakeEngine:
         *,
         run_timeout_seconds: int = 900,
         max_continuation_attempts: int = 3,
+        task_trace: TaskTracePublisher | None = None,
     ) -> None:
         self._uow = uow_factory
         self._registry = registry
         self._bus = event_bus
+        # Optional per-task tee: mirrors run events onto the `task:{id}` SSE channel (§8.1).
+        self._task_trace = task_trace
         self._timeout = run_timeout_seconds
         self._max_attempts = max_continuation_attempts
         # In-process coalescing: (marius_id, task_id) -> active run_id.
@@ -177,6 +181,7 @@ class WakeEngine:
             await self._bus.publish(
                 run_id, {"type": "run.queued", "payload": {"prompt_preview": prompt[:400]}}
             )
+            await self._tee_task(task.id, "run.queued", {"prompt_preview": prompt[:400]})
 
             seq = 0
 
@@ -199,6 +204,7 @@ class WakeEngine:
                 await self._bus.publish(
                     run_id, {"seq": seq, "type": event_type, "payload": payload}
                 )
+                await self._tee_task(task.id, event_type, payload)
 
             adapter = self._registry.get(marius.adapter_type)
             ctx = ExecContext(
@@ -277,6 +283,12 @@ class WakeEngine:
             run.id,
             {"type": "run.finished", "payload": {"status": str(result.status)}},
         )
+        await self._tee_task(task.id, "run.finished", {"status": str(result.status)})
+
+    async def _tee_task(self, task_id: UUID, event_type: str, payload: dict) -> None:
+        """Mirror a run event onto the per-task SSE channel (no-op if not wired)."""
+        if self._task_trace is not None:
+            await self._task_trace.publish(task_id, event_type, payload)
 
     async def _maybe_self_wake(self, run_id: UUID) -> None:
         async with self._uow() as uow:

@@ -13,13 +13,19 @@ from armarius.domain.entities.run import RunStatus
 from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
+from armarius.infrastructure.events.task_trace import ControlBusTaskTrace
+from armarius.infrastructure.events.topic_bus import TopicEventBus
 
 
-def _wake_engine(uow_factory) -> WakeEngine:
+def _wake_engine(uow_factory, *, task_trace=None) -> WakeEngine:
     registry = InMemoryAdapterRegistry()
     registry.register(EchoAdapter(step_delay=0.0))
     return WakeEngine(
-        uow_factory, registry, InMemoryEventBus(), run_timeout_seconds=30
+        uow_factory,
+        registry,
+        InMemoryEventBus(),
+        run_timeout_seconds=30,
+        task_trace=task_trace,
     )
 
 
@@ -117,3 +123,33 @@ async def test_mention_wakes_the_mentioned_agent(uow_factory) -> None:
 
     completed = await _wait_for_completion(runs, task.id)
     assert any(r.marius_id == bob.id for r in completed)
+
+
+async def test_run_trace_tees_to_per_task_sse_channel(uow_factory) -> None:
+    control_bus = TopicEventBus()
+    wake = _wake_engine(uow_factory, task_trace=ControlBusTaskTrace(control_bus))
+    workspaces = WorkspaceService(uow_factory)
+    mariuses = MariusService(uow_factory)
+    tasks = TaskService(uow_factory, wake)
+    runs = RunQueryService(uow_factory)
+
+    ws = await workspaces.create_workspace("WS")
+    project = await workspaces.create_project(ws.id, "P")
+    cara = await mariuses.register(
+        workspace_id=ws.id,
+        name="Cara",
+        role="Backend",
+        skills=["api"],
+        adapter_type="echo",
+        adapter_config={},
+    )
+    task = await tasks.create(project_id=project.id, title="Wire it up")
+
+    await tasks.assign(task.id, cara.id)
+    await _wait_for_completion(runs, task.id)
+
+    # The run's events were teed onto the task's live SSE topic (Sprint-4 channel).
+    traced = control_bus.backlog(f"task:{task.id}")
+    types = {e.type for e in traced}
+    assert "run.queued" in types
+    assert "run.finished" in types
