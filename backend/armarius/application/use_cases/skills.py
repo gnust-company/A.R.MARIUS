@@ -30,9 +30,23 @@ from armarius.shared.clock import utcnow
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 BUILTIN_SKILL_FILE = BACKEND_ROOT / "static" / "skills" / "armarius-http" / "SKILL.md"
+BUILTIN_MCP_SKILL_FILE = BACKEND_ROOT / "static" / "skills" / "armarius-mcp" / "SKILL.md"
 
-# The single built-in skill seeded into every workspace.
+# The built-in skills seeded into every workspace. `armarius-mcp` is the preferred path
+# (typed MCP tools — the agent never curls); `armarius-http` stays as a curl fallback for
+# runtimes that can't host an MCP server.
 BUILTIN_SKILLS: list[dict] = [
+    {
+        "slug": "armarius-mcp",
+        "name": "Armarius MCP",
+        "description": (
+            "Work the Armarius workspace through typed MCP tools — enroll, claim tasks, "
+            "comment & @mention, update status, publish artifacts. No curl."
+        ),
+        "source": "builtin",
+        "source_url": "/static/skills/armarius-mcp/SKILL.md",
+        "file": BUILTIN_MCP_SKILL_FILE,
+    },
     {
         "slug": "armarius-http",
         "name": "Armarius HTTP API",
