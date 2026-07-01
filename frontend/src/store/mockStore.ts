@@ -1,6 +1,29 @@
 import { create } from 'zustand'
 import type { SetStateAction } from 'react'
 
+import { MOCK } from '@/lib/env'
+import { clearTokens } from '@/lib/auth'
+import * as api from '@/lib/api'
+import {
+  artifactToVM,
+  commentToVM,
+  mariusToVM,
+  projectDetailToVM,
+  projectToVM,
+  skillToVM,
+  taskToVM,
+  workspaceToVM,
+} from '@/lib/mappers'
+
+/** Replace an item by id, or append it. Used to upsert hydrated entities into the store. */
+function upsertById<T extends { id: string }>(list: T[], item: T): T[] {
+  const idx = list.findIndex((x) => x.id === item.id)
+  if (idx === -1) return [...list, item]
+  const copy = [...list]
+  copy[idx] = item
+  return copy
+}
+
 // ── Types ───────────────────────────────────────────
 
 export type AgentStatus = 'idle' | 'working' | 'offline' | 'invited' | 'revoked' | 'online' | 'pending'
@@ -45,8 +68,12 @@ export interface Task {
   updatedAt?: string
 }
 
-export type TaskStatus = 'pending' | 'in-progress' | 'review' | 'done' | 'cancelled' | 'todo' | 'in_review' | 'in_progress' | 'backlog' | 'blocked'
+export type TaskStatus = 'pending' | 'in-progress' | 'review' | 'done' | 'cancelled' | 'todo' | 'in_review' | 'in_progress' | 'backlog' | 'blocked' | 'draft'
 export type Priority = 'low' | 'normal' | 'high' | 'urgent' | 'P0' | 'P1' | 'P2'
+
+// Backend commission proposal status — a draft task only promotes to `todo` on confirm.
+// Alias kept so the mappers module can speak the backend artifact shape generically.
+export type Artifact = TaskArtifact
 
 export interface TaskArtifact {
   id: string
@@ -131,6 +158,31 @@ export interface DraftWorker {
   role: string
 }
 
+// ── Commission view-model (backend CommissionOut → UI) ──────────────────────────────
+// The Commission page keeps its own rich local session state; this is the slim shape the
+// API mapper (`commissionToVM`) normalizes to so the store can hold the active session.
+export interface CommissionDraftTask {
+  id: string
+  title: string
+  description: string
+  priority: Priority
+  assigneeId?: string
+  checklist: ChecklistItem[]
+  dependencies: string[]
+}
+
+export interface CommissionSession {
+  id: string
+  projectId: string
+  leaderMariusId?: string
+  taskId?: string
+  status: 'open' | 'confirmed' | 'abandoned'
+  leaderState: 'thinking' | 'waiting' | 'leader_offline'
+  transcript: Array<{ role: string; text: string }>
+  messages: Array<{ role: string; text: string }>
+  draftTask: CommissionDraftTask | null
+}
+
 export interface SkillFile {
   id: string
   name: string
@@ -213,10 +265,13 @@ interface MockStoreState {
   activeWorkspaceId: string | null
   sseConnected: boolean
   sidebarCollapsed: boolean
+  /** True when running the frozen in-memory demo (VITE_MOCK=true). When false the store is a
+   * cache over the real API: it starts empty and is filled by the `hydrate*` thunks. */
+  isMock: boolean
 
   // Actions
-  inviteAgent: (mariusId: string, workspaceId: string) => void
-  approveAgent: (mariusId: string) => void
+  inviteAgent: (mariusId: string, workspaceId: string) => Promise<void>
+  approveAgent: (mariusId: string) => Promise<void>
   emitEvent: (event: Omit<StoreEvent, 'id' | 'timestamp'>) => void
   setCurrentUser: (user: User | null) => void
   logout: () => void
@@ -224,17 +279,32 @@ interface MockStoreState {
   setSseConnected: (connected: boolean) => void
   /** Simulated workspace control-plane SSE — cycle one agent's liveness per tick. */
   simulateLivenessTick: () => void
-  updateTask: (taskId: string, updater: SetStateAction<Task>) => void
-  addComment: (taskId: string, comment: Partial<TaskComment> & { authorId: string; content: string }) => void
+  updateTask: (taskId: string, updater: SetStateAction<Task>) => Promise<void>
+  addComment: (taskId: string, comment: Partial<TaskComment> & { authorId: string; content: string }) => Promise<void>
   /** Simulated per-task trace SSE — append one streamed run event. */
   appendTrace: (taskId: string, event: Partial<TraceEvent> & { type: TraceEvent['type']; content: string }) => void
-  publishArtifact: (taskId: string, artifact: TaskArtifact) => void
+  publishArtifact: (taskId: string, artifact: TaskArtifact) => Promise<void>
   createSkill: (skill: Skill) => void
   updateSkill: (skillId: string, skill: Partial<Skill>) => void
-  createWorkspace: (workspace: Workspace) => void
+  createWorkspace: (workspace: Workspace) => Promise<Workspace>
   setActiveWorkspace: (workspaceId: string) => void
-  createTask: (task: Partial<Task> & { title: string; status: TaskStatus; priority: Priority; projectId: string }) => void
-  grantSeat: (projectId: string, mariusId: string, role: string) => void
+  createProject: (input: {
+    name: string
+    description?: string
+    objective?: string
+    workspaceId?: string
+    leaderId?: string
+    seats?: Array<{ roleKey: string; roleLabel: string; mariusId: string | null; skillsRequired: string[] }>
+  }) => Promise<Project>
+  createTask: (task: Partial<Task> & { title: string; status: TaskStatus; priority: Priority; projectId: string }) => Promise<Task>
+  grantSeat: (projectId: string, mariusId: string, role: string) => Promise<void>
+
+  // ── API hydration thunks (no-ops under MOCK) ───────────────────────────────────────
+  hydrateMe: () => Promise<void>
+  hydrateWorkspaces: () => Promise<void>
+  hydrateWorkspace: (workspaceId: string) => Promise<void>
+  hydrateProject: (projectId: string) => Promise<void>
+  hydrateTask: (taskId: string) => Promise<void>
 }
 
 // ── Rich Seed Data ──────────────────────────────────
@@ -610,35 +680,53 @@ const dummySkills: Skill[] = [
 // ── Store ───────────────────────────────────────────
 
 export const useMockStore = create<MockStoreState>((set, get) => ({
-  currentUser: dummyUser,
-  workspaces: dummyWorkspaces,
-  projects: dummyProjects,
-  mariuses: dummyMariuses,
-  tasks: dummyTasks,
-  skills: dummySkills,
+  currentUser: MOCK ? dummyUser : null,
+  workspaces: MOCK ? dummyWorkspaces : [],
+  projects: MOCK ? dummyProjects : [],
+  mariuses: MOCK ? dummyMariuses : [],
+  tasks: MOCK ? dummyTasks : [],
+  skills: MOCK ? dummySkills : [],
   messages: [],
   comments: [],
   events: [],
   traceEvents: [],
-  activeWorkspaceId: 'w1',
+  activeWorkspaceId: MOCK ? 'w1' : null,
   sseConnected: false,
   sidebarCollapsed: false,
+  isMock: MOCK,
 
-  inviteAgent: (mariusId: string, workspaceId: string) => {
-    const state = get()
-    const updated = state.mariuses.map((m) =>
-      m.id === mariusId ? { ...m, workspaceId, status: 'invited' as AgentStatus } : m
+  inviteAgent: async (mariusId: string, workspaceId: string) => {
+    if (get().isMock) {
+      const updated = get().mariuses.map((m) =>
+        m.id === mariusId ? { ...m, workspaceId, status: 'invited' as AgentStatus } : m,
+      )
+      set({ mariuses: updated })
+      return
+    }
+    // Real mode: invite-and-wait creates a NEW marius via the enrollment endpoint. The mock
+    // semantics (mark an existing agent `invited`) don't map cleanly, so this is a graceful
+    // local reconcile — the seeded golden-path agents are already approved/online.
+    const updated = get().mariuses.map((m) =>
+      m.id === mariusId ? { ...m, workspaceId, status: 'invited' as AgentStatus } : m,
     )
     set({ mariuses: updated })
   },
 
-  approveAgent: (mariusId: string) => {
-    const state = get()
-    const updated = state.mariuses.map((m) =>
-      m.id === mariusId ? { ...m, status: 'online' as AgentStatus, lastSeen: new Date().toISOString() } : m
-    )
-    set({ mariuses: updated })
-    // Simulated workspace SSE: approving an agent flips it ONLINE.
+  approveAgent: async (mariusId: string) => {
+    if (get().isMock) {
+      const updated = get().mariuses.map((m) =>
+        m.id === mariusId ? { ...m, status: 'online' as AgentStatus, lastSeen: new Date().toISOString() } : m,
+      )
+      set({ mariuses: updated })
+      get().emitEvent({ type: 'marius.online', payload: { mariusId } })
+      return
+    }
+    const existing = get().mariuses.find((m) => m.id === mariusId)
+    const workspaceId = existing?.workspaceId
+    if (!workspaceId) return
+    const dto = await api.approveMarius(workspaceId, mariusId)
+    const vm = mariusToVM(dto)
+    set({ mariuses: get().mariuses.map((m) => (m.id === mariusId ? { ...vm, projectIds: m.projectIds } : m)) })
     get().emitEvent({ type: 'marius.online', payload: { mariusId } })
   },
 
@@ -684,33 +772,46 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     get().emitEvent({ type: 'marius.liveness', payload: { mariusId: target.id, status: next } })
   },
 
-  logout: () => set({ currentUser: null }),
-
-  updateTask: (taskId: string, updater: SetStateAction<Task>) => {
-    const state = get()
-    const updatedTasks = state.tasks.map((t) => {
-      if (t.id !== taskId) return t
-      const newTask = typeof updater === 'function' ? (updater as (prev: Task) => Task)(t) : { ...t, ...updater }
-      return newTask
-    })
-    set({ tasks: updatedTasks })
+  logout: () => {
+    if (!MOCK) clearTokens()
+    set({ currentUser: null })
   },
 
-  addComment: (taskId, comment) => {
-    const state = get()
-    const full: TaskComment = {
-      id: comment.id ?? `cm_${Date.now()}`,
-      taskId,
-      authorId: comment.authorId,
-      authorName: comment.authorName,
-      content: comment.content,
-      timestamp: comment.timestamp ?? new Date().toISOString(),
+  updateTask: async (taskId: string, updater: SetStateAction<Task>) => {
+    const prev = get().tasks.find((t) => t.id === taskId)
+    if (!prev) return
+    const newTask = typeof updater === 'function' ? (updater as (prev: Task) => Task)(prev) : { ...prev, ...updater }
+    set({ tasks: get().tasks.map((t) => (t.id === taskId ? newTask : t)) })
+    // Real mode: persist a status transition; revert optimistically on rejection (e.g. the
+    // backend DONE-gate returns 409 when artifacts are missing). Call sites are fire-and-
+    // forget, so we revert + log rather than throw (avoids unhandled promise rejections).
+    if (!get().isMock && newTask.status !== prev.status) {
+      try {
+        await api.updateTaskStatus(taskId, newTask.status)
+      } catch (e) {
+        set({ tasks: get().tasks.map((t) => (t.id === taskId ? prev : t)) })
+        console.error('updateTask status failed, reverted:', e)
+      }
     }
-    const updatedTasks = state.tasks.map((t) => {
-      if (t.id !== taskId) return t
-      return { ...t, comments: [...(t.comments || []), full] }
-    })
-    set({ tasks: updatedTasks })
+  },
+
+  addComment: async (taskId, comment) => {
+    if (get().isMock) {
+      const full: TaskComment = {
+        id: comment.id ?? `cm_${Date.now()}`,
+        taskId,
+        authorId: comment.authorId,
+        authorName: comment.authorName,
+        content: comment.content,
+        timestamp: comment.timestamp ?? new Date().toISOString(),
+      }
+      set({ tasks: get().tasks.map((t) => (t.id === taskId ? { ...t, comments: [...(t.comments || []), full] } : t)) })
+      return
+    }
+    const dto = await api.postComment(taskId, comment.content)
+    const full = commentToVM(dto)
+    full.authorName = comment.authorName // author display name resolved client-side
+    set({ tasks: get().tasks.map((t) => (t.id === taskId ? { ...t, comments: [...(t.comments || []), full] } : t)) })
   },
 
   appendTrace: (taskId, event) => {
@@ -734,13 +835,16 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     set({ tasks: updatedTasks })
   },
 
-  publishArtifact: (taskId: string, artifact: TaskArtifact) => {
-    const state = get()
-    const updatedTasks = state.tasks.map((t) => {
-      if (t.id !== taskId) return t
-      return { ...t, artifacts: [...(t.artifacts || []), artifact] }
-    })
-    set({ tasks: updatedTasks })
+  publishArtifact: async (taskId: string, artifact: TaskArtifact) => {
+    if (get().isMock) {
+      set({ tasks: get().tasks.map((t) => (t.id === taskId ? { ...t, artifacts: [...(t.artifacts || []), artifact] } : t)) })
+      return
+    }
+    const kind = artifact.type === 'link' ? 'link' : 'file'
+    const name = artifact.name || artifact.title || 'artifact'
+    const dto = await api.publishArtifact(taskId, name, kind, artifact.url)
+    const full = artifactToVM(dto)
+    set({ tasks: get().tasks.map((t) => (t.id === taskId ? { ...t, artifacts: [...(t.artifacts || []), full] } : t)) })
   },
 
   createSkill: (skill: Skill) => {
@@ -756,62 +860,176 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     set({ skills: updatedSkills })
   },
 
-  createWorkspace: (workspace: Workspace) => {
-    const state = get()
-    set({ workspaces: [...state.workspaces, workspace] })
+  createWorkspace: async (workspace: Workspace) => {
+    if (get().isMock) {
+      set({ workspaces: [...get().workspaces, workspace] })
+      return workspace
+    }
+    const dto = await api.createWorkspace(workspace.name)
+    const ownerId = get().currentUser?.id ?? ''
+    const vm = workspaceToVM(dto, ownerId)
+    set({ workspaces: [...get().workspaces, vm] })
+    return vm
   },
 
   setActiveWorkspace: (workspaceId: string) => {
     set({ activeWorkspaceId: workspaceId })
   },
 
-  grantSeat: (projectId: string, mariusId: string, role: string) => {
-    const state = get()
-    const project = state.projects.find((p) => p.id === projectId)
-    if (!project || !project.seats) return
-    // Find first empty seat matching role, or any empty seat
-    const updatedSeats = project.seats.map((s) => {
-      if (!s.mariusId && s.role === role) {
-        return { ...s, mariusId }
+  grantSeat: async (projectId: string, mariusId: string, role: string) => {
+    const project = get().projects.find((p) => p.id === projectId)
+    if (!project) return
+
+    if (get().isMock) {
+      if (!project.seats) return
+      // Find first empty seat matching role, or any empty seat
+      const updatedSeats = project.seats.map((s) => (!s.mariusId && s.role === role ? { ...s, mariusId } : s))
+      const hasMatch = updatedSeats.some((s) => s.mariusId === mariusId)
+      if (!hasMatch) {
+        const firstEmpty = project.seats.find((s) => !s.mariusId)
+        if (firstEmpty) {
+          const idx = project.seats.indexOf(firstEmpty)
+          updatedSeats[idx] = { ...firstEmpty, mariusId }
+        }
       }
-      return s
-    })
-    // If no matching role found, fill first empty seat
-    const hasMatch = updatedSeats.some((s) => s.mariusId === mariusId)
-    if (!hasMatch) {
-      const firstEmpty = project.seats.find((s) => !s.mariusId)
-      if (firstEmpty) {
-        const idx = project.seats.indexOf(firstEmpty)
-        updatedSeats[idx] = { ...firstEmpty, mariusId }
+      // Recompute the setup→active gate: a project goes active once every seat is filled.
+      const allSeated = updatedSeats.length > 0 && updatedSeats.every((s) => s.mariusId)
+      const nextStatus = allSeated && project.status === 'setup' ? 'active' : project.status
+      const becameActive = nextStatus === 'active' && project.status === 'setup'
+      set({ projects: get().projects.map((p) => (p.id === projectId ? { ...p, seats: updatedSeats, status: nextStatus } : p)) })
+      if (becameActive) {
+        get().emitEvent({ type: 'project.active', payload: { projectId } })
       }
+      return
     }
-    // Recompute the setup→active gate: a project goes active once every seat is filled.
-    const allSeated = updatedSeats.length > 0 && updatedSeats.every((s) => s.mariusId)
-    const nextStatus = allSeated && project.status === 'setup' ? 'active' : project.status
-    const becameActive = nextStatus === 'active' && project.status === 'setup'
-    const updatedProjects = state.projects.map((p) =>
-      p.id === projectId ? { ...p, seats: updatedSeats, status: nextStatus } : p
-    )
-    set({ projects: updatedProjects })
-    if (becameActive) {
-      // Simulated workspace SSE: roster complete → project unlocks Commission.
+
+    // Real mode: the backend grants the seat (system-only) and recomputes setup→active.
+    await api.grantSeat(projectId, { marius_id: mariusId, role_key: role })
+    await get().hydrateProject(projectId)
+    if (get().projects.find((p) => p.id === projectId)?.status === 'active') {
       get().emitEvent({ type: 'project.active', payload: { projectId } })
     }
   },
 
-  createTask: (task) => {
-    const state = get()
-    const newTask: Task = {
-      id: `t_${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      comments: [],
-      artifacts: [],
-      trace: [],
-      checklist: [],
-      participants: [],
-      dependencies: [],
-      ...task,
-    } as Task
-    set({ tasks: [...state.tasks, newTask] })
+  createTask: async (task) => {
+    if (get().isMock) {
+      const newTask: Task = {
+        id: `t_${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        comments: [],
+        artifacts: [],
+        trace: [],
+        checklist: [],
+        participants: [],
+        dependencies: [],
+        ...task,
+      } as Task
+      set({ tasks: [...get().tasks, newTask] })
+      return newTask
+    }
+    const dto = await api.createTask(task.projectId, task.title, task.description)
+    const newTask = taskToVM(dto)
+    set({ tasks: [...get().tasks, newTask] })
+    return newTask
+  },
+
+  createProject: async (input) => {
+    const workspaceId = input.workspaceId || get().activeWorkspaceId || ''
+    if (get().isMock) {
+      const id = `p_${Date.now()}`
+      const project: Project = {
+        id,
+        name: input.name,
+        description: input.description,
+        objective: input.objective,
+        workspaceId,
+        status: 'setup',
+        seats: [
+          { id: `${id}-leader`, projectId: id, mariusId: input.leaderId || null, role: 'leader' },
+          ...(input.seats ?? []).map((s, i) => ({ id: `${id}-${i}`, projectId: id, mariusId: null, role: s.roleKey })),
+        ],
+      }
+      set({ projects: [...get().projects, project] })
+      return project
+    }
+    // Real: reconstruct role specs from the flat seat list the wizard emits (one entry per
+    // seat; group worker seats by their display title → {title, seats, skill_ids}).
+    const workerSeats = (input.seats ?? []).filter((s) => s.roleKey !== 'leader')
+    const roleMap = new Map<string, { title: string; seats: number; skill_ids: string[] }>()
+    for (const s of workerSeats) {
+      const entry = roleMap.get(s.roleLabel) ?? { title: s.roleLabel, seats: 0, skill_ids: s.skillsRequired ?? [] }
+      entry.seats += 1
+      roleMap.set(s.roleLabel, entry)
+    }
+    const body: api.CreateProjectBody = {
+      name: input.name,
+      description: input.description,
+      objective: input.objective,
+      leader: { marius_id: input.leaderId || undefined, responsibilities: '' },
+      roles: [...roleMap.values()].map((r) => ({ title: r.title, seats: r.seats, skill_ids: r.skill_ids })),
+    }
+    const dto = await api.createProject(workspaceId, body)
+    const project = projectDetailToVM(dto)
+    set({ projects: upsertById(get().projects, project) })
+    return project
+  },
+
+  // ── API hydration thunks ───────────────────────────────────────────────────────────
+  hydrateMe: async () => {
+    if (get().isMock) return
+    try {
+      const user = await api.getMe()
+      set({ currentUser: { id: user.id, name: user.full_name, email: user.email } })
+    } catch {
+      // Not logged in (401) — leave currentUser null; the auth guard redirects to Landing.
+    }
+  },
+
+  hydrateWorkspaces: async () => {
+    if (get().isMock) return
+    const ownerId = get().currentUser?.id ?? ''
+    const dtos = await api.listWorkspaces()
+    const vms = dtos.map((d) => workspaceToVM(d, ownerId))
+    set({ workspaces: vms, activeWorkspaceId: get().activeWorkspaceId ?? vms[0]?.id ?? null })
+  },
+
+  hydrateWorkspace: async (workspaceId: string) => {
+    if (get().isMock) return
+    const [mariuses, projects, skills] = await Promise.all([
+      api.listMariuses(workspaceId),
+      api.listProjects(workspaceId),
+      api.listSkills(workspaceId).catch(() => []),
+    ])
+    set({
+      mariuses: mariuses.map(mariusToVM),
+      projects: projects.map(projectToVM),
+      skills: skills.map(skillToVM),
+    })
+  },
+
+  hydrateProject: async (projectId: string) => {
+    if (get().isMock) return
+    const [detail, taskDtos] = await Promise.all([api.getProject(projectId), api.listTasks(projectId)])
+    const project = projectDetailToVM(detail)
+    const tasks = taskDtos.map(taskToVM)
+    set({
+      projects: upsertById(get().projects, project),
+      tasks: [...get().tasks.filter((t) => t.projectId !== projectId), ...tasks],
+    })
+  },
+
+  hydrateTask: async (taskId: string) => {
+    if (get().isMock) return
+    const [taskDto, comments, artifacts] = await Promise.all([
+      api.getTask(taskId),
+      api.listComments(taskId),
+      api.listArtifacts(taskId),
+    ])
+    const full: Task = {
+      ...taskToVM(taskDto),
+      comments: comments.map(commentToVM),
+      artifacts: artifacts.map(artifactToVM),
+    }
+    set({ tasks: upsertById(get().tasks, full) })
   },
 }))

@@ -25,6 +25,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { useMockStore, type TraceEvent, type Task } from '@/store/mockStore';
+import { useTaskStream } from '@/hooks/use-task-stream';
 import { cn } from '@/lib/utils';
 
 // ─── Trace Event Type Colors ─────────────────────────────────────────────────
@@ -227,7 +228,18 @@ export default function CollaborationRoom() {
   const navigate = useNavigate();
   const store = useMockStore();
   const appendTrace = useMockStore((s) => s.appendTrace);
+  const isMock = store.isMock;
   const task = store.tasks.find((t) => t.id === taskId);
+
+  // Real-API mode: subscribe to the per-task wake trace SSE (the mock interval simulator
+  // below is skipped under the real API). No-op under MOCK.
+  useTaskStream(!isMock ? taskId : null);
+
+  // Real-API mode: load the task + its comment thread + artifacts on mount.
+  useEffect(() => {
+    if (isMock || !taskId) return;
+    store.hydrateTask(taskId);
+  }, [isMock, taskId]);
 
   const [commentInput, setCommentInput] = useState('');
   const [statusValue, setStatusValue] = useState<Task['status']>(task?.status ?? 'todo');
@@ -260,7 +272,9 @@ export default function CollaborationRoom() {
 
   // Simulated per-task trace SSE: while the task is in progress and the stream is
   // "running" (wake controls), append scripted run events so the trace feels live.
+  // MOCK only — the real API streams live wake events via useTaskStream above.
   useEffect(() => {
+    if (!isMock) return;
     if (!task || task.status !== 'in_progress' || !isTraceActive) return;
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     if (reduced) return;

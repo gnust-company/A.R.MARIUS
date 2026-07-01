@@ -15,9 +15,14 @@ RUN pip install --no-cache-dir ".[postgres]"
 # prompt advertises this URL, so it MUST be present in the image.
 COPY static ./static
 
+# Entry point applies Alembic migrations on boot, then hands off to uvicorn (CMD).
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 EXPOSE 8000
 
-HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else 1)"
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["uvicorn", "armarius.main:app", "--host", "0.0.0.0", "--port", "8000"]

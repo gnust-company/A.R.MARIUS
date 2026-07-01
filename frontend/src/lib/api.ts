@@ -1,0 +1,417 @@
+// Real API client (Sprint 6 golden-path scope).
+//
+// Typed fetch wrapper that injects the Bearer token, handles 401→refresh→retry, and exposes
+// every endpoint the golden-path needs: auth/me, workspaces, projects (list/create/get),
+// roster (detail/grant), mariuses, labels, skills, tasks (CRUD + comments + artifacts),
+// commission, and the two SSE routes (for URL construction only; the stream itself lives in sse.ts).
+//
+// Error responses raise an `ApiError` with a `detail` string (the server‑sent `detail` field
+// or a fallback message). Callers can display it as a toast or inline alert.
+
+import { getToken, logout, refreshAccessToken, type UserDTO } from './auth'
+import { API_BASE } from './env'
+
+export class ApiError extends Error {
+  status?: number
+  constructor(detail: string, status?: number) {
+    super(detail)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
+let isRefreshing = false
+
+async function fetchWithAuth(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  let token = getToken()
+
+  const headers: Record<string, string> = {
+    ...((init?.headers as Record<string, string>) ?? undefined),
+    Accept: 'application/json',
+  }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+  if (init?.body && !(init.body instanceof FormData) && !(init.body instanceof URLSearchParams)) {
+    headers['Content-Type'] = 'application/json'
+  }
+
+  let res = await fetch(`${API_BASE}${input}`, {
+    ...init,
+    headers,
+  })
+
+  // 401 → try once to refresh the token, then retry the original request.
+  if (res.status === 401 && token && !isRefreshing) {
+    isRefreshing = true
+    const ok = await refreshAccessToken()
+    isRefreshing = false
+
+    if (ok) {
+      token = getToken()
+      if (token) {
+        headers.Authorization = `Bearer ${token}`
+      }
+      res = await fetch(`${API_BASE}${input}`, {
+        ...init,
+        headers,
+      })
+    } else {
+      // Refresh failed → logged out; clear local state and surface the 401.
+      logout()
+      throw new ApiError('Session expired. Please log in again.', 401)
+    }
+  }
+
+  return res
+}
+
+async function get<T>(path: string): Promise<T> {
+  const res = await fetchWithAuth(path)
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`
+    try {
+      const data = await res.json()
+      if (data?.detail) detail = typeof data.detail === 'string' ? data.detail : detail
+    } catch {
+      // non-JSON error body — keep the status-line fallback
+    }
+    throw new ApiError(detail, res.status)
+  }
+  return (await res.json()) as T
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetchWithAuth(path, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`
+    try {
+      const data = await res.json()
+      if (data?.detail) detail = typeof data.detail === 'string' ? data.detail : detail
+    } catch {
+      // non-JSON error body — keep the status-line fallback
+    }
+    throw new ApiError(detail, res.status)
+  }
+  return (await res.json()) as T
+}
+
+// ── DTOs (golden-path only — a thin typed contract over the backend schemas) ─────────────
+
+export interface WorkspaceDTO {
+  id: string
+  name: string
+  slug: string
+  created_at?: string | null
+}
+
+export interface ProjectDTO {
+  id: string
+  workspace_id?: string | null
+  name: string
+  slug: string
+  description?: string | null
+  created_at?: string | null
+}
+
+export interface ProjectDetailDTO {
+  id: string
+  workspace_id?: string | null
+  name: string
+  slug: string
+  description?: string | null
+  status: string
+  objective?: string | null
+  github_url?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+  roster: RosterRoleDTO[]
+}
+
+export interface RosterRoleDTO {
+  key: string
+  title: string
+  seats: number
+  is_leader: boolean
+  description: string
+  skill_ids: string[]
+  filled: number
+  seated: SeatDTO[]
+}
+
+export interface SeatDTO {
+  marius_id: string
+  name: string
+  role_key: string
+  liveness: string
+  is_primary: boolean
+}
+
+export interface MariusDTO {
+  id: string
+  workspace_id?: string | null
+  name: string
+  role: string
+  skills: string[]
+  skill_ids: string[]
+  adapter_type: string
+  liveness: string
+  last_seen_at?: string | null
+  created_at?: string | null
+}
+
+export interface LabelDTO {
+  id: string
+  workspace_id?: string | null
+  name: string
+  color: string
+  created_at?: string | null
+}
+
+export interface SkillDTO {
+  id: string
+  workspace_id?: string | null
+  slug: string
+  name: string
+  description?: string
+  source: string
+  source_url: string
+  files: Record<string, string>
+  created_at?: string | null
+}
+
+export interface TaskDTO {
+  id: string
+  project_id?: string | null
+  title: string
+  description?: string | null
+  status: string
+  status_reason?: string | null
+  assigned_marius_id?: string | null
+  next_action?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface CommentDTO {
+  id: string
+  task_id?: string | null
+  author_kind: string
+  author_marius_id?: string | null
+  author_user_id?: string | null
+  body: string
+  mentions: string[]
+  created_at?: string | null
+}
+
+export interface ArtifactDTO {
+  id: string
+  project_id?: string | null
+  task_id?: string | null
+  marius_id?: string | null
+  name: string
+  kind: string
+  uri: string
+  stored?: boolean
+  size_bytes?: number | null
+  created_at?: string | null
+}
+
+export interface CommissionDTO {
+  id: string
+  project_id?: string | null
+  leader_marius_id?: string | null
+  task_id?: string | null
+  status: string
+  leader_state: string
+  transcript: Array<{ role: string; text: string }>
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+// ── Auth ─────────────────────────────────────────────────────────────────────────────
+
+export async function getMe(): Promise<UserDTO> {
+  return get<UserDTO>('/auth/me')
+}
+
+// ── Workspaces ─────────────────────────────────────────────────────────────────────────
+
+export async function listWorkspaces(): Promise<WorkspaceDTO[]> {
+  return get<WorkspaceDTO[]>('/v1/workspaces')
+}
+
+export async function createWorkspace(name: string): Promise<WorkspaceDTO> {
+  return post<WorkspaceDTO>('/v1/workspaces', { name })
+}
+
+// ── Projects ───────────────────────────────────────────────────────────────────────────
+
+export interface CreateProjectBody {
+  name: string
+  description?: string
+  objective?: string
+  leader?: { marius_id?: string | null; responsibilities?: string }
+  roles?: Array<{
+    title: string
+    seats: number
+    description?: string
+    skill_ids?: string[]
+    marius_ids?: (string | null)[]
+  }>
+}
+
+export async function listProjects(workspaceId: string): Promise<ProjectDTO[]> {
+  return get<ProjectDTO[]>(`/v1/workspaces/${workspaceId}/projects`)
+}
+
+export async function createProject(workspaceId: string, body: CreateProjectBody): Promise<ProjectDetailDTO> {
+  return post<ProjectDetailDTO>(`/v1/workspaces/${workspaceId}/projects`, body)
+}
+
+export async function getProject(projectId: string): Promise<ProjectDetailDTO> {
+  return get<ProjectDetailDTO>(`/v1/projects/${projectId}`)
+}
+
+// ── Mariuses ───────────────────────────────────────────────────────────────────────────
+
+export async function listMariuses(workspaceId: string): Promise<MariusDTO[]> {
+  return get<MariusDTO[]>(`/v1/workspaces/${workspaceId}/mariuses`)
+}
+
+export interface InviteMariusBody {
+  name: string
+  role?: string
+  skills?: string[]
+  skill_ids?: string[]
+  adapter_type?: string
+}
+
+export async function inviteMarius(workspaceId: string, body: InviteMariusBody): Promise<MariusDTO> {
+  return post<MariusDTO>(`/v1/workspaces/${workspaceId}/mariuses`, body)
+}
+
+export async function approveMarius(workspaceId: string, mariusId: string): Promise<MariusDTO> {
+  return post<MariusDTO>(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}/approve`, {})
+}
+
+// ── Labels ─────────────────────────────────────────────────────────────────────────────
+
+export async function listLabels(workspaceId: string): Promise<LabelDTO[]> {
+  return get<LabelDTO[]>(`/v1/workspaces/${workspaceId}/labels`)
+}
+
+// ── Skills ─────────────────────────────────────────────────────────────────────────────
+
+export async function listSkills(workspaceId: string): Promise<SkillDTO[]> {
+  return get<SkillDTO[]>(`/v1/workspaces/${workspaceId}/skills`)
+}
+
+// ── Tasks ───────────────────────────────────────────────────────────────────────────────
+
+export async function listTasks(projectId: string): Promise<TaskDTO[]> {
+  return get<TaskDTO[]>(`/v1/projects/${projectId}/tasks`)
+}
+
+export async function getTask(taskId: string): Promise<TaskDTO> {
+  return get<TaskDTO>(`/v1/tasks/${taskId}`)
+}
+
+export async function createTask(projectId: string, title: string, description?: string): Promise<TaskDTO> {
+  return post<TaskDTO>(`/v1/projects/${projectId}/tasks`, { title, description })
+}
+
+export async function updateTaskStatus(taskId: string, status: string, reason?: string): Promise<TaskDTO> {
+  return post<TaskDTO>(`/v1/tasks/${taskId}/status`, { status, reason })
+}
+
+// ── Comments ───────────────────────────────────────────────────────────────────────────
+
+export async function listComments(taskId: string): Promise<CommentDTO[]> {
+  return get<CommentDTO[]>(`/v1/tasks/${taskId}/comments`)
+}
+
+export async function postComment(taskId: string, body: string, mentions?: string[]): Promise<CommentDTO> {
+  return post<CommentDTO>(`/v1/tasks/${taskId}/comments`, {
+    body,
+    author_kind: 'human',
+    extra_mentions: mentions ?? [],
+  })
+}
+
+// ── Artifacts ───────────────────────────────────────────────────────────────────────────
+
+export async function listArtifacts(taskId: string): Promise<ArtifactDTO[]> {
+  return get<ArtifactDTO[]>(`/v1/tasks/${taskId}/artifacts`)
+}
+
+export async function publishArtifact(
+  taskId: string,
+  name: string,
+  kind: 'file' | 'link',
+  uri?: string,
+): Promise<ArtifactDTO> {
+  return post<ArtifactDTO>(`/v1/tasks/${taskId}/artifacts`, { name, kind, uri })
+}
+
+// ── Commission ───────────────────────────────────────────────────────────────────────────
+
+export interface CommissionStartBody {
+  project_id: string
+  message: string
+  title?: string
+}
+
+export async function startCommission(body: CommissionStartBody): Promise<CommissionDTO> {
+  return post<CommissionDTO>('/v1/commissions', body)
+}
+
+export interface CommissionRefineBody {
+  message: string
+}
+
+export async function refineCommission(sessionId: string, body: CommissionRefineBody): Promise<CommissionDTO> {
+  return post<CommissionDTO>(`/v1/commissions/${sessionId}/refine`, body)
+}
+
+export async function confirmCommission(sessionId: string): Promise<CommissionDTO> {
+  return post<CommissionDTO>(`/v1/commissions/${sessionId}/confirm`, {})
+}
+
+export async function getCommission(sessionId: string): Promise<CommissionDTO> {
+  return get<CommissionDTO>(`/v1/commissions/${sessionId}`)
+}
+
+// ── Roster grant (system‑only) ────────────────────────────────────────────────────────
+
+export interface GrantSeatBody {
+  marius_id: string
+  role_key: string
+}
+
+export interface SeatGrantDTO {
+  id: string
+  project_id?: string | null
+  role_key: string
+  marius_id?: string | null
+  status: string
+  granted_at?: string | null
+  created_at?: string | null
+}
+
+export async function grantSeat(projectId: string, body: GrantSeatBody): Promise<SeatGrantDTO> {
+  return post<SeatGrantDTO>(`/v1/projects/${projectId}/grant`, body)
+}
+
+// ── SSE URLs (the streams themselves are fetched in sse.ts) ───────────────────────────────
+
+export function workspaceEventsUrl(workspaceId: string): string {
+  return `${API_BASE}/v1/workspaces/${workspaceId}/events`
+}
+
+export function taskStreamUrl(taskId: string): string {
+  return `${API_BASE}/v1/tasks/${taskId}/stream`
+}

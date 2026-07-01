@@ -19,6 +19,7 @@ import { useMockStore } from '@/store/mockStore';
 import VellumPanel from '@/components/VellumPanel';
 import PageTitle from '@/components/PageTitle';
 import { cn } from '@/lib/utils';
+import * as api from '@/lib/api';
 
 // ─── Local Commission Session Types ──────────────────────────────────────────
 
@@ -543,13 +544,22 @@ export default function Commission() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const store = useMockStore();
+  const isMock = store.isMock;
 
   // Local state for commission session (store doesn't have commission support)
   const [session, setSession] = useState<CommissionSession>(INITIAL_COMMISSION);
   const [messages, setMessages] = useState<CommissionMessage[]>(INITIAL_COMMISSION.messages);
   const [draftTask, setDraftTask] = useState<LocalDraftTask | null>(null);
+  // Real-API commission session id (set once the first patron message opens a commission).
+  const [realSessionId, setRealSessionId] = useState<string | null>(null);
 
   const project = store.projects.find((p) => p.id === projectId);
+
+  // Real-API mode: ensure the project (roster/status) is loaded so the locked gate works.
+  useEffect(() => {
+    if (isMock || !projectId) return;
+    store.hydrateProject(projectId);
+  }, [isMock, projectId]);
   // Find leader by looking for a marius with role containing "Leader" in the project
   const leader = store.mariuses.find((m) => m.projectIds.includes(projectId || '') && m.role.toLowerCase().includes('leader'));
 
@@ -578,14 +588,42 @@ export default function Commission() {
   const handleSend = useCallback(() => {
     if (!inputValue.trim()) return;
 
-    // Send patron message
-    addMessage({
-      role: 'patron',
-      content: inputValue.trim(),
-    });
-
     const sentInput = inputValue.trim();
+    addMessage({ role: 'patron', content: sentInput });
     setInputValue('');
+
+    if (!isMock) {
+      // Real API: open (or refine) the commission. The Leader shapes the draft asynchronously
+      // via the wake run; we surface a preview derived from the patron's message so the
+      // confirm gate is reachable.
+      setIsThinking(true);
+      void (async () => {
+        try {
+          if (!realSessionId) {
+            const dto = await api.startCommission({ project_id: projectId, message: sentInput });
+            setRealSessionId(dto.id);
+            setDraftTask({
+              identifier: 'DRAFT',
+              title: sentInput.slice(0, 80),
+              description: sentInput,
+              priority: 'P1',
+              definitionOfDone: '',
+              checklist: [],
+              dueDate: '',
+              workers: [],
+              dependencies: [],
+            });
+          } else {
+            await api.refineCommission(realSessionId, { message: sentInput });
+          }
+        } catch {
+          addMessage({ role: 'system', content: 'Could not reach the Leader. Try again.' });
+        } finally {
+          setIsThinking(false);
+        }
+      })();
+      return;
+    }
 
     // Mock leader response
     setIsThinking(true);
@@ -613,7 +651,7 @@ export default function Commission() {
         });
       }
     }, responseDelay);
-  }, [inputValue, addMessage, turnCount]);
+  }, [inputValue, addMessage, turnCount, isMock, realSessionId, projectId]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -628,9 +666,27 @@ export default function Commission() {
   };
 
   const handleConfirm = async () => {
-    if (!draftTask) return;
+    if (!isMock && !realSessionId) return;
 
     setIsConfirming(true);
+
+    if (!isMock) {
+      // Real API: confirm flips the draft → todo on the backend, then re-hydrate so the
+      // freshly published task appears on the board.
+      try {
+        await api.confirmCommission(realSessionId);
+        await store.hydrateProject(projectId);
+        addMessage({ role: 'system', content: 'Task published to the board.' });
+      } catch {
+        addMessage({ role: 'system', content: 'Could not confirm the task.' });
+      } finally {
+        setIsConfirming(false);
+        navigate(`/projects/${projectId}`);
+      }
+      return;
+    }
+
+    if (!draftTask) return;
 
     // Simulate creation delay
     await new Promise((resolve) => setTimeout(resolve, 1000));

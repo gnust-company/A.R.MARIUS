@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { motion } from 'framer-motion';
 import {
@@ -44,17 +44,27 @@ export default function Workspaces() {
   const mariuses = useMockStore((s) => s.mariuses);
   const setActiveWorkspace = useMockStore((s) => s.setActiveWorkspace);
   const createWorkspace = useMockStore((s) => s.createWorkspace);
+  const hydrateWorkspaces = useMockStore((s) => s.hydrateWorkspaces);
+  const hydrateWorkspace = useMockStore((s) => s.hydrateWorkspace);
+  const isMock = useMockStore((s) => s.isMock);
+
+  // Real-API mode: load the user's workspaces on mount.
+  useEffect(() => {
+    if (isMock) return;
+    hydrateWorkspaces();
+  }, [isMock, hydrateWorkspaces]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newWsName, setNewWsName] = useState('');
   const [newWsDesc, setNewWsDesc] = useState('');
 
-  const handleEnter = (wsId: string) => {
+  const handleEnter = async (wsId: string) => {
     setActiveWorkspace(wsId);
+    if (!isMock) await hydrateWorkspace(wsId);
     navigate('/projects');
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!newWsName.trim()) return;
     const ws = {
       id: `ws_${Date.now()}`,
@@ -62,11 +72,12 @@ export default function Workspaces() {
       ownerId: 'u1',
       description: newWsDesc.trim() || undefined,
     };
-    createWorkspace(ws);
+    const created = await createWorkspace(ws);
     setNewWsName('');
     setNewWsDesc('');
     setIsModalOpen(false);
-    setActiveWorkspace(ws.id);
+    setActiveWorkspace(created.id);
+    if (!isMock) await hydrateWorkspace(created.id);
     navigate('/projects');
   };
 

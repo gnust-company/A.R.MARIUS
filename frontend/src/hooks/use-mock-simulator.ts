@@ -15,8 +15,13 @@ import { useMockStore } from '@/store/mockStore'
 export function useMockSimulator(intervalMs = 4500) {
   const setSseConnected = useMockStore((s) => s.setSseConnected)
   const simulateLivenessTick = useMockStore((s) => s.simulateLivenessTick)
+  const isMock = useMockStore((s) => s.isMock)
 
   useEffect(() => {
+    // Real-API mode: the live workspace SSE (useWorkspaceEvents) drives connection state
+    // and agent liveness; the simulator is MOCK-only.
+    if (!isMock) return
+
     setSseConnected(true)
 
     const reduced =
@@ -32,5 +37,5 @@ export function useMockSimulator(intervalMs = 4500) {
       window.clearInterval(id)
       setSseConnected(false)
     }
-  }, [setSseConnected, simulateLivenessTick, intervalMs])
+  }, [isMock, setSseConnected, simulateLivenessTick, intervalMs])
 }

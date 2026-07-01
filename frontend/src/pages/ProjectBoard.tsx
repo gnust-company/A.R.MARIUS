@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -242,10 +242,18 @@ export default function ProjectBoard() {
   const { t } = useTranslation();
   const projects = useMockStore((s) => s.projects);
   const tasks = useMockStore((s) => s.tasks);
+  const isMock = useMockStore((s) => s.isMock);
+  const hydrateProject = useMockStore((s) => s.hydrateProject);
 
   const [addTaskColumn, setAddTaskColumn] = useState<TaskStatus | null>(null);
 
   const project = projects.find((p) => p.id === projectId);
+
+  // Real-API mode: load this project's roster + tasks on mount.
+  useEffect(() => {
+    if (isMock || !projectId) return;
+    hydrateProject(projectId);
+  }, [isMock, projectId, hydrateProject]);
 
   const projectTasks = useMemo(
     () => tasks.filter((t) => t.projectId === projectId),

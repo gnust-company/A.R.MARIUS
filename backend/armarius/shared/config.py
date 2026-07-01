@@ -47,8 +47,11 @@ class Settings(BaseSettings):
 
     # Demo seed ("Acme Web Platform" scenario). OFF by default — real users get
     # their own empty workspace on register. Set ARMARIUS_SEED_DEMO=true to repopulate
-    # the demo story (e.g. for a fresh showcase instance).
+    # the demo story (e.g. for a fresh showcase instance). The seed registers the demo
+    # Patron below so the showcase journey is reachable end-to-end (login + own workspace).
     seed_demo: bool = False
+    demo_email: str = "demo@acme.dev"
+    demo_password: str = "demo1234"
 
     # JWT settings for user authentication
     jwt_secret: str = "change-me-in-production-use-secrets-manager"

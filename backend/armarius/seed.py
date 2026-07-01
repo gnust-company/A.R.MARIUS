@@ -4,6 +4,12 @@ Runs once on an empty database so the dashboard has a coherent story to show:
 a workspace, four Mariuses, and tasks spanning every lifecycle state, plus a
 collaboration thread with @mentions and published artifacts. Uses the `echo`
 adapter so "wake" works end-to-end without a real gateway.
+
+Sprint 6 (integration): the scenario is **owned by a loginable demo Patron** (configured
+via ``ARMARIUS_DEMO_EMAIL`` / ``ARMARIUS_DEMO_PASSWORD``). The Patron is registered (or
+reused if present) and set as the ``owner_user_id`` on the workspace and every Marius, so
+the golden-path UI journey — logged in as the demo user — can actually see and interact
+with the seeded data (every ``/v1`` route is owner-scoped).
 """
 
 from __future__ import annotations
@@ -19,23 +25,52 @@ from armarius.domain.entities.workspace import Project, Workspace
 from armarius.infrastructure.persistence.unit_of_work import make_uow
 from armarius.presentation.container import Container
 from armarius.shared.clock import utcnow
+from armarius.shared.config import get_settings
 from armarius.shared.logging import get_logger
 
 logger = get_logger(__name__)
+
+ACME_SLUG = "acme-web-platform"
 
 
 def _token() -> str:
     return f"arm_{secrets.token_urlsafe(24)}"
 
 
-async def maybe_seed(_: Container) -> None:
+async def _demo_owner_id(container: Container) -> str:
+    """Return the user id of the demo Patron, registering them if necessary."""
+    settings = get_settings()
     async with make_uow() as uow:
-        existing = await uow.workspaces.list()
-        if existing:
-            return
+        user = await uow.users.get_by_email(settings.demo_email)
+    if user is not None:
+        return str(user.id)
+    # Register (hashes the password, creates the account). register() also provisions a
+    # personal workspace — harmless alongside the seeded Acme workspace.
+    user, _access, _refresh = await container.auth.register(
+        email=settings.demo_email,
+        full_name="Demo Patron",
+        password=settings.demo_password,
+    )
+    return str(user.id)
 
+
+async def maybe_seed(container: Container) -> None:
+    settings = get_settings()
+    async with make_uow() as uow:
+        already = any(w.slug == ACME_SLUG for w in await uow.workspaces.list())
+    if already:
+        return  # idempotent — the showcase scenario is already present
+
+    owner_id = await _demo_owner_id(container)
+
+    async with make_uow() as uow:
         now = utcnow()
-        ws = Workspace(name="Acme Web Platform", slug="acme-web-platform", created_at=now)
+        ws = Workspace(
+            name="Acme Web Platform",
+            slug=ACME_SLUG,
+            owner_user_id=owner_id,
+            created_at=now,
+        )
         await uow.workspaces.add(ws)
 
         project = Project(
@@ -55,7 +90,7 @@ async def maybe_seed(_: Container) -> None:
                 skills=skills,
                 adapter_type="echo",
                 adapter_config={},
-                owner_user_id="demo@acme.dev",
+                owner_user_id=owner_id,
                 agent_token=_token(),
                 liveness=live,
                 last_seen_at=now,
@@ -175,4 +210,10 @@ async def maybe_seed(_: Container) -> None:
         )
 
         await uow.commit()
-        logger.info("seeded demo workspace '%s' (%s)", ws.name, ws.id)
+        logger.info(
+            "seeded demo workspace '%s' (%s) owned by %s — log in as %s",
+            ws.name,
+            ws.id,
+            owner_id,
+            settings.demo_email,
+        )

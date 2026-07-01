@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -128,9 +128,9 @@ function GrantSeatModal({
       !seatedMariusIds.has(m.id)
   );
 
-  const handleGrant = () => {
+  const handleGrant = async () => {
     if (!selectedAgentId) return;
-    grantSeat(projectId, selectedAgentId, roleKey);
+    await grantSeat(projectId, selectedAgentId, roleKey);
     setSelectedAgentId(null);
     onClose();
   };
@@ -247,6 +247,9 @@ export default function Roster() {
   const { t } = useTranslation();
   const projects = useMockStore((s) => s.projects);
   const mariuses = useMockStore((s) => s.mariuses);
+  const isMock = useMockStore((s) => s.isMock);
+  const hydrateProject = useMockStore((s) => s.hydrateProject);
+  const hydrateWorkspace = useMockStore((s) => s.hydrateWorkspace);
   const project = projects.find((p) => p.id === projectId);
 
   const [grantModalRole, setGrantModalRole] = useState<{
@@ -254,6 +257,16 @@ export default function Roster() {
     roleLabel: string;
     skillsRequired: string[];
   } | null>(null);
+
+  // Real-API mode: load the project roster + the workspace's agents on mount.
+  useEffect(() => {
+    if (isMock || !projectId) return;
+    (async () => {
+      await hydrateProject(projectId);
+      const wsId = useMockStore.getState().projects.find((p) => p.id === projectId)?.workspaceId;
+      if (wsId) await hydrateWorkspace(wsId);
+    })();
+  }, [isMock, projectId, hydrateProject, hydrateWorkspace]);
 
   if (!project) {
     return (

@@ -1,11 +1,10 @@
-# Armarius. Copy .env.sample to .env to override ports, then:
+# Armarius — full stack. Copy .env.sample to .env to override, then:
 #
-#   docker compose up --build            → mock-data UI only (no backend yet)
-#   docker compose --profile backend up --build   → full stack (db + API + UI)
+#   docker compose up --build
 #
-# The frontend is currently a self-contained MOCK SPA (in-memory store, no API),
-# so the default `up` builds just the UI. The backend (db + API) lives behind the
-# `backend` profile until the BE track is wired in.
+# Brings up the whole stack: Postgres + MinIO + backend (API, auto-migrates on boot)
+# + frontend (nginx-served SPA that reverse-proxies /auth, /v1, /agent to the backend).
+# The seed runs on a fresh DB, so log in as demo@acme.dev / demo1234 (see .env.sample).
 #
 # Dashboard → http://localhost:${FRONTEND_PORT:-3000}   API → http://localhost:${BACKEND_PORT:-8080}
 
@@ -18,10 +17,12 @@ services:
       network: host
     ports:
       - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
 
   db:
     image: postgres:16-alpine
-    profiles: ["backend"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-armarius}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-armarius}
@@ -39,7 +40,6 @@ services:
   # conflicts). To browse the console, add a `ports:` mapping to a free host port.
   minio:
     image: minio/minio:latest
-    profiles: ["backend"]
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-armarius}
@@ -53,7 +53,6 @@ services:
       # Build on the host network so pip can reach PyPI even where BuildKit's
       # isolated build network has no DNS (matches the frontend). Harmless elsewhere.
       network: host
-    profiles: ["backend"]
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-armarius}:${POSTGRES_PASSWORD:-armarius}@db:5432/${POSTGRES_DB:-armarius}
       # Public URL of THIS API that agents call back into — advertised in invitations.
@@ -67,6 +66,14 @@ services:
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-armarius123}
       MINIO_BUCKET: ${MINIO_BUCKET:-armarius}
       MINIO_SECURE: "false"
+      # JWT signing (dev default; override JWT_SECRET in production).
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string-in-production}
+      # Demo seed — runs once on a fresh DB so the showcase journey is reachable.
+      # (The .env var is ARMARIUS_*-namespaced; compose maps it to the Settings field
+      # name the app reads — same pattern as PUBLIC_BASE_URL below.)
+      SEED_DEMO: ${ARMARIUS_SEED_DEMO:-true}
+      DEMO_EMAIL: ${ARMARIUS_DEMO_EMAIL:-demo@acme.dev}
+      DEMO_PASSWORD: ${ARMARIUS_DEMO_PASSWORD:-demo1234}
     # DEV-ONLY convenience: lets a hermes_gateway Marius reach a Hermes running on the
     # SAME host as this compose (base_url http://host.docker.internal:8642). For agents
     # on other machines, just set that Marius's base_url to its own reachable URL.

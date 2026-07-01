@@ -217,7 +217,7 @@ export default function CreateProject() {
       }
     });
 
-    const project = createProject({
+    const project = await createProject({
       name: formData.name.trim(),
       description: formData.objective.trim(),
       objective: formData.objective.trim(),
@@ -226,8 +226,6 @@ export default function CreateProject() {
       seats,
     });
 
-    // Simulate delay then navigate
-    await new Promise((resolve) => setTimeout(resolve, 800));
     navigate(`/projects/${project.id}`);
   };
 

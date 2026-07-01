@@ -181,6 +181,51 @@ The mock-data Scriptorium SPA is the frozen UX spec. All sub-phases shipped gree
 
 ## Build log
 
+### 2026-07-01 — **Sprint 6 — Integration: FE mock → real API** (issue #9)
+> Flipped the frozen mock SPA onto the real API behind a one-command full-stack compose. **Scope (owner):**
+> golden-path slice + graceful degrade for affordances the backend doesn't cover.
+>
+> **FE data layer (new, `frontend/src/lib/`):** `env.ts` (`MOCK` flag — unset = real API, the flip), `auth.ts`
+> (JWT register/login/refresh + localStorage tokens), `api.ts` (typed fetch wrapper, Bearer inject, 401→refresh→
+> retry, every golden-path route), `mappers.ts` (single DTO→view-model bridge for the enum/shape drift — liveness
+> → `AgentStatus`, roster → flat `ProjectSeat[]`, task status passthrough + new `draft`), `sse.ts` (fetch+Readable-
+> Stream SSE reader — `EventSource` can't send the Bearer header the auth-gated streams require; honours
+> `Last-Event-ID` + auto-reconnect). Hooks `use-workspace-events` / `use-task-stream` dispatch the live streams
+> into the store; `use-mock-simulator` is now MOCK-only (it was churning real liveness).
+>
+> **Store (`mockStore.ts`):** kept Zustand as a cache over the API — no page rewrites. MOCK-conditional seed
+> (dummy data under MOCK, empty + hydrate under real); golden-path mutations now route through `api.*` when
+> `!MOCK` (createWorkspace/createProject/createTask/grantSeat/addComment/updateTask/publishArtifact) keeping
+> their signatures; added `createProject` (was missing — latent crash) + hydration thunks (`hydrateMe/Workspaces/
+> Workspace/Project/Task`) + `draft` status + `Artifact` alias + `CommissionSession` VM + real `logout` (clears tokens).
+>
+> **Pages:** new `Login.tsx` (real JWT); `App.tsx` boot-hydrates the session + `RequireAuth` gate (→ `/login`);
+> golden-path pages hydrate on mount and await mutations (Workspaces/CreateProject/ProjectBoard/Roster/
+> CollaborationRoom); **Commission** create/refine/confirm now hit `/v1/commissions` (confirm flips draft→todo +
+> re-hydrates); **CollaborationRoom** swaps the scripted-interval trace for the real `useTaskStream`.
+>
+> **Infra:** `nginx.conf` reverse-proxies `/auth /v1 /agent` → `backend:8000` (SSE-safe: `proxy_buffering off`);
+> backend `docker-entrypoint.sh` runs `alembic upgrade head` on boot (retry loop) then `exec uvicorn`; `docker-
+> compose.yml` is now a **one-command full stack** (db+minio+backend+frontend, profile dropped; FE `depends_on`
+> healthy backend). `.env`→container var mapping fixed to match the `PUBLIC_BASE_URL` pattern (`SEED_DEMO`/
+> `DEMO_EMAIL`/`DEMO_PASSWORD` — the `ARMARIUS_`-prefixed `.env` names were never read by `Settings`).
+>
+> **Backend seed parity:** `seed.py` now registers a loginable demo Patron (`demo@acme.dev` / `demo1234`) and
+> sets it as `owner_user_id` on the Acme workspace + all four Mariuses (previously orphaned → no real user could
+> see them through the owner-scoped routes). Idempotent (gates on the Acme slug). `test_seed_parity.py` covers
+> ownership + login + idempotency.
+>
+> **Verified E2E** (`docker compose up --build`): health `{db,minio}=up`; login demo→token; `/v1/workspaces` →
+> Acme Web Platform; project → 6 seeded tasks (done/in_progress/in_review/blocked/todo/backlog); nginx same-
+> origin proxy; **commission create→confirm → draft `draft→todo`** on a freshly-rostered project. Backend
+> **pytest 159 passed** (+2 seed) · ruff clean. FE `npm run build` green; **new code lint-clean** (the frozen FE's
+> 53 pre-existing lint errors are `@ts-nocheck` bans + eslint-plugin-react-hooks v6 rule drift across the frozen
+> pages — unrelated to this sprint; left intact per the keep-frozen-FE decision).
+>
+> **Deferred (graceful-degrade):** Inbox notifications, Skill-file editor CRUD detail, Directory extras (no BE
+> endpoint); live `/agent/*` enrollment (needs a real agent process). The seed's Acme project has tasks but no
+> roster, so commission there needs a freshly-created project (the wizard sets up the leader) — as above.
+
 ### 2026-07-01 — **Sprint 5 review fixes** (PR #12 · issue #8)
 > Addressed @kpollz's review. **Blocking:** `on_leader_online` committed `THINKING` *before* waking, so a
 > failed wake stranded the turn (next drain skips a non-`LEADER_OFFLINE` session → silently lost). Reordered to
