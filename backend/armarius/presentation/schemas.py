@@ -37,7 +37,10 @@ class ProjectOut(_Out):
     name: str
     slug: str
     description: str | None = None
+    # Lifecycle (setup → active → archived) + brief so the project list can render a real
+    # status chip and objective line without opening the detail view.
     status: str = "setup"
+    objective: str | None = None
     created_at: datetime | None = None
 
 

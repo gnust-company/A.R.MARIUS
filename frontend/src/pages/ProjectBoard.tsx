@@ -18,6 +18,7 @@ import {
   X,
   ArrowRight,
   GripVertical,
+  Trash2,
 } from 'lucide-react';
 import { useMockStore, type TaskStatus, type Priority, type Task } from '@/store/mockStore';
 import VellumPanel from '@/components/VellumPanel';
@@ -244,8 +245,23 @@ export default function ProjectBoard() {
   const tasks = useMockStore((s) => s.tasks);
   const isMock = useMockStore((s) => s.isMock);
   const hydrateProject = useMockStore((s) => s.hydrateProject);
+  const deleteProject = useMockStore((s) => s.deleteProject);
 
   const [addTaskColumn, setAddTaskColumn] = useState<TaskStatus | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteProject = async () => {
+    if (!projectId) return;
+    setDeleting(true);
+    try {
+      await deleteProject(projectId);
+      navigate('/projects');
+    } catch {
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
 
   const project = projects.find((p) => p.id === projectId);
 
@@ -293,7 +309,17 @@ export default function ProjectBoard() {
           {/* Top row: name + status */}
           <div className="flex items-start justify-between mb-3">
             <h1 className="font-display text-display-lg text-ink">{project.name}</h1>
-            <StatusChip status={project.status} label={t(`projects.status.${project.status}`)} />
+            <div className="flex items-center gap-3">
+              <StatusChip status={project.status} label={t(`projects.status.${project.status}`)} />
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="p-1.5 rounded-md text-ink-muted hover:text-[#B84A32] hover:bg-[#F5DDD6] transition-colors"
+                title={t('board.deleteProject')}
+                aria-label={t('board.deleteProject')}
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Objective */}
@@ -433,15 +459,10 @@ export default function ProjectBoard() {
               </div>
 
               {/* Column body */}
-              <div
-                className={cn(
-                  'flex-1 rounded-b-md p-3 flex flex-col gap-2 overflow-y-auto',
-                  col.bg,
-                  'bg-opacity-[0.08]'
-                )}
-                style={{ backgroundColor: 'transparent' }}
-              >
-                {/* Show column bg properly */}
+              <div className="flex-1 rounded-b-md p-3 flex flex-col gap-2 overflow-y-auto relative">
+                {/* Column tint — contained to this column by `relative` above. Previously
+                    this `absolute inset-0` had no positioned parent, so it escaped and
+                    stacked a faint colored wash over the whole board ("mờ mờ"). */}
                 <div className={cn('absolute inset-0 rounded-b-md opacity-[0.08] pointer-events-none', col.bg)} />
 
                 <AnimatePresence mode="popLayout">
@@ -484,6 +505,35 @@ export default function ProjectBoard() {
         columnStatus={addTaskColumn || 'backlog'}
         projectId={projectId || ''}
       />
+
+      {/* ─── Delete Project Confirm ─────────────────────────────────── */}
+      <Modal
+        isOpen={confirmDelete}
+        onClose={() => !deleting && setConfirmDelete(false)}
+        title={t('board.deleteConfirmTitle')}
+        footer={
+          <>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              disabled={deleting}
+              className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-vellum-deep text-ink border border-vellum-dark hover:bg-vellum-dark transition-colors disabled:opacity-50"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              onClick={handleDeleteProject}
+              disabled={deleting}
+              className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-[#B84A32] text-white hover:bg-[#C25E3A] transition-colors disabled:opacity-50"
+            >
+              {deleting ? t('board.deleting') : t('common.delete')}
+            </button>
+          </>
+        }
+      >
+        <p className="font-body text-body-md text-ink-light">
+          {t('board.deleteConfirmBody', { name: project.name })}
+        </p>
+      </Modal>
     </div>
   );
 }

@@ -115,6 +115,7 @@ export interface ProjectDTO {
   slug: string
   description?: string | null
   status?: string | null
+  objective?: string | null
   created_at?: string | null
 }
 
@@ -275,6 +276,20 @@ export async function createProject(workspaceId: string, body: CreateProjectBody
 
 export async function getProject(projectId: string): Promise<ProjectDetailDTO> {
   return get<ProjectDetailDTO>(`/v1/projects/${projectId}`)
+}
+
+export async function deleteProject(projectId: string): Promise<void> {
+  const res = await fetchWithAuth(`/v1/projects/${projectId}`, { method: 'DELETE' })
+  if (!res.ok && res.status !== 204) {
+    let detail = `${res.status} ${res.statusText}`
+    try {
+      const data = await res.json()
+      if (data?.detail) detail = typeof data.detail === 'string' ? data.detail : detail
+    } catch {
+      // non-JSON error body — keep the status-line fallback
+    }
+    throw new ApiError(detail, res.status)
+  }
 }
 
 // ── Mariuses ───────────────────────────────────────────────────────────────────────────

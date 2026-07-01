@@ -328,6 +328,7 @@ interface MockStoreState {
     seats?: Array<{ roleKey: string; roleLabel: string; mariusId: string | null; skillsRequired: string[] }>
   }) => Promise<Project>
   createTask: (task: Partial<Task> & { title: string; status: TaskStatus; priority: Priority; projectId: string }) => Promise<Task>
+  deleteProject: (projectId: string) => Promise<void>
   grantSeat: (projectId: string, mariusId: string, role: string) => Promise<void>
 
   // ── API hydration thunks (no-ops under MOCK) ───────────────────────────────────────
@@ -966,6 +967,18 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     return newTask
   },
 
+  deleteProject: async (projectId: string) => {
+    // Drop the project + its tasks locally either way; the backend cascade
+    // (tasks/artifacts/comments/seats/roles) is triggered in real mode.
+    if (!get().isMock) {
+      await api.deleteProject(projectId)
+    }
+    set({
+      projects: get().projects.filter((p) => p.id !== projectId),
+      tasks: get().tasks.filter((t) => t.projectId !== projectId),
+    })
+  },
+
   createProject: async (input) => {
     const workspaceId = input.workspaceId || get().activeWorkspaceId || ''
     if (get().isMock) {
@@ -1023,25 +1036,33 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     const ownerId = get().currentUser?.id ?? ''
     const dtos = await api.listWorkspaces()
     const vms = dtos.map((d) => workspaceToVM(d, ownerId))
-    // Fan out each workspace's projects so the launcher's project counts are correct and
-    // stable from first paint (otherwise they read 0 until a workspace is opened, then
-    // flip to the real count — the "ảo ảo" inconsistency). Merge, don't replace, so an
-    // already-opened project keeps its detail-level seats.
-    const perWs = await Promise.all(
-      dtos.map((d) => api.listProjects(d.id).catch(() => [])),
-    )
-    const incomingProjects = perWs.flat().map(projectToVM)
+    // Fan out each workspace's projects AND mariuses so the launcher's project/agent counts
+    // are correct and stable from first paint (otherwise they read 0 until a workspace is
+    // opened, then flip to the real count — the "ảo ảo" inconsistency). Merge, don't replace,
+    // so an already-opened project keeps its detail-level seats.
+    const [perWsProjects, perWsMariuses] = await Promise.all([
+      Promise.all(dtos.map((d) => api.listProjects(d.id).catch(() => []))),
+      Promise.all(dtos.map((d) => api.listMariuses(d.id).catch(() => []))),
+    ])
+    const incomingProjects = perWsProjects.flat().map(projectToVM)
+    const incomingMariuses = perWsMariuses.flat().map(mariusToVM)
     // Keep the persisted active workspace if it still exists; otherwise fall back to the
     // first workspace (and persist that choice).
     const prevActive = get().activeWorkspaceId
     const activeWorkspaceId =
       prevActive && vms.some((w) => w.id === prevActive) ? prevActive : (vms[0]?.id ?? null)
     saveActiveWorkspace(activeWorkspaceId)
-    set({
+    // Replace the mariuses for the workspaces we just loaded; keep any others intact.
+    const loadedWsIds = new Set(dtos.map((d) => String(d.id)))
+    set((s) => ({
       workspaces: vms,
-      projects: mergeProjects(get().projects, incomingProjects),
+      projects: mergeProjects(s.projects, incomingProjects),
+      mariuses: [
+        ...s.mariuses.filter((m) => !loadedWsIds.has(m.workspaceId)),
+        ...incomingMariuses,
+      ],
       activeWorkspaceId,
-    })
+    }))
   },
 
   hydrateWorkspace: async (workspaceId: string) => {

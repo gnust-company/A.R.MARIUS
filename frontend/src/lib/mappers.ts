@@ -100,6 +100,7 @@ export function projectToVM(dto: ProjectDTO): Project {
     description: dto.description ?? undefined,
     workspaceId: dto.workspace_id ?? '',
     status: dto.status === 'active' ? 'active' : dto.status === 'archived' ? 'archived' : 'setup',
+    objective: dto.objective ?? undefined,
     createdAt: dto.created_at ?? undefined,
   }
 }

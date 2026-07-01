@@ -209,47 +209,47 @@ export default function SkillEditor() {
   const skill = useMemo(() => skills.find((s) => s.id === id), [skills, id]);
 
   // ── Local State ────────────────────────────────────────────────────────────
+  // `draftFiles` is a working copy: every edit (content, add, delete) mutates ONLY
+  // the draft. Nothing touches the persisted skill until "Save" — so "Discard"
+  // truly reverts, and an accidental delete is recoverable until you save.
   const [selectedPath, setSelectedPath] = useState<string>('');
-  const [fileContent, setFileContent] = useState('');
+  const [draftFiles, setDraftFiles] = useState<SkillFile[]>(skill ? skill.files : []);
   const [hasChanges, setHasChanges] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [newItemType, setNewItemType] = useState<'file' | 'folder' | null>(null);
 
+  // Re-seed the working copy when the skill identity changes (navigation / late
+  // hydration). Keyed on id only, so it never clobbers unsaved edits mid-session.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (skill) {
+      setDraftFiles(skill.files);
+      setHasChanges(false);
+    }
+  }, [skill?.id]);
+
   // ── Build Tree ─────────────────────────────────────────────────────────────
-  const tree = useMemo(() => {
-    if (!skill) return [];
-    return buildTree(skill.files);
-  }, [skill]);
+  const tree = useMemo(() => buildTree(draftFiles), [draftFiles]);
 
   // ── Auto-select first file on load ─────────────────────────────────────────
   useEffect(() => {
-    if (skill && skill.files.length > 0 && !selectedPath) {
-      const firstFile = skill.files[0];
-      setSelectedPath(firstFile.path);
-      setFileContent(firstFile.content);
-      setHasChanges(false);
+    if (draftFiles.length > 0 && !selectedPath) {
+      setSelectedPath(draftFiles[0].path);
     }
-  }, [skill, selectedPath]);
+  }, [draftFiles, selectedPath]);
 
-  // ── Find selected file ─────────────────────────────────────────────────────
-  const selectedFile = useMemo(() => {
-    if (!skill || !selectedPath) return null;
-    return skill.files.find((f) => f.path === selectedPath) || null;
-  }, [skill, selectedPath]);
+  // ── Find selected file (from the draft) ────────────────────────────────────
+  const selectedFile = useMemo(
+    () => draftFiles.find((f) => f.path === selectedPath) || null,
+    [draftFiles, selectedPath]
+  );
 
   // ── Handlers ───────────────────────────────────────────────────────────────
-  const handleSelectFile = useCallback(
-    (node: TreeNode) => {
-      if (node.type === 'file' && node.file) {
-        setSelectedPath(node.path);
-        setFileContent(node.file.content);
-        setHasChanges(false);
-      }
-    },
-    []
-  );
+  const handleSelectFile = useCallback((node: TreeNode) => {
+    if (node.type === 'file') setSelectedPath(node.path);
+  }, []);
 
   const handleToggleFolder = useCallback((path: string) => {
     setExpandedFolders((prev) => {
@@ -264,65 +264,59 @@ export default function SkillEditor() {
   }, []);
 
   const handleContentChange = (value: string) => {
-    setFileContent(value);
-    if (selectedFile) {
-      setHasChanges(value !== selectedFile.content);
-    }
-  };
-
-  const handleSave = () => {
-    if (!skill || !selectedPath || !hasChanges) return;
-    const updatedFiles = skill.files.map((f) =>
-      f.path === selectedPath ? { ...f, content: fileContent } : f
+    if (!selectedPath) return;
+    setDraftFiles((prev) =>
+      prev.map((f) => (f.path === selectedPath ? { ...f, content: value } : f))
     );
-    updateSkill(skill.id, { files: updatedFiles });
+    setHasChanges(true);
+  };
+
+  // Commit the whole working copy to the store (the only write path).
+  const handleSave = () => {
+    if (!skill || !hasChanges) return;
+    updateSkill(skill.id, { files: draftFiles });
     setHasChanges(false);
   };
 
+  // Revert every unsaved edit — including added/deleted files — back to the store.
   const handleDiscard = () => {
-    if (selectedFile) {
-      setFileContent(selectedFile.content);
-      setHasChanges(false);
+    if (!skill) return;
+    setDraftFiles(skill.files);
+    setHasChanges(false);
+    if (!skill.files.some((f) => f.path === selectedPath)) {
+      setSelectedPath(skill.files[0]?.path ?? '');
     }
   };
 
+  // Delete only from the draft — recoverable via Discard until you Save.
   const handleDeleteFile = () => {
-    if (!skill || !selectedPath) return;
-    const updatedFiles = skill.files.filter((f) => f.path !== selectedPath);
-    updateSkill(skill.id, { files: updatedFiles });
-    setSelectedPath('');
-    setFileContent('');
-    setHasChanges(false);
+    if (!selectedPath) return;
+    const remaining = draftFiles.filter((f) => f.path !== selectedPath);
+    setDraftFiles(remaining);
+    setSelectedPath(remaining[0]?.path ?? '');
+    setHasChanges(true);
   };
 
   const handleAddItem = () => {
-    if (!skill || !newItemName.trim() || !newItemType) return;
+    if (!newItemName.trim() || !newItemType) return;
     const name = newItemName.trim();
     const path = selectedPath && selectedPath.includes('/')
       ? selectedPath.substring(0, selectedPath.lastIndexOf('/') + 1) + name
       : name;
 
-    if (skill.files.some((f) => f.path === path)) return;
+    if (draftFiles.some((f) => f.path === path)) return;
 
     if (newItemType === 'file') {
-      const updatedFiles = [
-        ...skill.files,
-        { path, content: '', language: getLanguage(name) },
-      ];
-      updateSkill(skill.id, { files: updatedFiles });
+      setDraftFiles((prev) => [...prev, { path, name, content: '', language: getLanguage(name) }]);
       setSelectedPath(path);
-      setFileContent('');
-      setHasChanges(false);
+      setHasChanges(true);
     } else {
-      // Add a .gitkeep file inside the folder
+      // Add a .gitkeep file inside the folder so the empty folder renders in the tree.
       const folderPath = path.endsWith('/') ? path : path + '/';
       const keepPath = folderPath + '.gitkeep';
-      if (!skill.files.some((f) => f.path === keepPath)) {
-        const updatedFiles = [
-          ...skill.files,
-          { path: keepPath, content: '', language: 'text' },
-        ];
-        updateSkill(skill.id, { files: updatedFiles });
+      if (!draftFiles.some((f) => f.path === keepPath)) {
+        setDraftFiles((prev) => [...prev, { path: keepPath, name: '.gitkeep', content: '', language: 'text' }]);
+        setHasChanges(true);
       }
       setExpandedFolders((prev) => new Set(prev).add(folderPath.slice(0, -1)));
     }
@@ -568,9 +562,8 @@ export default function SkillEditor() {
               {/* Editor textarea */}
               <div className="flex-1 relative">
                 <textarea
-                  value={fileContent}
+                  value={selectedFile.content ?? ''}
                   onChange={(e) => handleContentChange(e.target.value)}
-                  onBlur={handleSave}
                   spellCheck={false}
                   className={cn(
                     'w-full h-full p-4 resize-none outline-none',

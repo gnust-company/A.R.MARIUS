@@ -308,6 +308,10 @@ export const vi = {
     githubUrl: 'GitHub',
     seatCount: '{{filled}}/{{total}} vị trí',
     taskCount: '{{count}} nhiệm vụ',
+    deleteProject: 'Xóa dự án',
+    deleteConfirmTitle: 'Xóa dự án này?',
+    deleteConfirmBody: 'Thao tác này sẽ xóa vĩnh viễn "{{name}}" cùng toàn bộ nhiệm vụ, bình luận và sản phẩm của nó. Không thể hoàn tác.',
+    deleting: 'Đang xóa…',
   },
   roster: {
     title: 'Danh sách',

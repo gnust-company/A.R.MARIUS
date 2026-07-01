@@ -308,6 +308,10 @@ export const en = {
     githubUrl: 'GitHub',
     seatCount: '{{filled}}/{{total}} seats',
     taskCount: '{{count}} tasks',
+    deleteProject: 'Delete project',
+    deleteConfirmTitle: 'Delete this project?',
+    deleteConfirmBody: 'This permanently deletes "{{name}}" and all of its tasks, comments and artifacts. This cannot be undone.',
+    deleting: 'Deleting…',
   },
   roster: {
     title: 'Roster',

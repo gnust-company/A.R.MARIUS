@@ -181,6 +181,31 @@ The mock-data Scriptorium SPA is the frozen UX spec. All sub-phases shipped gree
 
 ## Build log
 
+### 2026-07-01 — **Sprint 6 review fixes — round 2** (PR #13 · issue #9)
+> Second owner pass (live click-through of the real stack) surfaced three more UX defects + two count/status
+> gaps. All fixed on the Sprint 6 branch; re-verified: backend **pytest 161 passed**, ruff clean; FE
+> `npm run build` green; E2E on `docker compose up` confirmed the two backend-touching fixes (status-in-list,
+> delete-project 204 → 404 → gone with task cascade).
+>
+> 1. **Project board "mờ mờ" (foggy wash over the whole board)** — each Kanban column body rendered an
+>    `absolute inset-0 opacity-[0.08]` tint div, but the body had no positioned parent, so all five tints
+>    escaped to the nearest positioned ancestor and stacked a colored haze over the page. Fixed by making the
+>    column body `relative` (and dropping the transparent-bg hack that tried to hide the symptom).
+> 2. **Can't delete a project** — the backend already had `DELETE /v1/projects/{id}` (cascades
+>    tasks/artifacts/comments/seats/roles) but the FE never called it. Added `api.deleteProject`, a
+>    `deleteProject` store action (drops the project + its tasks locally; triggers the cascade in real mode),
+>    and a trash button + confirm modal in the ProjectBoard header (i18n `board.delete*`).
+> 3. **Skill editor auto-saved / destructive delete** — the code editor committed to the store on `onBlur`
+>    and add/delete file wrote straight through, so an accidental delete was irreversible and the Save/Discard
+>    buttons were cosmetic. Reworked to a **draft working copy**: every edit (content, add, delete) mutates
+>    only local `draftFiles`; **Save** is the sole write path, **Discard** reverts to the persisted skill
+>    (recovering a deleted file), and the blur-save was removed.
+> 4. **Project list objective missing** — `ProjectOut` now also exposes `objective` (paired with the round-1
+>    `status`) so the projects grid shows the real brief line, not an empty one.
+> 5. **Workspace agent counts still flapped** — round 1 fanned out projects for stable project counts;
+>    `hydrateWorkspaces` now also fans out each workspace's mariuses, so agent counts are correct from first
+>    paint too (replace only the loaded workspaces' slices, keep others intact).
+
 ### 2026-07-01 — **Sprint 6 review fixes** (PR #13 · issue #9)
 > Owner review of PR #13 surfaced five first-run issues. All fixed on the Sprint 6 branch, re-verified E2E
 > (`docker compose up --build`, ports 3000/8080): backend **pytest 161 passed** (+2 regression tests), ruff clean;
