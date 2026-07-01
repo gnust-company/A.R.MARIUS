@@ -59,7 +59,19 @@ async def _stream(container, request: Request, topic: str) -> EventSourceRespons
                 last = event.seq
                 yield _frame(event)
             if not live:
-                return  # catch-up mode: replayed the backlog, now close.
+                # Catch-up mode: the backlog is a snapshot, so an event published while we
+                # were yielding it landed on the live queue but not the snapshot. Drain the
+                # queue (de-duplicated by seq) so this finite response is gap-free, then close.
+                while True:
+                    try:
+                        event = queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+                    if event.seq <= last:
+                        continue
+                    last = event.seq
+                    yield _frame(event)
+                return
             while True:
                 # Poll with a short timeout so a disconnected client is noticed even while
                 # the topic is idle. Cancelling a queue.get() (unlike a generator) is safe.

@@ -81,7 +81,14 @@ class _FakeProjectRepo:
         return project
 
     async def remove(self, project_id: UUID) -> None:
+        # Mirror the SQL aggregate cascade: drop the project's roles + seat grants too.
         self._s.projects.pop(project_id, None)
+        for rid in [r.id for r in self._s.roles.values() if r.project_id == project_id]:
+            self._s.roles.pop(rid, None)
+        for gid in [
+            g.id for g in self._s.seat_grants.values() if g.project_id == project_id
+        ]:
+            self._s.seat_grants.pop(gid, None)
 
 
 class _FakeRoleRepo:
@@ -141,6 +148,10 @@ class _FakeMariusRepo:
 
     async def list_by_workspace(self, workspace_id: UUID) -> list[Marius]:
         return [m for m in self._s.mariuses.values() if m.workspace_id == workspace_id]
+
+    async def list_by_ids(self, marius_ids: list[UUID]) -> list[Marius]:
+        wanted = set(marius_ids)
+        return [m for m in self._s.mariuses.values() if m.id in wanted]
 
     async def update(self, marius: Marius) -> Marius:
         self._s.mariuses[marius.id] = marius

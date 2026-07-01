@@ -106,11 +106,19 @@ class EnrollmentService:
             await uow.commit()
         return await future
 
-    async def approve(self, marius_id: UUID) -> Marius:
-        """Patron approves → mint the token once and complete any held enroll call."""
+    async def approve(
+        self, marius_id: UUID, *, workspace_id: UUID | None = None
+    ) -> Marius:
+        """Patron approves → mint the token once and complete any held enroll call.
+
+        When ``workspace_id`` is given, the Marius must belong to it — a cross-workspace
+        approval is rejected as *not found* (a caller can only approve their own agents).
+        """
         async with self._uow() as uow:
             marius = await uow.mariuses.get(marius_id)
-            if marius is None:
+            if marius is None or (
+                workspace_id is not None and marius.workspace_id != workspace_id
+            ):
                 raise LookupError("marius not found")
             token = self._mint_token()
             marius.approve(token, utcnow())  # raises InviteError unless pending_review

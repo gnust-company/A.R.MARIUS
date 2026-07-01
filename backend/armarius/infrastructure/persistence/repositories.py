@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from armarius.domain.entities.artifact import Artifact
@@ -179,10 +179,33 @@ class SqlProjectRepository(ProjectRepository):
         return project
 
     async def remove(self, project_id: UUID) -> None:
+        """Delete a project and its owned children (roles, seat grants, tasks and each
+        task's comments/artifacts). The FK columns have no ``ON DELETE CASCADE``, so a
+        bare project delete orphans (SQLite) or errors (Postgres) — we cascade explicitly
+        inside the aggregate boundary so the behaviour is identical on both backends."""
+        task_ids = (
+            await self._s.execute(
+                select(TaskModel.id).where(TaskModel.project_id == project_id)
+            )
+        ).scalars().all()
+        if task_ids:
+            await self._s.execute(
+                delete(ArtifactModel).where(ArtifactModel.task_id.in_(task_ids))
+            )
+            await self._s.execute(
+                delete(CommentModel).where(CommentModel.task_id.in_(task_ids))
+            )
+            await self._s.execute(
+                delete(TaskModel).where(TaskModel.id.in_(task_ids))
+            )
+        await self._s.execute(
+            delete(SeatGrantModel).where(SeatGrantModel.project_id == project_id)
+        )
+        await self._s.execute(delete(RoleModel).where(RoleModel.project_id == project_id))
         m = await self._s.get(ProjectModel, project_id)
         if m is not None:
             await self._s.delete(m)
-            await self._s.flush()
+        await self._s.flush()
 
 
 class SqlRoleRepository(RoleRepository):
@@ -335,6 +358,16 @@ class SqlMariusRepository(MariusRepository):
         rows = (
             await self._s.execute(
                 select(MariusModel).where(MariusModel.workspace_id == workspace_id)
+            )
+        ).scalars().all()
+        return [mappers.marius_to_entity(m) for m in rows]
+
+    async def list_by_ids(self, marius_ids: list[UUID]) -> Sequence[Marius]:
+        if not marius_ids:
+            return []
+        rows = (
+            await self._s.execute(
+                select(MariusModel).where(MariusModel.id.in_(marius_ids))
             )
         ).scalars().all()
         return [mappers.marius_to_entity(m) for m in rows]

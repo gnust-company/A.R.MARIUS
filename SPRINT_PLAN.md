@@ -181,6 +181,19 @@ The mock-data Scriptorium SPA is the frozen UX spec. All sub-phases shipped gree
 
 ## Build log
 
+### 2026-07-01 — **Sprint 4 review fixes** (PR #11 · issue #7)
+> Addressed all 8 findings from @kpollz's review on PR #11. **Correctness/security:** (#1) `approve` is now
+> workspace-scoped — a cross-workspace approval is 404, closing a token-minting gap; (#2) `add_role` rejects a
+> duplicate role key with 409; (#3) deleting a project cascades its roles/seat-grants/tasks (+ each task's
+> comments/artifacts) inside the aggregate — a bare delete orphaned rows on SQLite and 500'd on Postgres;
+> (#4) role keys are capped at the `RoleModel.key` width (120). **#3/#4 were masked by SQLite** (FK + VARCHAR
+> length unenforced) — new tests assert no orphans / capped key so they fail on SQLite too. **Streaming:**
+> (#5) `?live=0` catch-up now drains the live queue after the backlog snapshot so it is gap-free; (#6)
+> `TopicEventBus` caps buffered topics and LRU-evicts *idle* ones (never a live topic) — transient per-task
+> topics no longer leak. **Efficiency:** (#7) `get_roster` batch-loads seated agents via `list_by_ids` (was
+> N+1); (#8) `update_role_by_key` resolves-by-key and mutates in a single UoW. pytest **143 passed** (+6);
+> ruff clean. No migration needed (cascade is explicit; key cap is app-side).
+
 ### 2026-06-30 — **Sprint 4 done**: presentation — routers + Hybrid SSE · issue #7
 > Owner approved continuing ("Tiếp tục đi, bạn vẫn nhớ flow và rule"). First time the fully-built Sprint-2
 > services (roster-driven `ProjectService`, enroll-and-wait `EnrollmentService`) are **exposed over HTTP** —

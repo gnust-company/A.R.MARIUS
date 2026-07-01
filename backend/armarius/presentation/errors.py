@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from armarius.application.use_cases.enrollment import EnrollmentError
-from armarius.application.use_cases.projects import SystemOnlyOperation
+from armarius.application.use_cases.projects import DuplicateRoleKey, SystemOnlyOperation
 from armarius.domain.entities.marius import InviteError
 from armarius.domain.entities.seat_grant import SeatGrantError
 from armarius.domain.entities.task import ArtifactRequiredError, TaskTransitionError
@@ -34,6 +34,10 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(SystemOnlyOperation)
     async def _system_only(_: Request, exc: SystemOnlyOperation) -> JSONResponse:
         return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+    @app.exception_handler(DuplicateRoleKey)
+    async def _duplicate_role_key(_: Request, exc: DuplicateRoleKey) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(SeatGrantError)
     async def _seat_grant_conflict(_: Request, exc: SeatGrantError) -> JSONResponse:

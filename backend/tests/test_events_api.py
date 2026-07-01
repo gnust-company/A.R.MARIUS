@@ -56,6 +56,27 @@ async def test_topic_bus_is_topic_scoped() -> None:
         await gen.aclose()
 
 
+async def test_topic_bus_evicts_idle_topics_over_cap() -> None:
+    # A cap keeps memory bounded: transient per-task topics must not leak buffers forever.
+    bus = TopicEventBus(max_topics=2)
+    await bus.publish("task:a", "x", {})
+    await bus.publish("task:b", "x", {})
+    await bus.publish("task:c", "x", {})  # 3rd topic → evict the LRU idle one (task:a)
+    assert bus.backlog("task:a") == []  # dropped
+    assert [e.type for e in bus.backlog("task:c")] == ["x"]  # kept
+
+
+async def test_topic_bus_never_evicts_a_live_topic() -> None:
+    # A topic with an attached subscriber keeps its replay buffer even under pressure.
+    bus = TopicEventBus(max_topics=2)
+    queue, _unregister = bus.register("task:live")
+    await bus.publish("task:live", "x", {})
+    await bus.publish("task:idle", "x", {})
+    await bus.publish("task:new", "x", {})  # over cap → must evict idle, never the live one
+    assert [e.type for e in bus.backlog("task:live")] == ["x"]
+    assert bus.backlog("task:idle") == []
+
+
 # ── HTTP SSE endpoints ────────────────────────────────────────────────────────
 async def _client() -> AsyncClient:
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")

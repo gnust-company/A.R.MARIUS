@@ -8,9 +8,18 @@ seat grants, SETUP→ACTIVE activation, and workspace scoping (cross-workspace =
 from __future__ import annotations
 
 import asyncio
+from uuid import UUID
 
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import func, select
 
+from armarius.infrastructure.database import engine as engine_mod
+from armarius.infrastructure.database.models import (
+    ArtifactModel,
+    RoleModel,
+    SeatGrantModel,
+    TaskModel,
+)
 from armarius.main import app
 
 
@@ -188,6 +197,78 @@ async def test_remove_role_while_seated_is_rejected() -> None:
         )
         r = await c.delete(f"/v1/projects/{pid}/roles/backend", headers=h)
     assert r.status_code == 400, r.text
+
+
+async def test_add_duplicate_role_key_is_409() -> None:
+    async with await _client() as c:
+        token, ws_id = await _register(c, "dup@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        pid = (await _create(c, ws_id, h))["id"]  # roster already has key "backend"
+        # A second role that slugs to the same key must be rejected, not silently duplicated.
+        r = await c.post(
+            f"/v1/projects/{pid}/roles", headers=h, json={"title": "Backend", "seats": 1}
+        )
+    assert r.status_code == 409, r.text
+
+
+async def test_add_role_with_long_title_caps_key_length() -> None:
+    async with await _client() as c:
+        token, ws_id = await _register(c, "longkey@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        pid = (await _create(c, ws_id, h))["id"]
+        # A 200-char title (allowed by the schema) must not overflow RoleModel.key (120).
+        r = await c.post(
+            f"/v1/projects/{pid}/roles", headers=h, json={"title": "Q" * 200, "seats": 1}
+        )
+    assert r.status_code == 201, r.text
+    assert len(r.json()["key"]) <= 120
+
+
+async def test_delete_project_cascades_children() -> None:
+    async with await _client() as c:
+        token, ws_id = await _register(c, "cascade@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        pid = (await _create(c, ws_id, h))["id"]
+        mid = await _online_agent(c, ws_id, h, "Backend-1")
+        await c.post(
+            f"/v1/projects/{pid}/grant",
+            headers=h,
+            json={"marius_id": mid, "role_key": "backend"},
+        )
+        task = await c.post(f"/v1/projects/{pid}/tasks", headers=h, json={"title": "T"})
+        task_id = task.json()["id"]
+        art = await c.post(
+            f"/v1/tasks/{task_id}/artifacts",
+            headers=h,
+            json={"name": "PR", "kind": "link", "uri": "https://github.com/a/b/pull/1"},
+        )
+        assert art.status_code == 201, art.text
+
+        deleted = await c.delete(f"/v1/projects/{pid}", headers=h)
+        assert deleted.status_code == 204, deleted.text
+
+    # No orphaned children remain (the bug SQLite hides with FK enforcement off; on
+    # Postgres a bare project delete would instead 500 on the FK constraint).
+    sm = engine_mod.get_sessionmaker()
+    async with sm() as s:
+        pid_u, task_u = UUID(pid), UUID(task_id)
+        roles = await s.scalar(
+            select(func.count()).select_from(RoleModel).where(RoleModel.project_id == pid_u)
+        )
+        grants = await s.scalar(
+            select(func.count())
+            .select_from(SeatGrantModel)
+            .where(SeatGrantModel.project_id == pid_u)
+        )
+        tasks = await s.scalar(
+            select(func.count()).select_from(TaskModel).where(TaskModel.project_id == pid_u)
+        )
+        arts = await s.scalar(
+            select(func.count())
+            .select_from(ArtifactModel)
+            .where(ArtifactModel.task_id == task_u)
+        )
+    assert (roles, grants, tasks, arts) == (0, 0, 0, 0)
 
 
 async def test_all_seats_granted_to_online_agents_activates() -> None:

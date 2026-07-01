@@ -14,7 +14,7 @@ agents never read SSE.
 from __future__ import annotations
 
 import asyncio
-from collections import defaultdict, deque
+from collections import OrderedDict, defaultdict, deque
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 
@@ -27,21 +27,43 @@ class StreamEvent:
 
 
 class TopicEventBus:
-    def __init__(self, replay_size: int = 256) -> None:
+    def __init__(self, replay_size: int = 256, max_topics: int = 4096) -> None:
         self._seq = 0
-        self._buffers: dict[str, deque[StreamEvent]] = defaultdict(
-            lambda: deque(maxlen=replay_size)
-        )
+        self._replay_size = replay_size
+        self._max_topics = max_topics
+        # LRU-ordered so we can evict the least-recently-used *idle* topic when the cap is
+        # hit — transient topics (per-task streams) would otherwise leak a buffer forever.
+        self._buffers: OrderedDict[str, deque[StreamEvent]] = OrderedDict()
         self._subs: dict[str, set[asyncio.Queue[StreamEvent]]] = defaultdict(set)
 
     async def publish(self, topic: str, type: str, data: dict) -> int:
         """Append an event to a topic and fan it out to live subscribers. Returns its seq."""
         self._seq += 1
         event = StreamEvent(seq=self._seq, type=type, data=dict(data))
-        self._buffers[topic].append(event)
+        buffer = self._buffers.get(topic)
+        if buffer is None:
+            self._evict_idle_over_cap()
+            buffer = deque(maxlen=self._replay_size)
+            self._buffers[topic] = buffer
+        else:
+            self._buffers.move_to_end(topic)  # mark most-recently-used
+        buffer.append(event)
         for queue in list(self._subs.get(topic, ())):
             queue.put_nowait(event)
         return event.seq
+
+    def _evict_idle_over_cap(self) -> None:
+        """Before adding a new topic, drop least-recently-used topics that have **no live
+        subscriber** until we're back under the cap. Topics with an attached stream are
+        kept (evicting their buffer would break Last-Event-ID resume); if every topic over
+        the cap is live, we keep them all rather than lose an active replay window."""
+        while len(self._buffers) >= self._max_topics:
+            victim = next(
+                (t for t in self._buffers if not self._subs.get(t)), None
+            )
+            if victim is None:
+                break
+            self._buffers.pop(victim, None)
 
     def register(
         self, topic: str
