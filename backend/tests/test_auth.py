@@ -41,6 +41,35 @@ async def test_register_returns_user_and_tokens():
     assert body["tokens"]["refresh_token"]
 
 
+async def test_register_personal_workspace_starts_empty():
+    """Sprint 6 review fix: a freshly registered user's Personal workspace has NO
+    auto-created project — the old "General" default was removed so the patron
+    commissions the first project explicitly (board empty state guides them).
+    """
+    async with await _client() as c:
+        r = await c.post(
+            "/auth/register",
+            json={
+                "email": "freshpatron@armarius.dev",
+                "username": "freshpatron",
+                "full_name": "Fresh Patron",
+                "password": "supersecret123",
+            },
+        )
+        assert r.status_code == 201
+        token = r.json()["tokens"]["access_token"]
+        h = {"Authorization": f"Bearer {token}"}
+
+        workspaces = (await c.get("/v1/workspaces", headers=h)).json()
+        assert len(workspaces) == 1
+        ws = workspaces[0]
+        assert ws["name"] == "Personal"
+
+        # No auto-created "General" project anymore.
+        projects = (await c.get(f"/v1/workspaces/{ws['id']}/projects", headers=h)).json()
+        assert projects == []
+
+
 async def test_login_and_me():
     async with await _client() as c:
         await c.post(

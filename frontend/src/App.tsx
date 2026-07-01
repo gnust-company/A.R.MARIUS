@@ -19,21 +19,33 @@ import { useMockSimulator } from './hooks/use-mock-simulator'
 import { useMockStore } from './store/mockStore'
 
 /** Real-API boot: rehydrate the session from the stored JWT before rendering routes, so the
- * auth guard doesn't bounce a logged-in user on a hard refresh. No-op under MOCK. */
+ * auth guard doesn't bounce a logged-in user on a hard refresh. Also rehydrates the
+ * workspace list + persisted active workspace so a refresh on a workspace-less URL
+ * (e.g. `/projects`) keeps the user in context. No-op under MOCK. */
 function useBootSession() {
   const isMock = useMockStore((s) => s.isMock)
   const hydrateMe = useMockStore((s) => s.hydrateMe)
+  const hydrateWorkspaces = useMockStore((s) => s.hydrateWorkspaces)
   const [booted, setBooted] = useState(isMock)
   useEffect(() => {
     if (isMock) return
     let active = true
-    hydrateMe().finally(() => {
-      if (active) setBooted(true)
-    })
+    void (async () => {
+      try {
+        await hydrateMe()
+        // Only fetch workspaces when authenticated; otherwise the auth guard redirects to
+        // /login and there's nothing to hydrate (also avoids a stray 401 here).
+        if (useMockStore.getState().currentUser) {
+          await hydrateWorkspaces().catch(() => {})
+        }
+      } finally {
+        if (active) setBooted(true)
+      }
+    })()
     return () => {
       active = false
     }
-  }, [isMock, hydrateMe])
+  }, [isMock, hydrateMe, hydrateWorkspaces])
   return booted
 }
 

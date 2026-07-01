@@ -95,6 +95,20 @@ async def test_create_with_plan_starts_setup_with_roster() -> None:
     assert leader["is_leader"] is True and leader["seats"] == 1
 
 
+async def test_list_projects_exposes_status() -> None:
+    """Sprint 6 review fix: the project LIST endpoint exposes `status` so the FE grid
+    renders a real status chip — previously `ProjectOut` dropped it and the FE showed the
+    raw `projects.status.undefined` i18n key.
+    """
+    async with await _client() as c:
+        token, ws_id = await _register(c, "liststatus@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        await _create(c, ws_id, h)
+        listed = (await c.get(f"/v1/workspaces/{ws_id}/projects", headers=h)).json()
+    assert listed, "expected the created project in the list"
+    assert listed[0]["status"] == "setup"
+
+
 async def test_create_without_worker_role_is_422() -> None:
     async with await _client() as c:
         token, ws_id = await _register(c, "p2@armarius.dev")

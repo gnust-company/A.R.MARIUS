@@ -21,12 +21,18 @@ export default function Login() {
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     setError(null)
+    // Register: require the two password entries to match before hitting the API.
+    if (mode === 'register' && password !== confirmPassword) {
+      setError('Passwords do not match')
+      return
+    }
     setBusy(true)
     try {
       const user =
@@ -94,6 +100,20 @@ export default function Login() {
                 className="bg-[#1a1410] border-[#3a2e22] text-white"
               />
             </div>
+            {mode === 'register' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="confirmPassword" className="text-[#A89880]">Confirm password</Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  className="bg-[#1a1410] border-[#3a2e22] text-white"
+                />
+              </div>
+            )}
 
             {error && (
               <p className="text-sm text-red-400" role="alert">{error}</p>
@@ -110,7 +130,7 @@ export default function Login() {
 
           <button
             type="button"
-            onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null) }}
+            onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); setConfirmPassword('') }}
             className="mt-4 w-full text-center text-sm text-[#A89880] hover:text-gold transition-colors"
           >
             {mode === 'login' ? 'No account? Register' : 'Already have an account? Sign in'}

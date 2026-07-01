@@ -181,6 +181,32 @@ The mock-data Scriptorium SPA is the frozen UX spec. All sub-phases shipped gree
 
 ## Build log
 
+### 2026-07-01 — **Sprint 6 review fixes** (PR #13 · issue #9)
+> Owner review of PR #13 surfaced five first-run issues. All fixed on the Sprint 6 branch, re-verified E2E
+> (`docker compose up --build`, ports 3000/8080): backend **pytest 161 passed** (+2 regression tests), ruff clean;
+> FE `npm run build` green, changed files lint-clean.
+>
+> 1. **Register: confirm-password** — `Login.tsx` had one password field; added a confirm field (register mode)
+>    + mismatch validation before submit.
+> 2. **Auto "General" project removed** — `ensure_personal_workspace` / `create_workspace` no longer call
+>    `ensure_default_project`, so a fresh workspace starts empty (the board's empty state guides the first
+>    commission). The lazy `ensure_default_project` stays as a safety net for the agent-invitation flow only
+>    (an invite must name a real project). Regression test: a freshly registered user's Personal ws lists `[]` projects.
+> 3. **`projects.status.undefined` chip** — root cause: `ProjectOut` (list schema) dropped `status` even though
+>    `ProjectModel.status` exists, so the FE list mapper left `status` undefined → `t('projects.status.undefined')`
+>    rendered the raw key. Fixed both sides: `ProjectOut` now exposes `status` (StrEnum coerces to the lowercase
+>    value); `projectToVM` maps it; `Projects.tsx` now shows "Setup"/"Active"/"Archived". Regression test asserts
+>    the list endpoint returns `status`.
+> 4. **Language lost on F5** — `i18n.ts` hardcoded `lng:'en'` with no persistence. Now reads `localStorage` on init
+>    and re-saves on every `languageChanged` (key `armarius.lang`) — no new dependency.
+> 5. **Inconsistent workspace project counts + lost workspace on F5** — two causes. (a) `activeWorkspaceId` lived
+>    only in memory: now persisted to `localStorage` (`armarius.activeWorkspace`), restored on store init, validated
+>    against the workspace list on hydrate, cleared on logout; `App.useBootSession` now hydrates workspaces on boot
+>    so a refresh on `/projects` (URL has no ws id) keeps context. (b) Counts read 0 until a workspace was opened,
+>    then flipped: `hydrateWorkspaces` now fans out each workspace's projects (stable counts from first paint) and
+>    `hydrateWorkspace` was switched from "replace the whole array" to "replace only this workspace's slice" (entering
+>    ws B no longer wipes ws A's data).
+
 ### 2026-07-01 — **Sprint 6 — Integration: FE mock → real API** (issue #9)
 > Flipped the frozen mock SPA onto the real API behind a one-command full-stack compose. **Scope (owner):**
 > golden-path slice + graceful degrade for affordances the backend doesn't cover.

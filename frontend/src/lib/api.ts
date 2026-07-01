@@ -114,6 +114,7 @@ export interface ProjectDTO {
   name: string
   slug: string
   description?: string | null
+  status?: string | null
   created_at?: string | null
 }
 

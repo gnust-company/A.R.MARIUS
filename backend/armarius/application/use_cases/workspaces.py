@@ -31,10 +31,11 @@ class WorkspaceService:
             ws = Workspace(name=name, slug=_slugify(name), owner_user_id=owner_user_id)
             created = await uow.workspaces.add(ws)
             await uow.commit()
-        # Every workspace ships with the built-in Skill Shop entries + a default
-        # "General" project so tasks always have a home.
+        # Ship the built-in Skill Shop entries so the workspace is ready. A project is
+        # NOT auto-created — the patron commissions the first project explicitly (the
+        # board's empty state guides them). `ensure_default_project` stays as a lazy
+        # safety net for the agent-invitation flow only.
         await self._skills.seed_builtins(created.id)
-        await self.ensure_default_project(created.id)
         return created
 
     async def list_workspaces(self, owner_user_id: str | None = None) -> Sequence[Workspace]:
@@ -52,9 +53,9 @@ class WorkspaceService:
         """Create a user's personal workspace for a newly registered user.
 
         Named simply "Personal" (not "{name}'s Workspace"). Seeds the built-in Skill
-        Shop entries and a default "General" project so new users land somewhere
-        ready (no confusing "Getting Started" artefact). Idempotent: if the user
-        already owns a workspace, returns the first one.
+        Shop entries so the workspace is ready; no project is auto-created — new users
+        start empty and commission their first project. Idempotent: if the user already
+        owns a workspace, returns the first one.
         """
         async with self._uow() as uow:
             owned = await uow.workspaces.list_by_owner(str(user.id))
@@ -69,16 +70,15 @@ class WorkspaceService:
             ws = await uow.workspaces.add(ws)
             await uow.commit()
 
-        # Seed the built-in Skill Shop entries + default project for the new workspace.
+        # Seed the built-in Skill Shop entries for the new workspace.
         await self._skills.seed_builtins(ws.id)
-        await self.ensure_default_project(ws.id)
         return ws
 
     async def ensure_default_project(self, workspace_id: UUID) -> Project:
         """Lazily create the default "General" project for a workspace if it has none.
 
-        Called by the board on first load so tasks always have a home — without
-        seeding a confusing "Getting Started" artefact.
+        Safety net for the agent-invitation flow (an invitation names a real project),
+        not run on workspace creation — new workspaces start empty by design.
         """
         async with self._uow() as uow:
             existing = await uow.projects.list_by_workspace(workspace_id)

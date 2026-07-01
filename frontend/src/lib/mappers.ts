@@ -91,13 +91,15 @@ export function workspaceToVM(dto: WorkspaceDTO, ownerId = ''): Workspace {
 // ── Project ─────────────────────────────────────────────────────────────────────────────
 
 export function projectToVM(dto: ProjectDTO): Project {
-  // List-level projects carry no status/roster; the detail view (projectDetailToVM) fills
-  // those in when a project is opened.
+  // List-level projects now carry `status` (backend `ProjectOut`); map it through so the
+  // projects grid shows a real status chip instead of an undefined one. Roster/seats stay
+  // detail-only (filled by `projectDetailToVM` when a project is opened).
   return {
     id: dto.id,
     name: dto.name,
     description: dto.description ?? undefined,
     workspaceId: dto.workspace_id ?? '',
+    status: dto.status === 'active' ? 'active' : dto.status === 'archived' ? 'archived' : 'setup',
     createdAt: dto.created_at ?? undefined,
   }
 }

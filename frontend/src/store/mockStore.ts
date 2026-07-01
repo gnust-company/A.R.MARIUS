@@ -24,6 +24,37 @@ function upsertById<T extends { id: string }>(list: T[], item: T): T[] {
   return copy
 }
 
+/** Merge incoming list-level projects into the store without clobbering richer
+ * detail-level entries (e.g. a project already opened via `hydrateProject`, which
+ * carries seats). Existing entries win; incoming ones are added. */
+function mergeProjects(existing: Project[], incoming: Project[]): Project[] {
+  const map = new Map(existing.map((p) => [p.id, p]))
+  for (const p of incoming) if (!map.has(p.id)) map.set(p.id, p)
+  return [...map.values()]
+}
+
+// Persist the active workspace across reloads so a hard refresh on `/projects` (whose URL
+// carries no workspace id) doesn't drop the user out of context. MOCK ignores storage and
+// keeps its seeded `'w1'`.
+const ACTIVE_WS_KEY = 'armarius.activeWorkspace'
+function loadActiveWorkspace(): string | null {
+  if (MOCK) return 'w1'
+  try {
+    return localStorage.getItem(ACTIVE_WS_KEY)
+  } catch {
+    return null
+  }
+}
+function saveActiveWorkspace(id: string | null): void {
+  if (MOCK) return
+  try {
+    if (id) localStorage.setItem(ACTIVE_WS_KEY, id)
+    else localStorage.removeItem(ACTIVE_WS_KEY)
+  } catch {
+    // storage unavailable — non-fatal
+  }
+}
+
 // ── Types ───────────────────────────────────────────
 
 export type AgentStatus = 'idle' | 'working' | 'offline' | 'invited' | 'revoked' | 'online' | 'pending'
@@ -690,7 +721,7 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   comments: [],
   events: [],
   traceEvents: [],
-  activeWorkspaceId: MOCK ? 'w1' : null,
+  activeWorkspaceId: loadActiveWorkspace(),
   sseConnected: false,
   sidebarCollapsed: false,
   isMock: MOCK,
@@ -774,7 +805,8 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
 
   logout: () => {
     if (!MOCK) clearTokens()
-    set({ currentUser: null })
+    saveActiveWorkspace(null)
+    set({ currentUser: null, activeWorkspaceId: null })
   },
 
   updateTask: async (taskId: string, updater: SetStateAction<Task>) => {
@@ -873,6 +905,7 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   },
 
   setActiveWorkspace: (workspaceId: string) => {
+    saveActiveWorkspace(workspaceId)
     set({ activeWorkspaceId: workspaceId })
   },
 
@@ -990,7 +1023,25 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     const ownerId = get().currentUser?.id ?? ''
     const dtos = await api.listWorkspaces()
     const vms = dtos.map((d) => workspaceToVM(d, ownerId))
-    set({ workspaces: vms, activeWorkspaceId: get().activeWorkspaceId ?? vms[0]?.id ?? null })
+    // Fan out each workspace's projects so the launcher's project counts are correct and
+    // stable from first paint (otherwise they read 0 until a workspace is opened, then
+    // flip to the real count — the "ảo ảo" inconsistency). Merge, don't replace, so an
+    // already-opened project keeps its detail-level seats.
+    const perWs = await Promise.all(
+      dtos.map((d) => api.listProjects(d.id).catch(() => [])),
+    )
+    const incomingProjects = perWs.flat().map(projectToVM)
+    // Keep the persisted active workspace if it still exists; otherwise fall back to the
+    // first workspace (and persist that choice).
+    const prevActive = get().activeWorkspaceId
+    const activeWorkspaceId =
+      prevActive && vms.some((w) => w.id === prevActive) ? prevActive : (vms[0]?.id ?? null)
+    saveActiveWorkspace(activeWorkspaceId)
+    set({
+      workspaces: vms,
+      projects: mergeProjects(get().projects, incomingProjects),
+      activeWorkspaceId,
+    })
   },
 
   hydrateWorkspace: async (workspaceId: string) => {
@@ -1000,11 +1051,23 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
       api.listProjects(workspaceId),
       api.listSkills(workspaceId).catch(() => []),
     ])
-    set({
-      mariuses: mariuses.map(mariusToVM),
-      projects: projects.map(projectToVM),
-      skills: skills.map(skillToVM),
-    })
+    // Replace ONLY this workspace's slice — keep other workspaces' data intact. The
+    // previous version reassigned the whole array, so opening workspace B wiped A's
+    // agents/projects/skills (and made the launcher counts flap back to 0).
+    set((s) => ({
+      mariuses: [
+        ...s.mariuses.filter((m) => m.workspaceId !== workspaceId),
+        ...mariuses.map(mariusToVM),
+      ],
+      projects: [
+        ...s.projects.filter((p) => p.workspaceId !== workspaceId),
+        ...projects.map(projectToVM),
+      ],
+      skills: [
+        ...s.skills.filter((sk) => sk.workspaceId !== workspaceId),
+        ...skills.map(skillToVM),
+      ],
+    }))
   },
 
   hydrateProject: async (projectId: string) => {

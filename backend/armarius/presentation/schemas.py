@@ -37,6 +37,7 @@ class ProjectOut(_Out):
     name: str
     slug: str
     description: str | None = None
+    status: str = "setup"
     created_at: datetime | None = None
 
 
