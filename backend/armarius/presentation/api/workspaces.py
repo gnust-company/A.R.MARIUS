@@ -122,7 +122,7 @@ async def approve_marius(
     """Approve a pending enrollment → mint the agent_token once and complete any held
     `/agent/enroll` call (API_CONTRACT §4.1)."""
     await _require_owned_workspace(container, user, workspace_id)
-    marius = await container.enrollment.approve(marius_id)
+    marius = await container.enrollment.approve(marius_id, workspace_id=workspace_id)
     await container.control_bus.publish(
         f"ws:{workspace_id}",
         "marius.status_changed",

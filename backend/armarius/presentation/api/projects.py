@@ -34,7 +34,9 @@ router = APIRouter(prefix="/v1", tags=["projects"])
 
 
 def _slug(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    # Cap at RoleModel.key's column width (String(120)) — a long title must not overflow
+    # the key column on Postgres (SQLite silently ignores VARCHAR length; Postgres errors).
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")[:120].strip("-")
     return slug or "role"
 
 

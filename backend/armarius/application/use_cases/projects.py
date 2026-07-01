@@ -29,6 +29,10 @@ class SystemOnlyOperation(Exception):
     """Raised when a seat grant/revoke is attempted by a non-system actor (LLD §3.3)."""
 
 
+class DuplicateRoleKey(Exception):
+    """Raised when a role would collide with an existing roster key (API_CONTRACT §3.3)."""
+
+
 def _slugify(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     return slug or "untitled"
@@ -136,6 +140,11 @@ class ProjectService:
         async with self._uow() as uow:
             if await uow.projects.get(project_id) is None:
                 raise LookupError("project not found")
+            existing = await uow.roles.list_by_project(project_id)
+            if any(r.key == spec.key for r in existing):
+                raise DuplicateRoleKey(
+                    f"role key '{spec.key}' already exists in this project's roster"
+                )
             role = self._role_from_spec(spec)
             role.project_id = project_id
             role.created_at = utcnow()
@@ -143,30 +152,33 @@ class ProjectService:
             await uow.commit()
             return created
 
-    async def update_role(
-        self,
-        role_id: UUID,
+    @staticmethod
+    def _mutate_role(
+        role: Role,
         *,
         title: str | None = None,
         seats: int | None = None,
         description: str | None = None,
         responsibilities: str | None = None,
         skill_ids: list[str] | None = None,
-    ) -> Role:
+    ) -> None:
+        if title is not None:
+            role.title = title
+        if seats is not None:
+            role.seats = seats
+        if description is not None:
+            role.description = description
+        if responsibilities is not None:
+            role.responsibilities = responsibilities
+        if skill_ids is not None:
+            role.skill_ids = skill_ids
+
+    async def update_role(self, role_id: UUID, **changes) -> Role:
         async with self._uow() as uow:
             role = await uow.roles.get(role_id)
             if role is None:
                 raise LookupError("role not found")
-            if title is not None:
-                role.title = title
-            if seats is not None:
-                role.seats = seats
-            if description is not None:
-                role.description = description
-            if responsibilities is not None:
-                role.responsibilities = responsibilities
-            if skill_ids is not None:
-                role.skill_ids = skill_ids
+            self._mutate_role(role, **changes)
             updated = await uow.roles.update(role)
             await uow.commit()
             return updated
@@ -232,6 +244,15 @@ class ProjectService:
                 raise LookupError("project not found")
             roles = await uow.roles.list_by_project(project_id)
             grants = await uow.seat_grants.list_by_project(project_id)
+            # Batch-load every seated agent once (avoids an N+1 over the grants).
+            seated_ids = {
+                g.marius_id
+                for g in grants
+                if g.status == SeatGrantStatus.GRANTED and g.marius_id is not None
+            }
+            mariuses = {
+                m.id: m for m in await uow.mariuses.list_by_ids(list(seated_ids))
+            }
             views: list[RosterRoleView] = []
             for role in roles:
                 seated: list[SeatView] = []
@@ -240,7 +261,7 @@ class ProjectService:
                         continue
                     if g.marius_id is None:
                         continue
-                    marius = await uow.mariuses.get(g.marius_id)
+                    marius = mariuses.get(g.marius_id)
                     if marius is None:
                         continue
                     seated.append(
@@ -282,9 +303,14 @@ class ProjectService:
     async def update_role_by_key(
         self, project_id: UUID, role_key: str, **changes
     ) -> Role:
+        # Resolve-by-key and mutate in a single transaction (one round-trip, no read→write
+        # race window between two separate UoWs).
         async with self._uow() as uow:
             role = await self._role_by_key(uow, project_id, role_key)
-        return await self.update_role(role.id, **changes)
+            self._mutate_role(role, **changes)
+            updated = await uow.roles.update(role)
+            await uow.commit()
+            return updated
 
     async def remove_role_by_key(self, project_id: UUID, role_key: str) -> None:
         """Remove a role — only if no agent currently holds a seat in it (§3.3)."""

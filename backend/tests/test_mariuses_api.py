@@ -137,6 +137,21 @@ async def test_claim_is_recovery_only_after_approval() -> None:
     assert recovered.json()["agent_token"] == approved["agent_token"]
 
 
+async def test_approve_cross_workspace_marius_is_404() -> None:
+    async with await _client() as c:
+        token_a, ws_a = await _register(c, "appr-a@armarius.dev")
+        token_b, ws_b = await _register(c, "appr-b@armarius.dev")
+        ha = {"Authorization": f"Bearer {token_a}"}
+        hb = {"Authorization": f"Bearer {token_b}"}
+        marius_b = await _invite(c, ws_b, hb)  # an agent that lives in B's workspace
+        # A owns ws_a, but marius_b belongs to ws_b — approving it through A's own
+        # workspace must NOT mint a token for someone else's agent.
+        r = await c.post(
+            f"/v1/workspaces/{ws_a}/mariuses/{marius_b['id']}/approve", headers=ha
+        )
+    assert r.status_code == 404, r.text
+
+
 @pytest.mark.parametrize("missing", ["marius", "workspace"])
 async def test_cross_workspace_invite_is_404(missing: str) -> None:
     async with await _client() as c:
