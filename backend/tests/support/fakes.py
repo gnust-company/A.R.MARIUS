@@ -8,6 +8,7 @@ transactions). `commit`/`rollback` are no-ops: repos mutate the shared store dir
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from types import TracebackType
 from uuid import UUID
 
@@ -16,6 +17,7 @@ from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.domain.entities.commission import CommissionSession, CommissionStatus
 from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import Marius
+from armarius.domain.entities.onboarding import OnboardingSession
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.entities.skill import Skill
@@ -28,6 +30,7 @@ class _Store:
     workspaces: dict[UUID, Workspace] = field(default_factory=dict)
     labels: dict[UUID, Label] = field(default_factory=dict)
     commissions: dict[UUID, CommissionSession] = field(default_factory=dict)
+    onboardings: dict[UUID, OnboardingSession] = field(default_factory=dict)
     projects: dict[UUID, Project] = field(default_factory=dict)
     tasks: dict[UUID, Task] = field(default_factory=dict)
     roles: dict[UUID, Role] = field(default_factory=dict)
@@ -245,6 +248,32 @@ class _FakeSkillRepo:
         return [s for s in self._s.skills.values() if s.id in wanted]
 
 
+class _FakeOnboardingRepo:
+    def __init__(self, store: _Store) -> None:
+        self._s = store
+
+    async def add(self, session: OnboardingSession) -> OnboardingSession:
+        self._s.onboardings[session.id] = session
+        return session
+
+    async def get(self, session_id: UUID) -> OnboardingSession | None:
+        return self._s.onboardings.get(session_id)
+
+    async def update(self, session: OnboardingSession) -> OnboardingSession:
+        self._s.onboardings[session.id] = session
+        return session
+
+    async def list_by_workspace(
+        self, workspace_id: UUID
+    ) -> list[OnboardingSession]:
+        epoch = datetime.min.replace(tzinfo=UTC)
+        items = [
+            s for s in self._s.onboardings.values() if s.workspace_id == workspace_id
+        ]
+        items.sort(key=lambda s: s.created_at or epoch, reverse=True)
+        return items
+
+
 class FakeUnitOfWork(UnitOfWork):
     """A UoW backed by an in-memory store. Only the repos the Sprint-2 use cases need."""
 
@@ -256,6 +285,7 @@ class FakeUnitOfWork(UnitOfWork):
         self.workspaces = _FakeWorkspaceRepo(s)  # type: ignore[assignment]
         self.labels = _FakeLabelRepo(s)  # type: ignore[assignment]
         self.commissions = _FakeCommissionRepo(s)  # type: ignore[assignment]
+        self.onboardings = _FakeOnboardingRepo(s)  # type: ignore[assignment]
         self.projects = _FakeProjectRepo(s)  # type: ignore[assignment]
         self.tasks = _FakeTaskRepo(s)  # type: ignore[assignment]
         self.roles = _FakeRoleRepo(s)  # type: ignore[assignment]

@@ -171,6 +171,21 @@ class CommissionModel(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class OnboardingSessionModel(Base):
+    """Agent-assisted project-setup chat (LLD §2.10, Sprint 7 / Phase G). Plain UUID
+    ref to the workspace (no FK) — consistent with the other runtime chat tables."""
+
+    __tablename__ = "onboarding_sessions"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    workspace_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="open", index=True)
+    transcript: Mapped[list] = mapped_column(JSON, default=list)
+    collected: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_project_id: Mapped[UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class SessionModel(Base):
     __tablename__ = "agent_task_sessions"
     __table_args__ = (

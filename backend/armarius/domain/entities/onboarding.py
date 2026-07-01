@@ -34,6 +34,20 @@ class OnboardingSession:
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
+    def add_turn(self, role: str, text: str, ts: datetime | None = None) -> None:
+        """Append one chat turn to the transcript (only while the session is open).
+
+        The Workspace Agent runs a scripted playbook (Sprint 7): it greets the Patron,
+        proposes a roster from the objective, and on confirmation the service materialises
+        the plan. Both sides of that conversation land here as ``{role, text, ts}`` turns.
+        """
+        if self.status != OnboardingStatus.OPEN:
+            raise OnboardingError(f"Cannot message a '{self.status}' onboarding session.")
+        self.transcript = [
+            *self.transcript,
+            {"role": role, "text": text, "ts": ts.isoformat() if ts else None},
+        ]
+
     def finalize(self, project_id: UUID) -> None:
         """Mark the chat resolved into a real project (Sprint 7 wires the build)."""
         if self.status != OnboardingStatus.OPEN:

@@ -452,3 +452,22 @@ class CommissionOut(_Out):
     transcript: list[dict] = Field(default_factory=list)
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+# ------------------------------------------------------------------ onboarding
+# Agent-assisted project setup (Sprint 7 / Phase G). The Workspace Agent interviews the
+# Patron; `finalize` materialises the accumulated plan into a Project + roster.
+class OnboardingMessageIn(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class OnboardingOut(_Out):
+    id: UUID
+    workspace_id: UUID | None = None
+    status: str
+    transcript: list[dict] = Field(default_factory=list)
+    collected: dict = Field(default_factory=dict)
+    created_project_id: UUID | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+

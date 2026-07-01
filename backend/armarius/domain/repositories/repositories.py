@@ -12,6 +12,7 @@ from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.commission import CommissionSession
 from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import Marius
+from armarius.domain.entities.onboarding import OnboardingSession
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import Run, RunEvent
 from armarius.domain.entities.seat_grant import SeatGrant
@@ -98,6 +99,22 @@ class CommissionRepository(ABC):
         self, leader_marius_id: UUID
     ) -> Sequence[CommissionSession]:
         """Open commissions a Leader owns — used to drain queued turns on online."""
+
+
+class OnboardingRepository(ABC):
+    """Agent-assisted project-setup chats (LLD §2.10, Sprint 7 / Phase G)."""
+
+    @abstractmethod
+    async def add(self, session: OnboardingSession) -> OnboardingSession: ...
+    @abstractmethod
+    async def get(self, session_id: UUID) -> OnboardingSession | None: ...
+    @abstractmethod
+    async def update(self, session: OnboardingSession) -> OnboardingSession: ...
+    @abstractmethod
+    async def list_by_workspace(
+        self, workspace_id: UUID
+    ) -> Sequence[OnboardingSession]:
+        """All sessions for a workspace (newest first) — the active one is the first OPEN."""
 
 
 class MariusRepository(ABC):

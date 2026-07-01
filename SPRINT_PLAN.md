@@ -181,6 +181,52 @@ The mock-data Scriptorium SPA is the frozen UX spec. All sub-phases shipped gree
 
 ## Build log
 
+### 2026-07-01 — **Sprint 7 done**: agent-assisted onboarding (Phase G) · issue #10
+> The last sprint. `OnboardingSession` (a pure FSM entity that existed as a Sprint-1 stub) now persists and
+> drives a full Patron ↔ Workspace Agent chat whose `finalize` materialises the agreed plan into a real
+> `setup` Project + roster via `ProjectService.create_project` (the hard one-leader-plus-workers rule). This
+> closes ARCH UC9 / Phase G and the build (Sprints 0→7).
+
+**Design decision — scripted brain, not a wake-engine call.** The repo runs end-to-end on the `echo` adapter
+with no real gateway; waking the Workspace Agent would only echo. So the Workspace Agent's turns come from a
+small, pure, keyword-driven brain (`propose_plan` / `_respond`) isolated in `onboarding_session.py`: it greets,
+derives a project name + 1 leader + worker roles from the objective (frontend/backend/design/qa/data/devops
+keywords; defaults to Frontend+Backend), re-proposes on refinement, and locks on confirmation. Swapping in a
+real LLM later means replacing exactly that brain — the session FSM, persistence, and `finalize → ProjectService`
+path are untouched. The `#8` (wake) dependency is satisfied transitively: the Workspace Agent is a real wakeable
+Marius designated by `WorkspaceAgentService`, and commission/tasks already wake agents in this workspace.
+
+**Backend (full vertical slice, TDD):**
+- **Persistence** — `OnboardingRepository` port + `OnboardingSessionModel` (ORM) + `onboarding_to_entity`
+  mapper + `SqlOnboardingRepository` + UoW wiring (`uow.onboardings`) + `_FakeOnboardingRepo` (fakes) +
+  Alembic **`e8c4f1a9d3b2`** (`onboarding_sessions`; single head confirmed).
+- **Application** — `OnboardingService.start/message/finalize/abandon/get/active_for`; `finalize` snapshots the
+  plan into the transcript, then calls `ProjectService.create_project` (its own UoW), then flips `open → finalized`
+  with `created_project_id`. `plan_from_collected` always yields a valid plan, so finalize can never strand the
+  Patron. Wired `WorkspaceAgentService` + `OnboardingService` into the container (both were unwired stubs).
+- **Presentation** — `OnboardingOut` / `OnboardingMessageIn` schemas + `api/onboarding.py` router:
+  `POST /v1/workspaces/{ws}/onboarding`, `GET …/onboarding/active`, `GET /v1/onboarding/{id}`,
+  `POST …/messages`, `POST …/finalize`, `POST …/abandon` — all owner-scoped (cross-workspace → 404). Mapped
+  `OnboardingError → 409` (illegal transition). Wired into `main.py`.
+- **Tests** — `test_onboarding_service.py` (12: brain heuristics, FSM, finalize→project+roster, double-finalize,
+  abandon-then-message) + `test_onboarding_api.py` (3: full start→message→finalize→roster HTTP walk, abandon,
+  cross-workspace 404). Suite **176 passed** (was 161, +15), `ruff` clean.
+
+**Frontend (golden-path):**
+- **Data** — `OnboardingDTO` + `startOnboarding/getActiveOnboarding/getOnboarding/postOnboardingMessage/
+  finalizeOnboarding/abandonOnboarding` in `api.ts` (+ a `getOrNull` helper for the 404-as-null active lookup);
+  `onboardingToVM` mapper; `OnboardingSessionVM`/`OnboardingTurn` view-models.
+- **Store** — `activeOnboarding` state + `startOnboarding/postOnboardingMessage/finalizeOnboarding/
+  abandonOnboarding/hydrateActiveOnboarding` actions. MOCK path carries a scripted FE brain mirroring the BE so
+  the frozen demo's agent tab works standalone; real path talks the API.
+- **UI** — new typed, lint-clean `components/OnboardingChat.tsx` (transcript bubbles, composer, finalize→
+  navigate to `/projects/{id}`); CreateProject gains a **Manual | Agent** mode toggle (the existing 3-step wizard
+  is untouched). i18n EN + VI (full diacritics).
+- **Verify** — FE `npm run build` green; `eslint` clean on all new/edited lib + store + component files.
+
+- **Out of scope (carried):** real LLM adapter for the brain; multi-seat/role-editing inside the chat (the brain
+  proposes; refine-by-text re-derives). Both are one-function swaps behind the `propose_plan` seam.
+
 ### 2026-07-01 — **Sprint 6 review fixes — round 3 (code review)** (PR #13 · issue #9)
 > Owner's written PR review (checked out the branch, ran both suites — pytest 161 ✅, `npm run build` ✅) raised
 > one **blocking** concern + three non-blocking suggestions, all in the FE data layer. Verified each against the

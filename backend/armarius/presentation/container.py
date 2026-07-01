@@ -18,12 +18,14 @@ from armarius.application.use_cases.labels import LabelService
 from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.liveness_watchdog import LivenessWatchdog
 from armarius.application.use_cases.mariuses import MariusService
+from armarius.application.use_cases.onboarding_session import OnboardingService
 from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.runs import RunQueryService
 from armarius.application.use_cases.skills import SkillService
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.threads import ThreadService
 from armarius.application.use_cases.wake_engine import WakeEngine
+from armarius.application.use_cases.workspace_agent import WorkspaceAgentService
 from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.adapters.hermes_gateway import HermesGatewayAdapter
@@ -48,6 +50,7 @@ class Container:
     wake_engine: WakeEngine
     workspaces: WorkspaceService
     projects: ProjectService
+    onboarding: OnboardingService
     enrollment: EnrollmentService
     commission: CommissionService
     liveness: LivenessEngine
@@ -102,6 +105,10 @@ def build_container() -> Container:
     skills = SkillService(uow_factory)
     workspaces = WorkspaceService(uow_factory, skills)
 
+    projects = ProjectService(uow_factory)
+    workspace_agent = WorkspaceAgentService(uow_factory)
+    onboarding = OnboardingService(uow_factory, projects, workspace_agent)
+
     liveness = LivenessEngine(uow_factory, PlaceholderLivenessProbe())
     liveness_watchdog = LivenessWatchdog(
         uow_factory,
@@ -115,7 +122,8 @@ def build_container() -> Container:
         registry=registry,
         wake_engine=wake_engine,
         workspaces=workspaces,
-        projects=ProjectService(uow_factory),
+        projects=projects,
+        onboarding=onboarding,
         enrollment=EnrollmentService(uow_factory),
         commission=CommissionService(uow_factory, wake_engine),
         liveness=liveness,

@@ -14,6 +14,7 @@ from armarius.domain.entities.commission import (
     CommissionError as CommissionStateError,
 )
 from armarius.domain.entities.marius import InviteError
+from armarius.domain.entities.onboarding import OnboardingError
 from armarius.domain.entities.seat_grant import SeatGrantError
 from armarius.domain.entities.task import ArtifactRequiredError, TaskTransitionError
 from armarius.domain.services.project_rules import InvalidProjectPlan
@@ -59,6 +60,11 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(InviteError)
     async def _invite_conflict(_: Request, exc: InviteError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(OnboardingError)
+    async def _onboarding_conflict(_: Request, exc: OnboardingError) -> JSONResponse:
+        # Illegal session transition (message/finalize/abandon on a non-open chat) — conflict.
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(EnrollmentError)

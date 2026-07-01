@@ -9,6 +9,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useMockStore } from '@/store/mockStore';
 import PageTitle from '@/components/PageTitle';
+import OnboardingChat from '@/components/OnboardingChat';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -102,6 +103,7 @@ export default function CreateProject() {
   const [showSettings, setShowSettings] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [mode, setMode] = useState<'manual' | 'agent'>('manual');
 
   // Approved agents (status not 'invited' or 'revoked')
   const approvedAgents = useMemo(
@@ -845,6 +847,31 @@ export default function CreateProject() {
         </div>
       </div>
 
+      {/* Mode toggle — manual wizard vs. agent-assisted chat (Sprint 7) */}
+      <div className="flex items-center gap-1.5 mb-6 bg-[#EDE4CE] border border-[#E3D7BC] rounded-lg p-1.5 w-fit mx-auto">
+        {(['manual', 'agent'] as const).map((m) => {
+          const active = mode === m;
+          return (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`px-4 py-1.5 rounded-md font-body text-body-sm transition-colors ${
+                active ? 'bg-[#C25E3A] text-white' : 'text-ink hover:bg-[#E3D7BC]'
+              }`}
+            >
+              {t(`createProject.mode.${m}`)}
+              <span className={`block font-body text-body-xs ${active ? 'text-white/80' : 'text-ink-muted'}`}>
+                {t(`createProject.mode.${m}Desc`)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {mode === 'agent' ? (
+        <OnboardingChat onCreated={(pid) => navigate(`/projects/${pid}`)} />
+      ) : (
+      <>
       <p className="text-center font-body text-body-sm text-ink-muted mb-4">
         {t('createProject.stepIndicator', { current: step, total: 3 })}
       </p>
@@ -920,6 +947,8 @@ export default function CreateProject() {
           </button>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }

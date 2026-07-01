@@ -14,6 +14,7 @@ from armarius.infrastructure.persistence.repositories import (
     SqlCommissionRepository,
     SqlLabelRepository,
     SqlMariusRepository,
+    SqlOnboardingRepository,
     SqlProjectRepository,
     SqlRoleRepository,
     SqlRunEventRepository,
@@ -39,6 +40,7 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         self.workspaces = SqlWorkspaceRepository(s)
         self.labels = SqlLabelRepository(s)
         self.commissions = SqlCommissionRepository(s)
+        self.onboardings = SqlOnboardingRepository(s)
         self.projects = SqlProjectRepository(s)
         self.roles = SqlRoleRepository(s)
         self.seat_grants = SqlSeatGrantRepository(s)

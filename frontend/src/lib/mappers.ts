@@ -15,6 +15,7 @@ import type {
   CommissionDTO,
   LabelDTO,
   MariusDTO,
+  OnboardingDTO,
   ProjectDTO,
   ProjectDetailDTO,
   SkillDTO,
@@ -26,6 +27,7 @@ import type {
   Artifact,
   CommissionSession as CommissionSessionVM,
   Marius,
+  OnboardingSessionVM,
   Priority,
   Project,
   ProjectSeat,
@@ -263,6 +265,25 @@ export function commissionToVM(dto: CommissionDTO): CommissionSessionVM {
           dependencies: [],
         }
       : null,
+  }
+}
+
+// ── Onboarding (agent-assisted project setup · Sprint 7) ───────────────────────────────
+
+export function onboardingToVM(dto: OnboardingDTO): OnboardingSessionVM {
+  return {
+    id: dto.id,
+    workspaceId: dto.workspace_id ?? '',
+    status:
+      dto.status === 'finalized' ? 'finalized' : dto.status === 'abandoned' ? 'abandoned' : 'open',
+    transcript: (dto.transcript ?? []).map((t, i) => ({
+      id: `${dto.id}-${i}`,
+      role: t.role === 'patron' ? 'patron' : t.role === 'agent' ? 'agent' : 'system',
+      text: t.text,
+      timestamp: t.ts ?? new Date().toISOString(),
+    })),
+    collected: dto.collected ?? {},
+    createdProjectId: dto.created_project_id ?? undefined,
   }
 }
 

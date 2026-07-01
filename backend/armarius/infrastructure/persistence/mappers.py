@@ -13,6 +13,7 @@ from armarius.domain.entities.commission import (
 )
 from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import InviteStatus, Liveness, Marius
+from armarius.domain.entities.onboarding import OnboardingSession, OnboardingStatus
 from armarius.domain.entities.project import (
     Project,
     ProjectStatus,
@@ -33,6 +34,7 @@ from armarius.infrastructure.database.models import (
     CommissionModel,
     LabelModel,
     MariusModel,
+    OnboardingSessionModel,
     ProjectModel,
     RoleModel,
     RunEventModel,
@@ -184,6 +186,19 @@ def commission_to_entity(m: CommissionModel) -> CommissionSession:
         transcript=list(m.transcript or []),
         status=CommissionStatus(m.status),
         leader_state=LeaderState(m.leader_state),
+        created_at=m.created_at,
+        updated_at=m.updated_at,
+    )
+
+
+def onboarding_to_entity(m: OnboardingSessionModel) -> OnboardingSession:
+    return OnboardingSession(
+        id=m.id,
+        workspace_id=m.workspace_id,
+        status=OnboardingStatus(m.status),
+        transcript=list(m.transcript or []),
+        collected=dict(m.collected or {}),
+        created_project_id=m.created_project_id,
         created_at=m.created_at,
         updated_at=m.updated_at,
     )

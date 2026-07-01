@@ -97,6 +97,17 @@ async function get<T>(path: string): Promise<T> {
   return (await res.json()) as T
 }
 
+// Like `get`, but a 404 resolves to `null` instead of throwing — for "may not exist yet"
+// lookups (e.g. the active onboarding chat before one is opened).
+async function getOrNull<T>(path: string): Promise<T | null> {
+  try {
+    return await get<T>(path)
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null
+    throw e
+  }
+}
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetchWithAuth(path, {
     method: 'POST',
@@ -415,6 +426,50 @@ export async function confirmCommission(sessionId: string): Promise<CommissionDT
 
 export async function getCommission(sessionId: string): Promise<CommissionDTO> {
   return get<CommissionDTO>(`/v1/commissions/${sessionId}`)
+}
+
+// ── Onboarding (agent‑assisted project setup · Sprint 7) ──────────────────────────────
+
+export interface OnboardingTranscriptTurn {
+  role: 'agent' | 'patron' | 'system'
+  text: string
+  ts?: string | null
+}
+
+export interface OnboardingDTO {
+  id: string
+  workspace_id?: string | null
+  status: 'open' | 'finalized' | 'abandoned'
+  transcript: OnboardingTranscriptTurn[]
+  collected: Record<string, unknown>
+  created_project_id?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export async function startOnboarding(workspaceId: string): Promise<OnboardingDTO> {
+  return post<OnboardingDTO>(`/v1/workspaces/${workspaceId}/onboarding`, {})
+}
+
+export async function getActiveOnboarding(workspaceId: string): Promise<OnboardingDTO | null> {
+  // 404 = no live chat; return null so the caller can open one.
+  return getOrNull<OnboardingDTO>(`/v1/workspaces/${workspaceId}/onboarding/active`)
+}
+
+export async function getOnboarding(sessionId: string): Promise<OnboardingDTO> {
+  return get<OnboardingDTO>(`/v1/onboarding/${sessionId}`)
+}
+
+export async function postOnboardingMessage(sessionId: string, text: string): Promise<OnboardingDTO> {
+  return post<OnboardingDTO>(`/v1/onboarding/${sessionId}/messages`, { text })
+}
+
+export async function finalizeOnboarding(sessionId: string): Promise<OnboardingDTO> {
+  return post<OnboardingDTO>(`/v1/onboarding/${sessionId}/finalize`, {})
+}
+
+export async function abandonOnboarding(sessionId: string): Promise<OnboardingDTO> {
+  return post<OnboardingDTO>(`/v1/onboarding/${sessionId}/abandon`, {})
 }
 
 // ── Roster grant (system‑only) ────────────────────────────────────────────────────────

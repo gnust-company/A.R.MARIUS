@@ -8,6 +8,7 @@ import {
   artifactToVM,
   commentToVM,
   mariusToVM,
+  onboardingToVM,
   projectDetailToVM,
   projectToVM,
   skillToVM,
@@ -214,6 +215,26 @@ export interface CommissionSession {
   draftTask: CommissionDraftTask | null
 }
 
+// ── Onboarding view-model (backend OnboardingOut → UI) ───────────────────────────────
+// The agent-assisted project-setup chat. The Workspace Agent runs a scripted playbook
+// (greet → propose a roster → confirm); `finalize` creates a real project + roster and the
+// store swaps the session for the new project id.
+export interface OnboardingTurn {
+  id: string
+  role: 'agent' | 'patron' | 'system'
+  text: string
+  timestamp: string
+}
+
+export interface OnboardingSessionVM {
+  id: string
+  workspaceId: string
+  status: 'open' | 'finalized' | 'abandoned'
+  transcript: OnboardingTurn[]
+  collected: Record<string, unknown>
+  createdProjectId?: string
+}
+
 export interface SkillFile {
   id: string
   name: string
@@ -294,6 +315,7 @@ interface MockStoreState {
   events: StoreEvent[]
   traceEvents: TraceEvent[]
   activeWorkspaceId: string | null
+  activeOnboarding: OnboardingSessionVM | null
   sseConnected: boolean
   sidebarCollapsed: boolean
   /** True when running the frozen in-memory demo (VITE_MOCK=true). When false the store is a
@@ -330,6 +352,18 @@ interface MockStoreState {
   createTask: (task: Partial<Task> & { title: string; status: TaskStatus; priority: Priority; projectId: string }) => Promise<Task>
   deleteProject: (projectId: string) => Promise<void>
   grantSeat: (projectId: string, mariusId: string, role: string) => Promise<void>
+
+  // ── Onboarding (agent-assisted project setup · Sprint 7) ───────────────────────────
+  /** Open (or rejoin) the active workspace's agent-setup chat. */
+  startOnboarding: () => Promise<OnboardingSessionVM>
+  /** Send a Patron turn; the Workspace Agent responds (scripted). */
+  postOnboardingMessage: (text: string) => Promise<OnboardingSessionVM>
+  /** Lock the plan → creates a real project + roster (MOCK: a local project). */
+  finalizeOnboarding: () => Promise<OnboardingSessionVM>
+  /** Drop the active chat. */
+  abandonOnboarding: () => Promise<void>
+  /** Rehydrate the active chat on mount, if one is open. */
+  hydrateActiveOnboarding: () => Promise<void>
 
   // ── API hydration thunks (no-ops under MOCK) ───────────────────────────────────────
   hydrateMe: () => Promise<void>
@@ -709,6 +743,83 @@ const dummySkills: Skill[] = [
   },
 ]
 
+// ── Onboarding scripted brain (MOCK path only) ───────────────────────────────────────
+// Mirrors the backend's deterministic onboarder so the frozen demo's agent-mode tab works
+// end-to-end without a real gateway. The real path ignores this and talks to the API.
+const ONBOARDING_GREETING =
+  "Hi — I'm the Workspace Agent. Tell me what you'd like to build and I'll propose a team for it: the objective, who you need (e.g. frontend, backend, design), and I'll stand up the project with a Project Leader plus those worker roles."
+
+const MOCK_ROLE_KEYWORDS: Array<[string[], string]> = [
+  [['frontend', 'ui', 'react', 'css', 'web'], 'Frontend'],
+  [['backend', 'api', 'server', 'database', 'db'], 'Backend'],
+  [['design', 'ux', 'figma'], 'Design'],
+  [['test', 'qa', 'review', 'security'], 'QA / Reviewer'],
+]
+const MOCK_CONFIRM = ['looks good', 'yes', 'confirm', 'ok', 'create', 'go ahead', 'perfect', 'ship', 'finalize']
+const MOCK_RECONSIDER = ['no', 'change', 'add', 'remove', 'instead', 'swap', 'replace']
+
+function mockOnboardingConfirm(text: string): boolean {
+  const l = text.toLowerCase()
+  if (MOCK_RECONSIDER.some((w) => l.includes(w))) return false
+  return MOCK_CONFIRM.some((w) => l.includes(w))
+}
+
+interface MockRole {
+  key: string
+  title: string
+  is_leader: boolean
+}
+
+function mockProposePlan(objective: string): { name: string; roles: MockRole[] } {
+  const l = objective.toLowerCase()
+  const workerTitles = MOCK_ROLE_KEYWORDS.filter(([kw]) => kw.some((k) => l.includes(k))).map(([, t]) => t)
+  const workers = (workerTitles.length ? workerTitles : ['Frontend', 'Backend']).map((t) => ({
+    key: t.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    title: t,
+    is_leader: false,
+  }))
+  const name = objective.trim()
+    ? objective
+        .trim()
+        .split(/\s+/)
+        .slice(0, 4)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ')
+    : 'New Project'
+  return { name, roles: [{ key: 'leader', title: 'Project Leader', is_leader: true }, ...workers] }
+}
+
+function mockRespond(
+  collected: Record<string, unknown>,
+  text: string,
+): { reply: string; collected: Record<string, unknown> } {
+  if (mockOnboardingConfirm(text) && collected.roles) {
+    return {
+      reply: "Locked in. Hit “Create project” and I'll stand it up — a Project Leader seat plus the worker roles we agreed on.",
+      collected: { ...collected, ready: true },
+    }
+  }
+  const plan = mockProposePlan(text)
+  const workerLines = plan.roles
+    .filter((r) => !r.is_leader)
+    .map((r) => `  • ${r.title}`)
+    .join('\n')
+  return {
+    reply: `Got it — I'll set up ${plan.name} with one Project Leader plus:\n${workerLines}\n\nIf that looks right, say “looks good” (or hit Create). Want to add or swap a role? Tell me what you need.`,
+    collected: { objective: text.trim(), project_name: plan.name, roles: plan.roles, ready: false },
+  }
+}
+
+function mockPlanFromCollected(collected: Record<string, unknown>): {
+  name: string
+  objective: string
+  roles: MockRole[]
+} {
+  const raw = (collected.roles as MockRole[] | undefined) ?? mockProposePlan('').roles
+  const name = (collected.project_name as string) || 'New Project'
+  return { name, objective: (collected.objective as string) || name, roles: raw }
+}
+
 // ── Store ───────────────────────────────────────────
 
 export const useMockStore = create<MockStoreState>((set, get) => ({
@@ -723,6 +834,7 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   events: [],
   traceEvents: [],
   activeWorkspaceId: loadActiveWorkspace(),
+  activeOnboarding: null,
   sseConnected: false,
   sidebarCollapsed: false,
   isMock: MOCK,
@@ -1018,6 +1130,99 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     const project = projectDetailToVM(dto)
     set({ projects: upsertById(get().projects, project) })
     return project
+  },
+
+  // ── Onboarding (agent-assisted project setup · Sprint 7) ───────────────────────────
+  startOnboarding: async () => {
+    const workspaceId = get().activeWorkspaceId || ''
+    if (get().isMock) {
+      const vm: OnboardingSessionVM = {
+        id: `ob_${Date.now()}`,
+        workspaceId,
+        status: 'open',
+        transcript: [
+          { id: 'greet', role: 'agent', text: ONBOARDING_GREETING, timestamp: new Date().toISOString() },
+        ],
+        collected: {},
+      }
+      set({ activeOnboarding: vm })
+      return vm
+    }
+    // Rejoin an already-open chat if one exists; otherwise open a fresh one.
+    const existing = await api.getActiveOnboarding(workspaceId)
+    const dto = existing ?? (await api.startOnboarding(workspaceId))
+    const vm = onboardingToVM(dto)
+    set({ activeOnboarding: vm })
+    return vm
+  },
+
+  postOnboardingMessage: async (text: string) => {
+    const session = get().activeOnboarding
+    if (!session) throw new Error('no active onboarding session')
+    if (get().isMock) {
+      const { reply, collected } = mockRespond(session.collected, text)
+      const ts = new Date().toISOString()
+      const base = session.transcript.length
+      const vm: OnboardingSessionVM = {
+        ...session,
+        transcript: [
+          ...session.transcript,
+          { id: `${session.id}-${base}`, role: 'patron', text, timestamp: ts },
+          { id: `${session.id}-${base + 1}`, role: 'agent', text: reply, timestamp: ts },
+        ],
+        collected,
+      }
+      set({ activeOnboarding: vm })
+      return vm
+    }
+    const dto = await api.postOnboardingMessage(session.id, text)
+    const vm = onboardingToVM(dto)
+    set({ activeOnboarding: vm })
+    return vm
+  },
+
+  finalizeOnboarding: async () => {
+    const session = get().activeOnboarding
+    if (!session) throw new Error('no active onboarding session')
+    if (get().isMock) {
+      // Materialise a local project from the collected plan (mirrors backend finalize).
+      const plan = mockPlanFromCollected(session.collected)
+      const id = `p_${Date.now()}`
+      const project: Project = {
+        id,
+        name: plan.name,
+        description: plan.objective,
+        objective: plan.objective,
+        workspaceId: session.workspaceId,
+        status: 'setup',
+        seats: plan.roles.map((r, i) => ({ id: `${id}-${i}`, projectId: id, mariusId: null, role: r.key })),
+      }
+      set({ projects: [...get().projects, project] })
+      const vm: OnboardingSessionVM = { ...session, status: 'finalized', createdProjectId: id }
+      set({ activeOnboarding: vm })
+      return vm
+    }
+    const dto = await api.finalizeOnboarding(session.id)
+    const vm = onboardingToVM(dto)
+    set({ activeOnboarding: vm })
+    return vm
+  },
+
+  abandonOnboarding: async () => {
+    const session = get().activeOnboarding
+    if (!session) return
+    if (!get().isMock) {
+      await api.abandonOnboarding(session.id)
+    }
+    set({ activeOnboarding: null })
+  },
+
+  hydrateActiveOnboarding: async () => {
+    if (get().isMock) return
+    const workspaceId = get().activeWorkspaceId || ''
+    if (!workspaceId) return
+    const dto = await api.getActiveOnboarding(workspaceId)
+    set({ activeOnboarding: dto ? onboardingToVM(dto) : null })
   },
 
   // ── API hydration thunks ───────────────────────────────────────────────────────────

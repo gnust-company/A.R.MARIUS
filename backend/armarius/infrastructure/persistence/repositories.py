@@ -13,6 +13,7 @@ from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.commission import CommissionSession
 from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import Marius
+from armarius.domain.entities.onboarding import OnboardingSession
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import Run, RunEvent
 from armarius.domain.entities.seat_grant import SeatGrant
@@ -28,6 +29,7 @@ from armarius.domain.repositories.repositories import (
     CommissionRepository,
     LabelRepository,
     MariusRepository,
+    OnboardingRepository,
     ProjectRepository,
     RoleRepository,
     RunEventRepository,
@@ -46,6 +48,7 @@ from armarius.infrastructure.database.models import (
     CommissionModel,
     LabelModel,
     MariusModel,
+    OnboardingSessionModel,
     ProjectModel,
     RoleModel,
     RunEventModel,
@@ -177,6 +180,55 @@ class SqlCommissionRepository(CommissionRepository):
             )
         ).scalars().all()
         return [mappers.commission_to_entity(m) for m in rows]
+
+
+class SqlOnboardingRepository(OnboardingRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, session: OnboardingSession) -> OnboardingSession:
+        self._s.add(
+            OnboardingSessionModel(
+                id=session.id,
+                workspace_id=session.workspace_id,
+                status=str(session.status),
+                transcript=list(session.transcript),
+                collected=dict(session.collected),
+                created_project_id=session.created_project_id,
+                created_at=session.created_at,
+                updated_at=session.updated_at,
+            )
+        )
+        await self._s.flush()
+        return session
+
+    async def get(self, session_id: UUID) -> OnboardingSession | None:
+        m = await self._s.get(OnboardingSessionModel, session_id)
+        return mappers.onboarding_to_entity(m) if m else None
+
+    async def update(self, session: OnboardingSession) -> OnboardingSession:
+        m = await self._s.get(OnboardingSessionModel, session.id)
+        if m is None:
+            raise LookupError("onboarding session not found")
+        m.status = str(session.status)
+        m.transcript = list(session.transcript)
+        m.collected = dict(session.collected)
+        m.created_project_id = session.created_project_id
+        m.updated_at = session.updated_at
+        await self._s.flush()
+        return session
+
+    async def list_by_workspace(
+        self, workspace_id: UUID
+    ) -> Sequence[OnboardingSession]:
+        rows = (
+            await self._s.execute(
+                select(OnboardingSessionModel)
+                .where(OnboardingSessionModel.workspace_id == workspace_id)
+                .order_by(OnboardingSessionModel.created_at.desc())
+            )
+        ).scalars().all()
+        return [mappers.onboarding_to_entity(m) for m in rows]
 
 
 class SqlProjectRepository(ProjectRepository):
