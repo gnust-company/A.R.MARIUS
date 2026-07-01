@@ -44,8 +44,11 @@ async def test_personal_workspace_has_builtin_skill():
     assert skills.status_code == 200
     body = skills.json()
     assert any(s["slug"] == "armarius-http" for s in body)
+    assert any(s["slug"] == "armarius-mcp" for s in body)
     builtin = next(s for s in body if s["slug"] == "armarius-http")
     assert builtin["source"] == "builtin"
+    mcp_builtin = next(s for s in body if s["slug"] == "armarius-mcp")
+    assert mcp_builtin["source"] == "builtin"
 
 
 async def test_register_without_username_derives_handle():
@@ -67,7 +70,8 @@ async def test_provision_agent_links_skill_and_invite_has_steps():
         token, ws_id = await _register(c, "prov@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
         skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
-        skill_id = skills[0]["id"]
+        # Look up by slug — a bare skills[0] is order-fragile now that there are two builtins.
+        skill_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
 
         created = await c.post(
             f"/v1/workspaces/{ws_id}/mariuses",
@@ -103,7 +107,7 @@ async def test_edit_agent_updates_skills():
         token, ws_id = await _register(c, "edit@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
         skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
-        skill_id = skills[0]["id"]
+        skill_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
 
         created = (
             await c.post(
@@ -160,8 +164,9 @@ async def test_custom_skill_is_workspace_scoped():
         hb = {"Authorization": f"Bearer {token_b}"}
         b_skills = (await c.get(f"/v1/workspaces/{ws_b}/skills", headers=hb)).json()
     assert not any(s["slug"] == "secret-sauce" for s in b_skills)
-    # ...but B still has the built-in
+    # ...but B still has both built-ins
     assert any(s["slug"] == "armarius-http" for s in b_skills)
+    assert any(s["slug"] == "armarius-mcp" for s in b_skills)
 
 
 async def test_agent_can_fetch_linked_skill_bundle():

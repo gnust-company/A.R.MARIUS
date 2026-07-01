@@ -208,6 +208,52 @@ The mock-data Scriptorium SPA is the frozen UX spec. All sub-phases shipped gree
   `/workspaces`. New `wsHref()` helper; sidebar, switcher, and all in-workspace `navigate()`/`Link` targets
   carry the id; top-level exits stay absolute. `npm run build` (tsc + vite) green.
 
+### 2026-07-01 — **Sprint 8 done**: MCP server + MCP skill (the agent never curls) · issue #1
+> Issue #1 (MCP, deferred since 2026-06-23) is built. A new **`mcp/`** standalone Python package ships an
+> [MCP](https://modelcontextprotocol.io) **stdio** server (`fastmcp`) that exposes the nine `/agent/*`
+> endpoints as **typed tools** — so an onboarded Marius works the workspace by calling tools, never by
+> hand-writing `curl`. The server is a thin **HTTP client** of the existing backend (no new BE endpoints):
+> each tool = one `httpx` call + token injection + enum/shape-constrained args, which is exactly where weak
+> models used to burn tokens (malformed JSON, wrong status enum, bad auth header).
+
+**Design decision — client, not a BE module.** The MCP server holds a per-seat token and calls the API over
+HTTP. That keeps least-privilege (the token is all it ever has), one authz path (the same `CurrentMarius`
+dependency), and a single source of truth for the FSM/artifact/wake rules — at the cost of ~1ms per call.
+Standalone uv project (not a workspace member: there's no root `pyproject.toml`, and it has a different dep
+surface + its own deploy story), matching the one-project-per-area convention (`backend/`, `frontend/`).
+
+**MCP package (`mcp/`, TDD):**
+- **9 tools → `/agent/*`** — `enroll`, `claim` (bootstrap, **pre-token** — the agent never curls even to
+  enroll), `whoami`, `get_task`, `claim_task`, `post_comment`, `update_status` (Literal status enum, `draft`
+  dropped), `set_next_action`, `publish_artifact` (Literal kind; file/patch/note need `content`/`content_b64`,
+  link needs `uri`). Guardrails live in `tools.py`; `server.py` is the thin FastMCP binding.
+- **Client + errors** — `client.py` (`ArmariusClient`: one async method per endpoint, token injected here);
+  `http_error.py` maps the BE's stable status codes (401/404/409/400/422) to actionable, model-facing errors.
+- **Bootstrap** — `config.py` `resolve_config()` precedence: token = `ARMARIUS_AGENT_TOKEN` → credential file →
+  none; base URL = `ARMARIUS_PUBLIC_BASE_URL` → credential `api_base_url` → `GET /v1/meta` probe → default.
+  `credentials.py` reads/writes `~/.armarius/credentials/{ws}_{agent}.json` **byte-for-byte** with onboarding
+  (same slug rule, same 6 keys, atomic 0600 write); after enroll/claim the server persists the minted token.
+- **stdio hygiene** — `logging_setup.py` forces **all logs to stderr** and the banner is suppressed, so stdout
+  stays pure JSON-RPC.
+- **Tests (41, green; ruff clean)** — `test_client.py` (respx: per-endpoint method/path/body/header, 401/409,
+  transport errors); `test_tools.py` (arg validation + token persistence + enroll-timeout → `claim` hint);
+  `test_config.py` (precedence incl. mocked `/v1/meta`, credential round-trip, ambiguous-multi-ws → no token);
+  `test_integration.py` (opt-in `-m integration`: drives the tool layer against the **real backend** in-process
+  via `httpx.ASGITransport` — enroll+concurrent approve → whoami → get_task → claim → comment → status →
+  artifact-gate(409) → in_review → next_action; proves the whole loop is tool calls).
+
+**Backend (minimal, additive — behind existing seams):**
+- `armarius-mcp` added as a second **built-in skill** (`skills.py` `BUILTIN_SKILLS`), seeded idempotently into
+  every workspace alongside `armarius-http`, which stays as a curl **fallback** for non-MCP runtimes. New
+  self-contained playbook at `backend/static/skills/armarius-mcp/SKILL.md` (enroll → credential file → install
+  & register the server → `whoami` → workflow playbook → failure map; **no curl anywhere**). `build_invite_prompt`
+  unchanged.
+- **Test de-fragile** — `test_skills_and_agents.py` now looks skills up by slug (a bare `skills[0]` was
+  order-fragile with two builtins) and asserts both builtins are seeded.
+
+**Verify** — `mcp/`: **41 passed**, ruff clean; live MCP handshake (in-memory `fastmcp.Client`) lists 9 typed
+tools and returns a clean "call enroll first" on a no-token call. Backend: **176 passed**, ruff clean.
+
 ### 2026-07-01 — **Sprint 7 done**: agent-assisted onboarding (Phase G) · issue #10
 > The last sprint. `OnboardingSession` (a pure FSM entity that existed as a Sprint-1 stub) now persists and
 > drives a full Patron ↔ Workspace Agent chat whose `finalize` materialises the agreed plan into a real
