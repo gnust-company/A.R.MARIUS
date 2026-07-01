@@ -30,6 +30,9 @@ from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.seat_grant import SeatGrantStatus
 from armarius.domain.entities.task import Task, TaskStatus
 from armarius.shared.clock import utcnow
+from armarius.shared.logging import get_logger
+
+logger = get_logger(__name__)
 
 # A Leader can run a turn unless it is offline/hung; otherwise the turn is queued.
 _AVAILABLE = {Liveness.ONLINE, Liveness.WORKING, Liveness.IDLE, Liveness.CHECKING}
@@ -201,26 +204,32 @@ class CommissionService:
     async def on_leader_online(self, leader_marius_id: UUID) -> int:
         """A Leader just came online → re-enqueue every turn queued while it was offline.
 
-        Returns the number of commissions drained. Idempotent: a session already THINKING
-        (not queued) is left untouched.
+        **Wake first, then flip** ``LEADER_OFFLINE → THINKING`` only once the wake succeeds:
+        a failed wake leaves the session queued so the *next* drain retries it — a turn is
+        never silently stranded as THINKING-but-never-woken. Resilient (one bad session does
+        not block the rest) and idempotent. Returns the number of turns actually re-enqueued.
         """
-        now = utcnow()
-        to_wake: list[CommissionSession] = []
         async with self._uow() as uow:
             open_sessions = await uow.commissions.list_open_by_leader(leader_marius_id)
-            for session in open_sessions:
-                if session.leader_state != LeaderState.LEADER_OFFLINE:
-                    continue
-                session.leader_state = LeaderState.THINKING
-                session.updated_at = now
-                await uow.commissions.update(session)
-                to_wake.append(session)
-            if to_wake:
-                await uow.commit()
+        queued = [s for s in open_sessions if s.leader_state == LeaderState.LEADER_OFFLINE]
 
-        for session in to_wake:
-            await self._wake_leader(session)
-        return len(to_wake)
+        drained = 0
+        for session in queued:
+            try:
+                await self._wake_leader(session)
+            except Exception:  # a bad wake must not strand the other queued turns
+                logger.exception("commission drain failed to wake session %s", session.id)
+                continue
+            # The wake landed → mark the turn in flight (only if it is still queued).
+            async with self._uow() as uow:
+                fresh = await uow.commissions.get(session.id)
+                if fresh is not None and fresh.leader_state == LeaderState.LEADER_OFFLINE:
+                    fresh.leader_state = LeaderState.THINKING
+                    fresh.updated_at = utcnow()
+                    await uow.commissions.update(fresh)
+                    await uow.commit()
+                    drained += 1
+        return drained
 
     # ── queries ──────────────────────────────────────────────────────────────────
     async def get(self, session_id: UUID) -> CommissionSession | None:

@@ -181,6 +181,16 @@ The mock-data Scriptorium SPA is the frozen UX spec. All sub-phases shipped gree
 
 ## Build log
 
+### 2026-07-01 — **Sprint 5 review fixes** (PR #12 · issue #8)
+> Addressed @kpollz's review. **Blocking:** `on_leader_online` committed `THINKING` *before* waking, so a
+> failed wake stranded the turn (next drain skips a non-`LEADER_OFFLINE` session → silently lost). Reordered to
+> **wake first, flip `LEADER_OFFLINE → THINKING` only on success**, per-session with a try/except that leaves a
+> failed session queued for the next drain — idempotent, no lost turn. **Non-blocking #1:** the per-task tee now
+> applies the same `_DURABLE_EVENT` filter as the durable trace, so token `assistant.delta`s stream on the
+> per-run trace only and no longer flood the Room's `task:{id}` channel. Kept `/v1/commissions/edit` as-is
+> (works, tested, API not yet consumed) and acknowledged the resource-oriented alternative. pytest **157 passed**
+> (+1); ruff clean.
+
 ### 2026-07-01 — **Sprint 5 done**: commission runtime + wake tee + liveness watchdog · issue #8
 > **Audit first (owner rule: keep what still follows the architecture, else delete + redo).** The pre-reset
 > backend (commit `d7fbb8c`, older than Sprint 0) already carried a `WakeEngine`, liveness engine/FSM,

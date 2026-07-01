@@ -204,7 +204,10 @@ class WakeEngine:
                 await self._bus.publish(
                     run_id, {"seq": seq, "type": event_type, "payload": payload}
                 )
-                await self._tee_task(task.id, event_type, payload)
+                # Tee only durable lifecycle events to the Room's per-task channel; token
+                # deltas stream on the per-run trace only (else 1000 deltas flood the Room).
+                if _DURABLE_EVENT(event_type):
+                    await self._tee_task(task.id, event_type, payload)
 
             adapter = self._registry.get(marius.adapter_type)
             ctx = ExecContext(
