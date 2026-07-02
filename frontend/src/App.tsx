@@ -79,19 +79,21 @@ export default function App() {
         {/* Workspaces launcher — no sidebar */}
         <Route path="/workspaces" element={<Workspaces />} />
 
-        {/* All other pages — with sidebar layout */}
-        <Route element={<Layout />}>
-          <Route path="/projects" element={<Projects />} />
-          <Route path="/projects/new" element={<CreateProject />} />
-          <Route path="/projects/:id" element={<ProjectBoard />} />
-          <Route path="/projects/:id/roster" element={<Roster />} />
-          <Route path="/projects/:id/commission" element={<Commission />} />
-          <Route path="/directory" element={<Directory />} />
-          <Route path="/skills" element={<Skills />} />
-          <Route path="/skills/:id" element={<SkillEditor />} />
-          <Route path="/inbox" element={<Inbox />} />
-          <Route path="/account" element={<Account />} />
-          <Route path="/tasks/:id" element={<CollaborationRoom />} />
+        {/* All in-workspace pages carry the workspace id on the URL (/w/:workspaceId/…)
+            so a hard refresh restores the right workspace + its skills. */}
+        <Route path="/w/:workspaceId" element={<Layout />}>
+          <Route index element={<Navigate to="projects" replace />} />
+          <Route path="projects" element={<Projects />} />
+          <Route path="projects/new" element={<CreateProject />} />
+          <Route path="projects/:id" element={<ProjectBoard />} />
+          <Route path="projects/:id/roster" element={<Roster />} />
+          <Route path="projects/:id/commission" element={<Commission />} />
+          <Route path="directory" element={<Directory />} />
+          <Route path="skills" element={<Skills />} />
+          <Route path="skills/:id" element={<SkillEditor />} />
+          <Route path="inbox" element={<Inbox />} />
+          <Route path="account" element={<Account />} />
+          <Route path="tasks/:id" element={<CollaborationRoom />} />
         </Route>
       </Route>
     </Routes>

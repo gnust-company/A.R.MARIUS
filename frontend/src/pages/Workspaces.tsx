@@ -12,7 +12,7 @@ import {
 import { useMockStore } from '@/store/mockStore';
 import VellumPanel from '@/components/VellumPanel';
 import Modal from '@/components/Modal';
-import { cn } from '@/lib/utils';
+import { cn, wsHref } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 
 const containerVariants = {
@@ -61,7 +61,7 @@ export default function Workspaces() {
   const handleEnter = async (wsId: string) => {
     setActiveWorkspace(wsId);
     if (!isMock) await hydrateWorkspace(wsId);
-    navigate('/projects');
+    navigate(wsHref(wsId, '/projects'));
   };
 
   const handleCreate = async () => {
@@ -78,7 +78,7 @@ export default function Workspaces() {
     setIsModalOpen(false);
     setActiveWorkspace(created.id);
     if (!isMock) await hydrateWorkspace(created.id);
-    navigate('/projects');
+    navigate(wsHref(created.id, '/projects'));
   };
 
   return (

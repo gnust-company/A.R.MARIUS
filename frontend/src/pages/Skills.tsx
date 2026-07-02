@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 import { motion } from 'framer-motion';
 import {
   Wrench,
@@ -19,7 +19,7 @@ import VellumPanel from '@/components/VellumPanel';
 import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
 import PageTitle from '@/components/PageTitle';
-import { cn } from '@/lib/utils';
+import { cn, wsHref } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 
 // ─── Animation Variants ──────────────────────────────────────────────────────
@@ -65,6 +65,7 @@ function SourceBadge({ type }: { type: Skill['type'] }) {
 
 export default function Skills() {
   const navigate = useNavigate();
+  const { workspaceId } = useParams();
   const { t } = useTranslation();
   const skills = useMockStore((s) => s.skills);
   const createSkill = useMockStore((s) => s.createSkill);
@@ -131,7 +132,7 @@ export default function Skills() {
       });
       setCreating(false);
       setCreateModalOpen(false);
-      navigate(`/skills/${newSkill.id}`);
+      navigate(wsHref(workspaceId, `/skills/${newSkill.id}`));
     }, 300);
   };
 
@@ -162,11 +163,11 @@ export default function Skills() {
       files: importedFiles,
     });
     setCreateModalOpen(false);
-    navigate(`/skills/${newSkill.id}`);
+    navigate(wsHref(workspaceId, `/skills/${newSkill.id}`));
   };
 
   const handleSkillClick = (skillId: string) => {
-    navigate(`/skills/${skillId}`);
+    navigate(wsHref(workspaceId, `/skills/${skillId}`));
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────

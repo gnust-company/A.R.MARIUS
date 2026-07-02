@@ -1,10 +1,11 @@
 // @ts-nocheck
 import { useMemo } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 import { motion } from 'framer-motion';
 import { Plus, Users, ScrollText, FolderOpen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useMockStore } from '@/store/mockStore';
+import { wsHref } from '@/lib/utils';
 import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
 import EmptyState from '@/components/EmptyState';
@@ -36,6 +37,7 @@ const quillInVariants = {
 export default function Projects() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { workspaceId } = useParams();
   const projects = useMockStore((s) => s.projects);
   const activeWorkspaceId = useMockStore((s) => s.activeWorkspaceId);
   const allTasks = useMockStore((s) => s.tasks);
@@ -86,7 +88,7 @@ export default function Projects() {
 
         <motion.button
           variants={quillInVariants}
-          onClick={() => navigate('/projects/new')}
+          onClick={() => navigate(wsHref(workspaceId, '/projects/new'))}
           className="inline-flex items-center gap-2 bg-[#C25E3A] hover:bg-[#D97B5A] text-white font-body font-medium text-body-md px-4 py-2.5 rounded-md transition-colors"
           style={{ transition: 'background-color 0.2s, transform 0.2s' }}
           onMouseEnter={(e) => { (e.target as HTMLElement).style.transform = 'translateY(-1px)'; }}
@@ -110,7 +112,7 @@ export default function Projects() {
             description={t('projects.emptyDescription')}
             action={
               <button
-                onClick={() => navigate('/projects/new')}
+                onClick={() => navigate(wsHref(workspaceId, '/projects/new'))}
                 className="inline-flex items-center gap-2 bg-[#C25E3A] hover:bg-[#D97B5A] text-white font-body font-medium text-body-md px-6 py-3 rounded-md transition-colors"
               >
                 <Plus className="w-4 h-4" />
@@ -133,7 +135,7 @@ export default function Projects() {
             <motion.div
               key={project.id}
               variants={quillInVariants}
-              onClick={() => navigate(`/projects/${project.id}`)}
+              onClick={() => navigate(wsHref(workspaceId, `/projects/${project.id}`))}
               className="cursor-pointer"
             >
               <VellumPanel
@@ -198,7 +200,7 @@ export default function Projects() {
           {/* ─── Create Project Placeholder Card ─── */}
           <motion.div
             variants={quillInVariants}
-            onClick={() => navigate('/projects/new')}
+            onClick={() => navigate(wsHref(workspaceId, '/projects/new'))}
             className="cursor-pointer"
           >
             <div className="h-full min-h-[240px] flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-[#E3D7BC] rounded-lg hover:border-[#C25E3A] hover:text-[#C25E3A] transition-colors group">
