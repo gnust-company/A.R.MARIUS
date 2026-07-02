@@ -126,6 +126,40 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return (await res.json()) as T
 }
 
+async function patch<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetchWithAuth(path, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`
+    try {
+      const data = await res.json()
+      if (data?.detail) detail = typeof data.detail === 'string' ? data.detail : detail
+    } catch {
+      // non-JSON error body — keep the status-line fallback
+    }
+    throw new ApiError(detail, res.status)
+  }
+  return (await res.json()) as T
+}
+
+// DELETE that tolerates a 204 (no body). Surfaces the server `detail` on 4xx so callers
+// can toast the constraint message (e.g. "Built-in skills can't be deleted.").
+async function del(path: string): Promise<void> {
+  const res = await fetchWithAuth(path, { method: 'DELETE' })
+  if (!res.ok && res.status !== 204) {
+    let detail = `${res.status} ${res.statusText}`
+    try {
+      const data = await res.json()
+      if (data?.detail) detail = typeof data.detail === 'string' ? data.detail : detail
+    } catch {
+      // non-JSON error body — keep the status-line fallback
+    }
+    throw new ApiError(detail, res.status)
+  }
+}
+
 // ── DTOs (golden-path only — a thin typed contract over the backend schemas) ─────────────
 
 export interface WorkspaceDTO {
@@ -277,6 +311,14 @@ export async function createWorkspace(name: string): Promise<WorkspaceDTO> {
   return post<WorkspaceDTO>('/v1/workspaces', { name })
 }
 
+export async function updateWorkspace(workspaceId: string, name: string): Promise<WorkspaceDTO> {
+  return patch<WorkspaceDTO>(`/v1/workspaces/${workspaceId}`, { name })
+}
+
+export async function deleteWorkspace(workspaceId: string): Promise<void> {
+  return del(`/v1/workspaces/${workspaceId}`)
+}
+
 // ── Projects ───────────────────────────────────────────────────────────────────────────
 
 export interface CreateProjectBody {
@@ -341,6 +383,18 @@ export async function approveMarius(workspaceId: string, mariusId: string): Prom
   return post<MariusDTO>(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}/approve`, {})
 }
 
+export async function updateMarius(
+  workspaceId: string,
+  mariusId: string,
+  body: Partial<InviteMariusBody>,
+): Promise<MariusDTO> {
+  return patch<MariusDTO>(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}`, body)
+}
+
+export async function deleteMarius(workspaceId: string, mariusId: string): Promise<void> {
+  return del(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}`)
+}
+
 // ── Labels ─────────────────────────────────────────────────────────────────────────────
 
 export async function listLabels(workspaceId: string): Promise<LabelDTO[]> {
@@ -351,6 +405,10 @@ export async function listLabels(workspaceId: string): Promise<LabelDTO[]> {
 
 export async function listSkills(workspaceId: string): Promise<SkillDTO[]> {
   return get<SkillDTO[]>(`/v1/workspaces/${workspaceId}/skills`)
+}
+
+export async function deleteSkill(workspaceId: string, skillId: string): Promise<void> {
+  return del(`/v1/workspaces/${workspaceId}/skills/${skillId}`)
 }
 
 // ── Tasks ───────────────────────────────────────────────────────────────────────────────
