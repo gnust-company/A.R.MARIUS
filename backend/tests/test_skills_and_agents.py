@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -92,6 +94,8 @@ async def test_provision_agent_links_skill_and_invite_has_steps():
     assert "INSTALL YOUR SKILLS" in data["invite"]
     assert "Armarius HTTP API" in data["invite"]
     assert "~/.armarius/credentials/" in data["invite"]
+    # Skills install via the agent bundle endpoint (no more "(no source URL)" dead end).
+    assert "/agent/skills/armarius-http" in data["invite"]
 
 
 async def test_edit_agent_updates_skills():
@@ -158,5 +162,68 @@ async def test_custom_skill_is_workspace_scoped():
     assert not any(s["slug"] == "secret-sauce" for s in b_skills)
     # ...but B still has the built-in
     assert any(s["slug"] == "armarius-http" for s in b_skills)
-    # ...but B still has the built-in
-    assert any(s["slug"] == "armarius-http" for s in b_skills)
+
+
+async def test_agent_can_fetch_linked_skill_bundle():
+    """An onboarded agent installs a multi-file skill via the JSON bundle endpoint."""
+    async with await _client() as c:
+        token, ws_id = await _register(c, "bundle@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+
+        # Author a manual skill, then give it a sibling file (multi-file tree).
+        made = await c.post(
+            f"/v1/workspaces/{ws_id}/skills/manual",
+            headers=h,
+            json={"name": "Bundle Test", "description": "multi-file"},
+        )
+        assert made.status_code == 201, made.text
+        skill = made.json()
+        files = {
+            "SKILL.md": "---\nname: Bundle Test\ndescription: multi-file\n---\n# body",
+            "scripts/run.sh": "echo hi\n",
+        }
+        await c.put(
+            f"/v1/workspaces/{ws_id}/skills/{skill['id']}", headers=h, json={"files": files}
+        )
+
+        # Provision a Marius linked to that skill, approve it, then recover its token.
+        created = (
+            await c.post(
+                f"/v1/workspaces/{ws_id}/mariuses",
+                headers=h,
+                json={"name": "Marin", "role": "Backend", "skills": [],
+                      "skill_ids": [skill["id"]], "adapter_type": "echo", "adapter_config": {}},
+            )
+        ).json()
+        mid, code = created["id"], created["enrollment_code"]
+        # enroll moves invited→pending_review then HOLDS until approval — run the patron's
+        # approve concurrently (approve is a no-op 409 until enroll sets pending_review).
+        enroll_task = asyncio.create_task(
+            c.post("/agent/enroll", json={"marius_id": mid, "enrollment_code": code})
+        )
+        for _ in range(100):
+            r = await c.post(f"/v1/workspaces/{ws_id}/mariuses/{mid}/approve", headers=h)
+            if r.status_code == 200:
+                break
+            await asyncio.sleep(0.02)
+        else:
+            raise AssertionError("approve never reached pending_review")
+        enrolled = await asyncio.wait_for(enroll_task, timeout=10)
+        assert enrolled.status_code == 200, enrolled.text
+        agent_token = enrolled.json()["agent_token"]
+        ah = {"Authorization": f"Bearer {agent_token}"}
+
+        # /agent/skills lists the linked skill with its file count.
+        listed = await c.get("/agent/skills", headers=ah)
+        assert listed.status_code == 200, listed.text
+        summary = next(s for s in listed.json() if s["slug"] == skill["slug"])
+        assert summary["file_count"] == 2
+
+        # /agent/skills/{slug} returns the full file tree.
+        bundle = await c.get(f"/agent/skills/{skill['slug']}", headers=ah)
+        assert bundle.status_code == 200, bundle.text
+        assert bundle.json()["files"] == files
+
+        # A slug the agent isn't linked to → 404; no token → 401.
+        assert (await c.get("/agent/skills/nope", headers=ah)).status_code == 404
+        assert (await c.get("/agent/skills")).status_code == 401
