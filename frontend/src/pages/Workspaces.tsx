@@ -8,10 +8,13 @@ import {
   Bot,
   Plus,
   ArrowRight,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { useMockStore } from '@/store/mockStore';
 import VellumPanel from '@/components/VellumPanel';
 import Modal from '@/components/Modal';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import { cn, wsHref } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 
@@ -44,6 +47,8 @@ export default function Workspaces() {
   const mariuses = useMockStore((s) => s.mariuses);
   const setActiveWorkspace = useMockStore((s) => s.setActiveWorkspace);
   const createWorkspace = useMockStore((s) => s.createWorkspace);
+  const updateWorkspace = useMockStore((s) => s.updateWorkspace);
+  const deleteWorkspace = useMockStore((s) => s.deleteWorkspace);
   const hydrateWorkspaces = useMockStore((s) => s.hydrateWorkspaces);
   const hydrateWorkspace = useMockStore((s) => s.hydrateWorkspace);
   const isMock = useMockStore((s) => s.isMock);
@@ -57,6 +62,22 @@ export default function Workspaces() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newWsName, setNewWsName] = useState('');
   const [newWsDesc, setNewWsDesc] = useState('');
+
+  // Rename / delete state (edit + delete for each workspace card).
+  const [editingWs, setEditingWs] = useState<{ id: string; name: string } | null>(null);
+  const [editName, setEditName] = useState('');
+  const [deletingWs, setDeletingWs] = useState<{ id: string; name: string } | null>(null);
+
+  const openEdit = (ws: { id: string; name: string }) => {
+    setEditingWs(ws);
+    setEditName(ws.name);
+  };
+
+  const handleRename = async () => {
+    if (!editingWs || !editName.trim()) return;
+    await updateWorkspace(editingWs.id, editName.trim());
+    setEditingWs(null);
+  };
 
   const handleEnter = async (wsId: string) => {
     setActiveWorkspace(wsId);
@@ -141,14 +162,35 @@ export default function Workspaces() {
             >
               <VellumPanel
                 className={cn(
-                  'cursor-pointer h-full flex flex-col',
+                  'cursor-pointer h-full flex flex-col relative group',
                   'hover:border-gold-muted hover:shadow-gilt-lg'
                 )}
                 hover={false}
                 onClick={() => handleEnter(ws.id)}
               >
+                {/* Card actions — rename / delete (don't trigger card navigation) */}
+                <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openEdit(ws); }}
+                    className="p-1.5 rounded-md text-ink-muted hover:text-ink hover:bg-vellum-dark transition-colors"
+                    aria-label={t('workspaces.edit')}
+                    title={t('workspaces.edit')}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setDeletingWs(ws); }}
+                    disabled={workspaces.length <= 1}
+                    className="p-1.5 rounded-md text-ink-muted hover:text-[#C0492B] hover:bg-[#F3D9D0] transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-ink-muted"
+                    aria-label={t('workspaces.delete')}
+                    title={workspaces.length <= 1 ? t('workspaces.onlyWorkspaceHint') : t('workspaces.delete')}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
                 {/* Workspace name */}
-                <h2 className="font-display text-display-md text-ink mb-1">
+                <h2 className="font-display text-display-md text-ink mb-1 pr-16">
                   {ws.name}
                 </h2>
 
@@ -285,6 +327,64 @@ export default function Workspaces() {
           </div>
         </div>
       </Modal>
+
+      {/* Rename Workspace Modal */}
+      <Modal
+        isOpen={editingWs !== null}
+        onClose={() => setEditingWs(null)}
+        title={<span className="dropcap">{t('workspaces.editTitle')}</span>}
+        footer={
+          <>
+            <button
+              onClick={() => setEditingWs(null)}
+              className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-vellum-deep text-ink border border-vellum-dark hover:bg-vellum-dark transition-colors"
+            >
+              {t('workspaces.cancelButton')}
+            </button>
+            <button
+              onClick={handleRename}
+              disabled={!editName.trim()}
+              className={cn(
+                'px-4 py-2 rounded-md font-body text-body-md font-medium transition-colors',
+                editName.trim()
+                  ? 'bg-terracotta text-white hover:bg-terracotta-light'
+                  : 'bg-vellum-dark text-ink-muted cursor-not-allowed'
+              )}
+            >
+              {t('workspaces.saveButton')}
+            </button>
+          </>
+        }
+      >
+        <div>
+          <label className="block font-body text-body-sm font-medium text-ink mb-1">
+            {t('workspaces.nameLabel')} <span className="text-terracotta">*</span>
+          </label>
+          <input
+            type="text"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); }}
+            className={cn(
+              'w-full px-4 py-2.5 rounded-md bg-vellum border border-vellum-dark',
+              'font-body text-body-md text-ink placeholder:text-ink-muted',
+              'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15',
+              'transition-all'
+            )}
+            autoFocus
+          />
+        </div>
+      </Modal>
+
+      {/* Delete Workspace confirmation */}
+      <ConfirmDialog
+        isOpen={deletingWs !== null}
+        onClose={() => setDeletingWs(null)}
+        onConfirm={async () => { if (deletingWs) await deleteWorkspace(deletingWs.id); }}
+        title={t('workspaces.deleteTitle')}
+        message={t('workspaces.deleteConfirm', { name: deletingWs?.name ?? '' })}
+        confirmLabel={t('workspaces.delete')}
+      />
     </div>
   );
 }

@@ -339,7 +339,12 @@ interface MockStoreState {
   publishArtifact: (taskId: string, artifact: TaskArtifact) => Promise<void>
   createSkill: (skill: Skill) => void
   updateSkill: (skillId: string, skill: Partial<Skill>) => void
+  deleteSkill: (skillId: string) => Promise<void>
   createWorkspace: (workspace: Workspace) => Promise<Workspace>
+  updateWorkspace: (workspaceId: string, name: string) => Promise<void>
+  deleteWorkspace: (workspaceId: string) => Promise<void>
+  updateMarius: (mariusId: string, patch: { name?: string; role?: string }) => Promise<void>
+  deleteMarius: (mariusId: string) => Promise<void>
   setActiveWorkspace: (workspaceId: string) => void
   createProject: (input: {
     name: string
@@ -1005,6 +1010,15 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     set({ skills: updatedSkills })
   },
 
+  deleteSkill: async (skillId: string) => {
+    const skill = get().skills.find((s) => s.id === skillId)
+    const workspaceId = skill?.workspaceId || get().activeWorkspaceId
+    if (!get().isMock && workspaceId) {
+      await api.deleteSkill(workspaceId, skillId)
+    }
+    set({ skills: get().skills.filter((s) => s.id !== skillId) })
+  },
+
   createWorkspace: async (workspace: Workspace) => {
     if (get().isMock) {
       set({ workspaces: [...get().workspaces, workspace] })
@@ -1015,6 +1029,66 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     const vm = workspaceToVM(dto, ownerId)
     set({ workspaces: [...get().workspaces, vm] })
     return vm
+  },
+
+  updateWorkspace: async (workspaceId: string, name: string) => {
+    if (!get().isMock) {
+      await api.updateWorkspace(workspaceId, name)
+    }
+    set({
+      workspaces: get().workspaces.map((w) => (w.id === workspaceId ? { ...w, name } : w)),
+    })
+  },
+
+  deleteWorkspace: async (workspaceId: string) => {
+    if (!get().isMock) {
+      await api.deleteWorkspace(workspaceId)
+    }
+    // Drop the workspace and everything scoped to it (the backend cascades server-side).
+    const remaining = get().workspaces.filter((w) => w.id !== workspaceId)
+    set({
+      workspaces: remaining,
+      projects: get().projects.filter((p) => p.workspaceId !== workspaceId),
+      mariuses: get().mariuses.filter((m) => m.workspaceId !== workspaceId),
+      skills: get().skills.filter((s) => s.workspaceId !== workspaceId),
+    })
+    // If the deleted workspace was active, fall back to another (or none).
+    if (get().activeWorkspaceId === workspaceId) {
+      const next = remaining[0]?.id ?? null
+      saveActiveWorkspace(next)
+      set({ activeWorkspaceId: next })
+    }
+  },
+
+  updateMarius: async (mariusId: string, patchBody: { name?: string; role?: string }) => {
+    const m = get().mariuses.find((x) => x.id === mariusId)
+    const workspaceId = m?.workspaceId || get().activeWorkspaceId
+    if (!get().isMock && workspaceId) {
+      await api.updateMarius(workspaceId, mariusId, {
+        name: patchBody.name,
+        role: patchBody.role,
+      })
+    }
+    set({
+      mariuses: get().mariuses.map((x) =>
+        x.id === mariusId
+          ? {
+              ...x,
+              ...(patchBody.name ? { displayName: patchBody.name } : {}),
+              ...(patchBody.role ? { role: patchBody.role } : {}),
+            }
+          : x,
+      ),
+    })
+  },
+
+  deleteMarius: async (mariusId: string) => {
+    const m = get().mariuses.find((x) => x.id === mariusId)
+    const workspaceId = m?.workspaceId || get().activeWorkspaceId
+    if (!get().isMock && workspaceId) {
+      await api.deleteMarius(workspaceId, mariusId)
+    }
+    set({ mariuses: get().mariuses.filter((x) => x.id !== mariusId) })
   },
 
   setActiveWorkspace: (workspaceId: string) => {

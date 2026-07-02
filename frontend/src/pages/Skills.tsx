@@ -12,12 +12,14 @@ import {
   FileText,
   Loader2,
   ChevronRight,
+  Trash2,
 } from 'lucide-react';
 import { useMockStore } from '@/store/mockStore';
 import type { Skill } from '@/store/mockStore';
 import VellumPanel from '@/components/VellumPanel';
 import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import PageTitle from '@/components/PageTitle';
 import { cn, wsHref } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
@@ -69,6 +71,10 @@ export default function Skills() {
   const { t } = useTranslation();
   const skills = useMockStore((s) => s.skills);
   const createSkill = useMockStore((s) => s.createSkill);
+  const deleteSkill = useMockStore((s) => s.deleteSkill);
+
+  // Skill pending deletion (confirm before removing).
+  const [deletingSkill, setDeletingSkill] = useState<{ id: string; name: string } | null>(null);
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'library' | 'builtin'>('library');
@@ -300,7 +306,7 @@ export default function Skills() {
               key={skill.id}
               variants={itemVariants}
               whileHover={{ y: -2, transition: { duration: 0.2 } }}
-              className="cursor-pointer"
+              className="cursor-pointer group"
               onClick={() => handleSkillClick(skill.id)}
             >
               <VellumPanel>
@@ -326,7 +332,19 @@ export default function Skills() {
                   <span className="text-[12px] font-mono text-[#A89880]">
                     {t('skills.fileCount', { count: (skill.files || []).length })}
                   </span>
-                  <ChevronRight className="w-4 h-4 text-[#A89880]" />
+                  <div className="flex items-center gap-1">
+                    {skill.type !== 'builtin' && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDeletingSkill({ id: skill.id, name: skill.name }); }}
+                        className="p-1.5 rounded-md text-[#A89880] hover:text-[#C0492B] hover:bg-[#F3D9D0] transition-colors opacity-0 group-hover:opacity-100"
+                        aria-label={t('skills.delete')}
+                        title={t('skills.delete')}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                    <ChevronRight className="w-4 h-4 text-[#A89880]" />
+                  </div>
                 </div>
               </VellumPanel>
             </motion.div>
@@ -511,6 +529,16 @@ export default function Skills() {
           </div>
         )}
       </Modal>
+
+      {/* Delete Skill confirmation */}
+      <ConfirmDialog
+        isOpen={deletingSkill !== null}
+        onClose={() => setDeletingSkill(null)}
+        onConfirm={async () => { if (deletingSkill) await deleteSkill(deletingSkill.id); }}
+        title={t('skills.deleteTitle')}
+        message={t('skills.deleteConfirm', { name: deletingSkill?.name ?? '' })}
+        confirmLabel={t('skills.delete')}
+      />
     </div>
   );
 }

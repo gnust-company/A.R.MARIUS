@@ -23,12 +23,15 @@ import {
   Code,
   Globe,
   Terminal,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { useMockStore } from '@/store/mockStore';
 import type { Marius, AgentStatus } from '@/store/mockStore';
 import VellumPanel from '@/components/VellumPanel';
 import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import PageTitle from '@/components/PageTitle';
 import { cn, copyToClipboard } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
@@ -123,10 +126,14 @@ function AgentCard({
   agent,
   onApprove,
   onDesignate,
+  onEdit,
+  onDelete,
 }: {
   agent: Marius;
   onApprove: (id: string) => void;
   onDesignate: (id: string) => void;
+  onEdit: (agent: Marius) => void;
+  onDelete: (agent: Marius) => void;
 }) {
   const { t } = useTranslation();
   const config = STATUS_CONFIG[agent.status] || STATUS_CONFIG.offline;
@@ -233,6 +240,24 @@ function AgentCard({
                       >
                         <span className="flex items-center gap-1.5">
                           <Star className="w-3.5 h-3.5" /> {t('directory.actions.designate')}
+                        </span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { onEdit(agent); setMenuOpen(false); }}
+                      className="w-full text-left px-3 py-2 text-[13px] text-[#2A2318] hover:bg-[#EDE4CE] transition-colors"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Pencil className="w-3.5 h-3.5" /> {t('directory.actions.edit')}
+                      </span>
+                    </button>
+                    {agent.isWorkspaceAgent !== true && (
+                      <button
+                        onClick={() => { onDelete(agent); setMenuOpen(false); }}
+                        className="w-full text-left px-3 py-2 text-[13px] text-[#C0492B] hover:bg-[#F3D9D0] transition-colors"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <Trash2 className="w-3.5 h-3.5" /> {t('directory.actions.delete')}
                         </span>
                       </button>
                     )}
@@ -365,7 +390,14 @@ export default function Directory() {
   const skills = useMockStore((s) => s.skills);
   const inviteAgent = useMockStore((s) => s.inviteAgent);
   const approveAgent = useMockStore((s) => s.approveAgent);
+  const updateMarius = useMockStore((s) => s.updateMarius);
+  const deleteMarius = useMockStore((s) => s.deleteMarius);
   const emitEvent = useMockStore((s) => s.emitEvent);
+
+  // ── Rename / delete state ───────────────────────────────────────────────────
+  const [editingAgent, setEditingAgent] = useState<Marius | null>(null);
+  const [editAgentName, setEditAgentName] = useState('');
+  const [deletingAgent, setDeletingAgent] = useState<Marius | null>(null);
 
   // ── Filter State ───────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
@@ -557,6 +589,17 @@ export default function Directory() {
     [emitEvent]
   );
 
+  const handleOpenEdit = useCallback((agent: Marius) => {
+    setEditingAgent(agent);
+    setEditAgentName(agent.displayName || agent.name);
+  }, []);
+
+  const handleRenameAgent = async () => {
+    if (!editingAgent || !editAgentName.trim()) return;
+    await updateMarius(editingAgent.id, { name: editAgentName.trim() });
+    setEditingAgent(null);
+  };
+
   const handleCloseInvite = () => {
     setInviteModalOpen(false);
     setInviteStep('form');
@@ -678,6 +721,8 @@ export default function Directory() {
                 agent={agent}
                 onApprove={handleApprove}
                 onDesignate={handleDesignate}
+                onEdit={handleOpenEdit}
+                onDelete={setDeletingAgent}
               />
             ))}
           </div>
@@ -722,6 +767,8 @@ export default function Directory() {
               agent={agent}
               onApprove={handleApprove}
               onDesignate={handleDesignate}
+              onEdit={handleOpenEdit}
+              onDelete={setDeletingAgent}
             />
           ))}
         </motion.div>
@@ -979,6 +1026,70 @@ export default function Directory() {
           )}
         </AnimatePresence>
       </Modal>
+
+      {/* Rename Agent Modal */}
+      <Modal
+        isOpen={editingAgent !== null}
+        onClose={() => setEditingAgent(null)}
+        title={
+          <span className="font-['Fraunces',Georgia,serif] text-[28px] font-semibold text-[#2A2318]">
+            <span className="title-initial">{t('directory.renameTitle').charAt(0)}</span>
+            {t('directory.renameTitle').slice(1)}
+          </span>
+        }
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <button
+              onClick={() => setEditingAgent(null)}
+              className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC] transition-colors"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              onClick={handleRenameAgent}
+              disabled={!editAgentName.trim()}
+              className={cn(
+                'px-4 py-2 rounded-md text-[13px] font-medium transition-all',
+                editAgentName.trim()
+                  ? 'bg-[#C25E3A] text-white hover:bg-[#D97B5A]'
+                  : 'bg-[#E3D7BC] text-[#A89880] cursor-not-allowed'
+              )}
+            >
+              {t('common.save')}
+            </button>
+          </>
+        }
+      >
+        <div>
+          <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
+            {t('directory.renameLabel')} <span className="text-[#C25E3A]">*</span>
+          </label>
+          <input
+            type="text"
+            value={editAgentName}
+            onChange={(e) => setEditAgentName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleRenameAgent(); }}
+            className={cn(
+              'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
+              'placeholder:text-[#A89880]',
+              'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+              'transition-all'
+            )}
+            autoFocus
+          />
+        </div>
+      </Modal>
+
+      {/* Delete Agent confirmation */}
+      <ConfirmDialog
+        isOpen={deletingAgent !== null}
+        onClose={() => setDeletingAgent(null)}
+        onConfirm={async () => { if (deletingAgent) await deleteMarius(deletingAgent.id); }}
+        title={t('directory.deleteTitle')}
+        message={t('directory.deleteConfirm', { name: deletingAgent?.displayName || deletingAgent?.name || '' })}
+        confirmLabel={t('directory.actions.delete')}
+      />
     </div>
   );
 }
