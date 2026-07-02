@@ -273,6 +273,8 @@ export const vi = {
       noFiles: 'Chưa có tệp',
       selectFile: 'Chọn một tệp',
       selectFileDesc: 'Chọn một tệp từ cây để xem và chỉnh sửa',
+      creatingIn: 'trong {{path}}',
+      rootLevel: 'thư mục gốc',
     },
   },
   inbox: {

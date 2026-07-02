@@ -21,7 +21,7 @@ import { useMockStore } from '@/store/mockStore';
 import type { SkillFile } from '@/store/mockStore';
 import VellumPanel from '@/components/VellumPanel';
 import EmptyState from '@/components/EmptyState';
-import { cn } from '@/lib/utils';
+import { cn, wsHref } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 
 // ─── Tree Node Types ─────────────────────────────────────────────────────────
@@ -119,12 +119,17 @@ function FileTreeNode({
     return (
       <div>
         <button
-          onClick={() => onToggle(node.path)}
+          onClick={() => {
+            // A folder click both toggles expansion AND selects it as the target for
+            // "add file / add folder" — otherwise a fresh folder can never be filled.
+            onToggle(node.path);
+            onSelect(node);
+          }}
           className={cn(
             'w-full flex items-center gap-1.5 py-1.5 pr-2 text-left transition-colors hover:bg-[#EDE4CE]',
-            isSelected && 'bg-[#EDE4CE]'
+            isSelected && 'bg-[#EDE4CE] border-l-[3px] border-[#D4A843]'
           )}
-          style={{ paddingLeft }}
+          style={{ paddingLeft: isSelected ? paddingLeft - 3 : paddingLeft }}
         >
           <motion.span
             animate={{ rotate: node.expanded ? 90 : 0 }}
@@ -200,7 +205,7 @@ function FileTreeNode({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default function SkillEditor() {
-  const { id } = useParams<{ id: string }>();
+  const { id, workspaceId } = useParams<{ id: string; workspaceId: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const skills = useMockStore((s) => s.skills);
@@ -213,6 +218,9 @@ export default function SkillEditor() {
   // the draft. Nothing touches the persisted skill until "Save" — so "Discard"
   // truly reverts, and an accidental delete is recoverable until you save.
   const [selectedPath, setSelectedPath] = useState<string>('');
+  // Whether the current selection is a folder (a folder can be selected as the target
+  // directory for new files/folders — clicking a file clears this).
+  const [selectedIsFolder, setSelectedIsFolder] = useState(false);
   const [draftFiles, setDraftFiles] = useState<SkillFile[]>(skill ? skill.files : []);
   const [hasChanges, setHasChanges] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -227,6 +235,7 @@ export default function SkillEditor() {
     if (skill) {
       setDraftFiles(skill.files);
       setHasChanges(false);
+      setSelectedIsFolder(false);
     }
   }, [skill?.id]);
 
@@ -246,9 +255,19 @@ export default function SkillEditor() {
     [draftFiles, selectedPath]
   );
 
+  // The directory new files/folders are created in: the selected folder itself, else
+  // the selected file's parent dir, else the tree root. Ends with '/' (or '' for root).
+  const targetDir = useMemo(() => {
+    if (selectedIsFolder && selectedPath) return selectedPath.replace(/\/+$/, '') + '/';
+    if (selectedPath && selectedPath.includes('/'))
+      return selectedPath.substring(0, selectedPath.lastIndexOf('/') + 1);
+    return '';
+  }, [selectedPath, selectedIsFolder]);
+
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleSelectFile = useCallback((node: TreeNode) => {
-    if (node.type === 'file') setSelectedPath(node.path);
+    setSelectedPath(node.path);
+    setSelectedIsFolder(node.type === 'folder');
   }, []);
 
   const handleToggleFolder = useCallback((path: string) => {
@@ -285,40 +304,51 @@ export default function SkillEditor() {
     setHasChanges(false);
     if (!skill.files.some((f) => f.path === selectedPath)) {
       setSelectedPath(skill.files[0]?.path ?? '');
+      setSelectedIsFolder(false);
     }
   };
 
-  // Delete only from the draft — recoverable via Discard until you Save.
+  // Delete from the draft — recoverable via Discard until you Save. A folder selection
+  // removes the whole subtree (its .gitkeep and every file beneath it).
   const handleDeleteFile = () => {
     if (!selectedPath) return;
-    const remaining = draftFiles.filter((f) => f.path !== selectedPath);
+    const prefix = selectedPath.replace(/\/+$/, '') + '/';
+    const remaining = selectedIsFolder
+      ? draftFiles.filter((f) => f.path !== selectedPath && !f.path.startsWith(prefix))
+      : draftFiles.filter((f) => f.path !== selectedPath);
     setDraftFiles(remaining);
     setSelectedPath(remaining[0]?.path ?? '');
+    setSelectedIsFolder(false);
     setHasChanges(true);
   };
 
   const handleAddItem = () => {
     if (!newItemName.trim() || !newItemType) return;
-    const name = newItemName.trim();
-    const path = selectedPath && selectedPath.includes('/')
-      ? selectedPath.substring(0, selectedPath.lastIndexOf('/') + 1) + name
-      : name;
+    // Strip stray slashes off the typed name; combine with the resolved target dir so the
+    // new item lands inside the selected folder (or the selected file's dir, or root).
+    const name = newItemName.trim().replace(/^\/+|\/+$/g, '');
+    if (!name) return;
+    const path = targetDir + name;
 
     if (draftFiles.some((f) => f.path === path)) return;
 
     if (newItemType === 'file') {
       setDraftFiles((prev) => [...prev, { path, name, content: '', language: getLanguage(name) }]);
       setSelectedPath(path);
+      setSelectedIsFolder(false);
       setHasChanges(true);
     } else {
-      // Add a .gitkeep file inside the folder so the empty folder renders in the tree.
-      const folderPath = path.endsWith('/') ? path : path + '/';
+      // Add a .gitkeep file inside the folder so the empty folder renders in the tree,
+      // then select+expand the new folder so the next "add file" lands inside it.
+      const folderPath = path + '/';
       const keepPath = folderPath + '.gitkeep';
       if (!draftFiles.some((f) => f.path === keepPath)) {
         setDraftFiles((prev) => [...prev, { path: keepPath, name: '.gitkeep', content: '', language: 'text' }]);
         setHasChanges(true);
       }
-      setExpandedFolders((prev) => new Set(prev).add(folderPath.slice(0, -1)));
+      setExpandedFolders((prev) => new Set(prev).add(path));
+      setSelectedPath(path);
+      setSelectedIsFolder(true);
     }
 
     setNewItemName('');
@@ -347,7 +377,7 @@ export default function SkillEditor() {
           description={t('skills.editor.notFoundDesc')}
           action={
             <button
-              onClick={() => navigate('/skills')}
+              onClick={() => navigate(wsHref(workspaceId, '/skills'))}
               className={cn(
                 'inline-flex items-center gap-2 px-5 py-2.5 rounded-md text-[15px] font-medium',
                 'bg-[#C25E3A] text-white hover:bg-[#D97B5A] transition-all'
@@ -375,7 +405,7 @@ export default function SkillEditor() {
       >
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/skills')}
+            onClick={() => navigate(wsHref(workspaceId, '/skills'))}
             className="p-2 rounded-md text-[#6B5E4E] hover:text-[#2A2318] hover:bg-[#EDE4CE] transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -485,7 +515,13 @@ export default function SkillEditor() {
                   transition={{ duration: 0.2 }}
                   className="overflow-hidden border-b border-[#E3D7BC]"
                 >
-                  <div className="p-2 flex items-center gap-2">
+                  <div className="p-2 space-y-1.5">
+                    <div className="px-0.5 font-mono text-[10px] text-[#A89880] truncate">
+                      {t('skills.editor.creatingIn', {
+                        path: targetDir || t('skills.editor.rootLevel'),
+                      })}
+                    </div>
+                    <div className="flex items-center gap-2">
                     <input
                       type="text"
                       value={newItemName}
@@ -513,6 +549,7 @@ export default function SkillEditor() {
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
+                    </div>
                   </div>
                 </motion.div>
               )}
