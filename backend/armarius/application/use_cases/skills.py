@@ -225,6 +225,18 @@ class SkillService:
             await uow.commit()
             return updated
 
+    async def delete_skill(self, skill_id: UUID) -> None:
+        """Delete a workspace skill. Built-in skills are re-seeded on every list, so they
+        can't be deleted (the guard keeps the Shop's shipped entries intact)."""
+        async with self._uow() as uow:
+            skill = await uow.skills.get(skill_id)
+            if skill is None:
+                raise LookupError("skill not found")
+            if skill.source == "builtin":
+                raise ValueError("Built-in skills can't be deleted.")
+            await uow.skills.remove(skill_id)
+            await uow.commit()
+
     async def resolve(self, skill_ids: list[str]) -> Sequence[Skill]:
         if not skill_ids:
             return []

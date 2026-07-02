@@ -10,6 +10,7 @@ from armarius.application.use_cases.skills import SkillService
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.user import User
 from armarius.domain.entities.workspace import Project, Workspace
+from armarius.shared.clock import utcnow
 
 
 def _slugify(value: str) -> str:
@@ -48,6 +49,34 @@ class WorkspaceService:
     async def get_workspace(self, workspace_id: UUID) -> Workspace | None:
         async with self._uow() as uow:
             return await uow.workspaces.get(workspace_id)
+
+    async def rename_workspace(self, workspace_id: UUID, name: str) -> Workspace:
+        """Rename a workspace and re-derive its slug from the new name."""
+        async with self._uow() as uow:
+            ws = await uow.workspaces.get(workspace_id)
+            if ws is None:
+                raise LookupError("workspace not found")
+            ws.name = name
+            ws.slug = _slugify(name)
+            ws.updated_at = utcnow()
+            updated = await uow.workspaces.update(ws)
+            await uow.commit()
+            return updated
+
+    async def delete_workspace(self, workspace_id: UUID, *, owner_user_id: str) -> None:
+        """Delete a workspace and all its contents. Refuses to delete the owner's only
+        workspace so the patron is never left with nowhere to land."""
+        async with self._uow() as uow:
+            ws = await uow.workspaces.get(workspace_id)
+            if ws is None:
+                raise LookupError("workspace not found")
+            owned = await uow.workspaces.list_by_owner(owner_user_id)
+            if len(owned) <= 1:
+                raise ValueError(
+                    "You can't delete your only workspace — create another one first."
+                )
+            await uow.workspaces.remove(workspace_id)
+            await uow.commit()
 
     async def ensure_personal_workspace(self, user: User) -> Workspace:
         """Create a user's personal workspace for a newly registered user.

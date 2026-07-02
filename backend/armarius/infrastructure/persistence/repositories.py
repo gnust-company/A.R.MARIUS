@@ -98,6 +98,59 @@ class SqlWorkspaceRepository(WorkspaceRepository):
         ).scalars().all()
         return [mappers.workspace_to_entity(m) for m in rows]
 
+    async def update(self, workspace: Workspace) -> Workspace:
+        m = await self._s.get(WorkspaceModel, workspace.id)
+        if m is None:
+            raise LookupError("workspace not found")
+        m.name = workspace.name
+        m.slug = workspace.slug
+        m.updated_at = workspace.updated_at
+        await self._s.flush()
+        return workspace
+
+    async def remove(self, workspace_id: UUID) -> None:
+        """Delete a workspace and every child it owns. FK columns carry no
+        ``ON DELETE CASCADE``, so a bare delete orphans (SQLite) or errors (Postgres) —
+        we cascade explicitly (projects + their roster/tasks, then mariuses/skills/labels)
+        so the behaviour is identical on both backends."""
+        project_ids = (
+            await self._s.execute(
+                select(ProjectModel.id).where(ProjectModel.workspace_id == workspace_id)
+            )
+        ).scalars().all()
+        if project_ids:
+            task_ids = (
+                await self._s.execute(
+                    select(TaskModel.id).where(TaskModel.project_id.in_(project_ids))
+                )
+            ).scalars().all()
+            if task_ids:
+                await self._s.execute(
+                    delete(ArtifactModel).where(ArtifactModel.task_id.in_(task_ids))
+                )
+                await self._s.execute(
+                    delete(CommentModel).where(CommentModel.task_id.in_(task_ids))
+                )
+                await self._s.execute(delete(TaskModel).where(TaskModel.id.in_(task_ids)))
+            await self._s.execute(
+                delete(SeatGrantModel).where(SeatGrantModel.project_id.in_(project_ids))
+            )
+            await self._s.execute(
+                delete(RoleModel).where(RoleModel.project_id.in_(project_ids))
+            )
+            await self._s.execute(
+                delete(ProjectModel).where(ProjectModel.workspace_id == workspace_id)
+            )
+        await self._s.execute(delete(LabelModel).where(LabelModel.workspace_id == workspace_id))
+        await self._s.execute(
+            delete(MariusModel).where(MariusModel.workspace_id == workspace_id)
+        )
+        await self._s.execute(delete(SkillModel).where(SkillModel.workspace_id == workspace_id))
+        m = await self._s.get(WorkspaceModel, workspace_id)
+        if m is not None:
+            await self._s.delete(m)
+        await self._s.flush()
+
 
 class SqlLabelRepository(LabelRepository):
     def __init__(self, session: AsyncSession) -> None:
@@ -507,6 +560,17 @@ class SqlMariusRepository(MariusRepository):
         m.updated_at = marius.updated_at
         await self._s.flush()
         return marius
+
+    async def remove(self, marius_id: UUID) -> None:
+        """Delete a Marius and vacate any roster seats it held (seat grants carry a plain
+        UUID ref, so we clear them explicitly rather than orphaning a filled seat)."""
+        await self._s.execute(
+            delete(SeatGrantModel).where(SeatGrantModel.marius_id == marius_id)
+        )
+        m = await self._s.get(MariusModel, marius_id)
+        if m is not None:
+            await self._s.delete(m)
+        await self._s.flush()
 
 
 class SqlTaskRepository(TaskRepository):
@@ -968,3 +1032,9 @@ class SqlSkillRepository(SkillRepository):
             )
         ).scalars().all()
         return [mappers.skill_to_entity(m) for m in rows]
+
+    async def remove(self, skill_id: UUID) -> None:
+        m = await self._s.get(SkillModel, skill_id)
+        if m is not None:
+            await self._s.delete(m)
+        await self._s.flush()

@@ -21,6 +21,7 @@ from armarius.presentation.schemas import (
     SkillOut,
     UpdateMariusIn,
     UpdateSkillIn,
+    UpdateWorkspaceIn,
     WorkspaceOut,
 )
 from armarius.shared.config import settings
@@ -41,6 +42,26 @@ async def list_workspaces(container: ContainerDep, user: CurrentUser) -> list[Wo
     """List workspaces OWNED by the current user (multi-tenant scoped)."""
     items = await container.workspaces.list_workspaces(owner_user_id=str(user.id))
     return [WorkspaceOut.model_validate(w) for w in items]
+
+
+@router.patch("/workspaces/{workspace_id}", response_model=WorkspaceOut)
+async def rename_workspace(
+    workspace_id: UUID,
+    body: UpdateWorkspaceIn,
+    container: ContainerDep,
+    user: CurrentUser,
+) -> WorkspaceOut:
+    await _require_owned_workspace(container, user, workspace_id)
+    ws = await container.workspaces.rename_workspace(workspace_id, body.name)
+    return WorkspaceOut.model_validate(ws)
+
+
+@router.delete("/workspaces/{workspace_id}", status_code=204)
+async def delete_workspace(
+    workspace_id: UUID, container: ContainerDep, user: CurrentUser
+) -> None:
+    await _require_owned_workspace(container, user, workspace_id)
+    await container.workspaces.delete_workspace(workspace_id, owner_user_id=str(user.id))
 
 
 # Project + roster + grant routes live in `presentation/api/projects.py`
@@ -187,6 +208,25 @@ async def update_marius(
     return MariusCreatedOut.model_validate(marius).model_copy(update={"invite": invite})
 
 
+@router.delete(
+    "/workspaces/{workspace_id}/mariuses/{marius_id}", status_code=204
+)
+async def delete_marius(
+    workspace_id: UUID, marius_id: UUID, container: ContainerDep, user: CurrentUser
+) -> None:
+    """Remove an agent from the directory (the Workspace Agent is protected)."""
+    await _require_owned_workspace(container, user, workspace_id)
+    marius = await container.mariuses.get(marius_id)
+    if marius is None or marius.workspace_id != workspace_id:
+        raise LookupError("marius not found")
+    await container.mariuses.delete(marius_id)
+    await container.control_bus.publish(
+        f"ws:{workspace_id}",
+        "marius.status_changed",
+        {"marius_id": str(marius_id), "status": "deleted"},
+    )
+
+
 # ---------------------------------------------------------------------- skills
 @router.get("/workspaces/{workspace_id}/skills", response_model=list[SkillOut])
 async def list_skills(
@@ -254,3 +294,17 @@ async def update_skill(
     except LookupError:
         raise
     return SkillOut.model_validate(skill)
+
+
+@router.delete(
+    "/workspaces/{workspace_id}/skills/{skill_id}", status_code=204
+)
+async def delete_skill(
+    workspace_id: UUID, skill_id: UUID, container: ContainerDep, user: CurrentUser
+) -> None:
+    """Delete a workspace skill (built-in skills are protected)."""
+    await _require_owned_workspace(container, user, workspace_id)
+    skill = await container.skills.get_skill(skill_id)
+    if skill is None or skill.workspace_id != workspace_id:
+        raise LookupError("skill not found")
+    await container.skills.delete_skill(skill_id)
