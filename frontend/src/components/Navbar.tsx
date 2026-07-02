@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect, useRef } from 'react';
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
@@ -16,8 +16,9 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useMockStore } from '@/store/mockStore';
-import { cn } from '@/lib/utils';
+import { cn, wsHref } from '@/lib/utils';
 
+// `external: true` = a top-level route (no workspace prefix), e.g. the launcher.
 const NAV_ITEMS = [
   { path: '/projects', labelKey: 'nav.projects', icon: LayoutDashboard },
   { path: '/directory', labelKey: 'nav.directory', icon: Users },
@@ -27,7 +28,7 @@ const NAV_ITEMS = [
 
 const BOTTOM_ITEMS = [
   { path: '/account', labelKey: 'nav.account', icon: Settings },
-  { path: '/workspaces', labelKey: 'nav.atelier', icon: Palette },
+  { path: '/workspaces', labelKey: 'nav.atelier', icon: Palette, external: true },
 ];
 
 /** Workspace switcher — a droplist below the brand that swaps the active workspace. */
@@ -36,6 +37,7 @@ function WorkspaceSwitcher() {
   const workspaces = useMockStore((s) => s.workspaces);
   const activeWorkspaceId = useMockStore((s) => s.activeWorkspaceId);
   const setActiveWorkspace = useMockStore((s) => s.setActiveWorkspace);
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -88,7 +90,10 @@ function WorkspaceSwitcher() {
                 <button
                   key={w.id}
                   onClick={() => {
+                    // Switching workspace changes the URL; the Layout effect then loads
+                    // the new workspace's slice (agents/projects/skills).
                     setActiveWorkspace(w.id);
+                    navigate(wsHref(w.id, '/projects'));
                     setOpen(false);
                   }}
                   className={cn(
@@ -117,17 +122,23 @@ function WorkspaceSwitcher() {
 export default function Navbar() {
   const { t } = useTranslation();
   const location = useLocation();
+  const { workspaceId } = useParams();
   const collapsed = useMockStore((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useMockStore((s) => s.setSidebarCollapsed);
 
-  const isActive = (path: string) => {
-    if (path === '/projects')
-      return (
-        location.pathname === '/' ||
-        location.pathname === '/projects' ||
-        location.pathname.startsWith('/projects')
-      );
-    return location.pathname.startsWith(path);
+  // Compare against the workspace-relative sub-path (strip the /w/:workspaceId prefix).
+  const base = workspaceId ? `/w/${workspaceId}` : '';
+  const sub = location.pathname.startsWith(base)
+    ? location.pathname.slice(base.length) || '/'
+    : location.pathname;
+
+  const linkTo = (item: { path: string; external?: boolean }) =>
+    item.external ? item.path : wsHref(workspaceId, item.path);
+
+  const isActive = (item: { path: string; external?: boolean }) => {
+    if (item.external) return location.pathname.startsWith(item.path);
+    if (item.path === '/projects') return sub === '/' || sub.startsWith('/projects');
+    return sub.startsWith(item.path);
   };
 
   return (
@@ -190,7 +201,7 @@ export default function Navbar() {
       {/* ── Main Nav ── */}
       <div className="flex-1 flex flex-col gap-1 px-2 mt-3 overflow-y-auto">
         {NAV_ITEMS.map((item, i) => {
-          const active = isActive(item.path);
+          const active = isActive(item);
           return (
             <motion.div
               key={item.path}
@@ -199,7 +210,7 @@ export default function Navbar() {
               transition={{ delay: i * 0.06, duration: 0.35 }}
             >
               <Link
-                to={item.path}
+                to={linkTo(item)}
                 className={cn(
                   'flex items-center gap-3 px-3 py-2.5 rounded-md font-body text-body-md font-medium transition-colors relative',
                   active
@@ -227,7 +238,7 @@ export default function Navbar() {
       {/* ── Bottom Nav ── */}
       <div className="flex flex-col gap-1 px-2 pb-2 border-t border-vellum-dark pt-2">
         {BOTTOM_ITEMS.map((item, i) => {
-          const active = isActive(item.path);
+          const active = isActive(item);
           return (
             <motion.div
               key={item.path}
@@ -236,7 +247,7 @@ export default function Navbar() {
               transition={{ delay: (NAV_ITEMS.length + i) * 0.06, duration: 0.35 }}
             >
               <Link
-                to={item.path}
+                to={linkTo(item)}
                 className={cn(
                   'flex items-center gap-3 px-3 py-2.5 rounded-md font-body text-body-md font-medium transition-colors',
                   active

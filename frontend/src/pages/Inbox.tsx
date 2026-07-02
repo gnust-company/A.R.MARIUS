@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { useMockStore } from '@/store/mockStore';
-import { useNavigate } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
+import { wsHref } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   CheckCircle2, AlertTriangle, MessageSquare, ExternalLink,
@@ -30,6 +31,7 @@ const quillIn = {
 export default function Inbox() {
   const { tasks, projects, mariuses, updateTask } = useMockStore();
   const navigate = useNavigate();
+  const { workspaceId } = useParams();
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'review' | 'blocked'>('review');
 
@@ -117,7 +119,7 @@ export default function Inbox() {
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <button
-                            onClick={() => navigate(`/tasks/${task.id}`)}
+                            onClick={() => navigate(wsHref(workspaceId, `/tasks/${task.id}`))}
                             className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-[#6B5E4E] bg-[#EDE4CE] hover:bg-[#E3D7BC] rounded-md transition-colors"
                           >
                             <ExternalLink size={12} /> {t('inbox.open')}

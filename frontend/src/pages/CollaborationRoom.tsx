@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { useMockStore, type TraceEvent, type Task } from '@/store/mockStore';
 import { useTaskStream } from '@/hooks/use-task-stream';
-import { cn } from '@/lib/utils';
+import { cn, wsHref } from '@/lib/utils';
 
 // ─── Trace Event Type Colors ─────────────────────────────────────────────────
 
@@ -223,7 +223,7 @@ function CommentBubble({
 // ─── Main Collaboration Room ─────────────────────────────────────────────────
 
 export default function CollaborationRoom() {
-  const { id: taskId } = useParams<{ id: string }>();
+  const { id: taskId, workspaceId } = useParams<{ id: string; workspaceId: string }>();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const store = useMockStore();
@@ -379,7 +379,7 @@ export default function CollaborationRoom() {
       >
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate(`/projects/${task.projectId}`)}
+            onClick={() => navigate(wsHref(workspaceId, `/projects/${task.projectId}`))}
             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-vellum-deep border border-vellum-dark font-body text-body-sm text-ink hover:bg-vellum-dark transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -532,7 +532,7 @@ export default function CollaborationRoom() {
                   {dependencyTasks.map((dep) => (
                     <button
                       key={dep.id}
-                      onClick={() => navigate(`/tasks/${dep.id}`)}
+                      onClick={() => navigate(wsHref(workspaceId, `/tasks/${dep.id}`))}
                       className="flex items-center gap-2 w-full text-left px-2.5 py-1.5 rounded-md bg-vellum border border-vellum-dark hover:border-gold-muted transition-colors"
                     >
                       <span className="font-mono text-mono-sm text-terracotta">{dep.identifier}</span>

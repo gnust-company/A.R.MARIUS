@@ -24,7 +24,7 @@ import { useMockStore, type TaskStatus, type Priority, type Task } from '@/store
 import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
 import Modal from '@/components/Modal';
-import { cn } from '@/lib/utils';
+import { cn, wsHref } from '@/lib/utils';
 
 const KANBAN_COLUMNS: { status: TaskStatus; label: string; bg: string; headerBg: string; borderColor: string }[] = [
   { status: 'backlog', label: 'Backlog', bg: 'bg-[#EDE4CE]', headerBg: 'bg-[#EDE4CE]', borderColor: 'border-[#E3D7BC]' },
@@ -238,7 +238,7 @@ function AddTaskModal({
 // ─── Main ProjectBoard Page ──────────────────────────────────────────────────
 
 export default function ProjectBoard() {
-  const { id: projectId } = useParams<{ id: string }>();
+  const { id: projectId, workspaceId } = useParams<{ id: string; workspaceId: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const projects = useMockStore((s) => s.projects);
@@ -256,7 +256,7 @@ export default function ProjectBoard() {
     setDeleting(true);
     try {
       await deleteProject(projectId);
-      navigate('/projects');
+      navigate(wsHref(workspaceId, '/projects'));
     } catch {
       setDeleting(false);
       setConfirmDelete(false);
@@ -358,7 +358,7 @@ export default function ProjectBoard() {
         className="flex items-center gap-1 mb-4 border-b border-vellum-dark"
       >
         <TabLink active>{t('board.title')}</TabLink>
-        <TabLink to={`/projects/${projectId}/roster`}>{t('board.roster')}</TabLink>
+        <TabLink to={wsHref(workspaceId, `/projects/${projectId}/roster`)}>{t('board.roster')}</TabLink>
 
         {/* Commission Button (active only) */}
         <div className="ml-auto mb-1">
@@ -368,7 +368,7 @@ export default function ProjectBoard() {
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                onClick={() => navigate(`/projects/${projectId}/commission`)}
+                onClick={() => navigate(wsHref(workspaceId, `/projects/${projectId}/commission`))}
                 className={cn(
                   'flex items-center gap-1.5 px-4 py-2 rounded-md font-body text-body-sm font-medium',
                   'bg-gold text-ink hover:bg-gold-light transition-colors',
@@ -398,7 +398,7 @@ export default function ProjectBoard() {
               <p className="font-body text-body-md text-ink">{t('board.setupBanner')}</p>
             </div>
             <Link
-              to={`/projects/${projectId}/roster`}
+              to={wsHref(workspaceId, `/projects/${projectId}/roster`)}
               className="flex items-center gap-1 font-body text-body-sm font-medium text-warning hover:text-terracotta transition-colors whitespace-nowrap"
             >
               {t('board.goToRoster')}
@@ -470,7 +470,7 @@ export default function ProjectBoard() {
                     <TaskCard
                       key={task.id}
                       task={task}
-                      onClick={() => navigate(`/tasks/${task.id}`)}
+                      onClick={() => navigate(wsHref(workspaceId, `/tasks/${task.id}`))}
                     />
                   ))}
                 </AnimatePresence>

@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { useState, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
+import { wsHref } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Trash2, ChevronDown, ChevronUp, AlertTriangle,
@@ -91,6 +92,7 @@ const initialFormData: FormData = {
 export default function CreateProject() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { workspaceId } = useParams();
   const createProject = useMockStore((s) => s.createProject);
   const mariuses = useMockStore((s) => s.mariuses);
   const skills = useMockStore((s) => s.skills);
@@ -228,7 +230,7 @@ export default function CreateProject() {
       seats,
     });
 
-    navigate(`/projects/${project.id}`);
+    navigate(wsHref(workspaceId, `/projects/${project.id}`));
   };
 
   // ─── Worker Role Helpers ───────────────────────────────────────────────────
@@ -869,7 +871,7 @@ export default function CreateProject() {
       </div>
 
       {mode === 'agent' ? (
-        <OnboardingChat onCreated={(pid) => navigate(`/projects/${pid}`)} />
+        <OnboardingChat onCreated={(pid) => navigate(wsHref(workspaceId, `/projects/${pid}`))} />
       ) : (
       <>
       <p className="text-center font-body text-body-sm text-ink-muted mb-4">

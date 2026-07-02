@@ -18,7 +18,7 @@ import {
 import { useMockStore } from '@/store/mockStore';
 import VellumPanel from '@/components/VellumPanel';
 import PageTitle from '@/components/PageTitle';
-import { cn } from '@/lib/utils';
+import { cn, wsHref } from '@/lib/utils';
 import * as api from '@/lib/api';
 
 // ─── Local Commission Session Types ──────────────────────────────────────────
@@ -540,7 +540,7 @@ function TaskPreview({
 // ─── Main Commission Page ────────────────────────────────────────────────────
 
 export default function Commission() {
-  const { id: projectId } = useParams<{ id: string }>();
+  const { id: projectId, workspaceId } = useParams<{ id: string; workspaceId: string }>();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const store = useMockStore();
@@ -681,7 +681,7 @@ export default function Commission() {
         addMessage({ role: 'system', content: 'Could not confirm the task.' });
       } finally {
         setIsConfirming(false);
-        navigate(`/projects/${projectId}`);
+        navigate(wsHref(workspaceId, `/projects/${projectId}`));
       }
       return;
     }
@@ -717,7 +717,7 @@ export default function Commission() {
     setIsConfirming(false);
 
     // Navigate to board
-    navigate(`/projects/${projectId}`);
+    navigate(wsHref(workspaceId, `/projects/${projectId}`));
   };
 
   // ─── Locked state ───
@@ -743,7 +743,7 @@ export default function Commission() {
             {t('commission.lockedDescription')}
           </p>
           <button
-            onClick={() => navigate(`/projects/${projectId}/roster`)}
+            onClick={() => navigate(wsHref(workspaceId, `/projects/${projectId}/roster`))}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-md bg-terracotta text-white font-body text-body-md font-medium hover:bg-terracotta-light transition-colors"
           >
             {t('commission.goToRoster')}
