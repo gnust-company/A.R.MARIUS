@@ -189,6 +189,7 @@ export const en = {
     generateInvite: 'Generate Invite',
     copyClipboard: 'Copy to Clipboard',
     copied: 'Copied!',
+    copyFailed: 'Copy failed — select the text manually',
     done: 'Done',
     actions: {
       approve: 'Approve',

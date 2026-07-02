@@ -189,6 +189,7 @@ export const vi = {
     generateInvite: 'Tạo Lời mời',
     copyClipboard: 'Sao chép',
     copied: 'Đã sao chép!',
+    copyFailed: 'Sao chép lỗi — hãy bôi đen và copy thủ công',
     done: 'Xong',
     actions: {
       approve: 'Phê duyệt',
