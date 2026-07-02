@@ -273,6 +273,8 @@ export const en = {
       noFiles: 'No files yet',
       selectFile: 'Select a file',
       selectFileDesc: 'Choose a file from the tree to view and edit',
+      creatingIn: 'in {{path}}',
+      rootLevel: 'root',
     },
   },
   inbox: {
