@@ -19,6 +19,12 @@ class CreateWorkspaceIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
 
 
+class UpdateWorkspaceIn(BaseModel):
+    """Rename a workspace (slug is re-derived from the name)."""
+
+    name: str = Field(min_length=1, max_length=200)
+
+
 class WorkspaceOut(_Out):
     id: UUID
     name: str

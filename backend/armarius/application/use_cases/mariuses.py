@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from uuid import UUID
 
 from armarius.application.use_cases.types import UowFactory
+from armarius.application.use_cases.workspace_agent import WORKSPACE_AGENT_ROLE
 from armarius.domain.entities.marius import Marius
 from armarius.shared.clock import utcnow
 
@@ -77,6 +78,18 @@ class MariusService:
             updated = await uow.mariuses.update(marius)
             await uow.commit()
             return updated
+
+    async def delete(self, marius_id: UUID) -> None:
+        """Remove a Marius from the directory. The Workspace Agent is system-managed
+        (it hosts onboarding and is re-created on demand) so it can't be deleted here."""
+        async with self._uow() as uow:
+            marius = await uow.mariuses.get(marius_id)
+            if marius is None:
+                raise LookupError("marius not found")
+            if marius.role == WORKSPACE_AGENT_ROLE:
+                raise ValueError("The Workspace Agent can't be removed.")
+            await uow.mariuses.remove(marius_id)
+            await uow.commit()
 
     async def get(self, marius_id: UUID) -> Marius | None:
         async with self._uow() as uow:

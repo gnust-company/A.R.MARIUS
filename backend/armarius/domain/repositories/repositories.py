@@ -33,6 +33,13 @@ class WorkspaceRepository(ABC):
     async def list(self) -> Sequence[Workspace]: ...
     @abstractmethod
     async def list_by_owner(self, owner_user_id: str) -> Sequence[Workspace]: ...
+    @abstractmethod
+    async def update(self, workspace: Workspace) -> Workspace: ...
+    @abstractmethod
+    async def remove(self, workspace_id: UUID) -> None:
+        """Delete a workspace and every child it owns (projects + their roster/tasks,
+        mariuses, skills, labels). No FK has ``ON DELETE CASCADE`` so the aggregate
+        cascade is explicit — identical behaviour on SQLite and Postgres."""
 
 
 class ProjectRepository(ABC):
@@ -130,6 +137,9 @@ class MariusRepository(ABC):
     async def list_by_ids(self, marius_ids: list[UUID]) -> Sequence[Marius]: ...
     @abstractmethod
     async def update(self, marius: Marius) -> Marius: ...
+    @abstractmethod
+    async def remove(self, marius_id: UUID) -> None:
+        """Delete a Marius and vacate any roster seats it held."""
 
 
 class TaskRepository(ABC):
@@ -218,6 +228,8 @@ class SkillRepository(ABC):
     async def get_by_slug(self, workspace_id: UUID, slug: str) -> Skill | None: ...
     @abstractmethod
     async def list_by_ids(self, skill_ids: list[UUID]) -> Sequence[Skill]: ...
+    @abstractmethod
+    async def remove(self, skill_id: UUID) -> None: ...
 
 
 class UserRepository(ABC):
