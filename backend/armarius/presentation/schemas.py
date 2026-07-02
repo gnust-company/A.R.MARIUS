@@ -208,6 +208,27 @@ class UpdateSkillIn(BaseModel):
     files: dict[str, str] = Field(default_factory=dict)
 
 
+# ----------------------------------------------------------------- agent skills
+class AgentSkillSummary(_Out):
+    """One skill linked to the calling agent — enough to know it exists and how big it
+    is. Fetch its full file tree from GET /agent/skills/{slug}."""
+
+    slug: str
+    name: str
+    description: str = ""
+    file_count: int
+
+
+class AgentSkillBundleOut(_Out):
+    """A linked skill's complete file tree (path → content) so the agent can write each
+    file under its runtime's skills directory."""
+
+    slug: str
+    name: str
+    description: str = ""
+    files: dict[str, str] = Field(default_factory=dict)
+
+
 # ----------------------------------------------------------------------- marius
 class RegisterMariusIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
