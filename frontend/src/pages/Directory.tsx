@@ -30,7 +30,7 @@ import VellumPanel from '@/components/VellumPanel';
 import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
 import PageTitle from '@/components/PageTitle';
-import { cn } from '@/lib/utils';
+import { cn, copyToClipboard } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 
 // ─── Animation Variants ──────────────────────────────────────────────────────
@@ -384,6 +384,7 @@ export default function Directory() {
   const [enrollmentCode, setEnrollmentCode] = useState('');
   const [_invitedAgentId, setInvitedAgentId] = useState('');
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   // ── Filter Agents ──────────────────────────────────────────────────────────
   const filteredAgents = useMemo(() => {
@@ -515,9 +516,16 @@ export default function Directory() {
       '',
       'To join, call POST /agent/enroll with your enrollment_code and wait for approval.',
     ].join('\n');
-    navigator.clipboard.writeText(promptText).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+    void copyToClipboard(promptText).then((ok) => {
+      if (ok) {
+        setCopyFailed(false);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } else {
+        setCopied(false);
+        setCopyFailed(true);
+        setTimeout(() => setCopyFailed(false), 4000);
+      }
     });
   };
 
@@ -941,12 +949,18 @@ export default function Directory() {
                     'inline-flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-all',
                     copied
                       ? 'bg-[#D8EADD] text-[#2A6E3A]'
-                      : 'bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC]'
+                      : copyFailed
+                        ? 'bg-[#F3D9D0] text-[#8A3B22] border border-[#E3C0B2]'
+                        : 'bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC]'
                   )}
                 >
                   {copied ? (
                     <>
                       <Check className="w-3.5 h-3.5" /> {t('directory.copied')}
+                    </>
+                  ) : copyFailed ? (
+                    <>
+                      <Copy className="w-3.5 h-3.5" /> {t('directory.copyFailed')}
                     </>
                   ) : (
                     <>
