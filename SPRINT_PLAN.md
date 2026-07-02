@@ -181,6 +181,33 @@ The mock-data Scriptorium SPA is the frozen UX spec. All sub-phases shipped gree
 
 ## Build log
 
+### 2026-07-02 — **Sprint 9 done**: onboarding & skills UX fixes (4) · issue #17
+> Owner testing surfaced four UX defects in the onboarding/skills flow (no MCP — issue #1 stays deferred).
+> Owner-approved shape: JSON skill-bundle endpoint, full `/w/:workspaceId/…` URL refactor, all four in one PR.
+
+**Backend (feat `da53420`):**
+- **#2 agent skill bundle** — new agent-token-authed endpoints in `api/agent.py`: `GET /agent/skills`
+  (linked skills: slug/name/description/file_count) and `GET /agent/skills/{slug}` (full `{files}` tree;
+  404 when not linked). Reuses `SkillService.resolve(marius.skill_ids)`. Schemas `AgentSkillSummary` /
+  `AgentSkillBundleOut`. Built-ins seed their file into the DB, so one path covers builtin/manual/imported.
+- **#3 invitation prompt** — rewrote `build_invite_prompt` into a structured human+agent-readable guide:
+  STEP 0 enroll-and-wait, STEP 1 credential file, STEP 2 online check, STEP 3 per-skill install via the new
+  bundle endpoint (fetch one JSON tree → write each file under `<skills dir>/<slug>/`), STEP 4 endpoint/rules
+  reference. Kills the old "(no source URL)" dead end.
+- **Tests** — `test_agent_can_fetch_linked_skill_bundle` (enroll→approve→bundle, 404 unlinked, 401 no token);
+  invite assertions extended (`/agent/skills/…`). **177 backend pass**, ruff clean.
+
+**Frontend (fix `0abcdaf`, feat `43b4485`):**
+- **#1 skill editor** — folders are now selectable as the add target (a folder click toggles *and* selects);
+  new files/folders land in the selected folder (else the selected file's dir, else root); creating a folder
+  auto-selects it so the next "add file" goes inside; folder delete removes the subtree; target-dir hint +
+  en/vi copy.
+- **#4 workspace URL** — nested every in-workspace page under `/w/:workspaceId`; a workspace-aware `Layout`
+  reads the id from the URL, sets it active, and hydrates that workspace's slice — so **F5 on
+  `/w/<id>/skills` keeps the skills** (root cause: boot hydrated only the workspace *list*). Unknown id →
+  `/workspaces`. New `wsHref()` helper; sidebar, switcher, and all in-workspace `navigate()`/`Link` targets
+  carry the id; top-level exits stay absolute. `npm run build` (tsc + vite) green.
+
 ### 2026-07-01 — **Sprint 7 done**: agent-assisted onboarding (Phase G) · issue #10
 > The last sprint. `OnboardingSession` (a pure FSM entity that existed as a Sprint-1 stub) now persists and
 > drives a full Patron ↔ Workspace Agent chat whose `finalize` materialises the agreed plan into a real
