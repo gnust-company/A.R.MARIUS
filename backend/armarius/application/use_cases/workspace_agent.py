@@ -1,9 +1,11 @@
 """Workspace Agent designation (LLD §3.1, §6) — every workspace has one host agent.
 
-The Workspace Agent is a special Marius that greets owners and runs onboarding. It is
-designated once per workspace and carries the built-in `armarius-onboarder` skill, which
-is materialised into the workspace's Skill Shop and linked to the agent. Idempotent:
-re-designating returns the existing agent and reuses the existing skill.
+The Workspace Agent is the Marius that greets owners and runs onboarding. Who holds the
+seat is recorded on ``workspace.workspace_agent_id`` — the single source of truth (#32);
+the "Workspace Agent" role string is display-only. The built-in ``armarius-onboarder``
+skill is materialised into the workspace's Skill Shop but never linked to a Marius:
+being the host IS the grant (``onboarder_skill_for``), so designating a new host moves
+the playbook with the seat and needs no link bookkeeping.
 """
 
 from __future__ import annotations
@@ -52,19 +54,29 @@ class WorkspaceAgentService:
         self._uow = uow_factory
 
     async def ensure_workspace_agent(self, workspace_id: UUID) -> Marius:
-        """Designate (idempotently) the workspace's host agent, linked to the onboarder."""
+        """The workspace's host agent — created lazily on first need (idempotent)."""
         async with self._uow() as uow:
-            if await uow.workspaces.get(workspace_id) is None:
+            ws = await uow.workspaces.get(workspace_id)
+            if ws is None:
                 raise LookupError("workspace not found")
-            existing = [
+            if ws.workspace_agent_id is not None:
+                host = await uow.mariuses.get(ws.workspace_agent_id)
+                if host is not None:
+                    return host
+            # Backfill: workspaces designated before the pointer was wired (#32)
+            # identified their host by the role string alone.
+            legacy = [
                 m
                 for m in await uow.mariuses.list_by_workspace(workspace_id)
                 if m.role == WORKSPACE_AGENT_ROLE
             ]
-            if existing:
-                return existing[0]
+            if legacy:
+                ws.workspace_agent_id = legacy[0].id
+                await uow.workspaces.update(ws)
+                await uow.commit()
+                return legacy[0]
 
-        skill = await self._ensure_onboarder_skill(workspace_id)
+        await self._ensure_onboarder_skill(workspace_id)
 
         now = utcnow()
         async with self._uow() as uow:
@@ -72,14 +84,71 @@ class WorkspaceAgentService:
                 workspace_id=workspace_id,
                 name=WORKSPACE_AGENT_NAME,
                 role=WORKSPACE_AGENT_ROLE,
-                skill_ids=[str(skill.id)],
                 adapter_type="hermes_gateway",
                 created_at=now,
                 updated_at=now,
             )
             created = await uow.mariuses.add(agent)
+            ws = await uow.workspaces.get(workspace_id)
+            if ws is not None:
+                ws.workspace_agent_id = created.id
+                await uow.workspaces.update(ws)
             await uow.commit()
             return created
+
+    async def designate(self, workspace_id: UUID, marius_id: UUID) -> Marius:
+        """Hand the host seat to this Marius. Any sitting host is demoted to a plain
+        agent — role cleared, token/tasks untouched — never revoked (#32). Idempotent
+        when the Marius already holds the seat."""
+        onboarder = await self._ensure_onboarder_skill(workspace_id)
+        now = utcnow()
+        async with self._uow() as uow:
+            ws = await uow.workspaces.get(workspace_id)
+            if ws is None:
+                raise LookupError("workspace not found")
+            marius = await uow.mariuses.get(marius_id)
+            if marius is None or marius.workspace_id != workspace_id:
+                raise LookupError("marius not found")
+            if ws.workspace_agent_id == marius.id:
+                return marius
+
+            sitting = None
+            if ws.workspace_agent_id is not None:
+                sitting = await uow.mariuses.get(ws.workspace_agent_id)
+            if sitting is None:  # pre-#32 workspace: the host is known by role only
+                sitting = next(
+                    (
+                        m
+                        for m in await uow.mariuses.list_by_workspace(workspace_id)
+                        if m.role == WORKSPACE_AGENT_ROLE and m.id != marius.id
+                    ),
+                    None,
+                )
+            if sitting is not None:
+                sitting.role = ""
+                # Pre-#32 hosts carried the onboarder in skill_ids; the grant is
+                # seat-derived now, so drop the stale link with the seat.
+                sitting.skill_ids = [
+                    s for s in sitting.skill_ids if s != str(onboarder.id)
+                ]
+                sitting.updated_at = now
+                await uow.mariuses.update(sitting)
+
+            marius.role = WORKSPACE_AGENT_ROLE
+            marius.updated_at = now
+            await uow.mariuses.update(marius)
+            ws.workspace_agent_id = marius.id
+            await uow.workspaces.update(ws)
+            await uow.commit()
+            return marius
+
+    async def onboarder_skill_for(self, marius: Marius) -> Skill | None:
+        """The onboarding playbook, iff this Marius holds its workspace's host seat."""
+        async with self._uow() as uow:
+            ws = await uow.workspaces.get(marius.workspace_id)
+            if ws is None or ws.workspace_agent_id != marius.id:
+                return None
+            return await uow.skills.get_by_slug(marius.workspace_id, ONBOARDER_SKILL_SLUG)
 
     async def _ensure_onboarder_skill(self, workspace_id: UUID) -> Skill:
         async with self._uow() as uow:

@@ -87,6 +87,7 @@ export function workspaceToVM(dto: WorkspaceDTO, ownerId = ''): Workspace {
     name: dto.name,
     ownerId, // not exposed by the backend; populated from the user context on hydration
     description: dto.slug, // backend has no description field – repurpose slug as a stopgap
+    workspaceAgentId: dto.workspace_agent_id ?? undefined,
   }
 }
 

@@ -55,6 +55,7 @@ def workspace_to_entity(m: WorkspaceModel) -> Workspace:
         name=m.name,
         slug=m.slug,
         owner_user_id=m.owner_user_id,
+        workspace_agent_id=m.workspace_agent_id,
         created_at=m.created_at,
         updated_at=m.updated_at,
     )

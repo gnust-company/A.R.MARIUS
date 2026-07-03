@@ -210,7 +210,11 @@ When `mode: "agent"`, the request is opened by the **Workspace Agent** after a c
 | POST | `/v1/workspaces/{ws}/mariuses` | Invite a Marius — Patron picks the **type** only. Returns `enrollment_code` + a copyable prompt; **no token is printed**. **[CHANGED]** |
 | PATCH| `/v1/workspaces/{ws}/mariuses/{marius_id}` | Edit name/role/skills/avatar. **`adapter_type` is locked once the Marius is `approved`** (the token + runtime are bound to it); changing runtime requires a re-invite. `adapter_config` (e.g. rotated gateway creds) stays editable. **[CHANGED]** |
 | POST | `/v1/workspaces/{ws}/mariuses/{marius_id}/approve` | Patron **approves** a pending enrollment → mints `agent_token` once and **completes the held `/agent/enroll` call with it**. **[NEW]** |
+| POST | `/v1/workspaces/{ws}/mariuses/{marius_id}/designate` | Hand the **Workspace Agent seat** to this Marius. Source of truth is `workspace.workspace_agent_id` (exposed on `WorkspaceOut`); a sitting host is **demoted to a plain agent** (kept, not revoked). The onboarder skill is granted **by the seat** (served via `/agent/skills`), never linked through `skill_ids`. Idempotent. Emits SSE `workspace_agent.designated`. **[NEW #32]** |
 | GET  | `/v1/projects/{project_id}/agents` | Project participants + role/liveness. **[NEW]** |
+
+The invite body also accepts `is_workspace_agent: bool` (default `false`) — seat the newcomer
+as host at invite time (same swap semantics as `/designate`). **[NEW #32]**
 
 ### 4.1 Invite lifecycle — enroll-and-wait (no token in the prompt) **[CHANGED]**
 

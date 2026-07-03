@@ -75,6 +75,7 @@ class SqlWorkspaceRepository(WorkspaceRepository):
                 name=workspace.name,
                 slug=workspace.slug,
                 owner_user_id=workspace.owner_user_id,
+                workspace_agent_id=workspace.workspace_agent_id,
                 created_at=workspace.created_at,
                 updated_at=workspace.updated_at,
             )
@@ -104,6 +105,7 @@ class SqlWorkspaceRepository(WorkspaceRepository):
             raise LookupError("workspace not found")
         m.name = workspace.name
         m.slug = workspace.slug
+        m.workspace_agent_id = workspace.workspace_agent_id
         m.updated_at = workspace.updated_at
         await self._s.flush()
         return workspace
