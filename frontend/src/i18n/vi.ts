@@ -278,6 +278,7 @@ export const vi = {
     type: {
       builtin: 'Tích hợp sẵn',
       github: 'GitHub',
+      manual: 'Thủ công',
     },
     editor: {
       notFound: 'Không tìm thấy kỹ năng',

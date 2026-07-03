@@ -278,6 +278,7 @@ export const en = {
     type: {
       builtin: 'Built-in',
       github: 'GitHub',
+      manual: 'Manual',
     },
     editor: {
       notFound: 'Skill not found',
