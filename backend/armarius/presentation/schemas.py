@@ -29,6 +29,8 @@ class WorkspaceOut(_Out):
     id: UUID
     name: str
     slug: str
+    # The designated host Marius (#32) — the FE derives each agent's "WA" badge from it.
+    workspace_agent_id: UUID | None = None
     created_at: datetime | None = None
 
 
@@ -244,6 +246,9 @@ class RegisterMariusIn(BaseModel):
     adapter_type: str = "hermes_gateway"
     adapter_config: dict = Field(default_factory=dict)
     owner_user_id: str | None = None
+    # Seat this Marius as the workspace's host on invite (#32); a sitting host is
+    # demoted to a plain agent (kept, not revoked).
+    is_workspace_agent: bool = False
 
 
 class UpdateMariusIn(BaseModel):

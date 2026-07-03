@@ -118,6 +118,11 @@ async def invite_marius(
         adapter_config=body.adapter_config,
         owner_user_id=str(user.id),
     )
+    if body.is_workspace_agent:
+        # Seat the newcomer as host right away (#32) — an existing host is demoted to
+        # a plain agent. Done before the invite is built so the prompt shows the role.
+        await container.workspace_agent.designate(workspace_id, marius.id)
+        marius = await container.mariuses.get(marius.id) or marius
     # Ensure the workspace has a default project so the invitation names a real
     # project (the board also does this lazily on first load).
     await container.workspaces.ensure_default_project(workspace_id)
@@ -206,6 +211,25 @@ async def update_marius(
     )
     invite = await _build_invite(container, marius, workspace_id)
     return MariusCreatedOut.model_validate(marius).model_copy(update={"invite": invite})
+
+
+@router.post(
+    "/workspaces/{workspace_id}/mariuses/{marius_id}/designate",
+    response_model=MariusOut,
+)
+async def designate_workspace_agent(
+    workspace_id: UUID, marius_id: UUID, container: ContainerDep, user: CurrentUser
+) -> MariusOut:
+    """Hand the Workspace Agent seat to this Marius (#32). A sitting host is demoted
+    to a plain agent — kept, not revoked. Idempotent for the current host."""
+    await _require_owned_workspace(container, user, workspace_id)
+    marius = await container.workspace_agent.designate(workspace_id, marius_id)
+    await container.control_bus.publish(
+        f"ws:{workspace_id}",
+        "workspace_agent.designated",
+        {"marius_id": str(marius_id)},
+    )
+    return MariusOut.model_validate(marius)
 
 
 @router.delete(

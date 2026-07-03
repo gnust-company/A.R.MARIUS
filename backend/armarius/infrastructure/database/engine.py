@@ -7,6 +7,7 @@ Phase-1 follow-up (see ROADMAP).
 
 from __future__ import annotations
 
+from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -14,7 +15,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from armarius.infrastructure.database.models import Base
+from armarius.infrastructure.database.models import Base, WorkspaceModel
 from armarius.shared.config import settings
 
 _engine: AsyncEngine | None = None
@@ -52,3 +53,19 @@ async def init_db() -> None:
         if settings.database_url.startswith("sqlite"):
             await conn.exec_driver_sql("PRAGMA journal_mode=WAL;")
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_ensure_added_columns)
+
+
+def _ensure_added_columns(conn) -> None:  # noqa: ANN001 - sync connection via run_sync
+    """`create_all` never ALTERs an existing table, so columns added after a DB was
+    first created must be shipped by hand until Alembic lands. One entry per
+    late-added nullable column; idempotent (checked against the live schema)."""
+    added = [("workspaces", WorkspaceModel.__table__.c.workspace_agent_id)]  # #32
+    inspector = inspect(conn)
+    for table_name, column in added:
+        names = {c["name"] for c in inspector.get_columns(table_name)}
+        if column.name not in names:
+            col_type = column.type.compile(conn.dialect)
+            conn.execute(
+                text(f"ALTER TABLE {table_name} ADD COLUMN {column.name} {col_type}")
+            )

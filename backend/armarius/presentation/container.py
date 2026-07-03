@@ -49,6 +49,7 @@ class Container:
     registry: InMemoryAdapterRegistry
     wake_engine: WakeEngine
     workspaces: WorkspaceService
+    workspace_agent: WorkspaceAgentService
     projects: ProjectService
     onboarding: OnboardingService
     enrollment: EnrollmentService
@@ -122,6 +123,7 @@ def build_container() -> Container:
         registry=registry,
         wake_engine=wake_engine,
         workspaces=workspaces,
+        workspace_agent=workspace_agent,
         projects=projects,
         onboarding=onboarding,
         enrollment=EnrollmentService(uow_factory),

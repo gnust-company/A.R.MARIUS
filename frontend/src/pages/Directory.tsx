@@ -374,12 +374,17 @@ export default function Directory() {
   const approveAgent = useMockStore((s) => s.approveAgent);
   const updateMarius = useMockStore((s) => s.updateMarius);
   const deleteMarius = useMockStore((s) => s.deleteMarius);
+  const designateWorkspaceAgent = useMockStore((s) => s.designateWorkspaceAgent);
   const emitEvent = useMockStore((s) => s.emitEvent);
 
-  // ── Rename / delete state ───────────────────────────────────────────────────
+  // The sitting host — designating anyone else is a swap and asks for confirmation (#32).
+  const currentHost = useMemo(() => mariuses.find((m) => m.isWorkspaceAgent === true), [mariuses]);
+
+  // ── Rename / delete / designate state ──────────────────────────────────────
   const [editingAgent, setEditingAgent] = useState<Marius | null>(null);
   const [editAgentName, setEditAgentName] = useState('');
   const [deletingAgent, setDeletingAgent] = useState<Marius | null>(null);
+  const [designatingAgent, setDesignatingAgent] = useState<Marius | null>(null);
 
   // ── Filter State ───────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
@@ -392,6 +397,8 @@ export default function Directory() {
   const [adapterType, setAdapterType] = useState('hermes_gateway');
   const [agentName, setAgentName] = useState('');
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+  const [makeWorkspaceAgent, setMakeWorkspaceAgent] = useState(false);
+  const [inviteSwapConfirmOpen, setInviteSwapConfirmOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   // The backend-assembled onboarding prompt (verbatim) — what the owner copies to the agent.
   const [invitePrompt, setInvitePrompt] = useState('');
@@ -443,12 +450,13 @@ export default function Directory() {
     setAdapterType('hermes_gateway');
     setAgentName('');
     setSelectedSkillIds([]);
+    setMakeWorkspaceAgent(false);
     setInvitePrompt('');
     setCopied(false);
     setInviteModalOpen(true);
   };
 
-  const handleGenerateInvite = async () => {
+  const doGenerateInvite = async () => {
     if (!agentName.trim() || generating) return;
     setGenerating(true);
     try {
@@ -459,12 +467,22 @@ export default function Directory() {
         name: agentName.trim(),
         adapterType,
         skillIds: selectedSkillIds,
+        isWorkspaceAgent: makeWorkspaceAgent,
       });
       setInvitePrompt(invite);
       setInviteStep('prompt');
     } finally {
       setGenerating(false);
     }
+  };
+
+  const handleGenerateInvite = () => {
+    // Seating a new host over a sitting one is a swap \u2014 confirm before inviting (#32).
+    if (makeWorkspaceAgent && currentHost) {
+      setInviteSwapConfirmOpen(true);
+      return;
+    }
+    void doGenerateInvite();
   };
 
   const handleCopyPrompt = () => {
@@ -494,19 +512,17 @@ export default function Directory() {
 
   const handleDesignate = useCallback(
     (id: string) => {
-      // First remove WA from any existing agent
-      const state = useMockStore.getState();
-      const updatedMariuses = state.mariuses.map((m) => ({
-        ...m,
-        isWorkspaceAgent: m.id === id ? true : false,
-      }));
-      useMockStore.setState({ mariuses: updatedMariuses });
-      emitEvent({
-        type: 'workspace_agent.designated',
-        payload: { mariusId: id },
-      });
+      // Real endpoint via the store (#32). A sitting host makes this a swap — confirm.
+      const agent = useMockStore.getState().mariuses.find((m) => m.id === id);
+      if (!agent) return;
+      const host = useMockStore.getState().mariuses.find((m) => m.isWorkspaceAgent === true);
+      if (host && host.id !== id) {
+        setDesignatingAgent(agent);
+        return;
+      }
+      void designateWorkspaceAgent(id);
     },
-    [emitEvent]
+    [designateWorkspaceAgent]
   );
 
   const handleOpenEdit = useCallback((agent: Marius) => {
@@ -783,6 +799,34 @@ export default function Directory() {
                 />
               </div>
 
+              {/* Workspace Agent seat (#32) */}
+              <div>
+                <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={makeWorkspaceAgent}
+                    onChange={(e) => setMakeWorkspaceAgent(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-[#C25E3A]"
+                  />
+                  <span>
+                    <span className="flex items-center gap-1.5 text-[13px] font-medium text-[#2A2318]">
+                      <Star className="w-3.5 h-3.5 text-[#D4A843]" />
+                      {t('directory.setAsWorkspaceAgent')}
+                    </span>
+                    <span className="block text-[11px] text-[#A89880]">
+                      {t('directory.setAsWorkspaceAgentHint')}
+                    </span>
+                  </span>
+                </label>
+                {makeWorkspaceAgent && currentHost && (
+                  <p className="mt-2 px-3 py-2 rounded-md bg-[#F5E8CC] text-[12px] text-[#8B6A28]">
+                    {t('directory.replaceHostWarning', {
+                      name: currentHost.displayName || currentHost.name,
+                    })}
+                  </p>
+                )}
+              </div>
+
               {/* Skills */}
               <div>
                 <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
@@ -947,6 +991,37 @@ export default function Directory() {
         title={t('directory.deleteTitle')}
         message={t('directory.deleteConfirm', { name: deletingAgent?.displayName || deletingAgent?.name || '' })}
         confirmLabel={t('directory.actions.delete')}
+      />
+
+      {/* Designate (swap) confirmation — the sitting host is demoted, kept (#32) */}
+      <ConfirmDialog
+        isOpen={designatingAgent !== null}
+        onClose={() => setDesignatingAgent(null)}
+        onConfirm={async () => {
+          if (designatingAgent) await designateWorkspaceAgent(designatingAgent.id);
+        }}
+        title={t('directory.designateConfirmTitle')}
+        message={t('directory.designateConfirmMessage', {
+          name: designatingAgent?.displayName || designatingAgent?.name || '',
+          current: currentHost?.displayName || currentHost?.name || '',
+        })}
+        confirmLabel={t('directory.actions.designate')}
+      />
+
+      {/* Invite-as-host confirmation — generating the invite performs the swap (#32) */}
+      <ConfirmDialog
+        isOpen={inviteSwapConfirmOpen}
+        onClose={() => setInviteSwapConfirmOpen(false)}
+        onConfirm={async () => {
+          setInviteSwapConfirmOpen(false);
+          await doGenerateInvite();
+        }}
+        title={t('directory.designateConfirmTitle')}
+        message={t('directory.designateConfirmMessage', {
+          name: agentName.trim(),
+          current: currentHost?.displayName || currentHost?.name || '',
+        })}
+        confirmLabel={t('directory.generateInvite')}
       />
     </div>
   );

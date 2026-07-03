@@ -56,6 +56,12 @@ class _FakeWorkspaceRepo:
     async def list_by_owner(self, owner_user_id: str) -> list[Workspace]:
         return [w for w in self._s.workspaces.values() if w.owner_user_id == owner_user_id]
 
+    async def update(self, ws: Workspace) -> Workspace:
+        if ws.id not in self._s.workspaces:
+            raise LookupError("workspace not found")
+        self._s.workspaces[ws.id] = ws
+        return ws
+
 
 class _FakeLabelRepo:
     def __init__(self, store: _Store) -> None:

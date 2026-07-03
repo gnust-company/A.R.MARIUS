@@ -166,6 +166,8 @@ export interface WorkspaceDTO {
   id: string
   name: string
   slug: string
+  /** The designated host Marius (Workspace Agent) — null until one is seated (#32). */
+  workspace_agent_id?: string | null
   created_at?: string | null
 }
 
@@ -383,10 +385,19 @@ export interface InviteMariusBody {
   skills?: string[]
   skill_ids?: string[]
   adapter_type?: string
+  /** Seat the newcomer as Workspace Agent on invite; a sitting host is demoted (#32). */
+  is_workspace_agent?: boolean
 }
 
 export async function inviteMarius(workspaceId: string, body: InviteMariusBody): Promise<MariusCreatedDTO> {
   return post<MariusCreatedDTO>(`/v1/workspaces/${workspaceId}/mariuses`, body)
+}
+
+export async function designateWorkspaceAgent(
+  workspaceId: string,
+  mariusId: string,
+): Promise<MariusDTO> {
+  return post<MariusDTO>(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}/designate`, {})
 }
 
 export async function approveMarius(workspaceId: string, mariusId: string): Promise<MariusDTO> {

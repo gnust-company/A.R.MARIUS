@@ -86,7 +86,14 @@ class MariusService:
             marius = await uow.mariuses.get(marius_id)
             if marius is None:
                 raise LookupError("marius not found")
-            if marius.role == WORKSPACE_AGENT_ROLE:
+            ws = (
+                await uow.workspaces.get(marius.workspace_id)
+                if marius.workspace_id
+                else None
+            )
+            is_host = ws is not None and ws.workspace_agent_id == marius.id
+            # Role-string fallback covers hosts from before the pointer was wired (#32).
+            if is_host or marius.role == WORKSPACE_AGENT_ROLE:
                 raise ValueError("The Workspace Agent can't be removed.")
             await uow.mariuses.remove(marius_id)
             await uow.commit()

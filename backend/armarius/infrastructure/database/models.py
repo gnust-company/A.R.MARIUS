@@ -29,6 +29,9 @@ class WorkspaceModel(Base):
     name: Mapped[str] = mapped_column(String(200))
     slug: Mapped[str] = mapped_column(String(200))
     owner_user_id: Mapped[str | None] = mapped_column(String(200), index=True)
+    # The designated host Marius (#32). Plain UUID, no FK — a workspaces→mariuses FK
+    # would be circular (mariuses.workspace_id already points back here).
+    workspace_agent_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

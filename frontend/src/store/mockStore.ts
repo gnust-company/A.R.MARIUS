@@ -263,6 +263,8 @@ export interface Workspace {
   name: string
   ownerId: string
   description?: string
+  /** The designated host Marius (Workspace Agent) — undefined until one is seated (#32). */
+  workspaceAgentId?: string
 }
 
 export interface Project {
@@ -332,7 +334,13 @@ interface MockStoreState {
     name: string
     adapterType: string
     skillIds: string[]
+    /** Seat the newcomer as Workspace Agent; a sitting host is demoted, kept (#32). */
+    isWorkspaceAgent?: boolean
   }) => Promise<{ agent: Marius; invite: string; enrollmentCode: string }>
+  /** Hand the Workspace Agent seat to this Marius (real endpoint in API mode, #32). */
+  designateWorkspaceAgent: (mariusId: string) => Promise<void>
+  /** Internal: stamp WA flags + the workspace pointer after a designation (#32). */
+  applyDesignation: (workspaceId: string, mariusId: string) => void
   approveAgent: (mariusId: string) => Promise<void>
   emitEvent: (event: Omit<StoreEvent, 'id' | 'timestamp'>) => void
   setCurrentUser: (user: User | null) => void
@@ -853,7 +861,7 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   sidebarCollapsed: false,
   isMock: MOCK,
 
-  inviteNewAgent: async ({ name, adapterType, skillIds }) => {
+  inviteNewAgent: async ({ name, adapterType, skillIds, isWorkspaceAgent }) => {
     const workspaceId = get().activeWorkspaceId || 'w1'
     const skillNames = get()
       .skills.filter((s) => skillIds.includes(s.id))
@@ -868,6 +876,7 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
         skills: skillNames,
         skill_ids: skillIds,
         adapter_type: adapterType,
+        is_workspace_agent: isWorkspaceAgent ?? false,
       })
       const agent: Marius = {
         ...mariusToVM(dto),
@@ -875,8 +884,10 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
         // invite lifecycle, which we know is `invited` on a 201.
         status: 'invited',
         displayName: name,
+        isWorkspaceAgent: isWorkspaceAgent === true,
       }
       set({ mariuses: [...get().mariuses, agent] })
+      if (isWorkspaceAgent) get().applyDesignation(workspaceId, agent.id)
       return { agent, invite: dto.invite ?? '', enrollmentCode: dto.enrollment_code ?? '' }
     }
 
@@ -895,6 +906,7 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
       projectIds: [],
     }
     set({ mariuses: [...get().mariuses, agent] })
+    if (isWorkspaceAgent) get().applyDesignation(workspaceId, agent.id)
 
     // Simulate the agent presenting its code shortly after (invited → pending review).
     setTimeout(() => {
@@ -935,6 +947,37 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
         : []),
     ].join('\n')
     return { agent, invite, enrollmentCode }
+  },
+
+  applyDesignation: (workspaceId: string, mariusId: string) => {
+    set({
+      mariuses: get().mariuses.map((m) =>
+        m.workspaceId !== workspaceId
+          ? m
+          : {
+              ...m,
+              isWorkspaceAgent: m.id === mariusId,
+              // Mirror the backend swap: the new host wears the role, the demoted one
+              // drops to a plain agent (kept, not revoked — #32).
+              role: m.id === mariusId ? 'Workspace Agent' : m.isWorkspaceAgent ? '' : m.role,
+            },
+      ),
+      workspaces: get().workspaces.map((w) =>
+        w.id === workspaceId ? { ...w, workspaceAgentId: mariusId } : w,
+      ),
+    })
+  },
+
+  designateWorkspaceAgent: async (mariusId: string) => {
+    const workspaceId =
+      get().mariuses.find((m) => m.id === mariusId)?.workspaceId ||
+      get().activeWorkspaceId ||
+      ''
+    if (!get().isMock) {
+      await api.designateWorkspaceAgent(workspaceId, mariusId)
+    }
+    get().applyDesignation(workspaceId, mariusId)
+    get().emitEvent({ type: 'workspace_agent.designated', payload: { mariusId } })
   },
 
   approveAgent: async (mariusId: string) => {
@@ -1419,7 +1462,12 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
       Promise.all(dtos.map((d) => api.listMariuses(d.id).catch(() => []))),
     ])
     const incomingProjects = perWsProjects.flat().map(projectToVM)
-    const incomingMariuses = perWsMariuses.flat().map(mariusToVM)
+    // Stamp each agent's WA badge from its workspace's designated-host pointer (#32).
+    const hostByWs = new Map(dtos.map((d) => [String(d.id), d.workspace_agent_id ?? null]))
+    const incomingMariuses = perWsMariuses
+      .flat()
+      .map(mariusToVM)
+      .map((m) => ({ ...m, isWorkspaceAgent: hostByWs.get(m.workspaceId) === m.id }))
     // Keep the persisted active workspace if it still exists; otherwise fall back to the
     // first workspace (and persist that choice).
     const prevActive = get().activeWorkspaceId
@@ -1446,13 +1494,18 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
       api.listProjects(workspaceId),
       api.listSkills(workspaceId).catch(() => []),
     ])
+    // The designated-host pointer came in with hydrateWorkspaces (boot runs it first).
+    const hostId = get().workspaces.find((w) => w.id === workspaceId)?.workspaceAgentId
     // Replace ONLY this workspace's slice — keep other workspaces' data intact. The
     // previous version reassigned the whole array, so opening workspace B wiped A's
     // agents/projects/skills (and made the launcher counts flap back to 0).
     set((s) => ({
       mariuses: [
         ...s.mariuses.filter((m) => m.workspaceId !== workspaceId),
-        ...mariuses.map(mariusToVM),
+        ...mariuses.map(mariusToVM).map((m) => ({
+          ...m,
+          isWorkspaceAgent: hostId != null && m.id === hostId,
+        })),
       ],
       projects: [
         ...s.projects.filter((p) => p.workspaceId !== workspaceId),
