@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from armarius.domain.entities.artifact import Artifact
@@ -112,18 +112,87 @@ class SqlWorkspaceRepository(WorkspaceRepository):
         """Delete a workspace and every child it owns. FK columns carry no
         ``ON DELETE CASCADE``, so a bare delete orphans (SQLite) or errors (Postgres) —
         we cascade explicitly (projects + their roster/tasks, then mariuses/skills/labels)
-        so the behaviour is identical on both backends."""
+        so the behaviour is identical on both backends.
+
+        The runtime/history tables (runs, run_events, agent_task_sessions, wakeup_requests,
+        commission_sessions, onboarding_sessions) reference workspace children by plain UUID
+        with no FK either, so we clear them here too — otherwise deleting a workspace leaves
+        them dangling forever (issue #28: cascade chosen over audit retention)."""
         project_ids = (
             await self._s.execute(
                 select(ProjectModel.id).where(ProjectModel.workspace_id == workspace_id)
             )
         ).scalars().all()
+        marius_ids = (
+            await self._s.execute(
+                select(MariusModel.id).where(MariusModel.workspace_id == workspace_id)
+            )
+        ).scalars().all()
+        task_ids: Sequence[UUID] = []
         if project_ids:
             task_ids = (
                 await self._s.execute(
                     select(TaskModel.id).where(TaskModel.project_id.in_(project_ids))
                 )
             ).scalars().all()
+
+        # Runtime/history rows key off marius/task/project by plain UUID. Gather the runs
+        # first so their run_events (FK, no cascade) and wakeups can be cleared by run_id.
+        if project_ids or marius_ids or task_ids:
+            run_ids = (
+                await self._s.execute(
+                    select(RunModel.id).where(
+                        or_(
+                            RunModel.project_id.in_(project_ids),
+                            RunModel.marius_id.in_(marius_ids),
+                            RunModel.task_id.in_(task_ids),
+                        )
+                    )
+                )
+            ).scalars().all()
+            if run_ids:
+                await self._s.execute(
+                    delete(RunEventModel).where(RunEventModel.run_id.in_(run_ids))
+                )
+                await self._s.execute(delete(RunModel).where(RunModel.id.in_(run_ids)))
+            await self._s.execute(
+                delete(SessionModel).where(
+                    or_(
+                        SessionModel.project_id.in_(project_ids),
+                        SessionModel.marius_id.in_(marius_ids),
+                        SessionModel.task_id.in_(task_ids),
+                    )
+                )
+            )
+            await self._s.execute(
+                delete(WakeupModel).where(
+                    or_(
+                        WakeupModel.project_id.in_(project_ids),
+                        WakeupModel.marius_id.in_(marius_ids),
+                        WakeupModel.task_id.in_(task_ids),
+                        WakeupModel.run_id.in_(run_ids),
+                    )
+                )
+            )
+            await self._s.execute(
+                delete(CommissionModel).where(
+                    or_(
+                        CommissionModel.project_id.in_(project_ids),
+                        CommissionModel.leader_marius_id.in_(marius_ids),
+                        CommissionModel.task_id.in_(task_ids),
+                    )
+                )
+            )
+        await self._s.execute(
+            delete(OnboardingSessionModel).where(
+                or_(
+                    OnboardingSessionModel.workspace_id == workspace_id,
+                    OnboardingSessionModel.created_project_id.in_(project_ids),
+                )
+            )
+        )
+
+        if project_ids:
             if task_ids:
                 await self._s.execute(
                     delete(ArtifactModel).where(ArtifactModel.task_id.in_(task_ids))
@@ -563,7 +632,32 @@ class SqlMariusRepository(MariusRepository):
 
     async def remove(self, marius_id: UUID) -> None:
         """Delete a Marius and vacate any roster seats it held (seat grants carry a plain
-        UUID ref, so we clear them explicitly rather than orphaning a filled seat)."""
+        UUID ref, so we clear them explicitly rather than orphaning a filled seat).
+
+        Also clears the runtime/history rows that reference this Marius by plain UUID
+        (its runs + their run_events, agent_task_sessions, wakeup_requests, and any
+        commission it led) so a delete doesn't leave them dangling (issue #28)."""
+        run_ids = (
+            await self._s.execute(
+                select(RunModel.id).where(RunModel.marius_id == marius_id)
+            )
+        ).scalars().all()
+        if run_ids:
+            await self._s.execute(
+                delete(RunEventModel).where(RunEventModel.run_id.in_(run_ids))
+            )
+            await self._s.execute(delete(RunModel).where(RunModel.id.in_(run_ids)))
+        await self._s.execute(
+            delete(SessionModel).where(SessionModel.marius_id == marius_id)
+        )
+        await self._s.execute(
+            delete(WakeupModel).where(
+                or_(WakeupModel.marius_id == marius_id, WakeupModel.run_id.in_(run_ids))
+            )
+        )
+        await self._s.execute(
+            delete(CommissionModel).where(CommissionModel.leader_marius_id == marius_id)
+        )
         await self._s.execute(
             delete(SeatGrantModel).where(SeatGrantModel.marius_id == marius_id)
         )
