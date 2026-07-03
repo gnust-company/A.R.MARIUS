@@ -6,12 +6,33 @@ constraint guards (built-in skills, the Workspace Agent, the last workspace) and
 
 from __future__ import annotations
 
+import asyncio
+from uuid import UUID, uuid4
+
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import func, select
 
-from armarius.infrastructure.database.engine import init_db
+from armarius.infrastructure.database.engine import get_sessionmaker, init_db
+from armarius.infrastructure.database.models import (
+    CommissionModel,
+    OnboardingSessionModel,
+    ProjectModel,
+    RunEventModel,
+    RunModel,
+    SessionModel,
+    TaskModel,
+    WakeupModel,
+)
 from armarius.main import app
 from armarius.presentation.container import build_container
+
+
+async def _count(model, col, val) -> int:
+    async with get_sessionmaker()() as s:
+        return (
+            await s.execute(select(func.count()).select_from(model).where(col == val))
+        ).scalar_one()
 
 
 @pytest.fixture(autouse=True)
@@ -90,6 +111,110 @@ async def test_delete_workspace_removes_it_and_cascades():
 
         remaining = (await c.get("/v1/workspaces", headers=h)).json()
     assert all(w["id"] != ws_id for w in remaining)
+
+
+# ─────────────────────────────── #28: delete cascades runtime/history rows too
+async def test_delete_workspace_cascades_runtime_rows():
+    """Deleting a workspace clears the runtime/history tables that reference its
+    children by plain UUID (no FK) — otherwise they'd be orphaned (issue #28)."""
+    async with await _client() as c:
+        token, _ = await _register(c, "wsruntime@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        ws_id = await _make_workspace(c, h, "Runtime")
+        agent = await c.post(
+            f"/v1/workspaces/{ws_id}/mariuses", headers=h,
+            json={"name": "Runner", "role": "Backend", "skills": [], "skill_ids": [],
+                  "adapter_type": "echo", "adapter_config": {}},
+        )
+        marius_id = UUID(agent.json()["id"])
+
+        # Seed a project + a row in every runtime/history table, referencing the workspace's
+        # project / marius / task / self by plain UUID (the way the real runtime does).
+        project_id, task_id, run_id = uuid4(), uuid4(), uuid4()
+        async with get_sessionmaker()() as s:
+            s.add(ProjectModel(id=project_id, workspace_id=UUID(ws_id), name="P", slug="p"))
+            s.add(TaskModel(id=task_id, project_id=project_id, title="T"))
+            s.add(RunModel(id=run_id, project_id=project_id, marius_id=marius_id, task_id=task_id))
+            s.add(RunEventModel(id=uuid4(), run_id=run_id, type="log"))
+            s.add(SessionModel(id=uuid4(), project_id=project_id, marius_id=marius_id,
+                               adapter_type="echo", task_id=task_id))
+            s.add(WakeupModel(id=uuid4(), project_id=project_id, marius_id=marius_id,
+                              task_id=task_id, run_id=run_id))
+            s.add(CommissionModel(id=uuid4(), project_id=project_id,
+                                  leader_marius_id=marius_id, task_id=task_id))
+            s.add(OnboardingSessionModel(id=uuid4(), workspace_id=UUID(ws_id)))
+            await s.commit()
+
+        deleted = await c.delete(f"/v1/workspaces/{ws_id}", headers=h)
+        assert deleted.status_code == 204, deleted.text
+
+    for model, col, val in [
+        (RunModel, RunModel.id, run_id),
+        (RunEventModel, RunEventModel.run_id, run_id),
+        (SessionModel, SessionModel.marius_id, marius_id),
+        (WakeupModel, WakeupModel.project_id, project_id),
+        (CommissionModel, CommissionModel.project_id, project_id),
+        (OnboardingSessionModel, OnboardingSessionModel.workspace_id, UUID(ws_id)),
+    ]:
+        assert await _count(model, col, val) == 0, f"{model.__tablename__} left orphan rows"
+
+
+async def test_delete_marius_cascades_runtime_rows():
+    """Deleting a Marius clears its runs/run_events/sessions/wakeups and any commission
+    it led (all plain-UUID refs) — issue #28."""
+    async with await _client() as c:
+        token, ws_id = await _register(c, "mruntime@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        agent = await c.post(
+            f"/v1/workspaces/{ws_id}/mariuses", headers=h,
+            json={"name": "Runner", "role": "Backend", "skills": [], "skill_ids": [],
+                  "adapter_type": "echo", "adapter_config": {}},
+        )
+        marius_id = UUID(agent.json()["id"])
+
+        task_id, run_id = uuid4(), uuid4()
+        async with get_sessionmaker()() as s:
+            s.add(RunModel(id=run_id, marius_id=marius_id, task_id=task_id))
+            s.add(RunEventModel(id=uuid4(), run_id=run_id, type="log"))
+            s.add(SessionModel(id=uuid4(), marius_id=marius_id,
+                               adapter_type="echo", task_id=task_id))
+            s.add(WakeupModel(id=uuid4(), marius_id=marius_id, task_id=task_id, run_id=run_id))
+            s.add(CommissionModel(id=uuid4(), leader_marius_id=marius_id, task_id=task_id))
+            await s.commit()
+
+        gone = await c.delete(f"/v1/workspaces/{ws_id}/mariuses/{marius_id}", headers=h)
+        assert gone.status_code == 204, gone.text
+
+    for model, col, val in [
+        (RunModel, RunModel.marius_id, marius_id),
+        (RunEventModel, RunEventModel.run_id, run_id),
+        (SessionModel, SessionModel.marius_id, marius_id),
+        (WakeupModel, WakeupModel.marius_id, marius_id),
+        (CommissionModel, CommissionModel.leader_marius_id, marius_id),
+    ]:
+        assert await _count(model, col, val) == 0, f"{model.__tablename__} left orphan rows"
+
+
+# ───────────────────────────── #27: concurrent delete never empties the last one
+async def test_concurrent_delete_never_leaves_zero_workspaces():
+    """Two concurrent deletes against an owner's only two workspaces must not both
+    succeed — the post-delete re-check + rollback keeps them with ≥1 (issue #27)."""
+    async with await _client() as c:
+        token, ws1 = await _register(c, "wsrace@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        ws2 = await _make_workspace(c, h, "Second")
+
+        r1, r2 = await asyncio.gather(
+            c.delete(f"/v1/workspaces/{ws1}", headers=h),
+            c.delete(f"/v1/workspaces/{ws2}", headers=h),
+            return_exceptions=True,
+        )
+        remaining = (await c.get("/v1/workspaces", headers=h)).json()
+    # The invariant the guard protects: the owner is never left with zero workspaces.
+    assert len(remaining) >= 1
+    # And exactly one of the two deletes should have gone through.
+    codes = [getattr(r, "status_code", None) for r in (r1, r2)]
+    assert codes.count(204) == 1, codes
 
 
 async def test_delete_only_workspace_is_rejected():
