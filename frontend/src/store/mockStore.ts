@@ -1074,7 +1074,10 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
         x.id === mariusId
           ? {
               ...x,
-              ...(patchBody.name ? { displayName: patchBody.name } : {}),
+              // Wire contract renames on `name` (mariusToVM maps dto.name → name), so write
+              // `name` — the canonical field — not just `displayName` (issue #29). Keep
+              // displayName in sync so the Directory's `displayName || name` render matches.
+              ...(patchBody.name ? { name: patchBody.name, displayName: patchBody.name } : {}),
               ...(patchBody.role ? { role: patchBody.role } : {}),
             }
           : x,
