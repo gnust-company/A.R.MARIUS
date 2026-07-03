@@ -253,6 +253,8 @@ export interface Skill {
   mariusId?: string
   workspaceId?: string
   type?: 'builtin' | 'github' | 'custom'
+  /** Present for GitHub-imported skills; absent for manual/built-in ones. */
+  sourceUrl?: string
   files?: SkillFile[]
 }
 
@@ -337,7 +339,7 @@ interface MockStoreState {
   /** Simulated per-task trace SSE — append one streamed run event. */
   appendTrace: (taskId: string, event: Partial<TraceEvent> & { type: TraceEvent['type']; content: string }) => void
   publishArtifact: (taskId: string, artifact: TaskArtifact) => Promise<void>
-  createSkill: (skill: Skill) => void
+  createSkill: (input: Omit<Skill, 'id'> & { id?: string }) => Promise<Skill>
   updateSkill: (skillId: string, skill: Partial<Skill>) => void
   deleteSkill: (skillId: string) => Promise<void>
   createWorkspace: (workspace: Workspace) => Promise<Workspace>
@@ -997,9 +999,25 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     set({ tasks: get().tasks.map((t) => (t.id === taskId ? { ...t, artifacts: [...(t.artifacts || []), full] } : t)) })
   },
 
-  createSkill: (skill: Skill) => {
-    const state = get()
-    set({ skills: [...state.skills, skill] })
+  createSkill: async (input) => {
+    const workspaceId = input.workspaceId || get().activeWorkspaceId || undefined
+    // Real mode: persist manual skills through the backend so they survive an F5 and
+    // carry a real id (the detail route resolves against it). GitHub import has no
+    // backend endpoint yet, so it stays client-side in the fallback below.
+    if (!get().isMock && workspaceId && input.type !== 'github') {
+      const dto = await api.createManualSkill(workspaceId, {
+        name: input.name,
+        description: input.description,
+      })
+      const vm = skillToVM(dto)
+      set({ skills: [...get().skills, vm] })
+      return vm
+    }
+    // Mock mode, or a GitHub import in real mode: build it client-side with a real id
+    // so navigation lands on /skills/<id> instead of /skills/undefined.
+    const skill: Skill = { ...input, id: input.id ?? `sk_${Date.now()}`, workspaceId }
+    set({ skills: [...get().skills, skill] })
+    return skill
   },
 
   updateSkill: (skillId: string, skillUpdate: Partial<Skill>) => {

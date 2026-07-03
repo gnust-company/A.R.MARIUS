@@ -407,6 +407,13 @@ export async function listSkills(workspaceId: string): Promise<SkillDTO[]> {
   return get<SkillDTO[]>(`/v1/workspaces/${workspaceId}/skills`)
 }
 
+export async function createManualSkill(
+  workspaceId: string,
+  body: { name: string; description?: string },
+): Promise<SkillDTO> {
+  return post<SkillDTO>(`/v1/workspaces/${workspaceId}/skills/manual`, body)
+}
+
 export async function deleteSkill(workspaceId: string, skillId: string): Promise<void> {
   return del(`/v1/workspaces/${workspaceId}/skills/${skillId}`)
 }

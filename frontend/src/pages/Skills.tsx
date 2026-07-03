@@ -51,8 +51,9 @@ function SourceBadge({ type }: { type: Skill['type'] }) {
   const config = {
     builtin: { label: t('skills.type.builtin'), icon: Settings, color: 'bg-[#E8E0D8] text-[#8B7A6A]' },
     github: { label: t('skills.imported'), icon: Github, color: 'bg-[#D4E8F0] text-[#2A5A6E]' },
+    custom: { label: t('skills.type.manual'), icon: FileText, color: 'bg-[#EAE0CC] text-[#7A6A2A]' },
   };
-  const { label, icon: Icon, color } = config[type] || config.builtin;
+  const { label, icon: Icon, color } = config[type] || config.custom;
   return (
     <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium', color)}>
       <Icon className="w-3 h-3" />
@@ -123,23 +124,27 @@ export default function Skills() {
     setCreateModalOpen(true);
   };
 
-  const handleCreateManual = () => {
+  const handleCreateManual = async () => {
     if (!skillName.trim()) return;
     setCreating(true);
-    setTimeout(() => {
+    try {
       const frontmatter = `---\nname: ${skillName.trim()}\ndescription: ${skillDesc.trim() || 'No description'}\nversion: 1.0.0\n---\n`;
-      const newSkill = createSkill({
+      // Manual skills are `type: 'custom'` (mirrors skillToVM's mapping of source='manual'),
+      // never 'github' — that badge belongs to imported skills only.
+      const newSkill = await createSkill({
         name: skillName.trim().toLowerCase().replace(/\s+/g, '-'),
         description: skillDesc.trim(),
-        type: 'github',
+        type: 'custom',
         files: [
           { path: 'SKILL.md', content: frontmatter + '\n# ' + skillName.trim() + '\n\n## Overview\n\n', language: 'markdown' },
         ],
       });
-      setCreating(false);
       setCreateModalOpen(false);
-      navigate(wsHref(workspaceId, `/skills/${newSkill.id}`));
-    }, 300);
+      // Only navigate once we have a real id — never /skills/undefined.
+      if (newSkill?.id) navigate(wsHref(workspaceId, `/skills/${newSkill.id}`));
+    } finally {
+      setCreating(false);
+    }
   };
 
   const handleImport = () => {
@@ -158,10 +163,10 @@ export default function Skills() {
     }, 1200);
   };
 
-  const handleConfirmImport = () => {
+  const handleConfirmImport = async () => {
     if (importedFiles.length === 0) return;
     const name = skillName.trim() || githubUrl.split('/').pop() || 'imported-skill';
-    const newSkill = createSkill({
+    const newSkill = await createSkill({
       name: name.toLowerCase().replace(/\s+/g, '-'),
       description: skillDesc.trim() || `Imported from ${githubUrl}`,
       type: 'github',
@@ -169,7 +174,7 @@ export default function Skills() {
       files: importedFiles,
     });
     setCreateModalOpen(false);
-    navigate(wsHref(workspaceId, `/skills/${newSkill.id}`));
+    if (newSkill?.id) navigate(wsHref(workspaceId, `/skills/${newSkill.id}`));
   };
 
   const handleSkillClick = (skillId: string) => {
