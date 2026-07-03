@@ -232,3 +232,34 @@ async def test_agent_can_fetch_linked_skill_bundle():
         # A slug the agent isn't linked to → 404; no token → 401.
         assert (await c.get("/agent/skills/nope", headers=ah)).status_code == 404
         assert (await c.get("/agent/skills")).status_code == 401
+
+
+async def test_builtin_content_refreshes_unless_owner_edited():
+    """Shipping a new builtin SKILL.md reaches workspaces seeded earlier (#15) —
+    but an owner-edited copy (updated_at set) is never clobbered."""
+    from uuid import UUID
+
+    from armarius.infrastructure.persistence.unit_of_work import make_uow
+    from armarius.shared.clock import utcnow
+
+    async with await _client() as c:
+        token, ws_id = await _register(c, "refresh@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+
+        # Simulate a workspace seeded before the on-disk SKILL.md changed.
+        async with make_uow() as uow:
+            stale = await uow.skills.get_by_slug(UUID(ws_id), "armarius-http")
+            stale.files = {"SKILL.md": "old shipped copy"}
+            await uow.skills.update(stale)
+            # ...and one the owner edited by hand (update_files stamps updated_at).
+            edited = await uow.skills.get_by_slug(UUID(ws_id), "armarius-mcp")
+            edited.files = {"SKILL.md": "owner's custom copy"}
+            edited.updated_at = utcnow()
+            await uow.skills.update(edited)
+            await uow.commit()
+
+        skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
+    http_skill = next(s for s in skills if s["slug"] == "armarius-http")
+    mcp_skill = next(s for s in skills if s["slug"] == "armarius-mcp")
+    assert http_skill["files"]["SKILL.md"] != "old shipped copy"  # refreshed
+    assert mcp_skill["files"]["SKILL.md"] == "owner's custom copy"  # preserved

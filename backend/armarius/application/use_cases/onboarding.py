@@ -22,9 +22,13 @@ def _slugify(value: str) -> str:
     return slug or "workspace"
 
 
-def _credential_file_path(marius: Marius, workspace_slug: str) -> str:
-    """The file where the agent stores its token. Skills read the token from here."""
-    return f"~/.armarius/credentials/{workspace_slug}_{marius.name.lower()}.json"
+def credential_file_for(marius: Marius, workspace_name: str) -> str:
+    """The file where the agent stores its token. Skills read the token from here.
+
+    Shared by the invite (STEP 1) and every wake prompt so the two never name a
+    different file — a multi-workspace agent has one file per workspace (#15).
+    """
+    return f"~/.armarius/credentials/{_slugify(workspace_name)}_{marius.name.lower()}.json"
 
 
 def _skill_block(skills: list[Skill], base: str) -> str:
@@ -82,8 +86,7 @@ def build_invite_prompt(
     and hold — the minted `agent_token` is returned on that call once the Patron approves.
     """
     base = public_base_url.rstrip("/")
-    workspace_slug = _slugify(workspace_name)
-    cred_path = _credential_file_path(marius, workspace_slug)
+    cred_path = credential_file_for(marius, workspace_name)
     skills = skills or []
 
     safe_name = marius.name.replace('"', '\\"')

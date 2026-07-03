@@ -46,6 +46,21 @@ class TaskService:
         async with self._uow() as uow:
             return await uow.tasks.get(task_id)
 
+    async def get_in_workspace(self, task_id: UUID, workspace_id: UUID) -> Task:
+        """The task, only if it lives in this workspace (agent ws-consistency, #15).
+
+        Agent tokens are per-workspace; a cross-workspace task_id reads as "not
+        found" so a token can't act on — or probe for — another workspace's tasks.
+        """
+        async with self._uow() as uow:
+            task = await uow.tasks.get(task_id)
+            if task is None:
+                raise LookupError("task not found")
+            project = await uow.projects.get(task.project_id)
+            if project is None or project.workspace_id != workspace_id:
+                raise LookupError("task not found")
+            return task
+
     async def list_by_project(
         self, project_id: UUID, *, statuses: list[str] | None = None
     ) -> Sequence[Task]:

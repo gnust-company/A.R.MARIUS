@@ -117,9 +117,9 @@ async def get_my_skill_bundle(
 async def get_task_view(
     task_id: UUID, marius: CurrentMarius, container: ContainerDep
 ) -> dict:
-    task = await container.tasks.get(task_id)
-    if task is None:
-        raise LookupError("task not found")
+    # Agent tokens are per-workspace: every /agent/tasks/* route resolves the task
+    # through get_in_workspace so a token can't touch another workspace's tasks (#15).
+    task = await container.tasks.get_in_workspace(task_id, marius.workspace_id)
     comments = await container.threads.list_comments(task_id)
     artifacts = await container.artifacts.list_by_task(task_id)
     directory = await container.mariuses.list_directory(marius.workspace_id)
@@ -143,6 +143,7 @@ async def get_task_view(
 async def claim_task(
     task_id: UUID, marius: CurrentMarius, container: ContainerDep
 ) -> TaskOut:
+    await container.tasks.get_in_workspace(task_id, marius.workspace_id)
     task = await container.tasks.claim(task_id, marius.id)
     return TaskOut.model_validate(task)
 
@@ -151,6 +152,7 @@ async def claim_task(
 async def post_comment(
     task_id: UUID, body: AgentCommentIn, marius: CurrentMarius, container: ContainerDep
 ) -> CommentOut:
+    await container.tasks.get_in_workspace(task_id, marius.workspace_id)
     comment = await container.threads.post_comment(
         task_id=task_id,
         body=body.body,
@@ -164,6 +166,7 @@ async def post_comment(
 async def update_status(
     task_id: UUID, body: TransitionIn, marius: CurrentMarius, container: ContainerDep
 ) -> TaskOut:
+    await container.tasks.get_in_workspace(task_id, marius.workspace_id)
     try:
         target = TaskStatus(body.status)
     except ValueError as exc:
@@ -176,6 +179,7 @@ async def update_status(
 async def set_next_action(
     task_id: UUID, body: NextActionIn, marius: CurrentMarius, container: ContainerDep
 ) -> TaskOut:
+    await container.tasks.get_in_workspace(task_id, marius.workspace_id)
     task = await container.tasks.set_next_action(task_id, body.next_action)
     return TaskOut.model_validate(task)
 
@@ -184,6 +188,7 @@ async def set_next_action(
 async def publish_artifact(
     task_id: UUID, body: AgentArtifactIn, marius: CurrentMarius, container: ContainerDep
 ) -> ArtifactOut:
+    await container.tasks.get_in_workspace(task_id, marius.workspace_id)
     artifact = await container.artifacts.publish(
         task_id=task_id,
         name=body.name,
