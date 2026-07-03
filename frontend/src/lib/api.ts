@@ -226,6 +226,16 @@ export interface MariusDTO {
   created_at?: string | null
 }
 
+// POST /workspaces/{id}/mariuses response (backend `MariusCreatedOut`): the created Marius
+// plus its onboarding materials — the copyable `invite` prompt and one-time `enrollment_code`.
+// The `agent_token` stays null until the patron approves (enroll-and-wait, §4.1).
+export interface MariusCreatedDTO extends MariusDTO {
+  agent_token?: string | null
+  invite?: string | null
+  enrollment_code?: string | null
+  invite_status?: string | null
+}
+
 export interface LabelDTO {
   id: string
   workspace_id?: string | null
@@ -375,8 +385,8 @@ export interface InviteMariusBody {
   adapter_type?: string
 }
 
-export async function inviteMarius(workspaceId: string, body: InviteMariusBody): Promise<MariusDTO> {
-  return post<MariusDTO>(`/v1/workspaces/${workspaceId}/mariuses`, body)
+export async function inviteMarius(workspaceId: string, body: InviteMariusBody): Promise<MariusCreatedDTO> {
+  return post<MariusCreatedDTO>(`/v1/workspaces/${workspaceId}/mariuses`, body)
 }
 
 export async function approveMarius(workspaceId: string, mariusId: string): Promise<MariusDTO> {
