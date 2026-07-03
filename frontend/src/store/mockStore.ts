@@ -325,7 +325,14 @@ interface MockStoreState {
   isMock: boolean
 
   // Actions
-  inviteAgent: (mariusId: string, workspaceId: string) => Promise<void>
+  /** Invite a new agent into the active workspace. Real mode posts to the backend and
+   * returns its onboarding materials verbatim (the copyable `invite` prompt + one-time
+   * enrollment code); mock mode fabricates an equivalent demo prompt client-side. */
+  inviteNewAgent: (input: {
+    name: string
+    adapterType: string
+    skillIds: string[]
+  }) => Promise<{ agent: Marius; invite: string; enrollmentCode: string }>
   approveAgent: (mariusId: string) => Promise<void>
   emitEvent: (event: Omit<StoreEvent, 'id' | 'timestamp'>) => void
   setCurrentUser: (user: User | null) => void
@@ -846,21 +853,88 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   sidebarCollapsed: false,
   isMock: MOCK,
 
-  inviteAgent: async (mariusId: string, workspaceId: string) => {
-    if (get().isMock) {
-      const updated = get().mariuses.map((m) =>
-        m.id === mariusId ? { ...m, workspaceId, status: 'invited' as AgentStatus } : m,
-      )
-      set({ mariuses: updated })
-      return
+  inviteNewAgent: async ({ name, adapterType, skillIds }) => {
+    const workspaceId = get().activeWorkspaceId || 'w1'
+    const skillNames = get()
+      .skills.filter((s) => skillIds.includes(s.id))
+      .map((s) => s.name)
+
+    if (!get().isMock) {
+      // Real mode: the backend creates the INVITED Marius, mints the enrollment code and
+      // assembles the full onboarding prompt (STEP 0–4, absolute public URL). Send
+      // skill_ids — that is what `_build_invite` resolves for the prompt's install step.
+      const dto = await api.inviteMarius(workspaceId, {
+        name,
+        skills: skillNames,
+        skill_ids: skillIds,
+        adapter_type: adapterType,
+      })
+      const agent: Marius = {
+        ...mariusToVM(dto),
+        // A fresh invite has no liveness yet (maps to `offline`); its real state is the
+        // invite lifecycle, which we know is `invited` on a 201.
+        status: 'invited',
+        displayName: name,
+      }
+      set({ mariuses: [...get().mariuses, agent] })
+      return { agent, invite: dto.invite ?? '', enrollmentCode: dto.enrollment_code ?? '' }
     }
-    // Real mode: invite-and-wait creates a NEW marius via the enrollment endpoint. The mock
-    // semantics (mark an existing agent `invited`) don't map cleanly, so this is a graceful
-    // local reconcile — the seeded golden-path agents are already approved/online.
-    const updated = get().mariuses.map((m) =>
-      m.id === mariusId ? { ...m, workspaceId, status: 'invited' as AgentStatus } : m,
-    )
-    set({ mariuses: updated })
+
+    // Mock mode: fabricate the same shape client-side so the demo mirrors the real flow.
+    const enrollmentCode = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    const agent: Marius = {
+      id: `m-${Date.now().toString(36)}`,
+      name: name.toLowerCase().replace(/\s+/g, '-'),
+      displayName: name,
+      role: '',
+      adapterType,
+      skills: skillNames,
+      avatar: '/agent-avatar-echo.jpg',
+      status: 'invited',
+      workspaceId,
+      projectIds: [],
+    }
+    set({ mariuses: [...get().mariuses, agent] })
+
+    // Simulate the agent presenting its code shortly after (invited → pending review).
+    setTimeout(() => {
+      const store = get()
+      const current = store.mariuses.find((m) => m.id === agent.id)
+      if (current && current.status === 'invited') {
+        set({
+          mariuses: store.mariuses.map((m) =>
+            m.id === agent.id ? { ...m, status: 'pending' as AgentStatus } : m,
+          ),
+        })
+        store.emitEvent({
+          type: 'marius.status_changed',
+          payload: { mariusId: agent.id, from: 'invited', to: 'pending' },
+        })
+      }
+    }, 3000)
+
+    // A condensed stand-in for the backend's STEP 0–4 onboarding prompt (demo only).
+    const base = window.location.origin
+    const invite = [
+      'ARMARIUS · AGENT ONBOARDING (demo)',
+      '',
+      `You are "${name}", joining this workspace.`,
+      '',
+      'STEP 0 · ENROLL AND WAIT FOR APPROVAL',
+      `  POST ${base}/agent/enroll`,
+      `  {"marius_id": "${agent.id}", "enrollment_code": "${enrollmentCode}"}`,
+      '  → 200 {"agent_token": "arm_..."} once your patron approves.',
+      '',
+      'STEP 1 · SAVE YOUR CREDENTIALS to ~/.armarius/credentials/',
+      `STEP 2 · CONFIRM YOU ARE ONLINE — GET ${base}/agent/me`,
+      ...(skillNames.length > 0
+        ? [
+            'STEP 3 · INSTALL YOUR SKILLS',
+            ...skillNames.map((s) => `  - ${s}  (GET ${base}/agent/skills/<slug>)`),
+          ]
+        : []),
+    ].join('\n')
+    return { agent, invite, enrollmentCode }
   },
 
   approveAgent: async (mariusId: string) => {

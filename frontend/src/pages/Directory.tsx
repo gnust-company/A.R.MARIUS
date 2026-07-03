@@ -82,24 +82,6 @@ const ADAPTER_OPTIONS = [
   { value: 'echo', label: 'Echo', desc: 'Simple echo adapter for testing', icon: Terminal },
 ];
 
-const ROLE_OPTIONS = [
-  'Project Leader',
-  'Frontend Developer',
-  'Backend Developer',
-  'Designer',
-  'QA Engineer',
-];
-
-// Maps a stored (English) role value → its i18n key. The <option> value stays
-// English (it is persisted on the agent); only the visible label is translated.
-const ROLE_KEY: Record<string, string> = {
-  'Project Leader': 'projectLeader',
-  'Frontend Developer': 'frontendDeveloper',
-  'Backend Developer': 'backendDeveloper',
-  'Designer': 'designer',
-  'QA Engineer': 'qaEngineer',
-};
-
 // ─── Component: Status Dot ───────────────────────────────────────────────────
 
 function StatusDot({ status, size = 8 }: { status: AgentStatus; size?: number }) {
@@ -388,7 +370,7 @@ export default function Directory() {
   const { t } = useTranslation();
   const mariuses = useMockStore((s) => s.mariuses);
   const skills = useMockStore((s) => s.skills);
-  const inviteAgent = useMockStore((s) => s.inviteAgent);
+  const inviteNewAgent = useMockStore((s) => s.inviteNewAgent);
   const approveAgent = useMockStore((s) => s.approveAgent);
   const updateMarius = useMockStore((s) => s.updateMarius);
   const deleteMarius = useMockStore((s) => s.deleteMarius);
@@ -409,12 +391,10 @@ export default function Directory() {
   const [inviteStep, setInviteStep] = useState<'form' | 'prompt'>('form');
   const [adapterType, setAdapterType] = useState('hermes_gateway');
   const [agentName, setAgentName] = useState('');
-  const [agentRole, setAgentRole] = useState('');
-  const [customRole, setCustomRole] = useState('');
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const [generating, setGenerating] = useState(false);
-  const [enrollmentCode, setEnrollmentCode] = useState('');
-  const [_invitedAgentId, setInvitedAgentId] = useState('');
+  // The backend-assembled onboarding prompt (verbatim) — what the owner copies to the agent.
+  const [invitePrompt, setInvitePrompt] = useState('');
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
 
@@ -462,93 +442,33 @@ export default function Directory() {
     setInviteStep('form');
     setAdapterType('hermes_gateway');
     setAgentName('');
-    setAgentRole('');
-    setCustomRole('');
     setSelectedSkillIds([]);
-    setEnrollmentCode('');
-    setInvitedAgentId('');
+    setInvitePrompt('');
     setCopied(false);
     setInviteModalOpen(true);
   };
 
-  const handleGenerateInvite = () => {
-    if (!agentName.trim() || (!agentRole && !customRole.trim())) return;
+  const handleGenerateInvite = async () => {
+    if (!agentName.trim() || generating) return;
     setGenerating(true);
-    setTimeout(() => {
-      const role = agentRole === 'Custom...' ? customRole : agentRole;
-      const code = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-
-      // Create agent directly since inviteAgent expects (mariusId, workspaceId)
-      const newAgentId = `m-${Date.now().toString(36)}`;
-      const state = useMockStore.getState();
-      const newAgent = {
-        id: newAgentId,
-        name: agentName.trim().toLowerCase().replace(/\s+/g, '-'),
-        displayName: agentName.trim(),
+    try {
+      // Real mode: the backend mints the enrollment code and assembles the full STEP 0\u20134
+      // onboarding prompt (absolute public URL, credentials, per-skill install). We show
+      // that string verbatim \u2014 no client-side prompt building.
+      const { invite } = await inviteNewAgent({
+        name: agentName.trim(),
         adapterType,
-        role,
-        roleKey: role.toLowerCase().replace(/\s+/g, '_'),
-        skills: selectedSkillIds,
-        avatar: '/agent-avatar-echo.jpg',
-        status: 'invited' as AgentStatus,
-        workspaceId: state.activeWorkspaceId || 'w1',
-        projectIds: [],
-        description: `Invited \u2014 ${role}`,
-        isWorkspaceAgent: false,
-      };
-
-      useMockStore.setState({
-        mariuses: [...state.mariuses, newAgent],
+        skillIds: selectedSkillIds,
       });
-
-      // Also call inviteAgent for side effects if the store has logic for it
-      try {
-        inviteAgent(newAgentId, state.activeWorkspaceId || 'w1');
-      } catch {
-        // inviteAgent may not accept these args, agent already added above
-      }
-
-      setEnrollmentCode(code);
-      setInvitedAgentId(newAgent.id);
-      setGenerating(false);
+      setInvitePrompt(invite);
       setInviteStep('prompt');
-
-      // Simulate auto-transition to pending after 3s
-      setTimeout(() => {
-        const store = useMockStore.getState();
-        const currentAgent = store.mariuses.find((m) => m.id === newAgentId);
-        if (currentAgent && currentAgent.status === 'invited') {
-          useMockStore.setState({
-            mariuses: store.mariuses.map((m) =>
-              m.id === newAgentId ? { ...m, status: 'pending' as AgentStatus } : m
-            ),
-          });
-          store.emitEvent({
-            type: 'marius.status_changed',
-            payload: { mariusId: newAgentId, from: 'invited', to: 'pending' },
-          });
-        }
-      }, 3000);
-    }, 600);
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const handleCopyPrompt = () => {
-    const promptText = [
-      `You are being invited to join the workspace as a ${agentRole === 'Custom...' ? customRole : agentRole}.`,
-      '',
-      `API Base: /v1`,
-      `Enrollment Code: ${enrollmentCode}`,
-      '',
-      selectedSkillIds.length > 0
-        ? `Skills to install:\n${selectedSkillIds.map((sid) => {
-            const sk = skills.find((s) => s.id === sid || s.name === sid);
-            return `  - ${sk?.name || sid}`;
-          }).join('\n')}`
-        : '',
-      '',
-      'To join, call POST /agent/enroll with your enrollment_code and wait for approval.',
-    ].join('\n');
-    void copyToClipboard(promptText).then((ok) => {
+    void copyToClipboard(invitePrompt).then((ok) => {
       if (ok) {
         setCopyFailed(false);
         setCopied(true);
@@ -863,46 +783,6 @@ export default function Directory() {
                 />
               </div>
 
-              {/* Role */}
-              <div>
-                <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
-                  {t('directory.role')} <span className="text-[#C25E3A]">*</span>
-                </label>
-                <select
-                  value={agentRole}
-                  onChange={(e) => setAgentRole(e.target.value)}
-                  className={cn(
-                    'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
-                    'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
-                    'transition-all'
-                  )}
-                >
-                  <option value="">{t('directory.selectRole')}</option>
-                  {ROLE_OPTIONS.map((r) => (
-                    <option key={r} value={r}>
-                      {t('directory.roles.' + ROLE_KEY[r])}
-                    </option>
-                  ))}
-                  <option value="Custom...">{t('directory.custom')}</option>
-                </select>
-                {agentRole === 'Custom...' && (
-                  <motion.input
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    type="text"
-                    value={customRole}
-                    onChange={(e) => setCustomRole(e.target.value)}
-                    placeholder={t('directory.customRolePlaceholder')}
-                    className={cn(
-                      'w-full mt-2 px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
-                      'placeholder:text-[#A89880]',
-                      'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
-                      'transition-all'
-                    )}
-                  />
-                )}
-              </div>
-
               {/* Skills */}
               <div>
                 <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
@@ -912,15 +792,15 @@ export default function Directory() {
                   {skills.map((skill) => (
                     <button
                       key={skill.id}
-                      onClick={() => toggleSkill(skill.name)}
+                      onClick={() => toggleSkill(skill.id)}
                       className={cn(
                         'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all',
-                        selectedSkillIds.includes(skill.name)
+                        selectedSkillIds.includes(skill.id)
                           ? 'bg-[#C25E3A] text-white'
                           : 'bg-[#E3D7BC] text-[#6B5E4E] hover:bg-[#D9CDB8]'
                       )}
                     >
-                      {selectedSkillIds.includes(skill.name) && (
+                      {selectedSkillIds.includes(skill.id) && (
                         <Check className="w-3 h-3" />
                       )}
                       {skill.name}
@@ -939,15 +819,10 @@ export default function Directory() {
                 </button>
                 <button
                   onClick={handleGenerateInvite}
-                  disabled={
-                    !agentName.trim() ||
-                    (!agentRole && !customRole.trim()) ||
-                    (agentRole === 'Custom...' && !customRole.trim()) ||
-                    generating
-                  }
+                  disabled={!agentName.trim() || generating}
                   className={cn(
                     'inline-flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-all',
-                    agentName.trim() && (agentRole || customRole.trim()) && !generating
+                    agentName.trim() && !generating
                       ? 'bg-[#C25E3A] text-white hover:bg-[#D97B5A]'
                       : 'bg-[#E3D7BC] text-[#A89880] cursor-not-allowed'
                   )}
@@ -966,26 +841,9 @@ export default function Directory() {
               transition={{ duration: 0.2 }}
               className="space-y-4"
             >
-              {/* Prompt display */}
-              <div className="bg-[#F7F0E0] border border-[#E3D7BC] rounded-md p-4 font-mono text-[13px] text-[#2A2318] whitespace-pre-wrap leading-relaxed max-h-80 overflow-y-auto">
-                You are being invited to join the workspace as a{' '}
-                <strong>{agentRole === 'Custom...' ? customRole : agentRole}</strong>.
-                {'\n\n'}
-                API Base: /v1{'\n'}
-                Enrollment Code:{' '}
-                <span className="text-[#C25E3A] font-semibold">{enrollmentCode}</span>
-                {'\n\n'}
-                {selectedSkillIds.length > 0 && (
-                  <>
-                    Skills to install:{'\n'}
-                    {selectedSkillIds.map((sid) => {
-                      const sk = skills.find((s) => s.id === sid || s.name === sid);
-                      return `  - ${sk?.name || sid}\n`;
-                    }).join('')}
-                    {'\n'}
-                  </>
-                )}
-                To join, call POST /agent/enroll with your enrollment_code and wait for approval.
+              {/* Prompt display — the backend's onboarding prompt, shown verbatim */}
+              <div className="bg-[#F7F0E0] border border-[#E3D7BC] rounded-md p-4 font-mono text-[12px] text-[#2A2318] whitespace-pre leading-relaxed max-h-80 overflow-auto">
+                {invitePrompt}
               </div>
 
               {/* Actions */}
