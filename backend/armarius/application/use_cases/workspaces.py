@@ -70,12 +70,25 @@ class WorkspaceService:
             ws = await uow.workspaces.get(workspace_id)
             if ws is None:
                 raise LookupError("workspace not found")
+            # Fast path: reject deleting the only workspace up front (friendly error, no
+            # write). This check alone is racy — two concurrent deletes can both read len==2
+            # and proceed (issue #27 TOCTOU) — so we re-verify AFTER the delete below.
             owned = await uow.workspaces.list_by_owner(owner_user_id)
             if len(owned) <= 1:
                 raise ValueError(
                     "You can't delete your only workspace — create another one first."
                 )
             await uow.workspaces.remove(workspace_id)
+            # Re-read inside the same transaction: if the delete just emptied the owner's
+            # last workspace (a concurrent delete slipped past the pre-check), raise so the
+            # UoW rolls back on __aexit__ and undoes the delete. This closes the race on
+            # SQLite (writes serialize) and narrows it sharply on Postgres; a fully airtight
+            # Postgres fix would take SELECT ... FOR UPDATE, deferred until PG is in prod.
+            remaining = await uow.workspaces.list_by_owner(owner_user_id)
+            if not remaining:
+                raise ValueError(
+                    "You can't delete your only workspace — create another one first."
+                )
             await uow.commit()
 
     async def ensure_personal_workspace(self, user: User) -> Workspace:
