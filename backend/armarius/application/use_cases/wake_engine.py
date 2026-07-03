@@ -21,6 +21,7 @@ from uuid import UUID
 from armarius.application.ports.adapter import AdapterRegistry, ExecContext, ExecResult
 from armarius.application.ports.event_bus import EventBus
 from armarius.application.ports.task_trace import TaskTracePublisher
+from armarius.application.use_cases.onboarding import credential_file_for
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.marius import Liveness, Marius
@@ -28,6 +29,7 @@ from armarius.domain.entities.run import Run, RunEvent, RunStatus, WakeSource
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.task import Task, TaskStatus
 from armarius.domain.entities.wakeup import WakeupRequest, WakeupStatus
+from armarius.domain.entities.workspace import Project, Workspace
 from armarius.domain.services.wake_policy import decide_self_wake
 from armarius.domain.services.wake_prompt import (
     DirectoryEntry,
@@ -162,9 +164,11 @@ class WakeEngine:
             session = await uow.sessions.get_for(marius.id, marius.adapter_type, task.id)
             directory = list(await uow.mariuses.list_by_workspace(marius.workspace_id))
             new_messages = await self._new_messages(uow, task, marius)
+            workspace = await uow.workspaces.get(marius.workspace_id)
+            project = await uow.projects.get(task.project_id)
 
             prompt = build_wake_prompt(
-                _wake_context(run, marius, task, directory, new_messages)
+                _wake_context(run, marius, task, directory, new_messages, workspace, project)
             )
 
             run.status = RunStatus.RUNNING
@@ -358,6 +362,8 @@ def _wake_context(
     task: Task,
     directory: Sequence[Marius],
     messages: Sequence[Comment],
+    workspace: Workspace | None = None,
+    project: Project | None = None,
 ) -> WakeContext:
     dir_entries = [
         DirectoryEntry(
@@ -385,4 +391,9 @@ def _wake_context(
         new_messages=thread,
         source=run.wake_source,
         reason=run.trigger_detail,
+        workspace_name=workspace.name if workspace else "",
+        project_name=project.name if project else "",
+        credential_file=(
+            credential_file_for(marius, workspace.name) if workspace else None
+        ),
     )

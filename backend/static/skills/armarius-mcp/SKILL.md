@@ -53,7 +53,8 @@ uvx armarius-mcp                 # run without installing
 ```
 
 Register it (Claude-Code / any `mcpServers` config). Point it at your API and, if you have
-more than one workspace, at the exact credential file for this one:
+more than one workspace, at the exact credential file for this one — your wake prompt's
+"Where you are" section names it:
 
 ```json
 {

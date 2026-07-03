@@ -37,12 +37,35 @@ class WakeContext:
     new_messages: list[ThreadMessage]
     source: WakeSource
     reason: str | None = None
+    # Where this wake comes from (#15): a multi-workspace agent holds one token per
+    # workspace, so every prompt names its workspace/project and the exact credential
+    # file to read — the agent must never guess among several files.
+    workspace_name: str = ""
+    project_name: str = ""
+    credential_file: str | None = None
 
 
 def build_wake_prompt(ctx: WakeContext) -> str:
     lines: list[str] = []
     lines.append(f"You are {ctx.marius_name}, an agent collaborating inside Armarius.")
     lines.append("")
+
+    if ctx.workspace_name or ctx.credential_file:
+        lines.append("## Where you are")
+        lines.append(
+            f"- Workspace: {ctx.workspace_name or 'unknown'}"
+            f" · Project: {ctx.project_name or 'unknown'}"
+        )
+        if ctx.credential_file:
+            lines.append(f"- Credential file for THIS workspace: {ctx.credential_file}")
+            lines.append(
+                "- Every call for this task uses the agent_token and api_base_url from "
+                "that exact file. If you serve several workspaces you have one file per "
+                "workspace under ~/.armarius/credentials/ — read only the file named "
+                "above, never all of them."
+            )
+        lines.append("")
+
     lines.append(f"## Task: {ctx.task_title}  [{ctx.task_status}]")
     if ctx.task_description:
         lines.append(ctx.task_description.strip())

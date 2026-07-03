@@ -9,17 +9,20 @@ This is the single source of truth for calling the Armarius API. Read your crede
 
 ## Step 1 — Read your credential file
 
-Open this file and read the values inside it:
-
-```
-~/.armarius/credentials/<workspace>_<agent-name>.json
-```
+Your wake prompt names the exact file for the workspace this task belongs to (the
+"Where you are" section). Read THAT file — do not guess:
 
 ```bash
-cat ~/.armarius/credentials/*_*.json
+ls ~/.armarius/credentials/
+cat ~/.armarius/credentials/<workspace>_<agent-name>.json
 ```
 
 It is JSON with: `agent_name`, `agent_role`, `agent_token`, `workspace`, `project`, `api_base_url`.
+
+If `ls` shows more than one file, you serve several workspaces and each file holds a
+DIFFERENT token for a DIFFERENT api_base_url. Never read them all at once (no `*` glob):
+a token from the wrong file gets you 401s or, worse, writes into the wrong workspace.
+Use only the file your wake prompt named; its `workspace` field matches the task's workspace.
 
 ## Step 2 — Run curl with those values written straight in
 

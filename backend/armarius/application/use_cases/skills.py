@@ -124,13 +124,25 @@ class SkillService:
 
     # ------------------------------------------------------------------ built-ins
     async def seed_builtins(self, workspace_id: UUID) -> None:
-        """Idempotently ensure each built-in skill exists in the workspace."""
+        """Idempotently ensure each built-in skill exists in the workspace.
+
+        Also ships content updates: when the on-disk SKILL.md changed since this
+        workspace was seeded, the stored copy is refreshed — unless the owner has
+        edited it (update_files sets updated_at; a shipped copy never has one).
+        """
         async with self._uow() as uow:
             changed = False
             for spec in BUILTIN_SKILLS:
-                if await uow.skills.get_by_slug(workspace_id, spec["slug"]) is not None:
-                    continue
                 files = {"SKILL.md": _read_text(spec["file"])}
+                existing = await uow.skills.get_by_slug(workspace_id, spec["slug"])
+                if existing is not None:
+                    if existing.updated_at is None and existing.files != files:
+                        existing.files = files
+                        existing.name = spec["name"]
+                        existing.description = spec["description"]
+                        await uow.skills.update(existing)
+                        changed = True
+                    continue
                 await uow.skills.add(
                     Skill(
                         workspace_id=workspace_id,
