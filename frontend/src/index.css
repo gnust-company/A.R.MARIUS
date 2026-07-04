@@ -114,14 +114,18 @@
     opacity: 0.5;
   }
 
-  /* ─── DropCap illuminated initial ─── */
+  /* ─── DropCap illuminated initial — gilds the FIRST LETTER only ─── */
+  /* Previously the whole element was blown up to 3.5em + floated, so wrapping an
+     entire modal title in `.dropcap` rendered the whole heading at ~98px and spilled
+     it out of the frame (issue #40 — worst in the narrow max-w-md delete dialog).
+     inline-block is required for ::first-letter to take on an otherwise-inline span. */
   .dropcap {
-    font-size: 3.5em;
-    line-height: 0.8;
+    display: inline-block;
+  }
+  .dropcap::first-letter {
+    font-size: 1.6em;
     color: #D4A843;
     text-shadow: 1px 1px 0 rgba(194, 94, 58, 0.3);
-    float: left;
-    margin-right: 12px;
   }
 
   /* ─── Inline illuminated initial (PageTitle) — gilt first letter, no duplication ─── */

@@ -84,7 +84,7 @@ export default function ConfirmDialog({
       }
     >
       <div className="space-y-3">
-        <p className="font-body text-body-md text-ink-light">{message}</p>
+        <p className="font-body text-body-md text-ink-light break-words">{message}</p>
         {error && (
           <div className="flex items-start gap-2 text-[13px] text-[#8A3B22] bg-[#F3D9D0] border border-[#E3C0B2] rounded-md px-3 py-2">
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
