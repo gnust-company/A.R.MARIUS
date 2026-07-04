@@ -77,13 +77,13 @@ async def _require_owned_workspace(container, user, workspace_id: UUID):
 
 
 async def _build_invite(container: ContainerDep, marius, workspace_id: UUID) -> str:
-    """Assemble the invitation prompt for a Marius (workspace + project + skills).
+    """Assemble the invitation prompt for a Marius (workspace connection + skills).
 
-    Carries the **enrollment_code** (enroll-and-wait) until a token has been minted;
-    after approval the prompt would carry the live token instead.
+    Connection-only by design — no project or task loop here (issue #43). Carries the
+    **enrollment_code** (enroll-and-wait) until a token has been minted; after approval
+    the prompt would carry the live token instead.
     """
     ws = await container.workspaces.get_workspace(workspace_id)
-    projects = await container.workspaces.list_projects(workspace_id)
     # effective_skills (not skills.resolve) so the host's seat-granted onboarder
     # playbook shows up in STEP 3 — it is never in skill_ids (#32).
     linked = await effective_skills(container, marius)
@@ -91,7 +91,6 @@ async def _build_invite(container: ContainerDep, marius, workspace_id: UUID) -> 
         marius,
         settings.public_api_url,
         workspace_name=ws.name if ws else "the workspace",
-        project_name=projects[0].name if projects else "the project",
         skills=linked,
         enrollment_code=marius.enrollment_code if marius.agent_token is None else None,
     )
