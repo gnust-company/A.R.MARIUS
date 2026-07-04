@@ -1,6 +1,7 @@
 # ── build stage ───────────────────────────────────────────────────────────
-# Mock-data SPA (React 19 + Vite 7 + Tailwind 3 + shadcn). No backend calls —
-# everything is served from the in-memory mock store, so no build-time API URL.
+# React 19 + Vite 7 + Tailwind 3 + shadcn SPA against the real API. By default the
+# bundle carries NO absolute API URL (same-origin via the nginx proxy below) and
+# mock mode is off; both knobs come from .env through compose build args.
 FROM node:22-alpine AS build
 WORKDIR /app
 
@@ -9,6 +10,11 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
+# Vite reads import.meta.env.VITE_* at build time — bake the .env-provided values.
+ARG VITE_API_BASE=
+ARG VITE_MOCK=false
+ENV VITE_API_BASE=$VITE_API_BASE \
+    VITE_MOCK=$VITE_MOCK
 RUN npm run build
 
 # ── serve stage ───────────────────────────────────────────────────────────
