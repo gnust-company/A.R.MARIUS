@@ -269,6 +269,7 @@ export const en = {
     githubUrlPlaceholder: 'https://github.com/user/repo/tree/main/folder',
     fetching: 'Fetching repository...',
     detectedFiles: 'Detected {{count}} files from',
+    importNote: 'Point at a GitHub folder (or repo) that contains a SKILL.md. The files are fetched and saved only if that succeeds.',
     type: {
       builtin: 'Built-in',
       github: 'GitHub',

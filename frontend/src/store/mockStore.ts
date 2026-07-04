@@ -355,6 +355,7 @@ interface MockStoreState {
   appendTrace: (taskId: string, event: Partial<TraceEvent> & { type: TraceEvent['type']; content: string }) => void
   publishArtifact: (taskId: string, artifact: TaskArtifact) => Promise<void>
   createSkill: (input: Omit<Skill, 'id'> & { id?: string }) => Promise<Skill>
+  importSkill: (url: string, workspaceId?: string) => Promise<Skill>
   updateSkill: (skillId: string, skill: Partial<Skill>) => void
   deleteSkill: (skillId: string) => Promise<void>
   createWorkspace: (workspace: Workspace) => Promise<Workspace>
@@ -1119,9 +1120,9 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   createSkill: async (input) => {
     const workspaceId = input.workspaceId || get().activeWorkspaceId || undefined
     // Real mode: persist manual skills through the backend so they survive an F5 and
-    // carry a real id (the detail route resolves against it). GitHub import has no
-    // backend endpoint yet, so it stays client-side in the fallback below.
-    if (!get().isMock && workspaceId && input.type !== 'github') {
+    // carry a real id (the detail route resolves against it). GitHub imports go through
+    // the dedicated importSkill() path — the backend clones + persists them there.
+    if (!get().isMock && workspaceId) {
       const dto = await api.createManualSkill(workspaceId, {
         name: input.name,
         description: input.description,
@@ -1130,9 +1131,40 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
       set({ skills: [...get().skills, vm] })
       return vm
     }
-    // Mock mode, or a GitHub import in real mode: build it client-side with a real id
-    // so navigation lands on /skills/<id> instead of /skills/undefined.
+    // Mock mode: build it client-side with a real id so navigation lands on /skills/<id>
+    // instead of /skills/undefined.
     const skill: Skill = { ...input, id: input.id ?? `sk_${Date.now()}`, workspaceId }
+    set({ skills: [...get().skills, skill] })
+    return skill
+  },
+
+  importSkill: async (url: string, workspaceId?: string) => {
+    const wsId = workspaceId || get().activeWorkspaceId || undefined
+    // Real mode: the backend actually clones the GitHub folder (detects SKILL.md, pulls
+    // that folder) and persists the skill — so it survives F5 and carries a real id. A
+    // bad URL / missing SKILL.md throws here (the modal surfaces the message); we never
+    // fabricate a placeholder skill (issues #41, #42).
+    if (!get().isMock && wsId) {
+      const dto = await api.importSkill(wsId, url)
+      const vm = skillToVM(dto)
+      set({ skills: [...get().skills, vm] })
+      return vm
+    }
+    // Mock/demo only (no backend to clone from): stand up a minimal skill from the URL so
+    // the frozen demo still navigates. The deployed stack never takes this branch.
+    const seg = url.replace(/\/+$/, '').split('/').pop() || 'imported-skill'
+    const name = seg.replace(/\.(md|markdown)$/i, '') || 'imported-skill'
+    const skill: Skill = {
+      id: `sk_${Date.now()}`,
+      name,
+      description: `Imported from ${url}`,
+      type: 'github',
+      sourceUrl: url,
+      workspaceId: wsId,
+      files: [
+        { id: 'skill-md', name: 'SKILL.md', path: 'SKILL.md', language: 'markdown', content: `---\nname: ${name}\n---\n`, workspaceId: wsId },
+      ],
+    }
     set({ skills: [...get().skills, skill] })
     return skill
   },
@@ -1148,7 +1180,10 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   deleteSkill: async (skillId: string) => {
     const skill = get().skills.find((s) => s.id === skillId)
     const workspaceId = skill?.workspaceId || get().activeWorkspaceId
-    if (!get().isMock && workspaceId) {
+    // Only call the backend for a persisted skill. A client-only id (never saved — e.g. a
+    // stale pre-persistence import) isn't a UUID, so the `{skill_id}` route would 422;
+    // just drop it locally instead (issue #41).
+    if (!get().isMock && workspaceId && !skillId.startsWith('sk_')) {
       await api.deleteSkill(workspaceId, skillId)
     }
     set({ skills: get().skills.filter((s) => s.id !== skillId) })
