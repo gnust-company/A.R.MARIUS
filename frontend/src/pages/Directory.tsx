@@ -376,9 +376,15 @@ export default function Directory() {
   const deleteMarius = useMockStore((s) => s.deleteMarius);
   const designateWorkspaceAgent = useMockStore((s) => s.designateWorkspaceAgent);
   const emitEvent = useMockStore((s) => s.emitEvent);
+  const activeWorkspaceId = useMockStore((s) => s.activeWorkspaceId);
 
   // The sitting host — designating anyone else is a swap and asks for confirmation (#32).
-  const currentHost = useMemo(() => mariuses.find((m) => m.isWorkspaceAgent === true), [mariuses]);
+  // Scoped to the active workspace: the store holds every workspace's mariuses.
+  const currentHost = useMemo(
+    () =>
+      mariuses.find((m) => m.workspaceId === activeWorkspaceId && m.isWorkspaceAgent === true),
+    [mariuses, activeWorkspaceId]
+  );
 
   // ── Rename / delete / designate state ──────────────────────────────────────
   const [editingAgent, setEditingAgent] = useState<Marius | null>(null);
@@ -515,7 +521,11 @@ export default function Directory() {
       // Real endpoint via the store (#32). A sitting host makes this a swap — confirm.
       const agent = useMockStore.getState().mariuses.find((m) => m.id === id);
       if (!agent) return;
-      const host = useMockStore.getState().mariuses.find((m) => m.isWorkspaceAgent === true);
+      const host = useMockStore
+        .getState()
+        .mariuses.find(
+          (m) => m.workspaceId === agent.workspaceId && m.isWorkspaceAgent === true
+        );
       if (host && host.id !== id) {
         setDesignatingAgent(agent);
         return;

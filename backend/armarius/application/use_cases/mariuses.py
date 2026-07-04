@@ -93,6 +93,9 @@ class MariusService:
             )
             is_host = ws is not None and ws.workspace_agent_id == marius.id
             # Role-string fallback covers hosts from before the pointer was wired (#32).
+            # TODO(#32): drop the fallback once live DBs have backfilled the pointer —
+            # kept forever it would shield any Marius whose role string drifted out of
+            # sync with the pointer from deletion.
             if is_host or marius.role == WORKSPACE_AGENT_ROLE:
                 raise ValueError("The Workspace Agent can't be removed.")
             await uow.mariuses.remove(marius_id)

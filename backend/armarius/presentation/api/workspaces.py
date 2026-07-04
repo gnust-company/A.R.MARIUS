@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter
 
 from armarius.application.use_cases.onboarding import build_invite_prompt
+from armarius.presentation.api.agent import effective_skills
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
@@ -83,13 +84,15 @@ async def _build_invite(container: ContainerDep, marius, workspace_id: UUID) -> 
     """
     ws = await container.workspaces.get_workspace(workspace_id)
     projects = await container.workspaces.list_projects(workspace_id)
-    linked = await container.skills.resolve(marius.skill_ids)
+    # effective_skills (not skills.resolve) so the host's seat-granted onboarder
+    # playbook shows up in STEP 3 — it is never in skill_ids (#32).
+    linked = await effective_skills(container, marius)
     return build_invite_prompt(
         marius,
         settings.public_api_url,
         workspace_name=ws.name if ws else "the workspace",
         project_name=projects[0].name if projects else "the project",
-        skills=list(linked),
+        skills=linked,
         enrollment_code=marius.enrollment_code if marius.agent_token is None else None,
     )
 

@@ -107,6 +107,40 @@ async def test_designate_swap_and_host_protection():
         ).status_code == 400
 
 
+async def test_invite_prompt_lists_the_onboarder_for_the_host():
+    """Regression (PR #35 review): the prompt built STEP 3 from skill_ids alone, so a
+    host — whose onboarder grant is the seat, not a link — was told "No skills were
+    linked to you yet" and never installed the playbook."""
+    async with await _client() as c:
+        h, ws_id = await _register(c, "hostprompt@armarius.dev")
+
+        # A plain agent's prompt has no onboarder.
+        bob = await _invite(c, h, ws_id, "Bob")
+        assert "armarius-onboarder" not in bob["invite"]
+
+        # Invited straight into the seat → the prompt installs the playbook.
+        alice = await _invite(c, h, ws_id, "Alice", is_workspace_agent=True)
+        assert "armarius-onboarder" in alice["invite"]
+        assert "No skills were linked" not in alice["invite"]
+
+        # The grant moves with the seat: after a swap, a rebuilt (PATCH) prompt gains
+        # the onboarder for the new host and loses it for the demoted one.
+        r = await c.post(
+            f"/v1/workspaces/{ws_id}/mariuses/{bob['id']}/designate", headers=h
+        )
+        assert r.status_code == 200, r.text
+        rebuilt = {
+            m["id"]: (
+                await c.patch(
+                    f"/v1/workspaces/{ws_id}/mariuses/{m['id']}", headers=h, json={}
+                )
+            ).json()["invite"]
+            for m in (bob, alice)
+        }
+        assert "armarius-onboarder" in rebuilt[bob["id"]]
+        assert "armarius-onboarder" not in rebuilt[alice["id"]]
+
+
 async def test_onboarder_skill_is_granted_by_the_seat_not_a_link():
     async with await _client() as c:
         h, ws_id = await _register(c, "seatskill@armarius.dev")
