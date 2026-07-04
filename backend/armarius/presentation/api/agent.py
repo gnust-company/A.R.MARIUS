@@ -77,9 +77,10 @@ async def whoami(marius: CurrentMarius, container: ContainerDep) -> dict:
 
 
 # ── skill install (fetch the full file tree of your linked skills) ───────────
-async def _my_skills(container, marius) -> list:
+async def effective_skills(container, marius) -> list:
     """Linked skills, plus the onboarder playbook iff this Marius is the workspace's
-    host (#32) — the seat is the grant, so the skill is never linked via skill_ids."""
+    host (#32) — the seat is the grant, so the skill is never linked via skill_ids.
+    Shared with the invite builder so the prompt lists exactly what these routes serve."""
     skills = list(await container.skills.resolve(marius.skill_ids))
     onboarder = await container.workspace_agent.onboarder_skill_for(marius)
     if onboarder is not None and all(sk.slug != onboarder.slug for sk in skills):
@@ -93,7 +94,7 @@ async def list_my_skills(
 ) -> list[AgentSkillSummary]:
     """The skills linked to you — slug + file count. Fetch each one's full file tree
     from GET /agent/skills/{slug} and write it under your runtime's skills directory."""
-    linked = await _my_skills(container, marius)
+    linked = await effective_skills(container, marius)
     return [
         AgentSkillSummary(
             slug=sk.slug,
@@ -111,7 +112,7 @@ async def get_my_skill_bundle(
 ) -> AgentSkillBundleOut:
     """One linked skill's complete file tree (path → content). 404 if the slug is not
     linked to you — you can only install skills your patron granted you."""
-    linked = await _my_skills(container, marius)
+    linked = await effective_skills(container, marius)
     for sk in linked:
         if sk.slug == slug:
             return AgentSkillBundleOut(

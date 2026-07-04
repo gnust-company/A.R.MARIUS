@@ -99,7 +99,13 @@ class WorkspaceAgentService:
     async def designate(self, workspace_id: UUID, marius_id: UUID) -> Marius:
         """Hand the host seat to this Marius. Any sitting host is demoted to a plain
         agent — role cleared, token/tasks untouched — never revoked (#32). Idempotent
-        when the Marius already holds the seat."""
+        when the Marius already holds the seat.
+
+        Read-modify-write without row locking: two concurrent designates can both see
+        the same sitting host and the pointer goes to whichever commits last. Since the
+        pointer is the source of truth the seat stays consistent; the loser is only
+        left with a stale "Workspace Agent" role string. Same deferral as the #27
+        delete guard — SELECT ... FOR UPDATE once Postgres is in prod."""
         onboarder = await self._ensure_onboarder_skill(workspace_id)
         now = utcnow()
         async with self._uow() as uow:
