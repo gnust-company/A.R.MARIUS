@@ -190,6 +190,20 @@ function AgentCard({
             </div>
           </div>
 
+          {/* Delete — a visible affordance (not buried in the ⋯ menu) so removing an
+              agent is discoverable, matching the workspace/skill cards (#44). The
+              Workspace Agent is system-managed and can't be deleted here. */}
+          {agent.isWorkspaceAgent !== true && (
+            <button
+              onClick={() => onDelete(agent)}
+              className="p-1.5 rounded-md text-ink-muted hover:text-[#C0492B] hover:bg-[#F3D9D0] transition-colors"
+              aria-label={t('directory.actions.delete')}
+              title={t('directory.actions.delete')}
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+
           {/* Menu button */}
           <div className="relative">
             <button
@@ -233,16 +247,6 @@ function AgentCard({
                         <Pencil className="w-3.5 h-3.5" /> {t('directory.actions.edit')}
                       </span>
                     </button>
-                    {agent.isWorkspaceAgent !== true && (
-                      <button
-                        onClick={() => { onDelete(agent); setMenuOpen(false); }}
-                        className="w-full text-left px-3 py-2 text-[13px] text-[#C0492B] hover:bg-[#F3D9D0] transition-colors"
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <Trash2 className="w-3.5 h-3.5" /> {t('directory.actions.delete')}
-                        </span>
-                      </button>
-                    )}
                   </motion.div>
                 </>
               )}
