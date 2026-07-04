@@ -75,11 +75,16 @@ def build_invite_prompt(
     public_base_url: str,
     *,
     workspace_name: str = "the workspace",
-    project_name: str = "the project",
     skills: list[Skill] | None = None,
     enrollment_code: str | None = None,
 ) -> str:
-    """Build the invitation prompt with credential storage + per-skill install steps.
+    """Build the invitation prompt: connect to the workspace, then install skills.
+
+    Inviting an agent to a workspace is *only* a connection step — prove the agent can
+    reach the API with its own token and install the skills it has been granted. There is
+    deliberately no project and no task loop here: real work happens later, in a separate
+    wake session that carries its own full context, so nothing from this prompt needs to
+    be remembered (issue #43).
 
     Enroll-and-wait (API_CONTRACT §4.1): when `enrollment_code` is given, the prompt
     carries the **code** (never a token) and tells the agent to POST `/agent/enroll`
@@ -92,6 +97,15 @@ def build_invite_prompt(
     safe_name = marius.name.replace('"', '\\"')
     safe_role = marius.role.replace('"', '\\"')
     skill_block = _skill_block(skills, base)
+
+    # Build the banner programmatically so the box stays aligned regardless of title.
+    _w = 76
+    _title = "ARMARIUS · WORKSPACE CONNECTION"
+    banner = (
+        "╔" + "═" * _w + "╗\n"
+        "║  " + _title.ljust(_w - 2) + "║\n"
+        "╚" + "═" * _w + "╝"
+    )
 
     if enrollment_code:
         token = "<the agent_token returned by your enroll call>"
@@ -119,17 +133,17 @@ Notes:
         token = marius.agent_token or "<token>"
         enroll_step = ""
 
-    return f"""╔══════════════════════════════════════════════════════════════════════════╗
-║  ARMARIUS · AGENT ONBOARDING                                               ║
-╚══════════════════════════════════════════════════════════════════════════╝
+    return f"""{banner}
 
-You are "{safe_name}", joining the "{workspace_name}" workspace as its {safe_role}
-(project: {project_name}).
+You are "{safe_name}", connecting to the "{workspace_name}" workspace as {safe_role}.
 
-Armarius is a shared workshop where agents and humans collaborate on tasks. You will
-be woken with a task, its thread, and a directory of teammates. The loop is always:
-read the task → do the work → talk to teammates (@mention) → publish an artifact →
-update status → record your next action. This document gets you set up to do that.
+Armarius is a shared workshop where agents and humans collaborate. This message is a
+ONE-TIME setup: it connects you to the workspace and installs the skills you have been
+granted — nothing more. You are joining as an available worker in the pool.
+
+There is no task here and nothing to remember afterwards. When there is work for you,
+you will be woken in a SEPARATE session that carries the task, its thread, your
+teammates, and everything else you need. For now, just get connected.
 
 Work through the steps IN ORDER. Each one has a single clear check before the next.
 
@@ -148,7 +162,6 @@ Contents:
     "agent_role": "{safe_role}",
     "agent_token": "{token}",
     "workspace": "{workspace_name}",
-    "project": "{project_name}",
     "api_base_url": "{base}"
   }}
 
@@ -163,7 +176,7 @@ Verify the token works before doing anything else:
   GET {base}/agent/me
   Authorization: Bearer <your token>
 
-  → 200 with your profile + the teammate directory = you are in.
+  → 200 with your profile + the teammate directory = you are connected.
   → 401 = the token is wrong; re-check STEP 1 (or re-run STEP 0 / claim).
 
 ───────────────────────────────────────────────────────────────────────────
@@ -172,24 +185,8 @@ STEP 3 · INSTALL YOUR SKILLS
 
 {skill_block}
 ───────────────────────────────────────────────────────────────────────────
-STEP 4 · WORK THE LOOP  (reference)
-───────────────────────────────────────────────────────────────────────────
 
-Your installed skill(s) explain these in full; the endpoints, for reference:
-
-  GET  {base}/agent/me                          who you are + the directory
-  GET  {base}/agent/tasks/{{task_id}}             brief + thread + artifacts
-  POST {base}/agent/tasks/{{task_id}}/claim       take the task, start working
-  POST {base}/agent/tasks/{{task_id}}/comment     {{"body": "... @Name ..."}}
-  POST {base}/agent/tasks/{{task_id}}/status      {{"status": "in_progress|in_review|...", "reason": "..."}}
-  POST {base}/agent/tasks/{{task_id}}/next-action {{"next_action": "what you'll do next"}}
-  POST {base}/agent/tasks/{{task_id}}/artifact    {{"name": "...", "kind": "file|patch|note|link", "content": "..."}}
-
-RULES OF THE WORKSHOP
-  1. A task only moves to review/done AFTER you publish an artifact.
-  2. @mention a teammate in a comment to wake them.
-  3. Always record a next_action before you stop, so work can resume.
-  4. Re-read your credential file for the current api_base_url before a session.
-
-You task. They collaborate. You trace.
+That is it — you are connected to "{workspace_name}" and your skills are installed.
+Nothing else to do now: wait to be woken with a task in its own session, where your
+installed skills take over.
 """

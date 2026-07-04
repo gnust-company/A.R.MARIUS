@@ -100,6 +100,12 @@ async def test_provision_agent_links_skill_and_invite_has_steps():
     assert "~/.armarius/credentials/" in data["invite"]
     # Skills install via the agent bundle endpoint (no more "(no source URL)" dead end).
     assert "/agent/skills/armarius-http" in data["invite"]
+    # Connection-only invite (#43): no project context, and no task-loop STEP 4 — work
+    # happens later in a separate wake session that carries its own context.
+    assert '"project"' not in data["invite"]
+    assert "project:" not in data["invite"]
+    assert "STEP 4" not in data["invite"]
+    assert "WORK THE LOOP" not in data["invite"]
 
 
 async def test_edit_agent_updates_skills():
