@@ -435,6 +435,13 @@ export async function createManualSkill(
   return post<SkillDTO>(`/v1/workspaces/${workspaceId}/skills/manual`, body)
 }
 
+export async function importSkill(workspaceId: string, sourceUrl: string): Promise<SkillDTO> {
+  // The backend clones the GitHub folder (detects SKILL.md, pulls that folder) and
+  // persists the skill in one call — throws (404 with a detail message) on a bad URL
+  // or a folder with no SKILL.md, so nothing is created unless the fetch succeeded.
+  return post<SkillDTO>(`/v1/workspaces/${workspaceId}/skills/import`, { source_url: sourceUrl })
+}
+
 export async function deleteSkill(workspaceId: string, skillId: string): Promise<void> {
   return del(`/v1/workspaces/${workspaceId}/skills/${skillId}`)
 }

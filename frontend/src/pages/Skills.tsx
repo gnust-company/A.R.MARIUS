@@ -13,6 +13,7 @@ import {
   Loader2,
   ChevronRight,
   Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { useMockStore } from '@/store/mockStore';
 import type { Skill } from '@/store/mockStore';
@@ -72,6 +73,7 @@ export default function Skills() {
   const { t } = useTranslation();
   const skills = useMockStore((s) => s.skills);
   const createSkill = useMockStore((s) => s.createSkill);
+  const importSkill = useMockStore((s) => s.importSkill);
   const deleteSkill = useMockStore((s) => s.deleteSkill);
 
   // Skill pending deletion (confirm before removing).
@@ -88,8 +90,7 @@ export default function Skills() {
   const [skillDesc, setSkillDesc] = useState('');
   const [githubUrl, setGithubUrl] = useState('');
   const [creating, setCreating] = useState(false);
-  const [importStep, setImportStep] = useState<'input' | 'preview'>('input');
-  const [importedFiles, setImportedFiles] = useState<{ path: string; content: string; language: string }[]>([]);
+  const [importError, setImportError] = useState<string | null>(null);
 
   // ── Filter Skills ──────────────────────────────────────────────────────────
   const filteredSkills = useMemo(() => {
@@ -119,8 +120,7 @@ export default function Skills() {
     setSkillName('');
     setSkillDesc('');
     setGithubUrl('');
-    setImportStep('input');
-    setImportedFiles([]);
+    setImportError(null);
     setCreateModalOpen(true);
   };
 
@@ -147,34 +147,22 @@ export default function Skills() {
     }
   };
 
-  const handleImport = () => {
+  // Import = the backend really clones the GitHub folder and persists the skill. A bad
+  // URL or a folder with no SKILL.md throws (surfaced inline); nothing is created unless
+  // the fetch succeeded — no fabricated template (issues #41, #42).
+  const handleImport = async () => {
     if (!githubUrl.trim()) return;
     setCreating(true);
-    setTimeout(() => {
-      // Simulate GitHub fetch
-      const files = [
-        { path: 'SKILL.md', content: `# ${skillName || 'Imported Skill'}\n\n## Overview\n\nImported from GitHub.\n`, language: 'markdown' },
-        { path: 'src/index.ts', content: '// Auto-generated\nexport {};\n', language: 'typescript' },
-        { path: 'README.md', content: `# README\n\nImported from ${githubUrl}\n`, language: 'markdown' },
-      ];
-      setImportedFiles(files);
-      setImportStep('preview');
+    setImportError(null);
+    try {
+      const newSkill = await importSkill(githubUrl.trim(), workspaceId);
+      setCreateModalOpen(false);
+      if (newSkill?.id) navigate(wsHref(workspaceId, `/skills/${newSkill.id}`));
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : String(e));
+    } finally {
       setCreating(false);
-    }, 1200);
-  };
-
-  const handleConfirmImport = async () => {
-    if (importedFiles.length === 0) return;
-    const name = skillName.trim() || githubUrl.split('/').pop() || 'imported-skill';
-    const newSkill = await createSkill({
-      name: name.toLowerCase().replace(/\s+/g, '-'),
-      description: skillDesc.trim() || `Imported from ${githubUrl}`,
-      type: 'github',
-      sourceUrl: githubUrl.trim(),
-      files: importedFiles,
-    });
-    setCreateModalOpen(false);
-    if (newSkill?.id) navigate(wsHref(workspaceId, `/skills/${newSkill.id}`));
+    }
   };
 
   const handleSkillClick = (skillId: string) => {
@@ -396,7 +384,7 @@ export default function Skills() {
                 {t('skills.createSkill')}
               </button>
             </>
-          ) : importStep === 'input' ? (
+          ) : (
             <>
               <button
                 onClick={() => setCreateModalOpen(false)}
@@ -416,21 +404,6 @@ export default function Skills() {
               >
                 {creating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 {t('skills.import')}
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={() => setImportStep('input')}
-                className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC] transition-colors"
-              >
-                {t('common.back')}
-              </button>
-              <button
-                onClick={handleConfirmImport}
-                className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#C25E3A] text-white hover:bg-[#D97B5A] transition-colors"
-              >
-                {t('skills.confirmImport')}
               </button>
             </>
           )
@@ -477,7 +450,7 @@ export default function Skills() {
               {t('skills.manualNote')}
             </p>
           </div>
-        ) : importStep === 'input' ? (
+        ) : (
           <div className="space-y-4">
             <div>
               <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
@@ -486,7 +459,8 @@ export default function Skills() {
               <input
                 type="text"
                 value={githubUrl}
-                onChange={(e) => setGithubUrl(e.target.value)}
+                onChange={(e) => { setGithubUrl(e.target.value); setImportError(null); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !creating) handleImport(); }}
                 placeholder={t('skills.githubUrlPlaceholder')}
                 className={cn(
                   'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
@@ -496,6 +470,7 @@ export default function Skills() {
                 )}
                 autoFocus
               />
+              <p className="mt-1.5 text-[11px] text-[#A89880]">{t('skills.importNote')}</p>
             </div>
             {creating && (
               <motion.div
@@ -507,30 +482,12 @@ export default function Skills() {
                 {t('skills.fetching')}
               </motion.div>
             )}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <p className="text-[13px] text-[#6B5E4E]">
-              {t('skills.detectedFiles', { count: importedFiles.length })}{' '}
-              <span className="text-[#C25E3A] font-mono text-[12px]">{githubUrl}</span>:
-            </p>
-            <div className="bg-[#F7F0E0] border border-[#E3D7BC] rounded-md overflow-hidden">
-              {importedFiles.map((f, i) => (
-                <div
-                  key={f.path}
-                  className={cn(
-                    'flex items-center gap-2 px-3 py-2 text-[13px] font-mono text-[#2A2318]',
-                    i < importedFiles.length - 1 && 'border-b border-[#E3D7BC]'
-                  )}
-                >
-                  <FileText className="w-3.5 h-3.5 text-[#A89880] flex-shrink-0" />
-                  <span className="truncate">{f.path}</span>
-                  <span className="ml-auto text-[11px] text-[#A89880] flex-shrink-0">
-                    {f.language}
-                  </span>
-                </div>
-              ))}
-            </div>
+            {importError && (
+              <div className="flex items-start gap-2 text-[13px] text-[#8A3B22] bg-[#F3D9D0] border border-[#E3C0B2] rounded-md px-3 py-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>{importError}</span>
+              </div>
+            )}
           </div>
         )}
       </Modal>

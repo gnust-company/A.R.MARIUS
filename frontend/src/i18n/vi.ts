@@ -269,6 +269,7 @@ export const vi = {
     githubUrlPlaceholder: 'https://github.com/user/repo/tree/main/folder',
     fetching: 'Đang tải kho lưu trữ...',
     detectedFiles: 'Phát hiện {{count}} tệp từ',
+    importNote: 'Trỏ tới một thư mục (hoặc repo) GitHub có chứa tệp SKILL.md. Các tệp chỉ được tải về và lưu lại khi việc này thành công.',
     type: {
       builtin: 'Tích hợp sẵn',
       github: 'GitHub',
