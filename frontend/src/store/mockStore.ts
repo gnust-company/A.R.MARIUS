@@ -1261,7 +1261,14 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     if (!get().isMock && workspaceId) {
       await api.deleteMarius(workspaceId, mariusId)
     }
-    set({ mariuses: get().mariuses.filter((x) => x.id !== mariusId) })
+    set({
+      mariuses: get().mariuses.filter((x) => x.id !== mariusId),
+      // If the deleted agent held the Workspace Agent seat, vacate the pointer so the
+      // WA badge clears immediately — the backend does the same on its side (#50).
+      workspaces: get().workspaces.map((w) =>
+        w.workspaceAgentId === mariusId ? { ...w, workspaceAgentId: undefined } : w,
+      ),
+    })
   },
 
   setActiveWorkspace: (workspaceId: string) => {
