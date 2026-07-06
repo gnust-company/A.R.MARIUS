@@ -108,6 +108,27 @@ async def test_provision_agent_links_skill_and_invite_has_steps():
     assert "WORK THE LOOP" not in data["invite"]
 
 
+async def test_inviting_agent_does_not_create_a_project():
+    """#49: inviting an agent is a connection step (#43) — it must NOT conjure a
+    "General" project. New workspaces stay empty until the patron commissions one."""
+    async with await _client() as c:
+        token, ws_id = await _register(c, "noproj@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        before = (await c.get(f"/v1/workspaces/{ws_id}/projects", headers=h)).json()
+        assert before == []
+
+        created = await c.post(
+            f"/v1/workspaces/{ws_id}/mariuses",
+            headers=h,
+            json={"name": "Marin", "role": "Backend", "skills": [],
+                  "skill_ids": [], "adapter_type": "echo", "adapter_config": {}},
+        )
+        assert created.status_code == 201, created.text
+
+        after = (await c.get(f"/v1/workspaces/{ws_id}/projects", headers=h)).json()
+    assert after == []  # still no project after inviting an agent
+
+
 async def test_edit_agent_updates_skills():
     async with await _client() as c:
         token, ws_id = await _register(c, "edit@armarius.dev")
