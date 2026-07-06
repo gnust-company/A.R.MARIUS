@@ -300,21 +300,37 @@ async def test_delete_marius():
     assert all(m["id"] != marius_id for m in directory)
 
 
-async def test_delete_workspace_agent_is_rejected():
+async def test_delete_workspace_agent_vacates_the_seat():
+    """#50: the Workspace Agent is just a flag, not a protected system agent — it can be
+    deleted, and doing so clears the workspace's host pointer (nothing dangles)."""
     async with await _client() as c:
         token, ws_id = await _register(c, "mwa@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
-        # A Marius whose role is the Workspace Agent role is system-managed.
+
+        # Invite an agent AND seat it as the Workspace Agent (sets the host pointer).
         created = await c.post(
             f"/v1/workspaces/{ws_id}/mariuses",
             headers=h,
-            json={"name": "Host", "role": "Workspace Agent", "skills": [], "skill_ids": [],
-                  "adapter_type": "echo", "adapter_config": {}},
+            json={"name": "Host", "role": "Backend", "skills": [], "skill_ids": [],
+                  "adapter_type": "echo", "adapter_config": {}, "is_workspace_agent": True},
         )
         marius_id = created.json()["id"]
+
+        before = next(
+            w for w in (await c.get("/v1/workspaces", headers=h)).json() if w["id"] == ws_id
+        )
+        assert before["workspace_agent_id"] == marius_id  # seated
+
+        # Delete the host — allowed now (#50).
         r = await c.delete(f"/v1/workspaces/{ws_id}/mariuses/{marius_id}", headers=h)
-    assert r.status_code == 400
-    assert "Workspace Agent" in r.json()["detail"]
+        assert r.status_code == 204, r.text
+
+        directory = (await c.get(f"/v1/workspaces/{ws_id}/mariuses", headers=h)).json()
+        assert all(m["id"] != marius_id for m in directory)  # gone from the roster
+        after = next(
+            w for w in (await c.get("/v1/workspaces", headers=h)).json() if w["id"] == ws_id
+        )
+    assert after["workspace_agent_id"] is None  # seat vacated
 
 
 async def test_delete_marius_missing_is_404():

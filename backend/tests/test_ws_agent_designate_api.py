@@ -71,7 +71,7 @@ async def _pointer(c: AsyncClient, h: dict, ws_id: str) -> str | None:
     return next(w for w in ws.json() if w["id"] == ws_id)["workspace_agent_id"]
 
 
-async def test_designate_swap_and_host_protection():
+async def test_designate_swap_and_host_deletion():
     async with await _client() as c:
         h, ws_id = await _register(c, "designate@armarius.dev")
         assert await _pointer(c, h, ws_id) is None  # fresh workspace: no host yet
@@ -84,10 +84,6 @@ async def test_designate_swap_and_host_protection():
         assert r.json()["role"] == "Workspace Agent"
         assert await _pointer(c, h, ws_id) == bob["id"]
 
-        # The sitting host is protected from deletion.
-        r = await c.delete(f"/v1/workspaces/{ws_id}/mariuses/{bob['id']}", headers=h)
-        assert r.status_code == 400, r.text
-
         # Invite-with-checkbox seats the newcomer and demotes Bob — kept, not revoked.
         alice = await _invite(c, h, ws_id, "Alice", is_workspace_agent=True)
         assert alice["role"] == "Workspace Agent"
@@ -98,13 +94,15 @@ async def test_designate_swap_and_host_protection():
         demoted = next(m for m in directory if m["id"] == bob["id"])
         assert demoted["role"] == ""
 
-        # Roles swapped with the seat: Bob is now a plain agent (deletable), Alice is not.
+        # Both are deletable now (#50): the demoted agent goes quietly, and deleting the
+        # sitting host (Alice) simply vacates the seat — no protection error.
         assert (
             await c.delete(f"/v1/workspaces/{ws_id}/mariuses/{bob['id']}", headers=h)
         ).status_code == 204
         assert (
             await c.delete(f"/v1/workspaces/{ws_id}/mariuses/{alice['id']}", headers=h)
-        ).status_code == 400
+        ).status_code == 204
+        assert await _pointer(c, h, ws_id) is None  # host deletion vacated the seat
 
 
 async def test_invite_prompt_lists_the_onboarder_for_the_host():

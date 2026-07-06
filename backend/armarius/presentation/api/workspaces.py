@@ -240,7 +240,8 @@ async def designate_workspace_agent(
 async def delete_marius(
     workspace_id: UUID, marius_id: UUID, container: ContainerDep, user: CurrentUser
 ) -> None:
-    """Remove an agent from the directory (the Workspace Agent is protected)."""
+    """Remove an agent from the directory. The Workspace Agent can be removed too —
+    doing so just vacates its host seat (#50)."""
     await _require_owned_workspace(container, user, workspace_id)
     marius = await container.mariuses.get(marius_id)
     if marius is None or marius.workspace_id != workspace_id:

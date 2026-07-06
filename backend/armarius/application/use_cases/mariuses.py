@@ -7,7 +7,6 @@ from collections.abc import Sequence
 from uuid import UUID
 
 from armarius.application.use_cases.types import UowFactory
-from armarius.application.use_cases.workspace_agent import WORKSPACE_AGENT_ROLE
 from armarius.domain.entities.marius import Marius
 from armarius.shared.clock import utcnow
 
@@ -80,8 +79,14 @@ class MariusService:
             return updated
 
     async def delete(self, marius_id: UUID) -> None:
-        """Remove a Marius from the directory. The Workspace Agent is system-managed
-        (it hosts onboarding and is re-created on demand) so it can't be deleted here."""
+        """Remove a Marius from the directory.
+
+        The Workspace Agent is just a flag (#50), not a protected system agent — it can
+        be deleted like any other. When the host is removed, vacate the workspace's
+        `workspace_agent_id` pointer so nothing dangles at a deleted Marius; workspace-
+        level features that want a host fall back to manual until one is re-designated
+        (a host is also re-created lazily on demand by `ensure_workspace_agent`).
+        """
         async with self._uow() as uow:
             marius = await uow.mariuses.get(marius_id)
             if marius is None:
@@ -91,13 +96,9 @@ class MariusService:
                 if marius.workspace_id
                 else None
             )
-            is_host = ws is not None and ws.workspace_agent_id == marius.id
-            # Role-string fallback covers hosts from before the pointer was wired (#32).
-            # TODO(#32): drop the fallback once live DBs have backfilled the pointer —
-            # kept forever it would shield any Marius whose role string drifted out of
-            # sync with the pointer from deletion.
-            if is_host or marius.role == WORKSPACE_AGENT_ROLE:
-                raise ValueError("The Workspace Agent can't be removed.")
+            if ws is not None and ws.workspace_agent_id == marius.id:
+                ws.workspace_agent_id = None
+                await uow.workspaces.update(ws)
             await uow.mariuses.remove(marius_id)
             await uow.commit()
 
