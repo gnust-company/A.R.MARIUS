@@ -129,6 +129,56 @@ async def test_inviting_agent_does_not_create_a_project():
     assert after == []  # still no project after inviting an agent
 
 
+async def test_directory_exposes_invite_status_and_flips_pending_on_enroll():
+    """#51: the directory list carries invite_status, and an agent that enrolls flips to
+    pending_review there — so the owner can SEE and approve it while the enroll call holds
+    (previously the directory only exposed liveness, so a pending agent looked offline)."""
+    async with await _client() as c:
+        token, ws_id = await _register(c, "pending@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        created = (
+            await c.post(
+                f"/v1/workspaces/{ws_id}/mariuses",
+                headers=h,
+                json={"name": "Knocker", "role": "Backend", "skills": [],
+                      "skill_ids": [], "adapter_type": "echo", "adapter_config": {}},
+            )
+        ).json()
+        mid, code = created["id"], created["enrollment_code"]
+
+        # Freshly invited → the directory shows invite_status "invited".
+        directory = (await c.get(f"/v1/workspaces/{ws_id}/mariuses", headers=h)).json()
+        assert next(m for m in directory if m["id"] == mid)["invite_status"] == "invited"
+
+        # The agent enrolls; the call HOLDS. Poll the directory until it shows pending_review.
+        enroll_task = asyncio.create_task(
+            c.post("/agent/enroll", json={"marius_id": mid, "enrollment_code": code})
+        )
+        try:
+            for _ in range(100):
+                directory = (
+                    await c.get(f"/v1/workspaces/{ws_id}/mariuses", headers=h)
+                ).json()
+                if next(m for m in directory if m["id"] == mid)["invite_status"] == (
+                    "pending_review"
+                ):
+                    break
+                await asyncio.sleep(0.02)
+            else:
+                raise AssertionError("agent never reached pending_review in the directory")
+
+            # Approving the pending agent completes the held enroll with a real token.
+            approved = await c.post(
+                f"/v1/workspaces/{ws_id}/mariuses/{mid}/approve", headers=h
+            )
+            assert approved.status_code == 200, approved.text
+            enrolled = await asyncio.wait_for(enroll_task, timeout=10)
+            assert enrolled.status_code == 200, enrolled.text
+            assert enrolled.json()["agent_token"]
+        finally:
+            enroll_task.cancel()
+
+
 async def test_edit_agent_updates_skills():
     async with await _client() as c:
         token, ws_id = await _register(c, "edit@armarius.dev")

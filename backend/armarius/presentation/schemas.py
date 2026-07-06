@@ -269,6 +269,9 @@ class MariusOut(_Out):
     skill_ids: list[str] = Field(default_factory=list)
     adapter_type: str
     liveness: str
+    # Invite lifecycle (invited → pending_review → approved). Exposed so the directory
+    # can surface an agent that has enrolled and is awaiting approval (#51).
+    invite_status: str | None = None
     last_seen_at: datetime | None = None
     created_at: datetime | None = None
 

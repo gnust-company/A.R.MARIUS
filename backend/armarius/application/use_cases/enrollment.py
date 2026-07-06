@@ -16,11 +16,23 @@ from __future__ import annotations
 import asyncio
 import secrets
 from collections.abc import Callable
+from typing import Protocol
 from uuid import UUID
 
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.marius import InviteStatus, Marius
 from armarius.shared.clock import utcnow
+
+
+class StatusNotifier(Protocol):
+    """Publishes a workspace control-plane event (structurally the TopicEventBus).
+
+    Typed here as a Protocol so the application layer stays decoupled from the concrete
+    SSE bus — the route publishes `invited`/`approved`, but the `pending_review` hop
+    happens *inside* the held `enroll` call, so the service emits that one itself (#51).
+    """
+
+    async def publish(self, topic: str, type: str, data: dict) -> int: ...
 
 
 class EnrollmentError(Exception):
@@ -42,10 +54,12 @@ class EnrollmentService:
         *,
         token_factory: Callable[[], str] = _default_token,
         code_factory: Callable[[], str] = _default_code,
+        control_bus: StatusNotifier | None = None,
     ) -> None:
         self._uow = uow_factory
         self._mint_token = token_factory
         self._mint_code = code_factory
+        self._control_bus = control_bus
         self._pending: dict[UUID, asyncio.Future[str]] = {}
 
     # ── invite ──────────────────────────────────────────────────────────────────
@@ -104,6 +118,16 @@ class EnrollmentService:
             marius.updated_at = utcnow()
             await uow.mariuses.update(marius)
             await uow.commit()
+            workspace_id = marius.workspace_id
+        # Announce the knock BEFORE holding, so the Patron's inbox/directory surfaces the
+        # approval right away instead of the enroll call hanging invisibly (#51). The
+        # route can't publish this hop — it's blocked inside `await future` below.
+        if self._control_bus is not None and workspace_id is not None:
+            await self._control_bus.publish(
+                f"ws:{workspace_id}",
+                "marius.status_changed",
+                {"marius_id": str(marius_id), "status": "pending_review"},
+            )
         return await future
 
     async def approve(

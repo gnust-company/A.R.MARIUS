@@ -38,6 +38,37 @@ async def test_invite_creates_invited_marius_without_token() -> None:
     assert m.enrollment_code
 
 
+class _RecordingBus:
+    """Structural StatusNotifier: records what enroll publishes."""
+
+    def __init__(self) -> None:
+        self.published: list[tuple[str, str, dict]] = []
+
+    async def publish(self, topic: str, type: str, data: dict) -> int:
+        self.published.append((topic, type, data))
+        return 1
+
+
+async def test_enroll_publishes_pending_review_event() -> None:
+    """#51: the enroll call announces pending_review on the workspace bus BEFORE holding,
+    so the Patron's UI can surface the approval instead of the call hanging invisibly."""
+    factory, ws = _factory_with_workspace()
+    bus = _RecordingBus()
+    svc = EnrollmentService(factory, control_bus=bus)
+    m = await svc.invite(ws.id, "Marin", "Backend")
+
+    held = asyncio.create_task(svc.enroll(m.id, m.enrollment_code))
+    assert await _wait_until(lambda: bool(bus.published))
+    assert bus.published[0] == (
+        f"ws:{ws.id}",
+        "marius.status_changed",
+        {"marius_id": str(m.id), "status": "pending_review"},
+    )
+
+    await svc.approve(m.id)
+    await asyncio.wait_for(held, timeout=1)
+
+
 async def test_enroll_blocks_until_approved_then_returns_token() -> None:
     factory, ws = _factory_with_workspace()
     svc = EnrollmentService(factory)
