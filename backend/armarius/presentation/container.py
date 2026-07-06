@@ -126,7 +126,7 @@ def build_container() -> Container:
         workspace_agent=workspace_agent,
         projects=projects,
         onboarding=onboarding,
-        enrollment=EnrollmentService(uow_factory),
+        enrollment=EnrollmentService(uow_factory, control_bus=control_bus),
         commission=CommissionService(uow_factory, wake_engine),
         liveness=liveness,
         liveness_watchdog=liveness_watchdog,
