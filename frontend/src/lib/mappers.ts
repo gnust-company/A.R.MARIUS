@@ -144,12 +144,27 @@ export function projectDetailToVM(dto: ProjectDetailDTO): Project {
 
 // ── Marius ──────────────────────────────────────────────────────────────────────────────
 
+/** Pre-approval, the invite lifecycle wins — an invited/pending agent has no
+ *  meaningful liveness yet. Once approved, its status follows liveness (#51). */
+function agentStatusFor(dto: MariusDTO): AgentStatus {
+  switch (dto.invite_status) {
+    case 'invited':
+      return 'invited'
+    case 'pending_review':
+      return 'pending'
+    case 'revoked':
+      return 'revoked'
+    default: // 'approved' or unset → follow liveness
+      return livenessToAgentStatus(dto.liveness)
+  }
+}
+
 export function mariusToVM(dto: MariusDTO): Marius {
   return {
     id: dto.id,
     name: dto.name,
     role: dto.role,
-    status: livenessToAgentStatus(dto.liveness),
+    status: agentStatusFor(dto),
     workspaceId: dto.workspace_id ?? '',
     projectIds: [], // populated by the frontend from roster grants
     skills: dto.skills,

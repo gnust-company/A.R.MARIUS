@@ -224,6 +224,8 @@ export interface MariusDTO {
   skill_ids: string[]
   adapter_type: string
   liveness: string
+  /** Invite lifecycle: invited → pending_review → approved (#51). */
+  invite_status?: string | null
   last_seen_at?: string | null
   created_at?: string | null
 }

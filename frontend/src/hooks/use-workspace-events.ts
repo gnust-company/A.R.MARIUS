@@ -12,6 +12,7 @@ import { useMockStore, type AgentStatus } from '@/store/mockStore'
 function statusToAgent(status: string): AgentStatus {
   if (status === 'approved') return 'online'
   if (status === 'invited') return 'invited'
+  if (status === 'pending_review' || status === 'pending') return 'pending' // enrolled, awaiting approval (#51)
   if (status === 'revoked') return 'revoked'
   return livenessToAgentStatus(status) // liveness values (online/working/idle/...)
 }
