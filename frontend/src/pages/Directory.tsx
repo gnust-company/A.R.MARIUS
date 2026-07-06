@@ -192,17 +192,16 @@ function AgentCard({
 
           {/* Delete — a visible affordance (not buried in the ⋯ menu) so removing an
               agent is discoverable, matching the workspace/skill cards (#44). The
-              Workspace Agent is system-managed and can't be deleted here. */}
-          {agent.isWorkspaceAgent !== true && (
-            <button
-              onClick={() => onDelete(agent)}
-              className="p-1.5 rounded-md text-ink-muted hover:text-[#C0492B] hover:bg-[#F3D9D0] transition-colors"
-              aria-label={t('directory.actions.delete')}
-              title={t('directory.actions.delete')}
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
+              Workspace Agent is just a flag (#50): it can be deleted too — doing so
+              simply vacates its host seat. */}
+          <button
+            onClick={() => onDelete(agent)}
+            className="p-1.5 rounded-md text-ink-muted hover:text-[#C0492B] hover:bg-[#F3D9D0] transition-colors"
+            aria-label={t('directory.actions.delete')}
+            title={t('directory.actions.delete')}
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
 
           {/* Menu button */}
           <div className="relative">
