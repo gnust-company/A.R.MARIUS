@@ -125,9 +125,8 @@ async def invite_marius(
         # a plain agent. Done before the invite is built so the prompt shows the role.
         await container.workspace_agent.designate(workspace_id, marius.id)
         marius = await container.mariuses.get(marius.id) or marius
-    # Ensure the workspace has a default project so the invitation names a real
-    # project (the board also does this lazily on first load).
-    await container.workspaces.ensure_default_project(workspace_id)
+    # Inviting an agent is a connection step only (#43): it names no project and must
+    # not conjure one. The patron commissions the first project explicitly (#49).
     invite = await _build_invite(container, marius, workspace_id)
     await container.control_bus.publish(
         f"ws:{workspace_id}",

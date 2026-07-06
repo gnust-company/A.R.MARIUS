@@ -33,9 +33,9 @@ class WorkspaceService:
             created = await uow.workspaces.add(ws)
             await uow.commit()
         # Ship the built-in Skill Shop entries so the workspace is ready. A project is
-        # NOT auto-created — the patron commissions the first project explicitly (the
-        # board's empty state guides them). `ensure_default_project` stays as a lazy
-        # safety net for the agent-invitation flow only.
+        # NOT auto-created anywhere — the patron commissions the first project explicitly
+        # (the board's empty state guides them); inviting an agent no longer creates one
+        # either (#49).
         await self._skills.seed_builtins(created.id)
         return created
 
@@ -115,26 +115,6 @@ class WorkspaceService:
         # Seed the built-in Skill Shop entries for the new workspace.
         await self._skills.seed_builtins(ws.id)
         return ws
-
-    async def ensure_default_project(self, workspace_id: UUID) -> Project:
-        """Lazily create the default "General" project for a workspace if it has none.
-
-        Safety net for the agent-invitation flow (an invitation names a real project),
-        not run on workspace creation — new workspaces start empty by design.
-        """
-        async with self._uow() as uow:
-            existing = await uow.projects.list_by_workspace(workspace_id)
-            if existing:
-                return existing[0]
-            project = Project(
-                workspace_id=workspace_id,
-                name="General",
-                slug="general",
-                description=None,
-            )
-            created = await uow.projects.add(project)
-            await uow.commit()
-            return created
 
     async def create_project(
         self, workspace_id: UUID, name: str, description: str | None = None
