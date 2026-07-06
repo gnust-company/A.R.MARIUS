@@ -5,7 +5,7 @@ import { wsHref } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   CheckCircle2, AlertTriangle, MessageSquare, ExternalLink,
-  FileText, Link2
+  FileText, Link2, UserPlus, Check, Loader2
 } from 'lucide-react';
 import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
@@ -29,11 +29,12 @@ const quillIn = {
 };
 
 export default function Inbox() {
-  const { tasks, projects, mariuses, updateTask } = useMockStore();
+  const { tasks, projects, mariuses, updateTask, approveAgent } = useMockStore();
   const navigate = useNavigate();
   const { workspaceId } = useParams();
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'review' | 'blocked'>('review');
+  const [approvingId, setApprovingId] = useState<string | null>(null);
 
   const safeTasks = tasks || [];
   const safeProjects = projects || [];
@@ -41,9 +42,22 @@ export default function Inbox() {
 
   const reviewTasks = safeTasks.filter((t) => t.status === 'in_review');
   const blockedTasks = safeTasks.filter((t) => t.status === 'blocked');
+  // Agents that enrolled and are holding for the Patron to admit them (#51).
+  const pendingAgents = safeMariuses.filter(
+    (m) => m.status === 'pending' && (!workspaceId || m.workspaceId === workspaceId),
+  );
 
   const handleApprove = (taskId: string) => {
     updateTask(taskId, { status: 'done' });
+  };
+
+  const handleAdmit = async (mariusId: string) => {
+    setApprovingId(mariusId);
+    try {
+      await approveAgent(mariusId);
+    } finally {
+      setApprovingId(null);
+    }
   };
 
   const renderTaskGroup = (list: typeof tasks, emptyIcon: React.ReactNode, emptyTitle: string) => {
@@ -162,6 +176,64 @@ export default function Inbox() {
           </span>
         )}
       </motion.div>
+
+      {/* Agents awaiting approval — an enrolled agent holds until the Patron admits it,
+          so the request must be visible somewhere actionable (#51). */}
+      {pendingAgents.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <UserPlus size={16} className="text-[#C25E3A]" />
+            <h3 className="text-sm font-medium text-[#2A2318] font-[Fraunces]">
+              {t('inbox.awaitingApproval')}
+            </h3>
+            <span className="px-2 py-0.5 text-xs font-medium bg-[#C25E3A] text-white rounded-full">
+              {pendingAgents.length}
+            </span>
+          </div>
+          <p className="text-xs text-[#6B5E4E] mb-3">{t('inbox.awaitingApprovalDesc')}</p>
+          <div className="space-y-3">
+            {pendingAgents.map((agent, i) => (
+              <motion.div key={agent.id} custom={i} variants={quillIn} initial="hidden" animate="visible">
+                <VellumPanel className="border-l-4 border-l-[#C25E3A]">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <img
+                        src={agent.avatar || '/agent-avatar-echo.jpg'}
+                        alt={agent.displayName || agent.name}
+                        className="w-8 h-8 rounded-full border border-[#F7F0E0]"
+                      />
+                      <div className="min-w-0">
+                        <h4 className="font-medium text-[#2A2318] text-sm truncate">
+                          {agent.displayName || agent.name}
+                        </h4>
+                        {agent.role && (
+                          <p className="text-xs text-[#6B5E4E] truncate">{agent.role}</p>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleAdmit(agent.id)}
+                      disabled={approvingId === agent.id}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium text-white bg-[#C25E3A] hover:bg-[#D97B5A] disabled:opacity-50 transition-colors shrink-0"
+                    >
+                      {approvingId === agent.id ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Check size={14} />
+                      )}
+                      {t('inbox.admit')}
+                    </button>
+                  </div>
+                </VellumPanel>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-[#E3D7BC] mb-6">

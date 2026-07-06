@@ -303,6 +303,9 @@ export const en = {
     unknownProject: 'Unknown Project',
     open: 'Open',
     approve: 'Approve',
+    awaitingApproval: 'Agents awaiting approval',
+    awaitingApprovalDesc: 'They enrolled and are holding for you to admit them to the workspace.',
+    admit: 'Admit',
   },
   account: {
     subtitle: 'Manage your preferences and session',

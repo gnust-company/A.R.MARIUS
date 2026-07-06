@@ -303,6 +303,9 @@ export const vi = {
     unknownProject: 'Dự án không xác định',
     open: 'Mở',
     approve: 'Phê duyệt',
+    awaitingApproval: 'Agent đang chờ kết nạp',
+    awaitingApprovalDesc: 'Họ đã gửi yêu cầu kết nạp và đang chờ bạn cho vào không gian làm việc.',
+    admit: 'Kết nạp',
   },
   account: {
     subtitle: 'Quản lý tùy chọn và phiên làm việc của bạn',
