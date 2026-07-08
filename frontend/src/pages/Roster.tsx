@@ -276,6 +276,19 @@ export default function Roster() {
     );
   }
 
+  // List-level projects (from `projectToVM`) carry no `seats` — only `projectDetailToVM`
+  // (run by `hydrateProject`) fills them. On a fresh mount the first render sees a project
+  // with `seats === undefined`, before the async hydrate lands; accessing `.find` on it
+  // threw a TypeError and — with no ErrorBoundary — blanked the page (#56). Treat the
+  // detail-not-yet-loaded state the same as not-loaded: show the loading gate.
+  if (!project.seats) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <h2 className="font-display text-display-md text-ink mb-2">{t('common.loading')}</h2>
+      </div>
+    );
+  }
+
   // ─── Roster data calculations ───
   const leaderSeat = project.seats.find((s) => s.role === 'leader');
   const workerSeats = project.seats.filter((s) => s.role !== 'leader');
