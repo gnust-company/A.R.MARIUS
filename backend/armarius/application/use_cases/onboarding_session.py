@@ -71,6 +71,37 @@ def _project_name(objective: str) -> str:
     return name[:80]
 
 
+def _leader_role() -> dict:
+    return {"key": "leader", "title": "Project Leader", "seats": 1, "is_leader": True,
+            "description": "Owns the plan and coordinates the roster."}
+
+
+def _worker_spec(title: str) -> dict:
+    """A worker role spec for ``title`` (title → blurb from the known vocabulary)."""
+    blurb = next((b for ks, t, b in _ROLE_KEYWORDS if t == title), "")
+    return {"key": _slug(title), "title": title, "seats": 1, "is_leader": False,
+            "description": blurb}
+
+
+def _match_role_titles(text: str) -> list[str]:
+    """Every known role title the text mentions (by keyword), in vocab order, deduped.
+
+    Used to resolve '<frontend>', 'the backend', 'a design role', … against the same
+    keyword table ``propose_plan`` uses, so edits name roles the same way the initial
+    proposal does.
+    """
+    low = text.lower()
+    titles: list[str] = []
+    seen: set[str] = set()
+    for keywords, title, _blurb in _ROLE_KEYWORDS:
+        if title in seen:
+            continue
+        if any(k in low for k in keywords):
+            titles.append(title)
+            seen.add(title)
+    return titles
+
+
 def propose_plan(objective: str) -> dict:
     """Derive ``{project_name, roles}`` from the objective (keyword heuristic).
 
@@ -78,31 +109,10 @@ def propose_plan(objective: str) -> dict:
     always satisfy the roster's hard rule. ``roles`` is a list of plain dicts the service
     turns into ``RoleSpec`` on finalize.
     """
-    low = objective.lower()
-    workers: list[dict] = []
-    seen: set[str] = set()
-    for keywords, title, blurb in _ROLE_KEYWORDS:
-        if title in seen:
-            continue
-        if any(k in low for k in keywords):
-            workers.append({
-                "key": _slug(title),
-                "title": title,
-                "seats": 1,
-                "is_leader": False,
-                "description": blurb,
-            })
-            seen.add(title)
-    if not workers:
-        workers = [
-            {"key": "frontend", "title": "Frontend", "seats": 1, "is_leader": False,
-             "description": "Builds the user-facing UI."},
-            {"key": "backend", "title": "Backend", "seats": 1, "is_leader": False,
-             "description": "Builds the API and data layer."},
-        ]
-    leader = {"key": "leader", "title": "Project Leader", "seats": 1, "is_leader": True,
-              "description": "Owns the plan and coordinates the roster."}
-    return {"project_name": _project_name(objective), "roles": [leader, *workers]}
+    titles = _match_role_titles(objective)
+    workers = ([_worker_spec(t) for t in titles] if titles else
+               [_worker_spec("Frontend"), _worker_spec("Backend")])
+    return {"project_name": _project_name(objective), "roles": [_leader_role(), *workers]}
 
 
 def is_confirmation(text: str) -> bool:
@@ -112,10 +122,67 @@ def is_confirmation(text: str) -> bool:
     return any(w in low for w in _CONFIRM)
 
 
+# ── editing the running plan (#55) ───────────────────────────────────────────────
+# The plan accumulates across turns: later messages edit the agreed roles instead of
+# replacing the whole plan (which made every reply look the same — "100 lần như 1").
+# Intent is read from verbs + the roles named in the message:
+
+_REMOVE = ["remove", "drop", "without", "no more", "get rid", "delete"]
+_ADD = ["add", "include", "also need", "need a", "need some", "bring in", "plus a", "plus an"]
+_SWAP = ["swap", "replace", "switch", "instead of", "change to", "change for"]
+
+
+def _apply_edit(roles: list[dict], text: str) -> tuple[list[dict], str | None]:
+    """Apply a single add/remove/swap edit to ``roles`` (worker roles only).
+
+    Returns ``(new_roles, note)`` where ``note`` is a short phrase describing what changed
+    (or ``None`` when the message isn't an edit). Mutates a copy. Worker order is stable;
+    a swap keeps the edited seat in place so the roster doesn't reshuffle on every turn.
+    """
+    low = text.lower()
+    mentioned = _match_role_titles(text)
+    current_titles = [r["title"] for r in roles]
+
+    # swap X for/with Y → drop X, insert Y at X's position.
+    if any(v in low for v in _SWAP) and len(mentioned) >= 1:
+        out_target = next((t for t in mentioned if t in current_titles), None)
+        in_target = next((t for t in mentioned if t not in current_titles), None)
+        if out_target is not None and in_target is not None:
+            idx = current_titles.index(out_target)
+            new_roles = [r for r in roles if r["title"] != out_target]
+            new_roles.insert(idx, _worker_spec(in_target))
+            return new_roles, f"swapped {out_target} → {in_target}"
+
+    # remove X → drop the first mentioned role that's present.
+    if any(v in low for v in _REMOVE) and mentioned:
+        target = next((t for t in mentioned if t in current_titles), None)
+        if target is not None:
+            new_roles = [r for r in roles if r["title"] != target]
+            return new_roles, f"removed {target}"
+
+    # add Y → append any mentioned role not already seated (keep one seat per title).
+    if any(v in low for v in _ADD):
+        additions = [t for t in mentioned if t not in current_titles]
+        if additions:
+            new_roles = [*roles, *(_worker_spec(t) for t in additions)]
+            return new_roles, f"added {', '.join(additions)}"
+
+    return roles, None
+
+
 def _respond(collected: dict, patron_text: str) -> tuple[str, dict]:
-    """Produce the Workspace Agent's next reply + the updated plan (pure)."""
+    """Produce the Workspace Agent's next reply + the updated plan (pure).
+
+    The plan is cumulative: the first objective proposes an initial roster, and every
+    later message either locks the plan (confirmation), edits it (add/remove/swap), or
+    folds in any new roles it mentions. The project name is set once from the first
+    objective and kept stable afterwards (#55)."""
     text = patron_text.strip()
-    if is_confirmation(text) and collected.get("roles"):
+    roles = [r for r in (collected.get("roles") or []) if not r.get("is_leader")]
+    has_plan = bool(roles)
+
+    # Confirming an existing plan locks it (no rewrite).
+    if has_plan and is_confirmation(text):
         updated = {**collected, "ready": True}
         reply = (
             "Locked in. Hit “Create project” and I'll stand it up — a Project "
@@ -124,19 +191,48 @@ def _respond(collected: dict, patron_text: str) -> tuple[str, dict]:
         )
         return reply, updated
 
-    plan = propose_plan(text)
-    worker_lines = "\n".join(
-        f"  • {r['title']} — {r['description']}" for r in plan["roles"] if not r["is_leader"]
-    )
+    project_name = collected.get("project_name")
+    objective = collected.get("objective") or text.strip()
+
+    note = None
+    if has_plan:
+        # Editing a running plan: try add/remove/swap first, then fold in any newly
+        # mentioned roles. Roles already seated are never duplicated.
+        roles, note = _apply_edit(roles, text)
+        if note is None:
+            extras = [t for t in _match_role_titles(text)
+                      if t not in {r["title"] for r in roles}]
+            if extras:
+                roles = [*roles, *(_worker_spec(t) for t in extras)]
+                note = f"added {', '.join(extras)}"
+    else:
+        # First proposal: derive name + roster from the objective.
+        plan = propose_plan(text)
+        roles = [r for r in plan["roles"] if not r["is_leader"]]
+        if project_name is None:
+            project_name = plan["project_name"]
+
+    if not project_name:
+        project_name = _project_name(objective)
+
     updated = {
-        "objective": text,
-        "project_name": plan["project_name"],
-        "roles": plan["roles"],
+        **collected,
+        "objective": objective,
+        "project_name": project_name,
+        "roles": [_leader_role(), *roles],
         "ready": False,
     }
+
+    worker_lines = "\n".join(
+        f"  • {r['title']} — {r['description']}" for r in roles if r.get("description")
+    ) or "  (no worker seats yet)"
+    lead = (
+        f"{note.capitalize()} — the plan now is **{project_name}** with one Project Leader plus:\n"
+        if note else
+        f"Got it — I'll set up **{project_name}** with one Project Leader plus:\n"
+    )
     reply = (
-        f"Got it — I'll set up **{plan['project_name']}** with one Project Leader plus:\n"
-        f"{worker_lines}\n\n"
+        f"{lead}{worker_lines}\n\n"
         "If that looks right, say “looks good” (or hit Create). Want to add or swap a "
         "role? Tell me what you need and I'll revise."
     )
