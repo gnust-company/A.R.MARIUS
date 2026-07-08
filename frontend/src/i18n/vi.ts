@@ -480,6 +480,9 @@ export const vi = {
     minutesAgo: '{{count}} phút trước',
     hoursAgo: '{{count}} giờ trước',
     daysAgo: '{{count}} ngày trước',
+    reload: 'Tải lại',
+    somethingWentWrong: 'Đã xảy ra lỗi',
+    errorBoundaryHint: 'Trang này vừa bị lỗi bất thường. Tải lại để thử tiếp.',
   },
   topbar: {
     live: 'Trực tuyến',

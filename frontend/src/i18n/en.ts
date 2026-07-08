@@ -480,6 +480,9 @@ export const en = {
     minutesAgo: '{{count}}m ago',
     hoursAgo: '{{count}}h ago',
     daysAgo: '{{count}}d ago',
+    reload: 'Reload',
+    somethingWentWrong: 'Something went wrong',
+    errorBoundaryHint: 'An unexpected error broke this page. Reload to try again.',
   },
   topbar: {
     live: 'Live',

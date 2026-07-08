@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate, Outlet } from 'react-router'
+import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
@@ -67,6 +68,7 @@ export default function App() {
   }
 
   return (
+    <ErrorBoundary>
     <Routes>
       {/* Landing page — cinematic scroll storytelling (default) */}
       <Route path="/" element={<Landing />} />
@@ -97,5 +99,6 @@ export default function App() {
         </Route>
       </Route>
     </Routes>
+    </ErrorBoundary>
   )
 }
