@@ -109,6 +109,86 @@ async def test_message_proposes_roster_then_confirm_sets_ready() -> None:
     assert locked.collected["ready"] is True
 
 
+# ── the brain accumulates the plan across turns (#55) ────────────────────────────
+# Regression: the brain used to re-derive the plan from the latest message alone and
+# overwrite `collected`, so every reply looked the same and roles added earlier were
+# forgotten ("100 lần như 1"). The plan must accumulate: a later message merges into the
+# running plan instead of replacing it, and explicit add/remove/swap are honoured.
+
+
+def _worker_titles(collected: dict) -> list[str]:
+    return [r["title"] for r in collected.get("roles", []) if not r["is_leader"]]
+
+
+async def test_roles_accumulate_across_turns_instead_of_being_replaced() -> None:
+    """Adding a role in a later turn must keep the roles agreed earlier (#55)."""
+    _factory, onboarding, ws_id = _services()
+    session = await onboarding.start(ws_id)
+    await onboarding.message(session.id, "I want a frontend app")
+
+    session = await onboarding.message(session.id, "now add a backend api")
+
+    assert _worker_titles(session.collected) == ["Frontend", "Backend"]
+
+
+async def test_project_name_is_stable_once_set() -> None:
+    """The project name must not flip to a name derived from each new message (#55).
+    The first objective sets the name; later refinements keep it."""
+    _factory, onboarding, ws_id = _services()
+    session = await onboarding.start(ws_id)
+    session = await onboarding.message(session.id, "Build a task tracker with a frontend")
+    first_name = session.collected["project_name"]
+    assert first_name == "Task Tracker Frontend"
+
+    # A follow-up that adds a role must not rename the project after the latest message.
+    session = await onboarding.message(session.id, "also add a backend api")
+
+    assert session.collected["project_name"] == first_name
+
+
+async def test_remove_drops_a_role_from_the_plan() -> None:
+    """'remove <role>' must actually drop it — not silently re-propose it (#55)."""
+    _factory, onboarding, ws_id = _services()
+    session = await onboarding.start(ws_id)
+    session = await onboarding.message(session.id, "I want a frontend and a backend")
+    assert set(_worker_titles(session.collected)) == {"Frontend", "Backend"}
+
+    session = await onboarding.message(session.id, "remove the backend")
+
+    assert _worker_titles(session.collected) == ["Frontend"]
+    # The reply acknowledges the removal: Backend no longer appears as a seat line.
+    agent_turns = [t for t in session.transcript if t["role"] == "agent"]
+    seat_lines = [ln for ln in agent_turns[-1]["text"].splitlines() if ln.strip().startswith("•")]
+    assert all("Backend" not in ln for ln in seat_lines)
+
+
+async def test_swap_replaces_one_role_with_another() -> None:
+    """'swap X for Y' / 'replace X with Y' exchanges roles in the running plan (#55)."""
+    _factory, onboarding, ws_id = _services()
+    session = await onboarding.start(ws_id)
+    session = await onboarding.message(session.id, "I need a frontend")
+    assert _worker_titles(session.collected) == ["Frontend"]
+
+    session = await onboarding.message(session.id, "swap the frontend for a design role")
+
+    assert _worker_titles(session.collected) == ["Design"]
+
+
+async def test_add_introduces_a_new_named_role() -> None:
+    """'add <role>' introduces a role even when its keyword isn't in the objective (#55)."""
+    _factory, onboarding, ws_id = _services()
+    session = await onboarding.start(ws_id)
+    session = await onboarding.message(session.id, "build a web app")  # → Frontend + Backend
+    before = set(_worker_titles(session.collected))
+
+    session = await onboarding.message(session.id, "add a QA reviewer")
+
+    after = set(_worker_titles(session.collected))
+    assert "QA / Reviewer" in after
+    assert before <= after  # existing roles kept
+
+
+
 async def test_finalize_creates_project_with_roster() -> None:
     factory, onboarding, ws_id = _services()
     session = await onboarding.start(ws_id)
