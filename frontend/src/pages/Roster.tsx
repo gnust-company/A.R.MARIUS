@@ -247,7 +247,6 @@ export default function Roster() {
   const { t } = useTranslation();
   const projects = useMockStore((s) => s.projects);
   const mariuses = useMockStore((s) => s.mariuses);
-  const isMock = useMockStore((s) => s.isMock);
   const hydrateProject = useMockStore((s) => s.hydrateProject);
   const hydrateWorkspace = useMockStore((s) => s.hydrateWorkspace);
   const project = projects.find((p) => p.id === projectId);
@@ -258,15 +257,15 @@ export default function Roster() {
     skillsRequired: string[];
   } | null>(null);
 
-  // Real-API mode: load the project roster + the workspace's agents on mount.
+  // Load the project roster + the workspace's agents on mount.
   useEffect(() => {
-    if (isMock || !projectId) return;
+    if (!projectId) return;
     (async () => {
       await hydrateProject(projectId);
       const wsId = useMockStore.getState().projects.find((p) => p.id === projectId)?.workspaceId;
       if (wsId) await hydrateWorkspace(wsId);
     })();
-  }, [isMock, projectId, hydrateProject, hydrateWorkspace]);
+  }, [projectId, hydrateProject, hydrateWorkspace]);
 
   if (!project) {
     return (

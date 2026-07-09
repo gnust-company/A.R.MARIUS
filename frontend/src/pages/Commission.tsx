@@ -58,60 +58,6 @@ const INITIAL_COMMISSION: CommissionSession = {
   draftTask: null,
 };
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-const LEADER_TURN_RESPONSES: Record<number, { content: string; draftTask?: LocalDraftTask }> = {
-  1: {
-    content: 'Got it. A few clarifying questions to make sure I scope this correctly:\n\n1. Should the dark mode toggle be system-preference-aware or manual only?\n2. Do you have a design system with tokens already, or should I include token creation in the scope?\n3. What\'s the deadline \u2014 is Friday EOD firm?',
-  },
-  2: {
-    content: 'Perfect. I\'ve drafted ARM-44 based on your requirements. Take a look at the preview panel \u2014 I\'ve broken it into 6 checklist items, assigned Vega (FE) and Orion (BE), and set the due date to Friday. The dependency on ARM-40 (the WCAG audit) is included since we need those findings first. Let me know if you\'d like any adjustments!',
-    draftTask: {
-      identifier: 'ARM-44',
-      title: 'Implement responsive navigation menu with system-aware dark mode toggle',
-      description: 'Build a responsive navigation component with dark mode toggle that respects system preferences. Must pass WCAG AA contrast checks.',
-      priority: 'P1',
-      definitionOfDone: 'All WCAG AA contrast checks pass on the settings page. Dark mode toggle respects system preference and persists across sessions. Responsive breakpoints tested at 320px, 768px, 1024px, 1440px.',
-      checklist: [
-        { text: 'Audit current settings page', checked: false },
-        { text: 'Implement dark mode toggle component', checked: false },
-        { text: 'Add system preference detection', checked: false },
-        { text: 'Run contrast audit tool', checked: false },
-        { text: 'Write integration tests', checked: false },
-        { text: 'Update user documentation', checked: false },
-      ],
-      dueDate: '2026-07-11',
-      workers: ['m2', 'm3'],
-      dependencies: ['t-2'],
-    },
-  },
-  3: {
-    content: 'Good call \u2014 I\'ll add a 7th item for responsive breakpoint testing and push the due date to Monday to give more buffer. Updated preview \u2192',
-    draftTask: {
-      identifier: 'ARM-44',
-      title: 'Implement responsive navigation menu with system-aware dark mode toggle',
-      description: 'Build a responsive navigation component with dark mode toggle that respects system preferences. Must pass WCAG AA contrast checks.',
-      priority: 'P1',
-      definitionOfDone: 'All WCAG AA contrast checks pass on the settings page. Dark mode toggle respects system preference and persists across sessions. Responsive breakpoints tested at 320px, 768px, 1024px, 1440px.',
-      checklist: [
-        { text: 'Audit current settings page', checked: false },
-        { text: 'Implement dark mode toggle component', checked: false },
-        { text: 'Add system preference detection', checked: false },
-        { text: 'Run contrast audit tool', checked: false },
-        { text: 'Write integration tests', checked: false },
-        { text: 'Update user documentation', checked: false },
-        { text: 'Test responsive breakpoints', checked: false },
-      ],
-      dueDate: '2026-07-14',
-      workers: ['m2', 'm3'],
-      dependencies: ['t-2'],
-    },
-  },
-  4: {
-    content: 'ARM-44 is live! I\'ve woken Vega and Orion with the full context. You\'ll see the task appear on the board shortly. I\'ll monitor progress and report back on any blockers.',
-  },
-};
-
 // ─── Priority Colors ─────────────────────────────────────────────────────────
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
@@ -544,7 +490,6 @@ export default function Commission() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const store = useMockStore();
-  const isMock = store.isMock;
 
   // Local state for commission session (store doesn't have commission support)
   const [session, setSession] = useState<CommissionSession>(INITIAL_COMMISSION);
@@ -555,18 +500,17 @@ export default function Commission() {
 
   const project = store.projects.find((p) => p.id === projectId);
 
-  // Real-API mode: ensure the project (roster/status) is loaded so the locked gate works.
+  // Ensure the project (roster/status) is loaded so the locked gate works.
   useEffect(() => {
-    if (isMock || !projectId) return;
+    if (!projectId) return;
     store.hydrateProject(projectId);
-  }, [isMock, projectId]);
+  }, [projectId]);
   // Find leader by looking for a marius with role containing "Leader" in the project
   const leader = store.mariuses.find((m) => m.projectIds.includes(projectId || '') && m.role.toLowerCase().includes('leader'));
 
   const [inputValue, setInputValue] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
-  const [turnCount, setTurnCount] = useState(2);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -592,66 +536,36 @@ export default function Commission() {
     addMessage({ role: 'patron', content: sentInput });
     setInputValue('');
 
-    if (!isMock) {
-      // Real API: open (or refine) the commission. The Leader shapes the draft asynchronously
-      // via the wake run; we surface a preview derived from the patron's message so the
-      // confirm gate is reachable.
-      setIsThinking(true);
-      void (async () => {
-        try {
-          if (!realSessionId) {
-            const dto = await api.startCommission({ project_id: projectId, message: sentInput });
-            setRealSessionId(dto.id);
-            setDraftTask({
-              identifier: 'DRAFT',
-              title: sentInput.slice(0, 80),
-              description: sentInput,
-              priority: 'P1',
-              definitionOfDone: '',
-              checklist: [],
-              dueDate: '',
-              workers: [],
-              dependencies: [],
-            });
-          } else {
-            await api.refineCommission(realSessionId, { message: sentInput });
-          }
-        } catch {
-          addMessage({ role: 'system', content: 'Could not reach the Leader. Try again.' });
-        } finally {
-          setIsThinking(false);
-        }
-      })();
-      return;
-    }
-
-    // Mock leader response
+    // Open (or refine) the commission. The Leader shapes the draft asynchronously via the
+    // wake run; we surface a preview derived from the patron's message so the confirm gate
+    // is reachable.
     setIsThinking(true);
-    const responseDelay = 1200 + Math.random() * 800;
-
-    setTimeout(() => {
-      setIsThinking(false);
-
-      const response = LEADER_TURN_RESPONSES[turnCount];
-      if (response) {
-        addMessage({
-          role: 'leader',
-          content: response.content,
-        });
-        if (response.draftTask) {
-          setDraftTask(response.draftTask);
-          setSession((prev) => ({ ...prev, draftTask: response.draftTask || null }));
+    void (async () => {
+      try {
+        if (!realSessionId) {
+          const dto = await api.startCommission({ project_id: projectId, message: sentInput });
+          setRealSessionId(dto.id);
+          setDraftTask({
+            identifier: 'DRAFT',
+            title: sentInput.slice(0, 80),
+            description: sentInput,
+            priority: 'P1',
+            definitionOfDone: '',
+            checklist: [],
+            dueDate: '',
+            workers: [],
+            dependencies: [],
+          });
+        } else {
+          await api.refineCommission(realSessionId, { message: sentInput });
         }
-        setTurnCount((prev) => prev + 1);
-      } else {
-        // Generic response after scripted turns
-        addMessage({
-          role: 'leader',
-          content: `I've noted that: "${sentInput.substring(0, 60)}${sentInput.length > 60 ? '...' : ''}". Let me know if you'd like any changes to the task preview.`,
-        });
+      } catch {
+        addMessage({ role: 'system', content: 'Could not reach the Leader. Try again.' });
+      } finally {
+        setIsThinking(false);
       }
-    }, responseDelay);
-  }, [inputValue, addMessage, turnCount, isMock, realSessionId, projectId]);
+    })();
+  }, [inputValue, addMessage, realSessionId, projectId]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -666,58 +580,22 @@ export default function Commission() {
   };
 
   const handleConfirm = async () => {
-    if (!isMock && !realSessionId) return;
+    if (!realSessionId) return;
 
     setIsConfirming(true);
 
-    if (!isMock) {
-      // Real API: confirm flips the draft → todo on the backend, then re-hydrate so the
-      // freshly published task appears on the board.
-      try {
-        await api.confirmCommission(realSessionId);
-        await store.hydrateProject(projectId);
-        addMessage({ role: 'system', content: 'Task published to the board.' });
-      } catch {
-        addMessage({ role: 'system', content: 'Could not confirm the task.' });
-      } finally {
-        setIsConfirming(false);
-        navigate(wsHref(workspaceId, `/projects/${projectId}`));
-      }
-      return;
+    // Confirm flips the draft → todo on the backend, then re-hydrate so the freshly
+    // published task appears on the board.
+    try {
+      await api.confirmCommission(realSessionId);
+      await store.hydrateProject(projectId);
+      addMessage({ role: 'system', content: 'Task published to the board.' });
+    } catch {
+      addMessage({ role: 'system', content: 'Could not confirm the task.' });
+    } finally {
+      setIsConfirming(false);
+      navigate(wsHref(workspaceId, `/projects/${projectId}`));
     }
-
-    if (!draftTask) return;
-
-    // Simulate creation delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    // Create the task in the store using createTask
-    store.createTask({
-      title: draftTask.title,
-      description: draftTask.description,
-      priority: draftTask.priority,
-      projectId: projectId || 'p1',
-      status: 'todo',
-      identifier: draftTask.identifier,
-      definitionOfDone: draftTask.definitionOfDone,
-      checklist: draftTask.checklist.map((item, i) => ({
-        id: `chk-${i}`,
-        text: item.text,
-        done: item.checked,
-      })),
-      dependencies: draftTask.dependencies,
-    });
-
-    // Add confirmation system message
-    addMessage({
-      role: 'system',
-      content: `${draftTask.identifier} has been created and assigned.`,
-    });
-
-    setIsConfirming(false);
-
-    // Navigate to board
-    navigate(wsHref(workspaceId, `/projects/${projectId}`));
   };
 
   // ─── Locked state ───
