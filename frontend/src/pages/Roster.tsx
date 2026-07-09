@@ -307,21 +307,16 @@ export default function Roster() {
 
   const progressPercent = seatsTotal > 0 ? (seatsGranted / seatsTotal) * 100 : 0;
 
-  // ─── Group worker seats by role ───
-  const roleGroups = useMemo(() => {
-    const groups: Record<string, { roleLabel: string; skillsRequired: string[]; seats: typeof workerSeats }> = {};
-    workerSeats.forEach((seat) => {
-      if (!groups[seat.role]) {
-        groups[seat.role] = {
-          roleLabel: seat.role,
-          skillsRequired: [],
-          seats: [],
-        };
-      }
-      groups[seat.role].seats.push(seat);
-    });
-    return groups;
-  }, [workerSeats]);
+  // Group worker seats by role. A plain derivation (no useMemo): it runs only after the
+  // loading guards above, so no hook sits after an early return (rules-of-hooks, #56); the
+  // React Compiler memoizes it automatically.
+  const roleGroups: Record<string, { roleLabel: string; skillsRequired: string[]; seats: typeof workerSeats }> = {};
+  workerSeats.forEach((seat) => {
+    if (!roleGroups[seat.role]) {
+      roleGroups[seat.role] = { roleLabel: seat.role, skillsRequired: [], seats: [] };
+    }
+    roleGroups[seat.role].seats.push(seat);
+  });
 
   return (
     <div className="flex flex-col gap-6">
