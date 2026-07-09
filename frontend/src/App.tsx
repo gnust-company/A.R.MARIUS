@@ -16,20 +16,17 @@ import SkillEditor from './pages/SkillEditor'
 import Inbox from './pages/Inbox'
 import Account from './pages/Account'
 import CollaborationRoom from './pages/CollaborationRoom'
-import { useMockSimulator } from './hooks/use-mock-simulator'
 import { useMockStore } from './store/mockStore'
 
-/** Real-API boot: rehydrate the session from the stored JWT before rendering routes, so the
- * auth guard doesn't bounce a logged-in user on a hard refresh. Also rehydrates the
- * workspace list + persisted active workspace so a refresh on a workspace-less URL
- * (e.g. `/projects`) keeps the user in context. No-op under MOCK. */
+/** Boot: rehydrate the session from the stored JWT before rendering routes, so the auth
+ * guard doesn't bounce a logged-in user on a hard refresh. Also rehydrates the workspace
+ * list + persisted active workspace so a refresh on a workspace-less URL (e.g. `/projects`)
+ * keeps the user in context. */
 function useBootSession() {
-  const isMock = useMockStore((s) => s.isMock)
   const hydrateMe = useMockStore((s) => s.hydrateMe)
   const hydrateWorkspaces = useMockStore((s) => s.hydrateWorkspaces)
-  const [booted, setBooted] = useState(isMock)
+  const [booted, setBooted] = useState(false)
   useEffect(() => {
-    if (isMock) return
     let active = true
     void (async () => {
       try {
@@ -46,21 +43,18 @@ function useBootSession() {
     return () => {
       active = false
     }
-  }, [isMock, hydrateMe, hydrateWorkspaces])
+  }, [hydrateMe, hydrateWorkspaces])
   return booted
 }
 
-/** Gate every authenticated route. In real mode, a missing session redirects to /login. */
+/** Gate every authenticated route: a missing session redirects to /login. */
 function RequireAuth() {
-  const isMock = useMockStore((s) => s.isMock)
   const currentUser = useMockStore((s) => s.currentUser)
-  if (!isMock && !currentUser) return <Navigate to="/login" replace />
+  if (!currentUser) return <Navigate to="/login" replace />
   return <Outlet />
 }
 
 export default function App() {
-  // Simulated workspace control-plane SSE (liveness decay + connection state) — MOCK only.
-  useMockSimulator()
   const booted = useBootSession()
 
   if (!booted) {
@@ -73,7 +67,7 @@ export default function App() {
       {/* Landing page — cinematic scroll storytelling (default) */}
       <Route path="/" element={<Landing />} />
 
-      {/* Real-API login/register (never reached under MOCK) */}
+      {/* Login / register */}
       <Route path="/login" element={<Login />} />
 
       {/* Everything below requires an authenticated session in real mode */}

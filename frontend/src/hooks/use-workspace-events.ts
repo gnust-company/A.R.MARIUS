@@ -1,6 +1,5 @@
-// Real workspace control-plane SSE (Sprint 6). Under MOCK this is a no-op — the
-// `use-mock-simulator` hook fakes the live dots. Under the real API it opens
-// `/v1/workspaces/{ws}/events` and reconciles `marius.status_changed` events into the store.
+// Workspace control-plane SSE (Sprint 6): opens `/v1/workspaces/{ws}/events` and
+// reconciles `marius.status_changed` events into the store.
 
 import { useEffect } from 'react'
 
@@ -18,11 +17,10 @@ function statusToAgent(status: string): AgentStatus {
 }
 
 export function useWorkspaceEvents(workspaceId: string | null | undefined): void {
-  const isMock = useMockStore((s) => s.isMock)
   const setSseConnected = useMockStore((s) => s.setSseConnected)
 
   useEffect(() => {
-    if (isMock || !workspaceId) return
+    if (!workspaceId) return
     setSseConnected(true) // subscription initiated — the TopBar indicator reflects it
     const disconnect = subscribeWorkspaceEvents(
       workspaceId,
@@ -50,5 +48,5 @@ export function useWorkspaceEvents(workspaceId: string | null | undefined): void
       disconnect()
       setSseConnected(false)
     }
-  }, [isMock, workspaceId, setSseConnected])
+  }, [workspaceId, setSseConnected])
 }

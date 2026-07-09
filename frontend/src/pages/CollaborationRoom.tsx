@@ -227,19 +227,16 @@ export default function CollaborationRoom() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const store = useMockStore();
-  const appendTrace = useMockStore((s) => s.appendTrace);
-  const isMock = store.isMock;
   const task = store.tasks.find((t) => t.id === taskId);
 
-  // Real-API mode: subscribe to the per-task wake trace SSE (the mock interval simulator
-  // below is skipped under the real API). No-op under MOCK.
-  useTaskStream(!isMock ? taskId : null);
+  // Subscribe to the per-task wake trace SSE.
+  useTaskStream(taskId);
 
-  // Real-API mode: load the task + its comment thread + artifacts on mount.
+  // Load the task + its comment thread + artifacts on mount.
   useEffect(() => {
-    if (isMock || !taskId) return;
+    if (!taskId) return;
     store.hydrateTask(taskId);
-  }, [isMock, taskId]);
+  }, [taskId]);
 
   const [commentInput, setCommentInput] = useState('');
   const [statusValue, setStatusValue] = useState<Task['status']>(task?.status ?? 'todo');
@@ -269,34 +266,6 @@ export default function CollaborationRoom() {
   useEffect(() => {
     traceEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [task?.trace.length]);
-
-  // Simulated per-task trace SSE: while the task is in progress and the stream is
-  // "running" (wake controls), append scripted run events so the trace feels live.
-  // MOCK only — the real API streams live wake events via useTaskStream above.
-  useEffect(() => {
-    if (!isMock) return;
-    if (!task || task.status !== 'in_progress' || !isTraceActive) return;
-    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (reduced) return;
-    const agentId = task.assigneeId || task.participants?.[0]?.id;
-    const tId = task.id;
-    const script: Array<{ type: TraceEvent['type']; content: string } & Partial<TraceEvent>> = [
-      { type: 'run.delta', agentId, model: 'gpt-4o', content: 'Re-reading the definition of done and the open checklist items to decide the next edit.' },
-      { type: 'run.tool', agentId, toolName: 'grep', content: 'Searched the workspace for the symbols this change touches.', args: { pattern: 'theme|preference|nav' } },
-      { type: 'run.delta', agentId, model: 'gpt-4o', content: 'Applying the change in a small, reviewable diff and updating the checklist.' },
-      { type: 'run.usage', agentId, model: 'gpt-4o', content: 'turn usage', tokens: { used: 1820, total: 128000, prompt: 1400, completion: 420 } },
-    ];
-    let i = 0;
-    const id = window.setInterval(() => {
-      // Cap growth so a long-open room never accumulates unbounded events.
-      const current = useMockStore.getState().tasks.find((x) => x.id === tId);
-      if ((current?.trace?.length ?? 0) > 28) return;
-      appendTrace(tId, script[i % script.length]);
-      i += 1;
-    }, 3800);
-    return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [task?.id, task?.status, isTraceActive, appendTrace]);
 
   const handleStatusChange = useCallback((newStatus: string) => {
     if (!task) return;

@@ -51,13 +51,11 @@ export default function Workspaces() {
   const deleteWorkspace = useMockStore((s) => s.deleteWorkspace);
   const hydrateWorkspaces = useMockStore((s) => s.hydrateWorkspaces);
   const hydrateWorkspace = useMockStore((s) => s.hydrateWorkspace);
-  const isMock = useMockStore((s) => s.isMock);
 
-  // Real-API mode: load the user's workspaces on mount.
+  // Load the user's workspaces on mount.
   useEffect(() => {
-    if (isMock) return;
     hydrateWorkspaces();
-  }, [isMock, hydrateWorkspaces]);
+  }, [hydrateWorkspaces]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newWsName, setNewWsName] = useState('');
@@ -81,7 +79,7 @@ export default function Workspaces() {
 
   const handleEnter = async (wsId: string) => {
     setActiveWorkspace(wsId);
-    if (!isMock) await hydrateWorkspace(wsId);
+    await hydrateWorkspace(wsId);
     navigate(wsHref(wsId, '/projects'));
   };
 
@@ -98,7 +96,7 @@ export default function Workspaces() {
     setNewWsDesc('');
     setIsModalOpen(false);
     setActiveWorkspace(created.id);
-    if (!isMock) await hydrateWorkspace(created.id);
+    await hydrateWorkspace(created.id);
     navigate(wsHref(created.id, '/projects'));
   };
 

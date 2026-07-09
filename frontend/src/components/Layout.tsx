@@ -11,7 +11,6 @@ export default function Layout() {
   // Layout lives under /w/:workspaceId, so `workspaceId` is always present here.
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const collapsed = useMockStore((s) => s.sidebarCollapsed);
-  const isMock = useMockStore((s) => s.isMock);
   const workspaces = useMockStore((s) => s.workspaces);
   const activeWorkspaceId = useMockStore((s) => s.activeWorkspaceId);
   const setActiveWorkspace = useMockStore((s) => s.setActiveWorkspace);
@@ -23,10 +22,10 @@ export default function Layout() {
   useEffect(() => {
     if (!workspaceId) return;
     if (workspaceId !== activeWorkspaceId) setActiveWorkspace(workspaceId);
-    if (!isMock) void hydrateWorkspace(workspaceId).catch(() => {});
-  }, [workspaceId, isMock, activeWorkspaceId, setActiveWorkspace, hydrateWorkspace]);
+    void hydrateWorkspace(workspaceId).catch(() => {});
+  }, [workspaceId, activeWorkspaceId, setActiveWorkspace, hydrateWorkspace]);
 
-  // Real-API mode: subscribe to this workspace's control-plane SSE (MOCK no-op).
+  // Subscribe to this workspace's control-plane SSE.
   useWorkspaceEvents(workspaceId ?? null);
 
   // A stale/unknown workspace id (e.g. an old deep link) → back to the launcher. Guard

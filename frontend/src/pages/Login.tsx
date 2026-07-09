@@ -1,6 +1,5 @@
 // Authentication page (Sprint 6). Real JWT login/register against `/auth/*`.
-// Shown only in real-API mode: the `RequireAuth` wrapper redirects any unauthenticated
-// visit to `/login`. Under MOCK this route is never reached (the dummy user is pre-seated).
+// The `RequireAuth` wrapper redirects any unauthenticated visit to `/login`.
 
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'

@@ -243,7 +243,6 @@ export default function ProjectBoard() {
   const { t } = useTranslation();
   const projects = useMockStore((s) => s.projects);
   const tasks = useMockStore((s) => s.tasks);
-  const isMock = useMockStore((s) => s.isMock);
   const hydrateProject = useMockStore((s) => s.hydrateProject);
   const deleteProject = useMockStore((s) => s.deleteProject);
 
@@ -265,11 +264,11 @@ export default function ProjectBoard() {
 
   const project = projects.find((p) => p.id === projectId);
 
-  // Real-API mode: load this project's roster + tasks on mount.
+  // Load this project's roster + tasks on mount.
   useEffect(() => {
-    if (isMock || !projectId) return;
+    if (!projectId) return;
     hydrateProject(projectId);
-  }, [isMock, projectId, hydrateProject]);
+  }, [projectId, hydrateProject]);
 
   const projectTasks = useMemo(
     () => tasks.filter((t) => t.projectId === projectId),

@@ -3,7 +3,7 @@
 // The Workspace Agent runs a scripted playbook (greet → propose a roster from the objective
 // → confirm); `finalize` materialises the plan into a real project + roster. This panel drives
 // the store's onboarding actions and reports the new project id back to the host page so it
-// can navigate there. Works under MOCK (scripted FE brain) and against the real API alike.
+// can navigate there.
 
 import { useEffect, useRef, useState, useCallback, type FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';

@@ -6,8 +6,8 @@
 // `TaskStatus`) with the narrower backend enums. For liveness, we map `checking`/`hung` into a
 // conservative online/offline bucket.
 //
-// The store uses these mappers on hydration and mutation responses. Under MOCK the data stays
-// as-is; under the real API every entity comes through these functions before entering Zustand.
+// The store uses these mappers on hydration and mutation responses: every entity comes
+// through these functions before entering Zustand.
 
 import type {
   ArtifactDTO,
@@ -367,7 +367,7 @@ export function traceEventFromVM(eventData: unknown): TraceEvent | null {
  * Parse a workspace SSE `data:` JSON into a synthetic store event the UI can react to.
  *
  * The backend publishes `marius.status_changed` with `{marius_id, status}`. We surface
- * this as a `StoreEvent` so the existing `use-mock-simulator` logic stays intact.
+ * this as a `StoreEvent` the workspace-events hook reconciles into the store.
  */
 export function workspaceEventFromVM(eventData: unknown): { type: string; payload: Record<string, unknown> } | null {
   if (!eventData || typeof eventData !== 'object') return null

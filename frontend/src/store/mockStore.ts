@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import type { SetStateAction } from 'react'
 
-import { MOCK } from '@/lib/env'
 import { clearTokens } from '@/lib/auth'
 import * as api from '@/lib/api'
 import {
@@ -35,11 +34,9 @@ function mergeProjects(existing: Project[], incoming: Project[]): Project[] {
 }
 
 // Persist the active workspace across reloads so a hard refresh on `/projects` (whose URL
-// carries no workspace id) doesn't drop the user out of context. MOCK ignores storage and
-// keeps its seeded `'w1'`.
+// carries no workspace id) doesn't drop the user out of context.
 const ACTIVE_WS_KEY = 'armarius.activeWorkspace'
 function loadActiveWorkspace(): string | null {
-  if (MOCK) return 'w1'
   try {
     return localStorage.getItem(ACTIVE_WS_KEY)
   } catch {
@@ -47,7 +44,6 @@ function loadActiveWorkspace(): string | null {
   }
 }
 function saveActiveWorkspace(id: string | null): void {
-  if (MOCK) return
   try {
     if (id) localStorage.setItem(ACTIVE_WS_KEY, id)
     else localStorage.removeItem(ACTIVE_WS_KEY)
@@ -322,14 +318,10 @@ interface MockStoreState {
   activeOnboarding: OnboardingSessionVM | null
   sseConnected: boolean
   sidebarCollapsed: boolean
-  /** True when running the frozen in-memory demo (VITE_MOCK=true). When false the store is a
-   * cache over the real API: it starts empty and is filled by the `hydrate*` thunks. */
-  isMock: boolean
 
   // Actions
-  /** Invite a new agent into the active workspace. Real mode posts to the backend and
-   * returns its onboarding materials verbatim (the copyable `invite` prompt + one-time
-   * enrollment code); mock mode fabricates an equivalent demo prompt client-side. */
+  /** Invite a new agent into the active workspace: posts to the backend and returns its
+   * onboarding materials verbatim (the copyable `invite` prompt + one-time enrollment code). */
   inviteNewAgent: (input: {
     name: string
     adapterType: string
@@ -347,8 +339,6 @@ interface MockStoreState {
   logout: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
   setSseConnected: (connected: boolean) => void
-  /** Simulated workspace control-plane SSE — cycle one agent's liveness per tick. */
-  simulateLivenessTick: () => void
   updateTask: (taskId: string, updater: SetStateAction<Task>) => Promise<void>
   addComment: (taskId: string, comment: Partial<TaskComment> & { authorId: string; content: string }) => Promise<void>
   /** Simulated per-task trace SSE — append one streamed run event. */
@@ -381,14 +371,14 @@ interface MockStoreState {
   startOnboarding: () => Promise<OnboardingSessionVM>
   /** Send a Patron turn; the Workspace Agent responds (scripted). */
   postOnboardingMessage: (text: string) => Promise<OnboardingSessionVM>
-  /** Lock the plan → creates a real project + roster (MOCK: a local project). */
+  /** Lock the plan → creates a real project + roster. */
   finalizeOnboarding: () => Promise<OnboardingSessionVM>
   /** Drop the active chat. */
   abandonOnboarding: () => Promise<void>
   /** Rehydrate the active chat on mount, if one is open. */
   hydrateActiveOnboarding: () => Promise<void>
 
-  // ── API hydration thunks (no-ops under MOCK) ───────────────────────────────────────
+  // ── API hydration thunks ───────────────────────────────────────
   hydrateMe: () => Promise<void>
   hydrateWorkspaces: () => Promise<void>
   hydrateWorkspace: (workspaceId: string) => Promise<void>
@@ -396,462 +386,15 @@ interface MockStoreState {
   hydrateTask: (taskId: string) => Promise<void>
 }
 
-// ── Rich Seed Data ──────────────────────────────────
-
-const dummyUser: User = {
-  id: 'u1',
-  name: 'Admin',
-  email: 'admin@armarius.dev',
-  avatar: '/avatar-admin.jpg',
-  defaultWorkspaceId: 'w1',
-}
-
-// ── Workspaces ──────────────────────────────────────
-
-const dummyWorkspaces: Workspace[] = [
-  { id: 'w1', name: 'Atelier', ownerId: 'u1', description: 'Personal workspace' },
-  { id: 'w2', name: 'R&D Lab', ownerId: 'u1', description: 'Research and development lab' },
-]
-
-// ── Agents / Marii ──────────────────────────────────
-
-const dummyMariuses: Marius[] = [
-  {
-    id: 'm1',
-    name: 'Atlas',
-    displayName: 'Atlas',
-    role: 'Project Leader',
-    avatar: '/agent-avatar-atlas.jpg',
-    status: 'online',
-    workspaceId: 'w1',
-    projectIds: ['p1'],
-    description: 'Project Leader \u2014 drives task breakdown and commissioning',
-    skills: ['planning', 'delegation'],
-    adapterType: 'openai',
-    model: 'gpt-4o',
-    isWorkspaceAgent: true,
-  },
-  {
-    id: 'm2',
-    name: 'Vega',
-    displayName: 'Vega',
-    role: 'Frontend Developer',
-    avatar: '/agent-avatar-vega.jpg',
-    status: 'working',
-    workspaceId: 'w1',
-    projectIds: ['p1'],
-    description: 'Frontend specialist \u2014 React, TypeScript, UI/UX',
-    skills: ['react', 'typescript', 'tailwind'],
-    adapterType: 'openai',
-    model: 'gpt-4o',
-  },
-  {
-    id: 'm3',
-    name: 'Orion',
-    displayName: 'Orion',
-    role: 'Backend Developer',
-    avatar: '/agent-avatar-orion.jpg',
-    status: 'online',
-    workspaceId: 'w1',
-    projectIds: ['p1'],
-    description: 'Backend engineer \u2014 API design, databases, infrastructure',
-    skills: ['nodejs', 'postgresql', 'redis'],
-    adapterType: 'openai',
-    model: 'gpt-4o',
-  },
-  {
-    id: 'm4',
-    name: 'Lyra',
-    displayName: 'Lyra',
-    role: 'Designer',
-    avatar: '/agent-avatar-lyra.jpg',
-    status: 'idle',
-    workspaceId: 'w1',
-    projectIds: ['p1'],
-    description: 'Visual design \u2014 Scriptorium aesthetic, brand systems',
-    skills: ['figma', 'illustration', 'brand'],
-    adapterType: 'openai',
-    model: 'gpt-4o',
-  },
-  {
-    id: 'm5',
-    name: 'Nova',
-    displayName: 'Nova',
-    role: 'QA Engineer',
-    avatar: '/agent-avatar-nova.jpg',
-    status: 'offline',
-    workspaceId: 'w1',
-    projectIds: [],
-    description: 'Quality assurance \u2014 testing, audits, edge cases',
-    skills: ['playwright', 'jest', 'ci'],
-    adapterType: 'openai',
-    model: 'gpt-4o',
-  },
-  {
-    id: 'm6',
-    name: 'Marin',
-    displayName: 'Marin',
-    role: 'DevOps',
-    status: 'pending',
-    workspaceId: 'w1',
-    projectIds: [],
-    description: 'Pending approval \u2014 infrastructure and CI/CD',
-    skills: ['docker', 'kubernetes', 'aws'],
-    adapterType: 'openai',
-    model: 'gpt-4o',
-  },
-  {
-    id: 'm7',
-    name: 'Echo-1',
-    displayName: 'Echo-1',
-    role: 'Assistant',
-    status: 'invited',
-    workspaceId: 'w1',
-    projectIds: [],
-    description: 'Invited \u2014 awaiting enrollment',
-    skills: ['general'],
-    adapterType: 'openai',
-    model: 'gpt-4o-mini',
-  },
-]
-
-// ── Projects ────────────────────────────────────────
-
-const dummyProjects: Project[] = [
-  {
-    id: 'p1',
-    name: 'Settings Redesign',
-    workspaceId: 'w1',
-    status: 'active',
-    objective: 'Redesign the settings page with WCAG AA contrast, dark mode toggle, responsive navigation',
-    githubUrl: 'https://github.com/armarius/demo-project',
-    createdAt: '2026-06-15T08:00:00Z',
-    seats: [
-      { id: 's1', projectId: 'p1', mariusId: 'm1', role: 'leader' },
-      { id: 's2', projectId: 'p1', mariusId: 'm2', role: 'worker' },
-      { id: 's3', projectId: 'p1', mariusId: 'm3', role: 'worker' },
-      { id: 's4', projectId: 'p1', mariusId: 'm4', role: 'worker' },
-    ],
-  },
-  {
-    id: 'p2',
-    name: 'Docs Site',
-    workspaceId: 'w1',
-    status: 'setup',
-    objective: 'Build documentation site with searchable API reference and guides',
-    githubUrl: 'https://github.com/armarius/docs-site',
-    createdAt: '2026-06-25T09:00:00Z',
-    seats: [
-      { id: 's5', projectId: 'p2', mariusId: null, role: 'leader' },
-      { id: 's6', projectId: 'p2', mariusId: null, role: 'worker' },
-    ],
-  },
-]
-
-// ── Tasks ───────────────────────────────────────────
-
-const dummyTasks: Task[] = [
-  {
-    id: 't1',
-    identifier: 'ARM-1',
-    title: 'WCAG audit current settings',
-    status: 'done',
-    priority: 'P1',
-    projectId: 'p1',
-    assigneeId: 'm2',
-    createdAt: '2026-06-20T10:00:00Z',
-    checklist: [
-      { id: 'c1', text: 'Run contrast checker', done: true },
-      { id: 'c2', text: 'Document violations', done: true },
-    ],
-    comments: [],
-    artifacts: [
-      { id: 'a1', taskId: 't1', type: 'file', title: 'audit-report.md', name: 'audit-report.md' },
-    ],
-    trace: [],
-    participants: [
-      { id: 'm2', name: 'Vega', role: 'Frontend Developer' },
-    ],
-    dependencies: [],
-    definitionOfDone: 'All contrast violations documented with severity ratings',
-  },
-  {
-    id: 't2',
-    identifier: 'ARM-2',
-    title: 'Implement dark mode toggle',
-    status: 'in_progress',
-    priority: 'P0',
-    projectId: 'p1',
-    assigneeId: 'm2',
-    createdAt: '2026-06-21T08:30:00Z',
-    checklist: [
-      { id: 'c3', text: 'Create ThemeContext', done: true },
-      { id: 'c4', text: 'Add toggle switch UI', done: true },
-      { id: 'c5', text: 'Persist preference to localStorage', done: false },
-      { id: 'c6', text: 'Test system preference detection', done: false },
-    ],
-    comments: [
-      { id: 'cm1', taskId: 't2', authorId: 'm2', content: 'Using CSS variables approach, much cleaner than the old JS-based one.', timestamp: '2026-06-22T14:00:00Z' },
-    ],
-    artifacts: [
-      { id: 'a2', taskId: 't2', type: 'code', title: 'ThemeContext.tsx', name: 'ThemeContext.tsx' },
-    ],
-    trace: [
-      { id: 'tr1', taskId: 't2', type: 'run.delta', agentId: 'm2', model: 'gpt-4o', content: 'Reviewing the existing theme handling. The old approach toggles a class on <body>; I will replace it with a ThemeContext + CSS custom properties so it works across every route.', timestamp: '2026-06-22T13:55:02Z' },
-      { id: 'tr2', taskId: 't2', type: 'run.tool', agentId: 'm2', toolName: 'read_file', content: 'Read src/theme/legacy-theme.js', args: { path: 'src/theme/legacy-theme.js' }, timestamp: '2026-06-22T13:55:08Z' },
-      { id: 'tr3', taskId: 't2', type: 'run.tool', agentId: 'm2', toolName: 'write_file', content: 'Created src/theme/ThemeContext.tsx with a provider + useTheme() hook persisting to localStorage.', args: { path: 'src/theme/ThemeContext.tsx', bytes: 1840 }, timestamp: '2026-06-22T13:56:10Z' },
-      { id: 'tr4', taskId: 't2', type: 'run.delta', agentId: 'm2', model: 'gpt-4o', content: 'Wiring the toggle switch into the settings header and defaulting to the system preference via prefers-color-scheme.', timestamp: '2026-06-22T13:56:44Z' },
-      { id: 'tr5', taskId: 't2', type: 'run.usage', agentId: 'm2', model: 'gpt-4o', content: 'turn usage', tokens: { used: 3120, total: 128000, prompt: 2440, completion: 680 }, timestamp: '2026-06-22T13:56:45Z' },
-    ],
-    participants: [
-      { id: 'm2', name: 'Vega', role: 'Frontend Developer' },
-      { id: 'm4', name: 'Lyra', role: 'Designer' },
-    ],
-    dependencies: ['t1'],
-    definitionOfDone: 'Toggle works across all routes and persists user preference',
-  },
-  {
-    id: 't3',
-    identifier: 'ARM-3',
-    title: 'Build responsive navigation sidebar',
-    status: 'in_progress',
-    priority: 'P1',
-    projectId: 'p1',
-    assigneeId: 'm4',
-    createdAt: '2026-06-21T11:00:00Z',
-    checklist: [
-      { id: 'c7', text: 'Mobile collapsible menu', done: true },
-      { id: 'c8', text: 'Desktop persistent sidebar', done: true },
-      { id: 'c9', text: 'Active state indicators', done: false },
-    ],
-    comments: [],
-    artifacts: [],
-    trace: [
-      { id: 'tr6', taskId: 't3', type: 'run.delta', agentId: 'm4', model: 'gpt-4o', content: 'Designing the responsive breakpoints: a slide-over drawer under 768px and a persistent rail above it. Checking the active-route indicator next.', timestamp: '2026-06-22T15:10:00Z' },
-      { id: 'tr7', taskId: 't3', type: 'run.tool', agentId: 'm4', toolName: 'write_file', content: 'Updated src/components/Sidebar.tsx with the collapsible drawer.', args: { path: 'src/components/Sidebar.tsx', bytes: 2210 }, timestamp: '2026-06-22T15:11:20Z' },
-    ],
-    participants: [
-      { id: 'm4', name: 'Lyra', role: 'Designer' },
-      { id: 'm2', name: 'Vega', role: 'Frontend Developer' },
-    ],
-    dependencies: [],
-    definitionOfDone: 'Navigation works on 320px to 4K without horizontal scroll',
-  },
-  {
-    id: 't4',
-    identifier: 'ARM-4',
-    title: 'Design system token updates',
-    status: 'in_review',
-    priority: 'P1',
-    projectId: 'p1',
-    assigneeId: 'm4',
-    createdAt: '2026-06-22T09:00:00Z',
-    checklist: [
-      { id: 'c10', text: 'New color tokens', done: true },
-      { id: 'c11', text: 'Typography scale', done: true },
-      { id: 'c12', text: 'Spacing tokens', done: true },
-      { id: 'c13', text: 'Shadow/elevation tokens', done: true },
-    ],
-    comments: [
-      { id: 'cm2', taskId: 't4', authorId: 'm1', content: 'The terracotta shade looks great in dark mode.', timestamp: '2026-06-23T10:30:00Z' },
-    ],
-    artifacts: [
-      { id: 'a3', taskId: 't4', type: 'file', title: 'tokens.json', name: 'tokens.json' },
-      { id: 'a4', taskId: 't4', type: 'file', title: 'tokens.css', name: 'tokens.css' },
-    ],
-    trace: [],
-    participants: [
-      { id: 'm4', name: 'Lyra', role: 'Designer' },
-      { id: 'm1', name: 'Atlas', role: 'Project Leader' },
-    ],
-    dependencies: [],
-    definitionOfDone: 'All components use new tokens, zero hardcoded values remain',
-  },
-  {
-    id: 't5',
-    identifier: 'ARM-5',
-    title: 'API endpoints for user preferences',
-    status: 'in_progress',
-    priority: 'P0',
-    projectId: 'p1',
-    assigneeId: 'm3',
-    createdAt: '2026-06-22T10:00:00Z',
-    checklist: [
-      { id: 'c14', text: 'GET /preferences endpoint', done: true },
-      { id: 'c15', text: 'PATCH /preferences endpoint', done: true },
-      { id: 'c16', text: 'Validation schema', done: true },
-      { id: 'c17', text: 'Integration tests', done: false },
-    ],
-    comments: [],
-    artifacts: [
-      { id: 'a5', taskId: 't5', type: 'code', title: 'preferences.routes.ts', name: 'preferences.routes.ts' },
-      { id: 'a6', taskId: 't5', type: 'code', title: 'preferences.test.ts', name: 'preferences.test.ts' },
-    ],
-    trace: [
-      { id: 'tr8', taskId: 't5', type: 'run.delta', agentId: 'm3', model: 'gpt-4o', content: 'Both endpoints are implemented and validated against the JSON schema. Now adding integration tests to push coverage above 90%.', timestamp: '2026-06-22T16:02:00Z' },
-      { id: 'tr9', taskId: 't5', type: 'run.tool', agentId: 'm3', toolName: 'run_tests', content: 'pytest tests/preferences — 11 passed, coverage 87%.', args: { suite: 'preferences', passed: 11, coverage: 0.87 }, timestamp: '2026-06-22T16:03:30Z' },
-      { id: 'tr10', taskId: 't5', type: 'run.usage', agentId: 'm3', model: 'gpt-4o', content: 'turn usage', tokens: { used: 5400, total: 128000, prompt: 4100, completion: 1300 }, timestamp: '2026-06-22T16:03:31Z' },
-    ],
-    participants: [
-      { id: 'm3', name: 'Orion', role: 'Backend Developer' },
-    ],
-    dependencies: [],
-    definitionOfDone: 'Both endpoints tested with >90% coverage and documented',
-  },
-  {
-    id: 't6',
-    identifier: 'ARM-6',
-    title: 'Set up documentation site scaffolding',
-    status: 'todo',
-    priority: 'P2',
-    projectId: 'p2',
-    assigneeId: undefined,
-    createdAt: '2026-06-25T09:00:00Z',
-    checklist: [
-      { id: 'c18', text: 'Choose SSG framework', done: false },
-      { id: 'c19', text: 'Initial project structure', done: false },
-      { id: 'c20', text: 'CI pipeline for deploy', done: false },
-    ],
-    comments: [],
-    artifacts: [],
-    trace: [],
-    participants: [],
-    dependencies: [],
-    definitionOfDone: 'Site deploys automatically on merge to main',
-  },
-  {
-    id: 't7',
-    identifier: 'ARM-7',
-    title: 'Database migration for theme storage',
-    status: 'blocked',
-    priority: 'P0',
-    projectId: 'p1',
-    assigneeId: 'm3',
-    createdAt: '2026-06-23T08:00:00Z',
-    checklist: [
-      { id: 'c21', text: 'Add theme_preferences column', done: false },
-      { id: 'c22', text: 'Write migration script', done: false },
-    ],
-    comments: [
-      { id: 'cm3', taskId: 't7', authorId: 'm3', content: 'Blocked until DBA reviews the schema change.', timestamp: '2026-06-23T12:00:00Z' },
-    ],
-    artifacts: [],
-    trace: [],
-    participants: [
-      { id: 'm3', name: 'Orion', role: 'Backend Developer' },
-    ],
-    dependencies: ['t5'],
-    definitionOfDone: 'Migration runs idempotently, rollback tested',
-  },
-]
-
-// ── Skills ──────────────────────────────────────────
-
-const dummySkills: Skill[] = [
-  {
-    id: 'sk1',
-    name: 'armarius-http',
-    description: 'HTTP client for Armarius API calls',
-    type: 'builtin',
-    workspaceId: 'w1',
-    files: [{ id: 'f1', name: 'SKILL.md', path: 'SKILL.md', language: 'markdown', content: '# armarius-http\n\nHTTP client for Armarius API.', workspaceId: 'w1' }],
-  },
-  {
-    id: 'sk2',
-    name: 'algorithmic-art',
-    description: 'Generative art algorithms and rendering',
-    type: 'github',
-    workspaceId: 'w1',
-    files: [{ id: 'f2', name: 'SKILL.md', path: 'SKILL.md', language: 'markdown', content: '# algorithmic-art\n\nGenerative art algorithms.', workspaceId: 'w1' }, { id: 'f3', name: 'src/index.ts', path: 'src/index.ts', language: 'typescript', content: '// Algorithm implementations\n', workspaceId: 'w1' }],
-  },
-]
-
-// ── Onboarding scripted brain (MOCK path only) ───────────────────────────────────────
-// Mirrors the backend's deterministic onboarder so the frozen demo's agent-mode tab works
-// end-to-end without a real gateway. The real path ignores this and talks to the API.
-const ONBOARDING_GREETING =
-  "Hi — I'm the Workspace Agent. Tell me what you'd like to build and I'll propose a team for it: the objective, who you need (e.g. frontend, backend, design), and I'll stand up the project with a Project Leader plus those worker roles."
-
-const MOCK_ROLE_KEYWORDS: Array<[string[], string]> = [
-  [['frontend', 'ui', 'react', 'css', 'web'], 'Frontend'],
-  [['backend', 'api', 'server', 'database', 'db'], 'Backend'],
-  [['design', 'ux', 'figma'], 'Design'],
-  [['test', 'qa', 'review', 'security'], 'QA / Reviewer'],
-]
-const MOCK_CONFIRM = ['looks good', 'yes', 'confirm', 'ok', 'create', 'go ahead', 'perfect', 'ship', 'finalize']
-const MOCK_RECONSIDER = ['no', 'change', 'add', 'remove', 'instead', 'swap', 'replace']
-
-function mockOnboardingConfirm(text: string): boolean {
-  const l = text.toLowerCase()
-  if (MOCK_RECONSIDER.some((w) => l.includes(w))) return false
-  return MOCK_CONFIRM.some((w) => l.includes(w))
-}
-
-interface MockRole {
-  key: string
-  title: string
-  is_leader: boolean
-}
-
-function mockProposePlan(objective: string): { name: string; roles: MockRole[] } {
-  const l = objective.toLowerCase()
-  const workerTitles = MOCK_ROLE_KEYWORDS.filter(([kw]) => kw.some((k) => l.includes(k))).map(([, t]) => t)
-  const workers = (workerTitles.length ? workerTitles : ['Frontend', 'Backend']).map((t) => ({
-    key: t.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-    title: t,
-    is_leader: false,
-  }))
-  const name = objective.trim()
-    ? objective
-        .trim()
-        .split(/\s+/)
-        .slice(0, 4)
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' ')
-    : 'New Project'
-  return { name, roles: [{ key: 'leader', title: 'Project Leader', is_leader: true }, ...workers] }
-}
-
-function mockRespond(
-  collected: Record<string, unknown>,
-  text: string,
-): { reply: string; collected: Record<string, unknown> } {
-  if (mockOnboardingConfirm(text) && collected.roles) {
-    return {
-      reply: "Locked in. Hit “Create project” and I'll stand it up — a Project Leader seat plus the worker roles we agreed on.",
-      collected: { ...collected, ready: true },
-    }
-  }
-  const plan = mockProposePlan(text)
-  const workerLines = plan.roles
-    .filter((r) => !r.is_leader)
-    .map((r) => `  • ${r.title}`)
-    .join('\n')
-  return {
-    reply: `Got it — I'll set up ${plan.name} with one Project Leader plus:\n${workerLines}\n\nIf that looks right, say “looks good” (or hit Create). Want to add or swap a role? Tell me what you need.`,
-    collected: { objective: text.trim(), project_name: plan.name, roles: plan.roles, ready: false },
-  }
-}
-
-function mockPlanFromCollected(collected: Record<string, unknown>): {
-  name: string
-  objective: string
-  roles: MockRole[]
-} {
-  const raw = (collected.roles as MockRole[] | undefined) ?? mockProposePlan('').roles
-  const name = (collected.project_name as string) || 'New Project'
-  return { name, objective: (collected.objective as string) || name, roles: raw }
-}
-
 // ── Store ───────────────────────────────────────────
 
 export const useMockStore = create<MockStoreState>((set, get) => ({
-  currentUser: MOCK ? dummyUser : null,
-  workspaces: MOCK ? dummyWorkspaces : [],
-  projects: MOCK ? dummyProjects : [],
-  mariuses: MOCK ? dummyMariuses : [],
-  tasks: MOCK ? dummyTasks : [],
-  skills: MOCK ? dummySkills : [],
+  currentUser: null,
+  workspaces: [],
+  projects: [],
+  mariuses: [],
+  tasks: [],
+  skills: [],
   messages: [],
   comments: [],
   events: [],
@@ -860,7 +403,6 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   activeOnboarding: null,
   sseConnected: false,
   sidebarCollapsed: false,
-  isMock: MOCK,
 
   inviteNewAgent: async ({ name, adapterType, skillIds, isWorkspaceAgent }) => {
     const workspaceId = get().activeWorkspaceId || 'w1'
@@ -868,86 +410,27 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
       .skills.filter((s) => skillIds.includes(s.id))
       .map((s) => s.name)
 
-    if (!get().isMock) {
-      // Real mode: the backend creates the INVITED Marius, mints the enrollment code and
-      // assembles the full onboarding prompt (STEP 0–4, absolute public URL). Send
-      // skill_ids — that is what `_build_invite` resolves for the prompt's install step.
-      const dto = await api.inviteMarius(workspaceId, {
-        name,
-        skills: skillNames,
-        skill_ids: skillIds,
-        adapter_type: adapterType,
-        is_workspace_agent: isWorkspaceAgent ?? false,
-      })
-      const agent: Marius = {
-        ...mariusToVM(dto),
-        // A fresh invite has no liveness yet (maps to `offline`); its real state is the
-        // invite lifecycle, which we know is `invited` on a 201.
-        status: 'invited',
-        displayName: name,
-        isWorkspaceAgent: isWorkspaceAgent === true,
-      }
-      set({ mariuses: [...get().mariuses, agent] })
-      if (isWorkspaceAgent) get().applyDesignation(workspaceId, agent.id)
-      return { agent, invite: dto.invite ?? '', enrollmentCode: dto.enrollment_code ?? '' }
-    }
-
-    // Mock mode: fabricate the same shape client-side so the demo mirrors the real flow.
-    const enrollmentCode = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-    const agent: Marius = {
-      id: `m-${Date.now().toString(36)}`,
-      name: name.toLowerCase().replace(/\s+/g, '-'),
-      displayName: name,
-      role: '',
-      adapterType,
+    // The backend creates the INVITED Marius, mints the enrollment code and assembles the
+    // full onboarding prompt (STEP 0–4, absolute public URL). Send skill_ids — that is what
+    // `_build_invite` resolves for the prompt's install step.
+    const dto = await api.inviteMarius(workspaceId, {
+      name,
       skills: skillNames,
-      avatar: '/agent-avatar-echo.jpg',
+      skill_ids: skillIds,
+      adapter_type: adapterType,
+      is_workspace_agent: isWorkspaceAgent ?? false,
+    })
+    const agent: Marius = {
+      ...mariusToVM(dto),
+      // A fresh invite has no liveness yet (maps to `offline`); its real state is the
+      // invite lifecycle, which we know is `invited` on a 201.
       status: 'invited',
-      workspaceId,
-      projectIds: [],
+      displayName: name,
+      isWorkspaceAgent: isWorkspaceAgent === true,
     }
     set({ mariuses: [...get().mariuses, agent] })
     if (isWorkspaceAgent) get().applyDesignation(workspaceId, agent.id)
-
-    // Simulate the agent presenting its code shortly after (invited → pending review).
-    setTimeout(() => {
-      const store = get()
-      const current = store.mariuses.find((m) => m.id === agent.id)
-      if (current && current.status === 'invited') {
-        set({
-          mariuses: store.mariuses.map((m) =>
-            m.id === agent.id ? { ...m, status: 'pending' as AgentStatus } : m,
-          ),
-        })
-        store.emitEvent({
-          type: 'marius.status_changed',
-          payload: { mariusId: agent.id, from: 'invited', to: 'pending' },
-        })
-      }
-    }, 3000)
-
-    // A condensed stand-in for the backend's STEP 0–4 onboarding prompt (demo only).
-    const base = window.location.origin
-    const invite = [
-      'ARMARIUS · AGENT ONBOARDING (demo)',
-      '',
-      `You are "${name}", joining this workspace.`,
-      '',
-      'STEP 0 · ENROLL AND WAIT FOR APPROVAL',
-      `  POST ${base}/agent/enroll`,
-      `  {"marius_id": "${agent.id}", "enrollment_code": "${enrollmentCode}"}`,
-      '  → 200 {"agent_token": "arm_..."} once your patron approves.',
-      '',
-      'STEP 1 · SAVE YOUR CREDENTIALS to ~/.armarius/credentials/',
-      `STEP 2 · CONFIRM YOU ARE ONLINE — GET ${base}/agent/me`,
-      ...(skillNames.length > 0
-        ? [
-            'STEP 3 · INSTALL YOUR SKILLS',
-            ...skillNames.map((s) => `  - ${s}  (GET ${base}/agent/skills/<slug>)`),
-          ]
-        : []),
-    ].join('\n')
-    return { agent, invite, enrollmentCode }
+    return { agent, invite: dto.invite ?? '', enrollmentCode: dto.enrollment_code ?? '' }
   },
 
   applyDesignation: (workspaceId: string, mariusId: string) => {
@@ -974,22 +457,12 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
       get().mariuses.find((m) => m.id === mariusId)?.workspaceId ||
       get().activeWorkspaceId ||
       ''
-    if (!get().isMock) {
-      await api.designateWorkspaceAgent(workspaceId, mariusId)
-    }
+    await api.designateWorkspaceAgent(workspaceId, mariusId)
     get().applyDesignation(workspaceId, mariusId)
     get().emitEvent({ type: 'workspace_agent.designated', payload: { mariusId } })
   },
 
   approveAgent: async (mariusId: string) => {
-    if (get().isMock) {
-      const updated = get().mariuses.map((m) =>
-        m.id === mariusId ? { ...m, status: 'online' as AgentStatus, lastSeen: new Date().toISOString() } : m,
-      )
-      set({ mariuses: updated })
-      get().emitEvent({ type: 'marius.online', payload: { mariusId } })
-      return
-    }
     const existing = get().mariuses.find((m) => m.id === mariusId)
     const workspaceId = existing?.workspaceId
     if (!workspaceId) return
@@ -1015,34 +488,8 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
 
   setSseConnected: (connected) => set({ sseConnected: connected }),
 
-  // Simulated Hybrid SSE — workspace control-plane channel. Each tick decays one
-  // agent's liveness ONLINE → idle(checking) → offline, occasionally reviving it,
-  // so the directory dots feel alive without a backend.
-  simulateLivenessTick: () => {
-    const state = get()
-    // Only cycle agents that are part of the workspace (skip invited/pending/revoked).
-    const cyclable = state.mariuses.filter(
-      (m) => !['invited', 'pending', 'revoked'].includes(m.status)
-    )
-    if (cyclable.length === 0) return
-    const target = cyclable[Math.floor(Math.random() * cyclable.length)]
-    const decay: Record<string, AgentStatus> = {
-      online: 'idle',
-      working: 'online',
-      idle: 'offline',
-      offline: 'online',
-    }
-    const next = decay[target.status] ?? 'online'
-    set({
-      mariuses: state.mariuses.map((m) =>
-        m.id === target.id ? { ...m, status: next, lastSeen: new Date().toISOString() } : m
-      ),
-    })
-    get().emitEvent({ type: 'marius.liveness', payload: { mariusId: target.id, status: next } })
-  },
-
   logout: () => {
-    if (!MOCK) clearTokens()
+    clearTokens()
     saveActiveWorkspace(null)
     set({ currentUser: null, activeWorkspaceId: null })
   },
@@ -1055,7 +502,7 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     // Real mode: persist a status transition; revert optimistically on rejection (e.g. the
     // backend DONE-gate returns 409 when artifacts are missing). Call sites are fire-and-
     // forget, so we revert + log rather than throw (avoids unhandled promise rejections).
-    if (!get().isMock && newTask.status !== prev.status) {
+    if (newTask.status !== prev.status) {
       try {
         await api.updateTaskStatus(taskId, newTask.status)
       } catch (e) {
@@ -1066,18 +513,6 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   },
 
   addComment: async (taskId, comment) => {
-    if (get().isMock) {
-      const full: TaskComment = {
-        id: comment.id ?? `cm_${Date.now()}`,
-        taskId,
-        authorId: comment.authorId,
-        authorName: comment.authorName,
-        content: comment.content,
-        timestamp: comment.timestamp ?? new Date().toISOString(),
-      }
-      set({ tasks: get().tasks.map((t) => (t.id === taskId ? { ...t, comments: [...(t.comments || []), full] } : t)) })
-      return
-    }
     const dto = await api.postComment(taskId, comment.content)
     const full = commentToVM(dto)
     full.authorName = comment.authorName // author display name resolved client-side
@@ -1106,10 +541,6 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   },
 
   publishArtifact: async (taskId: string, artifact: TaskArtifact) => {
-    if (get().isMock) {
-      set({ tasks: get().tasks.map((t) => (t.id === taskId ? { ...t, artifacts: [...(t.artifacts || []), artifact] } : t)) })
-      return
-    }
     const kind = artifact.type === 'link' ? 'link' : 'file'
     const name = artifact.name || artifact.title || 'artifact'
     const dto = await api.publishArtifact(taskId, name, kind, artifact.url)
@@ -1119,54 +550,30 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
 
   createSkill: async (input) => {
     const workspaceId = input.workspaceId || get().activeWorkspaceId || undefined
-    // Real mode: persist manual skills through the backend so they survive an F5 and
-    // carry a real id (the detail route resolves against it). GitHub imports go through
-    // the dedicated importSkill() path — the backend clones + persists them there.
-    if (!get().isMock && workspaceId) {
-      const dto = await api.createManualSkill(workspaceId, {
-        name: input.name,
-        description: input.description,
-      })
-      const vm = skillToVM(dto)
-      set({ skills: [...get().skills, vm] })
-      return vm
-    }
-    // Mock mode: build it client-side with a real id so navigation lands on /skills/<id>
-    // instead of /skills/undefined.
-    const skill: Skill = { ...input, id: input.id ?? `sk_${Date.now()}`, workspaceId }
-    set({ skills: [...get().skills, skill] })
-    return skill
+    if (!workspaceId) throw new Error('createSkill: no active workspace')
+    // Persist manual skills through the backend so they survive an F5 and carry a real id
+    // (the detail route resolves against it). GitHub imports go through the dedicated
+    // importSkill() path — the backend clones + persists them there.
+    const dto = await api.createManualSkill(workspaceId, {
+      name: input.name,
+      description: input.description,
+    })
+    const vm = skillToVM(dto)
+    set({ skills: [...get().skills, vm] })
+    return vm
   },
 
   importSkill: async (url: string, workspaceId?: string) => {
     const wsId = workspaceId || get().activeWorkspaceId || undefined
-    // Real mode: the backend actually clones the GitHub folder (detects SKILL.md, pulls
-    // that folder) and persists the skill — so it survives F5 and carries a real id. A
-    // bad URL / missing SKILL.md throws here (the modal surfaces the message); we never
-    // fabricate a placeholder skill (issues #41, #42).
-    if (!get().isMock && wsId) {
-      const dto = await api.importSkill(wsId, url)
-      const vm = skillToVM(dto)
-      set({ skills: [...get().skills, vm] })
-      return vm
-    }
-    // Mock/demo only (no backend to clone from): stand up a minimal skill from the URL so
-    // the frozen demo still navigates. The deployed stack never takes this branch.
-    const seg = url.replace(/\/+$/, '').split('/').pop() || 'imported-skill'
-    const name = seg.replace(/\.(md|markdown)$/i, '') || 'imported-skill'
-    const skill: Skill = {
-      id: `sk_${Date.now()}`,
-      name,
-      description: `Imported from ${url}`,
-      type: 'github',
-      sourceUrl: url,
-      workspaceId: wsId,
-      files: [
-        { id: 'skill-md', name: 'SKILL.md', path: 'SKILL.md', language: 'markdown', content: `---\nname: ${name}\n---\n`, workspaceId: wsId },
-      ],
-    }
-    set({ skills: [...get().skills, skill] })
-    return skill
+    if (!wsId) throw new Error('importSkill: no active workspace')
+    // The backend actually clones the GitHub folder (detects SKILL.md, pulls that folder)
+    // and persists the skill — so it survives F5 and carries a real id. A bad URL / missing
+    // SKILL.md throws here (the modal surfaces the message); we never fabricate a
+    // placeholder skill (issues #41, #42).
+    const dto = await api.importSkill(wsId, url)
+    const vm = skillToVM(dto)
+    set({ skills: [...get().skills, vm] })
+    return vm
   },
 
   updateSkill: (skillId: string, skillUpdate: Partial<Skill>) => {
@@ -1180,20 +587,13 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   deleteSkill: async (skillId: string) => {
     const skill = get().skills.find((s) => s.id === skillId)
     const workspaceId = skill?.workspaceId || get().activeWorkspaceId
-    // Only call the backend for a persisted skill. A client-only id (never saved — e.g. a
-    // stale pre-persistence import) isn't a UUID, so the `{skill_id}` route would 422;
-    // just drop it locally instead (issue #41).
-    if (!get().isMock && workspaceId && !skillId.startsWith('sk_')) {
+    if (workspaceId) {
       await api.deleteSkill(workspaceId, skillId)
     }
     set({ skills: get().skills.filter((s) => s.id !== skillId) })
   },
 
   createWorkspace: async (workspace: Workspace) => {
-    if (get().isMock) {
-      set({ workspaces: [...get().workspaces, workspace] })
-      return workspace
-    }
     const dto = await api.createWorkspace(workspace.name)
     const ownerId = get().currentUser?.id ?? ''
     const vm = workspaceToVM(dto, ownerId)
@@ -1202,18 +602,14 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   },
 
   updateWorkspace: async (workspaceId: string, name: string) => {
-    if (!get().isMock) {
-      await api.updateWorkspace(workspaceId, name)
-    }
+    await api.updateWorkspace(workspaceId, name)
     set({
       workspaces: get().workspaces.map((w) => (w.id === workspaceId ? { ...w, name } : w)),
     })
   },
 
   deleteWorkspace: async (workspaceId: string) => {
-    if (!get().isMock) {
-      await api.deleteWorkspace(workspaceId)
-    }
+    await api.deleteWorkspace(workspaceId)
     // Drop the workspace and everything scoped to it (the backend cascades server-side).
     const remaining = get().workspaces.filter((w) => w.id !== workspaceId)
     set({
@@ -1233,7 +629,7 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   updateMarius: async (mariusId: string, patchBody: { name?: string; role?: string }) => {
     const m = get().mariuses.find((x) => x.id === mariusId)
     const workspaceId = m?.workspaceId || get().activeWorkspaceId
-    if (!get().isMock && workspaceId) {
+    if (workspaceId) {
       await api.updateMarius(workspaceId, mariusId, {
         name: patchBody.name,
         role: patchBody.role,
@@ -1258,7 +654,7 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   deleteMarius: async (mariusId: string) => {
     const m = get().mariuses.find((x) => x.id === mariusId)
     const workspaceId = m?.workspaceId || get().activeWorkspaceId
-    if (!get().isMock && workspaceId) {
+    if (workspaceId) {
       await api.deleteMarius(workspaceId, mariusId)
     }
     set({
@@ -1280,30 +676,7 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     const project = get().projects.find((p) => p.id === projectId)
     if (!project) return
 
-    if (get().isMock) {
-      if (!project.seats) return
-      // Find first empty seat matching role, or any empty seat
-      const updatedSeats = project.seats.map((s) => (!s.mariusId && s.role === role ? { ...s, mariusId } : s))
-      const hasMatch = updatedSeats.some((s) => s.mariusId === mariusId)
-      if (!hasMatch) {
-        const firstEmpty = project.seats.find((s) => !s.mariusId)
-        if (firstEmpty) {
-          const idx = project.seats.indexOf(firstEmpty)
-          updatedSeats[idx] = { ...firstEmpty, mariusId }
-        }
-      }
-      // Recompute the setup→active gate: a project goes active once every seat is filled.
-      const allSeated = updatedSeats.length > 0 && updatedSeats.every((s) => s.mariusId)
-      const nextStatus = allSeated && project.status === 'setup' ? 'active' : project.status
-      const becameActive = nextStatus === 'active' && project.status === 'setup'
-      set({ projects: get().projects.map((p) => (p.id === projectId ? { ...p, seats: updatedSeats, status: nextStatus } : p)) })
-      if (becameActive) {
-        get().emitEvent({ type: 'project.active', payload: { projectId } })
-      }
-      return
-    }
-
-    // Real mode: the backend grants the seat (system-only) and recomputes setup→active.
+    // The backend grants the seat (system-only) and recomputes setup→active.
     await api.grantSeat(projectId, { marius_id: mariusId, role_key: role })
     await get().hydrateProject(projectId)
     if (get().projects.find((p) => p.id === projectId)?.status === 'active') {
@@ -1312,21 +685,6 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   },
 
   createTask: async (task) => {
-    if (get().isMock) {
-      const newTask: Task = {
-        id: `t_${Date.now()}`,
-        createdAt: new Date().toISOString(),
-        comments: [],
-        artifacts: [],
-        trace: [],
-        checklist: [],
-        participants: [],
-        dependencies: [],
-        ...task,
-      } as Task
-      set({ tasks: [...get().tasks, newTask] })
-      return newTask
-    }
     const dto = await api.createTask(task.projectId, task.title, task.description)
     const newTask = taskToVM(dto)
     set({ tasks: [...get().tasks, newTask] })
@@ -1336,9 +694,7 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   deleteProject: async (projectId: string) => {
     // Drop the project + its tasks locally either way; the backend cascade
     // (tasks/artifacts/comments/seats/roles) is triggered in real mode.
-    if (!get().isMock) {
-      await api.deleteProject(projectId)
-    }
+    await api.deleteProject(projectId)
     set({
       projects: get().projects.filter((p) => p.id !== projectId),
       tasks: get().tasks.filter((t) => t.projectId !== projectId),
@@ -1347,24 +703,7 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
 
   createProject: async (input) => {
     const workspaceId = input.workspaceId || get().activeWorkspaceId || ''
-    if (get().isMock) {
-      const id = `p_${Date.now()}`
-      const project: Project = {
-        id,
-        name: input.name,
-        description: input.description,
-        objective: input.objective,
-        workspaceId,
-        status: 'setup',
-        seats: [
-          { id: `${id}-leader`, projectId: id, mariusId: input.leaderId || null, role: 'leader' },
-          ...(input.seats ?? []).map((s, i) => ({ id: `${id}-${i}`, projectId: id, mariusId: null, role: s.roleKey })),
-        ],
-      }
-      set({ projects: [...get().projects, project] })
-      return project
-    }
-    // Real: reconstruct role specs from the flat seat list the wizard emits (one entry per
+    // Reconstruct role specs from the flat seat list the wizard emits (one entry per
     // seat; group worker seats by their display title → {title, seats, skill_ids}).
     const workerSeats = (input.seats ?? []).filter((s) => s.roleKey !== 'leader')
     const roleMap = new Map<string, { title: string; seats: number; skill_ids: string[] }>()
@@ -1389,19 +728,6 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   // ── Onboarding (agent-assisted project setup · Sprint 7) ───────────────────────────
   startOnboarding: async () => {
     const workspaceId = get().activeWorkspaceId || ''
-    if (get().isMock) {
-      const vm: OnboardingSessionVM = {
-        id: `ob_${Date.now()}`,
-        workspaceId,
-        status: 'open',
-        transcript: [
-          { id: 'greet', role: 'agent', text: ONBOARDING_GREETING, timestamp: new Date().toISOString() },
-        ],
-        collected: {},
-      }
-      set({ activeOnboarding: vm })
-      return vm
-    }
     // Rejoin an already-open chat if one exists; otherwise open a fresh one.
     const existing = await api.getActiveOnboarding(workspaceId)
     const dto = existing ?? (await api.startOnboarding(workspaceId))
@@ -1413,22 +739,6 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   postOnboardingMessage: async (text: string) => {
     const session = get().activeOnboarding
     if (!session) throw new Error('no active onboarding session')
-    if (get().isMock) {
-      const { reply, collected } = mockRespond(session.collected, text)
-      const ts = new Date().toISOString()
-      const base = session.transcript.length
-      const vm: OnboardingSessionVM = {
-        ...session,
-        transcript: [
-          ...session.transcript,
-          { id: `${session.id}-${base}`, role: 'patron', text, timestamp: ts },
-          { id: `${session.id}-${base + 1}`, role: 'agent', text: reply, timestamp: ts },
-        ],
-        collected,
-      }
-      set({ activeOnboarding: vm })
-      return vm
-    }
     const dto = await api.postOnboardingMessage(session.id, text)
     const vm = onboardingToVM(dto)
     set({ activeOnboarding: vm })
@@ -1438,24 +748,6 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   finalizeOnboarding: async () => {
     const session = get().activeOnboarding
     if (!session) throw new Error('no active onboarding session')
-    if (get().isMock) {
-      // Materialise a local project from the collected plan (mirrors backend finalize).
-      const plan = mockPlanFromCollected(session.collected)
-      const id = `p_${Date.now()}`
-      const project: Project = {
-        id,
-        name: plan.name,
-        description: plan.objective,
-        objective: plan.objective,
-        workspaceId: session.workspaceId,
-        status: 'setup',
-        seats: plan.roles.map((r, i) => ({ id: `${id}-${i}`, projectId: id, mariusId: null, role: r.key })),
-      }
-      set({ projects: [...get().projects, project] })
-      const vm: OnboardingSessionVM = { ...session, status: 'finalized', createdProjectId: id }
-      set({ activeOnboarding: vm })
-      return vm
-    }
     const dto = await api.finalizeOnboarding(session.id)
     const vm = onboardingToVM(dto)
     set({ activeOnboarding: vm })
@@ -1465,14 +757,11 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   abandonOnboarding: async () => {
     const session = get().activeOnboarding
     if (!session) return
-    if (!get().isMock) {
-      await api.abandonOnboarding(session.id)
-    }
+    await api.abandonOnboarding(session.id)
     set({ activeOnboarding: null })
   },
 
   hydrateActiveOnboarding: async () => {
-    if (get().isMock) return
     const workspaceId = get().activeWorkspaceId || ''
     if (!workspaceId) return
     const dto = await api.getActiveOnboarding(workspaceId)
@@ -1481,7 +770,6 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
 
   // ── API hydration thunks ───────────────────────────────────────────────────────────
   hydrateMe: async () => {
-    if (get().isMock) return
     try {
       const user = await api.getMe()
       set({ currentUser: { id: user.id, name: user.full_name, email: user.email } })
@@ -1491,7 +779,6 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   },
 
   hydrateWorkspaces: async () => {
-    if (get().isMock) return
     const ownerId = get().currentUser?.id ?? ''
     const dtos = await api.listWorkspaces()
     const vms = dtos.map((d) => workspaceToVM(d, ownerId))
@@ -1530,7 +817,6 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   },
 
   hydrateWorkspace: async (workspaceId: string) => {
-    if (get().isMock) return
     const [mariuses, projects, skills] = await Promise.all([
       api.listMariuses(workspaceId),
       api.listProjects(workspaceId),
@@ -1561,7 +847,6 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   },
 
   hydrateProject: async (projectId: string) => {
-    if (get().isMock) return
     const [detail, taskDtos] = await Promise.all([api.getProject(projectId), api.listTasks(projectId)])
     const project = projectDetailToVM(detail)
     const tasks = taskDtos.map(taskToVM)
@@ -1572,7 +857,6 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   },
 
   hydrateTask: async (taskId: string) => {
-    if (get().isMock) return
     const [taskDto, comments, artifacts] = await Promise.all([
       api.getTask(taskId),
       api.listComments(taskId),
