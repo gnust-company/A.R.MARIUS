@@ -1,11 +1,13 @@
 """Onboarding endpoints — the Patron ↔ Workspace Agent project-setup chat (#61).
 
-Every route is scoped to the caller's workspace. The Workspace Agent asks a guided,
-tick-select questionnaire (one question at a time); each ``start`` opens a FRESH session
-and ``answer`` advances it until the agent emits a project + roster draft. ``finalize`` hands
-the draft to ``ProjectService``, which creates a ``setup`` project with its roster. The active
-brain is deterministic (see ``onboarding_brain.py``); a live agent runtime can drive the same
-contract via the agent-facing callbacks in ``api/agent.py``.
+Every route is scoped to the caller's workspace. The Workspace Agent is a REAL runtime: ``start``
+and ``answer`` wake it through its adapter (guided to ask one question at a time), and it posts
+its questions / final draft back through the agent-facing callbacks in ``api/agent.py``. Each
+``start`` opens a FRESH session; ``finalize`` hands the agreed draft to ``ProjectService``, which
+creates a ``setup`` project with its roster.
+
+If the agent is not online (or a wake fails), ``start``/``answer`` raise
+``WorkspaceAgentUnavailable`` → HTTP 409 (no fallback) — see ``onboarding_session.py``.
 """
 
 from __future__ import annotations
