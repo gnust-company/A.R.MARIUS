@@ -523,7 +523,7 @@ export async function getCommission(sessionId: string): Promise<CommissionDTO> {
   return get<CommissionDTO>(`/v1/commissions/${sessionId}`)
 }
 
-// ── Onboarding (agent‑assisted project setup · Sprint 7) ──────────────────────────────
+// ── Onboarding (agent‑driven, question-window project setup · #61) ─────────────────────
 
 export interface OnboardingTranscriptTurn {
   role: 'agent' | 'patron' | 'system'
@@ -531,12 +531,51 @@ export interface OnboardingTranscriptTurn {
   ts?: string | null
 }
 
+export interface OnboardingQuestionOption {
+  id: string
+  label: string
+}
+
+/** The pending question the agent is asking — rendered as a tick-select window. */
+export interface OnboardingQuestion {
+  key?: string
+  question: string
+  options: OnboardingQuestionOption[]
+  multi?: boolean
+}
+
+export interface OnboardingRosterRole {
+  key?: string
+  title: string
+  seats?: number
+  is_leader?: boolean
+  description?: string
+  skills?: string[]
+}
+
+/** The final project + roster draft the agent proposes once the interview is complete. */
+export interface OnboardingDraft {
+  name: string
+  objective: string
+  success_metrics?: Record<string, unknown> | null
+  target_date?: string | null
+  context?: string | null
+  roster: OnboardingRosterRole[]
+}
+
+export interface OnboardingCollected {
+  phase?: 'asking' | 'complete'
+  answers?: Record<string, string>
+  pending_question?: OnboardingQuestion | null
+  draft?: OnboardingDraft | null
+}
+
 export interface OnboardingDTO {
   id: string
   workspace_id?: string | null
   status: 'open' | 'finalized' | 'abandoned'
   transcript: OnboardingTranscriptTurn[]
-  collected: Record<string, unknown>
+  collected: OnboardingCollected
   created_project_id?: string | null
   created_at?: string | null
   updated_at?: string | null
@@ -555,8 +594,15 @@ export async function getOnboarding(sessionId: string): Promise<OnboardingDTO> {
   return get<OnboardingDTO>(`/v1/onboarding/${sessionId}`)
 }
 
-export async function postOnboardingMessage(sessionId: string, text: string): Promise<OnboardingDTO> {
-  return post<OnboardingDTO>(`/v1/onboarding/${sessionId}/messages`, { text })
+export async function answerOnboarding(
+  sessionId: string,
+  answer: string,
+  otherText?: string,
+): Promise<OnboardingDTO> {
+  return post<OnboardingDTO>(`/v1/onboarding/${sessionId}/answer`, {
+    answer,
+    other_text: otherText ?? null,
+  })
 }
 
 export async function finalizeOnboarding(sessionId: string): Promise<OnboardingDTO> {
