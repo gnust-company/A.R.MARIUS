@@ -108,7 +108,13 @@ def build_container() -> Container:
 
     projects = ProjectService(uow_factory)
     workspace_agent = WorkspaceAgentService(uow_factory)
-    onboarding = OnboardingService(uow_factory, projects, workspace_agent)
+    onboarding = OnboardingService(
+        uow_factory,
+        projects,
+        workspace_agent,
+        registry,
+        settings.public_api_url,
+    )
 
     liveness = LivenessEngine(uow_factory, PlaceholderLivenessProbe())
     liveness_watchdog = LivenessWatchdog(

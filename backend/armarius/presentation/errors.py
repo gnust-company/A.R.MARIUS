@@ -9,7 +9,10 @@ from armarius.application.use_cases.commission import (
     CommissionError as CommissionOpError,
 )
 from armarius.application.use_cases.enrollment import EnrollmentError
-from armarius.application.use_cases.onboarding_session import OnboardingBusy
+from armarius.application.use_cases.onboarding_session import (
+    OnboardingBusy,
+    WorkspaceAgentUnavailable,
+)
 from armarius.application.use_cases.projects import DuplicateRoleKey, SystemOnlyOperation
 from armarius.domain.entities.commission import (
     CommissionError as CommissionStateError,
@@ -71,6 +74,12 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(OnboardingBusy)
     async def _onboarding_busy(_: Request, exc: OnboardingBusy) -> JSONResponse:
         # A live WA posted a new question while the previous one is unanswered (one-at-a-time).
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(WorkspaceAgentUnavailable)
+    async def _wa_unavailable(_: Request, exc: WorkspaceAgentUnavailable) -> JSONResponse:
+        # The Workspace Agent is not online (or a wake failed) — onboarding cannot proceed. No
+        # fallback: tell the user to enroll/wake the agent (409, both start + mid-interview).
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(EnrollmentError)
