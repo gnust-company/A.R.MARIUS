@@ -11,6 +11,7 @@ from uuid import UUID
 
 from fastapi import APIRouter
 
+from armarius.application.use_cases.onboarding_brain import _slug
 from armarius.domain.entities.comment import AuthorKind
 from armarius.domain.entities.marius import Liveness
 from armarius.domain.entities.task import TaskStatus
@@ -20,6 +21,8 @@ from armarius.presentation.schemas import (
     AgentClaimIn,
     AgentCommentIn,
     AgentEnrollIn,
+    AgentOnboardingCompleteIn,
+    AgentOnboardingQuestionIn,
     AgentSkillBundleOut,
     AgentSkillSummary,
     AgentTokenOut,
@@ -27,6 +30,7 @@ from armarius.presentation.schemas import (
     CommentOut,
     MariusOut,
     NextActionIn,
+    OnboardingOut,
     TaskOut,
     TransitionIn,
     decode_artifact_content,
@@ -78,14 +82,9 @@ async def whoami(marius: CurrentMarius, container: ContainerDep) -> dict:
 
 # ── skill install (fetch the full file tree of your linked skills) ───────────
 async def effective_skills(container, marius) -> list:
-    """Linked skills, plus the onboarder playbook iff this Marius is the workspace's
-    host (#32) — the seat is the grant, so the skill is never linked via skill_ids.
-    Shared with the invite builder so the prompt lists exactly what these routes serve."""
-    skills = list(await container.skills.resolve(marius.skill_ids))
-    onboarder = await container.workspace_agent.onboarder_skill_for(marius)
-    if onboarder is not None and all(sk.slug != onboarder.slug for sk in skills):
-        skills.append(onboarder)
-    return skills
+    """The skills linked to this Marius (what these routes serve). The onboarding playbook is
+    no longer a granted skill — it is injected into the Workspace Agent's prompt at start (#61)."""
+    return list(await container.skills.resolve(marius.skill_ids))
 
 
 @router.get("/skills", response_model=list[AgentSkillSummary])
@@ -122,6 +121,62 @@ async def get_my_skill_bundle(
                 files=sk.files,
             )
     raise LookupError(f"skill '{slug}' is not linked to you")
+
+
+# ── onboarding callbacks (a live Workspace-Agent runtime drives the interview) ─
+async def _wa_onboarding_session(container, marius, session_id: UUID):
+    """Load an onboarding session, asserting this Marius is its workspace's host agent."""
+    session = await container.onboarding.get(session_id)
+    if session is None or session.workspace_id is None:
+        raise LookupError("onboarding session not found")
+    ws = await container.workspaces.get_workspace(session.workspace_id)
+    if ws is None or ws.workspace_agent_id != marius.id:
+        raise LookupError("onboarding session not found")
+    return session
+
+
+@router.post("/onboarding/{session_id}/question", response_model=OnboardingOut)
+async def post_onboarding_question(
+    session_id: UUID,
+    body: AgentOnboardingQuestionIn,
+    marius: CurrentMarius,
+    container: ContainerDep,
+) -> OnboardingOut:
+    """Post your next onboarding question. One question at a time — 409 if the previous
+    question is still unanswered (wait for the Patron's answer, don't retry)."""
+    await _wa_onboarding_session(container, marius, session_id)
+    question = {
+        "question": body.question,
+        "options": [{"id": o.id, "label": o.label} for o in body.options],
+        "multi": body.multi,
+    }
+    session = await container.onboarding.agent_post_question(session_id, question)
+    return OnboardingOut.model_validate(session)
+
+
+@router.post("/onboarding/{session_id}/complete", response_model=OnboardingOut)
+async def post_onboarding_complete(
+    session_id: UUID,
+    body: AgentOnboardingCompleteIn,
+    marius: CurrentMarius,
+    container: ContainerDep,
+) -> OnboardingOut:
+    """Post your final project + roster draft for the Patron to confirm and finalize."""
+    await _wa_onboarding_session(container, marius, session_id)
+    draft = {
+        "name": body.project.name,
+        "objective": body.project.objective,
+        "success_metrics": body.project.success_metrics,
+        "target_date": body.project.target_date,
+        "context": body.project.context,
+        "roster": [
+            {"key": _slug(r.title), "title": r.title, "seats": r.seats,
+             "is_leader": r.is_leader, "description": r.description, "skills": list(r.skills)}
+            for r in body.roster
+        ],
+    }
+    session = await container.onboarding.agent_post_complete(session_id, draft)
+    return OnboardingOut.model_validate(session)
 
 
 @router.get("/tasks/{task_id}")

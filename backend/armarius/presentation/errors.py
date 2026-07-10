@@ -9,6 +9,7 @@ from armarius.application.use_cases.commission import (
     CommissionError as CommissionOpError,
 )
 from armarius.application.use_cases.enrollment import EnrollmentError
+from armarius.application.use_cases.onboarding_session import OnboardingBusy
 from armarius.application.use_cases.projects import DuplicateRoleKey, SystemOnlyOperation
 from armarius.domain.entities.commission import (
     CommissionError as CommissionStateError,
@@ -65,6 +66,11 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(OnboardingError)
     async def _onboarding_conflict(_: Request, exc: OnboardingError) -> JSONResponse:
         # Illegal session transition (message/finalize/abandon on a non-open chat) — conflict.
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(OnboardingBusy)
+    async def _onboarding_busy(_: Request, exc: OnboardingBusy) -> JSONResponse:
+        # A live WA posted a new question while the previous one is unanswered (one-at-a-time).
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(EnrollmentError)

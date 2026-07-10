@@ -2,10 +2,8 @@
 
 The Workspace Agent is the Marius that greets owners and runs onboarding. Who holds the
 seat is recorded on ``workspace.workspace_agent_id`` — the single source of truth (#32);
-the "Workspace Agent" role string is display-only. The built-in ``armarius-onboarder``
-skill is materialised into the workspace's Skill Shop but never linked to a Marius:
-being the host IS the grant (``onboarder_skill_for``), so designating a new host moves
-the playbook with the seat and needs no link bookkeeping.
+the "Workspace Agent" role string is display-only. The onboarding playbook is no longer a
+granted skill: it is injected into the agent's prompt when a project-setup chat starts (#61).
 """
 
 from __future__ import annotations
@@ -14,39 +12,10 @@ from uuid import UUID
 
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.marius import Marius
-from armarius.domain.entities.skill import Skill
 from armarius.shared.clock import utcnow
 
 WORKSPACE_AGENT_ROLE = "Workspace Agent"
 WORKSPACE_AGENT_NAME = "Workspace Agent"
-ONBOARDER_SKILL_SLUG = "armarius-onboarder"
-ONBOARDER_SKILL_NAME = "Armarius Onboarder"
-ONBOARDER_SKILL_DESCRIPTION = (
-    "Greet the owner, gather the project brief, and stand up the roster — the Workspace "
-    "Agent's onboarding playbook."
-)
-
-_ONBOARDER_SKILL_MD = """---
-name: Armarius Onboarder
-description: Greet the owner, gather the project brief, and stand up the roster.
----
-
-# Armarius Onboarder
-
-You are the Workspace Agent. When an owner arrives, run the onboarding conversation:
-
-## When to use
-
-- A new owner opens the workspace with no project yet.
-- The owner asks to start a new project or assemble a team.
-
-## How it works
-
-1. Greet the owner and ask what they want to build (objective, success metrics, target date).
-2. Propose a roster: exactly one Project Leader (one seat) plus one or more worker roles.
-3. On confirmation, create the project in SETUP and seat agents into the roster.
-4. Hand off to the Project Leader once every seat is granted and online.
-"""
 
 
 class WorkspaceAgentService:
@@ -76,8 +45,6 @@ class WorkspaceAgentService:
                 await uow.commit()
                 return legacy[0]
 
-        await self._ensure_onboarder_skill(workspace_id)
-
         now = utcnow()
         async with self._uow() as uow:
             agent = Marius(
@@ -106,7 +73,6 @@ class WorkspaceAgentService:
         pointer is the source of truth the seat stays consistent; the loser is only
         left with a stale "Workspace Agent" role string. Same deferral as the #27
         delete guard — SELECT ... FOR UPDATE once Postgres is in prod."""
-        onboarder = await self._ensure_onboarder_skill(workspace_id)
         now = utcnow()
         async with self._uow() as uow:
             ws = await uow.workspaces.get(workspace_id)
@@ -132,11 +98,6 @@ class WorkspaceAgentService:
                 )
             if sitting is not None:
                 sitting.role = ""
-                # Pre-#32 hosts carried the onboarder in skill_ids; the grant is
-                # seat-derived now, so drop the stale link with the seat.
-                sitting.skill_ids = [
-                    s for s in sitting.skill_ids if s != str(onboarder.id)
-                ]
                 sitting.updated_at = now
                 await uow.mariuses.update(sitting)
 
@@ -147,29 +108,3 @@ class WorkspaceAgentService:
             await uow.workspaces.update(ws)
             await uow.commit()
             return marius
-
-    async def onboarder_skill_for(self, marius: Marius) -> Skill | None:
-        """The onboarding playbook, iff this Marius holds its workspace's host seat."""
-        async with self._uow() as uow:
-            ws = await uow.workspaces.get(marius.workspace_id)
-            if ws is None or ws.workspace_agent_id != marius.id:
-                return None
-            return await uow.skills.get_by_slug(marius.workspace_id, ONBOARDER_SKILL_SLUG)
-
-    async def _ensure_onboarder_skill(self, workspace_id: UUID) -> Skill:
-        async with self._uow() as uow:
-            existing = await uow.skills.get_by_slug(workspace_id, ONBOARDER_SKILL_SLUG)
-            if existing is not None:
-                return existing
-            skill = Skill(
-                workspace_id=workspace_id,
-                slug=ONBOARDER_SKILL_SLUG,
-                name=ONBOARDER_SKILL_NAME,
-                description=ONBOARDER_SKILL_DESCRIPTION,
-                source="builtin",
-                files={"SKILL.md": _ONBOARDER_SKILL_MD},
-                created_at=utcnow(),
-            )
-            created = await uow.skills.add(skill)
-            await uow.commit()
-            return created
