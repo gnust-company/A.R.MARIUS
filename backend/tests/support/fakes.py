@@ -12,6 +12,12 @@ from datetime import UTC, datetime
 from types import TracebackType
 from uuid import UUID
 
+from armarius.application.ports.adapter import (
+    AdapterCapabilities,
+    Diagnostics,
+    ExecResult,
+    MariusAdapter,
+)
 from armarius.application.ports.liveness_probe import LivenessProbe
 from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.domain.entities.commission import CommissionSession, CommissionStatus
@@ -19,6 +25,7 @@ from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.onboarding import OnboardingSession
 from armarius.domain.entities.role import Role
+from armarius.domain.entities.run import RunStatus
 from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.entities.skill import Skill
 from armarius.domain.entities.task import Task
@@ -338,3 +345,60 @@ class FakeLivenessProbe(LivenessProbe):
             return self._answers
         idx = min(self.calls - 1, len(self._answers) - 1)
         return self._answers[idx]
+
+
+_ONBOARDING_PREFIX = "armarius:onboarding:"
+
+
+def _onboarding_id(ctx):
+    """The onboarding session id the service embeds in ctx.session_params, parsed to a UUID
+    (the service's agent-callback methods key on UUID, not the raw string)."""
+    from uuid import UUID
+
+    raw = (ctx.session_params or {}).get("session_id") or ""
+    if not raw.startswith(_ONBOARDING_PREFIX):
+        return None
+    try:
+        return UUID(raw[len(_ONBOARDING_PREFIX):])
+    except ValueError:
+        return None
+
+
+class FakeAdapter(MariusAdapter):
+    """Stands in for a real runtime (e.g. Hermes) when driving onboarding in tests.
+
+    Each ``execute`` runs one scripted WA callback queued in ``drivers`` (an async
+    ``(session_id) -> None``), then returns the scripted ``status`` — or raises, to simulate an
+    unreachable runtime. A driver typically calls the onboarding service's agent callbacks
+    (``agent_post_question`` / ``agent_post_complete``) to mimic a live Workspace Agent.
+    """
+
+    type = "hermes_gateway"
+    capabilities = AdapterCapabilities(resumable=True, streaming=False, transport="fake")
+
+    def __init__(
+        self,
+        *,
+        status: RunStatus = RunStatus.COMPLETED,
+        drivers: list | None = None,
+        raise_on_execute: BaseException | None = None,
+    ) -> None:
+        self.status = status
+        self.drivers: list = list(drivers or [])
+        self.raise_on_execute = raise_on_execute
+        self.executes = 0
+
+    async def execute(self, ctx) -> ExecResult:
+        self.executes += 1
+        if self.raise_on_execute is not None:
+            raise self.raise_on_execute
+        if self.drivers:
+            driver = self.drivers.pop(0)
+            sid = _onboarding_id(ctx)
+            if sid is not None:
+                await driver(sid)
+        return ExecResult(status=self.status, session_params=dict(ctx.session_params))
+
+    async def test_environment(self, config: dict) -> Diagnostics:
+        return Diagnostics(ok=True, detail="fake")
+
