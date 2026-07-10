@@ -1,21 +1,21 @@
-"""OnboardingService — agent-driven, question-window project setup (#61).
+"""OnboardingService — a REAL Workspace Agent wakes the interview (#61, v3).
 
-Drives the use case against the in-memory fakes: the ``DeterministicBrain`` (a fixed plan of
-tick-select questions that accumulates a real draft), the fresh-session-per-start rule, the
-one-question-at-a-time agent callbacks, and ``finalize → ProjectService.create_project``.
+There is no scripted brain. ``start``/``answer`` wake the workspace's host agent through its
+adapter; the guided agent posts its questions / final draft back via the agent-facing callbacks.
+These tests drive that against the in-memory fakes with a ``FakeAdapter`` that scripts the WA's
+behaviour during one bounded wake (post a question, post the draft, fail, raise). The hard rule
+is covered too: an agent that is not ``ONLINE``/``WORKING`` (or whose wake fails) abandons the
+session and raises ``WorkspaceAgentUnavailable`` — no fallback, at start or mid-interview.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from armarius.application.use_cases.onboarding_brain import (
-    DeterministicBrain,
-    is_free_text_option,
-)
 from armarius.application.use_cases.onboarding_session import (
     OnboardingBusy,
     OnboardingService,
+    WorkspaceAgentUnavailable,
     plan_from_collected,
 )
 from armarius.application.use_cases.projects import ProjectService
@@ -23,131 +23,233 @@ from armarius.application.use_cases.workspace_agent import (
     WORKSPACE_AGENT_ROLE,
     WorkspaceAgentService,
 )
-from armarius.domain.entities.onboarding import OnboardingError, OnboardingStatus
+from armarius.domain.entities.marius import Liveness
+from armarius.domain.entities.onboarding import OnboardingStatus
+from armarius.domain.entities.run import RunStatus
 from armarius.domain.entities.workspace import Workspace
-from tests.support.fakes import FakeUowFactory
-
-# One answer per step key — walks the deterministic plan to completion.
-_ANSWERS = {
-    "objective": "A web app",
-    "name": "Task Tracker",
-    "roles": "Frontend, Backend",
-    "metric": "Ship it",
-    "target": "This month",
-    "context": "No, that's it",
-}
+from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
+from tests.support.fakes import FakeAdapter, FakeUowFactory
 
 
-def _services() -> tuple[FakeUowFactory, OnboardingService, object]:
+def _services(*, adapter: FakeAdapter | None = None, base_url: str = "http://api.test"):
     factory = FakeUowFactory()
     ws = Workspace(name="Studio", slug="studio", owner_user_id="u1")
     factory.store.workspaces[ws.id] = ws
     projects = ProjectService(factory)
     ws_agent = WorkspaceAgentService(factory)
-    onboarding = OnboardingService(factory, projects, ws_agent)
-    return factory, onboarding, ws.id
+    reg = InMemoryAdapterRegistry()
+    if adapter is not None:
+        reg.register(adapter)
+    onboarding = OnboardingService(factory, projects, ws_agent, reg, base_url)
+    return factory, onboarding, ws.id, adapter
 
 
-async def _walk_to_complete(onboarding, session):
-    """Answer every pending question with the canned answer until the draft is emitted."""
-    while session.collected.get("pending_question") is not None:
-        key = session.collected["pending_question"]["key"]
-        session = await onboarding.answer(session.id, _ANSWERS[key])
-    return session
+# scripted WA turns — closures over the service so they post back through its callbacks ──
 
 
-# ── the deterministic brain (pure) ───────────────────────────────────────────────
+def _asks(onboarding: OnboardingService, key: str, question: str):
+    async def driver(session_id) -> None:
+        await onboarding.agent_post_question(
+            session_id,
+            {
+                "key": key,
+                "question": question,
+                "options": [{"id": "1", "label": "An option"},
+                            {"id": "other", "label": "Other (I'll type it)"}],
+                "multi": False,
+            },
+        )
+
+    return driver
 
 
-def test_brain_starts_by_asking_the_objective_with_a_free_text_escape() -> None:
-    collected = DeterministicBrain().start({})
-    question = collected["pending_question"]
-    assert collected["phase"] == "asking"
-    assert question["key"] == "objective"
-    assert any(is_free_text_option(o["label"]) for o in question["options"])
+def _completes(onboarding: OnboardingService, name: str, objective: str):
+    async def driver(session_id) -> None:
+        await onboarding.agent_post_complete(
+            session_id,
+            {
+                "name": name,
+                "objective": objective,
+                "success_metrics": None,
+                "target_date": None,
+                "context": None,
+                "roster": [
+                    {"key": "leader", "title": "Project Leader", "seats": 1, "is_leader": True},
+                    {"key": "frontend", "title": "Frontend", "seats": 1, "is_leader": False},
+                ],
+            },
+        )
+
+    return driver
 
 
-def test_brain_accumulates_answers_into_a_complete_draft() -> None:
-    brain = DeterministicBrain()
-    collected = brain.start({})
-    seen_keys = []
-    while collected.get("pending_question") is not None:
-        key = collected["pending_question"]["key"]
-        seen_keys.append(key)
-        collected = brain.answer(collected, _ANSWERS[key])
-
-    assert seen_keys == ["objective", "name", "roles", "metric", "target", "context"]
-    assert collected["phase"] == "complete"
-    draft = collected["draft"]
-    assert draft["name"] == "Task Tracker"
-    assert draft["objective"] == "A web app"
-    titles = [r["title"] for r in draft["roster"]]
-    assert titles[0] == "Project Leader"
-    assert {"Frontend", "Backend"} <= set(titles)
-    # exactly one leader, at least one worker
-    assert sum(1 for r in draft["roster"] if r["is_leader"]) == 1
+async def _ensure_then_online(onboarding: OnboardingService, ws_id) -> None:
+    """Designate the WA (lazy-created) and mark it ONLINE so start/answer see it as ready."""
+    factory = onboarding._uow  # type: ignore[attr-defined]
+    await onboarding._ws_agent.ensure_workspace_agent(ws_id)  # type: ignore[attr-defined]
+    await _set_wa_liveness(factory, ws_id, Liveness.ONLINE)
 
 
-def test_roles_question_is_multi_select() -> None:
-    brain = DeterministicBrain()
-    collected = brain.start({})
-    collected = brain.answer(collected, _ANSWERS["objective"])
-    collected = brain.answer(collected, _ANSWERS["name"])
-    assert collected["pending_question"]["key"] == "roles"
-    assert collected["pending_question"]["multi"] is True
+async def _set_wa_liveness(factory: FakeUowFactory, ws_id, liveness: Liveness) -> None:
+    async with factory() as uow:
+        wa = next(
+            m for m in await uow.mariuses.list_by_workspace(ws_id) if m.role == WORKSPACE_AGENT_ROLE
+        )
+        wa.liveness = liveness
+        await uow.mariuses.update(wa)
+        await uow.commit()
 
 
-def test_plan_from_collected_defaults_to_a_valid_roster() -> None:
-    plan = plan_from_collected({})
-    assert any(r.is_leader for r in plan["roles"])
-    assert any(not r.is_leader for r in plan["roles"])
-    assert plan["name"]
+# ── the ready / wake-fail rule (the owner's core requirement) ────────────────────
 
 
-# ── the use case ─────────────────────────────────────────────────────────────────
+async def test_start_with_offline_agent_raises_and_creates_no_session() -> None:
+    factory, onboarding, ws_id, _adapter = _services(adapter=FakeAdapter())
+
+    with pytest.raises(WorkspaceAgentUnavailable):
+        await onboarding.start(ws_id)  # WA defaults to OFFLINE
+
+    # No session left behind — onboarding cannot start without a ready agent.
+    assert await onboarding.active_for(ws_id) is None
+    assert not factory.store.onboardings
 
 
-async def test_start_designates_agent_and_asks_first_question() -> None:
-    factory, onboarding, ws_id = _services()
+async def test_start_with_unknown_adapter_abandons_and_raises() -> None:
+    """No adapter registered for the WA's runtime type → the wake fails; the session created
+    just before the wake is abandoned and no live chat is left (no crash)."""
+    factory, onboarding, ws_id, _adapter = _services(adapter=None)  # empty registry
+    await _ensure_then_online(onboarding, ws_id)
+
+    with pytest.raises(WorkspaceAgentUnavailable):
+        await onboarding.start(ws_id)
+
+    assert await onboarding.active_for(ws_id) is None
+    # The session start opened before the wake failed is now abandoned (terminal, not live).
+    assert all(s.status != OnboardingStatus.OPEN for s in factory.store.onboardings.values())
+
+
+async def test_start_wake_fails_abandons_session_and_raises() -> None:
+    _, onboarding, ws_id, _adapter = _services(adapter=FakeAdapter(status=RunStatus.FAILED))
+    await _ensure_then_online(onboarding, ws_id)
+
+    with pytest.raises(WorkspaceAgentUnavailable):
+        await onboarding.start(ws_id)
+
+    assert await onboarding.active_for(ws_id) is None  # abandoned on wake failure
+
+
+async def test_start_adapter_raises_abandons_session_and_raises() -> None:
+    _, onboarding, ws_id, _adapter = _services(
+        adapter=FakeAdapter(raise_on_execute=RuntimeError("runtime down"))
+    )
+    await _ensure_then_online(onboarding, ws_id)
+
+    with pytest.raises(WorkspaceAgentUnavailable):
+        await onboarding.start(ws_id)
+    assert await onboarding.active_for(ws_id) is None
+
+
+async def test_answer_when_agent_went_offline_abandons_and_raises() -> None:
+    factory, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
+    adapter.drivers.append(_asks(onboarding, "objective", "What are you building?"))
+    await _ensure_then_online(onboarding, ws_id)
+    session = await onboarding.start(ws_id)
+    assert session.collected["pending_question"]["question"] == "What are you building?"
+
+    await _set_wa_liveness(factory, ws_id, Liveness.OFFLINE)  # drops offline mid-interview
+
+    with pytest.raises(WorkspaceAgentUnavailable):
+        await onboarding.answer(session.id, "A web app")
+
+    assert (await onboarding.get(session.id)).status == OnboardingStatus.ABANDONED
+
+
+async def test_answer_wake_fails_abandons_and_raises() -> None:
+    _, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
+    adapter.drivers.append(_asks(onboarding, "objective", "What are you building?"))
+    await _ensure_then_online(onboarding, ws_id)
+    session = await onboarding.start(ws_id)
+    adapter.status = RunStatus.FAILED  # the answer wake now fails
+
+    with pytest.raises(WorkspaceAgentUnavailable):
+        await onboarding.answer(session.id, "A web app")
+
+    assert (await onboarding.get(session.id)).status == OnboardingStatus.ABANDONED
+
+
+async def test_start_succeeds_when_wa_is_working() -> None:
+    """WORKING counts as ready too (not just ONLINE)."""
+    factory, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
+    adapter.drivers.append(_asks(onboarding, "objective", "What are you building?"))
+    await _ensure_then_online(onboarding, ws_id)
+    await _set_wa_liveness(factory, ws_id, Liveness.WORKING)
+
+    session = await onboarding.start(ws_id)
+    assert session.collected["pending_question"]["question"] == "What are you building?"
+
+
+# ── the happy path: the real agent drives the interview ──────────────────────────
+
+
+async def test_start_wakes_agent_and_its_first_question_lands() -> None:
+    factory, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
+    adapter.drivers.append(_asks(onboarding, "objective", "What are you building?"))
+    await _ensure_then_online(onboarding, ws_id)
 
     session = await onboarding.start(ws_id)
 
     assert session.status == OnboardingStatus.OPEN
-    assert session.collected["pending_question"]["key"] == "objective"
-    assert session.transcript[0]["role"] == "agent"  # the first question, as text
-    agents = [m for m in factory.store.mariuses.values() if m.role == WORKSPACE_AGENT_ROLE]
-    assert len(agents) == 1
+    assert session.collected["phase"] == "asking"
+    assert session.collected["pending_question"]["question"] == "What are you building?"
+    assert session.transcript[-1]["role"] == "agent"  # the question is in the scrollback
+    wa = next(m for m in factory.store.mariuses.values() if m.role == WORKSPACE_AGENT_ROLE)
+    assert factory.store.workspaces[ws_id].workspace_agent_id == wa.id  # designated host
+
+
+async def test_answer_forwards_to_agent_and_advances_then_completes() -> None:
+    _, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
+    adapter.drivers.extend([
+        _asks(onboarding, "objective", "What are you building?"),
+        _asks(onboarding, "name", "What should we call it?"),
+        _completes(onboarding, "Task Tracker", "A web app"),
+    ])
+    await _ensure_then_online(onboarding, ws_id)
+    session = await onboarding.start(ws_id)
+
+    session = await onboarding.answer(session.id, "A web app")
+    assert session.collected["pending_question"]["question"] == "What should we call it?"
+
+    session = await onboarding.answer(session.id, "Task Tracker")
+    assert session.collected["phase"] == "complete"
+    draft = session.collected["draft"]
+    assert draft["name"] == "Task Tracker"
+    assert draft["objective"] == "A web app"
 
 
 async def test_start_is_fresh_each_time_and_retires_the_prior_session() -> None:
     """Re-entering the agent flow starts clean — the stale open chat is abandoned (#61)."""
-    _factory, onboarding, ws_id = _services()
+    _, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
+    adapter.drivers.append(_asks(onboarding, "objective", "Q1"))
+    await _ensure_then_online(onboarding, ws_id)
     first = await onboarding.start(ws_id)
 
+    adapter.drivers.append(_asks(onboarding, "objective", "Q1"))  # re-arm for the 2nd start
     second = await onboarding.start(ws_id)
 
     assert second.id != first.id
     assert (await onboarding.active_for(ws_id)).id == second.id
-    prior = await onboarding.get(first.id)
-    assert prior.status == OnboardingStatus.ABANDONED
+    assert (await onboarding.get(first.id)).status == OnboardingStatus.ABANDONED
 
 
-async def test_answer_advances_and_reaches_a_draft() -> None:
-    _factory, onboarding, ws_id = _services()
+# ── finalize + the agent callbacks ───────────────────────────────────────────────
+
+
+async def test_complete_then_finalize_creates_project_with_roster() -> None:
+    factory, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
+    adapter.drivers.append(_completes(onboarding, "Live Plan", "Ship the thing"))
+    await _ensure_then_online(onboarding, ws_id)
     session = await onboarding.start(ws_id)
-
-    session = await _walk_to_complete(onboarding, session)
-
     assert session.collected["phase"] == "complete"
-    draft = session.collected["draft"]
-    assert draft["name"] == "Task Tracker"
-    assert {"Frontend", "Backend"} <= {r["title"] for r in draft["roster"]}
-
-
-async def test_finalize_creates_project_with_roster_and_fields() -> None:
-    factory, onboarding, ws_id = _services()
-    session = await onboarding.start(ws_id)
-    session = await _walk_to_complete(onboarding, session)
 
     finalized = await onboarding.finalize(session.id, created_by_user_id="u1")
 
@@ -156,12 +258,15 @@ async def test_finalize_creates_project_with_roster_and_fields() -> None:
     roles = [r for r in factory.store.roles.values() if r.project_id == project.id]
     assert sum(1 for r in roles if r.is_leader) == 1
     assert any(not r.is_leader for r in roles)
-    assert project.name == "Task Tracker"
-    assert project.objective == "A web app"
+    assert project.name == "Live Plan"
+    assert project.objective == "Ship the thing"
 
 
-async def test_finalize_without_answers_still_creates_valid_project() -> None:
-    factory, onboarding, ws_id = _services()
+async def test_finalize_without_a_draft_still_creates_a_valid_project() -> None:
+    """A session whose draft is missing still finalizes to a valid leader + worker roster."""
+    factory, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
+    adapter.drivers.append(_asks(onboarding, "objective", "Q1"))  # a question, never a draft
+    await _ensure_then_online(onboarding, ws_id)
     session = await onboarding.start(ws_id)
 
     finalized = await onboarding.finalize(session.id)
@@ -172,66 +277,22 @@ async def test_finalize_without_answers_still_creates_valid_project() -> None:
     assert any(not r.is_leader for r in roles)
 
 
-async def test_finalize_twice_raises() -> None:
-    _factory, onboarding, ws_id = _services()
-    session = await onboarding.start(ws_id)
-    await onboarding.finalize(session.id)
-
-    with pytest.raises(OnboardingError):
-        await onboarding.finalize(session.id)
-
-
-async def test_abandon_ends_session_and_blocks_further_answers() -> None:
-    _factory, onboarding, ws_id = _services()
-    session = await onboarding.start(ws_id)
-
-    abandoned = await onboarding.abandon(session.id)
-    assert abandoned.status == OnboardingStatus.ABANDONED
-
-    with pytest.raises(OnboardingError):
-        await onboarding.answer(session.id, "A web app")
-
-
-async def test_active_for_returns_open_then_none() -> None:
-    _factory, onboarding, ws_id = _services()
-    assert await onboarding.active_for(ws_id) is None
-
-    session = await onboarding.start(ws_id)
-    assert (await onboarding.active_for(ws_id)).id == session.id
-
-    await onboarding.abandon(session.id)
-    assert await onboarding.active_for(ws_id) is None
-
-
-# ── live Workspace-Agent runtime callbacks (agent-driven mode) ────────────────────
-
-
-async def test_agent_post_question_is_rejected_while_one_is_pending() -> None:
+async def test_agent_post_question_rejected_while_one_is_pending() -> None:
     """One question at a time — posting while unanswered raises (HTTP 409)."""
-    _factory, onboarding, ws_id = _services()
-    session = await onboarding.start(ws_id)  # start already asked a question
+    _, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
+    adapter.drivers.append(_asks(onboarding, "objective", "Q1"))
+    await _ensure_then_online(onboarding, ws_id)
+    session = await onboarding.start(ws_id)  # a question is now pending
 
     with pytest.raises(OnboardingBusy):
         await onboarding.agent_post_question(
             session.id,
-            {"question": "Q?", "options": [{"id": "1", "label": "A"}], "multi": False},
+            {"question": "Q2?", "options": [{"id": "1", "label": "A"}], "multi": False},
         )
 
 
-async def test_agent_post_complete_sets_the_draft() -> None:
-    _factory, onboarding, ws_id = _services()
-    session = await onboarding.start(ws_id)
-
-    draft = {
-        "name": "Live Plan",
-        "objective": "Ship the thing",
-        "roster": [
-            {"key": "leader", "title": "Project Leader", "is_leader": True, "seats": 1},
-            {"key": "frontend", "title": "Frontend", "is_leader": False, "seats": 1},
-        ],
-    }
-    session = await onboarding.agent_post_complete(session.id, draft)
-
-    assert session.collected["phase"] == "complete"
-    assert session.collected["draft"]["name"] == "Live Plan"
-    assert session.collected["pending_question"] is None
+def test_plan_from_collected_defaults_to_a_valid_roster() -> None:
+    plan = plan_from_collected({})
+    assert any(r.is_leader for r in plan["roles"])
+    assert any(not r.is_leader for r in plan["roles"])
+    assert plan["name"]

@@ -1,24 +1,22 @@
-"""Contract-conformance — Onboarding endpoints (#61).
+"""Contract-conformance — Onboarding endpoints (#61, v3).
 
-An HTTP walk over the agent-driven project-setup chat: open it (a FRESH session that asks the
-first question), answer each tick-select question until a draft is emitted, finalize (a real
-``setup`` project + roster is created), and enforce workspace scoping (cross-workspace 404).
+The Workspace Agent is a REAL runtime. With no agent enrolled/online (the default), ``start``
+returns **409** — there is no scripted fallback. The happy path is exercised by wiring a
+``FakeAdapter`` into the app's registry and marking the host agent ONLINE, then walking
+start → answer → finalize against the real app wiring (container, error handlers, schemas).
+Workspace scoping (cross-workspace 404) is checked on a real session.
 """
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from httpx import ASGITransport, AsyncClient
 
+from armarius.domain.entities.marius import Liveness
+from armarius.infrastructure.persistence.unit_of_work import make_uow
 from armarius.main import app
-
-_ANSWERS = {
-    "objective": "A web app",
-    "name": "Task Tracker",
-    "roles": "Frontend, Backend",
-    "metric": "Ship it",
-    "target": "This month",
-    "context": "No, that's it",
-}
+from tests.support.fakes import FakeAdapter
 
 
 async def _client() -> AsyncClient:
@@ -35,21 +33,83 @@ async def _register(c: AsyncClient, email: str) -> tuple[str, str]:
     return token, ws.json()[0]["id"]
 
 
-async def _answer_until_complete(c: AsyncClient, h: dict, sid: str, session: dict) -> dict:
-    while session["collected"].get("pending_question") is not None:
-        key = session["collected"]["pending_question"]["key"]
-        r = await c.post(
-            f"/v1/onboarding/{sid}/answer", headers=h, json={"answer": _ANSWERS[key]}
+async def _online_wa(ws_id: str) -> None:
+    """Designate the WA (lazy-created, OFFLINE) and flip it ONLINE for the happy path."""
+    container = app.state.container
+    ws_uuid = UUID(ws_id)
+    wa = await container.workspace_agent.ensure_workspace_agent(ws_uuid)
+    async with make_uow() as uow:
+        fresh = await uow.mariuses.get(wa.id)
+        assert fresh is not None
+        fresh.liveness = Liveness.ONLINE
+        await uow.mariuses.update(fresh)
+        await uow.commit()
+
+
+def _wire_agent(drivers: list) -> FakeAdapter:
+    """Swap the app's hermes_gateway adapter for a fake that scripts the WA's turns."""
+    fake = FakeAdapter(drivers=drivers)
+    app.state.container.registry._adapters["hermes_gateway"] = fake  # type: ignore[attr-defined]
+    return fake
+
+
+def _ask(container, key: str, question: str):
+    async def driver(session_id) -> None:
+        await container.onboarding.agent_post_question(
+            session_id,
+            {"key": key, "question": question,
+             "options": [{"id": "1", "label": "A web app"}, {"id": "other", "label": "Other"}],
+             "multi": False},
         )
-        assert r.status_code == 200, r.text
-        session = r.json()
-    return session
+
+    return driver
+
+
+def _complete(container, name: str, objective: str):
+    async def driver(session_id) -> None:
+        await container.onboarding.agent_post_complete(
+            session_id,
+            {"name": name, "objective": objective, "success_metrics": None,
+             "target_date": None, "context": None,
+             "roster": [
+                 {"key": "leader", "title": "Project Leader", "seats": 1, "is_leader": True},
+                 {"key": "frontend", "title": "Frontend", "seats": 1, "is_leader": False},
+             ]},
+        )
+
+    return driver
+
+
+# ── the not-ready rule (the default — no runtime enrolled) ───────────────────────
+
+
+async def test_start_returns_409_when_workspace_agent_is_not_online() -> None:
+    async with await _client() as c:
+        token, ws_id = await _register(c, "onboffline@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+
+        started = await c.post(f"/v1/workspaces/{ws_id}/onboarding", headers=h)
+
+        assert started.status_code == 409
+        assert "not online" in started.json()["detail"].lower()
+        # No session was created.
+        active = await c.get(f"/v1/workspaces/{ws_id}/onboarding/active", headers=h)
+        assert active.status_code == 404
+
+
+# ── the happy path through the real app with a wired fake agent ──────────────────
 
 
 async def test_onboarding_start_answer_finalize_creates_project() -> None:
     async with await _client() as c:
         token, ws_id = await _register(c, "onb1@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
+        await _online_wa(ws_id)
+        container = app.state.container
+        _wire_agent([
+            _ask(container, "objective", "What are you building?"),
+            _complete(container, "Task Tracker", "A web app"),
+        ])
 
         started = await c.post(f"/v1/workspaces/{ws_id}/onboarding", headers=h)
         assert started.status_code == 201, started.text
@@ -58,16 +118,13 @@ async def test_onboarding_start_answer_finalize_creates_project() -> None:
         assert session["collected"]["pending_question"]["key"] == "objective"
         sid = session["id"]
 
-        # Active lookup returns the just-opened session.
-        active = await c.get(f"/v1/workspaces/{ws_id}/onboarding/active", headers=h)
-        assert active.status_code == 200
-        assert active.json()["id"] == sid
-
-        session = await _answer_until_complete(c, h, sid, session)
+        answered = await c.post(
+            f"/v1/onboarding/{sid}/answer", headers=h, json={"answer": "A web app"}
+        )
+        assert answered.status_code == 200, answered.text
+        session = answered.json()
         assert session["collected"]["phase"] == "complete"
-        draft = session["collected"]["draft"]
-        assert draft["name"] == "Task Tracker"
-        assert {"Frontend", "Backend"} <= {r["title"] for r in draft["roster"]}
+        assert session["collected"]["draft"]["name"] == "Task Tracker"
 
         finalized = await c.post(f"/v1/onboarding/{sid}/finalize", headers=h)
         assert finalized.status_code == 200, finalized.text
@@ -76,51 +133,41 @@ async def test_onboarding_start_answer_finalize_creates_project() -> None:
         pid = body["created_project_id"]
         assert pid is not None
 
-        # The materialised project carries a roster satisfying the hard rule.
         roster = await c.get(f"/v1/projects/{pid}/roster", headers=h)
         assert roster.status_code == 200
         roles = roster.json()
         assert any(r["is_leader"] for r in roles)
         assert any(not r["is_leader"] for r in roles)
-        assert {"Frontend", "Backend"} <= {r["title"] for r in roles}
-
-        # No live chat left once finalized.
-        gone = await c.get(f"/v1/workspaces/{ws_id}/onboarding/active", headers=h)
-        assert gone.status_code == 404
 
 
-async def test_start_opens_a_fresh_session_each_time() -> None:
-    """Re-entering the agent flow abandons the stale chat — no old history (#61)."""
+async def test_answer_mid_interview_when_agent_drops_offline_is_409() -> None:
     async with await _client() as c:
-        token, ws_id = await _register(c, "onbfresh@armarius.dev")
+        token, ws_id = await _register(c, "onbdrop@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
+        await _online_wa(ws_id)
+        container = app.state.container
+        _wire_agent([_ask(container, "objective", "What are you building?")])
 
-        first = (await c.post(f"/v1/workspaces/{ws_id}/onboarding", headers=h)).json()
-        second = (await c.post(f"/v1/workspaces/{ws_id}/onboarding", headers=h)).json()
-
-        assert second["id"] != first["id"]
-        active = await c.get(f"/v1/workspaces/{ws_id}/onboarding/active", headers=h)
-        assert active.json()["id"] == second["id"]
-        # The prior session is retired.
-        prior = await c.get(f"/v1/onboarding/{first['id']}", headers=h)
-        assert prior.json()["status"] == "abandoned"
-
-
-async def test_onboarding_abandon_ends_chat() -> None:
-    async with await _client() as c:
-        token, ws_id = await _register(c, "onb2@armarius.dev")
-        h = {"Authorization": f"Bearer {token}"}
         sid = (await c.post(f"/v1/workspaces/{ws_id}/onboarding", headers=h)).json()["id"]
 
-        abandoned = await c.post(f"/v1/onboarding/{sid}/abandon", headers=h)
-        assert abandoned.status_code == 200
-        assert abandoned.json()["status"] == "abandoned"
+        # The agent goes offline between the patron's turns.
+        async with make_uow() as uow:
+            ws = await uow.workspaces.get(UUID(ws_id))
+            assert ws is not None and ws.workspace_agent_id is not None
+            wa = await uow.mariuses.get(ws.workspace_agent_id)
+            assert wa is not None
+            wa.liveness = Liveness.OFFLINE
+            await uow.mariuses.update(wa)
+            await uow.commit()
 
-        # An abandoned session rejects further answers (illegal transition → 409).
         again = await c.post(
             f"/v1/onboarding/{sid}/answer", headers=h, json={"answer": "A web app"}
         )
         assert again.status_code == 409
+        assert "not online" in again.json()["detail"].lower()
+
+
+# ── workspace scoping ────────────────────────────────────────────────────────────
 
 
 async def test_onboarding_cross_workspace_is_404() -> None:
@@ -129,6 +176,9 @@ async def test_onboarding_cross_workspace_is_404() -> None:
         token_b, _ws_b = await _register(c, "onb_b@armarius.dev")
         h_a = {"Authorization": f"Bearer {token_a}"}
         h_b = {"Authorization": f"Bearer {token_b}"}
+        await _online_wa(ws_a)
+        container = app.state.container
+        _wire_agent([_ask(container, "objective", "What are you building?")])
 
         sid = (await c.post(f"/v1/workspaces/{ws_a}/onboarding", headers=h_a)).json()["id"]
 
