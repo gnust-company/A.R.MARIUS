@@ -284,9 +284,10 @@ export function commissionToVM(dto: CommissionDTO): CommissionSessionVM {
   }
 }
 
-// ── Onboarding (agent-assisted project setup · Sprint 7) ───────────────────────────────
+// ── Onboarding (agent-driven, question-window project setup · #61) ─────────────────────
 
 export function onboardingToVM(dto: OnboardingDTO): OnboardingSessionVM {
+  const collected = dto.collected ?? {}
   return {
     id: dto.id,
     workspaceId: dto.workspace_id ?? '',
@@ -298,7 +299,10 @@ export function onboardingToVM(dto: OnboardingDTO): OnboardingSessionVM {
       text: t.text,
       timestamp: t.ts ?? new Date().toISOString(),
     })),
-    collected: dto.collected ?? {},
+    collected,
+    phase: collected.phase === 'complete' ? 'complete' : 'asking',
+    pendingQuestion: collected.pending_question ?? null,
+    draft: collected.draft ?? null,
     createdProjectId: dto.created_project_id ?? undefined,
   }
 }

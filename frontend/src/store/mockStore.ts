@@ -3,6 +3,7 @@ import type { SetStateAction } from 'react'
 
 import { clearTokens } from '@/lib/auth'
 import * as api from '@/lib/api'
+import type { OnboardingCollected, OnboardingDraft, OnboardingQuestion } from '@/lib/api'
 import {
   artifactToVM,
   commentToVM,
@@ -227,7 +228,13 @@ export interface OnboardingSessionVM {
   workspaceId: string
   status: 'open' | 'finalized' | 'abandoned'
   transcript: OnboardingTurn[]
-  collected: Record<string, unknown>
+  collected: OnboardingCollected
+  /** 'asking' while the agent is interviewing; 'complete' once a draft is ready to confirm. */
+  phase: 'asking' | 'complete'
+  /** The current tick-select question, or null when none is pending. */
+  pendingQuestion: OnboardingQuestion | null
+  /** The proposed project + roster, present once the interview is complete. */
+  draft: OnboardingDraft | null
   createdProjectId?: string
 }
 
@@ -366,12 +373,12 @@ interface MockStoreState {
   deleteProject: (projectId: string) => Promise<void>
   grantSeat: (projectId: string, mariusId: string, role: string) => Promise<void>
 
-  // ── Onboarding (agent-assisted project setup · Sprint 7) ───────────────────────────
-  /** Open (or rejoin) the active workspace's agent-setup chat. */
+  // ── Onboarding (agent-driven, question-window project setup · #61) ─────────────────
+  /** Open a FRESH agent-setup chat and ask the first question (never rejoins stale history). */
   startOnboarding: () => Promise<OnboardingSessionVM>
-  /** Send a Patron turn; the Workspace Agent responds (scripted). */
-  postOnboardingMessage: (text: string) => Promise<OnboardingSessionVM>
-  /** Lock the plan → creates a real project + roster. */
+  /** Answer the pending tick-select question; the agent asks the next (or emits the draft). */
+  answerOnboarding: (answer: string, otherText?: string) => Promise<OnboardingSessionVM>
+  /** Confirm the draft → creates a real project + roster. */
   finalizeOnboarding: () => Promise<OnboardingSessionVM>
   /** Drop the active chat. */
   abandonOnboarding: () => Promise<void>
@@ -725,21 +732,21 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     return project
   },
 
-  // ── Onboarding (agent-assisted project setup · Sprint 7) ───────────────────────────
+  // ── Onboarding (agent-driven, question-window project setup · #61) ─────────────────
   startOnboarding: async () => {
     const workspaceId = get().activeWorkspaceId || ''
-    // Rejoin an already-open chat if one exists; otherwise open a fresh one.
-    const existing = await api.getActiveOnboarding(workspaceId)
-    const dto = existing ?? (await api.startOnboarding(workspaceId))
+    // Always open a FRESH session — the backend abandons any prior open chat, so re-entering
+    // the agent flow never resurrects stale history (#61).
+    const dto = await api.startOnboarding(workspaceId)
     const vm = onboardingToVM(dto)
     set({ activeOnboarding: vm })
     return vm
   },
 
-  postOnboardingMessage: async (text: string) => {
+  answerOnboarding: async (answer: string, otherText?: string) => {
     const session = get().activeOnboarding
     if (!session) throw new Error('no active onboarding session')
-    const dto = await api.postOnboardingMessage(session.id, text)
+    const dto = await api.answerOnboarding(session.id, answer, otherText)
     const vm = onboardingToVM(dto)
     set({ activeOnboarding: vm })
     return vm
