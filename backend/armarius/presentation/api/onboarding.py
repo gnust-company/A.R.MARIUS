@@ -1,10 +1,11 @@
-"""Onboarding endpoints — the Patron ↔ Workspace Agent project-setup chat (Sprint 7 / Phase G).
+"""Onboarding endpoints — the Patron ↔ Workspace Agent project-setup chat (#61).
 
-Every route is scoped to the caller's workspace. The Workspace Agent runs a scripted
-playbook (greet → propose a roster from the objective → confirm); ``finalize`` hands the
-plan to ``ProjectService``, which creates a ``setup`` project with its roster. Because the
-brain is deterministic (no real gateway in this stack), every call resolves synchronously
-and returns the full session transcript.
+Every route is scoped to the caller's workspace. The Workspace Agent asks a guided,
+tick-select questionnaire (one question at a time); each ``start`` opens a FRESH session
+and ``answer`` advances it until the agent emits a project + roster draft. ``finalize`` hands
+the draft to ``ProjectService``, which creates a ``setup`` project with its roster. The active
+brain is deterministic (see ``onboarding_brain.py``); a live agent runtime can drive the same
+contract via the agent-facing callbacks in ``api/agent.py``.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from fastapi import APIRouter
 
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
-from armarius.presentation.schemas import OnboardingMessageIn, OnboardingOut
+from armarius.presentation.schemas import OnboardingAnswerIn, OnboardingOut
 
 router = APIRouter(prefix="/v1", tags=["onboarding"])
 
@@ -73,15 +74,18 @@ async def get_onboarding(
     return OnboardingOut.model_validate(session)
 
 
-@router.post("/onboarding/{session_id}/messages", response_model=OnboardingOut)
-async def post_onboarding_message(
+@router.post("/onboarding/{session_id}/answer", response_model=OnboardingOut)
+async def answer_onboarding(
     session_id: UUID,
-    body: OnboardingMessageIn,
+    body: OnboardingAnswerIn,
     container: ContainerDep,
     user: CurrentUser,
 ) -> OnboardingOut:
+    """Answer the pending question; the agent asks the next one (or emits the final draft)."""
     await _owned_session(container, user, session_id)
-    session = await container.onboarding.message(session_id, body.text)
+    other = (body.other_text or "").strip()
+    value = other or body.answer
+    session = await container.onboarding.answer(session_id, value)
     return OnboardingOut.model_validate(session)
 
 

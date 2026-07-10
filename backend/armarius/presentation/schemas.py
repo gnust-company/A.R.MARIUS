@@ -492,8 +492,48 @@ class CommissionOut(_Out):
 # ------------------------------------------------------------------ onboarding
 # Agent-assisted project setup (Sprint 7 / Phase G). The Workspace Agent interviews the
 # Patron; `finalize` materialises the accumulated plan into a Project + roster.
-class OnboardingMessageIn(BaseModel):
-    text: str = Field(min_length=1, max_length=4000)
+class OnboardingAnswerIn(BaseModel):
+    """The Patron's answer to the pending question. ``answer`` is the picked option label(s)
+    (multi-select joined with ', '); ``other_text`` carries a free-text ("Other") reply."""
+
+    answer: str = Field(min_length=1, max_length=4000)
+    other_text: str | None = Field(default=None, max_length=4000)
+
+
+class OnboardingQuestionOptionIn(BaseModel):
+    id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+
+
+class AgentOnboardingQuestionIn(BaseModel):
+    """A live Workspace-Agent runtime posting its next question (agent-driven mode)."""
+
+    question: str = Field(min_length=1, max_length=2000)
+    options: list[OnboardingQuestionOptionIn] = Field(min_length=1)
+    multi: bool = False
+
+
+class OnboardingProjectDraftIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    objective: str = Field(min_length=1, max_length=4000)
+    success_metrics: dict | None = None
+    target_date: str | None = None
+    context: str | None = Field(default=None, max_length=4000)
+
+
+class OnboardingRosterRoleIn(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    seats: int = Field(default=1, ge=1, le=20)
+    is_leader: bool = False
+    description: str = ""
+    skills: list[str] = Field(default_factory=list)
+
+
+class AgentOnboardingCompleteIn(BaseModel):
+    """A live WA posting its final project + roster draft for the Patron to confirm."""
+
+    project: OnboardingProjectDraftIn
+    roster: list[OnboardingRosterRoleIn] = Field(min_length=1)
 
 
 class OnboardingOut(_Out):

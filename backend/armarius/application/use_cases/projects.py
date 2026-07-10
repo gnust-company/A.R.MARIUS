@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from uuid import UUID
 
 from armarius.application.use_cases.types import UowFactory
@@ -89,6 +90,9 @@ class ProjectService:
         roles: Sequence[RoleSpec],
         description: str | None = None,
         objective: str | None = None,
+        success_metrics: dict | None = None,
+        target_date: datetime | None = None,
+        context: str | None = None,
         created_by_user_id: str | None = None,
     ) -> Project:
         """Create a SETUP project with its roster. Raises InvalidProjectPlan if the
@@ -106,6 +110,9 @@ class ProjectService:
                 slug=_slugify(name),
                 description=description,
                 objective=objective,
+                success_metrics=success_metrics,
+                target_date=target_date,
+                context=context,
                 status=ProjectStatus.SETUP,
                 created_by_user_id=created_by_user_id,
                 created_at=now,
