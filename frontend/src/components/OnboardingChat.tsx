@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Loader2, Sparkles, AlertCircle, Check, ArrowRight, RotateCcw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useMockStore, type OnboardingTurn } from '@/store/mockStore';
-import type { OnboardingQuestion, OnboardingDraft } from '@/lib/api';
+import { ApiError, type OnboardingQuestion, type OnboardingDraft } from '@/lib/api';
 
 /** An option whose label invites a typed answer (mirrors the backend's is_free_text_option). */
 const FREE_TEXT = /i'?ll type|type it|type my|other|custom|free\s*text/i;
@@ -32,54 +32,63 @@ export default function OnboardingChat({ onCreated }: OnboardingChatProps) {
 
   const [phase, setPhase] = useState<Phase>('starting');
   const [error, setError] = useState<string | null>(null);
+  // The Workspace Agent is not online (409 at start, or it dropped mid-interview). There is no
+  // fallback — show a not-ready panel with Retry instead of a half-built chat (#61, v3).
+  const [waOffline, setWaOffline] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false);
 
-  // Open a fresh chat once on mount.
-  useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-    (async () => {
-      try {
-        await startOnboarding();
-      } catch {
-        setError(t('onboarding.errorStart'));
-      } finally {
-        setPhase('ready');
-      }
-    })();
-  }, [startOnboarding, t]);
-
-  // Keep the newest turn in view as the transcript grows.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [session?.transcript.length, session?.phase]);
-
-  const restart = useCallback(async () => {
+  const tryStart = useCallback(async () => {
     setError(null);
+    setWaOffline(false);
     setPhase('starting');
     try {
       await startOnboarding();
-    } catch {
-      setError(t('onboarding.errorStart'));
+    } catch (e) {
+      // 409 = the Workspace Agent is not online (or a wake failed). Cancel into the not-ready
+      // panel rather than rendering an empty/stuck chat. Other errors are transient (network).
+      if (e instanceof ApiError && e.status === 409) setWaOffline(true);
+      else setError(t('onboarding.errorStart'));
     } finally {
       setPhase('ready');
     }
   }, [startOnboarding, t]);
+
+  const restart = useCallback(async () => {
+    await tryStart();
+  }, [tryStart]);
 
   const submitAnswer = useCallback(
     async (answer: string, otherText?: string) => {
       setError(null);
       try {
         await answerOnboarding(answer, otherText);
-      } catch {
+      } catch (e) {
+        // The agent went offline mid-interview (server abandoned the session) → cancel the chat
+        // into the not-ready panel. Any other failure is transient; let the panel retry.
+        if (e instanceof ApiError && e.status === 409) {
+          setWaOffline(true);
+          throw e;
+        }
         setError(t('onboarding.errorAnswer'));
         throw new Error('answer failed'); // let the panel re-enable its button
       }
     },
     [answerOnboarding, t],
   );
+
+  // Open a fresh chat once on mount.
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    void tryStart();
+  }, [tryStart]);
+
+  // Keep the newest turn in view as the transcript grows.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [session?.transcript.length, session?.phase]);
 
   const finalize = useCallback(async () => {
     setPhase('finalizing');
@@ -122,11 +131,39 @@ export default function OnboardingChat({ onCreated }: OnboardingChatProps) {
 
       {/* Body */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-        <AnimatePresence initial={false}>
-          {history.map((turn) => (
-            <ChatBubble key={turn.id} turn={turn} you={t('onboarding.you')} agent={t('onboarding.agentName')} />
-          ))}
-        </AnimatePresence>
+        {waOffline ? (
+          <NotReadyPanel onRetry={restart} />
+        ) : (
+          <>
+            <AnimatePresence initial={false}>
+              {history.map((turn) => (
+                <ChatBubble key={turn.id} turn={turn} you={t('onboarding.you')} agent={t('onboarding.agentName')} />
+              ))}
+            </AnimatePresence>
+
+            {phase === 'starting' && (
+              <div className="flex items-center gap-2 font-body text-body-sm text-ink-muted">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {t('onboarding.starting')}
+              </div>
+            )}
+
+            {phase !== 'starting' && draft && (
+              <DraftCard draft={draft} finalizing={phase === 'finalizing'} onConfirm={finalize} onRestart={restart} />
+            )}
+
+            {phase !== 'starting' && !draft && pending && (
+              <QuestionPanel key={pending.key ?? pending.question} question={pending} onSubmit={submitAnswer} />
+            )}
+
+            {error && (
+              <div className="flex items-center gap-2 font-body text-body-sm text-[#B84A32] bg-[#F5DDD6] border border-[#E9C4BC] rounded-md px-3 py-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span className="flex-1">{error}</span>
+              </div>
+            )}
+          </>
+        )}
 
         {phase === 'starting' && (
           <div className="flex items-center gap-2 font-body text-body-sm text-ink-muted">
@@ -322,6 +359,32 @@ function DraftCard({
           )}
         </button>
       </div>
+    </motion.div>
+  );
+}
+
+// ─── Not-online panel (no fallback — the agent must be woken/enrolled) ────────
+function NotReadyPanel({ onRetry }: { onRetry: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex flex-col items-center justify-center text-center gap-3 py-10 px-6"
+    >
+      <div className="w-12 h-12 rounded-full bg-[#F5DDD6] border border-[#E9C4BC] flex items-center justify-center">
+        <AlertCircle className="w-6 h-6 text-[#B84A32]" />
+      </div>
+      <p className="font-display text-body-lg text-ink">{t('onboarding.waOffline')}</p>
+      <p className="font-body text-body-sm text-ink-muted max-w-sm">{t('onboarding.waOfflineHint')}</p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="inline-flex items-center gap-1.5 bg-[#C25E3A] hover:bg-[#D97B5A] text-white font-body font-medium text-body-sm px-4 py-2 rounded-md transition-colors"
+      >
+        <RotateCcw className="w-4 h-4" />
+        {t('onboarding.retry')}
+      </button>
     </motion.div>
   );
 }

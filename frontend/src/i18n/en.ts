@@ -162,6 +162,10 @@ export const en = {
     errorStart: 'Could not start the chat.',
     errorAnswer: 'Could not submit your answer.',
     errorFinalize: 'Could not create the project.',
+    waOffline: 'Workspace Agent is not online',
+    waOfflineHint:
+      'The Workspace Agent must be online to run this interview. Enroll or wake it for this workspace, then retry.',
+    retry: 'Retry',
   },
   directory: {
     title: 'Directory',
