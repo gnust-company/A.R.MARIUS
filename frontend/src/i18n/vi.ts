@@ -162,6 +162,10 @@ export const vi = {
     errorStart: 'Không thể bắt đầu trò chuyện.',
     errorAnswer: 'Không thể gửi câu trả lời.',
     errorFinalize: 'Không thể tạo dự án.',
+    waOffline: 'Tác nhân Không gian đang không online',
+    waOfflineHint:
+      'Tác nhân Không gian phải đang online mới chạy được phần phỏng vấn này. Hãy kết nạp hoặc đánh thức tác nhân của không gian này, rồi thử lại.',
+    retry: 'Thử lại',
   },
   directory: {
     title: 'Danh bạ',
