@@ -70,7 +70,6 @@ class InviteService:
         self,
         workspace_id: UUID,
         name: str,
-        role: str,
         *,
         gateway_url: str,
         api_key: str,
@@ -84,6 +83,9 @@ class InviteService:
         The gateway is probed before anything is persisted: a bad URL/key raises
         `GatewayUnreachable` (→ 422) and nothing is written. On success the agent is live
         (APPROVED) and ready to receive its setup prompt via `push_setup`.
+
+        Role is deliberately NOT taken here — it is a project-roster concept, assigned later
+        (e.g. by Workspace Agent designation). A freshly invited agent has no role (#63).
         """
         try:
             adapter = self._registry.get(adapter_type)
@@ -100,7 +102,6 @@ class InviteService:
             marius = Marius(
                 workspace_id=workspace_id,
                 name=name,
-                role=role,
                 skills=skills or [],
                 skill_ids=skill_ids or [],
                 adapter_type=adapter_type,

@@ -97,7 +97,6 @@ async def invite_marius(
     marius = await container.invite.invite(
         workspace_id,
         body.name,
-        body.role,
         gateway_url=body.gateway_url,
         api_key=body.api_key,
         skills=body.skills,
