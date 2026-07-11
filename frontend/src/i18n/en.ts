@@ -198,11 +198,22 @@ export const en = {
     agentName: 'Agent Name',
     agentNamePlaceholder: 'e.g., Echo-2',
     skills: 'Skills',
-    generateInvite: 'Generate Invite',
-    copyClipboard: 'Copy to Clipboard',
-    copied: 'Copied!',
-    copyFailed: 'Copy failed — select the text manually',
-    done: 'Done',
+    role: 'Role',
+    rolePlaceholder: 'e.g., Backend Engineer',
+    gatewayUrl: 'Gateway URL',
+    gatewayUrlPlaceholder: 'http://hermes.local:8642',
+    apiKey: 'API Key',
+    apiKeyPlaceholder: '••••••••',
+    apiKeyHint:
+      'Sent to the agent once to authenticate its callbacks — never stored or shown again.',
+    invite: 'Send Invite',
+    send: {
+      sending: 'Sending…',
+      sent: 'Setup prompt sent — the agent shows online once it checks in.',
+      sendFailed:
+        'The agent was added but its setup prompt did not land. Check the gateway and retry.',
+      retry: 'Retry Send',
+    },
     actions: {
       approve: 'Approve',
       designate: 'Make Workspace Agent',
