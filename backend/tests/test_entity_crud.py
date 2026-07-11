@@ -103,7 +103,7 @@ async def test_delete_workspace_removes_it_and_cascades():
             f"/v1/workspaces/{ws_id}/mariuses",
             headers=h,
             json={"name": "Aide", "role": "Backend", "skills": [], "skill_ids": [],
-                  "adapter_type": "echo", "adapter_config": {}},
+                  "adapter_type": "echo", "gateway_url": "http://gateway.test", "api_key": "k"},
         )
 
         deleted = await c.delete(f"/v1/workspaces/{ws_id}", headers=h)
@@ -124,7 +124,7 @@ async def test_delete_workspace_cascades_runtime_rows():
         agent = await c.post(
             f"/v1/workspaces/{ws_id}/mariuses", headers=h,
             json={"name": "Runner", "role": "Backend", "skills": [], "skill_ids": [],
-                  "adapter_type": "echo", "adapter_config": {}},
+                  "adapter_type": "echo", "gateway_url": "http://gateway.test", "api_key": "k"},
         )
         marius_id = UUID(agent.json()["id"])
 
@@ -168,7 +168,7 @@ async def test_delete_marius_cascades_runtime_rows():
         agent = await c.post(
             f"/v1/workspaces/{ws_id}/mariuses", headers=h,
             json={"name": "Runner", "role": "Backend", "skills": [], "skill_ids": [],
-                  "adapter_type": "echo", "adapter_config": {}},
+                  "adapter_type": "echo", "gateway_url": "http://gateway.test", "api_key": "k"},
         )
         marius_id = UUID(agent.json()["id"])
 
@@ -291,7 +291,7 @@ async def test_delete_marius():
             f"/v1/workspaces/{ws_id}/mariuses",
             headers=h,
             json={"name": "Temp", "role": "Backend", "skills": [], "skill_ids": [],
-                  "adapter_type": "echo", "adapter_config": {}},
+                  "adapter_type": "echo", "gateway_url": "http://gateway.test", "api_key": "k"},
         )
         marius_id = created.json()["id"]
         gone = await c.delete(f"/v1/workspaces/{ws_id}/mariuses/{marius_id}", headers=h)
@@ -311,8 +311,11 @@ async def test_delete_workspace_agent_vacates_the_seat():
         created = await c.post(
             f"/v1/workspaces/{ws_id}/mariuses",
             headers=h,
-            json={"name": "Host", "role": "Backend", "skills": [], "skill_ids": [],
-                  "adapter_type": "echo", "adapter_config": {}, "is_workspace_agent": True},
+            json={
+                "name": "Host", "role": "Backend", "skills": [], "skill_ids": [],
+                "adapter_type": "echo", "gateway_url": "http://gateway.test",
+                "api_key": "k", "is_workspace_agent": True,
+            },
         )
         marius_id = created.json()["id"]
 

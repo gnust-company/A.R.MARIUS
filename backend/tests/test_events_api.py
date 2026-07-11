@@ -115,7 +115,10 @@ async def _invite(c: AsyncClient, ws_id: str, h: dict, name: str) -> str:
     r = await c.post(
         f"/v1/workspaces/{ws_id}/mariuses",
         headers=h,
-        json={"name": name, "role": "r", "adapter_type": "echo", "adapter_config": {}},
+        json={
+            "name": name, "role": "r", "adapter_type": "echo",
+            "gateway_url": "http://gateway.test", "api_key": "k",
+        },
     )
     return r.json()["id"]
 
@@ -135,7 +138,11 @@ async def test_workspace_stream_frames_a_control_event() -> None:
     ev = events[0]
     assert ev["event"] == "marius.status_changed"
     assert int(ev["id"]) > 0
-    assert json.loads(ev["data"]) == {"marius_id": mid, "status": "invited"}
+    assert json.loads(ev["data"]) == {
+        "marius_id": mid,
+        "status": "approved",
+        "send_status": "sent",
+    }
 
 
 async def test_workspace_stream_resumes_from_last_event_id() -> None:

@@ -2,20 +2,26 @@
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.database.engine import init_db
 from armarius.main import app
 from armarius.presentation.container import build_container
+from tests.support.agents import (
+    agent_token_for,
+    invite_agent,
+)
 
 
 @pytest.fixture(autouse=True)
 async def _bootstrap():
     await init_db()
-    app.state.container = build_container()
+    container = build_container()
+    # Zero-delay echo so each invite's setup-push is instant (default 0.4s/event × ~9).
+    container.registry.register(EchoAdapter(step_delay=0.0))
+    app.state.container = container
     yield
 
 
@@ -65,47 +71,30 @@ async def test_register_without_username_derives_handle():
     assert r.json()["user"]["username"] == "mariusfan"
 
 
-async def test_provision_agent_links_skill_and_invite_has_steps():
+async def test_provision_agent_links_skill_and_pushes_setup():
     async with await _client() as c:
         token, ws_id = await _register(c, "prov@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
         skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
-        # Look up by slug — a bare skills[0] is order-fragile now that there are two builtins.
         skill_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
 
-        created = await c.post(
-            f"/v1/workspaces/{ws_id}/mariuses",
-            headers=h,
-            json={
-                "name": "Marin",
-                "role": "Backend",
-                "skills": ["api"],
-                "skill_ids": [skill_id],
-                "adapter_type": "echo",
-                "adapter_config": {},
-            },
+        data = await invite_agent(
+            c,
+            ws_id,
+            h,
+            name="Marin",
+            role="Backend",
+            skills=["api"],
+            skill_ids=[skill_id],
         )
-    assert created.status_code == 201, created.text
-    data = created.json()
+    # The linked skill is persisted on the agent.
     assert data["skill_ids"] == [skill_id]
-    # Enroll-and-wait (API_CONTRACT §4.1): no token at invite — an enrollment_code instead.
-    assert data["agent_token"] is None
-    assert data["enrollment_code"]
-    assert data["invite_status"] == "invited"
-    # Invite advertises enroll-and-wait + the skill install + the credential file.
-    assert "ENROLL AND WAIT" in data["invite"]
-    assert data["enrollment_code"] in data["invite"]
-    assert "INSTALL YOUR SKILLS" in data["invite"]
-    assert "Armarius HTTP API" in data["invite"]
-    assert "~/.armarius/credentials/" in data["invite"]
-    # Skills install via the agent bundle endpoint (no more "(no source URL)" dead end).
-    assert "/agent/skills/armarius-http" in data["invite"]
-    # Connection-only invite (#43): no project context, and no task-loop STEP 4 — work
-    # happens later in a separate wake session that carries its own context.
-    assert '"project"' not in data["invite"]
-    assert "project:" not in data["invite"]
-    assert "STEP 4" not in data["invite"]
-    assert "WORK THE LOOP" not in data["invite"]
+    # Operator-invite (#63): approved at invite time, setup pushed, token never leaked.
+    assert data["invite_status"] == "approved"
+    assert data["send_status"] == "sent"
+    assert "agent_token" not in data
+    assert "enrollment_code" not in data
+    assert "invite" not in data
 
 
 async def test_inviting_agent_does_not_create_a_project():
@@ -117,66 +106,24 @@ async def test_inviting_agent_does_not_create_a_project():
         before = (await c.get(f"/v1/workspaces/{ws_id}/projects", headers=h)).json()
         assert before == []
 
-        created = await c.post(
-            f"/v1/workspaces/{ws_id}/mariuses",
-            headers=h,
-            json={"name": "Marin", "role": "Backend", "skills": [],
-                  "skill_ids": [], "adapter_type": "echo", "adapter_config": {}},
-        )
-        assert created.status_code == 201, created.text
+        data = await invite_agent(c, ws_id, h, name="Marin", role="Backend")
 
         after = (await c.get(f"/v1/workspaces/{ws_id}/projects", headers=h)).json()
+    assert data["invite_status"] == "approved"
     assert after == []  # still no project after inviting an agent
 
 
-async def test_directory_exposes_invite_status_and_flips_pending_on_enroll():
-    """#51: the directory list carries invite_status, and an agent that enrolls flips to
-    pending_review there — so the owner can SEE and approve it while the enroll call holds
-    (previously the directory only exposed liveness, so a pending agent looked offline)."""
+async def test_directory_exposes_invite_status():
+    """The directory list carries invite_status; under operator-invite an agent is
+    "approved" the moment it is invited (#63)."""
     async with await _client() as c:
         token, ws_id = await _register(c, "pending@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
-        created = (
-            await c.post(
-                f"/v1/workspaces/{ws_id}/mariuses",
-                headers=h,
-                json={"name": "Knocker", "role": "Backend", "skills": [],
-                      "skill_ids": [], "adapter_type": "echo", "adapter_config": {}},
-            )
-        ).json()
-        mid, code = created["id"], created["enrollment_code"]
+        data = await invite_agent(c, ws_id, h, name="Knocker", role="Backend")
+        mid = data["id"]
 
-        # Freshly invited → the directory shows invite_status "invited".
         directory = (await c.get(f"/v1/workspaces/{ws_id}/mariuses", headers=h)).json()
-        assert next(m for m in directory if m["id"] == mid)["invite_status"] == "invited"
-
-        # The agent enrolls; the call HOLDS. Poll the directory until it shows pending_review.
-        enroll_task = asyncio.create_task(
-            c.post("/agent/enroll", json={"marius_id": mid, "enrollment_code": code})
-        )
-        try:
-            for _ in range(100):
-                directory = (
-                    await c.get(f"/v1/workspaces/{ws_id}/mariuses", headers=h)
-                ).json()
-                if next(m for m in directory if m["id"] == mid)["invite_status"] == (
-                    "pending_review"
-                ):
-                    break
-                await asyncio.sleep(0.02)
-            else:
-                raise AssertionError("agent never reached pending_review in the directory")
-
-            # Approving the pending agent completes the held enroll with a real token.
-            approved = await c.post(
-                f"/v1/workspaces/{ws_id}/mariuses/{mid}/approve", headers=h
-            )
-            assert approved.status_code == 200, approved.text
-            enrolled = await asyncio.wait_for(enroll_task, timeout=10)
-            assert enrolled.status_code == 200, enrolled.text
-            assert enrolled.json()["agent_token"]
-        finally:
-            enroll_task.cancel()
+    assert next(m for m in directory if m["id"] == mid)["invite_status"] == "approved"
 
 
 async def test_edit_agent_updates_skills():
@@ -186,14 +133,7 @@ async def test_edit_agent_updates_skills():
         skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
         skill_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
 
-        created = (
-            await c.post(
-                f"/v1/workspaces/{ws_id}/mariuses",
-                headers=h,
-                json={"name": "Marin", "role": "Backend", "skills": [],
-                      "skill_ids": [], "adapter_type": "echo", "adapter_config": {}},
-            )
-        ).json()
+        created = await invite_agent(c, ws_id, h, name="Marin", role="Backend")
         marius_id = created["id"]
 
         edited = await c.patch(
@@ -247,7 +187,7 @@ async def test_custom_skill_is_workspace_scoped():
 
 
 async def test_agent_can_fetch_linked_skill_bundle():
-    """An onboarded agent installs a multi-file skill via the JSON bundle endpoint."""
+    """An invited agent installs a multi-file skill via the JSON bundle endpoint."""
     async with await _client() as c:
         token, ws_id = await _register(c, "bundle@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
@@ -268,31 +208,11 @@ async def test_agent_can_fetch_linked_skill_bundle():
             f"/v1/workspaces/{ws_id}/skills/{skill['id']}", headers=h, json={"files": files}
         )
 
-        # Provision a Marius linked to that skill, approve it, then recover its token.
-        created = (
-            await c.post(
-                f"/v1/workspaces/{ws_id}/mariuses",
-                headers=h,
-                json={"name": "Marin", "role": "Backend", "skills": [],
-                      "skill_ids": [skill["id"]], "adapter_type": "echo", "adapter_config": {}},
-            )
-        ).json()
-        mid, code = created["id"], created["enrollment_code"]
-        # enroll moves invited→pending_review then HOLDS until approval — run the patron's
-        # approve concurrently (approve is a no-op 409 until enroll sets pending_review).
-        enroll_task = asyncio.create_task(
-            c.post("/agent/enroll", json={"marius_id": mid, "enrollment_code": code})
+        # Invite an agent linked to that skill; read its minted token from the repo (#63).
+        created = await invite_agent(
+            c, ws_id, h, name="Marin", role="Backend", skill_ids=[skill["id"]]
         )
-        for _ in range(100):
-            r = await c.post(f"/v1/workspaces/{ws_id}/mariuses/{mid}/approve", headers=h)
-            if r.status_code == 200:
-                break
-            await asyncio.sleep(0.02)
-        else:
-            raise AssertionError("approve never reached pending_review")
-        enrolled = await asyncio.wait_for(enroll_task, timeout=10)
-        assert enrolled.status_code == 200, enrolled.text
-        agent_token = enrolled.json()["agent_token"]
+        agent_token = await agent_token_for(created["id"])
         ah = {"Authorization": f"Bearer {agent_token}"}
 
         # /agent/skills lists the linked skill with its file count.

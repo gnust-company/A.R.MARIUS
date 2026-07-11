@@ -3,20 +3,23 @@ checkbox, and host delete-protection."""
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.database.engine import init_db
 from armarius.main import app
 from armarius.presentation.container import build_container
+from tests.support.agents import GATEWAY_KEY, GATEWAY_URL
 
 
 @pytest.fixture(autouse=True)
 async def _bootstrap():
     await init_db()
-    app.state.container = build_container()
+    container = build_container()
+    # Zero-delay echo so each invite's setup-push is instant (issue #63).
+    container.registry.register(EchoAdapter(step_delay=0.0))
+    app.state.container = container
     yield
 
 
@@ -41,29 +44,19 @@ async def _invite(c: AsyncClient, h: dict, ws_id: str, name: str, **extra) -> di
     r = await c.post(
         f"/v1/workspaces/{ws_id}/mariuses",
         headers=h,
-        json={"name": name, "role": "", "skills": [], "skill_ids": [],
-              "adapter_type": "echo", "adapter_config": {}, **extra},
+        json={
+            "name": name,
+            "role": "",
+            "skills": [],
+            "skill_ids": [],
+            "adapter_type": "echo",
+            "gateway_url": GATEWAY_URL,
+            "api_key": GATEWAY_KEY,
+            **extra,
+        },
     )
     assert r.status_code == 201, r.text
     return r.json()
-
-
-async def _enroll_and_approve(c: AsyncClient, h: dict, ws_id: str, created: dict) -> str:
-    """Complete enroll-and-wait for an invited Marius; return its agent_token."""
-    mid, code = created["id"], created["enrollment_code"]
-    enroll_task = asyncio.create_task(
-        c.post("/agent/enroll", json={"marius_id": mid, "enrollment_code": code})
-    )
-    for _ in range(100):
-        r = await c.post(f"/v1/workspaces/{ws_id}/mariuses/{mid}/approve", headers=h)
-        if r.status_code == 200:
-            break
-        await asyncio.sleep(0.02)
-    else:
-        raise AssertionError("approve never reached pending_review")
-    enrolled = await asyncio.wait_for(enroll_task, timeout=10)
-    assert enrolled.status_code == 200, enrolled.text
-    return enrolled.json()["agent_token"]
 
 
 async def _pointer(c: AsyncClient, h: dict, ws_id: str) -> str | None:

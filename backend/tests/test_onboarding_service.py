@@ -23,7 +23,7 @@ from armarius.application.use_cases.workspace_agent import (
     WORKSPACE_AGENT_ROLE,
     WorkspaceAgentService,
 )
-from armarius.domain.entities.marius import Liveness
+from armarius.domain.entities.marius import InviteStatus, Liveness, Marius
 from armarius.domain.entities.onboarding import OnboardingStatus
 from armarius.domain.entities.run import RunStatus
 from armarius.domain.entities.workspace import Workspace
@@ -84,10 +84,28 @@ def _completes(onboarding: OnboardingService, name: str, objective: str):
 
 
 async def _ensure_then_online(onboarding: OnboardingService, ws_id) -> None:
-    """Designate the WA (lazy-created) and mark it ONLINE so start/answer see it as ready."""
+    """Seat a real Workspace Agent (operator-invite model) and mark it ONLINE.
+
+    Under #63 the WA is never lazy-created — it must be a real invited agent. We create +
+    seat one directly here (the unit tests bypass the HTTP invite path) so start/answer see
+    a ready host.
+    """
     factory = onboarding._uow  # type: ignore[attr-defined]
-    await onboarding._ws_agent.ensure_workspace_agent(ws_id)  # type: ignore[attr-defined]
-    await _set_wa_liveness(factory, ws_id, Liveness.ONLINE)
+    async with factory() as uow:
+        host = Marius(
+            workspace_id=ws_id,
+            name="Workspace Agent",
+            role=WORKSPACE_AGENT_ROLE,
+            adapter_type="hermes_gateway",  # matches the FakeAdapter registered in _services
+            liveness=Liveness.ONLINE,
+            invite_status=InviteStatus.APPROVED,
+            agent_token="arm_wa",
+        )
+        await uow.mariuses.add(host)
+        ws = await uow.workspaces.get(ws_id)
+        ws.workspace_agent_id = host.id
+        await uow.workspaces.update(ws)
+        await uow.commit()
 
 
 async def _set_wa_liveness(factory: FakeUowFactory, ws_id, liveness: Liveness) -> None:

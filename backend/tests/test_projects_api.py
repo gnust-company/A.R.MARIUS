@@ -7,7 +7,6 @@ seat grants, SETUP→ACTIVE activation, and workspace scoping (cross-workspace =
 
 from __future__ import annotations
 
-import asyncio
 from uuid import UUID
 
 from httpx import ASGITransport, AsyncClient
@@ -59,26 +58,10 @@ async def _create(c: AsyncClient, ws_id: str, h: dict, **overrides) -> dict:
 
 
 async def _online_agent(c: AsyncClient, ws_id: str, h: dict, name: str) -> str:
-    """Invite → enroll(held) → approve → /agent/me (a signal) so the agent is ONLINE."""
-    inv = (
-        await c.post(
-            f"/v1/workspaces/{ws_id}/mariuses",
-            headers=h,
-            json={"name": name, "role": "Worker", "adapter_type": "echo", "adapter_config": {}},
-        )
-    ).json()
-    mid, code = inv["id"], inv["enrollment_code"]
-    enroll_task = asyncio.create_task(
-        c.post("/agent/enroll", json={"marius_id": mid, "enrollment_code": code})
-    )
-    await asyncio.sleep(0.05)
-    for _ in range(100):
-        r = await c.post(f"/v1/workspaces/{ws_id}/mariuses/{mid}/approve", headers=h)
-        if r.status_code == 200:
-            break
-        await asyncio.sleep(0.02)
-    agent_token = (await asyncio.wait_for(enroll_task, timeout=5)).json()["agent_token"]
-    await c.get("/agent/me", headers={"Authorization": f"Bearer {agent_token}"})
+    """Invite with gateway creds → /agent/me (a signal) so the agent is ONLINE (#63)."""
+    from tests.support.agents import invite_and_online
+
+    mid, _token = await invite_and_online(c, ws_id, h, name=name, role="Worker")
     return mid
 
 
