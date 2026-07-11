@@ -56,7 +56,6 @@ async def test_invite_creates_approved_marius_with_token_and_adapter_config() ->
     m = await svc.invite(
         ws.id,
         "Marin",
-        "Backend",
         gateway_url="http://hermes:8642",
         api_key="k",
     )
@@ -73,7 +72,7 @@ async def test_invite_validates_gateway_before_persisting() -> None:
     svc = InviteService(factory, registry=_registry(_FailProbeAdapter()))
 
     with pytest.raises(GatewayUnreachable):
-        await svc.invite(ws.id, "Marin", "Backend", gateway_url="http://x", api_key="k")
+        await svc.invite(ws.id, "Marin", gateway_url="http://x", api_key="k")
 
     # Nothing was written — the probe gated persistence.
     assert not factory.store.mariuses
@@ -85,7 +84,7 @@ async def test_invite_rejects_unknown_adapter_type() -> None:
     svc = InviteService(factory, registry=InMemoryAdapterRegistry())
 
     with pytest.raises(UnknownAdapter):
-        await svc.invite(ws.id, "Marin", "Backend", gateway_url="http://x", api_key="k")
+        await svc.invite(ws.id, "Marin", gateway_url="http://x", api_key="k")
 
 
 async def test_invite_rejects_unknown_workspace() -> None:
@@ -95,14 +94,14 @@ async def test_invite_rejects_unknown_workspace() -> None:
     svc = InviteService(factory, registry=_registry(FakeAdapter()))
 
     with pytest.raises(LookupError):
-        await svc.invite(uuid4(), "Marin", "Backend", gateway_url="http://x", api_key="k")
+        await svc.invite(uuid4(), "Marin", gateway_url="http://x", api_key="k")
 
 
 async def test_push_setup_sent_on_completed() -> None:
     factory, ws = _factory_with_workspace()
     adapter = FakeAdapter()  # execute → COMPLETED
     svc = InviteService(factory, registry=_registry(adapter))
-    m = await svc.invite(ws.id, "Marin", "Backend", gateway_url="http://x", api_key="k")
+    m = await svc.invite(ws.id, "Marin", gateway_url="http://x", api_key="k")
 
     status = await svc.push_setup(m.id, prompt="setup")
 
@@ -114,7 +113,7 @@ async def test_push_setup_send_failed_when_run_not_completed() -> None:
     factory, ws = _factory_with_workspace()
     adapter = FakeAdapter(status=RunStatus.FAILED)
     svc = InviteService(factory, registry=_registry(adapter))
-    m = await svc.invite(ws.id, "Marin", "Backend", gateway_url="http://x", api_key="k")
+    m = await svc.invite(ws.id, "Marin", gateway_url="http://x", api_key="k")
 
     assert await svc.push_setup(m.id, prompt="setup") == "send_failed"
 
@@ -123,7 +122,7 @@ async def test_push_setup_send_failed_when_adapter_raises() -> None:
     factory, ws = _factory_with_workspace()
     adapter = FakeAdapter(raise_on_execute=RuntimeError("runtime down"))
     svc = InviteService(factory, registry=_registry(adapter))
-    m = await svc.invite(ws.id, "Marin", "Backend", gateway_url="http://x", api_key="k")
+    m = await svc.invite(ws.id, "Marin", gateway_url="http://x", api_key="k")
 
     assert await svc.push_setup(m.id, prompt="setup") == "send_failed"
 
@@ -131,7 +130,7 @@ async def test_push_setup_send_failed_when_adapter_raises() -> None:
 async def test_push_setup_send_failed_when_adapter_unknown() -> None:
     factory, ws = _factory_with_workspace()
     svc = InviteService(factory, registry=_registry(FakeAdapter()))
-    m = await svc.invite(ws.id, "Marin", "Backend", gateway_url="http://x", api_key="k")
+    m = await svc.invite(ws.id, "Marin", gateway_url="http://x", api_key="k")
     # The agent's adapter type is no longer registered (e.g. registry reconfigured).
     svc._registry = InMemoryAdapterRegistry()  # type: ignore[method-assign]
 
@@ -153,7 +152,7 @@ async def test_push_setup_can_retry_after_a_failure() -> None:
     factory, ws = _factory_with_workspace()
     adapter = FakeAdapter(raise_on_execute=RuntimeError("down"))
     svc = InviteService(factory, registry=_registry(adapter))
-    m = await svc.invite(ws.id, "Marin", "Backend", gateway_url="http://x", api_key="k")
+    m = await svc.invite(ws.id, "Marin", gateway_url="http://x", api_key="k")
 
     assert await svc.push_setup(m.id, prompt="setup") == "send_failed"
     # Runtime recovers on retry.

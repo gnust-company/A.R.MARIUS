@@ -61,7 +61,7 @@ async def _online_agent(c: AsyncClient, ws_id: str, h: dict, name: str) -> str:
     """Invite with gateway creds → /agent/me (a signal) so the agent is ONLINE (#63)."""
     from tests.support.agents import invite_and_online
 
-    mid, _token = await invite_and_online(c, ws_id, h, name=name, role="Worker")
+    mid, _token = await invite_and_online(c, ws_id, h, name=name)
     return mid
 
 

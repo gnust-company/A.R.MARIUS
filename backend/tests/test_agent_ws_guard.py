@@ -41,7 +41,7 @@ async def _register(c: AsyncClient, email: str) -> tuple[str, str]:
 
 async def _provision_agent(c: AsyncClient, h: dict, ws_id: str, name: str) -> str:
     """Invite a Marius with gateway creds; return its (repo-read) agent_token (#63)."""
-    created = await invite_agent(c, ws_id, h, name=name, role="")
+    created = await invite_agent(c, ws_id, h, name=name)
     return await agent_token_for(created["id"])
 
 

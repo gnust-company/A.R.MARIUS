@@ -46,7 +46,6 @@ async def _invite(c: AsyncClient, h: dict, ws_id: str, name: str, **extra) -> di
         headers=h,
         json={
             "name": name,
-            "role": "",
             "skills": [],
             "skill_ids": [],
             "adapter_type": "echo",

@@ -66,7 +66,6 @@ async def test_invite_with_unreachable_gateway_is_422() -> None:
             headers=h,
             json={
                 "name": "Hermes",
-                "role": "Backend",
                 "adapter_type": "hermes_gateway",
                 "gateway_url": "http://127.0.0.1:1",  # closed port → probe fails
                 "api_key": "k",
@@ -104,7 +103,6 @@ async def test_cross_workspace_invite_is_404(missing: str) -> None:
             headers=hb,
             json={
                 "name": "X",
-                "role": "r",
                 "adapter_type": "echo",
                 "gateway_url": GATEWAY_URL,
                 "api_key": GATEWAY_KEY,
