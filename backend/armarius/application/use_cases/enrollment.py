@@ -26,7 +26,8 @@ from armarius.domain.entities.marius import InviteStatus, Marius
 from armarius.domain.entities.run import RunStatus
 from armarius.shared.clock import utcnow
 
-# One bounded turn to push the setup prompt and let the agent act on it.
+# Upper bound on the dispatch hand-off. A network dispatch returns as soon as the gateway
+# accepts the run, so this only bounds the fallback (fast in-process) adapters.
 _SETUP_TIMEOUT_SECONDS = 120
 
 
@@ -120,9 +121,15 @@ class InviteService:
     async def push_setup(self, marius_id: UUID, *, prompt: str) -> str:
         """Push the one-time setup prompt to an agent via its adapter (best-effort).
 
-        Returns ``"sent"`` on a completed run, ``"send_failed"`` otherwise. A failure is not
-        fatal — the row is already approved — so this never raises on a send problem; the
-        caller surfaces the status and may retry by calling again.
+        "Sent" means the gateway *accepted* the setup dispatch — NOT that the agent
+        finished its turn. We deliberately do not wait for the run to complete: the agent
+        proves it is alive out-of-band by calling ``/agent/me`` (→ ONLINE), and blocking
+        the invite on a full agent turn would spin for up to the watchdog and falsely
+        report failure for a run that landed fine (issue #63).
+
+        Returns ``"sent"`` when the dispatch was accepted, ``"send_failed"`` otherwise. A
+        failure is not fatal — the row is already approved — so this never raises on a
+        send problem; the caller surfaces the status and may retry by calling again.
         """
         async with self._uow() as uow:
             marius = await uow.mariuses.get(marius_id)
@@ -145,7 +152,10 @@ class InviteService:
             timeout_seconds=_SETUP_TIMEOUT_SECONDS,
         )
         try:
-            result = await adapter.execute(ctx)
+            result = await adapter.dispatch(ctx)
         except Exception:
             return "send_failed"
-        return "sent" if result.status == RunStatus.COMPLETED else "send_failed"
+        # Anything the gateway accepted (RUNNING/QUEUED, or COMPLETED for instant local
+        # adapters) counts as sent; only an outright reject/timeout is a send failure.
+        failed = {RunStatus.FAILED, RunStatus.TIMED_OUT}
+        return "send_failed" if result.status in failed else "sent"
