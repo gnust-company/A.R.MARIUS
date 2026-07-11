@@ -56,37 +56,81 @@ class HermesGatewayAdapter(MariusAdapter):
         )
         return session_id, session_key
 
+    async def _start_run(
+        self,
+        client: httpx.AsyncClient,
+        base_url: str,
+        headers: dict[str, str],
+        session_id: str,
+        session_key: str,
+        prompt: str,
+        session_params: dict,
+    ) -> tuple[str | None, ExecResult | None]:
+        """POST /v1/runs. Returns ``(run_id, None)`` once the gateway accepts the work,
+        or ``(None, <failed ExecResult>)`` if the connect/status/body says otherwise."""
+        try:
+            resp = await client.post(
+                f"{base_url}/v1/runs",
+                headers={**headers, "X-Hermes-Session-Key": session_key},
+                json={"input": prompt, "session_id": session_id},
+            )
+        except httpx.HTTPError as exc:
+            return None, ExecResult(
+                status=RunStatus.FAILED,
+                session_params=session_params,
+                error=f"connect failed: {exc}",
+            )
+        if resp.status_code >= 400:
+            return None, ExecResult(
+                status=RunStatus.FAILED,
+                session_params=session_params,
+                error=f"POST /v1/runs -> {resp.status_code}: {resp.text[:300]}",
+            )
+        run_id = (resp.json() or {}).get("run_id")
+        if not run_id:
+            return None, ExecResult(
+                status=RunStatus.FAILED,
+                session_params=session_params,
+                error="gateway did not return a run_id",
+            )
+        return run_id, None
+
+    async def dispatch(self, ctx: ExecContext) -> ExecResult:
+        """Hand the prompt to the gateway and return as soon as the run is accepted.
+
+        Unlike ``execute``, this does NOT stream the run to completion — a setup push
+        just needs the gateway to accept the work (202 + run_id). The agent then runs on
+        its own and reports liveness back via ``/agent/me``; blocking here would stall
+        the invite for the whole agent turn and falsely fail a slow-but-fine run (#63).
+        """
+        base_url, headers = self._conn(ctx.adapter_config)
+        session_id, session_key = self._session(ctx)
+        session_params = {"session_id": session_id, "session_key": session_key}
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, read=None)) as client:
+            run_id, failure = await self._start_run(
+                client, base_url, headers, session_id, session_key, ctx.prompt, session_params
+            )
+        if failure is not None:
+            return failure
+        return ExecResult(
+            status=RunStatus.RUNNING,
+            session_params=session_params,
+            session_display_id=session_id,
+            external_run_id=run_id,
+        )
+
     async def execute(self, ctx: ExecContext) -> ExecResult:
         base_url, headers = self._conn(ctx.adapter_config)
         session_id, session_key = self._session(ctx)
         session_params = {"session_id": session_id, "session_key": session_key}
 
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, read=None)) as client:
-            try:
-                resp = await client.post(
-                    f"{base_url}/v1/runs",
-                    headers={**headers, "X-Hermes-Session-Key": session_key},
-                    json={"input": ctx.prompt, "session_id": session_id},
-                )
-            except httpx.HTTPError as exc:
-                return ExecResult(
-                    status=RunStatus.FAILED,
-                    session_params=session_params,
-                    error=f"connect failed: {exc}",
-                )
-            if resp.status_code >= 400:
-                return ExecResult(
-                    status=RunStatus.FAILED,
-                    session_params=session_params,
-                    error=f"POST /v1/runs -> {resp.status_code}: {resp.text[:300]}",
-                )
-            run_id = (resp.json() or {}).get("run_id")
-            if not run_id:
-                return ExecResult(
-                    status=RunStatus.FAILED,
-                    session_params=session_params,
-                    error="gateway did not return a run_id",
-                )
+            run_id, failure = await self._start_run(
+                client, base_url, headers, session_id, session_key, ctx.prompt, session_params
+            )
+            if failure is not None:
+                return failure
+            assert run_id is not None  # _start_run returns exactly one of (run_id, failure)
 
             usage: dict[str, Any] = {}
             terminal = False

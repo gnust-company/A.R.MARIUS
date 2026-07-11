@@ -68,6 +68,18 @@ class MariusAdapter(ABC):
     async def execute(self, ctx: ExecContext) -> ExecResult:
         """Run exactly one bounded turn against the runtime."""
 
+    async def dispatch(self, ctx: ExecContext) -> ExecResult:
+        """Fire one turn at the runtime *without* waiting for it to finish.
+
+        A dispatch succeeds the moment the runtime accepts the work; the agent's turn
+        then runs on its own and reports liveness back out-of-band (e.g. ``/agent/me``).
+        The default delegates to a full ``execute`` — fine for fast in-process adapters —
+        but network adapters override it so a long agent turn never stalls, nor falsely
+        fails, the caller (issue #63). Returns a non-terminal status (``RUNNING``) on a
+        clean hand-off; ``FAILED`` only if the runtime rejected the work.
+        """
+        return await self.execute(ctx)
+
     @abstractmethod
     async def test_environment(self, config: dict) -> Diagnostics:
         """Probe connectivity/auth for a given adapter config."""
