@@ -1,9 +1,14 @@
-"""Workspace Agent designation (LLD §3.1, §6) — every workspace has one host agent.
+"""Workspace Agent designation (LLD §3.1, §6) — a workspace's host agent.
 
 The Workspace Agent is the Marius that greets owners and runs onboarding. Who holds the
 seat is recorded on ``workspace.workspace_agent_id`` — the single source of truth (#32);
 the "Workspace Agent" role string is display-only. The onboarding playbook is no longer a
 granted skill: it is injected into the agent's prompt when a project-setup chat starts (#61).
+
+Under operator-invite (issue #63) the host is **never auto-created**: it only exists if the
+operator invited an agent and ticked "Make Workspace Agent". `ensure_workspace_agent` is now
+lookup-only — it returns the designated host or ``None`` (no config-less, token-less shell
+that can neither wake nor authenticate its callbacks).
 """
 
 from __future__ import annotations
@@ -15,15 +20,19 @@ from armarius.domain.entities.marius import Marius
 from armarius.shared.clock import utcnow
 
 WORKSPACE_AGENT_ROLE = "Workspace Agent"
-WORKSPACE_AGENT_NAME = "Workspace Agent"
 
 
 class WorkspaceAgentService:
     def __init__(self, uow_factory: UowFactory) -> None:
         self._uow = uow_factory
 
-    async def ensure_workspace_agent(self, workspace_id: UUID) -> Marius:
-        """The workspace's host agent — created lazily on first need (idempotent)."""
+    async def ensure_workspace_agent(self, workspace_id: UUID) -> Marius | None:
+        """The workspace's designated host agent, or ``None`` if none was set up.
+
+        Lookup-only under operator-invite (#63): the host must have been invited by the
+        operator with gateway creds (and seated via `designate`). Backfills the pointer for
+        workspaces designated before it was wired (#32), but never creates a host itself.
+        """
         async with self._uow() as uow:
             ws = await uow.workspaces.get(workspace_id)
             if ws is None:
@@ -44,24 +53,7 @@ class WorkspaceAgentService:
                 await uow.workspaces.update(ws)
                 await uow.commit()
                 return legacy[0]
-
-        now = utcnow()
-        async with self._uow() as uow:
-            agent = Marius(
-                workspace_id=workspace_id,
-                name=WORKSPACE_AGENT_NAME,
-                role=WORKSPACE_AGENT_ROLE,
-                adapter_type="hermes_gateway",
-                created_at=now,
-                updated_at=now,
-            )
-            created = await uow.mariuses.add(agent)
-            ws = await uow.workspaces.get(workspace_id)
-            if ws is not None:
-                ws.workspace_agent_id = created.id
-                await uow.workspaces.update(ws)
-            await uow.commit()
-            return created
+            return None
 
     async def designate(self, workspace_id: UUID, marius_id: UUID) -> Marius:
         """Hand the host seat to this Marius. Any sitting host is demoted to a plain

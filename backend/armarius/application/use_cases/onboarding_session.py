@@ -124,9 +124,10 @@ class OnboardingService:
         no session is left stranded.
         """
         wa = await self._ws_agent.ensure_workspace_agent(workspace_id)
-        if not _wa_ready(wa):
+        if wa is None or not _wa_ready(wa):
             raise WorkspaceAgentUnavailable(
-                "the Workspace Agent is not online — enroll or wake it and try again"
+                "set up the Workspace Agent first — invite an agent with 'Make Workspace "
+                "Agent' and its gateway creds, then ensure it is online and retry"
             )
 
         now = utcnow()
@@ -191,10 +192,11 @@ class OnboardingService:
             raise LookupError("onboarding session has no workspace")
 
         wa = await self._ws_agent.ensure_workspace_agent(workspace_id)
-        if not _wa_ready(wa):
+        if wa is None or not _wa_ready(wa):
             await self._abandon(session_id)
             raise WorkspaceAgentUnavailable(
-                "the Workspace Agent is not online — enroll or wake it and try again"
+                "set up the Workspace Agent first — invite an agent with 'Make Workspace "
+                "Agent' and its gateway creds, then ensure it is online and retry"
             )
         await self._wake(wa, session_id, self._answer_prompt(value))
 

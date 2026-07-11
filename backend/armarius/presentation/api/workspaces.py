@@ -76,26 +76,6 @@ async def _require_owned_workspace(container, user, workspace_id: UUID):
     return ws
 
 
-async def _build_invite(container: ContainerDep, marius, workspace_id: UUID) -> str:
-    """Assemble the invitation prompt for a Marius (workspace connection + skills).
-
-    Connection-only by design — no project or task loop here (issue #43). Carries the
-    **enrollment_code** (enroll-and-wait) until a token has been minted; after approval
-    the prompt would carry the live token instead.
-    """
-    ws = await container.workspaces.get_workspace(workspace_id)
-    # effective_skills (not skills.resolve) so the host's seat-granted onboarder
-    # playbook shows up in STEP 3 — it is never in skill_ids (#32).
-    linked = await effective_skills(container, marius)
-    return build_invite_prompt(
-        marius,
-        settings.public_api_url,
-        workspace_name=ws.name if ws else "the workspace",
-        skills=linked,
-        enrollment_code=marius.enrollment_code if marius.agent_token is None else None,
-    )
-
-
 @router.post(
     "/workspaces/{workspace_id}/mariuses",
     response_model=MariusCreatedOut,
@@ -107,55 +87,50 @@ async def invite_marius(
     container: ContainerDep,
     user: CurrentUser,
 ) -> MariusCreatedOut:
-    """Invite a Marius — enroll-and-wait (API_CONTRACT §4.1). Returns an enrollment_code
-    and a copyable prompt; the agent_token is **not** minted until approval."""
+    """Invite a Marius — operator-driven (issue #63). The operator supplies the agent's
+    gateway URL + api_key; Armarius mints the token, persists an APPROVED agent, and pushes
+    a one-time setup prompt to the agent over that gateway. No copy-paste, no approve step.
+
+    `send_status` is ``"sent"`` when the prompt reached the agent, ``"send_failed"`` when it
+    did not (the agent is still live — the operator can retry)."""
     await _require_owned_workspace(container, user, workspace_id)
-    marius = await container.enrollment.invite(
+    marius = await container.invite.invite(
         workspace_id,
         body.name,
         body.role,
+        gateway_url=body.gateway_url,
+        api_key=body.api_key,
         skills=body.skills,
         skill_ids=body.skill_ids,
         adapter_type=body.adapter_type,
-        adapter_config=body.adapter_config,
         owner_user_id=str(user.id),
     )
     if body.is_workspace_agent:
         # Seat the newcomer as host right away (#32) — an existing host is demoted to
-        # a plain agent. Done before the invite is built so the prompt shows the role.
+        # a plain agent. Done before the prompt is built so it shows the role.
         await container.workspace_agent.designate(workspace_id, marius.id)
         marius = await container.mariuses.get(marius.id) or marius
     # Inviting an agent is a connection step only (#43): it names no project and must
     # not conjure one. The patron commissions the first project explicitly (#49).
-    invite = await _build_invite(container, marius, workspace_id)
+    ws = await container.workspaces.get_workspace(workspace_id)
+    prompt = build_invite_prompt(
+        marius,
+        settings.public_api_url,
+        workspace_name=ws.name if ws else "the workspace",
+        skills=await effective_skills(container, marius),
+        # Token path: the agent already holds its minted token, so the prompt embeds it
+        # and points at /agent/me — no STEP-0 enroll block (issue #63).
+        enrollment_code=None,
+    )
+    send_status = await container.invite.push_setup(marius.id, prompt=prompt)
     await container.control_bus.publish(
         f"ws:{workspace_id}",
         "marius.status_changed",
-        {"marius_id": str(marius.id), "status": "invited"},
+        {"marius_id": str(marius.id), "status": "approved", "send_status": send_status},
     )
-    return MariusCreatedOut.model_validate(marius).model_copy(update={"invite": invite})
-
-
-@router.post(
-    "/workspaces/{workspace_id}/mariuses/{marius_id}/approve",
-    response_model=MariusCreatedOut,
-)
-async def approve_marius(
-    workspace_id: UUID,
-    marius_id: UUID,
-    container: ContainerDep,
-    user: CurrentUser,
-) -> MariusCreatedOut:
-    """Approve a pending enrollment → mint the agent_token once and complete any held
-    `/agent/enroll` call (API_CONTRACT §4.1)."""
-    await _require_owned_workspace(container, user, workspace_id)
-    marius = await container.enrollment.approve(marius_id, workspace_id=workspace_id)
-    await container.control_bus.publish(
-        f"ws:{workspace_id}",
-        "marius.status_changed",
-        {"marius_id": str(marius.id), "status": "approved"},
+    return MariusCreatedOut.model_validate(marius).model_copy(
+        update={"send_status": send_status}
     )
-    return MariusCreatedOut.model_validate(marius)
 
 
 @router.get("/workspaces/{workspace_id}/mariuses", response_model=list[MariusOut])
@@ -192,7 +167,7 @@ async def create_label(
 
 @router.patch(
     "/workspaces/{workspace_id}/mariuses/{marius_id}",
-    response_model=MariusCreatedOut,
+    response_model=MariusOut,
 )
 async def update_marius(
     workspace_id: UUID,
@@ -200,7 +175,7 @@ async def update_marius(
     body: UpdateMariusIn,
     container: ContainerDep,
     user: CurrentUser,
-) -> MariusCreatedOut:
+) -> MariusOut:
     marius = await container.mariuses.update(
         marius_id,
         name=body.name,
@@ -210,8 +185,7 @@ async def update_marius(
         adapter_type=body.adapter_type,
         adapter_config=body.adapter_config,
     )
-    invite = await _build_invite(container, marius, workspace_id)
-    return MariusCreatedOut.model_validate(marius).model_copy(update={"invite": invite})
+    return MariusOut.model_validate(marius)
 
 
 @router.post(

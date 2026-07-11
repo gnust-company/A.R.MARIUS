@@ -18,14 +18,11 @@ from armarius.domain.entities.task import TaskStatus
 from armarius.presentation.deps import ContainerDep, CurrentMarius
 from armarius.presentation.schemas import (
     AgentArtifactIn,
-    AgentClaimIn,
     AgentCommentIn,
-    AgentEnrollIn,
     AgentOnboardingCompleteIn,
     AgentOnboardingQuestionIn,
     AgentSkillBundleOut,
     AgentSkillSummary,
-    AgentTokenOut,
     ArtifactOut,
     CommentOut,
     MariusOut,
@@ -37,22 +34,6 @@ from armarius.presentation.schemas import (
 )
 
 router = APIRouter(prefix="/agent", tags=["agent"])
-
-
-# ── enroll-and-wait (pre-token; API_CONTRACT §4.1, §9) ───────────────────────
-@router.post("/enroll", response_model=AgentTokenOut)
-async def enroll(body: AgentEnrollIn, container: ContainerDep) -> AgentTokenOut:
-    """Present the enrollment_code and **hold** until the Patron approves; the minted
-    agent_token is returned on this same call."""
-    token = await container.enrollment.enroll(body.marius_id, body.enrollment_code)
-    return AgentTokenOut(agent_token=token)
-
-
-@router.post("/claim", response_model=AgentTokenOut)
-async def claim(body: AgentClaimIn, container: ContainerDep) -> AgentTokenOut:
-    """Recovery fallback: return the token iff already approved (enroll session lost)."""
-    token = await container.enrollment.claim(body.marius_id, body.enrollment_code)
-    return AgentTokenOut(agent_token=token)
 
 
 @router.get("/me")
