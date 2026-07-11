@@ -198,8 +198,6 @@ export const vi = {
     agentName: 'Tên Agent',
     agentNamePlaceholder: 'VD: Echo-2',
     skills: 'Kỹ năng',
-    role: 'Vai trò',
-    rolePlaceholder: 'VD: Kỹ sư Backend',
     gatewayUrl: 'Địa chỉ Gateway',
     gatewayUrlPlaceholder: 'http://hermes.local:8642',
     apiKey: 'Khóa API',
