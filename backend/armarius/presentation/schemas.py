@@ -244,8 +244,11 @@ class RegisterMariusIn(BaseModel):
     skills: list[str] = Field(default_factory=list)
     skill_ids: list[str] = Field(default_factory=list)
     adapter_type: str = "hermes_gateway"
-    adapter_config: dict = Field(default_factory=dict)
-    owner_user_id: str | None = None
+    # Operator-invite (issue #63): the agent's gateway address + key, captured at invite
+    # time and stored as Marius.adapter_config = {"base_url", "api_key"}. The key is a
+    # secret — it never appears in any outbound schema (MariusOut omits adapter_config).
+    gateway_url: str = Field(min_length=1)
+    api_key: str = Field(min_length=1)
     # Seat this Marius as the workspace's host on invite (#32); a sitting host is
     # demoted to a plain agent (kept, not revoked).
     is_workspace_agent: bool = False
@@ -269,35 +272,17 @@ class MariusOut(_Out):
     skill_ids: list[str] = Field(default_factory=list)
     adapter_type: str
     liveness: str
-    # Invite lifecycle (invited → pending_review → approved). Exposed so the directory
-    # can surface an agent that has enrolled and is awaiting approval (#51).
+    # Invite lifecycle (operator-invite: invited → approved). `adapter_config` and
+    # `agent_token` are deliberately omitted — they are secrets, never serialized out.
     invite_status: str | None = None
     last_seen_at: datetime | None = None
     created_at: datetime | None = None
 
 
 class MariusCreatedOut(MariusOut):
-    agent_token: str | None = None
-    invite: str | None = None
-    enrollment_code: str | None = None
-    invite_status: str | None = None
-
-
-# enroll-and-wait agent surface (API_CONTRACT §4.1, §9)
-class AgentEnrollIn(BaseModel):
-    marius_id: UUID
-    enrollment_code: str = Field(min_length=1)
-    capabilities: list[str] = Field(default_factory=list)
-    adapter_config: dict = Field(default_factory=dict)
-
-
-class AgentClaimIn(BaseModel):
-    marius_id: UUID
-    enrollment_code: str = Field(min_length=1)
-
-
-class AgentTokenOut(BaseModel):
-    agent_token: str
+    # Whether the pushed setup prompt reached the agent (issue #63). "send_failed" is not
+    # an error — the agent is already live; the operator can retry the push.
+    send_status: str = "send_failed"
 
 
 class MetaOut(BaseModel):

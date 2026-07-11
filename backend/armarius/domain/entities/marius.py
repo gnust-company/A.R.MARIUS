@@ -1,8 +1,10 @@
 """Marius (agent) entity — a named, skilled, autonomous worker seated in a project.
 
 Owns two small state machines, both pure here (the application layer adds I/O):
-  - invite FSM (LLD §3.4) — enroll-and-wait: invited → pending_review → approved; the
-    `agent_token` is minted ONCE on approve, never at invite time.
+  - invite FSM (LLD §3.4) — operator-invite: invited → approved. The operator entering an
+    agent's gateway IS the approval, so the `agent_token` is minted at invite time and
+    embedded in the setup prompt the system pushes to the agent (issue #63). There is no
+    enroll/approve gate anymore.
   - liveness (LLD §10) — recency+probe model: ONLINE→CHECKING→OFFLINE with backoff. The
     transition logic lives in `domain.services.liveness_fsm`; this entity just holds the
     bookkeeping fields it reads/writes.
@@ -43,8 +45,9 @@ class Marius:
     """An agent identity bound to a runtime adapter.
 
     `adapter_config` carries connection details (e.g. Hermes gateway base_url +
-    api key). `agent_token` is the bearer the agent uses to call back into the
-    Armarius agent-facing API (claim/comment/publish) — minted on approval, not invite.
+    api key) captured from the operator at invite time. `agent_token` is the bearer the
+    agent uses to call back into the Armarius agent-facing API (whoami/comment/publish) —
+    minted at invite time and embedded in the pushed setup prompt (issue #63).
     """
 
     id: UUID = field(default_factory=uuid4)
@@ -59,9 +62,11 @@ class Marius:
     adapter_config: dict = field(default_factory=dict)
     owner_user_id: str | None = None
     agent_token: str | None = None
-    # Invite lifecycle (LLD §3.4) — enroll-and-wait.
+    # Invite lifecycle (LLD §3.4) — operator-invite: invited → approved (no enroll/approve).
     invite_status: InviteStatus = InviteStatus.INVITED
-    enrollment_code: str | None = None  # issued at invite; used ONCE on /agent/enroll
+    # Vestigial under operator-invite (issue #63): kept on the column for legacy rows, no
+    # longer populated for new agents.
+    enrollment_code: str | None = None
     approved_at: datetime | None = None
     # Liveness bookkeeping (LLD §10) — driven by LivenessEngine via liveness_fsm.
     liveness: Liveness = Liveness.OFFLINE
@@ -80,28 +85,25 @@ class Marius:
         return all(req.lower() in owned for req in required)
 
     # ── invite FSM (pure; LLD §3.4) ────────────────────────────────────────────
-    def begin_enroll(self) -> None:
-        """Agent presented the enrollment_code → hold for Patron review. Idempotent."""
-        if self.invite_status not in (InviteStatus.INVITED, InviteStatus.PENDING_REVIEW):
-            raise InviteError(f"Cannot enroll from '{self.invite_status}'.")
-        self.invite_status = InviteStatus.PENDING_REVIEW
+    def activate(self, agent_token: str, now: datetime) -> None:
+        """Operator-invite activation: mint the token once and flip to approved.
 
-    def approve(self, agent_token: str, now: datetime) -> None:
-        """Patron approves → mint the token ONCE and flip to approved."""
-        if self.invite_status != InviteStatus.PENDING_REVIEW:
-            raise InviteError(f"Cannot approve from '{self.invite_status}'.")
+        Inviting an agent IS the approval (issue #63): the operator entering the agent's
+        gateway has already decided to admit it, so the token is minted at invite time and
+        embedded in the setup prompt the system pushes. Idempotent re-activation is an
+        error — a second mint would silently replace the token an agent already holds.
+        Allowed from INVITED (the normal invite path) or PENDING_REVIEW (legacy rows only).
+        """
+        if self.invite_status == InviteStatus.REVOKED:
+            raise InviteError("Cannot activate a revoked agent.")
+        if self.invite_status == InviteStatus.APPROVED:
+            raise InviteError("Agent is already active.")
         self.agent_token = agent_token
         self.approved_at = now
         self.invite_status = InviteStatus.APPROVED
 
     def revoke(self) -> None:
-        """Withdraw an invite before approval (LLD §3.4)."""
-        if self.invite_status not in (InviteStatus.INVITED, InviteStatus.PENDING_REVIEW):
+        """Withdraw an agent's access from any pre-revoked state (LLD §3.4)."""
+        if self.invite_status == InviteStatus.REVOKED:
             raise InviteError(f"Cannot revoke from '{self.invite_status}'.")
         self.invite_status = InviteStatus.REVOKED
-
-    def token_for_claim(self) -> str:
-        """Recovery path: return the token iff already approved (LLD §12)."""
-        if self.invite_status != InviteStatus.APPROVED or not self.agent_token:
-            raise InviteError("Claim is only valid after approval.")
-        return self.agent_token

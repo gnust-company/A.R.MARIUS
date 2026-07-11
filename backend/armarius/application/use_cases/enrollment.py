@@ -1,81 +1,98 @@
-"""Enrollment use cases (LLD §3.4, §12) — enroll-and-wait, token minted on approve.
+"""Invite use cases (LLD §3.4, issue #63) — operator-invite, token minted at invite.
 
-The invite lifecycle is `invited → pending_review → approved`. The agent presents its
-`enrollment_code`; the **enroll call then blocks** (it does not return a token) until the
-Patron approves, at which point the held call completes with the freshly-minted
-`agent_token`. `claim` is the recovery path only: it returns the token iff the Marius is
-already approved (e.g. the agent lost the held connection).
+The operator enters the agent's gateway URL + api_key when inviting; that IS the approval,
+so the service mints the `agent_token` immediately, persists the agent as APPROVED, and the
+route pushes a one-time setup prompt to the agent via its adapter (no manual copy-paste, no
+enroll/approve gate). `adapter_config` is populated at the source — that is what lets a
+later wake (`HermesGatewayAdapter.execute` → `POST {base_url}/v1/runs`) actually reach the
+agent, and what lets the agent authenticate its callbacks.
 
-The wait is coordinated in-process by a per-Marius `asyncio.Future`: `enroll` awaits it,
-`approve` resolves it. The DB transaction is **not** held open across the wait — `enroll`
-commits `pending_review` and closes its UoW before awaiting.
+`push_setup` sends (or re-sends) the setup prompt. A failed send is NOT fatal: the row is
+already approved, so the operator can retry. The route surfaces `send_status` so the UI can
+offer a Retry. The send itself runs outside the persistence UoW, mirroring the onboarding
+wake (issue #61).
 """
 
 from __future__ import annotations
 
-import asyncio
 import secrets
 from collections.abc import Callable
 from typing import Protocol
 from uuid import UUID
 
+from armarius.application.ports.adapter import AdapterRegistry, ExecContext
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.marius import InviteStatus, Marius
+from armarius.domain.entities.run import RunStatus
 from armarius.shared.clock import utcnow
+
+# One bounded turn to push the setup prompt and let the agent act on it.
+_SETUP_TIMEOUT_SECONDS = 120
 
 
 class StatusNotifier(Protocol):
     """Publishes a workspace control-plane event (structurally the TopicEventBus).
 
     Typed here as a Protocol so the application layer stays decoupled from the concrete
-    SSE bus — the route publishes `invited`/`approved`, but the `pending_review` hop
-    happens *inside* the held `enroll` call, so the service emits that one itself (#51).
+    SSE bus — the route publishes the `approved`/`send_status` hops itself.
     """
 
     async def publish(self, topic: str, type: str, data: dict) -> int: ...
 
 
-class EnrollmentError(Exception):
-    """Raised on a bad enrollment code or an illegal enrollment step."""
+class GatewayUnreachable(ValueError):
+    """The operator-supplied gateway did not pass the adapter's reachability probe."""
+
+
+class UnknownAdapter(ValueError):
+    """The operator selected an adapter type no registry knows about."""
 
 
 def _default_token() -> str:
     return f"arm_{secrets.token_urlsafe(32)}"
 
 
-def _default_code() -> str:
-    return secrets.token_urlsafe(16)
+class InviteService:
+    """Operator-driven agent invite — gateway+key at invite, system-pushed setup (#63)."""
 
-
-class EnrollmentService:
     def __init__(
         self,
         uow_factory: UowFactory,
         *,
+        registry: AdapterRegistry,
         token_factory: Callable[[], str] = _default_token,
-        code_factory: Callable[[], str] = _default_code,
-        control_bus: StatusNotifier | None = None,
     ) -> None:
         self._uow = uow_factory
+        self._registry = registry
         self._mint_token = token_factory
-        self._mint_code = code_factory
-        self._control_bus = control_bus
-        self._pending: dict[UUID, asyncio.Future[str]] = {}
 
-    # ── invite ──────────────────────────────────────────────────────────────────
     async def invite(
         self,
         workspace_id: UUID,
         name: str,
         role: str,
         *,
+        gateway_url: str,
+        api_key: str,
         skills: list[str] | None = None,
         skill_ids: list[str] | None = None,
         adapter_type: str = "hermes_gateway",
-        adapter_config: dict | None = None,
         owner_user_id: str | None = None,
     ) -> Marius:
-        """Create an INVITED Marius with an enrollment code and NO token yet."""
+        """Create an APPROVED Marius wired to the operator's gateway, token already minted.
+
+        The gateway is probed before anything is persisted: a bad URL/key raises
+        `GatewayUnreachable` (→ 422) and nothing is written. On success the agent is live
+        (APPROVED) and ready to receive its setup prompt via `push_setup`.
+        """
+        try:
+            adapter = self._registry.get(adapter_type)
+        except LookupError as exc:
+            raise UnknownAdapter(f"unknown adapter type '{adapter_type}'") from exc
+        probe = await adapter.test_environment({"base_url": gateway_url, "api_key": api_key})
+        if not probe.ok:
+            raise GatewayUnreachable(probe.detail or "gateway unreachable")
+
         now = utcnow()
         async with self._uow() as uow:
             if await uow.workspaces.get(workspace_id) is None:
@@ -87,87 +104,47 @@ class EnrollmentService:
                 skills=skills or [],
                 skill_ids=skill_ids or [],
                 adapter_type=adapter_type,
-                adapter_config=adapter_config or {},
+                adapter_config={"base_url": gateway_url, "api_key": api_key},
                 owner_user_id=owner_user_id,
                 invite_status=InviteStatus.INVITED,
-                enrollment_code=self._mint_code(),
                 agent_token=None,
                 created_at=now,
                 updated_at=now,
             )
+            marius.activate(self._mint_token(), now)
             created = await uow.mariuses.add(marius)
             await uow.commit()
             return created
 
-    # ── enroll-and-wait ─────────────────────────────────────────────────────────
-    async def enroll(self, marius_id: UUID, code: str) -> str:
-        """Present the code → hold until approved, then return the minted token.
+    async def push_setup(self, marius_id: UUID, *, prompt: str) -> str:
+        """Push the one-time setup prompt to an agent via its adapter (best-effort).
 
-        Idempotent recovery: if the Marius is already approved, returns the token at once.
+        Returns ``"sent"`` on a completed run, ``"send_failed"`` otherwise. A failure is not
+        fatal — the row is already approved — so this never raises on a send problem; the
+        caller surfaces the status and may retry by calling again.
         """
-        future = self._future_for(marius_id)
         async with self._uow() as uow:
             marius = await uow.mariuses.get(marius_id)
             if marius is None:
                 raise LookupError("marius not found")
-            if not marius.enrollment_code or code != marius.enrollment_code:
-                raise EnrollmentError("invalid enrollment code")
-            if marius.invite_status == InviteStatus.APPROVED:
-                return marius.token_for_claim()  # already approved → recover at once
-            marius.begin_enroll()  # invited|pending_review → pending_review (idempotent)
-            marius.updated_at = utcnow()
-            await uow.mariuses.update(marius)
-            await uow.commit()
-            workspace_id = marius.workspace_id
-        # Announce the knock BEFORE holding, so the Patron's inbox/directory surfaces the
-        # approval right away instead of the enroll call hanging invisibly (#51). The
-        # route can't publish this hop — it's blocked inside `await future` below.
-        if self._control_bus is not None and workspace_id is not None:
-            await self._control_bus.publish(
-                f"ws:{workspace_id}",
-                "marius.status_changed",
-                {"marius_id": str(marius_id), "status": "pending_review"},
-            )
-        return await future
-
-    async def approve(
-        self, marius_id: UUID, *, workspace_id: UUID | None = None
-    ) -> Marius:
-        """Patron approves → mint the token once and complete any held enroll call.
-
-        When ``workspace_id`` is given, the Marius must belong to it — a cross-workspace
-        approval is rejected as *not found* (a caller can only approve their own agents).
-        """
-        async with self._uow() as uow:
-            marius = await uow.mariuses.get(marius_id)
-            if marius is None or (
-                workspace_id is not None and marius.workspace_id != workspace_id
-            ):
-                raise LookupError("marius not found")
-            token = self._mint_token()
-            marius.approve(token, utcnow())  # raises InviteError unless pending_review
-            await uow.mariuses.update(marius)
-            await uow.commit()
-        future = self._future_for(marius_id)
-        if not future.done():
-            future.set_result(token)
-        return marius
-
-    async def claim(self, marius_id: UUID, code: str) -> str:
-        """Recovery only: return the token iff the Marius is already approved."""
-        async with self._uow() as uow:
-            marius = await uow.mariuses.get(marius_id)
-            if marius is None:
-                raise LookupError("marius not found")
-            if not marius.enrollment_code or code != marius.enrollment_code:
-                raise EnrollmentError("invalid enrollment code")
-            return marius.token_for_claim()  # raises InviteError unless approved
-
-    # ── internals ───────────────────────────────────────────────────────────────
-    def _future_for(self, marius_id: UUID) -> asyncio.Future[str]:
-        """Get-or-create the held-call future for a Marius (bound to the running loop)."""
-        future = self._pending.get(marius_id)
-        if future is None or future.cancelled():
-            future = asyncio.get_running_loop().create_future()
-            self._pending[marius_id] = future
-        return future
+            adapter_type = marius.adapter_type
+            adapter_config = dict(marius.adapter_config or {})
+        try:
+            adapter = self._registry.get(adapter_type)
+        except LookupError:
+            return "send_failed"
+        ctx = ExecContext(
+            prompt=prompt,
+            adapter_config=adapter_config,
+            session_params={
+                "session_id": f"armarius:setup:{marius_id}",
+                "session_key": f"armarius:setup:{marius_id}",
+            },
+            marius_id=marius_id,
+            timeout_seconds=_SETUP_TIMEOUT_SECONDS,
+        )
+        try:
+            result = await adapter.execute(ctx)
+        except Exception:
+            return "send_failed"
+        return "sent" if result.status == RunStatus.COMPLETED else "send_failed"

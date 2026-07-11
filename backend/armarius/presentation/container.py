@@ -13,7 +13,7 @@ from armarius.application.ports.event_bus import EventBus
 from armarius.application.use_cases.artifacts import ArtifactService
 from armarius.application.use_cases.auth import AuthService
 from armarius.application.use_cases.commission import CommissionService
-from armarius.application.use_cases.enrollment import EnrollmentService
+from armarius.application.use_cases.enrollment import InviteService
 from armarius.application.use_cases.labels import LabelService
 from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.liveness_watchdog import LivenessWatchdog
@@ -52,7 +52,7 @@ class Container:
     workspace_agent: WorkspaceAgentService
     projects: ProjectService
     onboarding: OnboardingService
-    enrollment: EnrollmentService
+    invite: InviteService
     commission: CommissionService
     liveness: LivenessEngine
     liveness_watchdog: LivenessWatchdog
@@ -132,7 +132,7 @@ def build_container() -> Container:
         workspace_agent=workspace_agent,
         projects=projects,
         onboarding=onboarding,
-        enrollment=EnrollmentService(uow_factory, control_bus=control_bus),
+        invite=InviteService(uow_factory, registry=registry),
         commission=CommissionService(uow_factory, wake_engine),
         liveness=liveness,
         liveness_watchdog=liveness_watchdog,

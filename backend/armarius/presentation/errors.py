@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from armarius.application.use_cases.commission import (
     CommissionError as CommissionOpError,
 )
-from armarius.application.use_cases.enrollment import EnrollmentError
+from armarius.application.use_cases.enrollment import GatewayUnreachable
 from armarius.application.use_cases.onboarding_session import (
     OnboardingBusy,
     WorkspaceAgentUnavailable,
@@ -82,9 +82,11 @@ def install_error_handlers(app: FastAPI) -> None:
         # fallback: tell the user to enroll/wake the agent (409, both start + mid-interview).
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
-    @app.exception_handler(EnrollmentError)
-    async def _enrollment_bad(_: Request, exc: EnrollmentError) -> JSONResponse:
-        return JSONResponse(status_code=400, content={"detail": str(exc)})
+    @app.exception_handler(GatewayUnreachable)
+    async def _gateway_unreachable(_: Request, exc: GatewayUnreachable) -> JSONResponse:
+        # The operator-supplied gateway failed its reachability probe (issue #63) —
+        # unprocessable entity: the request was well-formed but the target is not live.
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
 
     @app.exception_handler(ValueError)
     async def _bad_request(_: Request, exc: ValueError) -> JSONResponse:
