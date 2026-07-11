@@ -1,7 +1,10 @@
 """WorkspaceAgentService — host seat via workspace.workspace_agent_id (#32).
 
-The onboarding playbook is no longer a granted skill — it is injected into the agent's prompt
-when a project-setup chat starts (#61), so designation is purely about who holds the seat.
+Under operator-invite (#63) the host is NEVER auto-created: it only exists if the operator
+invited an agent and seated it. `ensure_workspace_agent` is lookup-only — it returns the
+designated host or None (no config-less, token-less shell). The onboarding playbook is
+injected into the agent's prompt when a project-setup chat starts (#61), so designation is
+purely about who holds the seat.
 """
 
 from __future__ import annotations
@@ -32,18 +35,25 @@ def _add_marius(factory: FakeUowFactory, ws: Workspace, name: str, role: str = "
     return m
 
 
-async def test_ensure_creates_host_and_records_the_seat() -> None:
+async def test_ensure_returns_none_when_no_host_designated() -> None:
+    """No operator invited+seated a host → ensure does not conjure one (#63)."""
     factory, ws = _factory_with_workspace()
     svc = WorkspaceAgentService(factory)
 
-    agent = await svc.ensure_workspace_agent(ws.id)
+    assert await svc.ensure_workspace_agent(ws.id) is None
+    assert factory.store.workspaces[ws.id].workspace_agent_id is None
+    assert not factory.store.mariuses  # nothing was created
 
-    assert agent.role == WORKSPACE_AGENT_ROLE
-    assert agent.workspace_id == ws.id
-    # The pointer — not the role string — is the source of truth (#32).
-    assert factory.store.workspaces[ws.id].workspace_agent_id == agent.id
-    # A fresh host runs on the real gateway adapter so it can drive onboarding.
-    assert agent.adapter_type == "hermes_gateway"
+
+async def test_ensure_returns_the_designated_host() -> None:
+    factory, ws = _factory_with_workspace()
+    svc = WorkspaceAgentService(factory)
+    host = _add_marius(factory, ws, "Host")
+    await svc.designate(ws.id, host.id)
+
+    found = await svc.ensure_workspace_agent(ws.id)
+    assert found is not None
+    assert found.id == host.id
 
 
 async def test_ensure_backfills_the_pointer_for_a_legacy_host() -> None:
@@ -53,6 +63,7 @@ async def test_ensure_backfills_the_pointer_for_a_legacy_host() -> None:
 
     agent = await svc.ensure_workspace_agent(ws.id)
 
+    assert agent is not None
     assert agent.id == legacy.id
     assert factory.store.workspaces[ws.id].workspace_agent_id == legacy.id
 
@@ -60,21 +71,20 @@ async def test_ensure_backfills_the_pointer_for_a_legacy_host() -> None:
 async def test_designation_is_idempotent() -> None:
     factory, ws = _factory_with_workspace()
     svc = WorkspaceAgentService(factory)
+    host = _add_marius(factory, ws, "Host")
+    await svc.designate(ws.id, host.id)
 
     first = await svc.ensure_workspace_agent(ws.id)
     second = await svc.ensure_workspace_agent(ws.id)
-
-    assert first.id == second.id
-    agents = [
-        m for m in factory.store.mariuses.values() if m.role == WORKSPACE_AGENT_ROLE
-    ]
-    assert len(agents) == 1
+    assert first is not None and second is not None
+    assert first.id == second.id == host.id
 
 
 async def test_designate_swaps_and_keeps_the_old_host_as_plain_agent() -> None:
     factory, ws = _factory_with_workspace()
     svc = WorkspaceAgentService(factory)
-    old = await svc.ensure_workspace_agent(ws.id)
+    old = _add_marius(factory, ws, "Old")
+    await svc.designate(ws.id, old.id)  # seat the first host
     new = _add_marius(factory, ws, "Fresh")
 
     promoted = await svc.designate(ws.id, new.id)

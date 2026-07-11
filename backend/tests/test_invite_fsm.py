@@ -1,4 +1,4 @@
-"""Marius invite FSM — enroll-and-wait, token minted on approve (LLD §3.4, §12)."""
+"""Marius invite FSM — operator-invite: invited → approved, token minted on activate (#63)."""
 
 from __future__ import annotations
 
@@ -9,77 +9,63 @@ from armarius.shared.clock import utcnow
 
 
 def _invited() -> Marius:
-    return Marius(invite_status=InviteStatus.INVITED, enrollment_code="code-123")
+    return Marius(invite_status=InviteStatus.INVITED)
 
 
-def test_invite_has_no_token() -> None:
+def test_invited_has_no_token() -> None:
     m = _invited()
     assert m.agent_token is None
     assert m.invite_status == InviteStatus.INVITED
 
 
-def test_enroll_moves_to_pending_review() -> None:
+def test_activate_mints_token_and_flips_to_approved() -> None:
     m = _invited()
-    m.begin_enroll()
-    assert m.invite_status == InviteStatus.PENDING_REVIEW
-    assert m.agent_token is None  # still no token before approval
-
-
-def test_enroll_is_idempotent() -> None:
-    m = _invited()
-    m.begin_enroll()
-    m.begin_enroll()  # re-enroll while pending is allowed
-    assert m.invite_status == InviteStatus.PENDING_REVIEW
-
-
-def test_approve_mints_token_once() -> None:
-    m = _invited()
-    m.begin_enroll()
     now = utcnow()
-    m.approve("secret-token", now)
+    m.activate("secret-token", now)
     assert m.invite_status == InviteStatus.APPROVED
     assert m.agent_token == "secret-token"
     assert m.approved_at == now
 
 
-def test_cannot_approve_before_enroll() -> None:
+def test_cannot_activate_twice() -> None:
+    """Idempotent re-activation is an error — a second mint would replace a live token."""
     m = _invited()
+    m.activate("secret-token", utcnow())
     with pytest.raises(InviteError):
-        m.approve("secret-token", utcnow())
+        m.activate("another-token", utcnow())
+    assert m.agent_token == "secret-token"  # unchanged
 
 
-def test_cannot_approve_twice() -> None:
+def test_cannot_activate_a_revoked_agent() -> None:
     m = _invited()
-    m.begin_enroll()
-    m.approve("secret-token", utcnow())
+    m.revoke()
     with pytest.raises(InviteError):
-        m.approve("another-token", utcnow())
+        m.activate("secret-token", utcnow())
 
 
-def test_revoke_before_approval() -> None:
+def test_activate_from_pending_review_for_legacy_rows() -> None:
+    """PENDING_REVIEW only exists on legacy rows; activate still admits them (#63)."""
+    m = Marius(invite_status=InviteStatus.PENDING_REVIEW)
+    m.activate("secret-token", utcnow())
+    assert m.invite_status == InviteStatus.APPROVED
+
+
+def test_revoke_from_invited() -> None:
     m = _invited()
-    m.begin_enroll()
     m.revoke()
     assert m.invite_status == InviteStatus.REVOKED
 
 
-def test_cannot_revoke_after_approval() -> None:
+def test_revoke_from_approved() -> None:
+    """Widened revoke: an already-active agent can be revoked (#63)."""
     m = _invited()
-    m.begin_enroll()
-    m.approve("secret-token", utcnow())
+    m.activate("secret-token", utcnow())
+    m.revoke()
+    assert m.invite_status == InviteStatus.REVOKED
+
+
+def test_cannot_revoke_twice() -> None:
+    m = _invited()
+    m.revoke()
     with pytest.raises(InviteError):
         m.revoke()
-
-
-def test_claim_returns_token_after_approval() -> None:
-    m = _invited()
-    m.begin_enroll()
-    m.approve("secret-token", utcnow())
-    assert m.token_for_claim() == "secret-token"
-
-
-def test_claim_rejected_before_approval() -> None:
-    m = _invited()
-    m.begin_enroll()
-    with pytest.raises(InviteError):
-        m.token_for_claim()

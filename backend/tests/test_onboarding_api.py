@@ -34,15 +34,30 @@ async def _register(c: AsyncClient, email: str) -> tuple[str, str]:
 
 
 async def _online_wa(ws_id: str) -> None:
-    """Designate the WA (lazy-created, OFFLINE) and flip it ONLINE for the happy path."""
-    container = app.state.container
+    """Seat a real Workspace Agent (operator-invite, #63) and flip it ONLINE for the happy path.
+
+    The WA is never lazy-created anymore — we create + activate an agent directly and seat it
+    as host (the unit-style bypass of the HTTP invite path), so onboarding's wake finds a
+    ready host whose adapter_type the wired FakeAdapter will satisfy.
+    """
+    from armarius.domain.entities.marius import InviteStatus, Marius
+
     ws_uuid = UUID(ws_id)
-    wa = await container.workspace_agent.ensure_workspace_agent(ws_uuid)
     async with make_uow() as uow:
-        fresh = await uow.mariuses.get(wa.id)
-        assert fresh is not None
-        fresh.liveness = Liveness.ONLINE
-        await uow.mariuses.update(fresh)
+        host = Marius(
+            workspace_id=ws_uuid,
+            name="Workspace Agent",
+            role="Workspace Agent",
+            adapter_type="hermes_gateway",
+            liveness=Liveness.ONLINE,
+            invite_status=InviteStatus.APPROVED,
+            agent_token="arm_wa",
+        )
+        await uow.mariuses.add(host)
+        ws = await uow.workspaces.get(ws_uuid)
+        assert ws is not None
+        ws.workspace_agent_id = host.id
+        await uow.workspaces.update(ws)
         await uow.commit()
 
 
@@ -91,7 +106,7 @@ async def test_start_returns_409_when_workspace_agent_is_not_online() -> None:
         started = await c.post(f"/v1/workspaces/{ws_id}/onboarding", headers=h)
 
         assert started.status_code == 409
-        assert "not online" in started.json()["detail"].lower()
+        assert "workspace agent" in started.json()["detail"].lower()
         # No session was created.
         active = await c.get(f"/v1/workspaces/{ws_id}/onboarding/active", headers=h)
         assert active.status_code == 404
@@ -164,7 +179,7 @@ async def test_answer_mid_interview_when_agent_drops_offline_is_409() -> None:
             f"/v1/onboarding/{sid}/answer", headers=h, json={"answer": "A web app"}
         )
         assert again.status_code == 409
-        assert "not online" in again.json()["detail"].lower()
+        assert "workspace agent" in again.json()["detail"].lower()
 
 
 # ── workspace scoping ────────────────────────────────────────────────────────────

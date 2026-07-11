@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
     create_async_engine,
 )
 
+from armarius.infrastructure.adapters.echo import EchoAdapter  # noqa: E402
 from armarius.infrastructure.database import engine as engine_mod  # noqa: E402
 from armarius.infrastructure.database.models import Base  # noqa: E402
 from armarius.infrastructure.persistence.unit_of_work import (  # noqa: E402
@@ -44,7 +45,12 @@ async def _isolated_app_db() -> AsyncIterator[None]:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
-    app.state.container = build_container()
+    container = build_container()
+    # The echo runtime emits ~9 events per wake; with the default 0.4s step delay each
+    # invite's setup-push would cost ~3.6s. Re-register a zero-delay echo so test invites
+    # (adapter_type "echo") stay instant (issue #63).
+    container.registry.register(EchoAdapter(step_delay=0.0))
+    app.state.container = container
     yield
 
 

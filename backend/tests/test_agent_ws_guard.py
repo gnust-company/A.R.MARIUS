@@ -3,20 +3,22 @@ workspace's tasks through /agent/tasks/*; same-workspace access keeps working.""
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.database.engine import init_db
 from armarius.main import app
 from armarius.presentation.container import build_container
+from tests.support.agents import agent_token_for, invite_agent
 
 
 @pytest.fixture(autouse=True)
 async def _bootstrap():
     await init_db()
-    app.state.container = build_container()
+    container = build_container()
+    container.registry.register(EchoAdapter(step_delay=0.0))  # instant setup-push (#63)
+    app.state.container = container
     yield
 
 
@@ -38,30 +40,9 @@ async def _register(c: AsyncClient, email: str) -> tuple[str, str]:
 
 
 async def _provision_agent(c: AsyncClient, h: dict, ws_id: str, name: str) -> str:
-    """Invite + enroll + approve a Marius; return its agent_token."""
-    created = (
-        await c.post(
-            f"/v1/workspaces/{ws_id}/mariuses",
-            headers=h,
-            json={"name": name, "role": "", "skills": [], "skill_ids": [],
-                  "adapter_type": "echo", "adapter_config": {}},
-        )
-    ).json()
-    mid, code = created["id"], created["enrollment_code"]
-    # enroll holds until approval — run the patron's approve concurrently.
-    enroll_task = asyncio.create_task(
-        c.post("/agent/enroll", json={"marius_id": mid, "enrollment_code": code})
-    )
-    for _ in range(100):
-        r = await c.post(f"/v1/workspaces/{ws_id}/mariuses/{mid}/approve", headers=h)
-        if r.status_code == 200:
-            break
-        await asyncio.sleep(0.02)
-    else:
-        raise AssertionError("approve never reached pending_review")
-    enrolled = await asyncio.wait_for(enroll_task, timeout=10)
-    assert enrolled.status_code == 200, enrolled.text
-    return enrolled.json()["agent_token"]
+    """Invite a Marius with gateway creds; return its (repo-read) agent_token (#63)."""
+    created = await invite_agent(c, ws_id, h, name=name, role="")
+    return await agent_token_for(created["id"])
 
 
 async def _make_task(c: AsyncClient, h: dict, ws_id: str) -> str:

@@ -43,7 +43,10 @@ async def _project_with_seated_leader(c: AsyncClient, ws_id: str, h: dict) -> st
     leader = await c.post(
         f"/v1/workspaces/{ws_id}/mariuses",
         headers=h,
-        json={"name": "Lead", "role": "Leader", "adapter_type": "echo", "adapter_config": {}},
+        json={
+            "name": "Lead", "role": "Leader", "adapter_type": "echo",
+            "gateway_url": "http://gateway.test", "api_key": "k",
+        },
     )
     await c.post(
         f"/v1/projects/{pid}/grant",
