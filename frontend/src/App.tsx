@@ -84,7 +84,7 @@ export default function App() {
           <Route path="projects/:id" element={<ProjectBoard />} />
           <Route path="projects/:id/roster" element={<Roster />} />
           <Route path="projects/:id/commission" element={<Commission />} />
-          <Route path="directory" element={<Directory />} />
+          <Route path="agents" element={<Directory />} />
           <Route path="skills" element={<Skills />} />
           <Route path="skills/:id" element={<SkillEditor />} />
           <Route path="inbox" element={<Inbox />} />

@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 // Known route segments → i18n nav keys (project/workspace names stay as data)
 const SEGMENT_KEYS: Record<string, string> = {
   projects: 'nav.projects',
-  directory: 'nav.directory',
+  agents: 'nav.directory',
   skills: 'nav.skills',
   inbox: 'nav.inbox',
   account: 'nav.account',
