@@ -660,7 +660,6 @@ export default function Directory() {
             <AgentCard
               key={agent.id}
               agent={agent}
-              onApprove={handleApprove}
               onDesignate={handleDesignate}
               onEdit={handleOpenEdit}
               onDelete={setDeletingAgent}
