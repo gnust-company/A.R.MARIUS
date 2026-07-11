@@ -363,7 +363,6 @@ export default function Directory() {
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [adapterType, setAdapterType] = useState('hermes_gateway');
   const [agentName, setAgentName] = useState('');
-  const [agentRole, setAgentRole] = useState('');
   const [gatewayUrl, setGatewayUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
@@ -417,7 +416,6 @@ export default function Directory() {
   const resetInviteForm = () => {
     setAdapterType('hermes_gateway');
     setAgentName('');
-    setAgentRole('');
     setGatewayUrl('');
     setApiKey('');
     setSelectedSkillIds([]);
@@ -440,7 +438,6 @@ export default function Directory() {
       // surface `send_status` so the UI can confirm or offer a retry.
       const { sendStatus: status } = await inviteNewAgent({
         name: agentName.trim(),
-        role: agentRole.trim(),
         adapterType,
         gatewayUrl: gatewayUrl.trim(),
         apiKey: apiKey.trim(),
@@ -734,25 +731,6 @@ export default function Directory() {
                   value={agentName}
                   onChange={(e) => setAgentName(e.target.value)}
                   placeholder={t('directory.agentNamePlaceholder')}
-                  className={cn(
-                    'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
-                    'placeholder:text-[#A89880]',
-                    'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
-                    'transition-all'
-                  )}
-                />
-              </div>
-
-              {/* Role */}
-              <div>
-                <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
-                  {t('directory.role')}
-                </label>
-                <input
-                  type="text"
-                  value={agentRole}
-                  onChange={(e) => setAgentRole(e.target.value)}
-                  placeholder={t('directory.rolePlaceholder')}
                   className={cn(
                     'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
                     'placeholder:text-[#A89880]',

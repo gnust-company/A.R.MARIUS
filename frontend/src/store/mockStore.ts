@@ -334,7 +334,6 @@ interface MockStoreState {
    * new agent + whether the push landed (`send_status`) — the token is never exposed. */
   inviteNewAgent: (input: {
     name: string
-    role?: string
     adapterType: string
     gatewayUrl: string
     apiKey: string
@@ -416,7 +415,7 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   sseConnected: false,
   sidebarCollapsed: false,
 
-  inviteNewAgent: async ({ name, role, adapterType, gatewayUrl, apiKey, skillIds, isWorkspaceAgent }) => {
+  inviteNewAgent: async ({ name, adapterType, gatewayUrl, apiKey, skillIds, isWorkspaceAgent }) => {
     const workspaceId = get().activeWorkspaceId || 'w1'
     const skillNames = get()
       .skills.filter((s) => skillIds.includes(s.id))
@@ -424,10 +423,10 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
 
     // Operator-invite (#63): the backend probes the gateway, mints the token at invite time,
     // and pushes the setup prompt. Send skill_ids — that is what the prompt resolves for the
-    // install step. The api_key is sent once and never persisted client-side.
+    // install step. The api_key is sent once and never persisted client-side. Role is NOT set
+    // at invite — it is a project-roster concept, assigned later (#63).
     const dto = await api.inviteMarius(workspaceId, {
       name,
-      role,
       skills: skillNames,
       skill_ids: skillIds,
       adapter_type: adapterType,

@@ -198,8 +198,6 @@ export const en = {
     agentName: 'Agent Name',
     agentNamePlaceholder: 'e.g., Echo-2',
     skills: 'Skills',
-    role: 'Role',
-    rolePlaceholder: 'e.g., Backend Engineer',
     gatewayUrl: 'Gateway URL',
     gatewayUrlPlaceholder: 'http://hermes.local:8642',
     apiKey: 'API Key',

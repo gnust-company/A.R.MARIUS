@@ -380,7 +380,6 @@ export async function listMariuses(workspaceId: string): Promise<MariusDTO[]> {
 
 export interface InviteMariusBody {
   name: string
-  role?: string
   skills?: string[]
   skill_ids?: string[]
   adapter_type?: string
