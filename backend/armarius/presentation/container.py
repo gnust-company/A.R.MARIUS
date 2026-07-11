@@ -29,7 +29,7 @@ from armarius.application.use_cases.workspace_agent import WorkspaceAgentService
 from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.adapters.hermes_gateway import HermesGatewayAdapter
-from armarius.infrastructure.adapters.liveness_probe import PlaceholderLivenessProbe
+from armarius.infrastructure.adapters.liveness_probe import GatewayHealthLivenessProbe
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.events.task_trace import ControlBusTaskTrace
@@ -116,7 +116,7 @@ def build_container() -> Container:
         settings.public_api_url,
     )
 
-    liveness = LivenessEngine(uow_factory, PlaceholderLivenessProbe())
+    liveness = LivenessEngine(uow_factory, GatewayHealthLivenessProbe(registry))
     liveness_watchdog = LivenessWatchdog(
         uow_factory,
         liveness,
