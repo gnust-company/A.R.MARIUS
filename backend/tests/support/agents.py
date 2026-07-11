@@ -24,7 +24,6 @@ async def invite_agent(
     h: dict,
     *,
     name: str = "Hermes",
-    role: str = "Worker",
     adapter_type: str = "echo",
     gateway_url: str = GATEWAY_URL,
     api_key: str = GATEWAY_KEY,
@@ -32,10 +31,11 @@ async def invite_agent(
     skills: list[str] | None = None,
     skill_ids: list[str] | None = None,
 ) -> dict:
-    """Invite an agent with operator-supplied gateway creds → APPROVED + setup pushed."""
+    """Invite an agent with operator-supplied gateway creds → APPROVED + setup pushed.
+
+    Role is intentionally not taken — it is a project-roster concept (#63)."""
     body: dict = {
         "name": name,
-        "role": role,
         "adapter_type": adapter_type,
         "gateway_url": gateway_url,
         "api_key": api_key,
@@ -66,7 +66,6 @@ async def invite_and_online(
     h: dict,
     *,
     name: str = "Hermes",
-    role: str = "Worker",
     is_workspace_agent: bool = False,
     skill_ids: list[str] | None = None,
 ) -> tuple[str, str]:
@@ -79,7 +78,6 @@ async def invite_and_online(
         ws_id,
         h,
         name=name,
-        role=role,
         is_workspace_agent=is_workspace_agent,
         skill_ids=skill_ids,
     )

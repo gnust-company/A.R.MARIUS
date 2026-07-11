@@ -83,7 +83,6 @@ async def test_provision_agent_links_skill_and_pushes_setup():
             ws_id,
             h,
             name="Marin",
-            role="Backend",
             skills=["api"],
             skill_ids=[skill_id],
         )
@@ -106,7 +105,7 @@ async def test_inviting_agent_does_not_create_a_project():
         before = (await c.get(f"/v1/workspaces/{ws_id}/projects", headers=h)).json()
         assert before == []
 
-        data = await invite_agent(c, ws_id, h, name="Marin", role="Backend")
+        data = await invite_agent(c, ws_id, h, name="Marin")
 
         after = (await c.get(f"/v1/workspaces/{ws_id}/projects", headers=h)).json()
     assert data["invite_status"] == "approved"
@@ -119,7 +118,7 @@ async def test_directory_exposes_invite_status():
     async with await _client() as c:
         token, ws_id = await _register(c, "pending@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
-        data = await invite_agent(c, ws_id, h, name="Knocker", role="Backend")
+        data = await invite_agent(c, ws_id, h, name="Knocker")
         mid = data["id"]
 
         directory = (await c.get(f"/v1/workspaces/{ws_id}/mariuses", headers=h)).json()
@@ -133,7 +132,7 @@ async def test_edit_agent_updates_skills():
         skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
         skill_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
 
-        created = await invite_agent(c, ws_id, h, name="Marin", role="Backend")
+        created = await invite_agent(c, ws_id, h, name="Marin")
         marius_id = created["id"]
 
         edited = await c.patch(
@@ -210,7 +209,7 @@ async def test_agent_can_fetch_linked_skill_bundle():
 
         # Invite an agent linked to that skill; read its minted token from the repo (#63).
         created = await invite_agent(
-            c, ws_id, h, name="Marin", role="Backend", skill_ids=[skill["id"]]
+            c, ws_id, h, name="Marin", skill_ids=[skill["id"]]
         )
         agent_token = await agent_token_for(created["id"])
         ah = {"Authorization": f"Bearer {agent_token}"}

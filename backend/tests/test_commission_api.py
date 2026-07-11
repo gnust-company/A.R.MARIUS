@@ -44,7 +44,7 @@ async def _project_with_seated_leader(c: AsyncClient, ws_id: str, h: dict) -> st
         f"/v1/workspaces/{ws_id}/mariuses",
         headers=h,
         json={
-            "name": "Lead", "role": "Leader", "adapter_type": "echo",
+            "name": "Lead", "adapter_type": "echo",
             "gateway_url": "http://gateway.test", "api_key": "k",
         },
     )

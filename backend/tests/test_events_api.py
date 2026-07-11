@@ -116,7 +116,7 @@ async def _invite(c: AsyncClient, ws_id: str, h: dict, name: str) -> str:
         f"/v1/workspaces/{ws_id}/mariuses",
         headers=h,
         json={
-            "name": name, "role": "r", "adapter_type": "echo",
+            "name": name, "adapter_type": "echo",
             "gateway_url": "http://gateway.test", "api_key": "k",
         },
     )
