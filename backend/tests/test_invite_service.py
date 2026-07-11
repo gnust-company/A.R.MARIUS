@@ -49,6 +49,30 @@ class _FailProbeAdapter(MariusAdapter):
         return Diagnostics(ok=False, detail="no probe endpoint responded")
 
 
+class _DispatchOnlyAdapter(MariusAdapter):
+    """A network-style adapter: ``dispatch`` accepts the run and returns immediately
+    (RUNNING) without streaming it; ``execute`` here would report FAILED. Used to prove
+    push_setup hands off via dispatch and never waits for the full turn (#63)."""
+
+    type = "hermes_gateway"
+    capabilities = AdapterCapabilities(resumable=True, streaming=True, transport="http")
+
+    def __init__(self) -> None:
+        self.executes = 0
+        self.dispatches = 0
+
+    async def execute(self, ctx: ExecContext) -> ExecResult:  # pragma: no cover - must not run
+        self.executes += 1
+        return ExecResult(status=RunStatus.FAILED)
+
+    async def dispatch(self, ctx: ExecContext) -> ExecResult:
+        self.dispatches += 1
+        return ExecResult(status=RunStatus.RUNNING, external_run_id="run-1")
+
+    async def test_environment(self, config: dict) -> Diagnostics:
+        return Diagnostics(ok=True)
+
+
 async def test_invite_creates_approved_marius_with_token_and_adapter_config() -> None:
     factory, ws = _factory_with_workspace()
     svc = InviteService(factory, registry=_registry(FakeAdapter()))
@@ -107,6 +131,22 @@ async def test_push_setup_sent_on_completed() -> None:
 
     assert status == "sent"
     assert adapter.executes == 1
+
+
+async def test_push_setup_hands_off_via_dispatch_without_awaiting_the_run() -> None:
+    """A gateway that ACCEPTED the run (RUNNING) is already "sent": push_setup must not
+    block on the whole agent turn. It dispatches once and never calls execute (which here
+    would report FAILED) — guarding against a regression to the old blocking behaviour."""
+    factory, ws = _factory_with_workspace()
+    adapter = _DispatchOnlyAdapter()
+    svc = InviteService(factory, registry=_registry(adapter))
+    m = await svc.invite(ws.id, "Marin", gateway_url="http://x", api_key="k")
+
+    status = await svc.push_setup(m.id, prompt="setup")
+
+    assert status == "sent"
+    assert adapter.dispatches == 1
+    assert adapter.executes == 0  # never streamed the run to completion
 
 
 async def test_push_setup_send_failed_when_run_not_completed() -> None:
