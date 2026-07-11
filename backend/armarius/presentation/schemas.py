@@ -240,7 +240,6 @@ class AgentSkillBundleOut(_Out):
 # ----------------------------------------------------------------------- marius
 class RegisterMariusIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    role: str = ""
     skills: list[str] = Field(default_factory=list)
     skill_ids: list[str] = Field(default_factory=list)
     adapter_type: str = "hermes_gateway"
