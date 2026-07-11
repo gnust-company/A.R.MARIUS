@@ -21,7 +21,7 @@ import { cn, wsHref } from '@/lib/utils';
 // `external: true` = a top-level route (no workspace prefix), e.g. the launcher.
 const NAV_ITEMS = [
   { path: '/projects', labelKey: 'nav.projects', icon: LayoutDashboard },
-  { path: '/directory', labelKey: 'nav.directory', icon: Users },
+  { path: '/agents', labelKey: 'nav.directory', icon: Users },
   { path: '/skills', labelKey: 'nav.skills', icon: Wrench },
   { path: '/inbox', labelKey: 'nav.inbox', icon: Inbox, badge: true },
 ];
