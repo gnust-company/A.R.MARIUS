@@ -230,14 +230,11 @@ export interface MariusDTO {
   created_at?: string | null
 }
 
-// POST /workspaces/{id}/mariuses response (backend `MariusCreatedOut`): the created Marius
-// plus its onboarding materials — the copyable `invite` prompt and one-time `enrollment_code`.
-// The `agent_token` stays null until the patron approves (enroll-and-wait, §4.1).
+// POST /workspaces/{id}/mariuses response (backend `MariusCreatedOut`). Under operator-invite
+// (#63) the token is minted at invite time and pushed to the agent over its gateway — it is
+// NEVER returned (a secret). `send_status` tells the UI whether the setup prompt landed.
 export interface MariusCreatedDTO extends MariusDTO {
-  agent_token?: string | null
-  invite?: string | null
-  enrollment_code?: string | null
-  invite_status?: string | null
+  send_status: 'sent' | 'send_failed'
 }
 
 export interface LabelDTO {
@@ -387,8 +384,21 @@ export interface InviteMariusBody {
   skills?: string[]
   skill_ids?: string[]
   adapter_type?: string
+  /** The agent's gateway address + key (operator-invite, #63) — stored as adapter_config. */
+  gateway_url: string
+  api_key: string
   /** Seat the newcomer as Workspace Agent on invite; a sitting host is demoted (#32). */
   is_workspace_agent?: boolean
+}
+
+/** Editable fields on an existing Marius (backend `UpdateMariusIn`). */
+export interface UpdateMariusBody {
+  name?: string
+  role?: string
+  skills?: string[]
+  skill_ids?: string[]
+  adapter_type?: string
+  adapter_config?: Record<string, unknown>
 }
 
 export async function inviteMarius(workspaceId: string, body: InviteMariusBody): Promise<MariusCreatedDTO> {
@@ -402,14 +412,10 @@ export async function designateWorkspaceAgent(
   return post<MariusDTO>(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}/designate`, {})
 }
 
-export async function approveMarius(workspaceId: string, mariusId: string): Promise<MariusDTO> {
-  return post<MariusDTO>(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}/approve`, {})
-}
-
 export async function updateMarius(
   workspaceId: string,
   mariusId: string,
-  body: Partial<InviteMariusBody>,
+  body: Partial<UpdateMariusBody>,
 ): Promise<MariusDTO> {
   return patch<MariusDTO>(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}`, body)
 }

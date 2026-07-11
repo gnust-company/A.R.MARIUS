@@ -5,13 +5,11 @@ import {
   Users,
   Plus,
   Search,
-  Copy,
   Check,
   Star,
   MoreHorizontal,
   ChevronDown,
   ChevronUp,
-  X,
   Loader2,
   Bot,
   Clock,
@@ -33,7 +31,7 @@ import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import PageTitle from '@/components/PageTitle';
-import { cn, copyToClipboard } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 
 // ─── Animation Variants ──────────────────────────────────────────────────────
@@ -106,13 +104,11 @@ function StatusDot({ status, size = 8 }: { status: AgentStatus; size?: number })
 
 function AgentCard({
   agent,
-  onApprove,
   onDesignate,
   onEdit,
   onDelete,
 }: {
   agent: Marius;
-  onApprove: (id: string) => void;
   onDesignate: (id: string) => void;
   onEdit: (agent: Marius) => void;
   onDelete: (agent: Marius) => void;
@@ -120,16 +116,7 @@ function AgentCard({
   const { t } = useTranslation();
   const config = STATUS_CONFIG[agent.status] || STATUS_CONFIG.offline;
   const [expanded, setExpanded] = useState(false);
-  const [approving, setApproving] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-
-  const handleApprove = () => {
-    setApproving(true);
-    setTimeout(() => {
-      onApprove(agent.id);
-      setApproving(false);
-    }, 400);
-  };
 
   const StatusIcon = config.icon;
   const displayName = agent.displayName || agent.name;
@@ -283,38 +270,6 @@ function AgentCard({
 
         {/* Contextual Actions */}
         <div className="mt-4 flex items-center gap-2">
-          {agent.status === 'pending' && (
-            <>
-              <button
-                onClick={handleApprove}
-                disabled={approving}
-                className={cn(
-                  'inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium transition-all',
-                  'bg-[#C25E3A] text-white hover:bg-[#D97B5A] disabled:opacity-50'
-                )}
-              >
-                {approving ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Check className="w-3.5 h-3.5" />
-                )}
-                {t('directory.actions.approve')}
-              </button>
-              <button
-                onClick={() => onApprove(agent.id)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium border border-[#E3D7BC] text-[#6B5E4E] hover:bg-[#F5DDD6] hover:text-[#8B3A28] hover:border-[#E8B8A8] transition-all"
-              >
-                <X className="w-3.5 h-3.5" />
-                {t('directory.reject')}
-              </button>
-            </>
-          )}
-          {agent.status === 'invited' && (
-            <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium text-[#A89880]">
-              <Clock className="w-3.5 h-3.5" />
-              {t('directory.waitingEnrollment')}
-            </span>
-          )}
           {agent.status === 'online' && agent.isWorkspaceAgent !== true && (
             <button
               onClick={() => onDesignate(agent.id)}
@@ -352,6 +307,11 @@ function AgentCard({
                   <p>
                     <span className="text-[#A89880]">{t('directory.details.adapter')}:</span> {agent.adapterType || '—'}
                   </p>
+                  {agent.gatewayUrl && (
+                    <p className="break-all">
+                      <span className="text-[#A89880]">{t('directory.gatewayUrl')}:</span> {agent.gatewayUrl}
+                    </p>
+                  )}
                   <p>
                     <span className="text-[#A89880]">{t('directory.details.workspace')}:</span> {agent.workspaceId}
                   </p>
@@ -374,7 +334,6 @@ export default function Directory() {
   const mariuses = useMockStore((s) => s.mariuses);
   const skills = useMockStore((s) => s.skills);
   const inviteNewAgent = useMockStore((s) => s.inviteNewAgent);
-  const approveAgent = useMockStore((s) => s.approveAgent);
   const updateMarius = useMockStore((s) => s.updateMarius);
   const deleteMarius = useMockStore((s) => s.deleteMarius);
   const designateWorkspaceAgent = useMockStore((s) => s.designateWorkspaceAgent);
@@ -402,17 +361,18 @@ export default function Directory() {
 
   // ── Invite Modal State ─────────────────────────────────────────────────────
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
-  const [inviteStep, setInviteStep] = useState<'form' | 'prompt'>('form');
   const [adapterType, setAdapterType] = useState('hermes_gateway');
   const [agentName, setAgentName] = useState('');
+  const [agentRole, setAgentRole] = useState('');
+  const [gatewayUrl, setGatewayUrl] = useState('');
+  const [apiKey, setApiKey] = useState('');
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const [makeWorkspaceAgent, setMakeWorkspaceAgent] = useState(false);
   const [inviteSwapConfirmOpen, setInviteSwapConfirmOpen] = useState(false);
-  const [generating, setGenerating] = useState(false);
-  // The backend-assembled onboarding prompt (verbatim) — what the owner copies to the agent.
-  const [invitePrompt, setInvitePrompt] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [copyFailed, setCopyFailed] = useState(false);
+  const [sending, setSending] = useState(false);
+  // Whether the setup prompt reached the agent (issue #63). Cleared each open; the form
+  // stays open on `send_failed` so the operator can fix the gateway and retry.
+  const [sendStatus, setSendStatus] = useState<'sent' | 'send_failed' | null>(null);
 
   // ── Filter Agents ──────────────────────────────────────────────────────────
   const filteredAgents = useMemo(() => {
@@ -454,70 +414,58 @@ export default function Directory() {
   );
 
   // ── Handlers ───────────────────────────────────────────────────────────────
-  const handleOpenInvite = () => {
-    setInviteStep('form');
+  const resetInviteForm = () => {
     setAdapterType('hermes_gateway');
     setAgentName('');
+    setAgentRole('');
+    setGatewayUrl('');
+    setApiKey('');
     setSelectedSkillIds([]);
     setMakeWorkspaceAgent(false);
-    setInvitePrompt('');
-    setCopied(false);
+    setSendStatus(null);
+  };
+
+  const handleOpenInvite = () => {
+    resetInviteForm();
     setInviteModalOpen(true);
   };
 
-  const doGenerateInvite = async () => {
-    if (!agentName.trim() || generating) return;
-    setGenerating(true);
+  const doInvite = async () => {
+    if (!agentName.trim() || !gatewayUrl.trim() || !apiKey.trim() || sending) return;
+    setSending(true);
+    setSendStatus(null);
     try {
-      // Real mode: the backend mints the enrollment code and assembles the full STEP 0\u20134
-      // onboarding prompt (absolute public URL, credentials, per-skill install). We show
-      // that string verbatim \u2014 no client-side prompt building.
-      const { invite } = await inviteNewAgent({
+      // Operator-invite (#63): the backend probes the gateway, mints the token at invite
+      // time, and pushes the setup prompt to the agent. The token never comes back; we
+      // surface `send_status` so the UI can confirm or offer a retry.
+      const { sendStatus: status } = await inviteNewAgent({
         name: agentName.trim(),
+        role: agentRole.trim(),
         adapterType,
+        gatewayUrl: gatewayUrl.trim(),
+        apiKey: apiKey.trim(),
         skillIds: selectedSkillIds,
         isWorkspaceAgent: makeWorkspaceAgent,
       });
-      setInvitePrompt(invite);
-      setInviteStep('prompt');
+      setSendStatus(status);
+      emitEvent({ type: 'marius.status_changed', payload: { status: 'approved' } });
+      if (status === 'sent') {
+        // The setup prompt landed \u2014 close after a beat so the success state reads.
+        setTimeout(() => setInviteModalOpen(false), 900);
+      }
     } finally {
-      setGenerating(false);
+      setSending(false);
     }
   };
 
-  const handleGenerateInvite = () => {
+  const handleInvite = () => {
     // Seating a new host over a sitting one is a swap \u2014 confirm before inviting (#32).
     if (makeWorkspaceAgent && currentHost) {
       setInviteSwapConfirmOpen(true);
       return;
     }
-    void doGenerateInvite();
+    void doInvite();
   };
-
-  const handleCopyPrompt = () => {
-    void copyToClipboard(invitePrompt).then((ok) => {
-      if (ok) {
-        setCopyFailed(false);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } else {
-        setCopied(false);
-        setCopyFailed(true);
-        setTimeout(() => setCopyFailed(false), 4000);
-      }
-    });
-  };
-
-  const handleApprove = useCallback(
-    (id: string) => {
-      approveAgent(id);
-      emitEvent({
-        type: 'marius.online',
-        payload: { mariusId: id },
-      });
-    },
-    [approveAgent, emitEvent]
-  );
 
   const handleDesignate = useCallback(
     (id: string) => {
@@ -551,7 +499,6 @@ export default function Directory() {
 
   const handleCloseInvite = () => {
     setInviteModalOpen(false);
-    setInviteStep('form');
   };
 
   const toggleSkill = (skillId: string) => {
@@ -668,7 +615,6 @@ export default function Directory() {
               <AgentCard
                 key={agent.id}
                 agent={agent}
-                onApprove={handleApprove}
                 onDesignate={handleDesignate}
                 onEdit={handleOpenEdit}
                 onDelete={setDeletingAgent}
@@ -728,28 +674,14 @@ export default function Directory() {
         isOpen={inviteModalOpen}
         onClose={handleCloseInvite}
         title={
-          (() => {
-            const full = inviteStep === 'form' ? t('directory.inviteAgent') : t('directory.invitePrompt');
-            return (
-              <span className="font-['Fraunces',Georgia,serif] text-[28px] font-semibold text-[#2A2318]">
-                <span className="title-initial">{full.charAt(0)}</span>
-                {full.slice(1)}
-              </span>
-            );
-          })()
+          <span className="font-['Fraunces',Georgia,serif] text-[28px] font-semibold text-[#2A2318]">
+            <span className="title-initial">{t('directory.inviteAgent').charAt(0)}</span>
+            {t('directory.inviteAgent').slice(1)}
+          </span>
         }
         maxWidth="max-w-xl"
       >
-        <AnimatePresence mode="wait">
-          {inviteStep === 'form' ? (
-            <motion.div
-              key="form"
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 10 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-5"
-            >
+        <div className="space-y-5">
               {/* Adapter Type */}
               <div>
                 <label className="block text-[13px] font-medium text-[#2A2318] mb-2">
@@ -812,6 +744,65 @@ export default function Directory() {
                 />
               </div>
 
+              {/* Role */}
+              <div>
+                <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
+                  {t('directory.role')}
+                </label>
+                <input
+                  type="text"
+                  value={agentRole}
+                  onChange={(e) => setAgentRole(e.target.value)}
+                  placeholder={t('directory.rolePlaceholder')}
+                  className={cn(
+                    'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
+                    'placeholder:text-[#A89880]',
+                    'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+                    'transition-all'
+                  )}
+                />
+              </div>
+
+              {/* Gateway URL + API key (operator-invite, #63) */}
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
+                    {t('directory.gatewayUrl')} <span className="text-[#C25E3A]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={gatewayUrl}
+                    onChange={(e) => setGatewayUrl(e.target.value)}
+                    placeholder={t('directory.gatewayUrlPlaceholder')}
+                    className={cn(
+                      'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
+                      'placeholder:text-[#A89880]',
+                      'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+                      'transition-all'
+                    )}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
+                    {t('directory.apiKey')} <span className="text-[#C25E3A]">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder={t('directory.apiKeyPlaceholder')}
+                    autoComplete="off"
+                    className={cn(
+                      'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
+                      'placeholder:text-[#A89880]',
+                      'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+                      'transition-all'
+                    )}
+                  />
+                  <p className="mt-1 text-[11px] text-[#A89880]">{t('directory.apiKeyHint')}</p>
+                </div>
+              </div>
+
               {/* Workspace Agent seat (#32) */}
               <div>
                 <label className="flex items-start gap-2.5 cursor-pointer select-none">
@@ -866,6 +857,18 @@ export default function Directory() {
                 </div>
               </div>
 
+              {/* Send status (issue #63) */}
+              {sendStatus === 'sent' && (
+                <p className="flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#D8EADD] text-[12px] text-[#2A6E3A]">
+                  <Check className="w-3.5 h-3.5" /> {t('directory.send.sent')}
+                </p>
+              )}
+              {sendStatus === 'send_failed' && (
+                <p className="flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#F3D9D0] text-[12px] text-[#8A3B22] border border-[#E3C0B2]">
+                  <AlertTriangle className="w-3.5 h-3.5" /> {t('directory.send.sendFailed')}
+                </p>
+              )}
+
               {/* Footer buttons */}
               <div className="flex justify-end gap-3 pt-2">
                 <button
@@ -875,71 +878,24 @@ export default function Directory() {
                   {t('common.cancel')}
                 </button>
                 <button
-                  onClick={handleGenerateInvite}
-                  disabled={!agentName.trim() || generating}
+                  onClick={handleInvite}
+                  disabled={!agentName.trim() || !gatewayUrl.trim() || !apiKey.trim() || sending}
                   className={cn(
                     'inline-flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-all',
-                    agentName.trim() && !generating
+                    agentName.trim() && gatewayUrl.trim() && apiKey.trim() && !sending
                       ? 'bg-[#C25E3A] text-white hover:bg-[#D97B5A]'
                       : 'bg-[#E3D7BC] text-[#A89880] cursor-not-allowed'
                   )}
                 >
-                  {generating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  {t('directory.generateInvite')}
+                  {sending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {sendStatus === 'send_failed'
+                    ? t('directory.send.retry')
+                    : sending
+                      ? t('directory.send.sending')
+                      : t('directory.invite')}
                 </button>
               </div>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="prompt"
-              initial={{ opacity: 0, x: 10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-4"
-            >
-              {/* Prompt display — the backend's onboarding prompt, shown verbatim */}
-              <div className="bg-[#F7F0E0] border border-[#E3D7BC] rounded-md p-4 font-mono text-[12px] text-[#2A2318] whitespace-pre leading-relaxed max-h-80 overflow-auto">
-                {invitePrompt}
-              </div>
-
-              {/* Actions */}
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={handleCopyPrompt}
-                  className={cn(
-                    'inline-flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-all',
-                    copied
-                      ? 'bg-[#D8EADD] text-[#2A6E3A]'
-                      : copyFailed
-                        ? 'bg-[#F3D9D0] text-[#8A3B22] border border-[#E3C0B2]'
-                        : 'bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC]'
-                  )}
-                >
-                  {copied ? (
-                    <>
-                      <Check className="w-3.5 h-3.5" /> {t('directory.copied')}
-                    </>
-                  ) : copyFailed ? (
-                    <>
-                      <Copy className="w-3.5 h-3.5" /> {t('directory.copyFailed')}
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" /> {t('directory.copyClipboard')}
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={handleCloseInvite}
-                  className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#C25E3A] text-white hover:bg-[#D97B5A] transition-colors"
-                >
-                  {t('directory.done')}
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        </div>
       </Modal>
 
       {/* Rename Agent Modal */}
@@ -1027,7 +983,7 @@ export default function Directory() {
         onClose={() => setInviteSwapConfirmOpen(false)}
         onConfirm={async () => {
           setInviteSwapConfirmOpen(false);
-          await doGenerateInvite();
+          await doInvite();
         }}
         title={t('directory.designateConfirmTitle')}
         message={t('directory.designateConfirmMessage', {

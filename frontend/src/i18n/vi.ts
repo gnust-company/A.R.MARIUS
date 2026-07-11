@@ -198,11 +198,22 @@ export const vi = {
     agentName: 'Tên Agent',
     agentNamePlaceholder: 'VD: Echo-2',
     skills: 'Kỹ năng',
-    generateInvite: 'Tạo Lời mời',
-    copyClipboard: 'Sao chép',
-    copied: 'Đã sao chép!',
-    copyFailed: 'Sao chép lỗi — hãy bôi đen và copy thủ công',
-    done: 'Xong',
+    role: 'Vai trò',
+    rolePlaceholder: 'VD: Kỹ sư Backend',
+    gatewayUrl: 'Địa chỉ Gateway',
+    gatewayUrlPlaceholder: 'http://hermes.local:8642',
+    apiKey: 'Khóa API',
+    apiKeyPlaceholder: '••••••••',
+    apiKeyHint:
+      'Được gửi cho agent một lần để xác thực các callback — không bao giờ lưu hay hiển thị lại.',
+    invite: 'Gửi lời mời',
+    send: {
+      sending: 'Đang gửi…',
+      sent: 'Đã gửi prompt thiết lập — agent sẽ hiển thị trực tuyến khi nó báo hiệu.',
+      sendFailed:
+        'Đã thêm agent nhưng prompt thiết lập chưa gửi được. Hãy kiểm tra gateway và thử lại.',
+      retry: 'Gửi lại',
+    },
     actions: {
       approve: 'Phê duyệt',
       designate: 'Đặt làm Agent không gian',

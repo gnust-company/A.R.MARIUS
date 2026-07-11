@@ -69,6 +69,8 @@ export interface Marius {
   description?: string
   skills?: string[]
   adapterType?: string
+  /** The agent's gateway URL (operator-invite, #63) — shown in details; the key is never kept. */
+  gatewayUrl?: string
   model?: string
   isWorkspaceAgent?: boolean
   lastSeen?: string
@@ -327,20 +329,23 @@ interface MockStoreState {
   sidebarCollapsed: boolean
 
   // Actions
-  /** Invite a new agent into the active workspace: posts to the backend and returns its
-   * onboarding materials verbatim (the copyable `invite` prompt + one-time enrollment code). */
+  /** Invite a new agent into the active workspace (operator-invite, #63): the backend mints
+   * the token at invite time and pushes the setup prompt to the agent's gateway. Returns the
+   * new agent + whether the push landed (`send_status`) — the token is never exposed. */
   inviteNewAgent: (input: {
     name: string
+    role?: string
     adapterType: string
+    gatewayUrl: string
+    apiKey: string
     skillIds: string[]
     /** Seat the newcomer as Workspace Agent; a sitting host is demoted, kept (#32). */
     isWorkspaceAgent?: boolean
-  }) => Promise<{ agent: Marius; invite: string; enrollmentCode: string }>
+  }) => Promise<{ agent: Marius; sendStatus: 'sent' | 'send_failed' }>
   /** Hand the Workspace Agent seat to this Marius (real endpoint in API mode, #32). */
   designateWorkspaceAgent: (mariusId: string) => Promise<void>
   /** Internal: stamp WA flags + the workspace pointer after a designation (#32). */
   applyDesignation: (workspaceId: string, mariusId: string) => void
-  approveAgent: (mariusId: string) => Promise<void>
   emitEvent: (event: Omit<StoreEvent, 'id' | 'timestamp'>) => void
   setCurrentUser: (user: User | null) => void
   logout: () => void
@@ -411,33 +416,37 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   sseConnected: false,
   sidebarCollapsed: false,
 
-  inviteNewAgent: async ({ name, adapterType, skillIds, isWorkspaceAgent }) => {
+  inviteNewAgent: async ({ name, role, adapterType, gatewayUrl, apiKey, skillIds, isWorkspaceAgent }) => {
     const workspaceId = get().activeWorkspaceId || 'w1'
     const skillNames = get()
       .skills.filter((s) => skillIds.includes(s.id))
       .map((s) => s.name)
 
-    // The backend creates the INVITED Marius, mints the enrollment code and assembles the
-    // full onboarding prompt (STEP 0–4, absolute public URL). Send skill_ids — that is what
-    // `_build_invite` resolves for the prompt's install step.
+    // Operator-invite (#63): the backend probes the gateway, mints the token at invite time,
+    // and pushes the setup prompt. Send skill_ids — that is what the prompt resolves for the
+    // install step. The api_key is sent once and never persisted client-side.
     const dto = await api.inviteMarius(workspaceId, {
       name,
+      role,
       skills: skillNames,
       skill_ids: skillIds,
       adapter_type: adapterType,
+      gateway_url: gatewayUrl,
+      api_key: apiKey,
       is_workspace_agent: isWorkspaceAgent ?? false,
     })
     const agent: Marius = {
       ...mariusToVM(dto),
-      // A fresh invite has no liveness yet (maps to `offline`); its real state is the
-      // invite lifecycle, which we know is `invited` on a 201.
-      status: 'invited',
+      // A newly invited agent is live (approved) but not yet online — it flips to ONLINE
+      // once it calls /agent/me with the token the setup prompt handed it.
+      status: 'offline',
       displayName: name,
+      gatewayUrl: gatewayUrl,
       isWorkspaceAgent: isWorkspaceAgent === true,
     }
     set({ mariuses: [...get().mariuses, agent] })
     if (isWorkspaceAgent) get().applyDesignation(workspaceId, agent.id)
-    return { agent, invite: dto.invite ?? '', enrollmentCode: dto.enrollment_code ?? '' }
+    return { agent, sendStatus: dto.send_status }
   },
 
   applyDesignation: (workspaceId: string, mariusId: string) => {
@@ -467,16 +476,6 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     await api.designateWorkspaceAgent(workspaceId, mariusId)
     get().applyDesignation(workspaceId, mariusId)
     get().emitEvent({ type: 'workspace_agent.designated', payload: { mariusId } })
-  },
-
-  approveAgent: async (mariusId: string) => {
-    const existing = get().mariuses.find((m) => m.id === mariusId)
-    const workspaceId = existing?.workspaceId
-    if (!workspaceId) return
-    const dto = await api.approveMarius(workspaceId, mariusId)
-    const vm = mariusToVM(dto)
-    set({ mariuses: get().mariuses.map((m) => (m.id === mariusId ? { ...vm, projectIds: m.projectIds } : m)) })
-    get().emitEvent({ type: 'marius.online', payload: { mariusId } })
   },
 
   emitEvent: (event) => {
