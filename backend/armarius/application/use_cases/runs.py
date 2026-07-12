@@ -21,6 +21,12 @@ class RunQueryService:
         async with self._uow() as uow:
             return await uow.runs.list_by_task(task_id)
 
+    async def list_by_marius(self, marius_id: UUID) -> Sequence[Run]:
+        """Every run the system dispatched to this agent, newest first — the raw material
+        for the agent-detail activity feed (the system↔agent interaction log)."""
+        async with self._uow() as uow:
+            return await uow.runs.list_by_marius(marius_id)
+
     async def events(self, run_id: UUID) -> Sequence[RunEvent]:
         async with self._uow() as uow:
             return await uow.run_events.list_by_run(run_id)

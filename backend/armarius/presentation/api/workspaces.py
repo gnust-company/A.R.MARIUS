@@ -19,6 +19,7 @@ from armarius.presentation.schemas import (
     MariusCreatedOut,
     MariusOut,
     RegisterMariusIn,
+    RunOut,
     SkillOut,
     UpdateMariusIn,
     UpdateSkillIn,
@@ -138,6 +139,28 @@ async def list_directory(
 ) -> list[MariusOut]:
     items = await container.mariuses.list_directory(workspace_id)
     return [MariusOut.model_validate(m) for m in items]
+
+
+@router.get(
+    "/workspaces/{workspace_id}/mariuses/{marius_id}/runs",
+    response_model=list[RunOut],
+)
+async def list_marius_runs(
+    workspace_id: UUID, marius_id: UUID, container: ContainerDep, user: CurrentUser
+) -> list[RunOut]:
+    """The agent's run history — the system↔agent interaction log the detail view tracks.
+
+    Each run is one system-initiated dispatch to the agent (assignment, mention, commission,
+    …) with its outcome; the durable per-run trace is fetched separately via `/v1/runs/{id}/
+    events`. Owner-scoped: the workspace must be the caller's and the agent must live in it,
+    so a cross-workspace id 404s rather than leaking another tenant's runs.
+    """
+    await _require_owned_workspace(container, user, workspace_id)
+    marius = await container.mariuses.get(marius_id)
+    if marius is None or marius.workspace_id != workspace_id:
+        raise LookupError("marius not found")
+    runs = await container.runs.list_by_marius(marius_id)
+    return [RunOut.model_validate(r) for r in runs]
 
 
 # ---------------------------------------------------------------------- labels

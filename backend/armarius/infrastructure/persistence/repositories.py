@@ -875,6 +875,18 @@ class SqlRunRepository(RunRepository):
         ).scalars().all()
         return [mappers.run_to_entity(m) for m in rows]
 
+    async def list_by_marius(self, marius_id: UUID) -> Sequence[Run]:
+        # Newest-first: the agent-detail activity feed reads like a log, most recent on top.
+        # `marius_id` is indexed on `runs`, so this stays a cheap point-lookup scan.
+        rows = (
+            await self._s.execute(
+                select(RunModel)
+                .where(RunModel.marius_id == marius_id)
+                .order_by(RunModel.created_at.desc())
+            )
+        ).scalars().all()
+        return [mappers.run_to_entity(m) for m in rows]
+
 
 class SqlRunEventRepository(RunEventRepository):
     def __init__(self, session: AsyncSession) -> None:
