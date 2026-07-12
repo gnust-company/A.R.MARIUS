@@ -58,8 +58,14 @@ export default function Projects() {
   const projectsWithStats = useMemo(() => {
     return workspaceProjects.map((project) => {
       const tasks = allTasks.filter((t) => t.projectId === project.id);
-      const filledSeats = (project.seats || []).filter((s) => s.mariusId !== null).length;
-      const totalSeats = (project.seats || []).length;
+      // Prefer the detail-level `seats` array (authoritative once a project is opened); fall
+      // back to the list-level counts from `ProjectOut` so a project the user hasn't opened
+      // this session still shows its real roster fill instead of 0/0.
+      const hasDetail = project.seats !== undefined;
+      const filledSeats = hasDetail
+        ? project.seats!.filter((s) => s.mariusId !== null).length
+        : project.seatsFilled ?? 0;
+      const totalSeats = hasDetail ? project.seats!.length : project.seatsTotal ?? 0;
       return {
         ...project,
         taskCount: tasks.length,

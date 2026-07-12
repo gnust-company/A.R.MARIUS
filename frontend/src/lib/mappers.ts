@@ -74,9 +74,11 @@ export function taskStatusFromDTO(status: string): TaskStatus {
 }
 
 export function priorityFromDTO(): Priority {
-  // Backend does NOT expose priority in `TaskOut`; default the view-model to normal.
-  // (Future: if `TaskDTO` grows `priority`, map critical/high/medium/low.)
-  return 'normal'
+  // Backend does NOT expose priority in `TaskOut`; default to the board's lowest tier.
+  // Must be a key the board understands (P0/P1/P2) — a 'normal' value has no entry in the
+  // board's PRIORITY_BADGE/PRIORITY_BORDER maps and crashed the whole board (#70).
+  // (Future: if `TaskDTO` grows `priority`, map critical/high/medium/low → P0/P1/P2.)
+  return 'P2'
 }
 
 // ── Workspace ───────────────────────────────────────────────────────────────────────────
@@ -94,9 +96,10 @@ export function workspaceToVM(dto: WorkspaceDTO, ownerId = ''): Workspace {
 // ── Project ─────────────────────────────────────────────────────────────────────────────
 
 export function projectToVM(dto: ProjectDTO): Project {
-  // List-level projects now carry `status` (backend `ProjectOut`); map it through so the
-  // projects grid shows a real status chip instead of an undefined one. Roster/seats stay
-  // detail-only (filled by `projectDetailToVM` when a project is opened).
+  // List-level projects carry `status` + seat *counts* (backend `ProjectOut`) so the grid
+  // shows a real status chip and roster fill without opening the detail. The full `seats`
+  // array stays detail-only (filled by `projectDetailToVM` when a project is opened); the
+  // counts are the list-view fallback the card uses when no detail is loaded yet.
   return {
     id: dto.id,
     name: dto.name,
@@ -104,6 +107,8 @@ export function projectToVM(dto: ProjectDTO): Project {
     workspaceId: dto.workspace_id ?? '',
     status: dto.status === 'active' ? 'active' : dto.status === 'archived' ? 'archived' : 'setup',
     objective: dto.objective ?? undefined,
+    seatsTotal: dto.seats_total ?? 0,
+    seatsFilled: dto.seats_filled ?? 0,
     createdAt: dto.created_at ?? undefined,
   }
 }

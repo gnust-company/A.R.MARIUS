@@ -61,6 +61,11 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
   const mariuses = useMockStore((s) => s.mariuses);
   const { t } = useTranslation();
 
+  // Normalize to a key the priority maps actually define (P0/P1/P2). The backend exposes no
+  // priority, so tasks can arrive with values (e.g. 'normal') that have no PRIORITY_BADGE /
+  // PRIORITY_BORDER entry — reading `.bg` off the resulting undefined crashed the whole board
+  // (#70). Fall back to the lowest tier for anything unrecognized.
+  const priorityKey = PRIORITY_BADGE[task.priority] ? task.priority : 'P2';
   const checklistTotal = (task.checklist || []).length;
   const checklistDone = (task.checklist || []).filter((c) => c.done).length;
   const hasArtifacts = (task.artifacts || []).length > 0;
@@ -80,7 +85,7 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
         'bg-vellum rounded-sm p-4 cursor-pointer border-l-[3px] border-b-2',
         'hover:-translate-y-0.5 hover:shadow-gilt transition-all duration-200',
         'group',
-        PRIORITY_BORDER[task.priority],
+        PRIORITY_BORDER[priorityKey],
         STATUS_BORDER[task.status]
       )}
     >
@@ -90,11 +95,11 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
         <span
           className={cn(
             'text-body-xs font-medium px-1.5 py-0.5 rounded-sm',
-            PRIORITY_BADGE[task.priority].bg,
-            PRIORITY_BADGE[task.priority].text
+            PRIORITY_BADGE[priorityKey].bg,
+            PRIORITY_BADGE[priorityKey].text
           )}
         >
-          {t(`tasks.priority.${task.priority}`)}
+          {t(`tasks.priority.${priorityKey}`)}
         </span>
       </div>
 

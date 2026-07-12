@@ -179,6 +179,9 @@ export interface ProjectDTO {
   description?: string | null
   status?: string | null
   objective?: string | null
+  // Roster fill for the project card (filled / total) — list-level, no detail fetch needed.
+  seats_total?: number | null
+  seats_filled?: number | null
   created_at?: string | null
 }
 
