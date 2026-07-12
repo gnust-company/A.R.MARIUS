@@ -34,6 +34,26 @@ function mergeProjects(existing: Project[], incoming: Project[]): Project[] {
   return [...map.values()]
 }
 
+/** Refresh ONE workspace's project slice from a list-level fetch while preserving any
+ * detail-level fields already loaded via `hydrateProject`. A bare list refresh must NOT blank
+ * an opened project's `seats` array — doing so re-triggered the Roster loading gate forever
+ * and reset the project card to 0/0 (#70). List-level fields (name/status/objective/counts)
+ * take the fresh value; `seats`/`githubUrl` are kept from the existing detail entry. */
+function mergeWorkspaceProjects(
+  existing: Project[],
+  workspaceId: string,
+  incoming: Project[],
+): Project[] {
+  const byId = new Map(existing.map((p) => [p.id, p]))
+  const refreshed = incoming.map((p) => {
+    const prev = byId.get(p.id)
+    return prev?.seats
+      ? { ...p, seats: prev.seats, githubUrl: prev.githubUrl ?? p.githubUrl }
+      : p
+  })
+  return [...existing.filter((p) => p.workspaceId !== workspaceId), ...refreshed]
+}
+
 // Persist the active workspace across reloads so a hard refresh on `/projects` (whose URL
 // carries no workspace id) doesn't drop the user out of context.
 const ACTIVE_WS_KEY = 'armarius.activeWorkspace'
@@ -279,6 +299,10 @@ export interface Project {
   workspaceId: string
   seatIds?: string[]
   seats?: ProjectSeat[]
+  // List-view seat fill (from `ProjectOut`) — the card's fallback when no detail `seats`
+  // array is loaded. Detail hydration (`seats`) is authoritative when present.
+  seatsTotal?: number
+  seatsFilled?: number
   status?: 'active' | 'archived' | 'setup'
   definitionOfDone?: string
   objective?: string
@@ -840,10 +864,7 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
           isWorkspaceAgent: hostId != null && m.id === hostId,
         })),
       ],
-      projects: [
-        ...s.projects.filter((p) => p.workspaceId !== workspaceId),
-        ...projects.map(projectToVM),
-      ],
+      projects: mergeWorkspaceProjects(s.projects, workspaceId, projects.map(projectToVM)),
       skills: [
         ...s.skills.filter((sk) => sk.workspaceId !== workspaceId),
         ...skills.map(skillToVM),
