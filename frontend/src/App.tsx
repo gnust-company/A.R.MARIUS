@@ -11,6 +11,7 @@ import ProjectBoard from './pages/ProjectBoard'
 import Roster from './pages/Roster'
 import Commission from './pages/Commission'
 import Directory from './pages/Directory'
+import AgentDetail from './pages/AgentDetail'
 import Skills from './pages/Skills'
 import SkillEditor from './pages/SkillEditor'
 import Inbox from './pages/Inbox'
@@ -85,6 +86,7 @@ export default function App() {
           <Route path="projects/:id/roster" element={<Roster />} />
           <Route path="projects/:id/commission" element={<Commission />} />
           <Route path="agents" element={<Directory />} />
+          <Route path="agents/:id" element={<AgentDetail />} />
           <Route path="skills" element={<Skills />} />
           <Route path="skills/:id" element={<SkillEditor />} />
           <Route path="inbox" element={<Inbox />} />
