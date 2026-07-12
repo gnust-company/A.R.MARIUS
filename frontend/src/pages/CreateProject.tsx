@@ -544,7 +544,7 @@ export default function CreateProject() {
             <option value="">{t('createProject.roster.selectAgent')}</option>
             {approvedAgents.map((agent) => (
               <option key={agent.id} value={agent.id}>
-                {agent.displayName} ({agent.role}) — {agent.status}
+                {agent.displayName || agent.name} ({agent.role}) — {agent.status}
               </option>
             ))}
             <option value="later">{t('createProject.roster.assignLater')}</option>
@@ -569,10 +569,10 @@ export default function CreateProject() {
               return (
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-[#C25E3A] flex items-center justify-center text-white font-display text-sm">
-                    {agent.displayName.charAt(0)}
+                    {(agent.displayName || agent.name || '?').charAt(0)}
                   </div>
                   <div>
-                    <p className="font-body font-medium text-body-md text-ink">{agent.displayName}</p>
+                    <p className="font-body font-medium text-body-md text-ink">{agent.displayName || agent.name}</p>
                     <p className="font-body text-body-sm text-ink-light">{agent.role} &middot; {agent.adapterType}</p>
                   </div>
                   <button
@@ -772,10 +772,10 @@ export default function CreateProject() {
             {selectedLeader ? (
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-[#C25E3A] flex items-center justify-center text-white font-display text-xs">
-                  {selectedLeader.displayName.charAt(0)}
+                  {(selectedLeader.displayName || selectedLeader.name || '?').charAt(0)}
                 </div>
                 <p className="font-body text-body-md text-ink">
-                  {t('createProject.review.leaderAssigned', { name: selectedLeader.displayName })}
+                  {t('createProject.review.leaderAssigned', { name: selectedLeader.displayName || selectedLeader.name })}
                 </p>
               </div>
             ) : (

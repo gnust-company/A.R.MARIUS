@@ -136,9 +136,9 @@ export const en = {
     },
     buttons: {
       cancel: 'Cancel',
-      nextRoster: 'Next: Roster →',
-      back: '← Back',
-      nextReview: 'Next: Review →',
+      nextRoster: 'Next: Roster',
+      back: 'Back',
+      nextReview: 'Next: Review',
       createProject: 'Create Project',
       creating: 'Creating...',
     },
