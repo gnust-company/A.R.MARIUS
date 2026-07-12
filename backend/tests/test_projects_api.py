@@ -92,6 +92,35 @@ async def test_list_projects_exposes_status() -> None:
     assert listed[0]["status"] == "setup"
 
 
+async def test_list_projects_exposes_seat_counts() -> None:
+    """The project LIST endpoint carries roster fill (seats_filled / seats_total) so the grid
+    card shows the real count without opening the detail — previously the card read 0/0 for
+    every un-opened project because `ProjectOut` had no seat data.
+    """
+    async with await _client() as c:
+        token, ws_id = await _register(c, "seatcounts@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        proj = await _create(c, ws_id, h)  # leader (1) + backend (1) = 2 seats, 0 filled
+        pid = proj["id"]
+
+        listed = (await c.get(f"/v1/workspaces/{ws_id}/projects", headers=h)).json()
+        assert listed[0]["seats_total"] == 2
+        assert listed[0]["seats_filled"] == 0
+
+        # Seat an agent in the leader role → the list reflects the new fill.
+        lead = await _online_agent(c, ws_id, h, "Lead")
+        grant = await c.post(
+            f"/v1/projects/{pid}/grant",
+            headers=h,
+            json={"marius_id": lead, "role_key": "leader"},
+        )
+        assert grant.status_code == 201, grant.text
+
+        listed2 = (await c.get(f"/v1/workspaces/{ws_id}/projects", headers=h)).json()
+        assert listed2[0]["seats_total"] == 2
+        assert listed2[0]["seats_filled"] == 1
+
+
 async def test_create_without_worker_role_is_422() -> None:
     async with await _client() as c:
         token, ws_id = await _register(c, "p2@armarius.dev")

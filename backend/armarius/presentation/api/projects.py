@@ -91,8 +91,14 @@ async def list_projects(
     workspace_id: UUID, container: ContainerDep, user: CurrentUser
 ) -> list[ProjectOut]:
     await _require_owned_workspace(container, user, workspace_id)
-    items = await container.workspaces.list_projects(workspace_id)
-    return [ProjectOut.model_validate(p) for p in items]
+    rows = await container.projects.list_with_seat_counts(workspace_id)
+    out: list[ProjectOut] = []
+    for project, seats_total, seats_filled in rows:
+        item = ProjectOut.model_validate(project)
+        item.seats_total = seats_total
+        item.seats_filled = seats_filled
+        out.append(item)
+    return out
 
 
 @router.post(

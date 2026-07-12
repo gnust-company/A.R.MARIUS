@@ -49,6 +49,11 @@ class ProjectOut(_Out):
     # status chip and objective line without opening the detail view.
     status: str = "setup"
     objective: str | None = None
+    # Seat fill for the project card (filled / total) so the list shows the real roster
+    # count without opening each project's detail. Stamped by the list endpoint; the
+    # entity itself has no seats, so these default to 0.
+    seats_total: int = 0
+    seats_filled: int = 0
     created_at: datetime | None = None
 
 

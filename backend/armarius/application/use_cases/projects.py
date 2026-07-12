@@ -299,6 +299,30 @@ class ProjectService:
         roster = await self.get_roster(project_id)
         return [seat for role in roster for seat in role.seated]
 
+    async def list_with_seat_counts(
+        self, workspace_id: UUID
+    ) -> list[tuple[Project, int, int]]:
+        """Workspace projects, each with (seats_total, seats_filled) for the list view.
+
+        The project *card* shows the roster fill without opening the detail view, so the
+        list must carry counts (the entity has none). One UoW, roles+grants per project —
+        the project list is small, so the per-project reads are acceptable here.
+        """
+        async with self._uow() as uow:
+            projects = await uow.projects.list_by_workspace(workspace_id)
+            rows: list[tuple[Project, int, int]] = []
+            for project in projects:
+                roles = await uow.roles.list_by_project(project.id)
+                grants = await uow.seat_grants.list_by_project(project.id)
+                seats_total = sum(r.seats for r in roles)
+                seats_filled = sum(
+                    1
+                    for g in grants
+                    if g.status == SeatGrantStatus.GRANTED and g.marius_id is not None
+                )
+                rows.append((project, seats_total, seats_filled))
+            return rows
+
     # ── roster CRUD by role_key (the contract addresses roles by key) ─────────────
     async def _role_by_key(self, uow, project_id: UUID, role_key: str) -> Role:
         roles = await uow.roles.list_by_project(project_id)
