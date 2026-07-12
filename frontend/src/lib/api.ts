@@ -297,6 +297,32 @@ export interface ArtifactDTO {
   created_at?: string | null
 }
 
+// One system→agent dispatch (backend `RunOut`). The agent-detail view lists these as the
+// system↔agent interaction log; `RunEventOut` is the per-run trace, fetched on expand.
+export interface RunDTO {
+  id: string
+  task_id?: string | null
+  marius_id?: string | null
+  adapter_type: string
+  wake_source: string
+  status: string
+  external_run_id?: string | null
+  error?: string | null
+  next_action?: string | null
+  continuation_attempt?: number
+  usage_json?: Record<string, unknown>
+  started_at?: string | null
+  finished_at?: string | null
+  created_at?: string | null
+}
+
+export interface RunEventDTO {
+  seq: number
+  type: string
+  payload: Record<string, unknown>
+  created_at?: string | null
+}
+
 export interface CommissionDTO {
   id: string
   project_id?: string | null
@@ -424,6 +450,16 @@ export async function updateMarius(
 
 export async function deleteMarius(workspaceId: string, mariusId: string): Promise<void> {
   return del(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}`)
+}
+
+// The agent's run history — the system↔agent interaction log the detail view tracks (#72).
+export async function listMariusRuns(workspaceId: string, mariusId: string): Promise<RunDTO[]> {
+  return get<RunDTO[]>(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}/runs`)
+}
+
+// The durable per-run trace (assistant deltas, tool calls, …) — reused from the §8.1 trace API.
+export async function listRunEvents(runId: string): Promise<RunEventDTO[]> {
+  return get<RunEventDTO[]>(`/v1/runs/${runId}/events`)
 }
 
 // ── Labels ─────────────────────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { useState, useMemo, useCallback } from 'react';
+import { useNavigate, useParams } from 'react-router';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users,
@@ -31,7 +32,7 @@ import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import PageTitle from '@/components/PageTitle';
-import { cn } from '@/lib/utils';
+import { cn, wsHref } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 
 // ─── Animation Variants ──────────────────────────────────────────────────────
@@ -114,6 +115,8 @@ function AgentCard({
   onDelete: (agent: Marius) => void;
 }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { workspaceId } = useParams();
   const config = STATUS_CONFIG[agent.status] || STATUS_CONFIG.offline;
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -122,9 +125,21 @@ function AgentCard({
   const displayName = agent.displayName || agent.name;
   const agentSkills = agent.skills || [];
 
+  // Click the card → the agent's detail view (system↔agent run log, #72). The row's own
+  // buttons stop propagation so acting on an agent never doubles as opening it.
+  const openDetail = () => navigate(wsHref(workspaceId, `/agents/${agent.id}`));
+
   return (
     <motion.div variants={cardVariants} layout>
-      <VellumPanel className="relative h-full">
+      <VellumPanel
+        className="relative h-full cursor-pointer"
+        onClick={openDetail}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(); }
+        }}
+      >
         {/* Top row: status dot + avatar + name + WA badge + menu */}
         <div className="flex items-start gap-3">
           <div className="flex items-center gap-2 flex-shrink-0 mt-1">
@@ -182,7 +197,7 @@ function AgentCard({
               Workspace Agent is just a flag (#50): it can be deleted too — doing so
               simply vacates its host seat. */}
           <button
-            onClick={() => onDelete(agent)}
+            onClick={(e) => { e.stopPropagation(); onDelete(agent); }}
             className="p-1.5 rounded-md text-ink-muted hover:text-[#C0492B] hover:bg-[#F3D9D0] transition-colors"
             aria-label={t('directory.actions.delete')}
             title={t('directory.actions.delete')}
@@ -193,7 +208,7 @@ function AgentCard({
           {/* Menu button */}
           <div className="relative">
             <button
-              onClick={() => setMenuOpen(!menuOpen)}
+              onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
               className="p-1.5 rounded-md text-ink-muted hover:text-ink hover:bg-[#EDE4CE] transition-colors"
             >
               <MoreHorizontal className="w-4 h-4" />
@@ -201,23 +216,24 @@ function AgentCard({
             <AnimatePresence>
               {menuOpen && (
                 <>
-                  <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                  <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); }} />
                   <motion.div
                     initial={{ opacity: 0, scale: 0.95, y: -4 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: -4 }}
                     transition={{ duration: 0.15 }}
+                    onClick={(e) => e.stopPropagation()}
                     className="absolute right-0 top-full mt-1 w-48 bg-[#F7F0E0] border border-[#E3D7BC] rounded-lg shadow-lg z-20 py-1"
                   >
                     <button
-                      onClick={() => { setExpanded(!expanded); setMenuOpen(false); }}
+                      onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); setMenuOpen(false); }}
                       className="w-full text-left px-3 py-2 text-[13px] text-[#2A2318] hover:bg-[#EDE4CE] transition-colors"
                     >
                       {expanded ? t('directory.collapseDetails') : t('directory.viewDetails')}
                     </button>
                     {agent.status === 'online' && agent.isWorkspaceAgent !== true && (
                       <button
-                        onClick={() => { onDesignate(agent.id); setMenuOpen(false); }}
+                        onClick={(e) => { e.stopPropagation(); onDesignate(agent.id); setMenuOpen(false); }}
                         className="w-full text-left px-3 py-2 text-[13px] text-[#D4A843] hover:bg-[#EDE4CE] transition-colors"
                       >
                         <span className="flex items-center gap-1.5">
@@ -226,7 +242,7 @@ function AgentCard({
                       </button>
                     )}
                     <button
-                      onClick={() => { onEdit(agent); setMenuOpen(false); }}
+                      onClick={(e) => { e.stopPropagation(); onEdit(agent); setMenuOpen(false); }}
                       className="w-full text-left px-3 py-2 text-[13px] text-[#2A2318] hover:bg-[#EDE4CE] transition-colors"
                     >
                       <span className="flex items-center gap-1.5">
@@ -272,7 +288,7 @@ function AgentCard({
         <div className="mt-4 flex items-center gap-2">
           {agent.status === 'online' && agent.isWorkspaceAgent !== true && (
             <button
-              onClick={() => onDesignate(agent.id)}
+              onClick={(e) => { e.stopPropagation(); onDesignate(agent.id); }}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium border border-[#D4A843] text-[#D4A843] hover:bg-[#D4A843] hover:text-[#2A2318] transition-all"
             >
               <Star className="w-3.5 h-3.5" />
