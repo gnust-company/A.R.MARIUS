@@ -136,9 +136,9 @@ export const vi = {
     },
     buttons: {
       cancel: 'Hủy',
-      nextRoster: 'Tiếp: Nhân sự →',
-      back: '← Quay lại',
-      nextReview: 'Tiếp: Xem lại →',
+      nextRoster: 'Tiếp: Nhân sự',
+      back: 'Quay lại',
+      nextReview: 'Tiếp: Xem lại',
       createProject: 'Tạo Dự án',
       creating: 'Đang tạo...',
     },

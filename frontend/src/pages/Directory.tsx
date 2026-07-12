@@ -133,7 +133,7 @@ function AgentCard({
 
           {/* Avatar */}
           <div
-            className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border-2"
+            className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border-2 flex items-center justify-center"
             style={{ borderColor: config.color }}
           >
             {agent.avatar ? (
@@ -143,7 +143,7 @@ function AgentCard({
                 className="w-full h-full object-cover"
               />
             ) : (
-              <Bot className="w-5 h-5 m-2.5 text-ink-muted" />
+              <Bot className="w-5 h-5 text-ink-muted" />
             )}
           </div>
 
