@@ -7,9 +7,14 @@ enroll/approve), and pushes a setup prompt over that gateway. The response carri
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from armarius.infrastructure.database.engine import get_sessionmaker
+from armarius.infrastructure.database.models import RunModel
 from armarius.main import app
 from tests.support.agents import GATEWAY_KEY, GATEWAY_URL, agent_token_for, invite_agent
 
@@ -89,6 +94,77 @@ async def test_invite_with_unknown_adapter_is_400() -> None:
             },
         )
     assert r.status_code == 400, r.text
+
+
+async def _seed_run(marius_id: str, *, created_at: datetime, status: str = "completed") -> UUID:
+    """Persist one run for an agent the way the wake engine would (plain-UUID ref)."""
+    run_id = uuid4()
+    async with get_sessionmaker()() as s:
+        s.add(
+            RunModel(
+                id=run_id,
+                marius_id=UUID(marius_id),
+                task_id=uuid4(),
+                adapter_type="echo",
+                wake_source="assignment",
+                status=status,
+                created_at=created_at,
+            )
+        )
+        await s.commit()
+    return run_id
+
+
+async def test_list_marius_runs_returns_agent_runs_newest_first() -> None:
+    """The agent-detail feed reads the agent's runs, newest first, scoped to that agent."""
+    async with await _client() as c:
+        token, ws_id = await _register(c, "runs@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        agent = await invite_agent(c, ws_id, h, name="Runner")
+        other = await invite_agent(c, ws_id, h, name="Bystander")
+
+        older = await _seed_run(
+            agent["id"], created_at=datetime(2026, 7, 1, tzinfo=UTC)
+        )
+        newer = await _seed_run(
+            agent["id"], created_at=datetime(2026, 7, 5, tzinfo=UTC)
+        )
+        # A run for a different agent must NOT leak into this agent's feed.
+        await _seed_run(other["id"], created_at=datetime(2026, 7, 9, tzinfo=UTC))
+
+        r = await c.get(f"/v1/workspaces/{ws_id}/mariuses/{agent['id']}/runs", headers=h)
+
+    assert r.status_code == 200, r.text
+    runs = r.json()
+    assert [run["id"] for run in runs] == [str(newer), str(older)]  # newest first
+    assert runs[0]["marius_id"] == agent["id"]
+    assert runs[0]["wake_source"] == "assignment"
+    assert runs[0]["status"] == "completed"
+
+
+async def test_list_marius_runs_is_empty_for_a_fresh_agent() -> None:
+    async with await _client() as c:
+        token, ws_id = await _register(c, "freshruns@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        agent = await invite_agent(c, ws_id, h)
+        r = await c.get(f"/v1/workspaces/{ws_id}/mariuses/{agent['id']}/runs", headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json() == []
+
+
+async def test_list_marius_runs_cross_workspace_is_404() -> None:
+    """An agent that lives in another workspace 404s — no cross-tenant run leakage."""
+    async with await _client() as c:
+        token_a, ws_a = await _register(c, "runs-a@armarius.dev")
+        token_b, ws_b = await _register(c, "runs-b@armarius.dev")
+        ha = {"Authorization": f"Bearer {token_a}"}
+        hb = {"Authorization": f"Bearer {token_b}"}
+        agent_a = await invite_agent(c, ws_a, ha, name="AOnly")
+        # B asks for A's agent under B's own workspace → agent not in this workspace → 404.
+        r = await c.get(
+            f"/v1/workspaces/{ws_b}/mariuses/{agent_a['id']}/runs", headers=hb
+        )
+    assert r.status_code == 404, r.text
 
 
 @pytest.mark.parametrize("missing", ["marius", "workspace"])
