@@ -69,6 +69,9 @@ export const vi = {
       manualDesc: 'Tự điền từng bước',
       agent: 'Tác nhân',
       agentDesc: 'Để Tác nhân Không gian lo',
+      agentDisabled: 'Chế độ Tác nhân bị tắt — cần thiết lập Tác nhân Không gian trước',
+      agentUnavailable: 'Tác nhân Không gian không khả dụng',
+      setupWorkspaceAgent: 'Để dùng chế độ tạo dự án bằng tác nhân, hãy mời một tác nhân với tùy chọn "Làm Tác nhân Không gian" và cung cấp thông tin gateway của nó.',
     },
     steps: {
       project: 'Dự án',

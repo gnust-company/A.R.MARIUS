@@ -452,6 +452,29 @@ export async function deleteMarius(workspaceId: string, mariusId: string): Promi
   return del(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}`)
 }
 
+/** Result of linking more skills to an already-invited agent + pushing an install prompt (#74). */
+export interface InstallSkillsDTO {
+  marius_id: string
+  /** The full merged skill-id list after the install (de-duped). */
+  skill_ids: string[]
+  /** Slugs of the newly linked skills (the ones the install prompt covers). */
+  installed: string[]
+  /** Best-effort push status: "sent" | "send_failed". */
+  send_status: string
+}
+
+/** Link additional skills to an invited agent and push a one-time install prompt (#74). */
+export async function installSkills(
+  workspaceId: string,
+  mariusId: string,
+  skillIds: string[],
+): Promise<InstallSkillsDTO> {
+  return post<InstallSkillsDTO>(
+    `/v1/workspaces/${workspaceId}/mariuses/${mariusId}/install-skills`,
+    { skill_ids: skillIds },
+  )
+}
+
 // The agent's run history — the system↔agent interaction log the detail view tracks (#72).
 export async function listMariusRuns(workspaceId: string, mariusId: string): Promise<RunDTO[]> {
   return get<RunDTO[]>(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}/runs`)
