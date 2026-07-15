@@ -231,7 +231,7 @@ surface + its own deploy story), matching the one-project-per-area convention (`
   `http_error.py` maps the BE's stable status codes (401/404/409/400/422) to actionable, model-facing errors.
 - **Bootstrap** — `config.py` `resolve_config()` precedence: token = `ARMARIUS_AGENT_TOKEN` → credential file →
   none; base URL = `ARMARIUS_PUBLIC_BASE_URL` → credential `api_base_url` → `GET /v1/meta` probe → default.
-  `credentials.py` reads/writes `~/.armarius/credentials/{ws}_{agent}.json` **byte-for-byte** with onboarding
+  `credentials.py` reads/writes `~/.armarius/tokens/{ws}_{agent}.json` **byte-for-byte** with onboarding
   (same slug rule, same 6 keys, atomic 0600 write); after enroll/claim the server persists the minted token.
 - **stdio hygiene** — `logging_setup.py` forces **all logs to stderr** and the banner is suppressed, so stdout
   stays pure JSON-RPC.

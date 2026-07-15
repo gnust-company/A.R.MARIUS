@@ -32,13 +32,13 @@ def test_prompt_names_workspace_project_and_credential_file():
         _ctx(
             workspace_name="Acme Web Platform",
             project_name="Settings Redesign",
-            credential_file="~/.armarius/credentials/acme-web-platform_alice.json",
+            credential_file="~/.armarius/tokens/acme-web-platform_alice.json",
         )
     )
     assert "## Where you are" in prompt
     assert "Acme Web Platform" in prompt
     assert "Settings Redesign" in prompt
-    assert "~/.armarius/credentials/acme-web-platform_alice.json" in prompt
+    assert "~/.armarius/tokens/acme-web-platform_alice.json" in prompt
     # The multi-workspace warning: use the named file, never all of them.
     assert "never all of them" in prompt
     # The section leads the prompt — location must be read before the task brief.

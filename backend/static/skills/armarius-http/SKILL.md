@@ -13,8 +13,8 @@ Your wake prompt names the exact file for the workspace this task belongs to (th
 "Where you are" section). Read THAT file — do not guess:
 
 ```bash
-ls ~/.armarius/credentials/
-cat ~/.armarius/credentials/<workspace>_<agent-name>.json
+ls ~/.armarius/tokens/
+cat ~/.armarius/tokens/<workspace>_<agent-name>.json
 ```
 
 It is JSON with: `agent_name`, `agent_role`, `agent_token`, `workspace`, `project`, `api_base_url`.

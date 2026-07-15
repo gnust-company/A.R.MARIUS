@@ -34,7 +34,7 @@ The server reads your token from your credential file (or the `ARMARIUS_AGENT_TO
 env var). Onboarding stores it at:
 
 ```
-~/.armarius/credentials/<workspace>_<agent-name>.json
+~/.armarius/tokens/<workspace>_<agent-name>.json
 ```
 
 with keys `agent_name, agent_role, agent_token, workspace, project, api_base_url`. After a
@@ -63,7 +63,7 @@ more than one workspace, at the exact credential file for this one — your wake
       "command": "armarius-mcp",
       "env": {
         "ARMARIUS_PUBLIC_BASE_URL": "<api_base_url from your credential file>",
-        "ARMARIUS_CREDENTIAL_FILE": "~/.armarius/credentials/<workspace>_<agent-name>.json"
+        "ARMARIUS_CREDENTIAL_FILE": "~/.armarius/tokens/<workspace>_<agent-name>.json"
       }
     }
   }

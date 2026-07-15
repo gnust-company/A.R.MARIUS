@@ -32,7 +32,7 @@ Claude Code / any `mcpServers` config:
       "command": "armarius-mcp",
       "env": {
         "ARMARIUS_PUBLIC_BASE_URL": "http://localhost:8080",
-        "ARMARIUS_CREDENTIAL_FILE": "~/.armarius/credentials/acme_marin.json"
+        "ARMARIUS_CREDENTIAL_FILE": "~/.armarius/tokens/acme_marin.json"
       }
     }
   }
@@ -47,7 +47,7 @@ Resolved at startup (`resolve_config`), highest precedence first:
 |---|---|
 | token | `ARMARIUS_AGENT_TOKEN` → credential file `agent_token` → *(none: call `enroll`)* |
 | base URL | `ARMARIUS_PUBLIC_BASE_URL` → credential file `api_base_url` → `GET /v1/meta` probe → `http://localhost:8080` |
-| credential file | `ARMARIUS_CREDENTIAL_FILE` → single glob match of `~/.armarius/credentials/*_*.json` |
+| credential file | `ARMARIUS_CREDENTIAL_FILE` → single glob match of `~/.armarius/tokens/*_*.json` |
 
 If no token is found the server still starts; non-bootstrap tools return a clear
 "call `enroll` first" error. `enroll` / `claim` are themselves tools — the agent never
