@@ -267,6 +267,26 @@ class UpdateMariusIn(BaseModel):
     adapter_config: dict | None = None
 
 
+class InstallSkillsIn(BaseModel):
+    """Link additional skills to an already-invited agent and push an install prompt (issue #74).
+
+    The skill_ids are merged into the agent's existing links (duplicates de-duped, order
+    preserved). A one-time skill-install prompt is then pushed to the agent over its
+    gateway so it fetches and installs the newly linked skills.
+    """
+
+    skill_ids: list[str] = Field(default_factory=list)
+
+
+class InstallSkillsOut(_Out):
+    """Result of a post-invite skill install push (issue #74)."""
+
+    marius_id: UUID
+    skill_ids: list[str] = Field(default_factory=list)
+    installed: list[str] = Field(default_factory=list)  # the newly linked slugs
+    send_status: str = "send_failed"
+
+
 class MariusOut(_Out):
     id: UUID
     workspace_id: UUID | None = None

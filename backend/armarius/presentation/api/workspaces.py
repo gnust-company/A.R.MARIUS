@@ -6,7 +6,10 @@ from uuid import UUID
 
 from fastapi import APIRouter
 
-from armarius.application.use_cases.onboarding import build_invite_prompt
+from armarius.application.use_cases.onboarding import (
+    build_invite_prompt,
+    build_skill_install_prompt,
+)
 from armarius.presentation.api.agent import effective_skills
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
@@ -14,6 +17,8 @@ from armarius.presentation.schemas import (
     CreateLabelIn,
     CreateWorkspaceIn,
     ImportSkillIn,
+    InstallSkillsIn,
+    InstallSkillsOut,
     LabelOut,
     ManualSkillIn,
     MariusCreatedOut,
@@ -227,6 +232,65 @@ async def designate_workspace_agent(
         {"marius_id": str(marius_id)},
     )
     return MariusOut.model_validate(marius)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/mariuses/{marius_id}/install-skills",
+    response_model=InstallSkillsOut,
+)
+async def install_skills(
+    workspace_id: UUID,
+    marius_id: UUID,
+    body: InstallSkillsIn,
+    container: ContainerDep,
+    user: CurrentUser,
+) -> InstallSkillsOut:
+    """Link additional skills to an already-invited agent and push an install prompt (issue #74).
+
+    The skill_ids are merged into the agent's existing links (de-duped, order preserved).
+    A one-time skill-install prompt is then pushed to the agent over its gateway so it
+    fetches and installs the newly linked skills. ``send_status`` is best-effort — the
+    links are persisted regardless, and a failed push can be retried by calling again.
+    """
+    await _require_owned_workspace(container, user, workspace_id)
+    marius = await container.mariuses.get(marius_id)
+    if marius is None or marius.workspace_id != workspace_id:
+        raise LookupError("marius not found")
+
+    # Merge new skill_ids into the existing links (de-dup, preserve order).
+    existing = list(marius.skill_ids)
+    merged = list(dict.fromkeys([*existing, *body.skill_ids]))
+    newly_added_ids = [s for s in body.skill_ids if s not in existing]
+    marius = await container.mariuses.update(marius_id, skill_ids=merged)
+
+    # Resolve only the newly linked skills for the install prompt (no point re-listing
+    # ones the agent already has). Resolve against the workspace's Skill Shop.
+    new_skills = list(await container.skills.resolve(newly_added_ids))
+    installed_slugs = [sk.slug for sk in new_skills]
+
+    ws = await container.workspaces.get_workspace(workspace_id)
+    prompt = build_skill_install_prompt(
+        marius,
+        settings.public_api_url,
+        workspace_name=ws.name if ws else "the workspace",
+        skills=new_skills,
+    )
+    send_status = await container.invite.push_setup(marius_id, prompt=prompt)
+    await container.control_bus.publish(
+        f"ws:{workspace_id}",
+        "marius.skills_updated",
+        {
+            "marius_id": str(marius_id),
+            "installed": installed_slugs,
+            "send_status": send_status,
+        },
+    )
+    return InstallSkillsOut(
+        marius_id=marius.id,
+        skill_ids=merged,
+        installed=installed_slugs,
+        send_status=send_status,
+    )
 
 
 @router.delete(

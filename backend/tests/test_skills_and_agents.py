@@ -259,3 +259,78 @@ async def test_builtin_content_refreshes_unless_owner_edited():
     mcp_skill = next(s for s in skills if s["slug"] == "armarius-mcp")
     assert http_skill["files"]["SKILL.md"] != "old shipped copy"  # refreshed
     assert mcp_skill["files"]["SKILL.md"] == "owner's custom copy"  # preserved
+
+
+async def test_install_skills_links_and_pushes_install_prompt():
+    """Issue #74: after an agent is invited, the patron can link MORE skills and the
+    system pushes a one-time install prompt. New links merge (de-duped); the push is
+    best-effort and returns send_status."""
+    async with await _client() as c:
+        token, ws_id = await _register(c, "install@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
+        http_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
+        mcp_id = next(s["id"] for s in skills if s["slug"] == "armarius-mcp")
+
+        # Invite with one skill already linked.
+        data = await invite_agent(c, ws_id, h, name="Marin", skill_ids=[http_id])
+        mid = data["id"]
+
+        # Post-invite: link the second skill.
+        r = await c.post(
+            f"/v1/workspaces/{ws_id}/mariuses/{mid}/install-skills",
+            headers=h,
+            json={"skill_ids": [mcp_id]},
+        )
+    assert r.status_code == 200, r.text
+    out = r.json()
+    # The new link is merged in (both skills now linked, order preserved, no dupes).
+    assert out["skill_ids"] == [http_id, mcp_id]
+    assert out["installed"] == ["armarius-mcp"]  # only the newly linked slug
+    # The echo runtime accepts the push.
+    assert out["send_status"] == "sent"
+
+
+async def test_install_skills_is_idempotent_on_already_linked():
+    """Re-linking a skill the agent already has is a no-op merge (no duplicate) but still
+    returns send_status — the patron may retry a failed push."""
+    async with await _client() as c:
+        token, ws_id = await _register(c, "idem@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
+        http_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
+
+        data = await invite_agent(c, ws_id, h, name="Marin", skill_ids=[http_id])
+        mid = data["id"]
+
+        r = await c.post(
+            f"/v1/workspaces/{ws_id}/mariuses/{mid}/install-skills",
+            headers=h,
+            json={"skill_ids": [http_id]},
+        )
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["skill_ids"] == [http_id]  # no duplicate
+    assert out["installed"] == []  # nothing newly added this round
+
+
+async def test_install_skills_on_other_workspace_is_404():
+    """An agent from workspace B can't be touched via workspace A's path (multi-tenant)."""
+    async with await _client() as c:
+        token_a, ws_a = await _register(c, "owner_a@armarius.dev")
+        _, ws_b = await _register(c, "owner_b@armarius.dev")
+        h_a = {"Authorization": f"Bearer {token_a}"}
+        skills = (await c.get(f"/v1/workspaces/{ws_a}/skills", headers=h_a)).json()
+        http_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
+
+        data = await invite_agent(c, ws_a, h_a, name="Marin")
+        mid = data["id"]
+
+        # Call install-skills through workspace B's path → 404 (agent not found there).
+        r = await c.post(
+            f"/v1/workspaces/{ws_b}/mariuses/{mid}/install-skills",
+            headers=h_a,
+            json={"skill_ids": [http_id]},
+        )
+    assert r.status_code == 404
+
