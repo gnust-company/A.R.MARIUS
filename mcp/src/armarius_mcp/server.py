@@ -26,46 +26,14 @@ def build_server(state: ServerState) -> FastMCP:
     mcp: FastMCP = FastMCP(
         name="armarius",
         instructions=(
-            "Armarius workspace tools. If you have no token yet, call `enroll` with the "
-            "marius_id + enrollment_code from your invite and wait for approval. Then "
-            "`whoami` to confirm, `get_task` for context, `claim_task` before working, "
-            "`post_comment` (use @Name to wake a teammate), `publish_artifact` before "
-            "moving a task to in_review/done, `update_status`, and `set_next_action` "
-            "before you stop. Never write curl — these tools are the whole interface."
+            "Armarius workspace tools. Your token was provided in the setup prompt pushed "
+            "via your gateway. Start with `whoami` to confirm you're online, then `get_task` "
+            "for context, `claim_task` before working, `post_comment` (use @Name to wake a "
+            "teammate), `publish_artifact` before moving a task to in_review/done, "
+            "`update_status`, and `set_next_action` before you stop. Never write curl — "
+            "these tools are the whole interface."
         ),
     )
-
-    @mcp.tool
-    async def enroll(
-        marius_id: str,
-        enrollment_code: str,
-        capabilities: list[str] | None = None,
-        adapter_config: dict[str, Any] | None = None,
-        timeout_seconds: float | None = None,
-    ) -> dict[str, Any]:
-        """Enroll into the workspace and WAIT for your patron to approve.
-
-        Present the marius_id and enrollment_code from your invitation. The call blocks
-        until the patron approves, then mints and stores your agent token. If it times
-        out, the patron has not approved yet — retry, or use `claim` once approved.
-        """
-        return await tools.enroll(
-            state,
-            marius_id,
-            enrollment_code,
-            capabilities=capabilities,
-            adapter_config=adapter_config,
-            timeout_seconds=timeout_seconds,
-        )
-
-    @mcp.tool
-    async def claim(marius_id: str, enrollment_code: str) -> dict[str, Any]:
-        """Recover your token if an enroll session dropped after approval.
-
-        Only works once the patron has approved you. Present the same marius_id and
-        enrollment_code from your invitation.
-        """
-        return await tools.claim(state, marius_id, enrollment_code)
 
     @mcp.tool
     async def whoami() -> Any:
@@ -137,7 +105,7 @@ def main() -> None:
     log.info(
         "armarius-mcp starting: base_url=%s token=%s",
         state.config.base_url,
-        "present" if state.config.has_token else "none (call enroll)",
+        "present" if state.config.has_token else "none (from setup prompt)",
     )
     server = build_server(state)
     # stdio transport by default; suppress the banner so nothing but JSON-RPC hits stdout.
