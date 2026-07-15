@@ -750,4 +750,4 @@ the agent calls `POST /agent/claim(enrollment_code)`; the backend returns the to
 - print the **`enrollment_code`** and the per-skill **source URLs** (full file tree install);
 - **omit** `agent_token` entirely;
 - instruct the agent to `POST /agent/enroll` and wait, then store the returned token to
-  `~/.armarius/credentials/…`, install skills, and call `GET /agent/me` (which flips ONLINE, §10).
+  `~/.armarius/tokens/…`, install skills, and call `GET /agent/me` (which flips ONLINE, §10).

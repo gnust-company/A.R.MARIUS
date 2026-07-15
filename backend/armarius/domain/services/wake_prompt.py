@@ -61,7 +61,7 @@ def build_wake_prompt(ctx: WakeContext) -> str:
             lines.append(
                 "- Every call for this task uses the agent_token and api_base_url from "
                 "that exact file. If you serve several workspaces you have one file per "
-                "workspace under ~/.armarius/credentials/ — read only the file named "
+                "workspace under ~/.armarius/tokens/ — read only the file named "
                 "above, never all of them."
             )
         lines.append("")
