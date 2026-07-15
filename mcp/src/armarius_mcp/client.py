@@ -4,8 +4,10 @@ One method per endpoint (``backend/armarius/presentation/api/agent.py``). The be
 token is injected here; every non-2xx becomes an ``ArmariusApiError`` via
 ``raise_for_status``. Nothing above this layer touches httpx.
 
-``enroll`` blocks server-side until the Patron approves, so it takes its own longer
-timeout; all other calls use the default request timeout.
+Under operator-invite (issue #63) the agent receives its token in the setup prompt
+Armarius pushes via its gateway, then calls ``GET /agent/me`` — so there is no
+``enroll``/``claim`` bootstrap anymore (issue #64). The token is resolved from the
+credential file / env at startup (see ``config.py``).
 """
 
 from __future__ import annotations
@@ -18,12 +20,13 @@ from armarius_mcp.http_error import ArmariusApiError, raise_for_status
 
 
 class NotEnrolledError(RuntimeError):
-    """A token-required call was made before enroll/claim minted a token."""
+    """A token-required call was made before the token was resolved."""
 
     def __init__(self) -> None:
         super().__init__(
-            "No agent token yet. Call `enroll` (present your marius_id + enrollment_code "
-            "and wait for your patron to approve) or `claim` to recover an approved token."
+            "No agent token found. Your token is delivered in the setup prompt Armarius "
+            "pushes to your gateway — save it to your credential file (or set "
+            "ARMARIUS_AGENT_TOKEN) and restart. Then call `whoami` to confirm you are online."
         )
 
 
@@ -99,32 +102,6 @@ class ArmariusClient:
         if resp.status_code == 204 or not resp.content:
             return None
         return resp.json()
-
-    # -- bootstrap (pre-token) -------------------------------------------------
-    async def enroll(
-        self,
-        marius_id: str,
-        enrollment_code: str,
-        *,
-        capabilities: list[str] | None = None,
-        adapter_config: dict[str, Any] | None = None,
-        timeout: float = 600.0,  # noqa: ASYNC109 — httpx's own per-request timeout
-    ) -> str:
-        """POST /agent/enroll — blocks until approved; returns the minted agent_token."""
-        body = {
-            "marius_id": marius_id,
-            "enrollment_code": enrollment_code,
-            "capabilities": capabilities or [],
-            "adapter_config": adapter_config or {},
-        }
-        data = await self._request("POST", "/agent/enroll", json=body, auth=False, timeout=timeout)
-        return str(data["agent_token"])
-
-    async def claim(self, marius_id: str, enrollment_code: str) -> str:
-        """POST /agent/claim — recover the token iff already approved."""
-        body = {"marius_id": marius_id, "enrollment_code": enrollment_code}
-        data = await self._request("POST", "/agent/claim", json=body, auth=False)
-        return str(data["agent_token"])
 
     # -- token-authenticated ---------------------------------------------------
     async def whoami(self) -> Any:

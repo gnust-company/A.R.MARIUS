@@ -2,14 +2,15 @@
 
 Opt-in (`-m integration`); needs `armarius-backend` installed (dev extra). Uses
 ``httpx.ASGITransport`` so no socket/port is opened — the same pattern the backend's
-own tests use. Proves the whole loop is tool calls: enroll (with a concurrent patron
-approve) → whoami → get_task → claim_task → comment → status → artifact → review →
-next_action. No curl anywhere.
+own tests use. Under operator-invite (issue #63) the agent's token is minted at invite
+time and delivered in the pushed setup prompt; the MCP server has no ``enroll``/``claim``
+anymore (issue #64), so this test reads the token from the repo (as a real agent would
+have received it) and proves the whole loop is tool calls: whoami → get_task →
+claim_task → comment → status → artifact → review → next_action. No curl anywhere.
 """
 
 from __future__ import annotations
 
-import asyncio
 import os
 import tempfile
 import uuid
@@ -73,27 +74,9 @@ async def _project_and_task(patron: httpx.AsyncClient, h: dict, ws: str) -> str:
     return task_id
 
 
-async def _invite(patron: httpx.AsyncClient, h: dict, ws: str) -> tuple[str, str]:
-    r = await patron.post(
-        f"/v1/workspaces/{ws}/mariuses",
-        headers=h,
-        json={"name": "Marin", "role": "Backend", "skills": [], "skill_ids": [],
-              "adapter_type": "echo", "adapter_config": {}},
-    )
-    assert r.status_code == 201, r.text
-    return r.json()["id"], r.json()["enrollment_code"]
-
-
-async def _retry_approve(patron: httpx.AsyncClient, ws: str, mid: str, h: dict) -> None:
-    for _ in range(50):
-        r = await patron.post(f"/v1/workspaces/{ws}/mariuses/{mid}/approve", headers=h)
-        if r.status_code == 200:
-            return
-        await asyncio.sleep(0.02)
-    raise AssertionError("approve never succeeded")
-
-
 async def test_full_agent_loop_is_all_tools(backend, tmp_path, monkeypatch):
+    from tests.support.agents import agent_token_for, invite_agent
+
     from armarius_mcp import tools
     from armarius_mcp.client import ArmariusClient
     from armarius_mcp.config import Config
@@ -105,26 +88,20 @@ async def test_full_agent_loop_is_all_tools(backend, tmp_path, monkeypatch):
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as patron:
         h, ws = await _register(patron)
         task_id = await _project_and_task(patron, h, ws)
-        mid, code = await _invite(patron, h, ws)
+        # Operator-invite (issue #63): gateway creds in → token minted + setup pushed.
+        # The API never returns the token; read it back from the repo as a real agent
+        # would have received it in the pushed setup prompt.
+        data = await invite_agent(patron, ws, h, name="Marin")
+        mid = data["id"]
+        token = await agent_token_for(mid)
 
-        # Agent side: no token yet — the whole loop is MCP tool calls.
-        client = ArmariusClient("http://test", None, transport=transport)
+        # Agent side: the whole loop is MCP tool calls, authenticated with the token.
+        client = ArmariusClient("http://test", token, transport=transport)
         cfg = Config(
-            base_url="http://test", token=None,
+            base_url="http://test", token=token,
             agent_name="Marin", agent_role="Backend", workspace="Acme", project="Integration",
         )
         state = ServerState(cfg, client)
-
-        # enroll blocks until approve; run them concurrently.
-        enroll_task = asyncio.create_task(tools.enroll(state, mid, code, timeout_seconds=10))
-        await _retry_approve(patron, ws, mid, h)
-        enrolled = await asyncio.wait_for(enroll_task, timeout=10)
-        assert enrolled["enrolled"] is True
-        assert state.config.token and state.config.token.startswith("arm_")
-
-        # Credential file was written at the onboarding path with all six keys.
-        cred_file = tmp_path / "acme_marin.json"
-        assert cred_file.is_file()
 
         me = await tools.whoami(state)
         assert me["marius"]["name"] == "Marin"

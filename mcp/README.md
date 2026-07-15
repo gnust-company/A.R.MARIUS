@@ -45,18 +45,21 @@ Resolved at startup (`resolve_config`), highest precedence first:
 
 | What | Sources (first wins) |
 |---|---|
-| token | `ARMARIUS_AGENT_TOKEN` → credential file `agent_token` → *(none: call `enroll`)* |
+| token | `ARMARIUS_AGENT_TOKEN` → credential file `agent_token` → *(none)* |
 | base URL | `ARMARIUS_PUBLIC_BASE_URL` → credential file `api_base_url` → `GET /v1/meta` probe → `http://localhost:8080` |
 | credential file | `ARMARIUS_CREDENTIAL_FILE` → single glob match of `~/.armarius/tokens/*_*.json` |
 
-If no token is found the server still starts; non-bootstrap tools return a clear
-"call `enroll` first" error. `enroll` / `claim` are themselves tools — the agent never
-curls, even to enroll.
+Under operator-invite (issue #63) the agent receives its token in the one-time setup
+prompt Armarius pushes via its gateway — it saves that token to its credential file
+(or `ARMARIUS_AGENT_TOKEN`) and the server picks it up at startup. There is no
+`enroll`/`claim` bootstrap anymore (issue #64). If no token is found the server still
+starts; token-required tools return a clear "save the token from your setup prompt"
+error.
 
 ## Tools
 
-`enroll`, `claim` (bootstrap, pre-token) · `whoami`, `get_task`, `claim_task`,
-`post_comment`, `update_status`, `set_next_action`, `publish_artifact`.
+`whoami`, `get_task`, `claim_task`, `post_comment`, `update_status`,
+`set_next_action`, `publish_artifact`.
 
 ## Develop
 

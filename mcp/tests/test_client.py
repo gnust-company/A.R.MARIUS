@@ -105,30 +105,6 @@ async def test_publish_artifact_only_sends_present_fields(client: ArmariusClient
     assert "uri" not in body and "content_b64" not in body
 
 
-@respx.mock
-async def test_enroll_returns_token_no_auth_header(client: ArmariusClient):
-    route = respx.post(f"{BASE}/agent/enroll").mock(
-        return_value=httpx.Response(200, json={"agent_token": "arm_new"})
-    )
-    token = await ArmariusClient(BASE, None).enroll("M1", "code123")
-    assert token == "arm_new"
-    assert "Authorization" not in route.calls.last.request.headers
-    import json
-
-    sent = json.loads(route.calls.last.request.content)
-    assert sent["marius_id"] == "M1" and sent["enrollment_code"] == "code123"
-    assert sent["capabilities"] == [] and sent["adapter_config"] == {}
-
-
-@respx.mock
-async def test_claim_returns_token(client: ArmariusClient):
-    respx.post(f"{BASE}/agent/claim").mock(
-        return_value=httpx.Response(200, json={"agent_token": "arm_recovered"})
-    )
-    token = await ArmariusClient(BASE, None).claim("M1", "code123")
-    assert token == "arm_recovered"
-
-
 async def test_token_required_calls_raise_before_http():
     c = ArmariusClient(BASE, None)
     with pytest.raises(NotEnrolledError):
@@ -145,7 +121,6 @@ async def test_401_becomes_api_error_with_hint(client: ArmariusClient):
         await client.whoami()
     assert ei.value.status_code == 401
     assert "invalid agent token" in str(ei.value)
-    assert "claim" in str(ei.value).lower()
 
 
 @respx.mock

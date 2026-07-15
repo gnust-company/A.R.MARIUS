@@ -6,8 +6,10 @@ Precedence (see README):
     base URL  ARMARIUS_PUBLIC_BASE_URL  →  credential file `api_base_url`
               →  GET {default}/v1/meta probe  →  default http://localhost:8080
 
-If no token is found the server still starts (the agent can call `enroll`/`claim`);
-non-bootstrap tools then return a clear "call `enroll` first" error.
+Under operator-invite (issue #63) the agent receives its token in the setup prompt
+Armarius pushes via its gateway, so there is no ``enroll``/``claim`` bootstrap (issue
+#64). If no token is found the server still starts; token-required tools then return a
+clear "save the token from your setup prompt" error.
 """
 
 from __future__ import annotations
@@ -31,14 +33,11 @@ class Config:
     token: str | None = None
     credential_path: str | None = None
     credentials: Credentials | None = None
-    # Identity hints used to name the credential file after enroll/claim.
+    # Identity hints (from env / credential file) — purely informational.
     agent_name: str = ""
     agent_role: str = ""
     workspace: str = ""
     project: str = ""
-    marius_id: str = ""
-    enrollment_code: str = ""
-    enroll_timeout_seconds: float = 600.0
     request_timeout_seconds: float = 30.0
 
     # Bootstrap args the agent may not pass explicitly (env fallbacks).
@@ -102,8 +101,5 @@ def resolve_config(*, probe: bool = True) -> Config:
         agent_role=_env("ARMARIUS_AGENT_ROLE") or (creds.agent_role if creds else "") or "",
         workspace=_env("ARMARIUS_WORKSPACE") or (creds.workspace if creds else "") or "",
         project=_env("ARMARIUS_PROJECT") or (creds.project if creds else "") or "",
-        marius_id=_env("ARMARIUS_MARIUS_ID") or "",
-        enrollment_code=_env("ARMARIUS_ENROLLMENT_CODE") or "",
-        enroll_timeout_seconds=_float_env("ARMARIUS_ENROLL_TIMEOUT", 600.0),
         request_timeout_seconds=request_timeout,
     )

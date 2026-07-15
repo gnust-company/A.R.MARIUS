@@ -19,8 +19,6 @@ class FakeClient:
     def __init__(self, token: str | None = None) -> None:
         self.token = token
         self.calls: list[tuple[str, tuple, dict]] = []
-        self.enroll_result = "arm_minted_token"
-        self.claim_result = "arm_claimed_token"
         self.result: Any = {"ok": True}
 
     def set_token(self, token: str) -> None:
@@ -29,14 +27,6 @@ class FakeClient:
     def _record(self, _call: str, /, *args: Any, **kwargs: Any) -> Any:
         self.calls.append((_call, args, kwargs))
         return self.result
-
-    async def enroll(self, marius_id: str, enrollment_code: str, **kwargs: Any) -> str:
-        self.calls.append(("enroll", (marius_id, enrollment_code), kwargs))
-        return self.enroll_result
-
-    async def claim(self, marius_id: str, enrollment_code: str) -> str:
-        self.calls.append(("claim", (marius_id, enrollment_code), {}))
-        return self.claim_result
 
     async def whoami(self) -> Any:
         return self._record("whoami")

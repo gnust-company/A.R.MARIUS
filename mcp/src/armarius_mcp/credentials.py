@@ -24,6 +24,7 @@ import tempfile
 from dataclasses import dataclass
 from glob import glob
 from pathlib import Path
+from typing import Any
 
 CREDENTIALS_DIR = Path("~/.armarius/tokens").expanduser()
 
@@ -59,7 +60,7 @@ class Credentials:
     api_base_url: str = ""
 
     @classmethod
-    def from_dict(cls, data: dict) -> Credentials:
+    def from_dict(cls, data: dict[str, Any]) -> Credentials:
         return cls(**{k: str(data.get(k, "") or "") for k in CREDENTIAL_KEYS})
 
     def to_dict(self) -> dict[str, str]:
