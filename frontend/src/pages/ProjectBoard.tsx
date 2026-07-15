@@ -335,11 +335,20 @@ export default function ProjectBoard() {
               <Calendar className="w-4 h-4" />
               {t('board.targetDate', { date: project.createdAt ? new Date(project.createdAt).toLocaleDateString() : '—' })}
             </span>
-            <span className="text-ink-muted">&middot;</span>
-            <span className="flex items-center gap-1.5">
-              <GitBranch className="w-4 h-4" />
-              <span className="text-terracotta cursor-pointer hover:underline">github.com/armarius/{project.name.toLowerCase().replace(/\s+/g, '-')}</span>
-            </span>
+            {project.githubUrl && (
+              <>
+                <span className="text-ink-muted">&middot;</span>
+                <a
+                  href={project.githubUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-terracotta hover:underline"
+                >
+                  <GitBranch className="w-4 h-4" />
+                  <span>{project.githubUrl.replace(/^https?:\/\//, '')}</span>
+                </a>
+              </>
+            )}
             <span className="text-ink-muted">&middot;</span>
             <span className="flex items-center gap-1.5">
               <Users className="w-4 h-4" />
