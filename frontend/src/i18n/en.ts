@@ -69,6 +69,9 @@ export const en = {
       manualDesc: 'Fill the form step by step',
       agent: 'Agent',
       agentDesc: 'Let the Workspace Agent shape it',
+      agentDisabled: 'Agent mode is disabled — set up a Workspace Agent first',
+      agentUnavailable: 'Workspace Agent not available',
+      setupWorkspaceAgent: 'To use agent-assisted project creation, invite an agent with "Make Workspace Agent" and provide its gateway credentials.',
     },
     steps: {
       project: 'Project',

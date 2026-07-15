@@ -365,6 +365,12 @@ interface MockStoreState {
     /** Seat the newcomer as Workspace Agent; a sitting host is demoted, kept (#32). */
     isWorkspaceAgent?: boolean
   }) => Promise<{ agent: Marius; sendStatus: 'sent' | 'send_failed' }>
+  /** Link additional skills to an already-invited agent and push a one-time install prompt
+   *  (#74). Returns the send_status of the push (best-effort — the links persist regardless). */
+  installAgentSkills: (
+    mariusId: string,
+    skillIds: string[],
+  ) => Promise<{ installedSlugs: string[]; sendStatus: 'sent' | 'send_failed' }>
   /** Hand the Workspace Agent seat to this Marius (real endpoint in API mode, #32). */
   designateWorkspaceAgent: (mariusId: string) => Promise<void>
   /** Internal: stamp WA flags + the workspace pointer after a designation (#32). */
@@ -470,6 +476,27 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     set({ mariuses: [...get().mariuses, agent] })
     if (isWorkspaceAgent) get().applyDesignation(workspaceId, agent.id)
     return { agent, sendStatus: dto.send_status }
+  },
+
+  installAgentSkills: async (mariusId, skillIds) => {
+    const marius = get().mariuses.find((m) => m.id === mariusId)
+    const workspaceId = marius?.workspaceId || get().activeWorkspaceId || 'w1'
+    const dto = await api.installSkills(workspaceId, mariusId, skillIds)
+    // Merge the newly linked skill NAMES into the agent's display list (de-duped).
+    const addedNames = get()
+      .skills.filter((s) => skillIds.includes(s.id))
+      .map((s) => s.name)
+    set({
+      mariuses: get().mariuses.map((m) =>
+        m.id !== mariusId
+          ? m
+          : { ...m, skills: Array.from(new Set([...(m.skills ?? []), ...addedNames])) },
+      ),
+    })
+    return {
+      installedSlugs: dto.installed,
+      sendStatus: dto.send_status === 'sent' ? 'sent' : 'send_failed',
+    }
   },
 
   applyDesignation: (workspaceId: string, mariusId: string) => {

@@ -97,6 +97,19 @@ export default function CreateProject() {
   const mariuses = useMockStore((s) => s.mariuses);
   const skills = useMockStore((s) => s.skills);
   const activeWorkspaceId = useMockStore((s) => s.activeWorkspaceId);
+  const workspaces = useMockStore((s) => s.workspaces);
+
+  // Get the active workspace to check for Workspace Agent
+  const activeWorkspace = useMemo(
+    () => workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0],
+    [workspaces, activeWorkspaceId]
+  );
+
+  // Check if Workspace Agent exists for this workspace
+  const hasWorkspaceAgent = useMemo(
+    () => Boolean(activeWorkspace?.workspaceAgentId),
+    [activeWorkspace]
+  );
 
   const [step, setStep] = useState(1);
   const [direction, setDirection] = useState(1);
@@ -850,24 +863,50 @@ export default function CreateProject() {
       </div>
 
       {/* Mode toggle — manual wizard vs. agent-assisted chat (Sprint 7) */}
-      <div className="flex items-center gap-1.5 mb-6 bg-[#EDE4CE] border border-[#E3D7BC] rounded-lg p-1.5 w-fit mx-auto">
-        {(['manual', 'agent'] as const).map((m) => {
-          const active = mode === m;
-          return (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              className={`px-4 py-1.5 rounded-md font-body text-body-sm transition-colors ${
-                active ? 'bg-[#C25E3A] text-white' : 'text-ink hover:bg-[#E3D7BC]'
-              }`}
-            >
-              {t(`createProject.mode.${m}`)}
-              <span className={`block font-body text-body-xs ${active ? 'text-white/80' : 'text-ink-muted'}`}>
-                {t(`createProject.mode.${m}Desc`)}
-              </span>
-            </button>
-          );
-        })}
+      <div className="flex flex-col items-center gap-3 mb-6">
+        <div className="flex items-center gap-1.5 bg-[#EDE4CE] border border-[#E3D7BC] rounded-lg p-1.5 w-fit mx-auto">
+          {(['manual', 'agent'] as const).map((m) => {
+            const active = mode === m;
+            const disabled = m === 'agent' && !hasWorkspaceAgent;
+            return (
+              <button
+                key={m}
+                onClick={() => !disabled && setMode(m)}
+                disabled={disabled}
+                className={`px-4 py-1.5 rounded-md font-body text-body-sm transition-colors ${
+                  active
+                    ? 'bg-[#C25E3A] text-white'
+                    : disabled
+                      ? 'text-ink-muted cursor-not-allowed opacity-60'
+                      : 'text-ink hover:bg-[#E3D7BC]'
+                }`}
+                title={disabled ? t('createProject.mode.agentDisabled') : undefined}
+              >
+                {t(`createProject.mode.${m}`)}
+                <span className={`block font-body text-body-xs ${active ? 'text-white/80' : 'text-ink-muted'}`}>
+                  {t(`createProject.mode.${m}Desc`)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Warning message when agent mode is not available */}
+        {mode === 'agent' && !hasWorkspaceAgent && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-[#F5E8CC] border border-[#C4903A] rounded-md px-4 py-2 max-w-[600px]"
+          >
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-[#C4903A] mt-0.5 flex-shrink-0" />
+              <div className="font-body text-body-sm text-ink">
+                <p className="font-medium">{t('createProject.mode.agentUnavailable')}</p>
+                <p className="text-ink-light mt-1">{t('createProject.mode.setupWorkspaceAgent')}</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
       </div>
 
       {mode === 'agent' ? (
