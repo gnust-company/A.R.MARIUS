@@ -261,12 +261,20 @@ async def install_skills(
     existing = list(marius.skill_ids)
     merged = list(dict.fromkeys([*existing, *body.skill_ids]))
     newly_added_ids = [s for s in body.skill_ids if s not in existing]
-    marius = await container.mariuses.update(marius_id, skill_ids=merged)
 
-    # Resolve only the newly linked skills for the install prompt (no point re-listing
-    # ones the agent already has). Resolve against the workspace's Skill Shop.
-    new_skills = list(await container.skills.resolve(newly_added_ids))
+    # Resolve the full merged set in one query: the complete list → display NAMES
+    # (Marius.skills, which the UI pills read via MariusOut.skills), and the newly-added
+    # subset → slugs for the install prompt. Marius.skills MUST mirror skill_ids or a
+    # post-invite link never shows up as a pill (issue #74).
+    resolved = list(await container.skills.resolve(merged))
+    by_id = {str(sk.id): sk for sk in resolved}
+    new_skills = [by_id[i] for i in newly_added_ids if i in by_id]
+    merged_names = [sk.name for sk in resolved]
     installed_slugs = [sk.slug for sk in new_skills]
+
+    marius = await container.mariuses.update(
+        marius_id, skill_ids=merged, skills=merged_names
+    )
 
     ws = await container.workspaces.get_workspace(workspace_id)
     prompt = build_skill_install_prompt(
