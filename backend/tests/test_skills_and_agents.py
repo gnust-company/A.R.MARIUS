@@ -282,6 +282,9 @@ async def test_install_skills_links_and_pushes_install_prompt():
             headers=h,
             json={"skill_ids": [mcp_id]},
         )
+        # Marius.skills (display NAMES) must mirror skill_ids so the UI pills reflect the
+        # link — a regression here means the pill never appears post-invite (#74).
+        listed = (await c.get(f"/v1/workspaces/{ws_id}/mariuses", headers=h)).json()
     assert r.status_code == 200, r.text
     out = r.json()
     # The new link is merged in (both skills now linked, order preserved, no dupes).
@@ -289,6 +292,8 @@ async def test_install_skills_links_and_pushes_install_prompt():
     assert out["installed"] == ["armarius-mcp"]  # only the newly linked slug
     # The echo runtime accepts the push.
     assert out["send_status"] == "sent"
+    marin = next(m for m in listed if m["id"] == mid)
+    assert marin["skills"] == ["Armarius HTTP API", "Armarius MCP"], marin["skills"]
 
 
 async def test_install_skills_is_idempotent_on_already_linked():
