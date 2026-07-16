@@ -23,11 +23,14 @@ import {
   Wrench,
   MessageSquare,
   AlertTriangle,
+  Check,
   CheckCircle2,
+  Plus,
 } from 'lucide-react';
 import { useMockStore } from '@/store/mockStore';
 import type { AgentStatus } from '@/store/mockStore';
 import { listMariusRuns, listRunEvents, type RunDTO, type RunEventDTO } from '@/lib/api';
+import Modal from '@/components/Modal';
 import VellumPanel from '@/components/VellumPanel';
 import { cn, wsHref } from '@/lib/utils';
 
@@ -211,10 +214,20 @@ export default function AgentDetail() {
   const rel = useRelativeTime();
   const { workspaceId, id } = useParams();
   const mariuses = useMockStore((s) => s.mariuses);
+  const allSkills = useMockStore((s) => s.skills);
+  const installAgentSkills = useMockStore((s) => s.installAgentSkills);
   const agent = mariuses.find((m) => m.id === id);
 
   const [runs, setRuns] = useState<RunDTO[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Post-invite skill install (#74): pick skills to link + push a one-time install prompt.
+  // CAVEAT: send_status only confirms the gateway accepted the dispatch — whether the agent
+  // actually installed the skills is NOT tracked yet (confirm loop parked by owner).
+  const [linkSkillsOpen, setLinkSkillsOpen] = useState(false);
+  const [selectedNewIds, setSelectedNewIds] = useState<string[]>([]);
+  const [installing, setInstalling] = useState(false);
+  const [installStatus, setInstallStatus] = useState<'sent' | 'send_failed' | null>(null);
 
   // Poll the agent's run log so a live run advances in place (the openclaw detail view
   // refetches on an interval too). Read-only — no mutations from this screen.
@@ -235,7 +248,44 @@ export default function AgentDetail() {
   const statusColor = STATUS_COLORS[status] || STATUS_COLORS.offline;
   const displayName = agent?.displayName || agent?.name || t('agentDetail.agentFallback');
   const AdapterIcon = ADAPTER_ICON[agent?.adapterType || ''] || Globe;
-  const skills = agent?.skills || [];
+  const linkedSkillNames = agent?.skills || [];
+
+  // Workspace skills not yet linked to this agent — what the picker offers.
+  const linkedNameSet = new Set(linkedSkillNames);
+  const availableSkills = allSkills.filter((s) => !linkedNameSet.has(s.name));
+
+  const toggleNewSkill = (skillId: string) => {
+    setSelectedNewIds((prev) =>
+      prev.includes(skillId) ? prev.filter((s) => s !== skillId) : [...prev, skillId],
+    );
+  };
+
+  const openLinkSkills = () => {
+    setSelectedNewIds([]);
+    setInstallStatus(null);
+    setLinkSkillsOpen(true);
+  };
+
+  const handleInstallSkills = async () => {
+    if (!agent || selectedNewIds.length === 0 || installing) return;
+    setInstalling(true);
+    setInstallStatus(null);
+    try {
+      const { sendStatus } = await installAgentSkills(agent.id, selectedNewIds);
+      setInstallStatus(sendStatus);
+      if (sendStatus === 'sent') {
+        setTimeout(() => {
+          setLinkSkillsOpen(false);
+          setSelectedNewIds([]);
+          setInstallStatus(null);
+        }, 900);
+      }
+    } catch {
+      setInstallStatus('send_failed');
+    } finally {
+      setInstalling(false);
+    }
+  };
 
   return (
     <div className="min-h-[100dvh]">
@@ -326,20 +376,32 @@ export default function AgentDetail() {
                 </Field>
               </div>
             </div>
-            {skills.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-[#E3D7BC]">
-                <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#A89880] mb-2">
+            <div className="mt-4 pt-4 border-t border-[#E3D7BC]">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#A89880]">
                   {t('agentDetail.field.skills')}
                 </p>
+                <button
+                  onClick={openLinkSkills}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium text-[#C25E3A] hover:bg-[#F3D9D0] transition-colors"
+                  aria-label={t('agentDetail.linkSkills.add')}
+                  title={t('agentDetail.linkSkills.add')}
+                >
+                  <Plus className="w-3.5 h-3.5" /> {t('agentDetail.linkSkills.add')}
+                </button>
+              </div>
+              {linkedSkillNames.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5">
-                  {skills.map((s) => (
+                  {linkedSkillNames.map((s) => (
                     <span key={s} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#E3D7BC] text-[#6B5E4E]">
                       {s}
                     </span>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="text-[12px] text-[#A89880]">{t('agentDetail.noSkills')}</p>
+              )}
+            </div>
           </VellumPanel>
 
           <VellumPanel className="rounded-lg border-[#E3D7BC]">
@@ -419,6 +481,75 @@ export default function AgentDetail() {
           )}
         </VellumPanel>
       </div>
+
+      {/* Post-invite skill install (#74) — link more skills + push a one-time install prompt. */}
+      <Modal
+        isOpen={linkSkillsOpen}
+        onClose={() => setLinkSkillsOpen(false)}
+        title={t('agentDetail.linkSkills.title', { name: displayName })}
+        footer={
+          <>
+            <button
+              onClick={() => setLinkSkillsOpen(false)}
+              className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC] transition-colors"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              onClick={handleInstallSkills}
+              disabled={selectedNewIds.length === 0 || installing}
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-all',
+                selectedNewIds.length > 0 && !installing
+                  ? 'bg-[#C25E3A] text-white hover:bg-[#D97B5A]'
+                  : 'bg-[#E3D7BC] text-[#A89880] cursor-not-allowed',
+              )}
+            >
+              {installing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {installStatus === 'send_failed'
+                ? t('agentDetail.linkSkills.retry')
+                : installing
+                  ? t('agentDetail.linkSkills.sending')
+                  : t('agentDetail.linkSkills.confirm')}
+            </button>
+          </>
+        }
+      >
+        <p className="text-[12px] text-[#6B5E4E] mb-3">{t('agentDetail.linkSkills.hint')}</p>
+        {allSkills.length === 0 ? (
+          <p className="text-[12px] text-[#A89880]">{t('agentDetail.linkSkills.noneAvailable')}</p>
+        ) : availableSkills.length === 0 ? (
+          <p className="text-[12px] text-[#A89880]">{t('agentDetail.linkSkills.allLinked')}</p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {availableSkills.map((skill) => (
+              <button
+                key={skill.id}
+                onClick={() => toggleNewSkill(skill.id)}
+                className={cn(
+                  'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all',
+                  selectedNewIds.includes(skill.id)
+                    ? 'bg-[#C25E3A] text-white'
+                    : 'bg-[#E3D7BC] text-[#6B5E4E] hover:bg-[#D9CDB8]',
+                )}
+              >
+                {selectedNewIds.includes(skill.id) && <Check className="w-3 h-3" />}
+                {skill.name}
+              </button>
+            ))}
+          </div>
+        )}
+        {installStatus === 'sent' && (
+          <p className="mt-4 flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#D8EADD] text-[12px] text-[#2A6E3A]">
+            <CheckCircle2 className="w-3.5 h-3.5" /> {t('agentDetail.linkSkills.sent')}
+          </p>
+        )}
+        {installStatus === 'send_failed' && (
+          <p className="mt-4 flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#F3D9D0] text-[12px] text-[#8A3B22] border border-[#E3C0B2]">
+            <AlertTriangle className="w-3.5 h-3.5" /> {t('agentDetail.linkSkills.sendFailed')}
+          </p>
+        )}
+      </Modal>
     </div>
   );
 }
