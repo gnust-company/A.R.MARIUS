@@ -482,17 +482,10 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     const marius = get().mariuses.find((m) => m.id === mariusId)
     const workspaceId = marius?.workspaceId || get().activeWorkspaceId || 'w1'
     const dto = await api.installSkills(workspaceId, mariusId, skillIds)
-    // Merge the newly linked skill NAMES into the agent's display list (de-duped).
-    const addedNames = get()
-      .skills.filter((s) => skillIds.includes(s.id))
-      .map((s) => s.name)
-    set({
-      mariuses: get().mariuses.map((m) =>
-        m.id !== mariusId
-          ? m
-          : { ...m, skills: Array.from(new Set([...(m.skills ?? []), ...addedNames])) },
-      ),
-    })
+    // Refresh this workspace's slice from server truth so the agent's skill pills
+    // reflect the freshly linked names — instead of guessing id→name from a skills
+    // list that may not be loaded on the page the call was made from.
+    await get().hydrateWorkspace(workspaceId).catch(() => {})
     return {
       installedSlugs: dto.installed,
       sendStatus: dto.send_status === 'sent' ? 'sent' : 'send_failed',
