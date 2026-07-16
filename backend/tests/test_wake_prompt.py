@@ -38,16 +38,21 @@ def test_prompt_names_workspace_project_and_credential_file():
     assert "## Where you are" in prompt
     assert "Acme Web Platform" in prompt
     assert "Settings Redesign" in prompt
+    # The token-location footer names the exact credential file + the multi-workspace rule.
     assert "~/.armarius/tokens/acme-web-platform_alice.json" in prompt
-    # The multi-workspace warning: use the named file, never all of them.
-    assert "never all of them" in prompt
-    # The section leads the prompt — location must be read before the task brief.
+    assert "Authorization: Bearer" in prompt
+    assert "never the others" in prompt
+    # Orientation still leads the prompt (workspace/project before the task brief).
     assert prompt.index("## Where you are") < prompt.index("## Task:")
 
 
-def test_prompt_without_workspace_context_omits_the_section():
+def test_prompt_without_workspace_context_omits_the_orientation_but_never_the_footer():
     prompt = build_wake_prompt(_ctx())
     assert "## Where you are" not in prompt
     # The rest of the prompt is intact.
     assert "## Task: Add dark mode" in prompt
     assert "## Why you were woken" in prompt
+    # The footer is UNCONDITIONAL: even with no workspace context, a task-wake must still
+    # tell the agent where its token lives — falling back to the default location (#80).
+    assert "Authorization: Bearer" in prompt
+    assert "~/.armarius/tokens/<workspace>_<agent>.json" in prompt

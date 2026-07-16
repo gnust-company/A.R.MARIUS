@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from armarius.domain.entities.run import WakeSource
+from armarius.domain.services.agent_prompt import agent_prompt_footer
 
 
 @dataclass(frozen=True)
@@ -50,20 +51,12 @@ def build_wake_prompt(ctx: WakeContext) -> str:
     lines.append(f"You are {ctx.marius_name}, an agent collaborating inside Armarius.")
     lines.append("")
 
-    if ctx.workspace_name or ctx.credential_file:
+    if ctx.workspace_name or ctx.project_name:
         lines.append("## Where you are")
         lines.append(
             f"- Workspace: {ctx.workspace_name or 'unknown'}"
             f" · Project: {ctx.project_name or 'unknown'}"
         )
-        if ctx.credential_file:
-            lines.append(f"- Credential file for THIS workspace: {ctx.credential_file}")
-            lines.append(
-                "- Every call for this task uses the agent_token and api_base_url from "
-                "that exact file. If you serve several workspaces you have one file per "
-                "workspace under ~/.armarius/tokens/ — read only the file named "
-                "above, never all of them."
-            )
         lines.append("")
 
     lines.append(f"## Task: {ctx.task_title}  [{ctx.task_status}]")
@@ -109,4 +102,7 @@ def build_wake_prompt(ctx: WakeContext) -> str:
         "- Before you stop, record a durable `next_action` via update_task so the work "
         "can resume even if your session is lost."
     )
-    return "\n".join(lines)
+    # Every system→agent message ends with the SAME token-location footer so even a weak
+    # model always knows where its token lives — unconditional, identical to the invite,
+    # skill-install and onboarding prompts (#80). No task-wake ever goes out without it.
+    return "\n".join(lines) + agent_prompt_footer(ctx.credential_file)
