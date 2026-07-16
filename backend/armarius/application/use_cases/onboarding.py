@@ -57,7 +57,7 @@ def _skill_block(skills: list[Skill], base: str, adapter_type: str = "hermes_gat
             "  • Use skill_manage with action='create' to install each skill",
             "  • Provide name, content (full SKILL.md), and optional category",
             "  • Alternative: use /learn slash command to create skills from sources",
-            "  • Skills install to ~/.hermes/skills/<slug>/ and become slash commands",
+            "  • Skills install to $HERMES_HOME/skills/<slug>/ and become slash commands",
             "",
         ]
     elif adapter_type == "echo":
