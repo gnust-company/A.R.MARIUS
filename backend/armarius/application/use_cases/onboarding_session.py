@@ -28,6 +28,7 @@ from datetime import datetime
 from uuid import UUID
 
 from armarius.application.ports.adapter import AdapterRegistry, ExecContext
+from armarius.application.use_cases.onboarding import credential_file_for
 from armarius.application.use_cases.onboarding_brain import (
     _leader_role,
     _project_name,
@@ -39,6 +40,7 @@ from armarius.application.use_cases.workspace_agent import WorkspaceAgentService
 from armarius.domain.entities.marius import Liveness, Marius
 from armarius.domain.entities.onboarding import OnboardingSession, OnboardingStatus
 from armarius.domain.entities.run import RunStatus
+from armarius.domain.services.agent_prompt import agent_prompt_footer
 from armarius.shared.clock import utcnow
 
 # Online/Working is the only "ready" for onboarding (LLD §10). Checking / Offline / Silent
@@ -156,7 +158,7 @@ class OnboardingService:
 
         guide = build_onboarding_guide_prompt(
             base_url=self._base_url, session_id=str(session_id), workspace_name=workspace_name
-        )
+        ) + agent_prompt_footer(credential_file_for(wa, workspace_name))
         await self._wake(wa, session_id, guide)
 
         async with self._uow() as uow:
@@ -188,8 +190,10 @@ class OnboardingService:
             await uow.onboardings.update(session)
             await uow.commit()
             workspace_id = session.workspace_id
+            ws = await uow.workspaces.get(workspace_id) if workspace_id else None
         if workspace_id is None:
             raise LookupError("onboarding session has no workspace")
+        workspace_name = ws.name if ws else "the workspace"
 
         wa = await self._ws_agent.ensure_workspace_agent(workspace_id)
         if wa is None or not _wa_ready(wa):
@@ -198,7 +202,10 @@ class OnboardingService:
                 "set up the Workspace Agent first — invite an agent with 'Make Workspace "
                 "Agent' and its gateway creds, then ensure it is online and retry"
             )
-        await self._wake(wa, session_id, self._answer_prompt(value))
+        answer_prompt = self._answer_prompt(value) + agent_prompt_footer(
+            credential_file_for(wa, workspace_name)
+        )
+        await self._wake(wa, session_id, answer_prompt)
 
         async with self._uow() as uow:
             fresh = await uow.onboardings.get(session_id)

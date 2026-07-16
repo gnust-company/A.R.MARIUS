@@ -15,6 +15,7 @@ import re
 
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.skill import Skill
+from armarius.domain.services.agent_prompt import agent_prompt_footer
 
 
 def _slugify(value: str) -> str:
@@ -97,7 +98,7 @@ def _skill_block(skills: list[Skill], base: str, adapter_type: str = "hermes_gat
         if sk.description:
             lines.append(f"     {sk.description}")
         lines.append(f"     Fetch:   GET {base}/agent/skills/{sk.slug}")
-        lines.append("              Authorization: Bearer <your token from STEP 0>")
+        lines.append("              Authorization: Bearer <your agent token — see the note below>")
         lines.append(
             '     Returns: {"slug": "' + sk.slug + '", "files": {"SKILL.md": "...", ...}}'
         )
@@ -226,8 +227,7 @@ STEP 3 · INSTALL YOUR SKILLS
 
 That is it — you are connected to "{workspace_name}" and your skills are installed.
 Nothing else to do now: wait to be woken with a task in its own session, where your
-installed skills take over.
-"""
+installed skills take over.{agent_prompt_footer(cred_path)}"""
 
 
 def build_skill_install_prompt(
@@ -245,6 +245,7 @@ def build_skill_install_prompt(
     specific and identical to the invite path.
     """
     base = public_base_url.rstrip("/")
+    cred_path = credential_file_for(marius, workspace_name)
     safe_name = marius.name.replace('"', '\\"')
     skill_block = _skill_block(skills, base, marius.adapter_type)
     return f"""╔══════════════════════════════════════════════════════════════════════════════╗
@@ -253,8 +254,9 @@ def build_skill_install_prompt(
 
 Hello {safe_name} — your patron in "{workspace_name}" has linked new skills to you.
 
-You are already connected, so there is no setup here — just install the skills below
-so you can use them on your next task. Use the token you already saved to authenticate.
+You are already connected, so there is no setup here — just install the skills below so
+you can use them on your next task. Authenticate with the agent_token you already saved
+in `{cred_path}` (details in the note at the bottom).
 
 ───────────────────────────────────────────────────────────────────────────────────
 INSTALL YOUR NEW SKILLS
@@ -264,5 +266,4 @@ INSTALL YOUR NEW SKILLS
 ───────────────────────────────────────────────────────────────────────────────────
 
 That is all. Once these are installed, carry on — you will be woken with a task when
-there is work for you.
-"""
+there is work for you.{agent_prompt_footer(cred_path)}"""
