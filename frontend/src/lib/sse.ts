@@ -214,6 +214,29 @@ export function subscribeTaskTrace(
   )
 }
 
+/**
+ * Subscribe to the project-level Chat-with-Leader SSE (`/v1/projects/{id}/leader-chat/stream`, #82).
+ *
+ * The Leader's reply streams here as `assistant.delta` events; `chat.state` marks the
+ * turn's lifecycle and `leader.message` carries the final durable reply. The callback
+ * receives the raw `{ type, data }` (data already JSON-parsed) — the chat page interprets it.
+ */
+export function subscribeLeaderChat(
+  projectId: string,
+  onEvent: (event: { type: string; data: Record<string, unknown> }) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  const url = `${API_BASE}/v1/projects/${projectId}/leader-chat/stream`
+  return subscribeSSE(
+    url,
+    (msg) => {
+      const parsed = parseData(msg.data)
+      onEvent({ type: msg.type, data: (parsed ?? {}) as Record<string, unknown> })
+    },
+    onError,
+  )
+}
+
 function parseData(data: unknown): unknown {
   if (typeof data === 'string') {
     try {

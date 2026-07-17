@@ -144,6 +144,24 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
   return (await res.json()) as T
 }
 
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetchWithAuth(path, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`
+    try {
+      const data = await res.json()
+      if (data?.detail) detail = typeof data.detail === 'string' ? data.detail : detail
+    } catch {
+      // non-JSON error body — keep the status-line fallback
+    }
+    throw new ApiError(detail, res.status)
+  }
+  return (await res.json()) as T
+}
+
 // DELETE that tolerates a 204 (no body). Surfaces the server `detail` on 4xx so callers
 // can toast the constraint message (e.g. "Built-in skills can't be deleted.").
 async function del(path: string): Promise<void> {
@@ -588,6 +606,52 @@ export async function confirmCommission(sessionId: string): Promise<CommissionDT
 
 export async function getCommission(sessionId: string): Promise<CommissionDTO> {
   return get<CommissionDTO>(`/v1/commissions/${sessionId}`)
+}
+
+// ── Chat with Leader (project-level 1-1 chat · #82) ───────────────────────────────────────
+
+export interface LeaderChatTurn {
+  role: string // 'patron' | 'leader'
+  text: string
+  ts?: string | null
+}
+
+export interface LeaderChatDTO {
+  project_id?: string | null
+  leader_marius_id?: string | null
+  leader_name?: string | null
+  leader_online: boolean
+  yolo_mode: boolean
+  state: string // 'idle' | 'thinking' | 'failed'
+  transcript: LeaderChatTurn[]
+  updated_at?: string | null
+}
+
+export async function getLeaderChat(projectId: string): Promise<LeaderChatDTO> {
+  return get<LeaderChatDTO>(`/v1/projects/${projectId}/leader-chat`)
+}
+
+export async function sendLeaderChatMessage(
+  projectId: string,
+  message: string,
+): Promise<LeaderChatDTO> {
+  return post<LeaderChatDTO>(`/v1/projects/${projectId}/leader-chat/messages`, { message })
+}
+
+export async function setYoloMode(projectId: string, yoloMode: boolean): Promise<LeaderChatDTO> {
+  return put<LeaderChatDTO>(`/v1/projects/${projectId}/yolo-mode`, { yolo_mode: yoloMode })
+}
+
+export async function listProposedTasks(projectId: string): Promise<TaskDTO[]> {
+  return get<TaskDTO[]>(`/v1/projects/${projectId}/proposed-tasks`)
+}
+
+export async function approveTask(taskId: string): Promise<TaskDTO> {
+  return post<TaskDTO>(`/v1/tasks/${taskId}/approve`, {})
+}
+
+export async function rejectTask(taskId: string): Promise<TaskDTO> {
+  return post<TaskDTO>(`/v1/tasks/${taskId}/reject`, {})
 }
 
 // ── Onboarding (agent‑driven, question-window project setup · #61) ─────────────────────
