@@ -174,6 +174,22 @@ class CommissionModel(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class ProjectLeaderConversationModel(Base):
+    """Project-level Chat-with-Leader conversation (#82). At most one per project
+    (``project_id`` is unique). Plain UUID refs (no FK) — consistent with the other
+    runtime chat tables (commission/onboarding sessions)."""
+
+    __tablename__ = "project_leader_conversations"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID | None] = mapped_column(Uuid, unique=True, index=True)
+    leader_marius_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
+    session_params: Mapped[dict] = mapped_column(JSON, default=dict)
+    transcript: Mapped[list] = mapped_column(JSON, default=list)
+    state: Mapped[str] = mapped_column(String(20), default="idle", index=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class OnboardingSessionModel(Base):
     """Agent-assisted project-setup chat (LLD §2.10, Sprint 7 / Phase G). Plain UUID
     ref to the workspace (no FK) — consistent with the other runtime chat tables."""

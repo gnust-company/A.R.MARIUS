@@ -19,6 +19,7 @@ from armarius.presentation.deps import ContainerDep, CurrentMarius
 from armarius.presentation.schemas import (
     AgentArtifactIn,
     AgentCommentIn,
+    AgentCreateTaskIn,
     AgentOnboardingCompleteIn,
     AgentOnboardingQuestionIn,
     AgentSkillBundleOut,
@@ -158,6 +159,32 @@ async def post_onboarding_complete(
     }
     session = await container.onboarding.agent_post_complete(session_id, draft)
     return OnboardingOut.model_validate(session)
+
+
+@router.post("/projects/{project_id}/tasks", response_model=TaskOut, status_code=201)
+async def agent_create_task(
+    project_id: UUID,
+    body: AgentCreateTaskIn,
+    marius: CurrentMarius,
+    container: ContainerDep,
+) -> TaskOut:
+    """The Leader's create-task tool (Chat-with-Leader, #82). Creates a DRAFT awaiting the
+    patron's approval; if the project's YOLO mode is on, it is auto-approved (→ todo, and
+    the proposed assignee is woken). Scoped to the caller's workspace (#15)."""
+    project = await container.projects.get_project(project_id)
+    if project is None or project.workspace_id != marius.workspace_id:
+        raise LookupError("project not found")  # cross-workspace → 404
+    task = await container.tasks.create(
+        project_id=project_id,
+        title=body.title,
+        description=body.description,
+        status=TaskStatus.DRAFT,
+        created_by_marius_id=marius.id,
+        assigned_marius_id=body.assignee_marius_id,
+    )
+    if project.settings.get("yolo_mode", False):
+        task = await container.tasks.approve_proposed(task.id)
+    return TaskOut.model_validate(task)
 
 
 @router.get("/tasks/{task_id}")

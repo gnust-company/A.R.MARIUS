@@ -23,8 +23,14 @@ class TaskService:
         project_id: UUID,
         title: str,
         description: str | None = None,
+        status: TaskStatus = TaskStatus.BACKLOG,
         created_by_user_id: str | None = None,
+        created_by_marius_id: UUID | None = None,
+        assigned_marius_id: UUID | None = None,
     ) -> Task:
+        """Create a task. Defaults to a ``backlog`` task; the Leader's Chat-with-Leader
+        proposals pass ``status=DRAFT`` + a proposed ``assigned_marius_id`` so the task
+        waits for the patron's approval before any worker is woken (#82)."""
         async with self._uow() as uow:
             if await uow.projects.get(project_id) is None:
                 raise LookupError("project not found")
@@ -33,14 +39,53 @@ class TaskService:
                 project_id=project_id,
                 title=title,
                 description=description,
-                status=TaskStatus.BACKLOG,
+                status=status,
                 created_by_user_id=created_by_user_id,
+                created_by_marius_id=created_by_marius_id,
+                assigned_marius_id=assigned_marius_id,
                 created_at=now,
                 updated_at=now,
             )
             created = await uow.tasks.add(task)
             await uow.commit()
             return created
+
+    async def approve_proposed(self, task_id: UUID) -> Task:
+        """Approve a Leader-proposed draft: ``draft → todo``, then wake the proposed
+        assignee (if any). 409 if the task is not a draft (invalid transition)."""
+        assignee: UUID | None = None
+        async with self._uow() as uow:
+            task = await uow.tasks.get(task_id)
+            if task is None:
+                raise LookupError("task not found")
+            now = utcnow()
+            task.transition_to(TaskStatus.TODO, now)  # DRAFT → TODO (raises otherwise)
+            task.updated_at = now
+            updated = await uow.tasks.update(task)
+            await uow.commit()
+            assignee = updated.assigned_marius_id
+
+        if assignee is not None:
+            await self._wake.enqueue(
+                marius_id=assignee,
+                task_id=task_id,
+                source=WakeSource.ASSIGNMENT,
+                reason="you were assigned to this task",
+            )
+        return updated
+
+    async def reject_proposed(self, task_id: UUID) -> Task:
+        """Reject a Leader-proposed draft: ``draft → cancelled`` (no wake)."""
+        async with self._uow() as uow:
+            task = await uow.tasks.get(task_id)
+            if task is None:
+                raise LookupError("task not found")
+            now = utcnow()
+            task.transition_to(TaskStatus.CANCELLED, now)  # DRAFT → CANCELLED
+            task.updated_at = now
+            updated = await uow.tasks.update(task)
+            await uow.commit()
+            return updated
 
     async def get(self, task_id: UUID) -> Task | None:
         async with self._uow() as uow:

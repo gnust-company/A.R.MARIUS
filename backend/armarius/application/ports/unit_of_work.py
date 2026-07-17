@@ -14,6 +14,7 @@ from armarius.domain.repositories.repositories import (
     CommentRepository,
     CommissionRepository,
     LabelRepository,
+    LeaderChatRepository,
     MariusRepository,
     OnboardingRepository,
     ProjectRepository,
@@ -34,6 +35,7 @@ class UnitOfWork(ABC):
     workspaces: WorkspaceRepository
     labels: LabelRepository
     commissions: CommissionRepository
+    leader_chats: LeaderChatRepository
     onboardings: OnboardingRepository
     projects: ProjectRepository
     roles: RoleRepository

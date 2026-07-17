@@ -26,6 +26,10 @@ def default_project_settings() -> dict:
         "require_review_before_done": True,
         "require_approval_for_done": False,
         "comment_required_for_review": False,
+        # YOLO mode (#82): when False (default), a task the Leader proposes in the
+        # Chat-with-Leader tab is created as a `draft` awaiting the patron's approval;
+        # when True, the Leader's task creation + assignment is auto-approved.
+        "yolo_mode": False,
     }
 
 

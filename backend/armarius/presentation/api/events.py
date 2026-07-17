@@ -121,3 +121,21 @@ async def task_stream(
     if ws is None or ws.owner_user_id != str(user.id):
         raise LookupError("task not found")  # cross-workspace → 404
     return await _stream(container, request, f"task:{task_id}")
+
+
+@router.get("/projects/{project_id}/leader-chat/stream")
+async def leader_chat_stream(
+    project_id: UUID,
+    request: Request,
+    container: ContainerDep,
+    user: CurrentUser,
+) -> EventSourceResponse:
+    """Live trace of the project's Chat-with-Leader turn (#82) — the Leader's reply
+    streams here as ``assistant.delta`` events, plus ``chat.state``/``leader.message``."""
+    project = await container.projects.get_project(project_id)
+    if project is None:
+        raise LookupError("project not found")
+    ws = await container.workspaces.get_workspace(project.workspace_id)
+    if ws is None or ws.owner_user_id != str(user.id):
+        raise LookupError("project not found")  # cross-workspace → 404
+    return await _stream(container, request, f"leader-chat:{project_id}")

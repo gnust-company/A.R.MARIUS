@@ -236,6 +236,21 @@ class ProjectService:
             await uow.commit()
             return updated
 
+    async def set_yolo_mode(self, project_id: UUID, enabled: bool) -> Project:
+        """Toggle YOLO mode (#82): merge the single key so other settings are untouched.
+
+        When True, the Leader's task creation in Chat-with-Leader is auto-approved; when
+        False (default) each proposal is a draft awaiting the patron's approval."""
+        async with self._uow() as uow:
+            project = await uow.projects.get(project_id)
+            if project is None:
+                raise LookupError("project not found")
+            project.settings = {**project.settings, "yolo_mode": enabled}
+            project.updated_at = utcnow()
+            updated = await uow.projects.update(project)
+            await uow.commit()
+            return updated
+
     async def delete_project(self, project_id: UUID) -> None:
         async with self._uow() as uow:
             if await uow.projects.get(project_id) is None:
