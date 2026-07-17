@@ -45,10 +45,12 @@ def _roster() -> list[RoleSpec]:
 def _chat_service(uow_factory, bus: TopicEventBus, *, step_delay: float = 0.0) -> LeaderChatService:
     registry = InMemoryAdapterRegistry()
     registry.register(EchoAdapter(step_delay=step_delay))
+    liveness = LivenessEngine(uow_factory, FakeLivenessProbe())
     return LeaderChatService(
         uow_factory,
         registry=registry,
         control_bus=bus,
+        liveness=liveness,
         base_url="http://api",
         run_timeout_seconds=30,
     )

@@ -149,6 +149,25 @@ def test_working_turn_over_budget_becomes_hung() -> None:
     assert decision.state.liveness == Liveness.HUNG
 
 
+def test_hung_is_recoverable_via_gateway_probe() -> None:
+    """A stalled turn → HUNG, but HUNG now schedules an immediate re-probe (no longer a
+    dead-end). The next tick re-enters CHECKING and asks the engine to probe, so a healthy
+    gateway flips the agent back ONLINE instead of stranding it forever (#82 liveness fix)."""
+    working = begin_turn(LivenessState(), T0)
+    hung = plan_tick(working, T0 + CFG.hung_after + timedelta(seconds=1), CFG).state
+    assert hung.liveness == Liveness.HUNG
+    assert hung.next_probe_at is not None  # recovery probe scheduled immediately
+
+    decision = plan_tick(hung, hung.next_probe_at, CFG)
+    assert decision.state.liveness == Liveness.CHECKING
+    assert decision.action == LivenessAction.PROBE
+
+    recovered = on_probe_result(
+        decision.state, hung.next_probe_at, success=True, cfg=CFG
+    ).state
+    assert recovered.liveness == Liveness.ONLINE
+
+
 # ── full decay sequence (engine-style walk) ──────────────────────────────────
 
 

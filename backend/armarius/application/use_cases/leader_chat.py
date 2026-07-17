@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from armarius.application.ports.adapter import AdapterRegistry, ExecContext
+from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.onboarding import credential_file_for
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.leader_chat import (
@@ -66,12 +67,14 @@ class LeaderChatService:
         *,
         registry: AdapterRegistry,
         control_bus: TopicEventBus,
+        liveness: LivenessEngine,
         base_url: str,
         run_timeout_seconds: int = 900,
     ) -> None:
         self._uow = uow_factory
         self._registry = registry
         self._bus = control_bus
+        self._liveness = liveness
         self._base_url = base_url
         self._timeout = run_timeout_seconds
         self._bg: set[asyncio.Task[None]] = set()
@@ -236,6 +239,10 @@ class LeaderChatService:
             on_event=on_event,
         )
         adapter = self._registry.get(adapter_type)
+        # Mark the Leader WORKING for this turn — a turn counts as liveness, and the watchdog
+        # measures silence-since-turn (so an active stream never false-HUNGs). record_signal
+        # below clears it again when the turn resolves (#82 liveness loop).
+        await self._liveness.begin_turn(leader.id)
         try:
             result = await adapter.execute(ctx)
         except Exception as exc:
@@ -243,7 +250,7 @@ class LeaderChatService:
             await self._finish(
                 conversation_id, text="", ok=False, session_params=None, error=str(exc)
             )
-            return
+            return  # liveness left WORKING; the FSM watchdog + gateway probe handle recovery
 
         await self._finish(
             conversation_id,
@@ -252,6 +259,12 @@ class LeaderChatService:
             session_params=result.session_params or None,
             error=result.error,
         )
+        # The gateway reached back with a terminal status (completed or failed) — fold it in as
+        # a liveness signal so a reply keeps the Leader ONLINE and clears the in-flight turn.
+        try:
+            await self._liveness.record_signal(leader.id)
+        except LookupError:  # pragma: no cover — leader vanished mid-turn
+            pass
 
     async def _finish(
         self,
