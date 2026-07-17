@@ -12,7 +12,7 @@ The task-wake prompt front-loads the same facts in its own "Where you are" heade
 
 from __future__ import annotations
 
-_DEFAULT_LOCATION = "~/.armarius/tokens/<workspace>_<agent>.json"
+_DEFAULT_LOCATION = "~/.armarius/<workspace>_<agent>.json"
 
 
 def agent_prompt_footer(credential_file: str | None = None) -> str:
@@ -33,7 +33,7 @@ def agent_prompt_footer(credential_file: str | None = None) -> str:
         "2) Send header `Authorization: Bearer <agent_token>` on every request, using the "
         "`api_base_url` from that same file as the base URL.\n"
         "3) If you serve several workspaces you have one file per workspace under "
-        "`~/.armarius/tokens/` — read only the file named above, never the others.\n"
+        "`~/.armarius/` — read only the file named above, never the others.\n"
         "4) If that file is missing you are not connected yet — run your workspace "
         "connection (the invite prompt) first.\n"
         "5) The token is a secret: never echo it into a comment, artifact, or any output.\n"

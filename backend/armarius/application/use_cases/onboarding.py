@@ -29,10 +29,10 @@ def credential_file_for(marius: Marius, workspace_name: str) -> str:
     Shared by the invite (STEP 1) and every wake prompt so the two never name a
     different file — a multi-workspace agent has one file per workspace (#15).
 
-    **Path note**: Uses ``tokens`` instead of ``credentials`` to avoid Hermes Agent's
-    keyword-based file write protection (paths containing "credential" are blocked).
+    **Path note**: The file sits directly under ``~/.armarius/`` (no ``tokens``/
+    ``credentials`` subfolder) — a flat per-workspace JSON named ``<slug>.json``.
     """
-    return f"~/.armarius/tokens/{_slugify(workspace_name)}_{marius.name.lower()}.json"
+    return f"~/.armarius/{_slugify(workspace_name)}_{marius.name.lower()}.json"
 
 
 def _skill_block(skills: list[Skill], base: str, adapter_type: str = "hermes_gateway") -> str:

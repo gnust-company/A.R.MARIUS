@@ -27,8 +27,8 @@ def _skill() -> Skill:
 
 
 def test_footer_names_the_file_and_is_token_free():
-    footer = agent_prompt_footer("~/.armarius/tokens/acme_marin.json")
-    assert "~/.armarius/tokens/acme_marin.json" in footer
+    footer = agent_prompt_footer("~/.armarius/acme_marin.json")
+    assert "~/.armarius/acme_marin.json" in footer
     assert "Authorization: Bearer" in footer
     # Leads with a separator so it reads as an appended footer, not inline body.
     assert footer.startswith("\n\n---\n")
@@ -37,7 +37,7 @@ def test_footer_names_the_file_and_is_token_free():
 
 
 def test_footer_falls_back_to_a_default_location():
-    assert "~/.armarius/tokens/<workspace>_<agent>.json" in agent_prompt_footer()
+    assert "~/.armarius/<workspace>_<agent>.json" in agent_prompt_footer()
 
 
 def test_skill_install_prompt_carries_token_location():
