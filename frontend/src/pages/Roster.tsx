@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState, useMemo, useEffect } from 'react';
-import { useParams } from 'react-router';
+import { useParams, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -10,13 +10,14 @@ import {
   AlertTriangle,
   Zap,
   Plus,
+  ChevronLeft,
 } from 'lucide-react';
 import { useMockStore, type ProjectSeat, type Marius } from '@/store/mockStore';
 import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
 import Modal from '@/components/Modal';
 import PageTitle from '@/components/PageTitle';
-import { cn } from '@/lib/utils';
+import { cn, wsHref } from '@/lib/utils';
 
 // ─── Status Dot ──────────────────────────────────────────────────────────────
 
@@ -243,7 +244,8 @@ function GrantSeatModal({
 // ─── Main Roster Page ────────────────────────────────────────────────────────
 
 export default function Roster() {
-  const { id: projectId } = useParams<{ id: string }>();
+  const { id: projectId, workspaceId } = useParams<{ id: string; workspaceId: string }>();
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const projects = useMockStore((s) => s.projects);
   const mariuses = useMockStore((s) => s.mariuses);
@@ -324,9 +326,16 @@ export default function Roster() {
         initial={{ opacity: 0, y: 24, filter: 'blur(2px)' }}
         animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
         transition={{ duration: 0.4, ease: [0, 0, 0.2, 1] as [number, number, number, number] }}
-        className="flex items-center justify-between"
+        className="flex items-end justify-between"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-3">
+          <button
+            onClick={() => navigate(wsHref(workspaceId, `/projects/${projectId}`))}
+            className="inline-flex items-center gap-1 self-start px-2.5 py-1.5 rounded-md bg-vellum-deep border border-vellum-dark font-body text-body-sm text-ink hover:bg-vellum-dark transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            {t('roster.backToBoard')}
+          </button>
           <PageTitle title={t('roster.title')} />
         </div>
         <StatusChip status={project.status} label={t(`projects.status.${project.status}`)} />

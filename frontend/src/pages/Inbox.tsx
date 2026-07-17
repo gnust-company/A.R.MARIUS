@@ -97,13 +97,22 @@ export default function Inbox() {
                             <div className="flex -space-x-1.5">
                               {task.participants?.slice(0, 3).map((agentId) => {
                                 const agent = safeMariuses.find((m) => m.id === agentId);
-                                return (
+                                const label = agent?.displayName || agent?.name || agentId;
+                                return agent?.avatar ? (
                                   <img
                                     key={agentId}
-                                    src={agent?.avatar || '/agent-avatar-atlas.jpg'}
-                                    alt={agent?.name || agentId}
-                                    className="w-5 h-5 rounded-full border border-[#F7F0E0]"
+                                    src={agent.avatar}
+                                    alt={label}
+                                    className="w-5 h-5 rounded-full border border-[#F7F0E0] object-cover"
                                   />
+                                ) : (
+                                  <span
+                                    key={agentId}
+                                    title={label}
+                                    className="w-5 h-5 rounded-full border border-[#F7F0E0] bg-[#EDE4CE] flex items-center justify-center font-display text-[10px] text-[#8B6A28]"
+                                  >
+                                    {label.charAt(0).toUpperCase()}
+                                  </span>
                                 );
                               })}
                             </div>

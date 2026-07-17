@@ -8,20 +8,22 @@ import {
   Bot,
   Lock,
   Loader2,
-  CheckCircle2,
-  Circle,
-  Plus,
-  X,
   Star,
   ArrowRight,
+  ChevronLeft,
+  WifiOff,
 } from 'lucide-react';
 import { useMockStore } from '@/store/mockStore';
 import VellumPanel from '@/components/VellumPanel';
 import PageTitle from '@/components/PageTitle';
+import StatusChip from '@/components/StatusChip';
 import { cn, wsHref } from '@/lib/utils';
 import * as api from '@/lib/api';
 
-// ─── Local Commission Session Types ──────────────────────────────────────────
+// ─── Transcript message (derived from the real CommissionDTO.transcript) ─────────
+// The backend records the Patron's turns on the session; the Leader shapes the draft
+// Task itself (surfaced in the preview pane), so the chat shows the request thread plus
+// system notes — never a fabricated Leader reply.
 
 interface CommissionMessage {
   id: string;
@@ -30,62 +32,36 @@ interface CommissionMessage {
   timestamp: string;
 }
 
-interface LocalDraftTask {
-  identifier: string;
-  title: string;
-  description: string;
-  priority: 'P0' | 'P1' | 'P2';
-  definitionOfDone: string;
-  checklist: { text: string; checked: boolean }[];
-  dueDate: string;
-  workers: string[];
-  dependencies: string[];
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// Map the real transcript (backend turns) → renderable messages. Unknown roles fall back
+// to `leader` so nothing is dropped; the backend uses `patron` for Patron turns.
+function transcriptToMessages(
+  transcript: Array<{ role: string; text: string }> | undefined,
+): CommissionMessage[] {
+  return (transcript ?? []).map((turn, i) => ({
+    id: `turn-${i}`,
+    role: turn.role === 'patron' ? 'patron' : turn.role === 'system' ? 'system' : 'leader',
+    content: turn.text,
+    timestamp: '',
+  }));
 }
-
-interface CommissionSession {
-  id: string;
-  projectId: string;
-  messages: CommissionMessage[];
-  draftTask: LocalDraftTask | null;
-}
-
-const INITIAL_COMMISSION: CommissionSession = {
-  id: 'cs-1',
-  projectId: 'p1',
-  messages: [
-    { id: 'msg-1', role: 'leader', content: 'Hello! I\'m Atlas, your Project Leader. What would you like us to work on?', timestamp: '2026-06-28T08:00:00Z' },
-  ],
-  draftTask: null,
-};
-
-// ─── Priority Colors ─────────────────────────────────────────────────────────
-
-const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
-  P0: { bg: 'bg-terracotta/10', text: 'text-terracotta' },
-  P1: { bg: 'bg-gold/10', text: 'text-gold' },
-  P2: { bg: 'bg-ink-muted/10', text: 'text-ink-muted' },
-};
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-function LeaderAvatar({ isThinking }: { isThinking: boolean }) {
+function LeaderAvatar({ label, isThinking }: { label: string; isThinking: boolean }) {
+  const initial = (label || 'L').charAt(0).toUpperCase();
   return (
     <div className="flex flex-col items-center gap-1 flex-shrink-0">
       <div
         className={cn(
-          'w-8 h-8 rounded-full overflow-hidden border-2',
-          isThinking
-            ? 'border-gold animate-pulse'
-            : 'border-gold-muted'
+          'w-8 h-8 rounded-full flex items-center justify-center border-2 bg-vellum-deep font-display text-body-sm text-terracotta',
+          isThinking ? 'border-gold animate-pulse' : 'border-gold-muted'
         )}
       >
-        <img
-          src="/agent-avatar-atlas.jpg"
-          alt="Atlas"
-          className="w-full h-full object-cover"
-        />
+        {initial}
       </div>
-      <span className="font-body text-body-xs text-ink-light">Atlas</span>
+      <span className="font-body text-body-xs text-ink-light max-w-[64px] truncate">{label}</span>
     </div>
   );
 }
@@ -93,12 +69,12 @@ function LeaderAvatar({ isThinking }: { isThinking: boolean }) {
 function ChatMessage({
   role,
   content,
-  timestamp,
+  leaderLabel,
   isThinking,
 }: {
   role: 'patron' | 'leader' | 'system';
   content: string;
-  timestamp: string;
+  leaderLabel: string;
   isThinking?: boolean;
 }) {
   const { t } = useTranslation();
@@ -111,31 +87,23 @@ function ChatMessage({
         className="flex items-center justify-center gap-3 my-3"
       >
         <span className="w-10 h-px bg-vellum-dark" />
-        <span className="font-body text-body-xs text-ink-muted italic">
-          {content}
-        </span>
+        <span className="font-body text-body-xs text-ink-muted italic">{content}</span>
         <span className="w-10 h-px bg-vellum-dark" />
       </motion.div>
     );
   }
 
   const isPatron = role === 'patron';
-  const timeAgo = formatTimeAgo(new Date(timestamp), t);
 
   return (
     <motion.div
       initial={isPatron ? { opacity: 0, y: 10 } : { opacity: 0, x: -15 }}
       animate={{ opacity: 1, x: 0, y: 0 }}
       transition={{ duration: 0.3, ease: [0, 0, 0.2, 1] as [number, number, number, number] }}
-      className={cn(
-        'flex gap-3 mb-4 group',
-        isPatron ? 'flex-row-reverse' : 'flex-row'
-      )}
+      className={cn('flex gap-3 mb-4 group', isPatron ? 'flex-row-reverse' : 'flex-row')}
     >
-      {/* Avatar (leader only) */}
-      {!isPatron && <LeaderAvatar isThinking={isThinking ?? false} />}
+      {!isPatron && <LeaderAvatar label={leaderLabel} isThinking={isThinking ?? false} />}
 
-      {/* Bubble */}
       <div
         className={cn(
           'relative max-w-[85%] px-4 py-3 font-body text-body-md',
@@ -148,119 +116,30 @@ function ChatMessage({
         {isThinking ? (
           <div className="flex items-center gap-2 text-ink-light">
             <Loader2 className="w-4 h-4 animate-spin" />
-            <span>{t('commission.thinking')}</span>
-            <span className="flex gap-0.5">
-              <span className="w-1 h-1 rounded-full bg-ink-muted animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-1 h-1 rounded-full bg-ink-muted animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-1 h-1 rounded-full bg-ink-muted animate-bounce" style={{ animationDelay: '300ms' }} />
-            </span>
+            <span>{t('commission.leaderThinking')}</span>
           </div>
         ) : (
-          <div className={cn('whitespace-pre-wrap', !isPatron && 'text-ink')}>
-            {content}
-          </div>
+          <div className={cn('whitespace-pre-wrap', !isPatron && 'text-ink')}>{content}</div>
         )}
-
-        {/* Timestamp on hover */}
-        <div
-          className={cn(
-            'absolute top-full mt-1 font-body text-body-xs text-ink-muted opacity-0 group-hover:opacity-100 transition-opacity',
-            isPatron ? 'right-0' : 'left-0'
-          )}
-        >
-          {timeAgo}
-        </div>
       </div>
     </motion.div>
   );
 }
 
-function formatTimeAgo(date: Date, t: (key: string, opts?: Record<string, unknown>) => string): string {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return t('common.justNow');
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return t('common.minutesAgo', { count: minutes });
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return t('common.hoursAgo', { count: hours });
-  return t('common.daysAgo', { count: Math.floor(hours / 24) });
-}
+// ─── Task Preview Pane (reflects the REAL draft Task the Leader is shaping) ───────
 
-// ─── Task Preview Pane ───────────────────────────────────────────────────────
-
-function TaskPreview({
-  draftTask,
-  onUpdate,
-}: {
-  draftTask: LocalDraftTask | null;
-  onUpdate: (task: LocalDraftTask) => void;
-}) {
+function TaskPreview({ draftTask, leaderState }: { draftTask: import('@/store/mockStore').Task | null; leaderState: string }) {
   const { t } = useTranslation();
-  const mariuses = useMockStore((s) => s.mariuses);
-  const tasks = useMockStore((s) => s.tasks);
 
   if (!draftTask) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center px-8">
         <Bot className="w-12 h-12 text-ink-muted mb-4" strokeWidth={1.5} />
-        <p className="font-body text-body-md text-ink-light mb-1">
-          {t('commission.emptyPreviewTitle')}
-        </p>
-        <p className="font-body text-body-sm text-ink-muted">
-          {t('commission.emptyPreviewDescription')}
-        </p>
+        <p className="font-body text-body-md text-ink-light mb-1">{t('commission.emptyPreviewTitle')}</p>
+        <p className="font-body text-body-sm text-ink-muted">{t('commission.emptyPreviewDescription')}</p>
       </div>
     );
   }
-
-  const handleChecklistToggle = (index: number) => {
-    const newChecklist = draftTask.checklist.map((item, i) =>
-      i === index ? { ...item, checked: !item.checked } : item
-    );
-    onUpdate({ ...draftTask, checklist: newChecklist });
-  };
-
-  const handleAddChecklistItem = () => {
-    onUpdate({
-      ...draftTask,
-      checklist: [...draftTask.checklist, { text: '', checked: false }],
-    });
-  };
-
-  const handleRemoveChecklistItem = (index: number) => {
-    onUpdate({
-      ...draftTask,
-      checklist: draftTask.checklist.filter((_, i) => i !== index),
-    });
-  };
-
-  const handleUpdateChecklistText = (index: number, text: string) => {
-    const newChecklist = draftTask.checklist.map((item, i) =>
-      i === index ? { ...item, text } : item
-    );
-    onUpdate({ ...draftTask, checklist: newChecklist });
-  };
-
-  const toggleWorker = (mariusId: string) => {
-    const has = draftTask.workers.includes(mariusId);
-    onUpdate({
-      ...draftTask,
-      workers: has
-        ? draftTask.workers.filter((w) => w !== mariusId)
-        : [...draftTask.workers, mariusId],
-    });
-  };
-
-  const removeDependency = (depId: string) => {
-    onUpdate({
-      ...draftTask,
-      dependencies: draftTask.dependencies.filter((d) => d !== depId),
-    });
-  };
-
-  const selectedWorkers = mariuses.filter((m) => draftTask.workers.includes(m.id));
-  const availableWorkers = mariuses.filter(
-    (m) => m.status !== 'invited' && m.status !== 'pending' && m.status !== 'revoked'
-  );
 
   return (
     <motion.div
@@ -269,27 +148,30 @@ function TaskPreview({
       transition={{ duration: 0.4, ease: [0, 0, 0.2, 1] as [number, number, number, number] }}
       className="flex flex-col h-full overflow-y-auto"
     >
-      {/* Identifier */}
-      <div className="mb-4">
+      {/* Identifier + live status */}
+      <div className="mb-4 flex items-center gap-2">
         <span className="font-mono text-mono-md text-terracotta">
-          {draftTask.identifier}
+          {draftTask.identifier || draftTask.id.slice(0, 8)}
         </span>
-        <span className="ml-2 font-body text-body-xs text-ink-muted">(draft)</span>
+        <span className="font-body text-body-xs text-ink-muted">({draftTask.status})</span>
+        {leaderState === 'thinking' && (
+          <span className="ml-auto inline-flex items-center gap-1 font-body text-body-xs text-gold">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            {t('commission.shaping')}
+          </span>
+        )}
       </div>
 
       <hr className="border-vellum-dark mb-4" />
 
-      {/* Title */}
+      {/* Title (as shaped by the Leader — read-only) */}
       <div className="mb-4">
         <label className="block font-body text-body-sm font-medium text-ink mb-1">
           {t('commission.fieldLabels.title')}
         </label>
-        <input
-          type="text"
-          value={draftTask.title}
-          onChange={(e) => onUpdate({ ...draftTask, title: e.target.value })}
-          className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-md font-body text-body-md text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors"
-        />
+        <p className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-md font-body text-body-md text-ink">
+          {draftTask.title}
+        </p>
       </div>
 
       {/* Description */}
@@ -297,187 +179,14 @@ function TaskPreview({
         <label className="block font-body text-body-sm font-medium text-ink mb-1">
           {t('commission.fieldLabels.description')}
         </label>
-        <textarea
-          value={draftTask.description || ''}
-          onChange={(e) => onUpdate({ ...draftTask, description: e.target.value })}
-          rows={3}
-          className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-md font-body text-body-md text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors resize-none"
-        />
-      </div>
-
-      {/* Priority */}
-      <div className="mb-4">
-        <label className="block font-body text-body-sm font-medium text-ink mb-1">
-          {t('commission.fieldLabels.priority')}
-        </label>
-        <select
-          value={draftTask.priority}
-          onChange={(e) => onUpdate({ ...draftTask, priority: e.target.value as 'P0' | 'P1' | 'P2' })}
-          className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-md font-body text-body-md text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors appearance-none cursor-pointer"
+        <p
+          className={cn(
+            'w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-md font-body text-body-md whitespace-pre-wrap',
+            draftTask.description ? 'text-ink' : 'text-ink-muted italic'
+          )}
         >
-          {['P0', 'P1', 'P2'].map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Definition of Done */}
-      <div className="mb-4">
-        <label className="block font-body text-body-sm font-medium text-ink mb-1">
-          {t('commission.fieldLabels.definitionOfDone')}
-        </label>
-        <textarea
-          value={draftTask.definitionOfDone}
-          onChange={(e) => onUpdate({ ...draftTask, definitionOfDone: e.target.value })}
-          rows={3}
-          className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-md font-body text-body-md text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors resize-none"
-        />
-      </div>
-
-      {/* Checklist */}
-      <div className="mb-4">
-        <label className="block font-body text-body-sm font-medium text-ink mb-2">
-          {t('commission.fieldLabels.checklist')}
-        </label>
-        <div className="space-y-1.5">
-          {draftTask.checklist.map((item, index) => (
-            <motion.div
-              key={index}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.04, duration: 0.2 }}
-              className="flex items-center gap-2 group"
-            >
-              <button
-                onClick={() => handleChecklistToggle(index)}
-                className="flex-shrink-0 text-ink-muted hover:text-terracotta transition-colors"
-              >
-                {item.checked ? (
-                  <CheckCircle2 className="w-4 h-4 text-success" />
-                ) : (
-                  <Circle className="w-4 h-4" />
-                )}
-              </button>
-              <input
-                type="text"
-                value={item.text}
-                onChange={(e) => handleUpdateChecklistText(index, e.target.value)}
-                className={cn(
-                  'flex-1 bg-transparent font-body text-body-sm focus:outline-none border-b border-transparent focus:border-terracotta/30 transition-colors',
-                  item.checked && 'line-through text-ink-muted'
-                )}
-              />
-              <button
-                onClick={() => handleRemoveChecklistItem(index)}
-                className="opacity-0 group-hover:opacity-100 text-ink-muted hover:text-error transition-all"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </motion.div>
-          ))}
-          <button
-            onClick={handleAddChecklistItem}
-            className="flex items-center gap-1.5 text-ink-muted hover:text-terracotta transition-colors font-body text-body-sm mt-2"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            {t('commission.addItem')}
-          </button>
-        </div>
-      </div>
-
-      {/* Due Date */}
-      <div className="mb-4">
-        <label className="block font-body text-body-sm font-medium text-ink mb-1">
-          {t('commission.fieldLabels.dueDate')}
-        </label>
-        <input
-          type="date"
-          value={draftTask.dueDate}
-          onChange={(e) => onUpdate({ ...draftTask, dueDate: e.target.value })}
-          className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-md font-body text-body-md text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors"
-        />
-      </div>
-
-      {/* Workers */}
-      <div className="mb-4">
-        <label className="block font-body text-body-sm font-medium text-ink mb-2">
-          {t('commission.fieldLabels.workers')}
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {selectedWorkers.map((w) => (
-            <span
-              key={w.id}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-vellum border border-vellum-dark font-body text-body-sm text-ink"
-            >
-              <img src={w.avatar} alt={w.displayName || w.name} className="w-4 h-4 rounded-full object-cover" />
-              {w.displayName || w.name}
-              <button
-                onClick={() => toggleWorker(w.id)}
-                className="ml-0.5 text-ink-muted hover:text-error"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          ))}
-        </div>
-        {/* Worker selector */}
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {availableWorkers
-            .filter((w) => !draftTask.workers.includes(w.id))
-            .map((w) => (
-              <button
-                key={w.id}
-                onClick={() => toggleWorker(w.id)}
-                className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-dashed border-vellum-dark hover:border-terracotta hover:bg-terracotta/5 font-body text-body-xs text-ink-light hover:text-terracotta transition-colors"
-              >
-                <span className={cn('w-1.5 h-1.5 rounded-full', w.status === 'online' || w.status === 'working' ? 'bg-status-online' : 'bg-status-offline')} />
-                + {w.displayName || w.name}
-              </button>
-            ))}
-        </div>
-      </div>
-
-      {/* Dependencies */}
-      <div className="mb-6">
-        <label className="block font-body text-body-sm font-medium text-ink mb-2">
-          {t('commission.fieldLabels.dependencies')}
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {draftTask.dependencies.map((depId) => {
-            const depTask = tasks.find((t) => t.id === depId);
-            return (
-              <span
-                key={depId}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-vellum-deep border border-vellum-dark font-mono text-mono-sm text-ink"
-              >
-                {depTask?.identifier || depId}
-                <button
-                  onClick={() => removeDependency(depId)}
-                  className="text-ink-muted hover:text-error"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            );
-          })}
-        </div>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {tasks
-            .filter((t) => !draftTask.dependencies.includes(t.id) && t.id !== 't-new')
-            .map((t) => (
-              <button
-                key={t.id}
-                onClick={() =>
-                  onUpdate({ ...draftTask, dependencies: [...draftTask.dependencies, t.id] })
-                }
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-dashed border-vellum-dark hover:border-terracotta hover:bg-terracotta/5 font-mono text-mono-sm text-ink-light hover:text-terracotta transition-colors"
-              >
-                + {t.identifier}
-              </button>
-            ))}
-        </div>
+          {draftTask.description || t('commission.noDescription')}
+        </p>
       </div>
     </motion.div>
   );
@@ -491,81 +200,89 @@ export default function Commission() {
   const navigate = useNavigate();
   const store = useMockStore();
 
-  // Local state for commission session (store doesn't have commission support)
-  const [session, setSession] = useState<CommissionSession>(INITIAL_COMMISSION);
-  const [messages, setMessages] = useState<CommissionMessage[]>(INITIAL_COMMISSION.messages);
-  const [draftTask, setDraftTask] = useState<LocalDraftTask | null>(null);
-  // Real-API commission session id (set once the first patron message opens a commission).
-  const [realSessionId, setRealSessionId] = useState<string | null>(null);
+  // Real commission session (from the backend) — null until the first Patron message opens one.
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [session, setSession] = useState<import('@/lib/api').CommissionDTO | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const project = store.projects.find((p) => p.id === projectId);
+  const tasks = store.tasks;
+  const draftTask = session?.task_id ? tasks.find((tk) => tk.id === session.task_id) || null : null;
 
-  // Ensure the project (roster/status) is loaded so the locked gate works.
+  // Ensure the project (roster/status) is loaded so the locked gate + leader lookup work.
   useEffect(() => {
     if (!projectId) return;
     store.hydrateProject(projectId);
   }, [projectId]);
-  // Find leader by looking for a marius with role containing "Leader" in the project
-  const leader = store.mariuses.find((m) => m.projectIds.includes(projectId || '') && m.role.toLowerCase().includes('leader'));
+
+  // Resolve the REAL seated Leader from the project roster (no hardcoded "Atlas").
+  const leaderSeat = (project?.seats || []).find((s) => s.role === 'leader' && s.mariusId);
+  const leader = leaderSeat ? store.mariuses.find((m) => m.id === leaderSeat.mariusId) : undefined;
+  const leaderLabel = leader?.displayName || leader?.name || t('commission.leaderFallback');
+  const leaderState = session?.leader_state ?? 'waiting';
+
+  const messages = transcriptToMessages(session?.transcript);
 
   const [inputValue, setInputValue] = useState('');
-  const [isThinking, setIsThinking] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom as the transcript grows / the Leader works.
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length, isThinking]);
+  }, [messages.length, leaderState]);
 
-  const addMessage = useCallback((msg: Omit<CommissionMessage, 'id' | 'timestamp'>) => {
-    const newMsg: CommissionMessage = {
-      ...msg,
-      id: `msg-${Date.now()}`,
-      timestamp: new Date().toISOString(),
+  // While the Leader is shaping (thinking), poll the real session + draft task so the
+  // transcript, leader_state and the shaped Task title/description refresh as work lands.
+  useEffect(() => {
+    if (!sessionId || leaderState !== 'thinking') return;
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      try {
+        const fresh = await api.getCommission(sessionId);
+        if (cancelled) return;
+        setSession(fresh);
+        if (fresh.task_id) store.hydrateTask(fresh.task_id).catch(() => {});
+      } catch {
+        // transient — keep the last known state and retry on the next tick
+      }
+    }, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
     };
-    setMessages((prev) => [...prev, newMsg]);
-    setSession((prev) => ({ ...prev, messages: [...prev.messages, newMsg] }));
-  }, []);
+  }, [sessionId, leaderState]);
 
   const handleSend = useCallback(() => {
-    if (!inputValue.trim()) return;
-
+    if (!inputValue.trim() || isSending) return;
     const sentInput = inputValue.trim();
-    addMessage({ role: 'patron', content: sentInput });
     setInputValue('');
+    setError(null);
+    setIsSending(true);
 
-    // Open (or refine) the commission. The Leader shapes the draft asynchronously via the
-    // wake run; we surface a preview derived from the patron's message so the confirm gate
-    // is reachable.
-    setIsThinking(true);
     void (async () => {
       try {
-        if (!realSessionId) {
+        if (!sessionId) {
           const dto = await api.startCommission({ project_id: projectId, message: sentInput });
-          setRealSessionId(dto.id);
-          setDraftTask({
-            identifier: 'DRAFT',
-            title: sentInput.slice(0, 80),
-            description: sentInput,
-            priority: 'P1',
-            definitionOfDone: '',
-            checklist: [],
-            dueDate: '',
-            workers: [],
-            dependencies: [],
-          });
+          setSessionId(dto.id);
+          setSession(dto);
+          if (dto.task_id) store.hydrateTask(dto.task_id).catch(() => {});
         } else {
-          await api.refineCommission(realSessionId, { message: sentInput });
+          const dto = await api.refineCommission(sessionId, { message: sentInput });
+          setSession(dto);
+          if (dto.task_id) store.hydrateTask(dto.task_id).catch(() => {});
         }
-      } catch {
-        addMessage({ role: 'system', content: 'Could not reach the Leader. Try again.' });
+      } catch (e) {
+        // Surface the REAL backend reason (e.g. "no Leader is seated on this project").
+        setError(e instanceof Error ? e.message : t('commission.startError'));
+        setInputValue(sentInput); // let the patron retry without retyping
       } finally {
-        setIsThinking(false);
+        setIsSending(false);
       }
     })();
-  }, [inputValue, addMessage, realSessionId, projectId]);
+  }, [inputValue, isSending, sessionId, projectId, t]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -574,31 +291,23 @@ export default function Commission() {
     }
   };
 
-  const handleRefine = () => {
-    setInputValue('Please revise: ');
-    textareaRef.current?.focus();
-  };
-
   const handleConfirm = async () => {
-    if (!realSessionId) return;
-
+    if (!sessionId) return;
     setIsConfirming(true);
-
-    // Confirm flips the draft → todo on the backend, then re-hydrate so the freshly
-    // published task appears on the board.
+    setError(null);
     try {
-      await api.confirmCommission(realSessionId);
+      await api.confirmCommission(sessionId);
       await store.hydrateProject(projectId);
-      addMessage({ role: 'system', content: 'Task published to the board.' });
-    } catch {
-      addMessage({ role: 'system', content: 'Could not confirm the task.' });
-    } finally {
-      setIsConfirming(false);
       navigate(wsHref(workspaceId, `/projects/${projectId}`));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('commission.confirmError'));
+      setIsConfirming(false);
     }
   };
 
-  // ─── Locked state ───
+  const backToBoard = () => navigate(wsHref(workspaceId, `/projects/${projectId}`));
+
+  // ─── Locked state (real: project still in setup) ───
   if (project?.status === 'setup') {
     return (
       <motion.div
@@ -614,12 +323,8 @@ export default function Commission() {
           >
             <Lock className="w-16 h-16 text-ink-muted mx-auto mb-6" strokeWidth={1.5} />
           </motion.div>
-          <h2 className="font-display text-display-md text-ink mb-3">
-            {t('commission.lockedTitle')}
-          </h2>
-          <p className="font-body text-body-lg text-ink-light mb-8">
-            {t('commission.lockedDescription')}
-          </p>
+          <h2 className="font-display text-display-md text-ink mb-3">{t('commission.lockedTitle')}</h2>
+          <p className="font-body text-body-lg text-ink-light mb-8">{t('commission.lockedDescription')}</p>
           <button
             onClick={() => navigate(wsHref(workspaceId, `/projects/${projectId}/roster`))}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-md bg-terracotta text-white font-body text-body-md font-medium hover:bg-terracotta-light transition-colors"
@@ -641,44 +346,61 @@ export default function Commission() {
         transition={{ duration: 0.5, ease: [0, 0, 0.2, 1] as [number, number, number, number] }}
         className="px-6 pt-6 pb-4 flex-shrink-0"
       >
-        <div className="flex items-center gap-3">
-          <PageTitle
-            title={t('commission.title')}
-            subtitle={t('commission.subtitle', { leaderName: leader?.displayName || 'Atlas' })}
-          />
-        </div>
+        <button
+          onClick={backToBoard}
+          className="inline-flex items-center gap-1 mb-3 px-2.5 py-1.5 rounded-md bg-vellum-deep border border-vellum-dark font-body text-body-sm text-ink hover:bg-vellum-dark transition-colors"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          {t('commission.backToBoard')}
+        </button>
+        <PageTitle
+          title={t('commission.title')}
+          subtitle={t('commission.subtitle', { leaderName: leaderLabel })}
+        />
       </motion.div>
 
       {/* ─── Two-Pane Layout ─── */}
       <div className="flex flex-1 min-h-0 px-6 pb-6 gap-4">
-        {/* Left: Chat (60%) */}
+        {/* Left: Chat (58%) */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4, ease: [0, 0, 0.2, 1] as [number, number, number, number] }}
           className="flex-[58] flex flex-col min-h-0 bg-vellum border border-vellum-dark rounded-md overflow-hidden"
         >
+          {/* Leader-offline banner (real leader_state) */}
+          {leaderState === 'leader_offline' && (
+            <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-warning-bg border-b border-warning/20 font-body text-body-sm text-warning">
+              <WifiOff className="w-4 h-4 flex-shrink-0" />
+              {t('commission.leaderOffline')}
+            </div>
+          )}
+
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-4">
+            {messages.length === 0 && (
+              <div className="flex flex-col items-center justify-center h-full text-center px-6">
+                <Bot className="w-10 h-10 text-ink-muted mb-3" strokeWidth={1.5} />
+                <p className="font-body text-body-md text-ink-light">
+                  {t('commission.startPrompt', { leaderName: leaderLabel })}
+                </p>
+              </div>
+            )}
             {messages.map((msg) => (
-              <ChatMessage
-                key={msg.id}
-                role={msg.role}
-                content={msg.content}
-                timestamp={msg.timestamp}
-                isThinking={false}
-              />
+              <ChatMessage key={msg.id} role={msg.role} content={msg.content} leaderLabel={leaderLabel} />
             ))}
-            {isThinking && (
-              <ChatMessage
-                role="leader"
-                content=""
-                timestamp={new Date().toISOString()}
-                isThinking={true}
-              />
+            {leaderState === 'thinking' && (
+              <ChatMessage role="leader" content="" leaderLabel={leaderLabel} isThinking />
             )}
             <div ref={chatEndRef} />
           </div>
+
+          {/* Error strip (real backend detail) */}
+          {error && (
+            <div className="flex-shrink-0 px-4 py-2 bg-error-bg border-t border-error/20 font-body text-body-sm text-error">
+              {error}
+            </div>
+          )}
 
           {/* Composer */}
           <div className="flex-shrink-0 border-t border-vellum-dark bg-vellum-deep px-4 py-3">
@@ -696,21 +418,21 @@ export default function Commission() {
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={handleSend}
-                disabled={!inputValue.trim() || isThinking}
+                disabled={!inputValue.trim() || isSending}
                 className={cn(
                   'w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-colors',
-                  inputValue.trim() && !isThinking
+                  inputValue.trim() && !isSending
                     ? 'bg-terracotta text-white hover:bg-terracotta-light'
                     : 'bg-vellum-dark text-ink-muted cursor-not-allowed'
                 )}
               >
-                <Send className="w-4 h-4" />
+                {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               </motion.button>
             </div>
           </div>
         </motion.div>
 
-        {/* Right: Task Preview (40%) */}
+        {/* Right: Task Preview (42%) */}
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -719,26 +441,13 @@ export default function Commission() {
         >
           {/* Preview Header */}
           <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-vellum-dark">
-            <h2 className="font-display text-display-sm text-ink">
-              {t('commission.previewTitle')}
-            </h2>
-            {draftTask && (
-              <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-body text-body-xs font-medium', PRIORITY_COLORS[draftTask?.priority || 'P1']?.bg, PRIORITY_COLORS[draftTask?.priority || 'P1']?.text)}>
-                <Star className="w-3 h-3" />
-                {draftTask.priority}
-              </span>
-            )}
+            <h2 className="font-display text-display-sm text-ink">{t('commission.previewTitle')}</h2>
+            {draftTask && <StatusChip status={draftTask.status} label={draftTask.status} />}
           </div>
 
           {/* Preview Content */}
           <div className="flex-1 overflow-y-auto px-4 py-4">
-            <TaskPreview
-              draftTask={draftTask}
-              onUpdate={(updated) => {
-                setDraftTask(updated);
-                setSession((prev) => ({ ...prev, draftTask: updated }));
-              }}
-            />
+            <TaskPreview draftTask={draftTask} leaderState={leaderState} />
           </div>
 
           {/* Action Buttons */}
@@ -749,26 +458,17 @@ export default function Commission() {
               className="flex-shrink-0 flex gap-3 px-4 py-3 border-t border-vellum-dark"
             >
               <button
-                onClick={handleRefine}
-                disabled={isConfirming}
-                className="flex-1 px-4 py-2.5 rounded-md font-body text-body-md font-medium bg-vellum-deep text-ink border border-vellum-dark hover:bg-vellum-dark transition-colors disabled:opacity-50"
-              >
-                {t('commission.refine')}
-              </button>
-              <button
                 onClick={handleConfirm}
                 disabled={isConfirming || !draftTask.title}
                 className={cn(
-                  'flex-[2] px-4 py-2.5 rounded-md font-body text-body-md font-medium transition-colors inline-flex items-center justify-center gap-2',
-                  isConfirming
-                    ? 'bg-gold-muted text-ink cursor-wait'
-                    : 'bg-gold text-ink hover:bg-gold-light'
+                  'flex-1 px-4 py-2.5 rounded-md font-body text-body-md font-medium transition-colors inline-flex items-center justify-center gap-2',
+                  isConfirming ? 'bg-gold-muted text-ink cursor-wait' : 'bg-gold text-ink hover:bg-gold-light'
                 )}
               >
                 {isConfirming ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Creating...
+                    {t('commission.creating')}
                   </>
                 ) : (
                   <>

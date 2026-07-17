@@ -1,10 +1,10 @@
 // @ts-nocheck
-import { useLocation } from 'react-router';
+import { useLocation, Link } from 'react-router';
 import { motion } from 'framer-motion';
 import { Search, Wifi, WifiOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useMockStore } from '@/store/mockStore';
-import { cn } from '@/lib/utils';
+import { cn, wsHref } from '@/lib/utils';
 
 // Known route segments → i18n nav keys (project/workspace names stay as data)
 const SEGMENT_KEYS: Record<string, string> = {
@@ -13,7 +13,11 @@ const SEGMENT_KEYS: Record<string, string> = {
   skills: 'nav.skills',
   inbox: 'nav.inbox',
   account: 'nav.account',
+  roster: 'board.roster',
+  commission: 'board.commission',
 };
+
+const UUID_LIKE = /^[0-9a-f]{8}-[0-9a-f]{4}/i;
 
 function useBreadcrumbs() {
   const { t } = useTranslation();
@@ -22,27 +26,34 @@ function useBreadcrumbs() {
   const projects = useMockStore((s) => s.projects);
   const activeWorkspaceId = useMockStore((s) => s.activeWorkspaceId);
 
-  const segments = location.pathname.split('/').filter(Boolean);
+  const raw = location.pathname.split('/').filter(Boolean);
+  // Strip the `/w/:workspaceId` prefix — the workspace gets its own crumb below.
+  const segments = raw[0] === 'w' ? raw.slice(2) : raw;
+
   const crumbs: { label: string; path?: string }[] = [];
 
-  if (segments.length === 0 || location.pathname === '/') {
-    const ws = workspaces.find((w) => w.id === activeWorkspaceId);
-    crumbs.push({ label: ws?.name || t('nav.workspace') });
+  // Workspace crumb → up to the projects list (stays in-workspace).
+  const ws = workspaces.find((w) => w.id === activeWorkspaceId);
+  crumbs.push({
+    label: ws?.name || t('nav.workspace'),
+    path: activeWorkspaceId ? wsHref(activeWorkspaceId, '/projects') : '/workspaces',
+  });
+
+  if (segments.length === 0) {
     crumbs.push({ label: t('nav.projects') });
     return crumbs;
   }
 
-  // Add workspace name
-  if (activeWorkspaceId) {
-    const ws = workspaces.find((w) => w.id === activeWorkspaceId);
-    crumbs.push({ label: ws?.name || t('nav.workspace'), path: '/workspaces' });
-  }
+  segments.forEach((seg, i) => {
+    const isLast = i === segments.length - 1;
 
-  segments.forEach((seg) => {
-    if (seg === 'workspaces') return;
-    if (seg.startsWith('p-')) {
-      const p = projects.find((pr) => pr.id === seg);
-      crumbs.push({ label: p?.name || seg });
+    // A project id → show its name, link to its board (unless it's the last crumb).
+    const project = projects.find((pr) => pr.id === seg);
+    if (project) {
+      crumbs.push({
+        label: project.name,
+        path: isLast ? undefined : wsHref(activeWorkspaceId, `/projects/${seg}`),
+      });
       return;
     }
     if (seg === 'new') {
@@ -50,9 +61,15 @@ function useBreadcrumbs() {
       return;
     }
     if (SEGMENT_KEYS[seg]) {
-      crumbs.push({ label: t(SEGMENT_KEYS[seg]) });
+      // Top-level list segments link to their in-workspace page; sub-page labels don't.
+      const listPath =
+        seg === 'roster' || seg === 'commission' ? undefined : wsHref(activeWorkspaceId, `/${seg}`);
+      crumbs.push({ label: t(SEGMENT_KEYS[seg]), path: isLast ? undefined : listPath });
       return;
     }
+    // Unresolved id-like segment (agent/task/skill id not in the store) — skip the raw
+    // UUID rather than rendering a mangled string.
+    if (UUID_LIKE.test(seg)) return;
     const label = seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' ');
     crumbs.push({ label });
   });
@@ -74,9 +91,9 @@ export default function TopBar() {
           <span key={i} className="flex items-center gap-2">
             {i > 0 && <span className="text-ink-muted">/</span>}
             {crumb.path ? (
-              <a href={crumb.path} className="hover:text-terracotta transition-colors">
+              <Link to={crumb.path} className="hover:text-terracotta transition-colors">
                 {crumb.label}
-              </a>
+              </Link>
             ) : (
               <span className={i === crumbs.length - 1 ? 'text-ink font-medium' : ''}>
                 {crumb.label}
