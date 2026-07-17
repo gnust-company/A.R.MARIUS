@@ -748,6 +748,9 @@ class SqlTaskRepository(TaskRepository):
                 description=task.description,
                 status=str(task.status),
                 status_reason=task.status_reason,
+                priority=str(task.priority),
+                due_date=task.due_date,
+                definition_of_done=task.definition_of_done,
                 assigned_marius_id=task.assigned_marius_id,
                 created_by_user_id=task.created_by_user_id,
                 created_by_marius_id=task.created_by_marius_id,
@@ -783,6 +786,9 @@ class SqlTaskRepository(TaskRepository):
         m.description = task.description
         m.status = str(task.status)
         m.status_reason = task.status_reason
+        m.priority = str(task.priority)
+        m.due_date = task.due_date
+        m.definition_of_done = task.definition_of_done
         m.assigned_marius_id = task.assigned_marius_id
         m.next_action = task.next_action
         m.in_progress_at = task.in_progress_at

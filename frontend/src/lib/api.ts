@@ -285,6 +285,9 @@ export interface TaskDTO {
   description?: string | null
   status: string
   status_reason?: string | null
+  priority?: string
+  due_date?: string | null
+  definition_of_done?: string | null
   assigned_marius_id?: string | null
   next_action?: string | null
   created_at?: string | null
@@ -543,8 +546,31 @@ export async function getTask(taskId: string): Promise<TaskDTO> {
   return get<TaskDTO>(`/v1/tasks/${taskId}`)
 }
 
-export async function createTask(projectId: string, title: string, description?: string): Promise<TaskDTO> {
-  return post<TaskDTO>(`/v1/projects/${projectId}/tasks`, { title, description })
+export async function createTask(
+  projectId: string,
+  body: {
+    title: string
+    description?: string
+    priority?: string
+    due_date?: string
+    definition_of_done?: string
+    assigned_marius_id?: string
+  },
+): Promise<TaskDTO> {
+  return post<TaskDTO>(`/v1/projects/${projectId}/tasks`, body)
+}
+
+/** A seated project agent — the manual add-task assignee dropdown source (#82). */
+export interface ProjectAgentDTO {
+  marius_id: string
+  name: string
+  role_key: string
+  liveness: string
+  is_primary: boolean
+}
+
+export async function listProjectAgents(projectId: string): Promise<ProjectAgentDTO[]> {
+  return get<ProjectAgentDTO[]>(`/v1/projects/${projectId}/agents`)
 }
 
 export async function updateTaskStatus(taskId: string, status: string, reason?: string): Promise<TaskDTO> {

@@ -3,13 +3,24 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from uuid import UUID
 
 from armarius.application.use_cases.types import UowFactory
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.domain.entities.run import WakeSource
-from armarius.domain.entities.task import Task, TaskStatus
+from armarius.domain.entities.task import Task, TaskPriority, TaskStatus
 from armarius.shared.clock import utcnow
+
+
+def _coerce_priority(value: str | TaskPriority | None) -> TaskPriority:
+    """Map a patron/agent-supplied priority to the enum; unknown/empty → MEDIUM."""
+    if value is None or value == "":
+        return TaskPriority.MEDIUM
+    try:
+        return TaskPriority(str(value).lower())
+    except ValueError:
+        return TaskPriority.MEDIUM
 
 
 class TaskService:
@@ -24,13 +35,17 @@ class TaskService:
         title: str,
         description: str | None = None,
         status: TaskStatus = TaskStatus.BACKLOG,
+        priority: str | TaskPriority | None = None,
+        due_date: datetime | None = None,
+        definition_of_done: str | None = None,
         created_by_user_id: str | None = None,
         created_by_marius_id: UUID | None = None,
         assigned_marius_id: UUID | None = None,
     ) -> Task:
         """Create a task. Defaults to a ``backlog`` task; the Leader's Chat-with-Leader
         proposals pass ``status=DRAFT`` + a proposed ``assigned_marius_id`` so the task
-        waits for the patron's approval before any worker is woken (#82)."""
+        waits for the patron's approval before any worker is woken (#82). The patron's manual
+        add-task supplies the full definition — priority/due_date/definition_of_done/assignee."""
         async with self._uow() as uow:
             if await uow.projects.get(project_id) is None:
                 raise LookupError("project not found")
@@ -40,6 +55,9 @@ class TaskService:
                 title=title,
                 description=description,
                 status=status,
+                priority=_coerce_priority(priority),
+                due_date=due_date,
+                definition_of_done=definition_of_done,
                 created_by_user_id=created_by_user_id,
                 created_by_marius_id=created_by_marius_id,
                 assigned_marius_id=assigned_marius_id,

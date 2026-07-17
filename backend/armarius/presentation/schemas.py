@@ -319,6 +319,13 @@ class MetaOut(BaseModel):
 class CreateTaskIn(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     description: str | None = None
+    # A task is more than a title — capture the full definition the patron has in mind (#82).
+    # priority is one of TaskPriority (critical/high/medium/low); anything else falls back to
+    # medium in the service layer. assigned_marius_id seats the task on a project agent.
+    priority: str | None = None
+    due_date: datetime | None = None
+    definition_of_done: str | None = None
+    assigned_marius_id: UUID | None = None
     created_by_user_id: str | None = None
 
 
@@ -342,6 +349,9 @@ class TaskOut(_Out):
     description: str | None = None
     status: str
     status_reason: str | None = None
+    priority: str = "medium"
+    due_date: datetime | None = None
+    definition_of_done: str | None = None
     assigned_marius_id: UUID | None = None
     next_action: str | None = None
     created_at: datetime | None = None

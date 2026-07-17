@@ -28,7 +28,7 @@ from armarius.domain.entities.run import Run, RunEvent, RunStatus, WakeSource
 from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.skill import Skill
-from armarius.domain.entities.task import Task, TaskStatus
+from armarius.domain.entities.task import Task, TaskPriority, TaskStatus
 from armarius.domain.entities.user import User, UserRole
 from armarius.domain.entities.wakeup import WakeupRequest, WakeupStatus
 from armarius.domain.entities.workspace import Workspace
@@ -150,6 +150,13 @@ def marius_to_entity(m: MariusModel) -> Marius:
     )
 
 
+def _task_priority(value: str | None) -> TaskPriority:
+    try:
+        return TaskPriority(value)
+    except ValueError:
+        return TaskPriority.MEDIUM
+
+
 def task_to_entity(m: TaskModel) -> Task:
     return Task(
         id=m.id,
@@ -158,6 +165,9 @@ def task_to_entity(m: TaskModel) -> Task:
         description=m.description,
         status=TaskStatus(m.status),
         status_reason=m.status_reason,
+        priority=_task_priority(m.priority),
+        due_date=m.due_date,
+        definition_of_done=m.definition_of_done,
         assigned_marius_id=m.assigned_marius_id,
         created_by_user_id=m.created_by_user_id,
         created_by_marius_id=m.created_by_marius_id,
