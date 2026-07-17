@@ -372,8 +372,11 @@ export default function ProjectBoard() {
       >
         <TabLink active>{t('board.title')}</TabLink>
         <TabLink to={wsHref(workspaceId, `/projects/${projectId}/roster`)}>{t('board.roster')}</TabLink>
+        <TabLink to={wsHref(workspaceId, `/projects/${projectId}/leader-chat`)}>
+          {t('leaderChat.title')}
+        </TabLink>
 
-        {/* Commission Button (active only) */}
+        {/* Chat-with-Leader CTA (active only) — where tasks are now commissioned (#82). */}
         <div className="ml-auto mb-1">
           <AnimatePresence>
             {isActive && (
@@ -381,7 +384,7 @@ export default function ProjectBoard() {
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                onClick={() => navigate(wsHref(workspaceId, `/projects/${projectId}/commission`))}
+                onClick={() => navigate(wsHref(workspaceId, `/projects/${projectId}/leader-chat`))}
                 className={cn(
                   'flex items-center gap-1.5 px-4 py-2 rounded-md font-body text-body-sm font-medium',
                   'bg-gold text-ink hover:bg-gold-light transition-colors',
@@ -389,7 +392,7 @@ export default function ProjectBoard() {
                 )}
               >
                 <Zap className="w-4 h-4" />
-                {t('board.commissionTask')}
+                {t('leaderChat.title')}
               </motion.button>
             )}
           </AnimatePresence>

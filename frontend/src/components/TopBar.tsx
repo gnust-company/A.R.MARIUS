@@ -15,6 +15,7 @@ const SEGMENT_KEYS: Record<string, string> = {
   account: 'nav.account',
   roster: 'board.roster',
   commission: 'board.commission',
+  'leader-chat': 'leaderChat.title',
 };
 
 const UUID_LIKE = /^[0-9a-f]{8}-[0-9a-f]{4}/i;
@@ -63,7 +64,9 @@ function useBreadcrumbs() {
     if (SEGMENT_KEYS[seg]) {
       // Top-level list segments link to their in-workspace page; sub-page labels don't.
       const listPath =
-        seg === 'roster' || seg === 'commission' ? undefined : wsHref(activeWorkspaceId, `/${seg}`);
+        seg === 'roster' || seg === 'commission' || seg === 'leader-chat'
+          ? undefined
+          : wsHref(activeWorkspaceId, `/${seg}`);
       crumbs.push({ label: t(SEGMENT_KEYS[seg]), path: isLast ? undefined : listPath });
       return;
     }
