@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router';
 import { wsHref } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Plus, Trash2, ChevronDown, ChevronUp, AlertTriangle,
+  Plus, Trash2, AlertTriangle,
   CheckCircle2, Loader2, ArrowLeft, ArrowRight, X,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -115,7 +115,6 @@ export default function CreateProject() {
   const [direction, setDirection] = useState(1);
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [errors, setErrors] = useState<FormErrors>({});
-  const [showSettings, setShowSettings] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [mode, setMode] = useState<'manual' | 'agent'>('manual');
@@ -461,31 +460,6 @@ export default function CreateProject() {
           rows={4}
           className="w-full bg-vellum border border-[#E3D7BC] rounded-md px-4 py-2.5 font-body text-body-md text-ink placeholder:text-ink-muted focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)] transition-colors resize-none"
         />
-      </div>
-
-      {/* Settings collapsible */}
-      <div>
-        <button
-          type="button"
-          onClick={() => setShowSettings(!showSettings)}
-          className="flex items-center gap-2 font-body text-body-sm text-ink-light hover:text-ink transition-colors"
-        >
-          {showSettings ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          Settings (JSON)
-        </button>
-        {showSettings && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="mt-2"
-          >
-            <pre className="bg-[#2A2318] text-[#F7F0E0] p-4 rounded-md font-mono text-body-sm overflow-auto">
-              {JSON.stringify(formData, null, 2)}
-            </pre>
-          </motion.div>
-        )}
       </div>
     </div>
   );
