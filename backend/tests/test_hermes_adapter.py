@@ -19,6 +19,33 @@ def test_dispatch_falls_back_to_type_field() -> None:
     assert etype == "run.completed"
 
 
+def test_dispatch_reads_gateway_payload_event_field() -> None:
+    # Hermes/openclaw send the discriminator in `payload["event"]` (no SSE `event:` field,
+    # no `type` key). This is the regression for the wire-format mismatch that made every run
+    # read as FAILED "stream ended before run.completed" — the gateway HAD sent run.completed.
+    etype, _payload = HermesGatewayAdapter._dispatch(
+        None, ['{"event": "run.completed", "run_id": "run_x", "usage": {"total_tokens": 10}}']
+    )
+    assert etype == "run.completed"
+
+
+def test_dispatch_normalizes_message_delta_to_assistant_delta() -> None:
+    # The gateway streams text as `message.delta` with the chunk in `delta`; wake/leader-chat
+    # consumers + the durable-event filter key on `assistant.delta` + `payload["text"]`.
+    etype, payload = HermesGatewayAdapter._dispatch(
+        None, ['{"event": "message.delta", "delta": "Ch"}']
+    )
+    assert etype == "assistant.delta"
+    assert payload["text"] == "Ch"
+
+
+def test_dispatch_sse_event_field_still_wins_over_payload_event() -> None:
+    etype, _payload = HermesGatewayAdapter._dispatch(
+        "tool.started", ['{"event": "message.delta"}']
+    )
+    assert etype == "tool.started"
+
+
 def test_dispatch_non_json_becomes_text() -> None:
     etype, payload = HermesGatewayAdapter._dispatch("assistant.delta", ["hello world"])
     assert etype == "assistant.delta"

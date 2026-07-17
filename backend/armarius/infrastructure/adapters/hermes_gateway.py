@@ -199,8 +199,12 @@ class HermesGatewayAdapter(MariusAdapter):
             async for line in stream.aiter_lines():
                 if line == "":  # blank line dispatches the buffered event
                     if data_lines:
-                        yield self._dispatch(event_name, data_lines)
-                        if event_name in _TERMINAL_EVENTS:
+                        ev_type, ev_payload = self._dispatch(event_name, data_lines)
+                        yield ev_type, ev_payload
+                        # Stop the moment a terminal event is dispatched. The terminal check
+                        # uses the *resolved* type (Hermes sends no SSE `event:` field, so the
+                        # raw `event_name` is None — the discriminator lives in the payload).
+                        if ev_type in _TERMINAL_EVENTS:
                             return
                     event_name, data_lines = None, []
                     continue
@@ -220,7 +224,19 @@ class HermesGatewayAdapter(MariusAdapter):
             payload = parsed if isinstance(parsed, dict) else {"value": parsed}
         except json.JSONDecodeError:
             payload = {"text": raw}
-        event_type = event_name or str(payload.get("type") or "message")
+        # Discriminator precedence: the SSE `event:` field, then the gateway's JSON `event`
+        # key (Hermes/openclaw send no SSE field and no `type` key — the name lives in
+        # `payload["event"]`), then a legacy `type` key, else a neutral `message`.
+        source = event_name or payload.get("event") or payload.get("type")
+        event_type = str(source or "message")
+        # Normalize the gateway's streaming vocabulary to the internal one, so the wake +
+        # leader-chat consumers (and the durable-event filter) all key on `assistant.delta`
+        # with the chunk in `payload["text"]`. Hermes streams text as `message.delta` with the
+        # chunk in `payload["delta"]`; map it and hoist the chunk into `text`.
+        if event_type == "message.delta":
+            event_type = "assistant.delta"
+            if "text" not in payload and "delta" in payload:
+                payload["text"] = payload["delta"]
         return event_type, payload
 
     async def _stop(
