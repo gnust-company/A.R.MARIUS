@@ -734,7 +734,10 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   },
 
   createTask: async (task) => {
-    const dto = await api.createTask(task.projectId, task.title, task.description)
+    const dto = await api.createTask(task.projectId, {
+      title: task.title,
+      description: task.description,
+    })
     const newTask = taskToVM(dto)
     set({ tasks: [...get().tasks, newTask] })
     return newTask

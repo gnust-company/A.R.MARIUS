@@ -43,6 +43,10 @@ async def create_task(
         project_id=project_id,
         title=body.title,
         description=body.description,
+        priority=body.priority,
+        due_date=body.due_date,
+        definition_of_done=body.definition_of_done,
+        assigned_marius_id=body.assigned_marius_id,
         created_by_user_id=body.created_by_user_id,
     )
     return TaskOut.model_validate(task)

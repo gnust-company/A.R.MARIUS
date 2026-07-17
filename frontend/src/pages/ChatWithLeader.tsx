@@ -42,7 +42,10 @@ export default function ChatWithLeader() {
   const [loading, setLoading] = useState(true);
 
   const [showAddTask, setShowAddTask] = useState(false);
-  const [taskForm, setTaskForm] = useState({ title: '', description: '' });
+  const [taskForm, setTaskForm] = useState({
+    title: '', description: '', assigneeId: '', priority: 'medium', dueDate: '', dod: '',
+  });
+  const [agents, setAgents] = useState<api.ProjectAgentDTO[]>([]);
   const [addingTask, setAddingTask] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -72,6 +75,8 @@ export default function ChatWithLeader() {
         setMessages(toMessages(dto.transcript));
         setState((dto.state as 'idle' | 'thinking' | 'failed') ?? 'idle');
         await refreshProposed();
+        // Load the seated agents for the add-task assignee dropdown (non-fatal).
+        api.listProjectAgents(projectId).then(setAgents).catch(() => {});
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : String(e));
       } finally {
@@ -162,9 +167,16 @@ export default function ChatWithLeader() {
     if (!title || !projectId || addingTask) return;
     setAddingTask(true);
     try {
-      await api.createTask(projectId, title, taskForm.description.trim() || undefined);
+      await api.createTask(projectId, {
+        title,
+        description: taskForm.description.trim() || undefined,
+        priority: taskForm.priority || undefined,
+        due_date: taskForm.dueDate ? new Date(taskForm.dueDate).toISOString() : undefined,
+        definition_of_done: taskForm.dod.trim() || undefined,
+        assigned_marius_id: taskForm.assigneeId || undefined,
+      });
       setShowAddTask(false);
-      setTaskForm({ title: '', description: '' });
+      setTaskForm({ title: '', description: '', assigneeId: '', priority: 'medium', dueDate: '', dod: '' });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -382,6 +394,49 @@ export default function ChatWithLeader() {
                 onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))}
                 rows={3}
                 placeholder={t('leaderChat.taskDescPlaceholder')}
+                className="w-full mb-3 bg-vellum-deep border border-vellum-dark rounded-md px-3 py-2 font-body text-body-md text-ink placeholder:text-ink-muted focus:outline-none focus:border-terracotta resize-none"
+              />
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="block font-body text-body-sm text-ink-light mb-1">{t('leaderChat.taskAssigneeLabel')}</label>
+                  <select
+                    value={taskForm.assigneeId}
+                    onChange={(e) => setTaskForm((f) => ({ ...f, assigneeId: e.target.value }))}
+                    className="w-full bg-vellum-deep border border-vellum-dark rounded-md px-3 py-2 font-body text-body-md text-ink focus:outline-none focus:border-terracotta"
+                  >
+                    <option value="">{t('leaderChat.taskAssigneeNone')}</option>
+                    {agents.map((a) => (
+                      <option key={a.marius_id} value={a.marius_id}>{a.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-body text-body-sm text-ink-light mb-1">{t('leaderChat.taskPriorityLabel')}</label>
+                  <select
+                    value={taskForm.priority}
+                    onChange={(e) => setTaskForm((f) => ({ ...f, priority: e.target.value }))}
+                    className="w-full bg-vellum-deep border border-vellum-dark rounded-md px-3 py-2 font-body text-body-md text-ink focus:outline-none focus:border-terracotta"
+                  >
+                    <option value="critical">{t('leaderChat.priorityCritical')}</option>
+                    <option value="high">{t('leaderChat.priorityHigh')}</option>
+                    <option value="medium">{t('leaderChat.priorityMedium')}</option>
+                    <option value="low">{t('leaderChat.priorityLow')}</option>
+                  </select>
+                </div>
+              </div>
+              <label className="block font-body text-body-sm text-ink-light mb-1">{t('leaderChat.taskDueDateLabel')}</label>
+              <input
+                type="date"
+                value={taskForm.dueDate}
+                onChange={(e) => setTaskForm((f) => ({ ...f, dueDate: e.target.value }))}
+                className="w-full mb-3 bg-vellum-deep border border-vellum-dark rounded-md px-3 py-2 font-body text-body-md text-ink focus:outline-none focus:border-terracotta"
+              />
+              <label className="block font-body text-body-sm text-ink-light mb-1">{t('leaderChat.taskDodLabel')}</label>
+              <textarea
+                value={taskForm.dod}
+                onChange={(e) => setTaskForm((f) => ({ ...f, dod: e.target.value }))}
+                rows={2}
+                placeholder={t('leaderChat.taskDodPlaceholder')}
                 className="w-full mb-4 bg-vellum-deep border border-vellum-dark rounded-md px-3 py-2 font-body text-body-md text-ink placeholder:text-ink-muted focus:outline-none focus:border-terracotta resize-none"
               />
               <div className="flex justify-end gap-2">

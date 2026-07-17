@@ -332,3 +332,35 @@ async def test_cross_workspace_project_is_404() -> None:
         hb = {"Authorization": f"Bearer {token_b}"}
         r = await c.get(f"/v1/projects/{pid}", headers=hb)
     assert r.status_code == 404, r.text
+
+
+async def test_create_task_carries_full_definition() -> None:
+    """A manually created task persists its full definition — priority/due_date/
+    definition_of_done/assigned_marius_id — not just title+description, and TaskOut returns
+    them. A task is more than a title (#82)."""
+    async with await _client() as c:
+        token, ws_id = await _register(c, "taskdef@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        pid = (await _create(c, ws_id, h))["id"]
+        mid = await _online_agent(c, ws_id, h, "Doer-1")
+        body = {
+            "title": "Ship the calculator",
+            "description": "Basic + - × ÷",
+            "priority": "high",
+            "due_date": "2026-08-01T00:00:00+00:00",
+            "definition_of_done": "All operations pass and it is deployed",
+            "assigned_marius_id": mid,
+        }
+        created = await c.post(f"/v1/projects/{pid}/tasks", headers=h, json=body)
+        assert created.status_code == 201, created.text
+        out = created.json()
+        assert out["priority"] == "high"
+        assert out["due_date"] is not None
+        assert out["definition_of_done"] == "All operations pass and it is deployed"
+        assert out["assigned_marius_id"] == mid
+
+        # The definition survives the SQL round-trip (the new columns actually persist).
+        got = (await c.get(f"/v1/tasks/{out['id']}", headers=h)).json()
+        assert got["priority"] == "high"
+        assert got["definition_of_done"] == "All operations pass and it is deployed"
+        assert got["assigned_marius_id"] == mid
