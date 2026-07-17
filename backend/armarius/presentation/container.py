@@ -15,6 +15,7 @@ from armarius.application.use_cases.auth import AuthService
 from armarius.application.use_cases.commission import CommissionService
 from armarius.application.use_cases.enrollment import InviteService
 from armarius.application.use_cases.labels import LabelService
+from armarius.application.use_cases.leader_chat import LeaderChatService
 from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.liveness_watchdog import LivenessWatchdog
 from armarius.application.use_cases.mariuses import MariusService
@@ -54,6 +55,7 @@ class Container:
     onboarding: OnboardingService
     invite: InviteService
     commission: CommissionService
+    leader_chat: LeaderChatService
     liveness: LivenessEngine
     liveness_watchdog: LivenessWatchdog
     labels: LabelService
@@ -134,6 +136,13 @@ def build_container() -> Container:
         onboarding=onboarding,
         invite=InviteService(uow_factory, registry=registry),
         commission=CommissionService(uow_factory, wake_engine),
+        leader_chat=LeaderChatService(
+            uow_factory,
+            registry=registry,
+            control_bus=control_bus,
+            base_url=settings.public_api_url,
+            run_timeout_seconds=settings.run_timeout_seconds,
+        ),
         liveness=liveness,
         liveness_watchdog=liveness_watchdog,
         labels=LabelService(uow_factory),

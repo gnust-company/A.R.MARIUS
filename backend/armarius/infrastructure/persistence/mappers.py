@@ -12,6 +12,10 @@ from armarius.domain.entities.commission import (
     LeaderState,
 )
 from armarius.domain.entities.label import Label
+from armarius.domain.entities.leader_chat import (
+    ChatState,
+    ProjectLeaderConversation,
+)
 from armarius.domain.entities.marius import InviteStatus, Liveness, Marius
 from armarius.domain.entities.onboarding import OnboardingSession, OnboardingStatus
 from armarius.domain.entities.project import (
@@ -35,6 +39,7 @@ from armarius.infrastructure.database.models import (
     LabelModel,
     MariusModel,
     OnboardingSessionModel,
+    ProjectLeaderConversationModel,
     ProjectModel,
     RoleModel,
     RunEventModel,
@@ -187,6 +192,21 @@ def commission_to_entity(m: CommissionModel) -> CommissionSession:
         transcript=list(m.transcript or []),
         status=CommissionStatus(m.status),
         leader_state=LeaderState(m.leader_state),
+        created_at=m.created_at,
+        updated_at=m.updated_at,
+    )
+
+
+def leader_chat_to_entity(
+    m: ProjectLeaderConversationModel,
+) -> ProjectLeaderConversation:
+    return ProjectLeaderConversation(
+        id=m.id,
+        project_id=m.project_id,
+        leader_marius_id=m.leader_marius_id,
+        session_params=dict(m.session_params or {}),
+        transcript=list(m.transcript or []),
+        state=ChatState(m.state),
         created_at=m.created_at,
         updated_at=m.updated_at,
     )

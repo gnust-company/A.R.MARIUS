@@ -11,6 +11,7 @@ from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.commission import CommissionSession
 from armarius.domain.entities.label import Label
+from armarius.domain.entities.leader_chat import ProjectLeaderConversation
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.onboarding import OnboardingSession
 from armarius.domain.entities.role import Role
@@ -106,6 +107,26 @@ class CommissionRepository(ABC):
         self, leader_marius_id: UUID
     ) -> Sequence[CommissionSession]:
         """Open commissions a Leader owns — used to drain queued turns on online."""
+
+
+class LeaderChatRepository(ABC):
+    """Project-level Chat-with-Leader conversations (#82). One per project."""
+
+    @abstractmethod
+    async def add(
+        self, conversation: ProjectLeaderConversation
+    ) -> ProjectLeaderConversation: ...
+    @abstractmethod
+    async def get(self, conversation_id: UUID) -> ProjectLeaderConversation | None: ...
+    @abstractmethod
+    async def get_by_project(
+        self, project_id: UUID
+    ) -> ProjectLeaderConversation | None:
+        """The single conversation for a project, or None if it was never opened."""
+    @abstractmethod
+    async def update(
+        self, conversation: ProjectLeaderConversation
+    ) -> ProjectLeaderConversation: ...
 
 
 class OnboardingRepository(ABC):

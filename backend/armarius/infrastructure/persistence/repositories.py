@@ -12,6 +12,7 @@ from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.commission import CommissionSession
 from armarius.domain.entities.label import Label
+from armarius.domain.entities.leader_chat import ProjectLeaderConversation
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.onboarding import OnboardingSession
 from armarius.domain.entities.role import Role
@@ -28,6 +29,7 @@ from armarius.domain.repositories.repositories import (
     CommentRepository,
     CommissionRepository,
     LabelRepository,
+    LeaderChatRepository,
     MariusRepository,
     OnboardingRepository,
     ProjectRepository,
@@ -49,6 +51,7 @@ from armarius.infrastructure.database.models import (
     LabelModel,
     MariusModel,
     OnboardingSessionModel,
+    ProjectLeaderConversationModel,
     ProjectModel,
     RoleModel,
     RunEventModel,
@@ -185,6 +188,14 @@ class SqlWorkspaceRepository(WorkspaceRepository):
                     )
                 )
             )
+            await self._s.execute(
+                delete(ProjectLeaderConversationModel).where(
+                    or_(
+                        ProjectLeaderConversationModel.project_id.in_(project_ids),
+                        ProjectLeaderConversationModel.leader_marius_id.in_(marius_ids),
+                    )
+                )
+            )
         await self._s.execute(
             delete(OnboardingSessionModel).where(
                 or_(
@@ -304,6 +315,61 @@ class SqlCommissionRepository(CommissionRepository):
             )
         ).scalars().all()
         return [mappers.commission_to_entity(m) for m in rows]
+
+
+class SqlLeaderChatRepository(LeaderChatRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(
+        self, conversation: ProjectLeaderConversation
+    ) -> ProjectLeaderConversation:
+        self._s.add(
+            ProjectLeaderConversationModel(
+                id=conversation.id,
+                project_id=conversation.project_id,
+                leader_marius_id=conversation.leader_marius_id,
+                session_params=dict(conversation.session_params),
+                transcript=list(conversation.transcript),
+                state=str(conversation.state),
+                created_at=conversation.created_at,
+                updated_at=conversation.updated_at,
+            )
+        )
+        await self._s.flush()
+        return conversation
+
+    async def get(
+        self, conversation_id: UUID
+    ) -> ProjectLeaderConversation | None:
+        m = await self._s.get(ProjectLeaderConversationModel, conversation_id)
+        return mappers.leader_chat_to_entity(m) if m else None
+
+    async def get_by_project(
+        self, project_id: UUID
+    ) -> ProjectLeaderConversation | None:
+        m = (
+            await self._s.execute(
+                select(ProjectLeaderConversationModel).where(
+                    ProjectLeaderConversationModel.project_id == project_id
+                )
+            )
+        ).scalar_one_or_none()
+        return mappers.leader_chat_to_entity(m) if m else None
+
+    async def update(
+        self, conversation: ProjectLeaderConversation
+    ) -> ProjectLeaderConversation:
+        m = await self._s.get(ProjectLeaderConversationModel, conversation.id)
+        if m is None:
+            raise LookupError("leader chat conversation not found")
+        m.leader_marius_id = conversation.leader_marius_id
+        m.session_params = dict(conversation.session_params)
+        m.transcript = list(conversation.transcript)
+        m.state = str(conversation.state)
+        m.updated_at = conversation.updated_at
+        await self._s.flush()
+        return conversation
 
 
 class SqlOnboardingRepository(OnboardingRepository):

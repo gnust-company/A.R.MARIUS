@@ -498,6 +498,37 @@ class CommissionOut(_Out):
     updated_at: datetime | None = None
 
 
+# ------------------------------------------------------------ Chat with Leader (#82)
+class LeaderChatSendIn(BaseModel):
+    message: str = Field(min_length=1, max_length=8000)
+
+
+class YoloModeIn(BaseModel):
+    yolo_mode: bool
+
+
+class LeaderChatOut(BaseModel):
+    """Project-level Leader conversation + live, derived context (built from a
+    ``LeaderChatView``, not an ORM row — leader_online/name are computed on read)."""
+
+    project_id: UUID | None = None
+    leader_marius_id: UUID | None = None
+    leader_name: str | None = None
+    leader_online: bool = False
+    yolo_mode: bool = False
+    state: str = "idle"
+    transcript: list[dict] = Field(default_factory=list)
+    updated_at: datetime | None = None
+
+
+class AgentCreateTaskIn(BaseModel):
+    """The Leader's create-task tool payload (Chat-with-Leader, #82)."""
+
+    title: str = Field(min_length=1, max_length=300)
+    description: str | None = None
+    assignee_marius_id: UUID | None = None
+
+
 # ------------------------------------------------------------------ onboarding
 # Agent-assisted project setup (Sprint 7 / Phase G). The Workspace Agent interviews the
 # Patron; `finalize` materialises the accumulated plan into a Project + roster.

@@ -17,6 +17,7 @@ from armarius.application.use_cases.projects import DuplicateRoleKey, SystemOnly
 from armarius.domain.entities.commission import (
     CommissionError as CommissionStateError,
 )
+from armarius.domain.entities.leader_chat import LeaderChatError
 from armarius.domain.entities.marius import InviteError
 from armarius.domain.entities.onboarding import OnboardingError
 from armarius.domain.entities.seat_grant import SeatGrantError
@@ -56,6 +57,12 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(CommissionStateError)
     async def _commission_state(_: Request, exc: CommissionStateError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(LeaderChatError)
+    async def _leader_chat_conflict(_: Request, exc: LeaderChatError) -> JSONResponse:
+        # No Leader seated / Leader offline / turn already running — all 409 (the FE
+        # surfaces the detail verbatim; offline also disables the box up-front, #82).
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(SeatGrantError)
