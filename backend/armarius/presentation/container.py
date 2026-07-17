@@ -140,6 +140,7 @@ def build_container() -> Container:
             uow_factory,
             registry=registry,
             control_bus=control_bus,
+            liveness=liveness,
             base_url=settings.public_api_url,
             run_timeout_seconds=settings.run_timeout_seconds,
         ),

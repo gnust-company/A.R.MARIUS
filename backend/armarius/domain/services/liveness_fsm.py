@@ -101,10 +101,12 @@ def plan_tick(
     cfg = cfg or LivenessConfig()
     s = state
 
-    # A WORKING turn is itself a signal — never probe it; only watch for a hang.
+    # A WORKING turn is itself a signal — never probe it while active; only watch for a hang.
     if s.liveness == Liveness.WORKING:
         if s.turn_started_at is not None and now - s.turn_started_at > cfg.hung_after:
-            return LivenessDecision(replace(s, liveness=Liveness.HUNG))
+            # Stalled turn → HUNG, but schedule an immediate gateway re-probe so a healthy
+            # gateway can recover it. HUNG is no longer a dead-end state (#82 liveness fix).
+            return LivenessDecision(replace(s, liveness=Liveness.HUNG, next_probe_at=now))
         return LivenessDecision(s)
 
     # ONLINE gone quiet past T1 → enter CHECKING and schedule the first probe now.
@@ -115,11 +117,13 @@ def plan_tick(
     ):
         s = replace(s, liveness=Liveness.CHECKING, probe_attempts=0, next_probe_at=now)
 
-    # OFFLINE waiting out its backoff → re-enter CHECKING when the interval elapses.
+    # OFFLINE or HUNG waiting out their backoff → re-enter CHECKING when the interval elapses.
+    # HUNG shares OFFLINE's recovery path: a healthy gateway probe flips it back online instead
+    # of stranding the agent "offline" forever after one stalled turn. A HUNG row with no
+    # scheduled probe (legacy rows from before this recovery fix) is treated as due now.
     if (
-        s.liveness == Liveness.OFFLINE
-        and s.next_probe_at is not None
-        and now >= s.next_probe_at
+        s.liveness in (Liveness.OFFLINE, Liveness.HUNG)
+        and (s.next_probe_at is None or now >= s.next_probe_at)
     ):
         s = replace(s, liveness=Liveness.CHECKING, probe_attempts=0, next_probe_at=now)
 
