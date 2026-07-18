@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -24,7 +24,7 @@ import * as api from '@/lib/api';
 import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
 import Modal from '@/components/Modal';
-import LeaderChatPanel from '@/components/LeaderChatPanel';
+import LeaderChatWidget from '@/components/LeaderChatWidget';
 import { cn, wsHref } from '@/lib/utils';
 
 const KANBAN_COLUMNS: { status: TaskStatus; label: string; bg: string; headerBg: string; borderColor: string }[] = [
@@ -34,13 +34,6 @@ const KANBAN_COLUMNS: { status: TaskStatus; label: string; bg: string; headerBg:
   { status: 'in_review', label: 'In Review', bg: 'bg-[#F5E8CC]', headerBg: 'bg-[#F5E8CC]', borderColor: 'border-[#E8D5A0]' },
   { status: 'done', label: 'Done', bg: 'bg-[#D8EADD]', headerBg: 'bg-[#D8EADD]', borderColor: 'border-[#A8D8B8]' },
 ];
-
-// Leader chat dock width — persisted so the patron's preferred split survives reloads. The chat
-// is a VS Code-style resizable right panel: drag the sash between board and chat to change it.
-const CHAT_WIDTH_KEY = 'armarius.boardChatWidth';
-const CHAT_WIDTH_DEFAULT = 500;
-const CHAT_WIDTH_MIN = 360;
-const CHAT_WIDTH_MAX = 760;
 
 const PRIORITY_BORDER: Record<Priority, string> = {
   P0: 'border-l-[#C25E3A]',
@@ -359,12 +352,6 @@ export default function ProjectBoard() {
   // column's "+" (status=that column). They used to open two different modals (title-only vs
   // full) and the column "+" silently dropped into backlog; now they're in sync (#82).
   const [addTask, setAddTask] = useState<{ open: boolean; status: TaskStatus }>({ open: false, status: 'backlog' });
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatWidth, setChatWidth] = useState<number>(() => {
-    const stored = typeof window !== 'undefined' ? window.localStorage.getItem(CHAT_WIDTH_KEY) : null;
-    const n = stored ? Number(stored) : NaN;
-    return Number.isFinite(n) ? Math.max(CHAT_WIDTH_MIN, Math.min(CHAT_WIDTH_MAX, n)) : CHAT_WIDTH_DEFAULT;
-  });
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -400,36 +387,6 @@ export default function ProjectBoard() {
     });
     return map;
   }, [projectTasks]);
-
-  // Drag the sash between board and chat to resize the dock (VS Code-style). The chat docks
-  // right, so dragging the sash left widens it. Width is clamped and persisted on mouse-up.
-  const onSashMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startW = chatWidth;
-    const onMove = (ev: MouseEvent) => {
-      const next = Math.max(CHAT_WIDTH_MIN, Math.min(CHAT_WIDTH_MAX, startW + (startX - ev.clientX)));
-      setChatWidth(next);
-    };
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      setChatWidth((w) => {
-        try {
-          window.localStorage.setItem(CHAT_WIDTH_KEY, String(w));
-        } catch {
-          /* ignore quota / private-mode errors */
-        }
-        return w;
-      });
-    };
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }, [chatWidth]);
 
   if (!project) {
     return (
@@ -515,21 +472,8 @@ export default function ProjectBoard() {
         <TabLink active>{t('board.title')}</TabLink>
         <TabLink to={wsHref(workspaceId, `/projects/${projectId}/roster`)}>{t('board.roster')}</TabLink>
 
-        {/* Right-side actions: toggle Leader chat (board stays visible) + Add Task. */}
+        {/* Right-side actions: Add Task. (Leader chat moved to the floating bubble — LeaderChatWidget.) */}
         <div className="ml-auto mb-1 flex items-center gap-2">
-          <button
-            onClick={() => setChatOpen((o) => !o)}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-2 rounded-md font-body text-body-sm font-medium border transition-colors',
-              chatOpen
-                ? 'bg-terracotta text-white border-terracotta'
-                : 'bg-vellum-deep text-ink border-vellum-dark hover:bg-vellum-dark',
-            )}
-            title={t('leaderChat.title')}
-          >
-            <MessageSquare className="w-4 h-4" />
-            {t('leaderChat.title')}
-          </button>
           <AnimatePresence>
             {!isSetup && (
               <motion.button
@@ -669,29 +613,6 @@ export default function ProjectBoard() {
         </div>
         </div>
 
-        {/* Leader chat dock — a VS Code-style resizable right panel. The board (left) stays
-            visible beside it; drag the sash to set the chat width (persisted to localStorage). */}
-        <AnimatePresence>
-          {chatOpen && projectId && (
-            <motion.div
-              initial={{ opacity: 0, x: 24 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 24 }}
-              transition={{ duration: 0.25, ease: [0, 0, 0.2, 1] as [number, number, number, number] }}
-              style={{ width: chatWidth }}
-              className="flex-shrink-0 min-h-0 flex"
-            >
-              <div
-                onMouseDown={onSashMouseDown}
-                title={t('board.chatResizeHint')}
-                className="w-1.5 flex-shrink-0 cursor-col-resize bg-vellum-dark/40 hover:bg-terracotta/70 active:bg-terracotta transition-colors"
-              />
-              <div className="flex-1 min-w-0 min-h-0">
-                <LeaderChatPanel projectId={projectId} onClose={() => setChatOpen(false)} />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
       {/* ─── Add Task (full definition) — one form for the CTA + every column "+" (#82) */}
@@ -731,6 +652,9 @@ export default function ProjectBoard() {
           {t('board.deleteConfirmBody', { name: project.name })}
         </p>
       </Modal>
+
+      {/* Floating Leader-chat bubble (project-only, bottom-right) — opens a large chat panel (#82) */}
+      {projectId && <LeaderChatWidget projectId={projectId} />}
     </div>
   );
 }
