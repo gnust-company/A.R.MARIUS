@@ -43,6 +43,7 @@ async def create_task(
         project_id=project_id,
         title=body.title,
         description=body.description,
+        status=_parse_status(body.status) if body.status else TaskStatus.BACKLOG,
         priority=body.priority,
         due_date=body.due_date,
         definition_of_done=body.definition_of_done,
