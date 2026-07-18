@@ -551,6 +551,7 @@ export async function createTask(
   body: {
     title: string
     description?: string
+    status?: string
     priority?: string
     due_date?: string
     definition_of_done?: string

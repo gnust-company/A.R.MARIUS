@@ -369,6 +369,8 @@ export const en = {
     taskAssigneeLabel: 'Assignee',
     taskAssigneeNone: 'Unassigned',
     taskPriorityLabel: 'Priority',
+    taskStatusLabel: 'Status',
+    chatResizeHint: 'Drag to resize the chat panel',
     taskDueDateLabel: 'Due date',
     taskDodLabel: 'Definition of Done',
     taskDodPlaceholder: 'What does done look like? (optional)…',
