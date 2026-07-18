@@ -1,3 +1,5 @@
+> ⚠️ **ĐÃ LỖI THỜI (ARCHIVED).** Nguồn sự thật hiện tại là [`spec/`](../spec/) (tiếng Việt). Xem [docs/README.md](README.md).
+
 # Armarius — Frontend UX Specification
 
 > Status: **v1** (2026-06-27). The *information architecture, screens, and flows* the mock-data app

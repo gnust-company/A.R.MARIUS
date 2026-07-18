@@ -1,3 +1,5 @@
+> ⚠️ **ĐÃ LỖI THỜI (ARCHIVED).** Nguồn sự thật hiện tại là [`spec/`](../spec/) (tiếng Việt). Xem [docs/README.md](README.md).
+
 # Architecture — Armarius (A.R.MARIUS)
 
 > **High-level (target) architecture** for the "multi-project + onboarding + rich task +
