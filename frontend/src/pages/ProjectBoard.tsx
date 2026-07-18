@@ -13,7 +13,6 @@ import {
   Check,
   MessageSquare,
   Paperclip,
-  Zap,
   Lock,
   X,
   ArrowRight,
@@ -21,9 +20,11 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useMockStore, type TaskStatus, type Priority, type Task } from '@/store/mockStore';
+import * as api from '@/lib/api';
 import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
 import Modal from '@/components/Modal';
+import LeaderChatPanel from '@/components/LeaderChatPanel';
 import { cn, wsHref } from '@/lib/utils';
 
 const KANBAN_COLUMNS: { status: TaskStatus; label: string; bg: string; headerBg: string; borderColor: string }[] = [
@@ -240,6 +241,160 @@ function AddTaskModal({
   );
 }
 
+// ─── Add Task (full definition) Modal ────────────────────────────────────────
+
+function AddTaskFormModal({
+  onClose,
+  projectId,
+}: {
+  onClose: () => void;
+  projectId: string;
+}) {
+  const { t } = useTranslation();
+  const hydrateProject = useMockStore((s) => s.hydrateProject);
+  const [form, setForm] = useState({
+    title: '', description: '', assigneeId: '', priority: 'medium', dueDate: '', dod: '',
+  });
+  const [agents, setAgents] = useState<api.ProjectAgentDTO[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Fresh mount each time the modal opens (conditionally rendered), so state resets.
+  useEffect(() => {
+    if (projectId) api.listProjectAgents(projectId).then(setAgents).catch(() => {});
+  }, [projectId]);
+
+  const submit = async () => {
+    if (!form.title.trim() || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.createTask(projectId, {
+        title: form.title.trim(),
+        description: form.description.trim() || undefined,
+        priority: form.priority || undefined,
+        due_date: form.dueDate ? new Date(form.dueDate).toISOString() : undefined,
+        definition_of_done: form.dod.trim() || undefined,
+        assigned_marius_id: form.assigneeId || undefined,
+      });
+      await hydrateProject(projectId);
+      setForm({ title: '', description: '', assigneeId: '', priority: 'medium', dueDate: '', dod: '' });
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const inputCls = cn(
+    'w-full px-3 py-2 rounded-md bg-vellum border border-vellum-dark',
+    'font-body text-body-md text-ink placeholder:text-ink-muted',
+    'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15 transition-all',
+  );
+  const labelCls = 'block font-body text-body-sm text-ink-light mb-1';
+
+  return (
+    <Modal isOpen onClose={onClose} title={t('board.addTaskTitle')}>
+      <div className="space-y-3">
+        <input
+          type="text"
+          value={form.title}
+          onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+          placeholder={t('board.taskTitlePlaceholder')}
+          className={inputCls}
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              void submit();
+            }
+          }}
+        />
+        <div>
+          <label className={labelCls}>{t('board.taskDescLabel')}</label>
+          <textarea
+            value={form.description}
+            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+            rows={2}
+            placeholder={t('board.taskDescPlaceholder')}
+            className={cn(inputCls, 'resize-none')}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>{t('board.taskAssigneeLabel')}</label>
+            <select
+              value={form.assigneeId}
+              onChange={(e) => setForm((f) => ({ ...f, assigneeId: e.target.value }))}
+              className={inputCls}
+            >
+              <option value="">{t('board.taskAssigneeNone')}</option>
+              {agents.map((a) => (
+                <option key={a.marius_id} value={a.marius_id}>{a.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>{t('board.taskPriorityLabel')}</label>
+            <select
+              value={form.priority}
+              onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
+              className={inputCls}
+            >
+              <option value="critical">{t('board.priorityCritical')}</option>
+              <option value="high">{t('board.priorityHigh')}</option>
+              <option value="medium">{t('board.priorityMedium')}</option>
+              <option value="low">{t('board.priorityLow')}</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className={labelCls}>{t('board.taskDueDateLabel')}</label>
+          <input
+            type="date"
+            value={form.dueDate}
+            onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+            className={inputCls}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>{t('board.taskDodLabel')}</label>
+          <textarea
+            value={form.dod}
+            onChange={(e) => setForm((f) => ({ ...f, dod: e.target.value }))}
+            rows={2}
+            placeholder={t('board.taskDodPlaceholder')}
+            className={cn(inputCls, 'resize-none')}
+          />
+        </div>
+        {err && <p className="font-body text-body-sm text-terracotta">{err}</p>}
+      </div>
+      <div className="flex justify-end gap-3 mt-5 -mb-1">
+        <button
+          onClick={onClose}
+          className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-vellum-deep text-ink border border-vellum-dark hover:bg-vellum-dark transition-colors"
+        >
+          {t('common.cancel')}
+        </button>
+        <button
+          onClick={submit}
+          disabled={!form.title.trim() || busy}
+          className={cn(
+            'flex items-center gap-1.5 px-4 py-2 rounded-md font-body text-body-md font-medium transition-colors',
+            form.title.trim() && !busy
+              ? 'bg-terracotta text-white hover:bg-terracotta-light'
+              : 'bg-vellum-dark text-ink-muted cursor-not-allowed',
+          )}
+        >
+          <Plus className="w-4 h-4" />
+          {t('common.create')}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Main ProjectBoard Page ──────────────────────────────────────────────────
 
 export default function ProjectBoard() {
@@ -252,6 +407,8 @@ export default function ProjectBoard() {
   const deleteProject = useMockStore((s) => s.deleteProject);
 
   const [addTaskColumn, setAddTaskColumn] = useState<TaskStatus | null>(null);
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -297,7 +454,6 @@ export default function ProjectBoard() {
   }
 
   const isSetup = project.status === 'setup';
-  const isActive = project.status === 'active';
   const seatsTotal = (project.seats || []).length;
   const seatsFilled = (project.seats || []).filter((s) => s.mariusId).length;
 
@@ -372,27 +528,37 @@ export default function ProjectBoard() {
       >
         <TabLink active>{t('board.title')}</TabLink>
         <TabLink to={wsHref(workspaceId, `/projects/${projectId}/roster`)}>{t('board.roster')}</TabLink>
-        <TabLink to={wsHref(workspaceId, `/projects/${projectId}/leader-chat`)}>
-          {t('leaderChat.title')}
-        </TabLink>
 
-        {/* Chat-with-Leader CTA (active only) — where tasks are now commissioned (#82). */}
-        <div className="ml-auto mb-1">
+        {/* Right-side actions: toggle Leader chat (board stays visible) + Add Task. */}
+        <div className="ml-auto mb-1 flex items-center gap-2">
+          <button
+            onClick={() => setChatOpen((o) => !o)}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-2 rounded-md font-body text-body-sm font-medium border transition-colors',
+              chatOpen
+                ? 'bg-terracotta text-white border-terracotta'
+                : 'bg-vellum-deep text-ink border-vellum-dark hover:bg-vellum-dark',
+            )}
+            title={t('leaderChat.title')}
+          >
+            <MessageSquare className="w-4 h-4" />
+            {t('leaderChat.title')}
+          </button>
           <AnimatePresence>
-            {isActive && (
+            {!isSetup && (
               <motion.button
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                onClick={() => navigate(wsHref(workspaceId, `/projects/${projectId}/leader-chat`))}
+                onClick={() => setShowAddTask(true)}
                 className={cn(
                   'flex items-center gap-1.5 px-4 py-2 rounded-md font-body text-body-sm font-medium',
                   'bg-gold text-ink hover:bg-gold-light transition-colors',
                   'animate-pulse-glow'
                 )}
               >
-                <Zap className="w-4 h-4" />
-                {t('leaderChat.title')}
+                <Plus className="w-4 h-4" />
+                {t('board.addTask')}
               </motion.button>
             )}
           </AnimatePresence>
@@ -431,8 +597,9 @@ export default function ProjectBoard() {
         )}
       </AnimatePresence>
 
-      {/* ─── Kanban Board ───────────────────────────────────────────── */}
-      <div className="flex gap-4 overflow-x-auto pb-4 flex-1 min-h-0">
+      {/* ─── Board (kanban) + Leader chat side panel ───────────────────────── */}
+      <div className="flex gap-4 flex-1 min-h-0">
+        <div className="flex gap-4 overflow-x-auto pb-4 flex-1 min-h-0">
         {KANBAN_COLUMNS.map((col, colIndex) => {
           const colTasks = tasksByColumn[col.status] || [];
           return (
@@ -512,6 +679,22 @@ export default function ProjectBoard() {
             </motion.div>
           );
         })}
+        </div>
+
+        {/* Leader chat side panel — the board stays visible beside it (#82). */}
+        <AnimatePresence>
+          {chatOpen && projectId && (
+            <motion.div
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 24 }}
+              transition={{ duration: 0.25, ease: [0, 0, 0.2, 1] as [number, number, number, number] }}
+              className="flex-shrink-0 w-[400px] min-h-0"
+            >
+              <LeaderChatPanel projectId={projectId} onClose={() => setChatOpen(false)} />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* ─── Add Task Modal ─────────────────────────────────────────── */}
@@ -521,6 +704,12 @@ export default function ProjectBoard() {
         columnStatus={addTaskColumn || 'backlog'}
         projectId={projectId || ''}
       />
+      {showAddTask && projectId && (
+        <AddTaskFormModal
+          onClose={() => setShowAddTask(false)}
+          projectId={projectId}
+        />
+      )}
 
       {/* ─── Delete Project Confirm ─────────────────────────────────── */}
       <Modal
