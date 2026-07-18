@@ -211,18 +211,21 @@ INVITED ──activate(token)──► APPROVED ──revoke()──► REVOKED
 
 ### 5.2 FSM task — `Task.status`  [ĐÚNG-NHƯ-CODE]
 
+Mỗi dòng liệt kê **các đích đi trực tiếp** từ trạng thái bên trái (dấu `|` = "hoặc"), không phải một chuỗi
+nối tiếp:
+
 ```
-DRAFT ────► TODO ─────────► CANCELLED
-BACKLOG ──► TODO ─────────► CANCELLED
-TODO ─────► IN_PROGRESS | BLOCKED | BACKLOG | CANCELLED
+DRAFT ──────► TODO | CANCELLED
+BACKLOG ────► TODO | CANCELLED
+TODO ───────► IN_PROGRESS | BLOCKED | BACKLOG | CANCELLED
 IN_PROGRESS ► IN_REVIEW | BLOCKED | DONE | TODO | CANCELLED
-IN_REVIEW ─► DONE | IN_PROGRESS | BLOCKED | CANCELLED
-BLOCKED ───► IN_PROGRESS | TODO | BACKLOG | CANCELLED
-DONE ──────► IN_PROGRESS         (mở lại)
-CANCELLED ─► BACKLOG             (khôi phục)
+IN_REVIEW ──► DONE | IN_PROGRESS | BLOCKED | CANCELLED
+BLOCKED ────► IN_PROGRESS | TODO | BACKLOG | CANCELLED
+DONE ───────► IN_PROGRESS         (mở lại)
+CANCELLED ──► BACKLOG             (khôi phục)
 ```
 
-- `DRAFT` = đề xuất của Leader (chờ xác nhận), chỉ ra `TODO` hoặc `CANCELLED`.
+- `DRAFT` = đề xuất của Leader (chờ xác nhận), đi **thẳng** tới `TODO` (duyệt) **hoặc** `CANCELLED` (từ chối) — hai nhánh độc lập.
 - Vào `IN_REVIEW`/`DONE` phải qua **cổng DONE** (có hiện vật); vào `TODO`/`IN_PROGRESS` phải qua **cổng phụ thuộc**.
 - Chuyển sang chính trạng thái hiện tại là no-op (chỉ cập nhật `status_reason`).
 
@@ -276,7 +279,8 @@ hoạch; `finalize` dựng `Project` thật. Chi tiết luồng ở [02-invite.m
 | 3 | `Task.assigned_marius_id` + `TaskParticipant` | hai mô hình song song | **một** người phụ trách; gỡ `TaskParticipant` |
 | 4 | `Task.identifier` | có trường, không sinh giá trị | sinh mã `{TIỀN-TỐ-TỪ-TÊN-DỰ-ÁN}-{n}` |
 | 5 | `CommissionSession`, `LeaderState`, `CommissionStatus`, `WakeSource.COMMISSION` | còn trong code | **gỡ bỏ** — đã bị `ProjectLeaderConversation` thay thế (xem [05-task-leaderchat.md](05-task-leaderchat.md)) |
-| 6 | `enrollment_code`, `InviteStatus.PENDING_REVIEW`, `Liveness.IDLE` | dấu tích mô hình cũ | giữ cho hàng dữ liệu cũ, không dùng cho bản ghi mới |
+| 6 | `enrollment_code`, `InviteStatus.PENDING_REVIEW` | dấu tích mô hình cũ | giữ cho hàng dữ liệu cũ, không dùng cho bản ghi mới |
+| 7 | `Liveness.IDLE` | chú thích entity ghi "đã bỏ" nhưng code **đang chủ động gán** IDLE cho **bản ghi mới** (`WakeEngine._finalise`) và coi là hợp lệ để nhận lượt (`LeaderChatService`) — mâu thuẫn | thống nhất một tên cho trạng thái "rảnh giữa các lượt"; chi tiết + hệ quả ở [04-liveness.md](04-liveness.md) §4 |
 
 ---
 
