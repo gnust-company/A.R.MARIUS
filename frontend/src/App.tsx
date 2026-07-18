@@ -9,7 +9,6 @@ import Projects from './pages/Projects'
 import CreateProject from './pages/CreateProject'
 import ProjectBoard from './pages/ProjectBoard'
 import Roster from './pages/Roster'
-import ChatWithLeader from './pages/ChatWithLeader'
 import Directory from './pages/Directory'
 import AgentDetail from './pages/AgentDetail'
 import Skills from './pages/Skills'
@@ -84,11 +83,15 @@ export default function App() {
           <Route path="projects/new" element={<CreateProject />} />
           <Route path="projects/:id" element={<ProjectBoard />} />
           <Route path="projects/:id/roster" element={<Roster />} />
-          <Route path="projects/:id/leader-chat" element={<ChatWithLeader />} />
-          {/* Commission retired (#82) — absorbed into Chat with Leader; redirect old links. */}
+          {/* Commission retired (#82); leader chat is now a side panel on the board.
+              Redirect any old deep links back to the project board. */}
           <Route
             path="projects/:id/commission"
-            element={<Navigate to="../leader-chat" relative="path" replace />}
+            element={<Navigate to=".." relative="path" replace />}
+          />
+          <Route
+            path="projects/:id/leader-chat"
+            element={<Navigate to=".." relative="path" replace />}
           />
           <Route path="agents" element={<Directory />} />
           <Route path="agents/:id" element={<AgentDetail />} />
