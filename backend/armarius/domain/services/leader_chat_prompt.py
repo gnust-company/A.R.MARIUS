@@ -23,8 +23,9 @@ from armarius.domain.services.agent_prompt import agent_prompt_footer
 class ChatDirectoryEntry:
     marius_id: UUID
     name: str
-    role: str
+    role: str  # the worker's PROJECT role title (resolved via SeatGrant.role_key → Role)
     liveness: str
+    role_description: str = ""  # what that project role does (optional)
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,9 @@ class LeaderChatContext:
     directory: list[ChatDirectoryEntry]
     recent_turns: list[ChatTurn]
     yolo_mode: bool
+    # The Leader's own project role description (its leader Role), shown in the header so the
+    # Leader knows the duties attached to its seat. Empty when the leader role has none.
+    leader_role_description: str = ""
     credential_file: str | None = None
 
 
@@ -51,6 +55,8 @@ def build_leader_chat_prompt(ctx: LeaderChatContext) -> str:
     lines.append(
         f"You are {ctx.leader_name}, the Leader of this project inside Armarius."
     )
+    if ctx.leader_role_description:
+        lines.append(ctx.leader_role_description.strip())
     lines.append(
         "This is the project's **Chat with Leader** — a 1-1 conversation with your patron "
         "about anything in the project (direction, status, planning, decisions)."
@@ -69,7 +75,10 @@ def build_leader_chat_prompt(ctx: LeaderChatContext) -> str:
     if ctx.directory:
         lines.append("## Your team (workers you can assign)")
         for d in ctx.directory:
-            lines.append(f"- {d.name} ({d.role}) [{d.liveness}] — marius_id: {d.marius_id}")
+            role = d.role or "—"
+            lines.append(f"- {d.name} ({role}) [{d.liveness}] — marius_id: {d.marius_id}")
+            if d.role_description:
+                lines.append(f"    role: {d.role_description.strip()}")
         lines.append("")
 
     if ctx.recent_turns:

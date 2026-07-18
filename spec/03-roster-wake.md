@@ -1,8 +1,8 @@
 # 03 — Roster (vai trò/ghế) & mô hình đánh thức (wake)
 
 > Cách một dự án định nghĩa vai trò và gán agent vào ghế, và cách Armarius **đánh thức** agent để làm việc.
-> Đây là file chứa **hai lỗi thiết kế** quan trọng nhất đang chờ sửa — cả hai đều vi phạm nguyên tắc
-> "góc nhìn dự án" ([00-intent.md](00-intent.md) §7.5). Phản ánh code ngày 18/07/2026.
+> §3 từng chứa hai lỗi vi phạm nguyên tắc "góc nhìn dự án" ([00-intent.md](00-intent.md) §7.5) — **đã sửa ở
+> issue #87**. Phản ánh code ngày 18/07/2026 (cập nhật sau #87).
 >
 > Nhãn: **[ĐÚNG-NHƯ-CODE]** / **[ĐÍCH-CẦN-SỬA]**.
 
@@ -98,67 +98,54 @@ sự kiện của họ. Tóm tắt:
 
 ---
 
-## 3. Hai lỗi prompt đang chờ sửa
+## 3. Vai trò dự án trong prompt (đã sửa — issue #87)
 
-Cả hai prompt gửi tới agent hiện **không** truyền đúng ngữ cảnh vai-trò-dự-án. Đây là mối lo gốc của chủ
-dự án: "Leader chat nhắc đồng đội chỉ bằng **tên** với vai trò để trống — nên Leader/agent không biết năng
-lực của nhau trong dự án".
+Đây là mối lo gốc của chủ dự án: "Leader chat nhắc đồng đội chỉ bằng **tên** với vai trò để trống — nên
+Leader/agent không biết năng lực của nhau trong dự án". Đã sửa ở issue #87; mục này giờ mô tả hành vi đúng.
 
-### 3.1 Lỗi vai trò — [ĐÍCH-CẦN-SỬA] (Giai đoạn 2)
+### 3.1 Vai trò trong prompt  [ĐÚNG-NHƯ-CODE]
 
-**Prompt wake task** (`wake_prompt.py::build_wake_prompt` + `wake_engine.py::_wake_context`):
-
-- Dòng đầu: *"You are {name}, an agent collaborating inside Armarius."* — **không** nói agent này giữ vai
-  trò gì trong dự án, không kèm mô tả.
-- Danh bạ: `DirectoryEntry(role=m.role, ...)` với `m.role` là **vai trò workspace (rỗng)** → in ra
-  `@con2 () [online]`.
-
-**Prompt chat với Leader** (`leader_chat_prompt.py` + `leader_chat.py::_team`):
-
-- Danh bạ đội: `ChatDirectoryEntry(role=worker.role, ...)` — lại đọc `worker.role` **rỗng** →
-  `- con2 () [online] — marius_id: ...`. (Header thì có "the Leader of this project" nhưng không kèm mô tả
-  vai trò Leader.)
-
-**Đích cho MỌI prompt cấp dự án:** phải nêu
+**Mọi prompt cấp dự án phải nêu hai thứ, và nay đã nêu:**
 
 1. **Vai trò của chính agent nhận prompt** trong dự án + mô tả (tra `SeatGrant` của agent → `Role`).
 2. **Danh bạ đồng đội theo vai trò dự án**: mỗi người kèm `title` vai trò thật (tra `g.role_key` → `Role`),
-   không đọc `Marius.role`.
+   **không** đọc `Marius.role` (rỗng).
 
-### 3.2 Lỗi phạm vi danh bạ (D) — [ĐÍCH-CẦN-SỬA] (Giai đoạn 2)
+**Prompt wake task** (`wake_prompt.py::build_wake_prompt` + `wake_engine.py::_wake_context`):
 
-Chỉ ở **luồng wake task**. `wake_engine.py::_do_execute_run` dựng danh bạ bằng:
+- Dòng đầu khi agent có ghế: *"You are {name}, the {vai-trò} on this project inside Armarius."* kèm mô tả
+  vai trò; nếu agent không giữ ghế nào thì lùi về câu chung *"an agent collaborating inside Armarius."*.
+- Danh bạ: `DirectoryEntry.role` mang **title vai trò dự án** (tra từ ghế), kèm `role_description` tuỳ chọn.
 
-```python
-directory = list(await uow.mariuses.list_by_workspace(marius.workspace_id))   # ← workspace-scoped
-```
+**Prompt chat với Leader** (`leader_chat_prompt.py` + `leader_chat.py::_team`):
 
-Tức là liệt kê **mọi agent trong workspace**, kể cả agent **không** thuộc dự án của task. Điều này **sai
-thiết kế**: theo mô hình, cộng tác/@mention chỉ trong phạm vi **người tham gia dự án** (participant), và —
-như §2.1 đã lập luận — mọi wake vốn đã gắn một task thuộc một dự án, nên **không có** sự kiện wake nào ở cấp
-workspace để biện minh cho danh bạ cấp workspace.
+- `_team` tra `g.role_key → Role` cho từng worker ⇒ `ChatDirectoryEntry.role` là **title vai trò dự án**
+  (lùi về chính `role_key` nếu thiếu Role, **không bao giờ để trống**), kèm `role_description`.
+- Header thêm mô tả vai trò của chính Leader (`leader_role_description`).
 
-**Đích:** danh bạ prompt wake là **những người giữ ghế của đúng dự án đó** (`seat_grants.list_by_project`),
-giống hệt cách `leader_chat.py::_team` đã làm. Nói cách khác, luồng chat-với-Leader **đã** đúng phạm vi dự
-án; chỉ luồng wake task còn theo workspace và phải sửa cho khớp.
+> Ghi chú: hiện dùng `Role.description` sẵn có làm "mô tả vai trò". Việc **gộp** `description` +
+> `responsibilities` thành một trường vẫn là đích [ĐÍCH-CẦN-SỬA] riêng (xem [01-domain.md](01-domain.md) §3.2).
 
-> Vì sao đây là lỗi chứ không phải "lựa chọn thiết kế": không tồn tại wake cấp workspace; danh bạ rộng hơn
-> phạm vi dự án làm rò rỉ agent của team khác vào ngữ cảnh một dự án, phá nguyên tắc đa-tenant/góc-nhìn-dự-án.
+### 3.2 Phạm vi danh bạ theo dự án  [ĐÚNG-NHƯ-CODE]
+
+`wake_engine.py::_do_execute_run` nay dựng danh bạ qua `_project_directory(...)`: lấy **người giữ ghế của
+đúng dự án của task** (`seat_grants.list_by_project` + `roles.list_by_project`), **không** còn liệt kê mọi
+agent trong workspace. Agent trong workspace nhưng **không** giữ ghế dự án sẽ **không** xuất hiện trong danh
+bạ prompt. Đúng bằng cách `leader_chat.py::_team` vốn đã làm — hai luồng nay nhất quán.
+
+> Vì sao đây từng là lỗi chứ không phải "lựa chọn thiết kế": không tồn tại wake cấp workspace; danh bạ rộng
+> hơn phạm vi dự án làm rò rỉ agent của team khác vào ngữ cảnh một dự án, phá nguyên tắc đa-tenant/góc-nhìn-dự-án.
 
 ---
 
-## 4. Tiêu chí nghiệm thu
-
-**Phần đúng-như-code (không sửa):**
+## 4. Tiêu chí nghiệm thu  [ĐÚNG-NHƯ-CODE]
 
 1. Tạo dự án vi phạm luật roster (không có Leader / Leader nhiều ghế / thiếu thợ) ⇒ `InvalidProjectPlan`.
 2. Cấp/thu ghế bởi người-không-hệ-thống ⇒ `SystemOnlyOperation`.
 3. Dự án `active` khi và chỉ khi mọi ghế đã cấp và mọi agent ngồi ghế ONLINE; không lùi về `setup`.
 4. Wake luôn có `task_id`; wake trùng cặp `(marius, task)` bị gộp thành `COALESCED`.
-
-**Phần đích Giai đoạn 2 (khi sửa xong thì đạt):**
-
 5. Prompt wake task và prompt chat-với-Leader **đều** nêu vai trò dự án của agent nhận + mô tả, và liệt kê
-   đồng đội kèm **title vai trò dự án thật** (không còn dấu `()` rỗng).
+   đồng đội kèm **title vai trò dự án thật** (không còn dấu `()` rỗng). — kiểm bởi `test_wake_prompt.py`,
+   `test_leader_chat_prompt.py`.
 6. Danh bạ trong prompt wake task **chỉ** gồm người giữ ghế của đúng dự án đó (không còn agent workspace
-   ngoài dự án).
+   ngoài dự án). — kiểm bởi `test_integration_wake.py::test_wake_directory_is_project_scoped_with_project_roles`.

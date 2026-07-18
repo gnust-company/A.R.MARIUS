@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from armarius.application.use_cases.mariuses import MariusService
+from armarius.application.use_cases.projects import ProjectService, RoleSpec
 from armarius.application.use_cases.runs import RunQueryService
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.threads import ThreadService
@@ -91,6 +92,57 @@ async def test_assignment_wakes_agent_runs_and_persists_session(uow_factory) -> 
         session = await uow.sessions.get_for(alice.id, "echo", task.id)
     assert session is not None
     assert session.session_params_json.get("session_id")
+
+
+async def test_wake_directory_is_project_scoped_with_project_roles(uow_factory) -> None:
+    """The wake directory is the seat-holders of THIS project, each with their project role
+    resolved via SeatGrant.role_key → Role — never the whole workspace, never Marius.role
+    (issue #87 / spec 03 §3.1, §3.2)."""
+    wake = _wake_engine(uow_factory)
+    workspaces = WorkspaceService(uow_factory)
+    mariuses = MariusService(uow_factory)
+    projects = ProjectService(uow_factory)
+
+    ws = await workspaces.create_workspace("WS")
+    project = await projects.create_project(
+        ws.id,
+        "P",
+        roles=[
+            RoleSpec(key="leader", title="Leader", seats=1, is_leader=True, description="Leads."),
+            RoleSpec(key="backend", title="Backend", seats=1, description="Owns the API."),
+            RoleSpec(key="design", title="Design", seats=1, description="Owns UX."),
+        ],
+    )
+
+    async def reg(name: str):
+        # role="" on purpose: the workspace-level role is empty, so a correct directory
+        # MUST come from the project roster, not this field.
+        return await mariuses.register(
+            workspace_id=ws.id, name=name, role="", skills=[],
+            adapter_type="echo", adapter_config={},
+        )
+
+    lead, bob, dana, ext = [await reg(n) for n in ("Lead", "Bob", "Dana", "Ext")]
+    await projects.grant_seat(project.id, "leader", lead.id, system=True)
+    await projects.grant_seat(project.id, "backend", bob.id, system=True)
+    await projects.grant_seat(project.id, "design", dana.id, system=True)
+    # `ext` is in the workspace but holds NO seat on this project.
+
+    async with uow_factory() as uow:
+        directory, self_role = await wake._project_directory(uow, project.id, bob)
+
+    names = {m.name for (m, _role) in directory}
+    assert names == {"Lead", "Bob", "Dana"}  # project members only …
+    assert "Ext" not in names  # … the off-project workspace agent is excluded
+
+    # Bob's OWN role is resolved from its seat (Backend), not the empty Marius.role.
+    assert self_role is not None and self_role.title == "Backend"
+
+    # Teammate roles come from the project roster, with their descriptions.
+    role_by_name = {m.name: role for (m, role) in directory}
+    assert role_by_name["Dana"].title == "Design"
+    assert role_by_name["Dana"].description == "Owns UX."
+    assert role_by_name["Lead"].title == "Leader"
 
 
 async def test_mention_wakes_the_mentioned_agent(uow_factory) -> None:

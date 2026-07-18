@@ -192,6 +192,13 @@ class LeaderChatService:
                 return
             workspace = await uow.workspaces.get(leader.workspace_id)
             directory = await self._team(uow, project.id, leader_id=leader.id)
+            # The Leader's own project role, for the prompt header (its duties/description).
+            project_roles = {
+                r.key: r for r in await uow.roles.list_by_project(project.id)
+            }
+            leader_role = project_roles.get(_LEADER_ROLE_KEY) or next(
+                (r for r in project_roles.values() if r.is_leader), None
+            )
             project_id = project.id
             adapter_type = leader.adapter_type
             adapter_config = dict(leader.adapter_config)
@@ -209,6 +216,9 @@ class LeaderChatService:
                         for t in conversation.transcript[-_PROMPT_TURN_TAIL:]
                     ],
                     yolo_mode=yolo,
+                    leader_role_description=(
+                        leader_role.description if leader_role else ""
+                    ),
                     credential_file=(
                         credential_file_for(leader, workspace.name) if workspace else None
                     ),
@@ -340,6 +350,7 @@ class LeaderChatService:
         self, uow, project_id: UUID, *, leader_id: UUID  # noqa: ANN001
     ) -> list[ChatDirectoryEntry]:
         grants = await uow.seat_grants.list_by_project(project_id)
+        roles = {r.key: r for r in await uow.roles.list_by_project(project_id)}
         entries: list[ChatDirectoryEntry] = []
         seen: set[UUID] = set()
         for g in grants:
@@ -354,11 +365,16 @@ class LeaderChatService:
             seen.add(g.marius_id)
             worker = await uow.mariuses.get(g.marius_id)
             if worker is not None:
+                # Resolve the worker's PROJECT role (SeatGrant.role_key → Role), never the
+                # empty workspace-level Marius.role. Fall back to the raw key if the role row
+                # is missing so the entry is never blank.
+                role = roles.get(g.role_key)
                 entries.append(
                     ChatDirectoryEntry(
                         marius_id=worker.id,
                         name=worker.name,
-                        role=worker.role,
+                        role=(role.title if role else g.role_key),
+                        role_description=(role.description if role else ""),
                         liveness=str(worker.liveness),
                     )
                 )
