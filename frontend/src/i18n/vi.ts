@@ -369,6 +369,8 @@ export const vi = {
     taskAssigneeLabel: 'Người thực hiện',
     taskAssigneeNone: 'Chưa gán',
     taskPriorityLabel: 'Ưu tiên',
+    taskStatusLabel: 'Trạng thái',
+    chatResizeHint: 'Kéo để đổi chiều rộng ô chat',
     taskDueDateLabel: 'Hạn chót',
     taskDodLabel: 'Tiêu chí hoàn thành',
     taskDodPlaceholder: 'Khi nào nhiệm vụ này xem là xong? (tùy chọn)…',

@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -34,6 +34,13 @@ const KANBAN_COLUMNS: { status: TaskStatus; label: string; bg: string; headerBg:
   { status: 'in_review', label: 'In Review', bg: 'bg-[#F5E8CC]', headerBg: 'bg-[#F5E8CC]', borderColor: 'border-[#E8D5A0]' },
   { status: 'done', label: 'Done', bg: 'bg-[#D8EADD]', headerBg: 'bg-[#D8EADD]', borderColor: 'border-[#A8D8B8]' },
 ];
+
+// Leader chat dock width — persisted so the patron's preferred split survives reloads. The chat
+// is a VS Code-style resizable right panel: drag the sash between board and chat to change it.
+const CHAT_WIDTH_KEY = 'armarius.boardChatWidth';
+const CHAT_WIDTH_DEFAULT = 500;
+const CHAT_WIDTH_MIN = 360;
+const CHAT_WIDTH_MAX = 760;
 
 const PRIORITY_BORDER: Record<Priority, string> = {
   P0: 'border-l-[#C25E3A]',
@@ -164,96 +171,21 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
   );
 }
 
-// ─── Add Task Modal ──────────────────────────────────────────────────────────
-
-function AddTaskModal({
-  isOpen,
-  onClose,
-  columnStatus,
-  projectId,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  columnStatus: TaskStatus;
-  projectId: string;
-}) {
-  const { t } = useTranslation();
-  const [title, setTitle] = useState('');
-  const createTask = useMockStore((s) => s.createTask);
-
-  const handleSubmit = () => {
-    if (!title.trim()) return;
-    createTask({
-      title: title.trim(),
-      status: columnStatus,
-      priority: 'P2',
-      projectId,
-    });
-    setTitle('');
-    onClose();
-  };
-
-  return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={t('board.addTaskTitle')}
-      footer={
-        <>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-vellum-deep text-ink border border-vellum-dark hover:bg-vellum-dark transition-colors"
-          >
-            {t('common.cancel')}
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!title.trim()}
-            className={cn(
-              'px-4 py-2 rounded-md font-body text-body-md font-medium transition-colors',
-              title.trim()
-                ? 'bg-terracotta text-white hover:bg-terracotta-light'
-                : 'bg-vellum-dark text-ink-muted cursor-not-allowed'
-            )}
-          >
-            {t('common.create')}
-          </button>
-        </>
-      }
-    >
-      <input
-        type="text"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder={t('board.taskTitlePlaceholder')}
-        className={cn(
-          'w-full px-4 py-2.5 rounded-md bg-vellum border border-vellum-dark',
-          'font-body text-body-md text-ink placeholder:text-ink-muted',
-          'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15',
-          'transition-all'
-        )}
-        autoFocus
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') handleSubmit();
-        }}
-      />
-    </Modal>
-  );
-}
-
 // ─── Add Task (full definition) Modal ────────────────────────────────────────
 
 function AddTaskFormModal({
   onClose,
   projectId,
+  defaultStatus = 'backlog',
 }: {
   onClose: () => void;
   projectId: string;
+  defaultStatus?: TaskStatus;
 }) {
   const { t } = useTranslation();
   const hydrateProject = useMockStore((s) => s.hydrateProject);
   const [form, setForm] = useState({
-    title: '', description: '', assigneeId: '', priority: 'medium', dueDate: '', dod: '',
+    title: '', description: '', status: defaultStatus as string, assigneeId: '', priority: 'medium', dueDate: '', dod: '',
   });
   const [agents, setAgents] = useState<api.ProjectAgentDTO[]>([]);
   const [busy, setBusy] = useState(false);
@@ -272,13 +204,14 @@ function AddTaskFormModal({
       await api.createTask(projectId, {
         title: form.title.trim(),
         description: form.description.trim() || undefined,
+        status: form.status,
         priority: form.priority || undefined,
         due_date: form.dueDate ? new Date(form.dueDate).toISOString() : undefined,
         definition_of_done: form.dod.trim() || undefined,
         assigned_marius_id: form.assigneeId || undefined,
       });
       await hydrateProject(projectId);
-      setForm({ title: '', description: '', assigneeId: '', priority: 'medium', dueDate: '', dod: '' });
+      setForm({ title: '', description: '', status: defaultStatus, assigneeId: '', priority: 'medium', dueDate: '', dod: '' });
       onClose();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -323,16 +256,17 @@ function AddTaskFormModal({
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelCls}>{t('board.taskAssigneeLabel')}</label>
+            <label className={labelCls}>{t('board.taskStatusLabel')}</label>
             <select
-              value={form.assigneeId}
-              onChange={(e) => setForm((f) => ({ ...f, assigneeId: e.target.value }))}
+              value={form.status}
+              onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
               className={inputCls}
             >
-              <option value="">{t('board.taskAssigneeNone')}</option>
-              {agents.map((a) => (
-                <option key={a.marius_id} value={a.marius_id}>{a.name}</option>
-              ))}
+              <option value="backlog">{t('tasks.status.backlog')}</option>
+              <option value="todo">{t('tasks.status.todo')}</option>
+              <option value="in_progress">{t('tasks.status.in_progress')}</option>
+              <option value="in_review">{t('tasks.status.in_review')}</option>
+              <option value="done">{t('tasks.status.done')}</option>
             </select>
           </div>
           <div>
@@ -349,14 +283,29 @@ function AddTaskFormModal({
             </select>
           </div>
         </div>
-        <div>
-          <label className={labelCls}>{t('board.taskDueDateLabel')}</label>
-          <input
-            type="date"
-            value={form.dueDate}
-            onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
-            className={inputCls}
-          />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>{t('board.taskAssigneeLabel')}</label>
+            <select
+              value={form.assigneeId}
+              onChange={(e) => setForm((f) => ({ ...f, assigneeId: e.target.value }))}
+              className={inputCls}
+            >
+              <option value="">{t('board.taskAssigneeNone')}</option>
+              {agents.map((a) => (
+                <option key={a.marius_id} value={a.marius_id}>{a.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>{t('board.taskDueDateLabel')}</label>
+            <input
+              type="date"
+              value={form.dueDate}
+              onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+              className={inputCls}
+            />
+          </div>
         </div>
         <div>
           <label className={labelCls}>{t('board.taskDodLabel')}</label>
@@ -406,9 +355,16 @@ export default function ProjectBoard() {
   const hydrateProject = useMockStore((s) => s.hydrateProject);
   const deleteProject = useMockStore((s) => s.deleteProject);
 
-  const [addTaskColumn, setAddTaskColumn] = useState<TaskStatus | null>(null);
-  const [showAddTask, setShowAddTask] = useState(false);
+  // One add-task form drives every entry point — the gold CTA (status=backlog) and each
+  // column's "+" (status=that column). They used to open two different modals (title-only vs
+  // full) and the column "+" silently dropped into backlog; now they're in sync (#82).
+  const [addTask, setAddTask] = useState<{ open: boolean; status: TaskStatus }>({ open: false, status: 'backlog' });
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatWidth, setChatWidth] = useState<number>(() => {
+    const stored = typeof window !== 'undefined' ? window.localStorage.getItem(CHAT_WIDTH_KEY) : null;
+    const n = stored ? Number(stored) : NaN;
+    return Number.isFinite(n) ? Math.max(CHAT_WIDTH_MIN, Math.min(CHAT_WIDTH_MAX, n)) : CHAT_WIDTH_DEFAULT;
+  });
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -444,6 +400,36 @@ export default function ProjectBoard() {
     });
     return map;
   }, [projectTasks]);
+
+  // Drag the sash between board and chat to resize the dock (VS Code-style). The chat docks
+  // right, so dragging the sash left widens it. Width is clamped and persisted on mouse-up.
+  const onSashMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = chatWidth;
+    const onMove = (ev: MouseEvent) => {
+      const next = Math.max(CHAT_WIDTH_MIN, Math.min(CHAT_WIDTH_MAX, startW + (startX - ev.clientX)));
+      setChatWidth(next);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      setChatWidth((w) => {
+        try {
+          window.localStorage.setItem(CHAT_WIDTH_KEY, String(w));
+        } catch {
+          /* ignore quota / private-mode errors */
+        }
+        return w;
+      });
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [chatWidth]);
 
   if (!project) {
     return (
@@ -550,7 +536,7 @@ export default function ProjectBoard() {
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                onClick={() => setShowAddTask(true)}
+                onClick={() => setAddTask({ open: true, status: 'backlog' })}
                 className={cn(
                   'flex items-center gap-1.5 px-4 py-2 rounded-md font-body text-body-sm font-medium',
                   'bg-gold text-ink hover:bg-gold-light transition-colors',
@@ -597,8 +583,9 @@ export default function ProjectBoard() {
         )}
       </AnimatePresence>
 
-      {/* ─── Board (kanban) + Leader chat side panel ───────────────────────── */}
-      <div className="flex gap-4 flex-1 min-h-0">
+      {/* ─── Board (kanban) + Leader chat dock (VS Code-style right panel) ──── */}
+      <div className="flex flex-1 min-h-0">
+        <div className="flex-1 min-w-0 min-h-0 flex">
         <div className="flex gap-4 overflow-x-auto pb-4 flex-1 min-h-0">
         {KANBAN_COLUMNS.map((col, colIndex) => {
           const colTasks = tasksByColumn[col.status] || [];
@@ -632,7 +619,7 @@ export default function ProjectBoard() {
                 </div>
                 {!isSetup && (
                   <button
-                    onClick={() => setAddTaskColumn(col.status)}
+                    onClick={() => setAddTask({ open: true, status: col.status })}
                     className="p-1 rounded text-ink-muted hover:text-terracotta transition-colors"
                     aria-label={`Add task to ${col.label}`}
                   >
@@ -668,7 +655,7 @@ export default function ProjectBoard() {
                 {/* Add button at bottom */}
                 {!isSetup && (
                   <button
-                    onClick={() => setAddTaskColumn(col.status)}
+                    onClick={() => setAddTask({ open: true, status: col.status })}
                     className="flex items-center justify-center gap-1 py-2 rounded-md text-ink-muted hover:text-terracotta hover:bg-vellum-deep/50 transition-colors"
                   >
                     <Plus className="w-4 h-4" />
@@ -680,8 +667,10 @@ export default function ProjectBoard() {
           );
         })}
         </div>
+        </div>
 
-        {/* Leader chat side panel — the board stays visible beside it (#82). */}
+        {/* Leader chat dock — a VS Code-style resizable right panel. The board (left) stays
+            visible beside it; drag the sash to set the chat width (persisted to localStorage). */}
         <AnimatePresence>
           {chatOpen && projectId && (
             <motion.div
@@ -689,24 +678,27 @@ export default function ProjectBoard() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 24 }}
               transition={{ duration: 0.25, ease: [0, 0, 0.2, 1] as [number, number, number, number] }}
-              className="flex-shrink-0 w-[400px] min-h-0"
+              style={{ width: chatWidth }}
+              className="flex-shrink-0 min-h-0 flex"
             >
-              <LeaderChatPanel projectId={projectId} onClose={() => setChatOpen(false)} />
+              <div
+                onMouseDown={onSashMouseDown}
+                title={t('board.chatResizeHint')}
+                className="w-1.5 flex-shrink-0 cursor-col-resize bg-vellum-dark/40 hover:bg-terracotta/70 active:bg-terracotta transition-colors"
+              />
+              <div className="flex-1 min-w-0 min-h-0">
+                <LeaderChatPanel projectId={projectId} onClose={() => setChatOpen(false)} />
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* ─── Add Task Modal ─────────────────────────────────────────── */}
-      <AddTaskModal
-        isOpen={addTaskColumn !== null}
-        onClose={() => setAddTaskColumn(null)}
-        columnStatus={addTaskColumn || 'backlog'}
-        projectId={projectId || ''}
-      />
-      {showAddTask && projectId && (
+      {/* ─── Add Task (full definition) — one form for the CTA + every column "+" (#82) */}
+      {addTask.open && projectId && (
         <AddTaskFormModal
-          onClose={() => setShowAddTask(false)}
+          defaultStatus={addTask.status}
+          onClose={() => setAddTask((a) => ({ ...a, open: false }))}
           projectId={projectId}
         />
       )}
