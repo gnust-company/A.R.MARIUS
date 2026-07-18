@@ -1,3 +1,5 @@
+> ⚠️ **ĐÃ LỖI THỜI (ARCHIVED).** Nguồn sự thật hiện tại là [`spec/`](../spec/) (tiếng Việt). Xem [docs/README.md](README.md).
+
 # Armarius — Low-Level Design (LLD)
 
 > Status: **Design draft v3** (2026-06-27). Build-level detail for the wave in [HLD.md](./HLD.md) /

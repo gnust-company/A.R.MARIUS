@@ -1,3 +1,5 @@
+> ⚠️ **ĐÃ LỖI THỜI (ARCHIVED).** Nguồn sự thật hiện tại là [`spec/`](../spec/) (tiếng Việt). Xem [docs/README.md](README.md).
+
 # Armarius — High-Level Design (HLD)
 
 > Status: **Design draft v3** (2026-06-27). Aligned with the approved [ARCHITECTURE.md](./ARCHITECTURE.md):
