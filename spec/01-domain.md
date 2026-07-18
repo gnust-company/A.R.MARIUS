@@ -64,7 +64,7 @@ Danh tính một agent, gắn với một adapter runtime. Các trường chính
 | `skills`, `skill_ids` | kỹ năng agent có / id kỹ năng liên kết từ kho | [ĐÚNG-NHƯ-CODE] |
 | `invite_status` | FSM mời (xem §5.1) | [ĐÚNG-NHƯ-CODE] |
 | `liveness`, `last_seen_at`, `probe_attempts`, `backoff_step`, `next_probe_at`, `offline_since` | sổ sách sống/chết (xem [04-liveness.md](04-liveness.md)) | [ĐÚNG-NHƯ-CODE] |
-| `role` | vai trò **cấp workspace** — chuỗi tự do, **thường rỗng** | [ĐÍCH-CẦN-SỬA] |
+| `role` | vai trò **cấp workspace** — chuỗi tự do, **thường rỗng**; dấu tích, prompt không còn đọc (issue #87) | [ĐÚNG-NHƯ-CODE] |
 | `enrollment_code` | dấu tích của mô hình cũ, **không còn dùng** cho agent mới | [ĐÚNG-NHƯ-CODE] |
 
 **Điểm quan trọng — hai khái niệm "vai trò" khác nhau:**
@@ -73,9 +73,10 @@ Danh tính một agent, gắn với một adapter runtime. Các trường chính
 - Vai trò **thật sự trong dự án** không nằm ở đây, mà suy ra từ `SeatGrant.role_key` → `Role` (xem
   [03-roster-wake.md](03-roster-wake.md)).
 
-Đây là gốc của lỗi "Leader không biết vai trò đồng đội": các prompt hiện đọc `Marius.role` (rỗng)
-thay vì tra vai trò dự án. **[ĐÍCH-CẦN-SỬA]** — mọi ngữ cảnh cấp dự án phải dùng vai trò dự án; sửa ở
-Giai đoạn 2 (chi tiết ở [03-roster-wake.md](03-roster-wake.md) và [05-task-leaderchat.md](05-task-leaderchat.md)).
+Đây từng là gốc của lỗi "Leader không biết vai trò đồng đội": các prompt đọc `Marius.role` (rỗng) thay vì
+tra vai trò dự án. **Đã sửa ở issue #87** — mọi prompt cấp dự án nay tra vai trò dự án (`SeatGrant.role_key
+→ Role`); `Marius.role` còn lại chỉ là trường workspace **không dùng tới** (dấu tích), không còn bị đọc
+nhầm. Chi tiết: [03-roster-wake.md](03-roster-wake.md) §3.
 
 ### 2.4 Skill — `entities/skill.py`  [ĐÚNG-NHƯ-CODE]
 
@@ -274,13 +275,15 @@ hoạch; `finalize` dựng `Project` thật. Chi tiết luồng ở [02-invite.m
 
 | # | Chỗ | Hiện trạng (code) | Đích (spec) |
 |---|---|---|---|
-| 1 | `Marius.role` | vai trò workspace rỗng, bị prompt đọc nhầm | prompt dùng vai trò **dự án** (SeatGrant→Role) |
-| 2 | `Role.description` + `Role.responsibilities` | hai trường tách, mơ hồ | **gộp một** "mô tả vai trò", đưa vào prompt |
-| 3 | `Task.assigned_marius_id` + `TaskParticipant` | hai mô hình song song | **một** người phụ trách; gỡ `TaskParticipant` |
-| 4 | `Task.identifier` | có trường, không sinh giá trị | sinh mã `{TIỀN-TỐ-TỪ-TÊN-DỰ-ÁN}-{n}` |
-| 5 | `CommissionSession`, `LeaderState`, `CommissionStatus`, `WakeSource.COMMISSION` | còn trong code | **gỡ bỏ** — đã bị `ProjectLeaderConversation` thay thế (xem [05-task-leaderchat.md](05-task-leaderchat.md)) |
-| 6 | `enrollment_code`, `InviteStatus.PENDING_REVIEW` | dấu tích mô hình cũ | giữ cho hàng dữ liệu cũ, không dùng cho bản ghi mới |
-| 7 | `Liveness.IDLE` | chú thích entity ghi "đã bỏ" nhưng code **đang chủ động gán** IDLE cho **bản ghi mới** (`WakeEngine._finalise`) và coi là hợp lệ để nhận lượt (`LeaderChatService`) — mâu thuẫn | thống nhất một tên cho trạng thái "rảnh giữa các lượt"; chi tiết + hệ quả ở [04-liveness.md](04-liveness.md) §4 |
+| 1 | `Role.description` + `Role.responsibilities` | hai trường tách, mơ hồ | **gộp một** "mô tả vai trò" (đã đưa `description` vào prompt ở #87; còn lại là việc gộp trường) |
+| 2 | `Task.assigned_marius_id` + `TaskParticipant` | hai mô hình song song | **một** người phụ trách; gỡ `TaskParticipant` |
+| 3 | `Task.identifier` | có trường, không sinh giá trị | sinh mã `{TIỀN-TỐ-TỪ-TÊN-DỰ-ÁN}-{n}` |
+| 4 | `CommissionSession`, `LeaderState`, `CommissionStatus`, `WakeSource.COMMISSION` | còn trong code | **gỡ bỏ** — đã bị `ProjectLeaderConversation` thay thế (xem [05-task-leaderchat.md](05-task-leaderchat.md)) |
+| 5 | `enrollment_code`, `InviteStatus.PENDING_REVIEW` | dấu tích mô hình cũ | giữ cho hàng dữ liệu cũ, không dùng cho bản ghi mới |
+| 6 | `Liveness.IDLE` | chú thích entity ghi "đã bỏ" nhưng code **đang chủ động gán** IDLE cho **bản ghi mới** (`WakeEngine._finalise`) và coi là hợp lệ để nhận lượt (`LeaderChatService`) — mâu thuẫn | thống nhất một tên cho trạng thái "rảnh giữa các lượt"; chi tiết + hệ quả ở [04-liveness.md](04-liveness.md) §4 |
+
+> ✅ **Đã sửa ở issue #87:** lỗi prompt đọc `Marius.role` rỗng (nay tra vai trò dự án `SeatGrant.role_key →
+> Role`) và phạm vi danh bạ wake theo workspace (nay theo dự án). Xem [03-roster-wake.md](03-roster-wake.md) §3.
 
 ---
 

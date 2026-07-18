@@ -16,9 +16,10 @@ from armarius.domain.services.agent_prompt import agent_prompt_footer
 @dataclass(frozen=True)
 class DirectoryEntry:
     name: str
-    role: str
+    role: str  # the teammate's PROJECT role title (resolved via SeatGrant.role_key → Role)
     skills: list[str]
     liveness: str
+    role_description: str = ""  # what that project role does (optional)
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,10 @@ class WakeContext:
     new_messages: list[ThreadMessage]
     source: WakeSource
     reason: str | None = None
+    # The woken agent's OWN role in THIS project (title + description), resolved via its
+    # SeatGrant.role_key → Role. Empty when the agent holds no seat in the project.
+    self_role: str = ""
+    self_role_description: str = ""
     # Where this wake comes from (#15): a multi-workspace agent holds one token per
     # workspace, so every prompt names its workspace/project and the exact credential
     # file to read — the agent must never guess among several files.
@@ -48,7 +53,14 @@ class WakeContext:
 
 def build_wake_prompt(ctx: WakeContext) -> str:
     lines: list[str] = []
-    lines.append(f"You are {ctx.marius_name}, an agent collaborating inside Armarius.")
+    if ctx.self_role:
+        lines.append(
+            f"You are {ctx.marius_name}, the {ctx.self_role} on this project inside Armarius."
+        )
+        if ctx.self_role_description:
+            lines.append(ctx.self_role_description.strip())
+    else:
+        lines.append(f"You are {ctx.marius_name}, an agent collaborating inside Armarius.")
     lines.append("")
 
     if ctx.workspace_name or ctx.project_name:
@@ -72,10 +84,13 @@ def build_wake_prompt(ctx: WakeContext) -> str:
     lines.append("")
 
     if ctx.directory:
-        lines.append("## Agent directory (who you can @mention)")
+        lines.append("## Your teammates on this project (who you can @mention)")
         for d in ctx.directory:
             skills = ", ".join(d.skills) if d.skills else "—"
-            lines.append(f"- @{d.name} ({d.role}) [{d.liveness}] skills: {skills}")
+            role = d.role or "—"
+            lines.append(f"- @{d.name} ({role}) [{d.liveness}] skills: {skills}")
+            if d.role_description:
+                lines.append(f"    role: {d.role_description.strip()}")
         lines.append("")
 
     if ctx.new_messages:

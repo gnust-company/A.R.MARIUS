@@ -25,7 +25,9 @@ from armarius.application.use_cases.onboarding import credential_file_for
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.marius import Liveness, Marius
+from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import Run, RunEvent, RunStatus, WakeSource
+from armarius.domain.entities.seat_grant import SeatGrantStatus
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.task import Task, TaskStatus
 from armarius.domain.entities.wakeup import WakeupRequest, WakeupStatus
@@ -162,13 +164,15 @@ class WakeEngine:
                 return
 
             session = await uow.sessions.get_for(marius.id, marius.adapter_type, task.id)
-            directory = list(await uow.mariuses.list_by_workspace(marius.workspace_id))
+            directory, self_role = await self._project_directory(uow, task.project_id, marius)
             new_messages = await self._new_messages(uow, task, marius)
             workspace = await uow.workspaces.get(marius.workspace_id)
             project = await uow.projects.get(task.project_id)
 
             prompt = build_wake_prompt(
-                _wake_context(run, marius, task, directory, new_messages, workspace, project)
+                _wake_context(
+                    run, marius, task, directory, self_role, new_messages, workspace, project
+                )
             )
 
             run.status = RunStatus.RUNNING
@@ -346,6 +350,37 @@ class WakeEngine:
 
     # ----------------------------------------------------------------- helpers
 
+    async def _project_directory(
+        self, uow, project_id: UUID | None, marius: Marius  # noqa: ANN001
+    ) -> tuple[list[tuple[Marius, Role | None]], Role | None]:
+        """Project participants (granted seats) paired with their PROJECT role, plus the
+        woken agent's own role.
+
+        Project-scoped (§3.2): the directory is the seat-holders of THIS project — resolved
+        via `seat_grants.list_by_project` + `roles.list_by_project` — NOT every agent in the
+        workspace. Each agent's role comes from `SeatGrant.role_key → Role`, never the empty
+        workspace-level `Marius.role`.
+        """
+        if project_id is None:
+            return [], None
+        grants = await uow.seat_grants.list_by_project(project_id)
+        roles = {r.key: r for r in await uow.roles.list_by_project(project_id)}
+        role_by_marius: dict[UUID, Role | None] = {}
+        member_ids: list[UUID] = []
+        for g in grants:
+            if g.status != SeatGrantStatus.GRANTED or g.marius_id is None:
+                continue
+            if g.marius_id not in role_by_marius:
+                member_ids.append(g.marius_id)
+            role_by_marius[g.marius_id] = roles.get(g.role_key)
+        members = {m.id: m for m in await uow.mariuses.list_by_ids(member_ids)}
+        directory = [
+            (members[mid], role_by_marius.get(mid))
+            for mid in member_ids
+            if mid in members
+        ]
+        return directory, role_by_marius.get(marius.id)
+
     async def _new_messages(self, uow, task: Task, marius: Marius) -> list[Comment]:  # noqa: ANN001
         runs = await uow.runs.list_by_task(task.id)
         last_finished = None
@@ -365,16 +400,21 @@ def _wake_context(
     run: Run,
     marius: Marius,
     task: Task,
-    directory: Sequence[Marius],
+    directory: Sequence[tuple[Marius, Role | None]],
+    self_role: Role | None,
     messages: Sequence[Comment],
     workspace: Workspace | None = None,
     project: Project | None = None,
 ) -> WakeContext:
     dir_entries = [
         DirectoryEntry(
-            name=m.name, role=m.role, skills=list(m.skills), liveness=str(m.liveness)
+            name=m.name,
+            role=(role.title if role else ""),
+            role_description=(role.description if role else ""),
+            skills=list(m.skills),
+            liveness=str(m.liveness),
         )
-        for m in directory
+        for (m, role) in directory
         if m.id != marius.id
     ]
     thread = [
@@ -396,6 +436,8 @@ def _wake_context(
         new_messages=thread,
         source=run.wake_source,
         reason=run.trigger_detail,
+        self_role=(self_role.title if self_role else ""),
+        self_role_description=(self_role.description if self_role else ""),
         workspace_name=workspace.name if workspace else "",
         project_name=project.name if project else "",
         credential_file=(

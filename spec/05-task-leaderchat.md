@@ -77,8 +77,9 @@ Cuộc trò chuyện 1-1 **cấp dự án** với Leader về *mọi thứ* tron
   "cập nhật task, publish hiện vật" — vô nghĩa cho một cuộc trò chuyện), lý do khiến wake commission cũ thấy
   "bạc nhược".
 
-> Ghi chú: danh bạ đội trong prompt chat này **đã** đúng phạm vi dự án nhưng **sai trường vai trò** (đọc
-> `worker.role` rỗng). Xem lỗi + đích ở [03-roster-wake.md](03-roster-wake.md) §3.1.
+> Ghi chú: danh bạ đội trong prompt chat này đúng phạm vi dự án **và** (sau issue #87) nêu **title vai trò
+> dự án thật** của từng worker + mô tả, kèm mô tả vai trò của chính Leader ở header. Xem
+> [03-roster-wake.md](03-roster-wake.md) §3.
 
 ---
 
