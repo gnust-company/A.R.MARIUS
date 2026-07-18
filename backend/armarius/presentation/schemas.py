@@ -319,6 +319,10 @@ class MetaOut(BaseModel):
 class CreateTaskIn(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     description: str | None = None
+    # status lets the board's per-column "+" land the task in the right column (#82); omitted →
+    # backlog (the service default). Leader Chat-with-Leader proposals still pass status=DRAFT
+    # through the service call directly, not via this schema.
+    status: str | None = None
     # A task is more than a title — capture the full definition the patron has in mind (#82).
     # priority is one of TaskPriority (critical/high/medium/low); anything else falls back to
     # medium in the service layer. assigned_marius_id seats the task on a project agent.

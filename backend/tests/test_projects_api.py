@@ -364,3 +364,27 @@ async def test_create_task_carries_full_definition() -> None:
         assert got["priority"] == "high"
         assert got["definition_of_done"] == "All operations pass and it is deployed"
         assert got["assigned_marius_id"] == mid
+
+
+async def test_create_task_lands_in_supplied_status() -> None:
+    """The board's per-column "+" passes `status` so a task lands in the right column, not
+    always backlog. Omitting status still defaults to backlog (#82)."""
+    async with await _client() as c:
+        token, ws_id = await _register(c, "taskcol@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        pid = (await _create(c, ws_id, h))["id"]
+
+        in_progress = await c.post(
+            f"/v1/projects/{pid}/tasks",
+            headers=h,
+            json={"title": "Already going", "status": "in_progress"},
+        )
+        assert in_progress.status_code == 201, in_progress.text
+        assert in_progress.json()["status"] == "in_progress"
+
+        defaulted = await c.post(
+            f"/v1/projects/{pid}/tasks", headers=h, json={"title": "Just an idea"}
+        )
+        assert defaulted.status_code == 201, defaulted.text
+        assert defaulted.json()["status"] == "backlog"
+
