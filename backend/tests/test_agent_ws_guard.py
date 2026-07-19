@@ -52,7 +52,7 @@ async def _make_task(c: AsyncClient, h: dict, ws_id: str) -> str:
         json={
             "name": "Guarded",
             "objective": "Guard test",
-            "leader": {"responsibilities": "lead", "marius_id": None},
+            "leader": {"description": "lead", "marius_id": None},
             "roles": [{"title": "Backend", "seats": 1}],
         },
     )
