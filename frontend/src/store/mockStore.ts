@@ -295,6 +295,8 @@ export interface Workspace {
 export interface Project {
   id: string
   name: string
+  /** JIRA-style KEY — prefix of task identifiers "{key}-{n}". */
+  key?: string
   description?: string
   workspaceId: string
   seatIds?: string[]
@@ -397,6 +399,7 @@ interface MockStoreState {
   setActiveWorkspace: (workspaceId: string) => void
   createProject: (input: {
     name: string
+    key?: string
     description?: string
     objective?: string
     workspaceId?: string
@@ -766,6 +769,7 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
     }
     const body: api.CreateProjectBody = {
       name: input.name,
+      key: input.key,
       description: input.description,
       objective: input.objective,
       leader: { marius_id: input.leaderId || undefined, responsibilities: '' },

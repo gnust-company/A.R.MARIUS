@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { wsHref } from '@/lib/utils';
+import { wsHref, suggestProjectKey } from '@/lib/utils';
+import { ApiError } from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Trash2, AlertTriangle,
@@ -24,6 +25,9 @@ interface WorkerRoleForm {
 
 interface FormData {
   name: string;
+  key: string;
+  /** Has the user edited the KEY by hand? Until then it auto-follows the name. */
+  keyTouched: boolean;
   objective: string;
   targetDate: string;
   githubUrl: string;
@@ -78,6 +82,8 @@ const generateId = () => `wr-${Date.now()}-${Math.random().toString(36).slice(2,
 
 const initialFormData: FormData = {
   name: '',
+  key: '',
+  keyTouched: false,
   objective: '',
   targetDate: '',
   githubUrl: '',
@@ -86,6 +92,9 @@ const initialFormData: FormData = {
   assignLeaderLater: false,
   workerRoles: [],
 };
+
+/** JIRA-style project KEY: 2–10 uppercase chars, starts with a letter. Mirrors backend. */
+const PROJECT_KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/;
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -139,9 +148,15 @@ export default function CreateProject() {
     if (!formData.objective.trim()) {
       newErrors.objective = t('createProject.fields.objectiveRequired');
     }
+    // KEY is optional (blank → server derives from name), but if the user typed one it
+    // must match the JIRA format. The field auto-fills from the name, so it's rarely blank.
+    const key = formData.key.trim().toUpperCase();
+    if (key && !PROJECT_KEY_RE.test(key)) {
+      newErrors.key = t('createProject.fields.keyInvalid');
+    }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }, [formData.name, formData.objective, t]);
+  }, [formData.name, formData.objective, formData.key, t]);
 
   const validateStep2 = useCallback((): boolean => {
     const newErrors: FormErrors = {};
@@ -233,16 +248,35 @@ export default function CreateProject() {
       }
     });
 
-    const project = await createProject({
-      name: formData.name.trim(),
-      description: formData.objective.trim(),
-      objective: formData.objective.trim(),
-      workspaceId: activeWorkspaceId || undefined,
-      leaderId: formData.leaderId || '',
-      seats,
-    });
+    try {
+      const project = await createProject({
+        name: formData.name.trim(),
+        key: formData.key.trim() || undefined,
+        description: formData.objective.trim(),
+        objective: formData.objective.trim(),
+        workspaceId: activeWorkspaceId || undefined,
+        leaderId: formData.leaderId || '',
+        seats,
+      });
 
-    navigate(wsHref(workspaceId, `/projects/${project.id}`));
+      navigate(wsHref(workspaceId, `/projects/${project.id}`));
+    } catch (err) {
+      setIsSubmitting(false);
+      // Key collision (409) or malformed key (422) — bounce to step 1 and flag the field.
+      if (err instanceof ApiError && (err.status === 409 || err.status === 422)) {
+        setErrors((p) => ({
+          ...p,
+          key:
+            err.status === 409
+              ? t('createProject.fields.keyTaken')
+              : t('createProject.fields.keyInvalid'),
+        }));
+        setDirection(-1);
+        setStep(1);
+        return;
+      }
+      throw err;
+    }
   };
 
   // ─── Worker Role Helpers ───────────────────────────────────────────────────
@@ -386,7 +420,13 @@ export default function CreateProject() {
           type="text"
           value={formData.name}
           onChange={(e) => {
-            setFormData((p) => ({ ...p, name: e.target.value }));
+            const name = e.target.value;
+            setFormData((p) => ({
+              ...p,
+              name,
+              // Auto-suggest the KEY from the name until the user edits it by hand.
+              key: p.keyTouched ? p.key : suggestProjectKey(name),
+            }));
             if (errors.name) setErrors((p) => ({ ...p, name: undefined }));
           }}
           placeholder={t('createProject.fields.namePlaceholder')}
@@ -396,6 +436,34 @@ export default function CreateProject() {
         />
         {errors.name && (
           <p className="mt-1 font-body text-body-sm text-[#B84A32]">{errors.name}</p>
+        )}
+      </div>
+
+      {/* Project KEY — JIRA-style prefix of task identifiers "{KEY}-{n}" */}
+      <div>
+        <label className="block font-body text-body-sm font-medium text-ink mb-1">
+          {t('createProject.fields.key')}
+        </label>
+        <input
+          type="text"
+          value={formData.key}
+          onChange={(e) => {
+            // Coerce as the user types: uppercase, ASCII alphanumerics only.
+            const cleaned = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            setFormData((p) => ({ ...p, key: cleaned, keyTouched: true }));
+            if (errors.key) setErrors((p) => ({ ...p, key: undefined }));
+          }}
+          placeholder={t('createProject.fields.keyPlaceholder')}
+          maxLength={10}
+          className={`w-40 bg-vellum border rounded-md px-4 py-2.5 font-mono text-body-md text-ink uppercase tracking-wide placeholder:font-body placeholder:normal-case placeholder:tracking-normal placeholder:text-ink-muted focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)] transition-colors ${
+            errors.key ? 'border-[#B84A32]' : 'border-[#E3D7BC]'
+          }`}
+        />
+        <p className="mt-1 font-body text-body-xs text-ink-muted">
+          {t('createProject.fields.keyHint')}
+        </p>
+        {errors.key && (
+          <p className="mt-1 font-body text-body-sm text-[#B84A32]">{errors.key}</p>
         )}
       </div>
 
@@ -723,7 +791,12 @@ export default function CreateProject() {
 
         {/* Project Summary Card */}
         <div className="bg-[#EDE4CE] border border-[#E3D7BC] rounded-md p-6">
-          <h3 className="font-display text-display-md text-ink mb-2">{formData.name}</h3>
+          <div className="flex items-baseline gap-3 mb-2">
+            <h3 className="font-display text-display-md text-ink">{formData.name}</h3>
+            {formData.key && (
+              <span className="font-mono text-mono-md text-terracotta">{formData.key}</span>
+            )}
+          </div>
           <p className="font-body text-body-md text-ink-light mb-4">{formData.objective}</p>
 
           <div className="space-y-1 font-body text-body-sm text-ink-light">
