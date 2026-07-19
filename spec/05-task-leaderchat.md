@@ -21,11 +21,13 @@
 | `reject_proposed(task)` | Từ chối draft: `draft → cancelled` (không wake). |
 | `set_next_action(task, text)` | Ghi gợi ý tiếp việc bền. |
 
-### 1.1 Một người phụ trách — [ĐÍCH-CẦN-SỬA]
+### 1.1 Một người phụ trách — [ĐÚNG-NHƯ-CODE] (đã gỡ participant ở #101)
 
-Toàn bộ luồng thao tác **thực tế** chỉ dùng **`Task.assigned_marius_id`** (một người). Thực thể
-`TaskParticipant` (nhiều người, một `is_primary`) tồn tại nhưng **không** được các thao tác trên dùng.
-**Đích:** giữ một-người-phụ-trách, **gỡ** `TaskParticipant` ở Giai đoạn 2 (xem [01-domain.md](01-domain.md) §4.1).
+Mọi luồng thao tác chỉ dùng **`Task.assigned_marius_id`** (một người) — **nguồn sự thật duy nhất**. Thực thể
+`TaskParticipant` (mô hình nhiều-người song song) **đã được gỡ sạch ở issue #101 (GĐ-2)**: nó là mã chết mồ
+côi (không bảng CSDL, không kho/mapper, không thao tác nào dùng) nên gỡ **không cần di trú**. Frontend cũng
+gỡ danh sách "người tham gia" (luôn rỗng) và nối các chỗ hiển thị vào đúng một người phụ trách. Xem
+[01-domain.md](01-domain.md) §4.1.
 
 ### 1.2 Mã task `{KEY}-{seq}` — [ĐÚNG-NHƯ-CODE]
 
@@ -126,4 +128,5 @@ tả commission như một tính năng sống.
 5. YOLO tắt: Leader tạo việc ⇒ `draft`, không wake ai; Patron duyệt ⇒ `todo` + wake assignee. YOLO bật:
    tạo việc ⇒ live + wake ngay.
 
-**Đích Giai đoạn 2:** §1.1 (một người phụ trách, gỡ participant). (§5 — gỡ commission — đã xong ở #99.)
+**Giai đoạn 2 — đã xong:** §1.1 (một người phụ trách, gỡ participant) hoàn tất ở #101; §5 (gỡ commission)
+đã xong ở #99. Không còn đích Giai đoạn 2 trong file này.
