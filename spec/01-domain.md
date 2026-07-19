@@ -256,8 +256,9 @@ CANCELLED ──► BACKLOG             (khôi phục)
 
 ### 5.5 FSM sống/chết — `Marius.liveness`  [ĐÚNG-NHƯ-CODE]
 
-`OFFLINE → ONLINE → CHECKING → OFFLINE ...` (có backoff), cùng `WORKING`/`HUNG`. `IDLE` là giá trị **cũ,
-đã bỏ**, `CHECKING` thay thế. Logic ở `domain/services/liveness_fsm.py`; chi tiết: [04-liveness.md](04-liveness.md).
+`OFFLINE → ONLINE → CHECKING → OFFLINE ...` (có backoff), cùng `WORKING`/`HUNG`. Sau một lượt chạy kết
+thúc, agent về `ONLINE` (`last_seen_at` vừa = tín hiệu) — đây cũng là trạng thái "rảnh giữa các lượt".
+Logic ở `domain/services/liveness_fsm.py`; chi tiết: [04-liveness.md](04-liveness.md).
 
 ### 5.6 FSM chat với Leader — `ProjectLeaderConversation.state`  [ĐÚNG-NHƯ-CODE]
 
@@ -276,7 +277,7 @@ hoạch; `finalize` dựng `Project` thật. Chi tiết luồng ở [02-invite.m
 
 - **Run + RunEvent** — `entities/run.py`: một lần chạy có biên và luồng sự kiện trace teo từ adapter.
   `RunStatus` ∈ {queued, running, completed, failed, timed_out, stopped}. `WakeSource` = lý do chạy
-  (assignment, mention, comment, on_demand, continuation, nudge, **commission**, leader_chat). [ĐÚNG-NHƯ-CODE]
+  (assignment, mention, comment, on_demand, continuation, nudge, leader_chat). [ĐÚNG-NHƯ-CODE]
 - **WakeupRequest** — `entities/wakeup.py`: yêu cầu đánh thức **luôn gắn task** (`task_id`); không có bộ
   đếm giờ toàn cục. `WakeupStatus` ∈ {queued, dispatched, coalesced, done, failed}. Chi tiết mô hình wake:
   [03-roster-wake.md](03-roster-wake.md). [ĐÚNG-NHƯ-CODE]
@@ -292,9 +293,14 @@ hoạch; `finalize` dựng `Project` thật. Chi tiết luồng ở [02-invite.m
 | # | Chỗ | Hiện trạng (code) | Đích (spec) |
 |---|---|---|---|
 | 1 | `Task.assigned_marius_id` + `TaskParticipant` | hai mô hình song song | **một** người phụ trách; gỡ `TaskParticipant` |
-| 2 | `CommissionSession`, `LeaderState`, `CommissionStatus`, `WakeSource.COMMISSION` | còn trong code | **gỡ bỏ** — đã bị `ProjectLeaderConversation` thay thế (xem [05-task-leaderchat.md](05-task-leaderchat.md)) |
-| 3 | `Liveness.IDLE` | chú thích entity ghi "đã bỏ" nhưng code **đang chủ động gán** IDLE cho **bản ghi mới** (`WakeEngine._finalise`) và coi là hợp lệ để nhận lượt (`LeaderChatService`) — mâu thuẫn | thống nhất một tên cho trạng thái "rảnh giữa các lượt"; chi tiết + hệ quả ở [04-liveness.md](04-liveness.md) §4 |
 
+> ✅ **Đã sửa ở issue #99 (GĐ-2 C+D):** gỡ sạch Commission (đã bị Chat với Leader #82 thay thế) — thực thể
+> `CommissionSession`/`CommissionStatus`/`LeaderState`, use case, endpoint `/v1/commissions/*`,
+> `WakeSource.COMMISSION`, bảng CSDL `commission_sessions` + toàn bộ dead code FE; và thống nhất
+> `Liveness.IDLE` → dùng lại `ONLINE` (sau lượt agent về `ONLINE`, watchdog duy trì qua nhánh ONLINE có
+> sẵn). Di trú `a1c4e8b2d6f9` xoá bảng + backfill `idle → online`. Xem [05-task-leaderchat.md](05-task-leaderchat.md)
+> §5 + [04-liveness.md](04-liveness.md) §4.
+>
 > ✅ **Đã sửa ở issue #97:** gỡ sạch tàn dư enroll-and-wait — trường `Marius.enrollment_code` (entity +
 > cột CSDL, di trú `f3a1b8c5d2e7`), nhánh STEP-0 trong `build_invite_prompt`, và 2 chỗ chữ sai cơ chế ở
 > MCP. **`InviteStatus.PENDING_REVIEW` được GIỮ** — nó đang đúng vai trò hỗ trợ hàng cũ (chỉ `activate`

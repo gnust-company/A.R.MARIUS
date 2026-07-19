@@ -50,7 +50,6 @@ Các trạng thái quan sát được (`Marius.liveness`):
 | `CHECKING` | đã im quá T1, đang trong chu kỳ probe |
 | `OFFLINE` | trượt đủ số lần; đang chờ backoff để probe lại |
 | `HUNG` | lượt chạy treo quá `hung_after`; **không** phải ngõ cụt — chia chung đường hồi phục với OFFLINE |
-| `IDLE` | xem §4 (thuật ngữ cũ, còn dùng lẫn) |
 
 ### 2.1 Tham số (mặc định)  [ĐÚNG-NHƯ-CODE]
 
@@ -78,23 +77,22 @@ gập kết quả lại. Giao dịch cơ sở dữ liệu **không** bị giữ 
 ## 3. Điều kiện kích hoạt dự án dựa trên liveness  [ĐÚNG-NHƯ-CODE]
 
 `all_seated_online` yêu cầu **mọi** agent ngồi ghế ở trạng thái **ONLINE** (đúng nghĩa `Liveness.ONLINE`,
-không tính IDLE/WORKING). Đây là cổng để dự án chuyển `setup → active` (xem [03-roster-wake.md](03-roster-wake.md) §1.3).
+không tính `WORKING`). Đây là cổng để dự án chuyển `setup → active` (xem [03-roster-wake.md](03-roster-wake.md) §1.3).
 
 ---
 
-## 4. Vướng thuật ngữ IDLE — [ĐÍCH-CẦN-SỬA] (dọn ở Giai đoạn 2)
+## 4. Trạng thái "rảnh giữa các lượt" — dùng lại `ONLINE`  [ĐÚNG-NHƯ-CODE]
 
-Thực thể `Marius` chú thích `IDLE` là **đã bỏ**, `CHECKING` thay thế (cho nghĩa "đang dò sau khi im"). Nhưng
-code vẫn dùng `IDLE` cho một nghĩa **khác**: `WakeEngine._finalise` đặt `marius.liveness = IDLE` để chỉ
-"giữa các lượt, rảnh và tới được"; `LeaderChatService` coi `IDLE` là một trạng thái "sẵn sàng nhận lượt".
+Trước đây có một giá trị `Liveness.IDLE` mà chú thích entity ghi "đã bỏ" nhưng code vẫn **đang đặt** cho
+agent vừa xong lượt (`WakeEngine._finalise`) và coi là "sẵn sàng nhận lượt" (`LeaderChatService`), trong khi
+`plan_tick` **không có nhánh IDLE** → một agent ở IDLE không được probe lại — mâu thuẫn giữa chú thích và
+hành vi.
 
-Hệ quả cần lưu ý: `plan_tick` **không có nhánh xử lý `IDLE`** — một agent ở `IDLE` sẽ không bị suy giảm cũng
-không bị probe cho tới khi có tín hiệu mới hoặc một lượt mới. Trong thực tế `IDLE` chỉ xuất hiện ngay sau một
-lượt vừa xong (vừa có liên lạc) nên rủi ro nhỏ, nhưng đây là **mâu thuẫn giữa chú thích ("IDLE đã bỏ") và
-hành vi ("IDLE đang được đặt và coi là rảnh")**.
-
-**Đích:** thống nhất một tên trạng thái cho "rảnh giữa các lượt" (hoặc dùng lại `ONLINE`), và cho watchdog
-tiếp tục duy-trì-bằng-sức-khoẻ-gateway cả trạng thái đó. Chọn phương án + sửa ở Giai đoạn 2.
+**Đã dọn ở issue #99 (GĐ-2 C):** bỏ hẳn giá trị `IDLE` khỏi enum `Liveness`; `WakeEngine._finalise` giờ đặt
+`marius.liveness = ONLINE` sau lượt (`last_seen_at` vừa được bump = một tín hiệu, nên đúng nghĩa online).
+Watchdog `plan_tick` vốn đã có nhánh `ONLINE` (im quá T1 → CHECKING → probe), nên trạng thái "rảnh giữa các
+lượt" giờ được **duy trì bằng sức khoẻ gateway** như mọi trạng thái online. Di trú `a1c4e8b2d6f9` backfill
+các hàng cũ `liveness='idle'` thành `'online'`. `_AVAILABLE` (Leader chat) giữ `{ONLINE, WORKING, CHECKING}`.
 
 ---
 
@@ -107,5 +105,5 @@ tiếp tục duy-trì-bằng-sức-khoẻ-gateway cả trạng thái đó. Chọ
 3. Gateway ngừng đáp đủ 3 lần cách ~T2 ⇒ agent OFFLINE; sau đó re-probe theo backoff R, 2R, 4R… trần 30 phút.
 4. Lượt chạy treo quá 20 phút ⇒ HUNG, rồi một probe gateway khoẻ kéo về ONLINE (HUNG không phải ngõ cụt).
 5. Probe **không** gửi prompt/không tốn token cho agent (chỉ gọi endpoint sức khoẻ gateway).
-
-**Đích Giai đoạn 2:** dọn thuật ngữ `IDLE` (§4).
+6. Một lượt chạy kết thúc (dù COMPLETED/FAILED/TIMED_OUT) ⇒ agent về **ONLINE** (không còn trạng thái
+   `IDLE` riêng), và watchdog tiếp tục duy trì qua nhánh ONLINE (#99).
