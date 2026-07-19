@@ -9,7 +9,7 @@ import {
   CheckCircle2, Loader2, ArrowLeft, ArrowRight, X,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useMockStore } from '@/store/mockStore';
+import { useAppStore } from '@/store/appStore';
 import PageTitle from '@/components/PageTitle';
 import OnboardingChat from '@/components/OnboardingChat';
 
@@ -104,11 +104,11 @@ export default function CreateProject() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { workspaceId } = useParams();
-  const createProject = useMockStore((s) => s.createProject);
-  const mariuses = useMockStore((s) => s.mariuses);
-  const skills = useMockStore((s) => s.skills);
-  const activeWorkspaceId = useMockStore((s) => s.activeWorkspaceId);
-  const workspaces = useMockStore((s) => s.workspaces);
+  const createProject = useAppStore((s) => s.createProject);
+  const mariuses = useAppStore((s) => s.mariuses);
+  const skills = useAppStore((s) => s.skills);
+  const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId);
+  const workspaces = useAppStore((s) => s.workspaces);
 
   // Get the active workspace to check for Workspace Agent
   const activeWorkspace = useMemo(

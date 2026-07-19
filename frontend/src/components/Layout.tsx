@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Outlet, Navigate, useParams } from 'react-router';
 import Navbar from './Navbar';
 import TopBar from './TopBar';
-import { useMockStore } from '@/store/mockStore';
+import { useAppStore } from '@/store/appStore';
 import { useWorkspaceEvents } from '@/hooks/use-workspace-events';
 import { cn } from '@/lib/utils';
 
@@ -10,11 +10,11 @@ export default function Layout() {
   // The URL is the source of truth for which workspace is open. Everything below the
   // Layout lives under /w/:workspaceId, so `workspaceId` is always present here.
   const { workspaceId } = useParams<{ workspaceId: string }>();
-  const collapsed = useMockStore((s) => s.sidebarCollapsed);
-  const workspaces = useMockStore((s) => s.workspaces);
-  const activeWorkspaceId = useMockStore((s) => s.activeWorkspaceId);
-  const setActiveWorkspace = useMockStore((s) => s.setActiveWorkspace);
-  const hydrateWorkspace = useMockStore((s) => s.hydrateWorkspace);
+  const collapsed = useAppStore((s) => s.sidebarCollapsed);
+  const workspaces = useAppStore((s) => s.workspaces);
+  const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId);
+  const setActiveWorkspace = useAppStore((s) => s.setActiveWorkspace);
+  const hydrateWorkspace = useAppStore((s) => s.hydrateWorkspace);
 
   // Sync the active workspace to the URL and load its slice (agents/projects/SKILLS).
   // This is what makes a hard refresh on e.g. /w/<id>/skills keep the skills — boot only

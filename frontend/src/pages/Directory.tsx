@@ -25,8 +25,8 @@ import {
   Pencil,
   Trash2,
 } from 'lucide-react';
-import { useMockStore } from '@/store/mockStore';
-import type { Marius, AgentStatus } from '@/store/mockStore';
+import { useAppStore } from '@/store/appStore';
+import type { Marius, AgentStatus } from '@/store/appStore';
 import VellumPanel from '@/components/VellumPanel';
 import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
@@ -347,14 +347,14 @@ function AgentCard({
 
 export default function Directory() {
   const { t } = useTranslation();
-  const mariuses = useMockStore((s) => s.mariuses);
-  const skills = useMockStore((s) => s.skills);
-  const inviteNewAgent = useMockStore((s) => s.inviteNewAgent);
-  const updateMarius = useMockStore((s) => s.updateMarius);
-  const deleteMarius = useMockStore((s) => s.deleteMarius);
-  const designateWorkspaceAgent = useMockStore((s) => s.designateWorkspaceAgent);
-  const emitEvent = useMockStore((s) => s.emitEvent);
-  const activeWorkspaceId = useMockStore((s) => s.activeWorkspaceId);
+  const mariuses = useAppStore((s) => s.mariuses);
+  const skills = useAppStore((s) => s.skills);
+  const inviteNewAgent = useAppStore((s) => s.inviteNewAgent);
+  const updateMarius = useAppStore((s) => s.updateMarius);
+  const deleteMarius = useAppStore((s) => s.deleteMarius);
+  const designateWorkspaceAgent = useAppStore((s) => s.designateWorkspaceAgent);
+  const emitEvent = useAppStore((s) => s.emitEvent);
+  const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId);
 
   // The sitting host — designating anyone else is a swap and asks for confirmation (#32).
   // Scoped to the active workspace: the store holds every workspace's mariuses.
@@ -483,9 +483,9 @@ export default function Directory() {
   const handleDesignate = useCallback(
     (id: string) => {
       // Real endpoint via the store (#32). A sitting host makes this a swap — confirm.
-      const agent = useMockStore.getState().mariuses.find((m) => m.id === id);
+      const agent = useAppStore.getState().mariuses.find((m) => m.id === id);
       if (!agent) return;
-      const host = useMockStore
+      const host = useAppStore
         .getState()
         .mariuses.find(
           (m) => m.workspaceId === agent.workspaceId && m.isWorkspaceAgent === true

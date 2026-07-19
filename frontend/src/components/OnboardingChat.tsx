@@ -9,7 +9,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Loader2, Sparkles, AlertCircle, Check, ArrowRight, RotateCcw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useMockStore, type OnboardingTurn } from '@/store/mockStore';
+import { useAppStore, type OnboardingTurn } from '@/store/appStore';
 import { ApiError, type OnboardingQuestion, type OnboardingDraft } from '@/lib/api';
 
 /** An option whose label invites a typed answer (mirrors the backend's is_free_text_option). */
@@ -25,10 +25,10 @@ type Phase = 'starting' | 'ready' | 'finalizing';
 
 export default function OnboardingChat({ onCreated }: OnboardingChatProps) {
   const { t } = useTranslation();
-  const session = useMockStore((s) => s.activeOnboarding);
-  const startOnboarding = useMockStore((s) => s.startOnboarding);
-  const answerOnboarding = useMockStore((s) => s.answerOnboarding);
-  const finalizeOnboarding = useMockStore((s) => s.finalizeOnboarding);
+  const session = useAppStore((s) => s.activeOnboarding);
+  const startOnboarding = useAppStore((s) => s.startOnboarding);
+  const answerOnboarding = useAppStore((s) => s.answerOnboarding);
+  const finalizeOnboarding = useAppStore((s) => s.finalizeOnboarding);
 
   const [phase, setPhase] = useState<Phase>('starting');
   const [error, setError] = useState<string | null>(null);

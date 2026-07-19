@@ -15,8 +15,8 @@ import {
   Trash2,
   AlertTriangle,
 } from 'lucide-react';
-import { useMockStore } from '@/store/mockStore';
-import type { Skill } from '@/store/mockStore';
+import { useAppStore } from '@/store/appStore';
+import type { Skill } from '@/store/appStore';
 import VellumPanel from '@/components/VellumPanel';
 import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
@@ -71,10 +71,10 @@ export default function Skills() {
   const navigate = useNavigate();
   const { workspaceId } = useParams();
   const { t } = useTranslation();
-  const skills = useMockStore((s) => s.skills);
-  const createSkill = useMockStore((s) => s.createSkill);
-  const importSkill = useMockStore((s) => s.importSkill);
-  const deleteSkill = useMockStore((s) => s.deleteSkill);
+  const skills = useAppStore((s) => s.skills);
+  const createSkill = useAppStore((s) => s.createSkill);
+  const importSkill = useAppStore((s) => s.importSkill);
+  const deleteSkill = useAppStore((s) => s.deleteSkill);
 
   // Skill pending deletion (confirm before removing).
   const [deletingSkill, setDeletingSkill] = useState<{ id: string; name: string } | null>(null);

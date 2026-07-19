@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useMockStore } from '@/store/mockStore';
+import { useAppStore } from '@/store/appStore';
 import { useNavigate, useParams } from 'react-router';
 import { wsHref } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -29,7 +29,7 @@ const quillIn = {
 };
 
 export default function Inbox() {
-  const { tasks, projects, updateTask } = useMockStore();
+  const { tasks, projects, updateTask } = useAppStore();
   const navigate = useNavigate();
   const { workspaceId } = useParams();
   const { t } = useTranslation();

@@ -5,7 +5,7 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 
 import { login, register } from '@/lib/auth'
-import { useMockStore } from '@/store/mockStore'
+import { useAppStore } from '@/store/appStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,8 +13,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 
 export default function Login() {
   const navigate = useNavigate()
-  const setCurrentUser = useMockStore((s) => s.setCurrentUser)
-  const hydrateWorkspaces = useMockStore((s) => s.hydrateWorkspaces)
+  const setCurrentUser = useAppStore((s) => s.setCurrentUser)
+  const hydrateWorkspaces = useAppStore((s) => s.hydrateWorkspaces)
 
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')

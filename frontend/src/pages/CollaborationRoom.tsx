@@ -25,7 +25,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { ApiError } from '@/lib/api';
-import { useMockStore, type TraceEvent, type Task } from '@/store/mockStore';
+import { useAppStore, type TraceEvent, type Task } from '@/store/appStore';
 import { useTaskStream } from '@/hooks/use-task-stream';
 import { cn, wsHref } from '@/lib/utils';
 
@@ -134,8 +134,8 @@ function CommentBubble({
   content: string;
   timestamp: string;
 }) {
-  const mariuses = useMockStore((s) => s.mariuses);
-  const currentUser = useMockStore((s) => s.currentUser);
+  const mariuses = useAppStore((s) => s.mariuses);
+  const currentUser = useAppStore((s) => s.currentUser);
   const agent = mariuses.find((m) => m.id === authorId);
   const isPatron = authorId === 'user-patron' || authorId === currentUser?.id;
   const isSystem = authorId.startsWith('system');
@@ -227,7 +227,7 @@ export default function CollaborationRoom() {
   const { id: taskId, workspaceId } = useParams<{ id: string; workspaceId: string }>();
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const store = useMockStore();
+  const store = useAppStore();
   const task = store.tasks.find((t) => t.id === taskId);
 
   // Subscribe to the per-task wake trace SSE.

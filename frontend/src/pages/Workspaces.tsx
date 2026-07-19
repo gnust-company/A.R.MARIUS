@@ -11,7 +11,7 @@ import {
   Pencil,
   Trash2,
 } from 'lucide-react';
-import { useMockStore } from '@/store/mockStore';
+import { useAppStore } from '@/store/appStore';
 import VellumPanel from '@/components/VellumPanel';
 import Modal from '@/components/Modal';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -42,15 +42,15 @@ const cardVariants = {
 export default function Workspaces() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const workspaces = useMockStore((s) => s.workspaces);
-  const projects = useMockStore((s) => s.projects);
-  const mariuses = useMockStore((s) => s.mariuses);
-  const setActiveWorkspace = useMockStore((s) => s.setActiveWorkspace);
-  const createWorkspace = useMockStore((s) => s.createWorkspace);
-  const updateWorkspace = useMockStore((s) => s.updateWorkspace);
-  const deleteWorkspace = useMockStore((s) => s.deleteWorkspace);
-  const hydrateWorkspaces = useMockStore((s) => s.hydrateWorkspaces);
-  const hydrateWorkspace = useMockStore((s) => s.hydrateWorkspace);
+  const workspaces = useAppStore((s) => s.workspaces);
+  const projects = useAppStore((s) => s.projects);
+  const mariuses = useAppStore((s) => s.mariuses);
+  const setActiveWorkspace = useAppStore((s) => s.setActiveWorkspace);
+  const createWorkspace = useAppStore((s) => s.createWorkspace);
+  const updateWorkspace = useAppStore((s) => s.updateWorkspace);
+  const deleteWorkspace = useAppStore((s) => s.deleteWorkspace);
+  const hydrateWorkspaces = useAppStore((s) => s.hydrateWorkspaces);
+  const hydrateWorkspace = useAppStore((s) => s.hydrateWorkspace);
 
   // Load the user's workspaces on mount.
   useEffect(() => {

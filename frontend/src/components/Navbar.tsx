@@ -15,7 +15,7 @@ import {
   Check,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useMockStore } from '@/store/mockStore';
+import { useAppStore } from '@/store/appStore';
 import { cn, wsHref } from '@/lib/utils';
 
 // `external: true` = a top-level route (no workspace prefix), e.g. the launcher.
@@ -34,9 +34,9 @@ const BOTTOM_ITEMS = [
 /** Workspace switcher — a droplist below the brand that swaps the active workspace. */
 function WorkspaceSwitcher() {
   const { t } = useTranslation();
-  const workspaces = useMockStore((s) => s.workspaces);
-  const activeWorkspaceId = useMockStore((s) => s.activeWorkspaceId);
-  const setActiveWorkspace = useMockStore((s) => s.setActiveWorkspace);
+  const workspaces = useAppStore((s) => s.workspaces);
+  const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId);
+  const setActiveWorkspace = useAppStore((s) => s.setActiveWorkspace);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -123,8 +123,8 @@ export default function Navbar() {
   const { t } = useTranslation();
   const location = useLocation();
   const { workspaceId } = useParams();
-  const collapsed = useMockStore((s) => s.sidebarCollapsed);
-  const setSidebarCollapsed = useMockStore((s) => s.setSidebarCollapsed);
+  const collapsed = useAppStore((s) => s.sidebarCollapsed);
+  const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
 
   // Compare against the workspace-relative sub-path (strip the /w/:workspaceId prefix).
   const base = workspaceId ? `/w/${workspaceId}` : '';

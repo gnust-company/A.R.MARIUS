@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router';
 import { motion } from 'framer-motion';
 import { Plus, Users, ScrollText, FolderOpen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useMockStore } from '@/store/mockStore';
+import { useAppStore } from '@/store/appStore';
 import { wsHref } from '@/lib/utils';
 import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
@@ -38,10 +38,10 @@ export default function Projects() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { workspaceId } = useParams();
-  const projects = useMockStore((s) => s.projects);
-  const activeWorkspaceId = useMockStore((s) => s.activeWorkspaceId);
-  const allTasks = useMockStore((s) => s.tasks);
-  const workspaces = useMockStore((s) => s.workspaces);
+  const projects = useAppStore((s) => s.projects);
+  const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId);
+  const allTasks = useAppStore((s) => s.tasks);
+  const workspaces = useAppStore((s) => s.workspaces);
 
   const activeWorkspace = useMemo(
     () => workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0],
