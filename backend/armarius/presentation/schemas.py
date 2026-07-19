@@ -62,7 +62,7 @@ class ProjectOut(_Out):
 
 # ------------------------------------------------- projects + roster (contract §3)
 class LeaderIn(BaseModel):
-    responsibilities: str = ""
+    description: str = ""  # mô tả vai trò Leader — vào prompt (#93)
     marius_id: UUID | None = None
 
 
@@ -149,7 +149,6 @@ class AddRoleIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     seats: int = Field(default=1, ge=1)
     description: str = ""
-    responsibilities: str = ""
     skill_ids: list[str] = Field(default_factory=list)
     is_leader: bool = False
 
@@ -158,7 +157,6 @@ class UpdateRoleIn(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     seats: int | None = Field(default=None, ge=1)
     description: str | None = None
-    responsibilities: str | None = None
     skill_ids: list[str] | None = None
 
 
@@ -170,7 +168,6 @@ class RoleOut(_Out):
     seats: int
     is_leader: bool
     description: str = ""
-    responsibilities: str = ""
     skill_ids: list[str] = Field(default_factory=list)
     created_at: datetime | None = None
 

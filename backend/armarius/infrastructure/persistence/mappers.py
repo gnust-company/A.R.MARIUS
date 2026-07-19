@@ -109,7 +109,6 @@ def role_to_entity(m: RoleModel) -> Role:
         seats=m.seats,
         is_leader=m.is_leader,
         description=m.description or "",
-        responsibilities=m.responsibilities or "",
         skill_ids=[str(x) for x in (m.skill_ids or [])],
         created_at=m.created_at,
     )

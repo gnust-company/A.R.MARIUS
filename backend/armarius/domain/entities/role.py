@@ -20,7 +20,6 @@ class Role:
     title: str = ""  # human label, e.g. "Backend"
     seats: int = 1  # seat count — the leader role is ALWAYS seats == 1
     is_leader: bool = False
-    description: str = ""
-    responsibilities: str = ""  # leader-only extra duties
+    description: str = ""  # "mô tả vai trò" — dùng cho MỌI role, được nhắc trong prompt (#93)
     skill_ids: list[str] = field(default_factory=list)  # optional skills this role carries
     created_at: datetime | None = None

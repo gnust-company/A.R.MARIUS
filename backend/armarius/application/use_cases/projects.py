@@ -52,7 +52,6 @@ class RoleSpec:
     seats: int = 1
     is_leader: bool = False
     description: str = ""
-    responsibilities: str = ""
     skill_ids: list[str] = field(default_factory=list)
 
 
@@ -156,7 +155,6 @@ class ProjectService:
             seats=spec.seats,
             is_leader=spec.is_leader,
             description=spec.description,
-            responsibilities=spec.responsibilities,
             skill_ids=list(spec.skill_ids),
         )
 
@@ -188,7 +186,6 @@ class ProjectService:
         title: str | None = None,
         seats: int | None = None,
         description: str | None = None,
-        responsibilities: str | None = None,
         skill_ids: list[str] | None = None,
     ) -> None:
         if title is not None:
@@ -197,8 +194,6 @@ class ProjectService:
             role.seats = seats
         if description is not None:
             role.description = description
-        if responsibilities is not None:
-            role.responsibilities = responsibilities
         if skill_ids is not None:
             role.skill_ids = skill_ids
 
