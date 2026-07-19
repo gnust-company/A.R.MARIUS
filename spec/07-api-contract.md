@@ -125,9 +125,9 @@ Xác thực bằng `agent_token` (Bearer). Mọi route giới hạn theo workspa
 | POST | `/agent/tasks/{t}/artifact` | Publish hiện vật (file/link) → 201 |
 | POST | `/agent/onboarding/{s}/question` · `/complete` | Quản gia đăng câu hỏi / chốt onboarding |
 
-> **Đã gỡ:** không còn `POST /agent/enroll` và `POST /agent/claim` (mô hình enroll-and-wait cũ). Dấu tích còn
-> sót **không phải** ở route mà ở nhánh `enrollment_code` trong hàm dựng prompt mời và ở MCP — xem
-> [02-invite.md](02-invite.md) §3.1 (gỡ nốt ở Giai đoạn 2).
+> **Đã gỡ sạch (#97):** không còn `POST /agent/enroll` và `POST /agent/claim` (mô hình enroll-and-wait cũ),
+> nhánh `enrollment_code` trong hàm dựng prompt mời, trường `Marius.enrollment_code`, và công cụ
+> `enroll`/`claim` ở MCP. Xem [02-invite.md](02-invite.md) §3.1.
 
 ## 9. Meta & sức khoẻ  [ĐÚNG-NHƯ-CODE]
 

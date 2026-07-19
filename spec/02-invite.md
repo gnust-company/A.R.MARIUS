@@ -35,9 +35,8 @@ Các bước, đúng thứ tự:
    `marius.activate(token, now)` (⇒ trạng thái `APPROVED`), lưu + commit. Agent **sống ngay** khi trả về.
 5. **(Tuỳ chọn) Phong quản gia** — nếu operator tick "Make Workspace Agent" (`is_workspace_agent`), gọi
    `workspace_agent.designate(...)` để trao ghế host (host cũ, nếu có, bị hạ xuống agent thường).
-6. **Dựng prompt cài đặt** — `build_invite_prompt(marius, public_api_url, workspace_name, skills,
-   enrollment_code=None)`. Vì `enrollment_code=None` nên prompt nhúng thẳng token đã đúc và trỏ agent tới
-   `GET /agent/me` (không có bước enroll).
+6. **Dựng prompt cài đặt** — `build_invite_prompt(marius, public_api_url, workspace_name, skills)`. Prompt
+   nhúng thẳng token đã đúc và trỏ agent tới `GET /agent/me` (không có bước enroll).
 7. **Đẩy prompt (fire-and-forget)** — `push_setup(marius_id, prompt=...)` gửi qua adapter và trả
    `send_status`.
 8. **Phát sự kiện** — `control_bus.publish("ws:{workspace_id}", "marius.status_changed", {status:
@@ -83,15 +82,17 @@ run vốn đã tới nơi.
   `skill_manage` hoặc `/learn`; Echo ghi file vào `~/.echo/skills/`; Claude Code dùng MCP hoặc
   `~/.claude/skills/`.
 
-### 3.1 Đường enroll-and-wait còn sót — [ĐÍCH-CẦN-SỬA]
+### 3.1 Tàn dư enroll-and-wait đã gỡ — [ĐÚNG-NHƯ-CODE]
 
-Hai điểm cuối `POST /agent/enroll` và `POST /agent/claim` **đã bị gỡ khỏi route** (không còn trong
-`agent.py`). Nhưng dấu tích vẫn còn ở **hàm dựng prompt**: `build_invite_prompt` vẫn có nhánh
-`if enrollment_code:` chèn khối "STEP 0 · ENROLL AND WAIT" (bảo agent gọi `POST /agent/enroll` rồi giữ kết
-nối). Route mời **luôn** truyền `enrollment_code=None`, nên nhánh này là **mã chết** — và nếu vô tình chạy
-sẽ trỏ agent tới hai endpoint không còn tồn tại. Ở phía MCP cũng còn công cụ `enroll`/`claim` tham chiếu các
-route đã gỡ (sẽ 404 khi chạy). **Đích:** gỡ nốt nhánh STEP-0 trong hàm dựng prompt + công cụ enroll/claim ở
-MCP, Giai đoạn 2. Xem thêm [07-api-contract.md](07-api-contract.md) §8.
+Toàn bộ đường enroll-and-wait **đã gỡ sạch ở issue #97**: hai điểm cuối `POST /agent/enroll` +
+`POST /agent/claim` (đã ra khỏi route từ trước), nhánh STEP-0 trong `build_invite_prompt`, trường
+`Marius.enrollment_code` (entity + cột CSDL `mariuses.enrollment_code`, di trú `f3a1b8c5d2e7`), và công cụ
+`enroll`/`claim` ở MCP. Operator-invite (#63) mint `agent_token` ngay tại lúc mời, nhúng thẳng vào prompt
+đẩy qua gateway, trỏ agent tới `GET /agent/me` — không còn cổng enroll/approve.
+
+`InviteStatus.PENDING_REVIEW` **được giữ** có chủ đích: nó chỉ còn để `activate` tiếp nhận **hàng legacy**
+từ thời enroll (xem `test_invite_fsm.py`); `InviteService.invite` luôn dùng `INVITED`→`APPROVED` và không
+bao giờ gán `PENDING_REVIEW` cho bản ghi mới. Xem thêm [07-api-contract.md](07-api-contract.md) §8.
 
 ---
 
@@ -146,4 +147,5 @@ Coi là **đúng-như-code** khi:
    diễn được.
 6. Quản gia offline khi `start`/`answer` ⇒ HTTP 409, phiên bị bỏ dở, không có dự phòng.
 
-**Đích Giai đoạn 2** (mục §3.1, §6): gỡ đường enroll/claim; hoàn thiện hoặc gỡ luồng cài kỹ năng #74.
+**Đích Giai đoạn 2** (mục §6): hoàn thiện hoặc gỡ luồng cài kỹ năng #74. (Đường enroll/claim đã gỡ sạch ở
+#97 — xem §3.1.)

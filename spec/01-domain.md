@@ -65,7 +65,6 @@ Danh tính một agent, gắn với một adapter runtime. Các trường chính
 | `invite_status` | FSM mời (xem §5.1) | [ĐÚNG-NHƯ-CODE] |
 | `liveness`, `last_seen_at`, `probe_attempts`, `backoff_step`, `next_probe_at`, `offline_since` | sổ sách sống/chết (xem [04-liveness.md](04-liveness.md)) | [ĐÚNG-NHƯ-CODE] |
 | `role` | vai trò **cấp workspace** — chuỗi tự do, **thường rỗng**; dấu tích, prompt không còn đọc (issue #87) | [ĐÚNG-NHƯ-CODE] |
-| `enrollment_code` | dấu tích của mô hình cũ, **không còn dùng** cho agent mới | [ĐÚNG-NHƯ-CODE] |
 
 **Điểm quan trọng — hai khái niệm "vai trò" khác nhau:**
 
@@ -294,9 +293,14 @@ hoạch; `finalize` dựng `Project` thật. Chi tiết luồng ở [02-invite.m
 |---|---|---|---|
 | 1 | `Task.assigned_marius_id` + `TaskParticipant` | hai mô hình song song | **một** người phụ trách; gỡ `TaskParticipant` |
 | 2 | `CommissionSession`, `LeaderState`, `CommissionStatus`, `WakeSource.COMMISSION` | còn trong code | **gỡ bỏ** — đã bị `ProjectLeaderConversation` thay thế (xem [05-task-leaderchat.md](05-task-leaderchat.md)) |
-| 3 | `enrollment_code`, `InviteStatus.PENDING_REVIEW` | dấu tích mô hình cũ | giữ cho hàng dữ liệu cũ, không dùng cho bản ghi mới |
-| 4 | `Liveness.IDLE` | chú thích entity ghi "đã bỏ" nhưng code **đang chủ động gán** IDLE cho **bản ghi mới** (`WakeEngine._finalise`) và coi là hợp lệ để nhận lượt (`LeaderChatService`) — mâu thuẫn | thống nhất một tên cho trạng thái "rảnh giữa các lượt"; chi tiết + hệ quả ở [04-liveness.md](04-liveness.md) §4 |
+| 3 | `Liveness.IDLE` | chú thích entity ghi "đã bỏ" nhưng code **đang chủ động gán** IDLE cho **bản ghi mới** (`WakeEngine._finalise`) và coi là hợp lệ để nhận lượt (`LeaderChatService`) — mâu thuẫn | thống nhất một tên cho trạng thái "rảnh giữa các lượt"; chi tiết + hệ quả ở [04-liveness.md](04-liveness.md) §4 |
 
+> ✅ **Đã sửa ở issue #97:** gỡ sạch tàn dư enroll-and-wait — trường `Marius.enrollment_code` (entity +
+> cột CSDL, di trú `f3a1b8c5d2e7`), nhánh STEP-0 trong `build_invite_prompt`, và 2 chỗ chữ sai cơ chế ở
+> MCP. **`InviteStatus.PENDING_REVIEW` được GIỮ** — nó đang đúng vai trò hỗ trợ hàng cũ (chỉ `activate`
+> admit từ legacy; `InviteService.invite` dùng `INVITED`→`APPROVED`, không gán hàng mới). Xem
+> [02-invite.md](02-invite.md) §3.1.
+>
 > ✅ **Đã sửa ở issue #93:** gộp `Role.description` + `Role.responsibilities` thành **một** trường
 > `description` (gỡ `responsibilities`, dồn dữ liệu cũ khi nâng cấp CSDL). Xem §3.2.
 
