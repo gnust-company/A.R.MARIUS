@@ -34,13 +34,16 @@ workspace, bất biến); seq là bộ đếm monotonic per-project, cấp phát
 nên không trùng khi tạo-cùng-lúc và không bao giờ tái sử dụng. Ví dụ dự án "Calculator" (key `CALC`) →
 `CALC-1`, `CALC-2`… Chi tiết ở [01-domain.md](01-domain.md) §3.1 (key + seq) + §4.1.
 
-### 1.3 Cổng phụ thuộc chưa nối ở tầng ứng dụng — [ĐÍCH-CẦN-SỬA]
+### 1.3 Cổng phụ thuộc — [ĐÚNG-NHƯ-CODE]
 
-Miền có **cổng phụ thuộc** (không vào `todo`/`in_progress` khi còn `blocked_by` chưa done — xem
-[01-domain.md](01-domain.md) §4.1). Nhưng `TaskService.transition` **chỉ** truyền `has_artifact`, để
-`deps_satisfied` mặc định `True` — tức tầng ứng dụng **không** nạp trạng thái phụ thuộc thật, nên cổng này
-**chưa được thực thi đầu-cuối**. **Đích:** `transition` phải tính `deps_satisfied` từ `TaskDependency` thật
-và truyền vào. Sửa ở Giai đoạn 2.
+Cạnh `blocked_by` được **lưu bền** (bảng `task_dependencies`) và cổng phụ thuộc được thực thi
+**đầu-cuối**. Mọi đường vào trạng thái bị chặn — `TaskService.transition`, `claim`, `approve_proposed`
+(duyệt draft) — đều tính `deps_satisfied` từ cạnh **thật** (mọi task mà nó `blocked_by` đã `done` chưa)
+rồi bơm vào `transition_to`; còn một `blocked_by` chưa `done` ⇒ không vào được `todo`/`in_progress`
+(`DependencyNotMetError` → **409**). `assign` cũng tôn trọng cổng: task bị chặn thì **ở lại `backlog`**
+thay vì bị đẩy lên `todo`. Quản cạnh qua API `POST`/`DELETE`/`GET` `.../dependencies`; cạnh
+tự-trỏ-chính-mình, trùng cặp, khác dự án, hoặc tạo vòng lặp ⇒ **422**. Chi tiết miền:
+[01-domain.md](01-domain.md) §4.1 + §4.4.
 
 ---
 
@@ -118,9 +121,11 @@ Còn tồn tại trong code: `CommissionSession` + `CommissionStatus` + `LeaderS
 
 1. `assign` một task ⇒ người được gán nhận wake `ASSIGNMENT`; `claim` ⇒ **không** wake.
 2. Chuyển sang `in_review`/`done` khi task **chưa** có hiện vật ⇒ bị chặn (cổng DONE).
+6. Có cạnh `blocked_by` chưa `done` ⇒ vào `todo`/`in_progress` (kể cả qua `claim`/duyệt draft) bị chặn
+   (cổng phụ thuộc, `DependencyNotMetError` → 409); blocker `done` xong ⇒ vào được.
 3. Gửi tin cho Leader khi đang có lượt chạy ⇒ 409 (turn-taking); Leader offline ⇒ 409 (chat tắt).
 4. Câu trả lời của Leader chạy chữ trên kênh `leader-chat:{project_id}` và được lưu vào transcript.
 5. YOLO tắt: Leader tạo việc ⇒ `draft`, không wake ai; Patron duyệt ⇒ `todo` + wake assignee. YOLO bật:
    tạo việc ⇒ live + wake ngay.
 
-**Đích Giai đoạn 2:** §1.1 (một người phụ trách, gỡ participant), §1.3 (nối cổng phụ thuộc), §5 (gỡ commission).
+**Đích Giai đoạn 2:** §1.1 (một người phụ trách, gỡ participant), §5 (gỡ commission).
