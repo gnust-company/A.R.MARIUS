@@ -44,7 +44,6 @@ async def test_invite_returns_send_status_and_never_the_token() -> None:
     assert data["send_status"] == "sent"  # the setup prompt reached the echo runtime
     # The token is a secret — it must not leak through the API.
     assert "agent_token" not in data
-    assert "enrollment_code" not in data
     assert "invite" not in data
 
 

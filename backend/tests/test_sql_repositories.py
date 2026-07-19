@@ -122,7 +122,6 @@ async def test_marius_invite_and_liveness_timers_round_trip(uow_factory) -> None
         role="Backend",
         agent_token="arm_secrettoken",
         invite_status=InviteStatus.APPROVED,
-        enrollment_code="enr-code-123",
         approved_at=_T,
         liveness=Liveness.CHECKING,
         last_seen_at=_T,
@@ -141,7 +140,6 @@ async def test_marius_invite_and_liveness_timers_round_trip(uow_factory) -> None
     async with uow_factory() as uow:
         got = await uow.mariuses.get(m.id)
     assert got.invite_status == InviteStatus.APPROVED
-    assert got.enrollment_code == "enr-code-123"
     assert got.approved_at == _T
     assert got.agent_token == "arm_secrettoken"
     assert got.liveness == Liveness.CHECKING
