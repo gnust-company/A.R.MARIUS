@@ -28,7 +28,8 @@ from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import RunStatus
 from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.entities.skill import Skill
-from armarius.domain.entities.task import Task
+from armarius.domain.entities.task import Task, TaskStatus
+from armarius.domain.entities.task_dependency import TaskDependency
 from armarius.domain.entities.workspace import Project, Workspace
 
 
@@ -40,6 +41,7 @@ class _Store:
     onboardings: dict[UUID, OnboardingSession] = field(default_factory=dict)
     projects: dict[UUID, Project] = field(default_factory=dict)
     tasks: dict[UUID, Task] = field(default_factory=dict)
+    dependencies: dict[UUID, TaskDependency] = field(default_factory=dict)
     roles: dict[UUID, Role] = field(default_factory=dict)
     seat_grants: dict[UUID, SeatGrant] = field(default_factory=dict)
     mariuses: dict[UUID, Marius] = field(default_factory=dict)
@@ -130,6 +132,52 @@ class _FakeTaskRepo:
     async def update(self, task: Task) -> Task:
         self._s.tasks[task.id] = task
         return task
+
+
+class _FakeTaskDependencyRepo:
+    def __init__(self, store: _Store) -> None:
+        self._s = store
+
+    async def add(self, dependency: TaskDependency) -> TaskDependency:
+        self._s.dependencies[dependency.id] = dependency
+        return dependency
+
+    async def remove(self, task_id: UUID, blocks_task_id: UUID) -> None:
+        for dep_id, d in list(self._s.dependencies.items()):
+            if d.task_id == task_id and d.blocks_task_id == blocks_task_id:
+                del self._s.dependencies[dep_id]
+
+    async def get(
+        self, task_id: UUID, blocks_task_id: UUID
+    ) -> TaskDependency | None:
+        return next(
+            (
+                d
+                for d in self._s.dependencies.values()
+                if d.task_id == task_id and d.blocks_task_id == blocks_task_id
+            ),
+            None,
+        )
+
+    async def list_blockers(self, task_id: UUID) -> list[TaskDependency]:
+        return [d for d in self._s.dependencies.values() if d.task_id == task_id]
+
+    async def list_by_project(self, project_id: UUID) -> list[TaskDependency]:
+        out = []
+        for d in self._s.dependencies.values():
+            blocked = self._s.tasks.get(d.task_id) if d.task_id else None
+            if blocked is not None and blocked.project_id == project_id:
+                out.append(d)
+        return out
+
+    async def all_blockers_done(self, task_id: UUID) -> bool:
+        for d in self._s.dependencies.values():
+            if d.task_id != task_id:
+                continue
+            blocker = self._s.tasks.get(d.blocks_task_id) if d.blocks_task_id else None
+            if blocker is None or blocker.status != TaskStatus.DONE:
+                return False
+        return True
 
 
 class _FakeProjectRepo:
@@ -320,6 +368,7 @@ class FakeUnitOfWork(UnitOfWork):
         self.onboardings = _FakeOnboardingRepo(s)  # type: ignore[assignment]
         self.projects = _FakeProjectRepo(s)  # type: ignore[assignment]
         self.tasks = _FakeTaskRepo(s)  # type: ignore[assignment]
+        self.dependencies = _FakeTaskDependencyRepo(s)  # type: ignore[assignment]
         self.roles = _FakeRoleRepo(s)  # type: ignore[assignment]
         self.seat_grants = _FakeSeatGrantRepo(s)  # type: ignore[assignment]
         self.mariuses = _FakeMariusRepo(s)  # type: ignore[assignment]
