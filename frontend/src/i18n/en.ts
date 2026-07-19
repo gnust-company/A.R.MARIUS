@@ -393,6 +393,7 @@ export const en = {
     deleteConfirmTitle: 'Delete this project?',
     deleteConfirmBody: 'This permanently deletes "{{name}}" and all of its tasks, comments and artifacts. This cannot be undone.',
     deleting: 'Deleting…',
+    blockedBy: 'Blocked by {{count}}',
   },
   leaderChat: {
     title: 'Chat with Leader',
@@ -500,6 +501,10 @@ export const en = {
       definitionOfDone: 'Definition of Done',
       checklist: 'Checklist',
       dependencies: 'Dependencies',
+      noDependencies: 'No blockers — this task depends on nothing.',
+      addDependency: '+ Add a blocker…',
+      removeDependency: 'Remove dependency',
+      dependencyFailed: 'Could not update the dependency.',
       artifacts: 'Artifacts',
       addArtifact: 'Add Artifact',
       doneGateBlocked: 'Task cannot reach done without a file or link artifact.',
