@@ -13,9 +13,9 @@
   (kèm bộ component kiểu shadcn trong `src/components/ui/`, và `Modal` tự viết cho logic nghiệp vụ).
 - **Chat với Leader dựng trên `@assistant-ui/react`** (không "vẽ lại bánh xe"); composer tự viết cho logic
   miền.
-- **Chạy hoàn toàn trên API thật** — không còn dữ liệu giả. Tên `useMockStore`/`mockStore.ts` **chỉ là tên
-  cũ giữ lại**, không còn cơ chế mock/`VITE_MOCK`/`isMock` (đã gỡ). **[ĐÍCH-CẦN-SỬA] nhẹ:** đổi tên
-  `mockStore`/`useMockStore` cho khỏi gây hiểu nhầm (dọn khi tiện, Giai đoạn 2).
+- **Chạy hoàn toàn trên API thật** — không còn dữ liệu giả, không còn cơ chế mock/`VITE_MOCK`/`isMock`.
+  **[ĐÚNG-NHƯ-CODE]** Kho trạng thái chính là `frontend/src/store/appStore.ts`, hook `useAppStore` — đã
+  đổi tên từ `mockStore`/`useMockStore` ở issue #95 cho khỏi gây hiểu nhầm.
 - **Thẩm mỹ "Scriptorium"** — nền giấy da/gỗ ấm (ví dụ `#1a1410`), có `VellumPanel`, `DropCap` (chữ cái đầu
   trang trí) tạo cảm giác bản thảo chép tay.
 
