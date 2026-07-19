@@ -115,7 +115,6 @@ def build_invite_prompt(
     *,
     workspace_name: str = "the workspace",
     skills: list[Skill] | None = None,
-    enrollment_code: str | None = None,
 ) -> str:
     """Build the invitation prompt: connect to the workspace, then install skills.
 
@@ -125,9 +124,10 @@ def build_invite_prompt(
     wake session that carries its own full context, so nothing from this prompt needs to
     be remembered (issue #43).
 
-    Enroll-and-wait (API_CONTRACT §4.1): when `enrollment_code` is given, the prompt
-    carries the **code** (never a token) and tells the agent to POST `/agent/enroll`
-    and hold — the minted `agent_token` is returned on that call once the Patron approves.
+    Under operator-invite (#63) the agent already holds its minted ``agent_token`` at invite
+    time, so the prompt embeds it directly and points at ``/agent/me`` — there is no
+    enroll-and-wait step anymore (the old ``enrollment_code`` / STEP-0 path was removed in
+    #97).
     """
     base = public_base_url.rstrip("/")
     cred_path = credential_file_for(marius, workspace_name)
@@ -146,31 +146,9 @@ def build_invite_prompt(
         "╚" + "═" * _w + "╝"
     )
 
-    if enrollment_code:
-        token = "<the agent_token returned by your enroll call>"
-        enroll_step = f"""───────────────────────────────────────────────────────────────────────────
-STEP 0 · ENROLL AND WAIT FOR APPROVAL   (you have no token yet)
-───────────────────────────────────────────────────────────────────────────
-
-You join by presenting a one-time enrollment code and HOLDING while your patron
-approves you. The call blocks, then returns your personal `agent_token`:
-
-  POST {base}/agent/enroll
-  Content-Type: application/json
-  {{"marius_id": "{marius.id}", "enrollment_code": "{enrollment_code}"}}
-
-  → 200 {{"agent_token": "arm_..."}}   ← save this in STEP 1.
-
-Notes:
-  • The request may hold for a while — that is expected; keep it open.
-  • If the connection drops before approval lands, recover the token later with:
-      POST {base}/agent/claim   (same body as above)
-  • Do this ONCE. After you have a token, never enroll again.
-
-"""
-    else:
-        token = marius.agent_token or "<token>"
-        enroll_step = ""
+    # Operator-invite: the agent already holds its minted token, so the prompt embeds it
+    # directly. No STEP-0 enroll block.
+    token = marius.agent_token or "<token>"
 
     return f"""{banner}
 
@@ -186,7 +164,7 @@ teammates, and everything else you need. For now, just get connected.
 
 Work through the steps IN ORDER. Each one has a single clear check before the next.
 
-{enroll_step}───────────────────────────────────────────────────────────────────────────
+───────────────────────────────────────────────────────────────────────────
 STEP 1 · SAVE YOUR CREDENTIALS
 ───────────────────────────────────────────────────────────────────────────
 
@@ -216,7 +194,7 @@ Verify the token works before doing anything else:
   Authorization: Bearer <your token>
 
   → 200 with your profile + the teammate directory = you are connected.
-  → 401 = the token is wrong; re-check STEP 1 (or re-run STEP 0 / claim).
+  → 401 = the token is wrong; re-check STEP 1.
 
 ───────────────────────────────────────────────────────────────────────────
 STEP 3 · INSTALL YOUR SKILLS

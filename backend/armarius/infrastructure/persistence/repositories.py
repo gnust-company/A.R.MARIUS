@@ -663,7 +663,6 @@ class SqlMariusRepository(MariusRepository):
                 owner_user_id=marius.owner_user_id,
                 agent_token=marius.agent_token,
                 invite_status=str(marius.invite_status),
-                enrollment_code=marius.enrollment_code,
                 approved_at=marius.approved_at,
                 liveness=str(marius.liveness),
                 last_seen_at=marius.last_seen_at,
@@ -720,7 +719,6 @@ class SqlMariusRepository(MariusRepository):
         m.owner_user_id = marius.owner_user_id
         m.agent_token = marius.agent_token
         m.invite_status = str(marius.invite_status)
-        m.enrollment_code = marius.enrollment_code
         m.approved_at = marius.approved_at
         m.liveness = str(marius.liveness)
         m.last_seen_at = marius.last_seen_at

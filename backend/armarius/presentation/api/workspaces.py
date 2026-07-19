@@ -123,9 +123,6 @@ async def invite_marius(
         settings.public_api_url,
         workspace_name=ws.name if ws else "the workspace",
         skills=await effective_skills(container, marius),
-        # Token path: the agent already holds its minted token, so the prompt embeds it
-        # and points at /agent/me — no STEP-0 enroll block (issue #63).
-        enrollment_code=None,
     )
     send_status = await container.invite.push_setup(marius.id, prompt=prompt)
     await container.control_bus.publish(

@@ -64,9 +64,6 @@ class Marius:
     agent_token: str | None = None
     # Invite lifecycle (LLD §3.4) — operator-invite: invited → approved (no enroll/approve).
     invite_status: InviteStatus = InviteStatus.INVITED
-    # Vestigial under operator-invite (issue #63): kept on the column for legacy rows, no
-    # longer populated for new agents.
-    enrollment_code: str | None = None
     approved_at: datetime | None = None
     # Liveness bookkeeping (LLD §10) — driven by LivenessEngine via liveness_fsm.
     liveness: Liveness = Liveness.OFFLINE

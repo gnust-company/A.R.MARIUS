@@ -115,9 +115,8 @@ class MariusModel(Base):
     skill_ids: Mapped[list] = mapped_column(JSON, default=list)
     owner_user_id: Mapped[str | None] = mapped_column(String(200))
     agent_token: Mapped[str | None] = mapped_column(String(120), unique=True, index=True)
-    # Invite lifecycle (LLD §3.4) — enroll-and-wait.
+    # Invite lifecycle (LLD §3.4) — operator-invite: invited → approved (no enroll/approve).
     invite_status: Mapped[str] = mapped_column(String(20), default="invited")
-    enrollment_code: Mapped[str | None] = mapped_column(String(120))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Liveness bookkeeping (LLD §10) — driven by LivenessEngine via liveness_fsm.
     liveness: Mapped[str] = mapped_column(String(20), default="offline")
