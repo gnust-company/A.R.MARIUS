@@ -7,8 +7,8 @@ tells the agent to store its credentials at
 
 as a JSON object with six keys: ``agent_name, agent_role, agent_token, workspace,
 project, api_base_url``. This module reads that file for bootstrap and writes it back
-after a successful ``enroll``/``claim`` so a later run finds the minted token — using the
-same slug rule and the same key set, so the two sides never drift.
+so a later run finds the token minted at invite time (#63) — using the same slug rule
+and the same key set, so the two sides never drift.
 
 **Path change note**: The directory was renamed from ``credentials`` to ``tokens`` to avoid
 Hermes Agent's keyword-based file write protection (paths containing "credential" are

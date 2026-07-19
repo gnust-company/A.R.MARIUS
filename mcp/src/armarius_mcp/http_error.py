@@ -3,7 +3,7 @@
 The backend maps its domain errors to a stable set of status codes
 (``backend/armarius/presentation/errors.py``):
 
-- 401 → auth (missing/invalid token)      → not enrolled / stale token
+- 401 → auth (missing/invalid token)
 - 404 → LookupError                       → resource not found
 - 409 → transition / artifact / invite    → a workshop rule blocked it
 - 400 → EnrollmentError / ValueError      → bad code or bad argument
@@ -33,8 +33,8 @@ class ArmariusApiError(RuntimeError):
 
 _HINTS = {
     401: (
-        "your token is missing or invalid — call `claim` to recover it, or `enroll` if "
-        "you have not been approved yet"
+        "your token is missing or invalid — re-save it from your setup prompt (STEP 1), "
+        "or ask your patron to re-send the invite"
     ),
     404: "the resource was not found — check the task_id / marius_id",
     409: (
