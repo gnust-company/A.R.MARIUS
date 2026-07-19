@@ -42,7 +42,7 @@ def _plan(**overrides) -> dict:
         "name": "Apollo",
         "description": "ship it",
         "objective": "Launch the platform",
-        "leader": {"responsibilities": "lead", "marius_id": None},
+        "leader": {"description": "lead", "marius_id": None},
         "roles": [{"title": "Backend", "seats": 1}],
     }
     plan.update(overrides)
@@ -76,6 +76,9 @@ async def test_create_with_plan_starts_setup_with_roster() -> None:
     assert keys == {"leader", "backend"}
     leader = next(r for r in proj["roster"] if r["key"] == "leader")
     assert leader["is_leader"] is True and leader["seats"] == 1
+    # #93: mô tả vai trò Leader nay lưu vào MỘT trường `description` (trước rơi vào
+    # `responsibilities` chết) và phơi ra roster ⇒ sẽ tới được prompt của Leader.
+    assert leader["description"] == "lead"
 
 
 async def test_list_projects_exposes_status() -> None:
