@@ -15,7 +15,6 @@ from sqlalchemy import func, select
 
 from armarius.infrastructure.database.engine import get_sessionmaker, init_db
 from armarius.infrastructure.database.models import (
-    CommissionModel,
     OnboardingSessionModel,
     ProjectModel,
     RunEventModel,
@@ -140,8 +139,6 @@ async def test_delete_workspace_cascades_runtime_rows():
                                adapter_type="echo", task_id=task_id))
             s.add(WakeupModel(id=uuid4(), project_id=project_id, marius_id=marius_id,
                               task_id=task_id, run_id=run_id))
-            s.add(CommissionModel(id=uuid4(), project_id=project_id,
-                                  leader_marius_id=marius_id, task_id=task_id))
             s.add(OnboardingSessionModel(id=uuid4(), workspace_id=UUID(ws_id)))
             await s.commit()
 
@@ -153,14 +150,13 @@ async def test_delete_workspace_cascades_runtime_rows():
         (RunEventModel, RunEventModel.run_id, run_id),
         (SessionModel, SessionModel.marius_id, marius_id),
         (WakeupModel, WakeupModel.project_id, project_id),
-        (CommissionModel, CommissionModel.project_id, project_id),
         (OnboardingSessionModel, OnboardingSessionModel.workspace_id, UUID(ws_id)),
     ]:
         assert await _count(model, col, val) == 0, f"{model.__tablename__} left orphan rows"
 
 
 async def test_delete_marius_cascades_runtime_rows():
-    """Deleting a Marius clears its runs/run_events/sessions/wakeups and any commission
+    """Deleting a Marius clears its runs/run_events/sessions/wakeups and any leader chat
     it led (all plain-UUID refs) — issue #28."""
     async with await _client() as c:
         token, ws_id = await _register(c, "mruntime@armarius.dev")
@@ -179,7 +175,6 @@ async def test_delete_marius_cascades_runtime_rows():
             s.add(SessionModel(id=uuid4(), marius_id=marius_id,
                                adapter_type="echo", task_id=task_id))
             s.add(WakeupModel(id=uuid4(), marius_id=marius_id, task_id=task_id, run_id=run_id))
-            s.add(CommissionModel(id=uuid4(), leader_marius_id=marius_id, task_id=task_id))
             await s.commit()
 
         gone = await c.delete(f"/v1/workspaces/{ws_id}/mariuses/{marius_id}", headers=h)
@@ -190,7 +185,6 @@ async def test_delete_marius_cascades_runtime_rows():
         (RunEventModel, RunEventModel.run_id, run_id),
         (SessionModel, SessionModel.marius_id, marius_id),
         (WakeupModel, WakeupModel.marius_id, marius_id),
-        (CommissionModel, CommissionModel.leader_marius_id, marius_id),
     ]:
         assert await _count(model, col, val) == 0, f"{model.__tablename__} left orphan rows"
 

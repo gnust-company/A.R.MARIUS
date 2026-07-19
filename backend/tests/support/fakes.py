@@ -20,7 +20,6 @@ from armarius.application.ports.adapter import (
 )
 from armarius.application.ports.liveness_probe import LivenessProbe
 from armarius.application.ports.unit_of_work import UnitOfWork
-from armarius.domain.entities.commission import CommissionSession, CommissionStatus
 from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.onboarding import OnboardingSession
@@ -37,7 +36,6 @@ from armarius.domain.entities.workspace import Project, Workspace
 class _Store:
     workspaces: dict[UUID, Workspace] = field(default_factory=dict)
     labels: dict[UUID, Label] = field(default_factory=dict)
-    commissions: dict[UUID, CommissionSession] = field(default_factory=dict)
     onboardings: dict[UUID, OnboardingSession] = field(default_factory=dict)
     projects: dict[UUID, Project] = field(default_factory=dict)
     tasks: dict[UUID, Task] = field(default_factory=dict)
@@ -82,32 +80,6 @@ class _FakeLabelRepo:
 
     async def list_by_workspace(self, workspace_id: UUID) -> list[Label]:
         return [x for x in self._s.labels.values() if x.workspace_id == workspace_id]
-
-
-class _FakeCommissionRepo:
-    def __init__(self, store: _Store) -> None:
-        self._s = store
-
-    async def add(self, session: CommissionSession) -> CommissionSession:
-        self._s.commissions[session.id] = session
-        return session
-
-    async def get(self, session_id: UUID) -> CommissionSession | None:
-        return self._s.commissions.get(session_id)
-
-    async def update(self, session: CommissionSession) -> CommissionSession:
-        self._s.commissions[session.id] = session
-        return session
-
-    async def list_open_by_leader(
-        self, leader_marius_id: UUID
-    ) -> list[CommissionSession]:
-        return [
-            c
-            for c in self._s.commissions.values()
-            if c.leader_marius_id == leader_marius_id
-            and c.status == CommissionStatus.OPEN
-        ]
 
 
 class _FakeTaskRepo:
@@ -364,7 +336,6 @@ class FakeUnitOfWork(UnitOfWork):
         s = self._store
         self.workspaces = _FakeWorkspaceRepo(s)  # type: ignore[assignment]
         self.labels = _FakeLabelRepo(s)  # type: ignore[assignment]
-        self.commissions = _FakeCommissionRepo(s)  # type: ignore[assignment]
         self.onboardings = _FakeOnboardingRepo(s)  # type: ignore[assignment]
         self.projects = _FakeProjectRepo(s)  # type: ignore[assignment]
         self.tasks = _FakeTaskRepo(s)  # type: ignore[assignment]
