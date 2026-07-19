@@ -139,7 +139,6 @@ def marius_to_entity(m: MariusModel) -> Marius:
         owner_user_id=m.owner_user_id,
         agent_token=m.agent_token,
         invite_status=InviteStatus(m.invite_status) if m.invite_status else InviteStatus.INVITED,
-        enrollment_code=m.enrollment_code,
         approved_at=m.approved_at,
         liveness=Liveness(m.liveness),
         last_seen_at=m.last_seen_at,
