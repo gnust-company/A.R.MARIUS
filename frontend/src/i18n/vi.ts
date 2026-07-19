@@ -117,6 +117,8 @@ export const vi = {
       roleTitleRequired: 'Tên vai trò bắt buộc',
       roleDescription: 'Trách nhiệm',
       roleDescriptionPlaceholder: 'Mô tả trách nhiệm của vai trò này...',
+      leaderDescription: 'Mô tả vai trò Leader',
+      leaderDescriptionPlaceholder: 'Leader phụ trách những gì trong dự án này (sẽ được đưa vào lời nhắc gửi Leader)...',
       skills: 'Kỹ năng',
       seats: 'Số ghế',
       seatsMin: 'Số ghế phải >= 1',

@@ -117,6 +117,8 @@ export const en = {
       roleTitleRequired: 'Role title is required',
       roleDescription: 'Responsibilities',
       roleDescriptionPlaceholder: 'Describe what this role is responsible for...',
+      leaderDescription: 'Leader role description',
+      leaderDescriptionPlaceholder: 'What the Leader is responsible for on this project (goes into the Leader\'s prompt)...',
       skills: 'Skills',
       seats: 'Seats',
       seatsMin: 'Seats must be at least 1',

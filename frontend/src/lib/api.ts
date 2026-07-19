@@ -394,7 +394,7 @@ export interface CreateProjectBody {
   objective?: string
   /** JIRA-style project KEY (2–10 uppercase chars). Omitted/blank → server suggests from name. */
   key?: string
-  leader?: { marius_id?: string | null; responsibilities?: string }
+  leader?: { marius_id?: string | null; description?: string }
   roles?: Array<{
     title: string
     seats: number

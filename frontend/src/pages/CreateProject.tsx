@@ -33,6 +33,7 @@ interface FormData {
   githubUrl: string;
   context: string;
   leaderId: string | null;
+  leaderDescription: string;
   assignLeaderLater: boolean;
   workerRoles: WorkerRoleForm[];
 }
@@ -89,6 +90,7 @@ const initialFormData: FormData = {
   githubUrl: '',
   context: '',
   leaderId: null,
+  leaderDescription: '',
   assignLeaderLater: false,
   workerRoles: [],
 };
@@ -256,6 +258,7 @@ export default function CreateProject() {
         objective: formData.objective.trim(),
         workspaceId: activeWorkspaceId || undefined,
         leaderId: formData.leaderId || '',
+        leaderDescription: formData.leaderDescription,
         seats,
       });
 
@@ -609,6 +612,20 @@ export default function CreateProject() {
               {t('createProject.roster.noApprovedAgents')}
             </p>
           )}
+        </div>
+
+        {/* Leader role description — reaches the Leader's prompt (#93) */}
+        <div className="mb-3">
+          <label className="block font-body text-body-xs font-medium text-ink-light mb-1">
+            {t('createProject.roster.leaderDescription')}
+          </label>
+          <textarea
+            value={formData.leaderDescription}
+            onChange={(e) => setFormData((p) => ({ ...p, leaderDescription: e.target.value }))}
+            placeholder={t('createProject.roster.leaderDescriptionPlaceholder')}
+            rows={2}
+            className="w-full bg-vellum border border-[#E3D7BC] rounded-md px-3 py-2 font-body text-body-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)] transition-colors resize-none"
+          />
         </div>
 
         {/* Selected leader card */}

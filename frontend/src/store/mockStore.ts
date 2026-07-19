@@ -424,6 +424,7 @@ interface MockStoreState {
     objective?: string
     workspaceId?: string
     leaderId?: string
+    leaderDescription?: string
     seats?: Array<{ roleKey: string; roleLabel: string; mariusId: string | null; skillsRequired: string[] }>
   }) => Promise<Project>
   createTask: (task: Partial<Task> & { title: string; status: TaskStatus; priority: Priority; projectId: string }) => Promise<Task>
@@ -816,7 +817,7 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
       key: input.key,
       description: input.description,
       objective: input.objective,
-      leader: { marius_id: input.leaderId || undefined, responsibilities: '' },
+      leader: { marius_id: input.leaderId || undefined, description: input.leaderDescription?.trim() || '' },
       roles: [...roleMap.values()].map((r) => ({ title: r.title, seats: r.seats, skill_ids: r.skill_ids })),
     }
     const dto = await api.createProject(workspaceId, body)
