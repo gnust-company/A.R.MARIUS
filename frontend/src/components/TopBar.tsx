@@ -14,7 +14,6 @@ const SEGMENT_KEYS: Record<string, string> = {
   inbox: 'nav.inbox',
   account: 'nav.account',
   roster: 'board.roster',
-  commission: 'board.commission',
   'leader-chat': 'leaderChat.title',
 };
 
@@ -64,7 +63,7 @@ function useBreadcrumbs() {
     if (SEGMENT_KEYS[seg]) {
       // Top-level list segments link to their in-workspace page; sub-page labels don't.
       const listPath =
-        seg === 'roster' || seg === 'commission' || seg === 'leader-chat'
+        seg === 'roster' || seg === 'leader-chat'
           ? undefined
           : wsHref(activeWorkspaceId, `/${seg}`);
       crumbs.push({ label: t(SEGMENT_KEYS[seg]), path: isLast ? undefined : listPath });

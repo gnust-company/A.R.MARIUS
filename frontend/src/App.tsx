@@ -83,12 +83,7 @@ export default function App() {
           <Route path="projects/new" element={<CreateProject />} />
           <Route path="projects/:id" element={<ProjectBoard />} />
           <Route path="projects/:id/roster" element={<Roster />} />
-          {/* Commission retired (#82); leader chat is now a side panel on the board.
-              Redirect any old deep links back to the project board. */}
-          <Route
-            path="projects/:id/commission"
-            element={<Navigate to=".." relative="path" replace />}
-          />
+          {/* Leader chat is a side panel on the board; redirect old deep links there. */}
           <Route
             path="projects/:id/leader-chat"
             element={<Navigate to=".." relative="path" replace />}

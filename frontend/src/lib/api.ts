@@ -3,7 +3,7 @@
 // Typed fetch wrapper that injects the Bearer token, handles 401→refresh→retry, and exposes
 // every endpoint the golden-path needs: auth/me, workspaces, projects (list/create/get),
 // roster (detail/grant), mariuses, labels, skills, tasks (CRUD + comments + artifacts),
-// commission, and the two SSE routes (for URL construction only; the stream itself lives in sse.ts).
+// and the two SSE routes (for URL construction only; the stream itself lives in sse.ts).
 //
 // Error responses raise an `ApiError` with a `detail` string (the server‑sent `detail` field
 // or a fallback message). Callers can display it as a toast or inline alert.
@@ -350,17 +350,6 @@ export interface RunEventDTO {
   created_at?: string | null
 }
 
-export interface CommissionDTO {
-  id: string
-  project_id?: string | null
-  leader_marius_id?: string | null
-  task_id?: string | null
-  status: string
-  leader_state: string
-  transcript: Array<{ role: string; text: string }>
-  created_at?: string | null
-  updated_at?: string | null
-}
 
 // ── Auth ─────────────────────────────────────────────────────────────────────────────
 
@@ -645,34 +634,6 @@ export async function publishArtifact(
   uri?: string,
 ): Promise<ArtifactDTO> {
   return post<ArtifactDTO>(`/v1/tasks/${taskId}/artifacts`, { name, kind, uri })
-}
-
-// ── Commission ───────────────────────────────────────────────────────────────────────────
-
-export interface CommissionStartBody {
-  project_id: string
-  message: string
-  title?: string
-}
-
-export async function startCommission(body: CommissionStartBody): Promise<CommissionDTO> {
-  return post<CommissionDTO>('/v1/commissions', body)
-}
-
-export interface CommissionRefineBody {
-  message: string
-}
-
-export async function refineCommission(sessionId: string, body: CommissionRefineBody): Promise<CommissionDTO> {
-  return post<CommissionDTO>(`/v1/commissions/${sessionId}/refine`, body)
-}
-
-export async function confirmCommission(sessionId: string): Promise<CommissionDTO> {
-  return post<CommissionDTO>(`/v1/commissions/${sessionId}/confirm`, {})
-}
-
-export async function getCommission(sessionId: string): Promise<CommissionDTO> {
-  return get<CommissionDTO>(`/v1/commissions/${sessionId}`)
 }
 
 // ── Chat with Leader (project-level 1-1 chat · #82) ───────────────────────────────────────

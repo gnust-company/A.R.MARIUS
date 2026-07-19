@@ -138,7 +138,8 @@ export interface Task {
 export type TaskStatus = 'pending' | 'in-progress' | 'review' | 'done' | 'cancelled' | 'todo' | 'in_review' | 'in_progress' | 'backlog' | 'blocked' | 'draft'
 export type Priority = 'low' | 'normal' | 'high' | 'urgent' | 'P0' | 'P1' | 'P2'
 
-// Backend commission proposal status — a draft task only promotes to `todo` on confirm.
+// Backend draft-task status — a Leader-proposed draft only promotes to `todo` on Patron
+// approval in the Leader chat (#82).
 // Alias kept so the mappers module can speak the backend artifact shape generically.
 export type Artifact = TaskArtifact
 
@@ -223,31 +224,6 @@ export interface DraftTask {
 export interface DraftWorker {
   mariusId: string
   role: string
-}
-
-// ── Commission view-model (backend CommissionOut → UI) ──────────────────────────────
-// The Commission page keeps its own rich local session state; this is the slim shape the
-// API mapper (`commissionToVM`) normalizes to so the store can hold the active session.
-export interface CommissionDraftTask {
-  id: string
-  title: string
-  description: string
-  priority: Priority
-  assigneeId?: string
-  checklist: ChecklistItem[]
-  dependencies: string[]
-}
-
-export interface CommissionSession {
-  id: string
-  projectId: string
-  leaderMariusId?: string
-  taskId?: string
-  status: 'open' | 'confirmed' | 'abandoned'
-  leaderState: 'thinking' | 'waiting' | 'leader_offline'
-  transcript: Array<{ role: string; text: string }>
-  messages: Array<{ role: string; text: string }>
-  draftTask: CommissionDraftTask | null
 }
 
 // ── Onboarding view-model (backend OnboardingOut → UI) ───────────────────────────────
