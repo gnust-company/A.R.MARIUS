@@ -103,15 +103,13 @@ Prompt Leader luôn nêu trạng thái YOLO hiện tại để Leader hành xử
 
 ---
 
-## 5. Commission cũ — [ĐÍCH-CẦN-SỬA] (gỡ ở Giai đoạn 2)
+## 5. Commission cũ — [ĐÚNG-NHƯ-CODE] (đã gỡ ở #99)
 
-Còn tồn tại trong code: `CommissionSession` + `CommissionStatus` + `LeaderState` (thực thể),
-`WakeSource.COMMISSION`, use case `commission.py`, và endpoint commission. Toàn bộ **đã bị
-`ProjectLeaderConversation` (Chat với Leader) thay thế** về mặt sản phẩm: chat cấp dự án hấp thụ vai trò
-"giao việc qua Leader" mà commission cũ đảm nhiệm.
-
-**Đích:** **gỡ bỏ** commission (thực thể, use case, endpoint, nguồn wake) ở Giai đoạn 2. File đặc tả này
-**không** mô tả commission như một tính năng sống.
+Commission cũ (`CommissionSession` + `CommissionStatus` + `LeaderState` thực thể, `WakeSource.COMMISSION`,
+use case `commission.py`, endpoint `/v1/commissions/*`, bảng CSDL `commission_sessions`, và toàn bộ dead
+code FE) **đã được gỡ sạch ở issue #99 (GĐ-2 D)** — di trú `a1c4e8b2d6f9` xoá bảng. Nó từng bị
+`ProjectLeaderConversation` (Chat với Leader) thay thế hoàn toàn về mặt sản phẩm; file đặc tả này không mô
+tả commission như một tính năng sống.
 
 ---
 
@@ -128,4 +126,4 @@ Còn tồn tại trong code: `CommissionSession` + `CommissionStatus` + `LeaderS
 5. YOLO tắt: Leader tạo việc ⇒ `draft`, không wake ai; Patron duyệt ⇒ `todo` + wake assignee. YOLO bật:
    tạo việc ⇒ live + wake ngay.
 
-**Đích Giai đoạn 2:** §1.1 (một người phụ trách, gỡ participant), §5 (gỡ commission).
+**Đích Giai đoạn 2:** §1.1 (một người phụ trách, gỡ participant). (§5 — gỡ commission — đã xong ở #99.)

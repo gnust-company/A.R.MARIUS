@@ -136,12 +136,12 @@ Xác thực bằng `agent_token` (Bearer). Mọi route giới hạn theo workspa
 | GET | `/healthz` · `/health` | Thăm sức khoẻ (cũng là endpoint gateway-health dùng cho probe) |
 | GET | `/v1/meta` · `/v1/adapters` | Thông tin build / danh sách adapter |
 
-## 10. Commission — [ĐÍCH-CẦN-SỬA] (gỡ ở Giai đoạn 2)
+## 10. Commission — [ĐÚNG-NHƯ-CODE] (đã gỡ ở #99)
 
-Còn tồn tại nhưng **đã bị Chat với Leader thay thế** ([05-task-leaderchat.md](05-task-leaderchat.md) §5). Sẽ gỡ:
-
-`POST /v1/commissions`, `POST /v1/commissions/edit`, `GET /v1/commissions/{s}`,
-`POST /v1/commissions/{s}/refine`, `POST /v1/commissions/{s}/confirm`, `POST /v1/commissions/{s}/abandon`.
+Nhóm endpoint commission cũ **đã gỡ sạch** ở issue #99 (GĐ-2 D): `POST /v1/commissions`,
+`POST /v1/commissions/edit`, `GET /v1/commissions/{s}`, `POST /v1/commissions/{s}/refine`,
+`POST /v1/commissions/{s}/confirm`, `POST /v1/commissions/{s}/abandon` — trả 404. Vai trò "giao việc qua
+Leader" được Chat với Leader thay thế hoàn toàn ([05-task-leaderchat.md](05-task-leaderchat.md) §5).
 
 ---
 
@@ -151,4 +151,4 @@ Còn tồn tại nhưng **đã bị Chat với Leader thay thế** ([05-task-lea
   `POST /agent/projects/{p}/tasks` (công cụ của Leader trong Chat với Leader). Đây là chủ ý, không phải trùng lặp.
 - Tiêu chí đúng-như-code: mọi hàng trong §1–§9 gọi được đúng phương thức/đường dẫn nêu trên; route `/v1/*`
   chặn truy cập chéo chủ sở hữu (404); route `/agent/*` yêu cầu Bearer token và chặn chéo workspace.
-- **Đích Giai đoạn 2:** gỡ nhóm §10 (commission); hoàn thiện/gỡ `install-skills` (#74).
+- **Đích Giai đoạn 2:** hoàn thiện/gỡ `install-skills` (#74). (Nhóm §10 commission đã gỡ ở #99.)
