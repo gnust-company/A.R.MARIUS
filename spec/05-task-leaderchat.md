@@ -27,11 +27,12 @@ Toàn bộ luồng thao tác **thực tế** chỉ dùng **`Task.assigned_marius
 `TaskParticipant` (nhiều người, một `is_primary`) tồn tại nhưng **không** được các thao tác trên dùng.
 **Đích:** giữ một-người-phụ-trách, **gỡ** `TaskParticipant` ở Giai đoạn 2 (xem [01-domain.md](01-domain.md) §4.1).
 
-### 1.2 Mã task `{TIỀN-TỐ}-{n}` — [ĐÍCH-CẦN-SỬA]
+### 1.2 Mã task `{KEY}-{seq}` — [ĐÚNG-NHƯ-CODE]
 
-`Task.identifier` không được `create` điền, nên mọi task hiện có mã rỗng. **Đích:** sinh mã ngắn với
-tiền tố suy từ **tên dự án** (ví dụ dự án "Calculator" → `CALC-1`, `CALC-2`…), tăng dần theo từng dự án.
-Cài ở Giai đoạn 2.
+Mỗi task sinh mã `{project.key}-{seq}` ngay khi tạo: KEY là mã dự án (Patron đặt, có gợi ý, duy nhất
+workspace, bất biến); seq là bộ đếm monotonic per-project, cấp phát **atomic** (`UPDATE … RETURNING`)
+nên không trùng khi tạo-cùng-lúc và không bao giờ tái sử dụng. Ví dụ dự án "Calculator" (key `CALC`) →
+`CALC-1`, `CALC-2`… Chi tiết ở [01-domain.md](01-domain.md) §3.1 (key + seq) + §4.1.
 
 ### 1.3 Cổng phụ thuộc chưa nối ở tầng ứng dụng — [ĐÍCH-CẦN-SỬA]
 
@@ -122,5 +123,4 @@ Còn tồn tại trong code: `CommissionSession` + `CommissionStatus` + `LeaderS
 5. YOLO tắt: Leader tạo việc ⇒ `draft`, không wake ai; Patron duyệt ⇒ `todo` + wake assignee. YOLO bật:
    tạo việc ⇒ live + wake ngay.
 
-**Đích Giai đoạn 2:** §1.1 (một người phụ trách, gỡ participant), §1.2 (mã task theo tên dự án), §1.3 (nối
-cổng phụ thuộc), §5 (gỡ commission).
+**Đích Giai đoạn 2:** §1.1 (một người phụ trách, gỡ participant), §1.3 (nối cổng phụ thuộc), §5 (gỡ commission).
