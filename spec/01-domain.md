@@ -159,14 +159,15 @@ revoke lần hai là lỗi). `role_key` khớp 1-1 với `Role.key`; ghế Leade
 | `next_action` | gợi ý tiếp tục bền — agent định làm gì kế tiếp (resume từ trạng thái task, không từ session) | [ĐÚNG-NHƯ-CODE] |
 | `parent_id` | task con của task khác | [ĐÚNG-NHƯ-CODE] |
 | `definition_of_done` | mô tả "thế nào là xong" | [ĐÚNG-NHƯ-CODE] |
-| `assigned_marius_id` | **người phụ trách duy nhất** của task | [ĐÍCH-CẦN-SỬA] |
+| `assigned_marius_id` | **người phụ trách duy nhất** của task | [ĐÚNG-NHƯ-CODE] |
 | `identifier` | mã task người-đọc `{project.key}-{seq}`, ví dụ `CALC-7` | [ĐÚNG-NHƯ-CODE] |
 
-**Một người phụ trách — [ĐÍCH-CẦN-SỬA]:** đích của sản phẩm là **mỗi task có đúng một người phụ trách**,
-biểu diễn bằng `assigned_marius_id`. Hiện code còn thực thể `TaskParticipant` (nhiều người ngồi một task,
-một người `is_primary`) như một mô hình song song; comment trong code đã ghi `assigned_marius_id` "bị
-`TaskParticipant` thay thế". **Đích ngược lại:** giữ `assigned_marius_id` làm nguồn sự thật, **gỡ bỏ**
-`TaskParticipant` (mã chết) ở Giai đoạn 2.
+**Một người phụ trách — [ĐÚNG-NHƯ-CODE]:** mỗi task có **đúng một người phụ trách**, biểu diễn bằng
+`assigned_marius_id` — đây là **nguồn sự thật duy nhất** cho mọi luồng (gán, tự-nhận, đánh thức). Thực thể
+`TaskParticipant` (mô hình nhiều-người song song, một người `is_primary`) **đã được gỡ sạch ở issue #101
+(GĐ-2)**; nó vốn là mã chết mồ côi — không có bảng CSDL, không kho/mapper, không nơi nào dùng — nên **không
+cần di trú** khi gỡ. Frontend cũng gỡ danh sách "người tham gia" (luôn rỗng) và nối các chỗ hiển thị vào đúng
+một người phụ trách.
 
 **Mã task — [ĐÚNG-NHƯ-CODE]:** `Task.identifier` = `{project.key}-{seq}`, sinh ở `TaskService.create`:
 
@@ -290,10 +291,15 @@ hoạch; `finalize` dựng `Project` thật. Chi tiết luồng ở [02-invite.m
 
 ## 7. Nợ kỹ thuật miền cần dọn ở Giai đoạn 2
 
-| # | Chỗ | Hiện trạng (code) | Đích (spec) |
-|---|---|---|---|
-| 1 | `Task.assigned_marius_id` + `TaskParticipant` | hai mô hình song song | **một** người phụ trách; gỡ `TaskParticipant` |
+**Bảng nợ đã dọn xong.** Mọi món nợ miền của Giai đoạn 2 đã sửa xong và spec ở trạng thái [ĐÚNG-NHƯ-CODE].
+Còn lại một việc **nằm ngoài §7**: hoàn thiện/gỡ `install-skills` (#74) — đang **tạm gác** theo chủ dự án
+(xem [02-invite.md](02-invite.md) §6).
 
+> ✅ **Đã sửa ở issue #101 (GĐ-2 — một người phụ trách):** gỡ sạch thực thể `TaskParticipant` (mô hình
+> nhiều-người song song, mã chết mồ côi: không bảng CSDL, không kho/mapper, không nơi dùng) + dead code
+> frontend; `Task.assigned_marius_id` là **nguồn sự thật duy nhất** cho một người phụ trách. **Không cần di
+> trú** (không có bảng để xoá). Xem §4.1 + [05-task-leaderchat.md](05-task-leaderchat.md) §1.1.
+>
 > ✅ **Đã sửa ở issue #99 (GĐ-2 C+D):** gỡ sạch Commission (đã bị Chat với Leader #82 thay thế) — thực thể
 > `CommissionSession`/`CommissionStatus`/`LeaderState`, use case, endpoint `/v1/commissions/*`,
 > `WakeSource.COMMISSION`, bảng CSDL `commission_sessions` + toàn bộ dead code FE; và thống nhất
@@ -329,5 +335,6 @@ Bản nền này coi là **đúng-như-code** khi:
 3. Hai cổng miền (DONE, phụ thuộc) ném đúng ngoại lệ khi vi phạm (`ArtifactRequiredError`,
    `DependencyNotMetError`) — có test ở tầng miền.
 
-Các mục ở §7 là **đích Giai đoạn 2**: khi code sửa xong, nhãn tương ứng ở đây đổi từ [ĐÍCH-CẦN-SỬA] sang
-[ĐÚNG-NHƯ-CODE], và cột "hiện trạng" biến mất.
+Cơ chế Giai đoạn 2: mỗi món nợ ở §7 khi code sửa xong thì nhãn tương ứng đổi từ [ĐÍCH-CẦN-SỬA] sang
+[ĐÚNG-NHƯ-CODE]. Bảng §7 **đã dọn xong** (xem các ghi chú ✅ ở §7); việc miền còn lại duy nhất là #74
+(install-skills) đang tạm gác, nằm ngoài §7.
