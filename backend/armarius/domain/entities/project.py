@@ -41,6 +41,9 @@ class Project:
     workspace_id: UUID | None = None
     name: str = ""
     slug: str = ""
+    # Short uppercase code, unique per workspace — the KEY in task identifiers "{key}-{n}"
+    # (JIRA-style). Immutable once set; chosen at create time (suggested from `name`).
+    key: str = ""
     description: str | None = None
     # Commission/brief context (Patron-supplied, all optional).
     objective: str | None = None
@@ -50,6 +53,9 @@ class Project:
     context: str | None = None
     settings: dict = field(default_factory=default_project_settings)
     status: ProjectStatus = ProjectStatus.SETUP
+    # Monotonic per-project task counter — atomically incremented when a task is created
+    # so identifiers are never reused and never collide under concurrent creates.
+    next_task_seq: int = 1
     created_by_user_id: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None

@@ -72,6 +72,7 @@ def project_to_entity(m: ProjectModel) -> Project:
         workspace_id=m.workspace_id,
         name=m.name,
         slug=m.slug,
+        key=m.key or "",
         description=m.description,
         objective=m.objective,
         success_metrics=dict(m.success_metrics) if m.success_metrics else None,
@@ -80,6 +81,7 @@ def project_to_entity(m: ProjectModel) -> Project:
         context=m.context,
         settings=dict(m.settings) if m.settings else default_project_settings(),
         status=ProjectStatus(m.status) if m.status else ProjectStatus.SETUP,
+        next_task_seq=m.next_task_seq if m.next_task_seq is not None else 1,
         created_by_user_id=m.created_by_user_id,
         created_at=m.created_at,
         updated_at=m.updated_at,
@@ -161,6 +163,7 @@ def task_to_entity(m: TaskModel) -> Task:
     return Task(
         id=m.id,
         project_id=m.project_id,
+        identifier=m.identifier,
         title=m.title,
         description=m.description,
         status=TaskStatus(m.status),

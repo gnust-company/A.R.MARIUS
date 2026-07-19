@@ -47,8 +47,12 @@ class TaskService:
         waits for the patron's approval before any worker is woken (#82). The patron's manual
         add-task supplies the full definition — priority/due_date/definition_of_done/assignee."""
         async with self._uow() as uow:
-            if await uow.projects.get(project_id) is None:
+            project = await uow.projects.get(project_id)
+            if project is None:
                 raise LookupError("project not found")
+            # Mint "{KEY}-{seq}" — the seq is allocated atomically (UPDATE … RETURNING) so
+            # concurrent creates never share a number and the number is never reused.
+            seq = await uow.projects.allocate_task_number(project_id)
             now = utcnow()
             task = Task(
                 project_id=project_id,
@@ -61,6 +65,7 @@ class TaskService:
                 created_by_user_id=created_by_user_id,
                 created_by_marius_id=created_by_marius_id,
                 assigned_marius_id=assigned_marius_id,
+                identifier=f"{project.key}-{seq}",
                 created_at=now,
                 updated_at=now,
             )

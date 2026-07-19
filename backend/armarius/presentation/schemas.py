@@ -9,6 +9,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from armarius.domain.services.project_key import PROJECT_KEY_RE
+
 
 class _Out(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -44,6 +46,7 @@ class ProjectOut(_Out):
     workspace_id: UUID | None = None
     name: str
     slug: str
+    key: str | None = None
     description: str | None = None
     # Lifecycle (setup → active → archived) + brief so the project list can render a real
     # status chip and objective line without opening the detail view.
@@ -76,6 +79,11 @@ class CreateProjectPlanIn(BaseModel):
 
     name: str = Field(min_length=1, max_length=200)
     description: str | None = None
+    # JIRA-style project KEY — the prefix of task identifiers "{key}-{seq}". Optional:
+    # when omitted (or blank) the service suggests one from `name` and auto-uniquifies.
+    key: str | None = Field(
+        default=None, min_length=2, max_length=10, pattern=PROJECT_KEY_RE.pattern
+    )
     mode: str = "manual"
     objective: str | None = None
     success_metrics: dict | None = None
@@ -122,6 +130,7 @@ class ProjectDetailOut(_Out):
     workspace_id: UUID | None = None
     name: str
     slug: str
+    key: str | None = None
     description: str | None = None
     status: str
     objective: str | None = None
@@ -349,6 +358,8 @@ class NextActionIn(BaseModel):
 class TaskOut(_Out):
     id: UUID
     project_id: UUID | None = None
+    # Human-readable code "{project.key}-{seq}", e.g. "CALC-7" (minted at create).
+    identifier: str | None = None
     title: str
     description: str | None = None
     status: str

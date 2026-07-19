@@ -51,13 +51,18 @@ class LabelModel(Base):
 
 class ProjectModel(Base):
     __tablename__ = "projects"
+    __table_args__ = (UniqueConstraint("workspace_id", "key", name="uq_project_ws_key"),)
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     workspace_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("workspaces.id"), index=True)
     name: Mapped[str] = mapped_column(String(200))
     slug: Mapped[str] = mapped_column(String(200))
+    # Short uppercase code unique per workspace — the KEY in task identifiers "{key}-{n}".
+    key: Mapped[str | None] = mapped_column(String(10), index=True)
     description: Mapped[str | None] = mapped_column(Text)
     # Lifecycle (LLD §3.1): setup → active → archived. Activation is one-way.
     status: Mapped[str] = mapped_column(String(20), default="setup", index=True)
+    # Monotonic per-project task counter (atomically incremented via allocate_task_number).
+    next_task_seq: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     # Commission/brief context (Patron-supplied, all optional).
     objective: Mapped[str | None] = mapped_column(Text)
     success_metrics: Mapped[dict | None] = mapped_column(JSON)
@@ -131,6 +136,7 @@ class TaskModel(Base):
     __tablename__ = "tasks"
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     project_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("projects.id"), index=True)
+    identifier: Mapped[str | None] = mapped_column(String(32), index=True)
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="backlog", index=True)

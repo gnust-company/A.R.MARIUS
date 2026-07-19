@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from uuid import UUID
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from armarius.domain.entities.artifact import Artifact
@@ -432,8 +432,10 @@ class SqlProjectRepository(ProjectRepository):
                 workspace_id=project.workspace_id,
                 name=project.name,
                 slug=project.slug,
+                key=project.key,
                 description=project.description,
                 status=str(project.status),
+                next_task_seq=project.next_task_seq,
                 objective=project.objective,
                 success_metrics=project.success_metrics,
                 target_date=project.target_date,
@@ -460,14 +462,46 @@ class SqlProjectRepository(ProjectRepository):
         ).scalars().all()
         return [mappers.project_to_entity(m) for m in rows]
 
+    async def get_by_key(self, workspace_id: UUID, key: str) -> Project | None:
+        m = (
+            await self._s.execute(
+                select(ProjectModel).where(
+                    ProjectModel.workspace_id == workspace_id,
+                    ProjectModel.key == key,
+                )
+            )
+        ).scalar_one_or_none()
+        return mappers.project_to_entity(m) if m else None
+
+    async def allocate_task_number(self, project_id: UUID) -> int:
+        """Atomically bump + return the next per-project task number.
+
+        One ``UPDATE … RETURNING`` (row-level lock inside the statement) so concurrent
+        creates can never share a number — the core guarantee max+1 could not give.
+        """
+        stmt = (
+            update(ProjectModel)
+            .where(ProjectModel.id == project_id)
+            .values(next_task_seq=ProjectModel.next_task_seq + 1)
+            .returning(ProjectModel.next_task_seq)
+        )
+        value = (await self._s.execute(stmt)).scalar_one_or_none()
+        if value is None:
+            raise LookupError("project not found")
+        # `next_task_seq` is the NEXT number to assign (starts at 1); the UPDATE advanced
+        # it, so the number we just claimed is the pre-increment value.
+        return int(value) - 1
+
     async def update(self, project: Project) -> Project:
         m = await self._s.get(ProjectModel, project.id)
         if m is None:
             raise LookupError("project not found")
         m.name = project.name
         m.slug = project.slug
+        m.key = project.key
         m.description = project.description
         m.status = str(project.status)
+        m.next_task_seq = project.next_task_seq
         m.objective = project.objective
         m.success_metrics = project.success_metrics
         m.target_date = project.target_date
@@ -744,6 +778,7 @@ class SqlTaskRepository(TaskRepository):
             TaskModel(
                 id=task.id,
                 project_id=task.project_id,
+                identifier=task.identifier,
                 title=task.title,
                 description=task.description,
                 status=str(task.status),
@@ -782,6 +817,7 @@ class SqlTaskRepository(TaskRepository):
         m = await self._s.get(TaskModel, task.id)
         if m is None:
             raise LookupError("task not found")
+        m.identifier = task.identifier
         m.title = task.title
         m.description = task.description
         m.status = str(task.status)
