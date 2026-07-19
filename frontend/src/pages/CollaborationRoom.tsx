@@ -249,8 +249,10 @@ export default function CollaborationRoom() {
   const threadEndRef = useRef<HTMLDivElement>(null);
   const traceEndRef = useRef<HTMLDivElement>(null);
 
-  // Get task participants with agent data
-  const participants = store.mariuses.filter((m) => task?.participants.includes(m.id));
+  // The task's single assignee (one owner per task) resolved to agent data — 0 or 1.
+  const assignedAgents = task?.assigneeId
+    ? store.mariuses.filter((m) => m.id === task.assigneeId)
+    : [];
   const currentUser = store.currentUser;
 
   // Get dependency (blocked_by) tasks + the candidates the picker can add (same project,
@@ -444,28 +446,37 @@ export default function CollaborationRoom() {
               </select>
             </div>
 
-            {/* Participants */}
+            {/* Assignee (single owner per task) */}
             <div>
               <label className="block font-body text-body-xs font-semibold text-ink-light uppercase tracking-wider mb-2">
                 {t('collaborationRoom.context.assigned')}
               </label>
               <div className="space-y-2">
-                {participants.map((p) => (
+                {assignedAgents.length === 0 && (
+                  <span className="font-body text-body-sm text-ink-muted">{t('board.taskAssigneeNone')}</span>
+                )}
+                {assignedAgents.map((p) => (
                   <div
                     key={p.id}
                     className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-md bg-vellum border border-vellum-dark"
                   >
                     <div className="relative">
-                      <img
-                        src={p.avatar}
-                        alt={p.displayName}
-                        className="w-6 h-6 rounded-full object-cover"
-                      />
+                      {p.avatar ? (
+                        <img
+                          src={p.avatar}
+                          alt={p.displayName || p.name}
+                          className="w-6 h-6 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-6 h-6 rounded-full bg-vellum-dark flex items-center justify-center font-body text-body-xs text-ink-muted">
+                          {(p.displayName || p.name).charAt(0).toUpperCase()}
+                        </div>
+                      )}
                       <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-vellum"
                         style={{ backgroundColor: p.status === 'online' || p.status === 'working' ? '#4A9E6B' : '#8B7A6A' }}
                       />
                     </div>
-                    <span className="font-body text-body-sm text-ink">{p.displayName}</span>
+                    <span className="font-body text-body-sm text-ink">{p.displayName || p.name}</span>
                     <span className="font-body text-body-xs text-ink-muted ml-auto">{p.role}</span>
                   </div>
                 ))}
@@ -661,7 +672,7 @@ export default function CollaborationRoom() {
             <div>
               <h2 className="font-display text-display-sm text-ink">{t('collaborationRoom.threadTitle')}</h2>
               <span className="font-body text-body-xs text-ink-muted">
-                {t('collaborationRoom.participants', { count: participants.length + 1 })}
+                {t('collaborationRoom.participants', { count: assignedAgents.length + 1 })}
               </span>
             </div>
           </div>

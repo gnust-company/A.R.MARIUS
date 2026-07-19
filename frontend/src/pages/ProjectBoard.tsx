@@ -78,9 +78,7 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
   const checklistTotal = (task.checklist || []).length;
   const checklistDone = (task.checklist || []).filter((c) => c.done).length;
   const hasArtifacts = (task.artifacts || []).length > 0;
-  const participantAgents = (task.participants || [])
-    .map((p) => mariuses.find((m) => m.id === p.id))
-    .filter(Boolean);
+  const assigneeAgent = task.assigneeId ? mariuses.find((m) => m.id === task.assigneeId) : undefined;
 
   return (
     <motion.div
@@ -147,29 +145,21 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
         )}
       </div>
 
-      {/* Participant avatars */}
-      {participantAgents.length > 0 && (
+      {/* Assignee avatar (single owner per task) */}
+      {assigneeAgent && (
         <div className="flex items-center -space-x-2">
-          {participantAgents.slice(0, 3).map((agent) => (
-            <div
-              key={agent!.id}
-              className="w-6 h-6 rounded-full border-2 border-vellum bg-vellum-dark overflow-hidden"
-              title={agent!.displayName}
-            >
-              {agent!.avatar ? (
-                <img src={agent!.avatar} alt={agent!.displayName || agent!.name} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-body-xs text-ink-muted">
-                  {(agent!.displayName || agent!.name).charAt(0)}
-                </div>
-              )}
-            </div>
-          ))}
-          {participantAgents.length > 3 && (
-            <div className="w-6 h-6 rounded-full border-2 border-vellum bg-vellum-dark flex items-center justify-center text-body-xs text-ink-muted">
-              +{participantAgents.length - 3}
-            </div>
-          )}
+          <div
+            className="w-6 h-6 rounded-full border-2 border-vellum bg-vellum-dark overflow-hidden"
+            title={assigneeAgent.displayName || assigneeAgent.name}
+          >
+            {assigneeAgent.avatar ? (
+              <img src={assigneeAgent.avatar} alt={assigneeAgent.displayName || assigneeAgent.name} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-body-xs text-ink-muted">
+                {(assigneeAgent.displayName || assigneeAgent.name).charAt(0)}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

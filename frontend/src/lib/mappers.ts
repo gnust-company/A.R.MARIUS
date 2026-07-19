@@ -196,7 +196,6 @@ export function taskToVM(dto: TaskDTO): Task {
     comments: [],
     artifacts: [],
     checklist: [],
-    participants: [],
     dependencies: [],
   }
 }

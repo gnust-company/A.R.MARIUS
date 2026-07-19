@@ -95,26 +95,25 @@ export default function Inbox() {
                           <p className="text-xs text-[#6B5E4E] mt-1 line-clamp-1">{task.description}</p>
                           <div className="flex items-center gap-3 mt-2">
                             <div className="flex -space-x-1.5">
-                              {task.participants?.slice(0, 3).map((agentId) => {
-                                const agent = safeMariuses.find((m) => m.id === agentId);
-                                const label = agent?.displayName || agent?.name || agentId;
+                              {(() => {
+                                if (!task.assigneeId) return null;
+                                const agent = safeMariuses.find((m) => m.id === task.assigneeId);
+                                const label = agent?.displayName || agent?.name || task.assigneeId;
                                 return agent?.avatar ? (
                                   <img
-                                    key={agentId}
                                     src={agent.avatar}
                                     alt={label}
                                     className="w-5 h-5 rounded-full border border-[#F7F0E0] object-cover"
                                   />
                                 ) : (
                                   <span
-                                    key={agentId}
                                     title={label}
                                     className="w-5 h-5 rounded-full border border-[#F7F0E0] bg-[#EDE4CE] flex items-center justify-center font-display text-[10px] text-[#8B6A28]"
                                   >
                                     {label.charAt(0).toUpperCase()}
                                   </span>
                                 );
-                              })}
+                              })()}
                             </div>
                             <div className="flex items-center gap-2 text-[#A89880]">
                               {task.artifacts?.some((a) => a.type === 'file') && <FileText size={12} />}
