@@ -86,7 +86,6 @@ class RoleModel(Base):
     seats: Mapped[int] = mapped_column(Integer, default=1)
     is_leader: Mapped[bool] = mapped_column(Boolean, default=False)
     description: Mapped[str] = mapped_column(Text, default="")
-    responsibilities: Mapped[str] = mapped_column(Text, default="")
     skill_ids: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

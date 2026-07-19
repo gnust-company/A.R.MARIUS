@@ -559,7 +559,6 @@ class SqlRoleRepository(RoleRepository):
                 seats=role.seats,
                 is_leader=role.is_leader,
                 description=role.description,
-                responsibilities=role.responsibilities,
                 skill_ids=[str(x) for x in role.skill_ids],
                 created_at=role.created_at,
             )
@@ -590,7 +589,6 @@ class SqlRoleRepository(RoleRepository):
         m.seats = role.seats
         m.is_leader = role.is_leader
         m.description = role.description
-        m.responsibilities = role.responsibilities
         m.skill_ids = [str(x) for x in role.skill_ids]
         await self._s.flush()
         return role

@@ -120,7 +120,7 @@ async def create_project(
             title="Project Leader",
             seats=1,
             is_leader=True,
-            responsibilities=body.leader.responsibilities,
+            description=body.leader.description,
         )
     ]
     used_keys = {"leader"}
@@ -250,7 +250,6 @@ async def add_role(
             seats=body.seats,
             is_leader=body.is_leader,
             description=body.description,
-            responsibilities=body.responsibilities,
             skill_ids=[str(x) for x in body.skill_ids],
         ),
     )
