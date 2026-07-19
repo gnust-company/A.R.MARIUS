@@ -92,7 +92,6 @@ async def test_provision_agent_links_skill_and_pushes_setup():
     assert data["invite_status"] == "approved"
     assert data["send_status"] == "sent"
     assert "agent_token" not in data
-    assert "enrollment_code" not in data
     assert "invite" not in data
 
 

@@ -60,5 +60,7 @@ def test_invite_prompt_carries_token_location_footer():
         m, "https://api.example.com", workspace_name="Acme", skills=[_skill()]
     )
     assert agent_prompt_footer(cred) in prompt
-    # Token path (no enrollment_code) → the skills block must not reference a STEP 0.
+    # The enroll-and-wait STEP 0 block was removed (#97); the prompt must not reference it.
     assert "your token from STEP 0" not in prompt
+    assert "STEP 0" not in prompt
+    assert "/agent/enroll" not in prompt

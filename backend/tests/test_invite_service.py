@@ -88,7 +88,6 @@ async def test_invite_creates_approved_marius_with_token_and_adapter_config() ->
     assert m.agent_token and m.agent_token.startswith("arm_")
     # The gateway creds are stored exactly where the adapter reads them.
     assert m.adapter_config == {"base_url": "http://hermes:8642", "api_key": "k"}
-    assert m.enrollment_code is None  # vestigial under operator-invite
 
 
 async def test_invite_validates_gateway_before_persisting() -> None:
