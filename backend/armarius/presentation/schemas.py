@@ -373,6 +373,28 @@ class TaskOut(_Out):
     updated_at: datetime | None = None
 
 
+# ------------------------------------------------------------------ dependency
+class AddDependencyIn(BaseModel):
+    # This task is blocked_by `blocks_task_id` (it waits on that task to be done).
+    blocks_task_id: UUID
+
+
+class BlockerOut(_Out):
+    """A task that blocks another (rendered in the blocked-by list)."""
+
+    id: UUID
+    identifier: str | None = None
+    title: str
+    status: str
+
+
+class TaskDependencyEdgeOut(_Out):
+    """A raw `blocked_by` edge (project board reads these to flag blocked cards)."""
+
+    task_id: UUID
+    blocks_task_id: UUID
+
+
 # ---------------------------------------------------------------------- comment
 class PostCommentIn(BaseModel):
     body: str = Field(min_length=1)

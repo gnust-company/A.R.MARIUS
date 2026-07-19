@@ -20,6 +20,7 @@ from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.skill import Skill
 from armarius.domain.entities.task import Task
+from armarius.domain.entities.task_dependency import TaskDependency
 from armarius.domain.entities.user import User
 from armarius.domain.entities.wakeup import WakeupRequest
 from armarius.domain.entities.workspace import Project, Workspace
@@ -182,6 +183,30 @@ class TaskRepository(ABC):
     ) -> Sequence[Task]: ...
     @abstractmethod
     async def update(self, task: Task) -> Task: ...
+
+
+class TaskDependencyRepository(ABC):
+    """`blocked_by` edges. Feeds the dependency-gate (a task cannot enter
+    todo/in_progress while any task it is blocked_by is unfinished)."""
+
+    @abstractmethod
+    async def add(self, dependency: TaskDependency) -> TaskDependency: ...
+    @abstractmethod
+    async def remove(self, task_id: UUID, blocks_task_id: UUID) -> None: ...
+    @abstractmethod
+    async def get(
+        self, task_id: UUID, blocks_task_id: UUID
+    ) -> TaskDependency | None: ...
+    @abstractmethod
+    async def list_blockers(self, task_id: UUID) -> Sequence[TaskDependency]:
+        """Edges where `task_id` is the blocked task (its `blocked_by` list)."""
+    @abstractmethod
+    async def list_by_project(self, project_id: UUID) -> Sequence[TaskDependency]:
+        """All edges whose blocked task lives in this project (board view)."""
+    @abstractmethod
+    async def all_blockers_done(self, task_id: UUID) -> bool:
+        """True when every task `task_id` is blocked_by has status `done`
+        (vacuously true when it has no blockers)."""
 
 
 class CommentRepository(ABC):

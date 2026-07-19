@@ -23,6 +23,7 @@ from armarius.infrastructure.persistence.repositories import (
     SqlSeatGrantRepository,
     SqlSessionRepository,
     SqlSkillRepository,
+    SqlTaskDependencyRepository,
     SqlTaskRepository,
     SqlUserRepository,
     SqlWakeupRepository,
@@ -48,6 +49,7 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         self.seat_grants = SqlSeatGrantRepository(s)
         self.mariuses = SqlMariusRepository(s)
         self.tasks = SqlTaskRepository(s)
+        self.dependencies = SqlTaskDependencyRepository(s)
         self.comments = SqlCommentRepository(s)
         self.sessions = SqlSessionRepository(s)
         self.runs = SqlRunRepository(s)

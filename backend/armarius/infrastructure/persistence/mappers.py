@@ -29,6 +29,7 @@ from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.skill import Skill
 from armarius.domain.entities.task import Task, TaskPriority, TaskStatus
+from armarius.domain.entities.task_dependency import TaskDependency
 from armarius.domain.entities.user import User, UserRole
 from armarius.domain.entities.wakeup import WakeupRequest, WakeupStatus
 from armarius.domain.entities.workspace import Workspace
@@ -47,6 +48,7 @@ from armarius.infrastructure.database.models import (
     SeatGrantModel,
     SessionModel,
     SkillModel,
+    TaskDependencyModel,
     TaskModel,
     UserModel,
     WakeupModel,
@@ -179,6 +181,14 @@ def task_to_entity(m: TaskModel) -> Task:
         completed_at=m.completed_at,
         created_at=m.created_at,
         updated_at=m.updated_at,
+    )
+
+
+def task_dependency_to_entity(m: TaskDependencyModel) -> TaskDependency:
+    return TaskDependency(
+        id=m.id,
+        task_id=m.task_id,
+        blocks_task_id=m.blocks_task_id,
     )
 
 

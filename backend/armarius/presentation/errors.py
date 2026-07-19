@@ -25,7 +25,12 @@ from armarius.domain.entities.leader_chat import LeaderChatError
 from armarius.domain.entities.marius import InviteError
 from armarius.domain.entities.onboarding import OnboardingError
 from armarius.domain.entities.seat_grant import SeatGrantError
-from armarius.domain.entities.task import ArtifactRequiredError, TaskTransitionError
+from armarius.domain.entities.task import (
+    ArtifactRequiredError,
+    DependencyNotMetError,
+    TaskTransitionError,
+)
+from armarius.domain.entities.task_dependency import TaskDependencyError
 from armarius.domain.services.project_key import InvalidProjectKey
 from armarius.domain.services.project_rules import InvalidProjectPlan
 
@@ -42,6 +47,16 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ArtifactRequiredError)
     async def _artifact_required(_: Request, exc: ArtifactRequiredError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(DependencyNotMetError)
+    async def _dependency_not_met(_: Request, exc: DependencyNotMetError) -> JSONResponse:
+        # Entering todo/in_progress while a blocked_by task is unfinished (§1.3) — conflict.
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(TaskDependencyError)
+    async def _bad_dependency(_: Request, exc: TaskDependencyError) -> JSONResponse:
+        # Invalid edge: self-loop, duplicate, cross-project, or cycle — unprocessable.
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
 
     @app.exception_handler(InvalidProjectPlan)
     async def _invalid_plan(_: Request, exc: InvalidProjectPlan) -> JSONResponse:

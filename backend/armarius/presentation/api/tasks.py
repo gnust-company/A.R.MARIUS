@@ -11,14 +11,17 @@ from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.task import TaskStatus
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
+    AddDependencyIn,
     ArtifactOut,
     AssignIn,
+    BlockerOut,
     CommentOut,
     CreateTaskIn,
     NextActionIn,
     PostCommentIn,
     PublishArtifactIn,
     RunStartedOut,
+    TaskDependencyEdgeOut,
     TaskOut,
     TransitionIn,
     WakeIn,
@@ -92,6 +95,49 @@ async def set_next_action(
 ) -> TaskOut:
     task = await container.tasks.set_next_action(task_id, body.next_action)
     return TaskOut.model_validate(task)
+
+
+@router.get("/tasks/{task_id}/dependencies", response_model=list[BlockerOut])
+async def list_dependencies(
+    task_id: UUID, container: ContainerDep
+) -> list[BlockerOut]:
+    """Tasks this task is blocked_by (feeds the dependency-gate, §1.3)."""
+    blockers = await container.tasks.list_blockers(task_id)
+    return [BlockerOut.model_validate(t) for t in blockers]
+
+
+@router.post(
+    "/tasks/{task_id}/dependencies",
+    response_model=list[BlockerOut],
+    status_code=201,
+)
+async def add_dependency(
+    task_id: UUID, body: AddDependencyIn, container: ContainerDep
+) -> list[BlockerOut]:
+    """Add a `blocked_by` edge, then return the refreshed blocker list."""
+    await container.tasks.add_dependency(task_id, body.blocks_task_id)
+    blockers = await container.tasks.list_blockers(task_id)
+    return [BlockerOut.model_validate(t) for t in blockers]
+
+
+@router.delete("/tasks/{task_id}/dependencies/{blocks_task_id}", status_code=204)
+async def remove_dependency(
+    task_id: UUID, blocks_task_id: UUID, container: ContainerDep
+) -> None:
+    await container.tasks.remove_dependency(task_id, blocks_task_id)
+
+
+@router.get(
+    "/projects/{project_id}/task-dependencies",
+    response_model=list[TaskDependencyEdgeOut],
+)
+async def list_project_dependencies(
+    project_id: UUID, container: ContainerDep
+) -> list[TaskDependencyEdgeOut]:
+    """All `blocked_by` edges in the project — the board flags cards with an
+    unfinished blocker from these plus the tasks it already loaded."""
+    edges = await container.tasks.list_project_dependencies(project_id)
+    return [TaskDependencyEdgeOut.model_validate(e) for e in edges]
 
 
 @router.get("/tasks/{task_id}/comments", response_model=list[CommentOut])
