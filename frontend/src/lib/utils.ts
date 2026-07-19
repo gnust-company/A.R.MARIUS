@@ -6,6 +6,23 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Suggest a JIRA-style project KEY from the name: first 4 ASCII letters, uppercased,
+ * diacritics + non-letters stripped. Mirrors backend `suggest_project_key` so the FE
+ * pre-fills exactly what the server would derive; the user can edit before submit.
+ * Always returns ≥2 chars. "Calculator" → "CALC", "Đồng bộ" → "DONG", "A" → "AX".
+ */
+export function suggestProjectKey(name: string): string {
+  const normalized = (name ?? "").replace(/đ/g, "d").replace(/Đ/g, "d")
+  const letters = Array.from(normalized.normalize("NFKD")).filter(
+    (c) => (c >= "A" && c <= "Z") || (c >= "a" && c <= "z"),
+  )
+  let key = letters.slice(0, 4).join("").toUpperCase()
+  if (!key) return "PROJ"
+  while (key.length < 2) key += "X"
+  return key
+}
+
+/**
  * Build a URL for a page *inside* a workspace. Every in-workspace route lives under
  * `/w/:workspaceId/…` so a hard refresh restores the right workspace (and its skills).
  * `sub` is the workspace-relative path, e.g. `wsHref(id, '/skills')` → `/w/<id>/skills`.

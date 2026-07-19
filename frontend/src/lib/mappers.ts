@@ -103,6 +103,7 @@ export function projectToVM(dto: ProjectDTO): Project {
   return {
     id: dto.id,
     name: dto.name,
+    key: dto.key ?? undefined,
     description: dto.description ?? undefined,
     workspaceId: dto.workspace_id ?? '',
     status: dto.status === 'active' ? 'active' : dto.status === 'archived' ? 'archived' : 'setup',
@@ -137,6 +138,7 @@ export function projectDetailToVM(dto: ProjectDetailDTO): Project {
   return {
     id: dto.id,
     name: dto.name,
+    key: dto.key ?? undefined,
     description: dto.description ?? undefined,
     workspaceId: dto.workspace_id ?? '',
     status: dto.status === 'setup' ? 'setup' : dto.status === 'active' ? 'active' : 'archived',
@@ -183,6 +185,7 @@ export function mariusToVM(dto: MariusDTO): Marius {
 export function taskToVM(dto: TaskDTO): Task {
   return {
     id: dto.id,
+    identifier: dto.identifier ?? undefined,
     title: dto.title,
     description: dto.description ?? undefined,
     status: taskStatusFromDTO(dto.status),

@@ -194,6 +194,8 @@ export interface ProjectDTO {
   workspace_id?: string | null
   name: string
   slug: string
+  /** JIRA-style KEY — prefix of task identifiers "{key}-{n}". */
+  key?: string | null
   description?: string | null
   status?: string | null
   objective?: string | null
@@ -208,6 +210,8 @@ export interface ProjectDetailDTO {
   workspace_id?: string | null
   name: string
   slug: string
+  /** JIRA-style KEY — prefix of task identifiers "{key}-{n}". */
+  key?: string | null
   description?: string | null
   status: string
   objective?: string | null
@@ -281,6 +285,8 @@ export interface SkillDTO {
 export interface TaskDTO {
   id: string
   project_id?: string | null
+  /** Human-readable code "{project.key}-{seq}", e.g. "CALC-7". */
+  identifier?: string | null
   title: string
   description?: string | null
   status: string
@@ -386,6 +392,8 @@ export interface CreateProjectBody {
   name: string
   description?: string
   objective?: string
+  /** JIRA-style project KEY (2–10 uppercase chars). Omitted/blank → server suggests from name. */
+  key?: string
   leader?: { marius_id?: string | null; responsibilities?: string }
   roles?: Array<{
     title: string
