@@ -12,7 +12,6 @@
 import type {
   ArtifactDTO,
   CommentDTO,
-  CommissionDTO,
   LabelDTO,
   MariusDTO,
   OnboardingDTO,
@@ -25,7 +24,6 @@ import type {
 import type {
   AgentStatus,
   Artifact,
-  CommissionSession as CommissionSessionVM,
   Marius,
   OnboardingSessionVM,
   Priority,
@@ -258,37 +256,6 @@ export function skillToVM(dto: SkillDTO): Skill {
       content,
       workspaceId: dto.workspace_id ?? undefined,
     })),
-  }
-}
-
-// ── Commission ───────────────────────────────────────────────────────────────────────────
-
-export function commissionToVM(dto: CommissionDTO): CommissionSessionVM {
-  return {
-    id: dto.id,
-    projectId: dto.project_id ?? '',
-    leaderMariusId: dto.leader_marius_id ?? undefined,
-    taskId: dto.task_id ?? undefined,
-    status: dto.status === 'open' ? 'open' : dto.status === 'confirmed' ? 'confirmed' : 'abandoned',
-    leaderState:
-      dto.leader_state === 'thinking'
-        ? 'thinking'
-        : dto.leader_state === 'waiting'
-          ? 'waiting'
-          : 'leader_offline',
-    transcript: dto.transcript as CommissionSessionVM['transcript'],
-    messages: dto.transcript as CommissionSessionVM['messages'],
-    draftTask: dto.task_id
-      ? {
-          id: dto.task_id,
-          title: '',
-          description: '',
-          priority: 'normal',
-          assigneeId: undefined,
-          checklist: [],
-          dependencies: [],
-        }
-      : null,
   }
 }
 

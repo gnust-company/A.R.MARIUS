@@ -1,7 +1,7 @@
 // @ts-nocheck
 // Single-agent detail view (#72). Opened by clicking an agent card in the Directory. The
 // right column is the system↔agent interaction log the owner tracks: every Run the system
-// dispatched to this agent (assignment, mention, commission, …), each expandable to its
+// dispatched to this agent (assignment, mention, comment, …), each expandable to its
 // durable per-run trace (RunEvent). Data is read-only and polls so a live run updates in place.
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router';
