@@ -15,7 +15,6 @@ from armarius.infrastructure.database.migrations import ensure_schema
 from armarius.presentation.api import (
     agent,
     auth,
-    commission,
     events,
     health,
     leader_chat,
@@ -72,7 +71,6 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(workspaces.router)
     app.include_router(projects.router)
-    app.include_router(commission.router)
     app.include_router(leader_chat.router)
     app.include_router(onboarding.router)
     app.include_router(events.router)

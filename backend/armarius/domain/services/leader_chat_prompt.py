@@ -2,7 +2,7 @@
 
 Deliberately NOT the generic task-wake prompt (``build_wake_prompt``): that one tells the
 agent to "update the task, publish an artifact, move to review/done" — meaningless for a
-1-1 project conversation and the reason the old Commission wake felt *bạc nhược* (feeble).
+1-1 project conversation, which is why the project-level chat needs its own framing.
 
 Here the Leader is framed as the project's lead in an ongoing chat with the patron about
 the *whole* project. It answers/advises directly (its reply streams straight back, like

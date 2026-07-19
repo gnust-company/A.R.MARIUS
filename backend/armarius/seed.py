@@ -99,7 +99,7 @@ async def maybe_seed(container: Container) -> None:
             )
 
         alice = marius("Alice", "Frontend", ["react", "css"], Liveness.WORKING)
-        bob = marius("Bob", "Design", ["figma", "ux"], Liveness.IDLE)
+        bob = marius("Bob", "Design", ["figma", "ux"], Liveness.ONLINE)
         cleo = marius("Cleo", "Reviewer", ["security"], Liveness.ONLINE)
         dex = marius("Dex", "Backend", ["api", "db"], Liveness.OFFLINE)
         for m in (alice, bob, cleo, dex):

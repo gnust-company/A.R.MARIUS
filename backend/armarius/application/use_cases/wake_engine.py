@@ -285,11 +285,12 @@ class WakeEngine:
             await uow.tasks.update(fresh_task)
 
         # Liveness reflects *reachability*, not the run's outcome. Any finalized run —
-        # COMPLETED or not — means the agent runtime reached back, so it is available again
-        # (IDLE) and the in-flight turn is cleared. HUNG is reserved for the watchdog (a turn
-        # that went silent), never a non-COMPLETED status — otherwise a task that simply failed
-        # or timed out would strand the agent "offline" forever (#82 liveness fix).
-        marius.liveness = Liveness.IDLE
+        # COMPLETED or not — means the agent runtime reached back, so the agent is free again:
+        # back to ONLINE (last_seen_at just bumped = a fresh signal) and the in-flight turn is
+        # cleared. HUNG is reserved for the watchdog (a turn that went silent), never a
+        # non-COMPLETED status — otherwise a task that simply failed or timed out would strand
+        # the agent "offline" forever (#82 liveness fix).
+        marius.liveness = Liveness.ONLINE
         marius.last_seen_at = utcnow()
         marius.turn_started_at = None
         await uow.mariuses.update(marius)

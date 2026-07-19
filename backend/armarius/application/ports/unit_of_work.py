@@ -12,7 +12,6 @@ from types import TracebackType
 from armarius.domain.repositories.repositories import (
     ArtifactRepository,
     CommentRepository,
-    CommissionRepository,
     LabelRepository,
     LeaderChatRepository,
     MariusRepository,
@@ -35,7 +34,6 @@ from armarius.domain.repositories.repositories import (
 class UnitOfWork(ABC):
     workspaces: WorkspaceRepository
     labels: LabelRepository
-    commissions: CommissionRepository
     leader_chats: LeaderChatRepository
     onboardings: OnboardingRepository
     projects: ProjectRepository

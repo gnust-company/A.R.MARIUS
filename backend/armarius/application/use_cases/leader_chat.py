@@ -45,7 +45,7 @@ from armarius.shared.logging import get_logger
 logger = get_logger(__name__)
 
 # A Leader can take a turn unless it is offline/hung; otherwise the chat is disabled.
-_AVAILABLE = {Liveness.ONLINE, Liveness.WORKING, Liveness.IDLE, Liveness.CHECKING}
+_AVAILABLE = {Liveness.ONLINE, Liveness.WORKING, Liveness.CHECKING}
 _LEADER_ROLE_KEY = "leader"
 _PROMPT_TURN_TAIL = 10  # recent turns included in the prompt for grounding
 
