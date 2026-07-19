@@ -102,7 +102,7 @@ class Task:
     parent_id: UUID | None = None  # subtask of another task
     due_date: datetime | None = None
     definition_of_done: str | None = None
-    # assigned_marius_id kept for back-compat; superseded by TaskParticipant (primary).
+    # The task's single assignee (one owner per task) — the sole source of truth.
     assigned_marius_id: UUID | None = None
     created_by_user_id: str | None = None
     created_by_marius_id: UUID | None = None
