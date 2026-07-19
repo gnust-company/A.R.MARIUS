@@ -22,7 +22,7 @@ from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.project import Project, ProjectStatus
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
-from armarius.domain.services import project_rules
+from armarius.domain.services import project_key, project_rules
 from armarius.shared.clock import utcnow
 
 
@@ -32,6 +32,10 @@ class SystemOnlyOperation(Exception):
 
 class DuplicateRoleKey(Exception):
     """Raised when a role would collide with an existing roster key (API_CONTRACT §3.3)."""
+
+
+class DuplicateProjectKey(Exception):
+    """Raised when a project key collides with an existing one in the same workspace."""
 
 
 def _slugify(value: str) -> str:
@@ -88,6 +92,7 @@ class ProjectService:
         name: str,
         *,
         roles: Sequence[RoleSpec],
+        key: str | None = None,
         description: str | None = None,
         objective: str | None = None,
         success_metrics: dict | None = None,
@@ -96,7 +101,9 @@ class ProjectService:
         created_by_user_id: str | None = None,
     ) -> Project:
         """Create a SETUP project with its roster. Raises InvalidProjectPlan if the
-        roster violates the leader/worker rule; LookupError if the workspace is gone."""
+        roster violates the leader/worker rule; InvalidProjectKey if `key` is malformed;
+        DuplicateProjectKey if `key` is taken in this workspace; LookupError if the
+        workspace is gone. A missing `key` is suggested from `name` and auto-uniquified."""
         draft_roles = [self._role_from_spec(spec) for spec in roles]
         project_rules.validate_plan(draft_roles)  # hard rule — raises InvalidProjectPlan
 
@@ -104,10 +111,25 @@ class ProjectService:
         async with self._uow() as uow:
             if await uow.workspaces.get(workspace_id) is None:
                 raise LookupError("workspace not found")
+            # Resolve the JIRA-style KEY: explicit → validate + reject-on-collision;
+            # missing → suggest from name and auto-uniquify (suffix a digit).
+            if key and key.strip():
+                resolved_key = project_key.validate_project_key(key)  # raises InvalidProjectKey
+                if await uow.projects.get_by_key(workspace_id, resolved_key) is not None:
+                    raise DuplicateProjectKey(
+                        f"project key '{resolved_key}' is already used in this workspace"
+                    )
+            else:
+                base = project_key.suggest_project_key(name)
+                resolved_key, suffix = base, 2
+                while await uow.projects.get_by_key(workspace_id, resolved_key) is not None:
+                    resolved_key = f"{base}{suffix}"
+                    suffix += 1
             project = Project(
                 workspace_id=workspace_id,
                 name=name,
                 slug=_slugify(name),
+                key=resolved_key,
                 description=description,
                 objective=objective,
                 success_metrics=success_metrics,

@@ -77,6 +77,7 @@ async def maybe_seed(container: Container) -> None:
             workspace_id=ws.id,
             name="Settings Redesign",
             slug="settings-redesign",
+            key="SETT",
             description="Redesign the account settings experience, dark mode included.",
             created_at=now,
         )
@@ -104,6 +105,8 @@ async def maybe_seed(container: Container) -> None:
         for m in (alice, bob, cleo, dex):
             await uow.mariuses.add(m)
 
+        task_seq = 0
+
         def task(
             title: str,
             status: TaskStatus,
@@ -113,8 +116,11 @@ async def maybe_seed(container: Container) -> None:
             reason: str | None = None,
             next_action: str | None = None,
         ) -> Task:
+            nonlocal task_seq
+            task_seq += 1
             return Task(
                 project_id=project.id,
+                identifier=f"{project.key}-{task_seq}",
                 title=title,
                 description=desc,
                 status=status,
@@ -166,6 +172,10 @@ async def maybe_seed(container: Container) -> None:
         )
         for t in (t_ia, t_dark, t_audit, t_persist, t_contrast, t_spec):
             await uow.tasks.add(t)
+        # Keep the per-project counter in sync with the seeded tasks so the next task
+        # created via TaskService continues the sequence (SETT-7, SETT-8, …).
+        project.next_task_seq = task_seq + 1
+        await uow.projects.update(project)
 
         thread = [
             (alice, "Starting on dark mode. @Bob can you confirm the token palette for "

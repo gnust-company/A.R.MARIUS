@@ -148,6 +148,7 @@ async def create_project(
         workspace_id,
         body.name,
         roles=specs,
+        key=body.key,
         description=body.description,
         objective=body.objective,
         created_by_user_id=str(user.id),

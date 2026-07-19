@@ -13,7 +13,11 @@ from armarius.application.use_cases.onboarding_session import (
     OnboardingBusy,
     WorkspaceAgentUnavailable,
 )
-from armarius.application.use_cases.projects import DuplicateRoleKey, SystemOnlyOperation
+from armarius.application.use_cases.projects import (
+    DuplicateProjectKey,
+    DuplicateRoleKey,
+    SystemOnlyOperation,
+)
 from armarius.domain.entities.commission import (
     CommissionError as CommissionStateError,
 )
@@ -22,6 +26,7 @@ from armarius.domain.entities.marius import InviteError
 from armarius.domain.entities.onboarding import OnboardingError
 from armarius.domain.entities.seat_grant import SeatGrantError
 from armarius.domain.entities.task import ArtifactRequiredError, TaskTransitionError
+from armarius.domain.services.project_key import InvalidProjectKey
 from armarius.domain.services.project_rules import InvalidProjectPlan
 
 
@@ -50,6 +55,16 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(DuplicateRoleKey)
     async def _duplicate_role_key(_: Request, exc: DuplicateRoleKey) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(DuplicateProjectKey)
+    async def _duplicate_project_key(_: Request, exc: DuplicateProjectKey) -> JSONResponse:
+        # Project KEY already used in this workspace (JIRA-style uniqueness) — conflict.
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(InvalidProjectKey)
+    async def _invalid_project_key(_: Request, exc: InvalidProjectKey) -> JSONResponse:
+        # KEY malformed (must be 2–10 uppercase chars, start with a letter) — unprocessable.
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
 
     @app.exception_handler(CommissionOpError)
     async def _commission_op(_: Request, exc: CommissionOpError) -> JSONResponse:

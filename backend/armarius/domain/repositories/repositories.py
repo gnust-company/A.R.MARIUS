@@ -51,6 +51,14 @@ class ProjectRepository(ABC):
     @abstractmethod
     async def list_by_workspace(self, workspace_id: UUID) -> Sequence[Project]: ...
     @abstractmethod
+    async def get_by_key(self, workspace_id: UUID, key: str) -> Project | None: ...
+    @abstractmethod
+    async def allocate_task_number(self, project_id: UUID) -> int:
+        """Atomically increment + return the next per-project task sequence number.
+
+        A single ``UPDATE … RETURNING`` so concurrent creates never share a number.
+        """
+    @abstractmethod
     async def update(self, project: Project) -> Project: ...
     @abstractmethod
     async def remove(self, project_id: UUID) -> None: ...

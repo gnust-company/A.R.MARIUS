@@ -91,7 +91,8 @@ class DependencyNotMetError(Exception):
 class Task:
     id: UUID = field(default_factory=uuid4)
     project_id: UUID | None = None
-    # Project-scoped human identifier, e.g. "ARM-7" (assigned when a draft is created).
+    # Project-scoped human-readable code "{project.key}-{seq}", e.g. "CALC-7" — minted
+    # by TaskService.create from the project's key + monotonic counter (never reused).
     identifier: str | None = None
     title: str = ""
     description: str | None = None
