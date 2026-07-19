@@ -25,6 +25,22 @@ function upsertById<T extends { id: string }>(list: T[], item: T): T[] {
   return copy
 }
 
+/** Load a project's tasks and attach each task's `blocked_by` edges (#91) so the board can
+ * flag blocked cards and the detail panel can list blockers — one place, two consumers. */
+async function loadProjectTasksWithDeps(projectId: string): Promise<Task[]> {
+  const [taskDtos, edges] = await Promise.all([
+    api.listTasks(projectId),
+    api.listProjectDependencies(projectId),
+  ])
+  const byTask = new Map<string, string[]>()
+  for (const e of edges) {
+    const arr = byTask.get(e.task_id) ?? []
+    arr.push(e.blocks_task_id)
+    byTask.set(e.task_id, arr)
+  }
+  return taskDtos.map((dto) => ({ ...taskToVM(dto), dependencies: byTask.get(dto.id) ?? [] }))
+}
+
 /** Merge incoming list-level projects into the store without clobbering richer
  * detail-level entries (e.g. a project already opened via `hydrateProject`, which
  * carries seats). Existing entries win; incoming ones are added. */
@@ -383,6 +399,10 @@ interface MockStoreState {
   setSidebarCollapsed: (collapsed: boolean) => void
   setSseConnected: (connected: boolean) => void
   updateTask: (taskId: string, updater: SetStateAction<Task>) => Promise<void>
+  /** Add a blocked_by edge (this task waits on blocksTaskId), then refresh its blocker list. */
+  addTaskDependency: (taskId: string, blocksTaskId: string) => Promise<void>
+  /** Remove a blocked_by edge. */
+  removeTaskDependency: (taskId: string, blocksTaskId: string) => Promise<void>
   addComment: (taskId: string, comment: Partial<TaskComment> & { authorId: string; content: string }) => Promise<void>
   /** Simulated per-task trace SSE — append one streamed run event. */
   appendTrace: (taskId: string, event: Partial<TraceEvent> & { type: TraceEvent['type']; content: string }) => void
@@ -562,6 +582,30 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
         console.error('updateTask status failed, reverted:', e)
       }
     }
+  },
+
+  addTaskDependency: async (taskId, blocksTaskId) => {
+    // Server rejects self-loop/duplicate/cross-project/cycle (422) — let it bubble so the
+    // caller can surface the message; the store only updates on success.
+    await api.addTaskDependency(taskId, blocksTaskId)
+    set({
+      tasks: get().tasks.map((t) =>
+        t.id === taskId
+          ? { ...t, dependencies: [...(t.dependencies || []), blocksTaskId] }
+          : t,
+      ),
+    })
+  },
+
+  removeTaskDependency: async (taskId, blocksTaskId) => {
+    await api.removeTaskDependency(taskId, blocksTaskId)
+    set({
+      tasks: get().tasks.map((t) =>
+        t.id === taskId
+          ? { ...t, dependencies: (t.dependencies || []).filter((d) => d !== blocksTaskId) }
+          : t,
+      ),
+    })
   },
 
   addComment: async (taskId, comment) => {
@@ -900,9 +944,11 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   },
 
   hydrateProject: async (projectId: string) => {
-    const [detail, taskDtos] = await Promise.all([api.getProject(projectId), api.listTasks(projectId)])
+    const [detail, tasks] = await Promise.all([
+      api.getProject(projectId),
+      loadProjectTasksWithDeps(projectId),
+    ])
     const project = projectDetailToVM(detail)
-    const tasks = taskDtos.map(taskToVM)
     set({
       projects: upsertById(get().projects, project),
       tasks: [...get().tasks.filter((t) => t.projectId !== projectId), ...tasks],
@@ -910,16 +956,26 @@ export const useMockStore = create<MockStoreState>((set, get) => ({
   },
 
   hydrateTask: async (taskId: string) => {
-    const [taskDto, comments, artifacts] = await Promise.all([
+    const [taskDto, comments, artifacts, blockers] = await Promise.all([
       api.getTask(taskId),
       api.listComments(taskId),
       api.listArtifacts(taskId),
+      api.listTaskDependencies(taskId),
     ])
     const full: Task = {
       ...taskToVM(taskDto),
       comments: comments.map(commentToVM),
       artifacts: artifacts.map(artifactToVM),
+      dependencies: blockers.map((b) => b.id),
     }
-    set({ tasks: upsertById(get().tasks, full) })
+    // Ensure the project's sibling tasks are present (so the blocked-by list can resolve
+    // titles + the add-dependency picker has candidates) without blanking loaded detail.
+    let next = get().tasks
+    if (taskDto.project_id) {
+      const siblings = await loadProjectTasksWithDeps(taskDto.project_id)
+      const known = new Set(next.map((t) => t.id))
+      next = [...next, ...siblings.filter((s) => !known.has(s.id) && s.id !== taskId)]
+    }
+    set({ tasks: upsertById(next, full) })
   },
 }))

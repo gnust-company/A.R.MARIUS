@@ -24,6 +24,7 @@ import {
   Star,
   MessageSquare,
 } from 'lucide-react';
+import { ApiError } from '@/lib/api';
 import { useMockStore, type TraceEvent, type Task } from '@/store/mockStore';
 import { useTaskStream } from '@/hooks/use-task-stream';
 import { cn, wsHref } from '@/lib/utils';
@@ -243,6 +244,8 @@ export default function CollaborationRoom() {
   const [isTraceActive, setIsTraceActive] = useState(true);
   const [showAddArtifactModal, setShowAddArtifactModal] = useState(false);
   const [artifactForm, setArtifactForm] = useState({ name: '', url: '', type: 'file' as 'file' | 'link' });
+  const [depPicker, setDepPicker] = useState('');
+  const [depError, setDepError] = useState<string | null>(null);
   const threadEndRef = useRef<HTMLDivElement>(null);
   const traceEndRef = useRef<HTMLDivElement>(null);
 
@@ -250,8 +253,15 @@ export default function CollaborationRoom() {
   const participants = store.mariuses.filter((m) => task?.participants.includes(m.id));
   const currentUser = store.currentUser;
 
-  // Get dependency tasks
+  // Get dependency (blocked_by) tasks + the candidates the picker can add (same project,
+  // not itself, not already a blocker).
   const dependencyTasks = store.tasks.filter((t) => task?.dependencies.includes(t.id));
+  const candidateBlockers = store.tasks.filter(
+    (x) =>
+      x.projectId === task?.projectId &&
+      x.id !== task?.id &&
+      !(task?.dependencies || []).includes(x.id),
+  );
 
   // Check DONE gate
   const hasArtifacts = (task?.artifacts.length ?? 0) > 0;
@@ -294,6 +304,28 @@ export default function CollaborationRoom() {
     );
     store.updateTask(task.id, { checklist: newChecklist });
   }, [task, store]);
+
+  const handleAddDependency = async (blocksTaskId: string) => {
+    if (!task || !blocksTaskId) return;
+    setDepError(null);
+    try {
+      await store.addTaskDependency(task.id, blocksTaskId);
+      setDepPicker('');
+    } catch (e) {
+      // Server rejects self-loop/duplicate/cross-project/cycle with a 422 detail (#91).
+      setDepError(e instanceof ApiError ? e.message : t('collaborationRoom.context.dependencyFailed'));
+    }
+  };
+
+  const handleRemoveDependency = async (blocksTaskId: string) => {
+    if (!task) return;
+    setDepError(null);
+    try {
+      await store.removeTaskDependency(task.id, blocksTaskId);
+    } catch (e) {
+      setDepError(e instanceof ApiError ? e.message : t('collaborationRoom.context.dependencyFailed'));
+    }
+  };
 
   const handleAddArtifact = useCallback(() => {
     if (!task || !artifactForm.name.trim()) return;
@@ -491,26 +523,65 @@ export default function CollaborationRoom() {
               </div>
             </div>
 
-            {/* Dependencies */}
-            {dependencyTasks.length > 0 && (
-              <div>
-                <label className="block font-body text-body-xs font-semibold text-ink-light uppercase tracking-wider mb-2">
-                  {t('collaborationRoom.context.dependencies')}
-                </label>
-                <div className="space-y-1.5">
-                  {dependencyTasks.map((dep) => (
+            {/* Dependencies (blocked_by, #91) */}
+            <div>
+              <label className="block font-body text-body-xs font-semibold text-ink-light uppercase tracking-wider mb-2">
+                {t('collaborationRoom.context.dependencies')}
+              </label>
+              <div className="space-y-1.5">
+                {dependencyTasks.map((dep) => (
+                  <div
+                    key={dep.id}
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-vellum border border-vellum-dark group"
+                  >
                     <button
-                      key={dep.id}
                       onClick={() => navigate(wsHref(workspaceId, `/tasks/${dep.id}`))}
-                      className="flex items-center gap-2 w-full text-left px-2.5 py-1.5 rounded-md bg-vellum border border-vellum-dark hover:border-gold-muted transition-colors"
+                      className="flex items-center gap-2 flex-1 min-w-0 text-left hover:text-terracotta transition-colors"
                     >
+                      {dep.status === 'done' ? (
+                        <Unlock className="w-3.5 h-3.5 text-success flex-shrink-0" />
+                      ) : (
+                        <Lock className="w-3.5 h-3.5 text-error flex-shrink-0" />
+                      )}
                       <span className="font-mono text-mono-sm text-terracotta">{dep.identifier}</span>
                       <span className="font-body text-body-xs text-ink-light truncate">{dep.title}</span>
                     </button>
-                  ))}
-                </div>
+                    <button
+                      onClick={() => handleRemoveDependency(dep.id)}
+                      title={t('collaborationRoom.context.removeDependency')}
+                      className="opacity-0 group-hover:opacity-100 text-ink-muted hover:text-error transition-all flex-shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {dependencyTasks.length === 0 && (
+                  <p className="font-body text-body-xs text-ink-muted">
+                    {t('collaborationRoom.context.noDependencies')}
+                  </p>
+                )}
+                {candidateBlockers.length > 0 && (
+                  <select
+                    value={depPicker}
+                    onChange={(e) => {
+                      setDepPicker(e.target.value);
+                      if (e.target.value) handleAddDependency(e.target.value);
+                    }}
+                    className="w-full px-2.5 py-1.5 rounded-md border border-dashed border-vellum-dark bg-vellum font-body text-body-xs text-ink-muted focus:border-terracotta focus:outline-none"
+                  >
+                    <option value="">{t('collaborationRoom.context.addDependency')}</option>
+                    {candidateBlockers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.identifier ? `${c.identifier} — ${c.title}` : c.title}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {depError && (
+                  <p className="font-body text-body-xs text-error">{depError}</p>
+                )}
               </div>
-            )}
+            </div>
 
             {/* Artifacts */}
             <div>

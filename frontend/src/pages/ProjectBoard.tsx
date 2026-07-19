@@ -60,7 +60,15 @@ const PRIORITY_BADGE: Record<Priority, { bg: string; text: string }> = {
 
 function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
   const mariuses = useMockStore((s) => s.mariuses);
+  const allTasks = useMockStore((s) => s.tasks);
   const { t } = useTranslation();
+
+  // Count blockers that are not yet done (a `blocked_by` edge whose target hasn't finished);
+  // the card shows a lock so the patron sees at a glance why it can't advance (#91).
+  const blockerCount = (task.dependencies || []).filter((depId) => {
+    const b = allTasks.find((x) => x.id === depId);
+    return !b || b.status !== 'done';
+  }).length;
 
   // Normalize to a key the priority maps actually define (P0/P1/P2). The backend exposes no
   // priority, so tasks can arrive with values (e.g. 'normal') that have no PRIORITY_BADGE /
@@ -126,6 +134,15 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
         {hasArtifacts && (
           <span className="flex items-center gap-1 text-body-xs">
             <Paperclip className="w-3.5 h-3.5" />
+          </span>
+        )}
+        {blockerCount > 0 && (
+          <span
+            className="flex items-center gap-1 text-body-xs text-error"
+            title={t('board.blockedBy', { count: blockerCount })}
+          >
+            <Lock className="w-3.5 h-3.5" />
+            {blockerCount}
           </span>
         )}
       </div>

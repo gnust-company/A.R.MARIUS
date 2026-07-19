@@ -586,6 +586,38 @@ export async function updateTaskStatus(taskId: string, status: string, reason?: 
   return post<TaskDTO>(`/v1/tasks/${taskId}/status`, { status, reason })
 }
 
+// ── Dependencies (blocked_by edges, #91) ─────────────────────────────────────
+/** A task that blocks another (rendered in the blocked-by list). */
+export interface BlockerDTO {
+  id: string
+  identifier?: string | null
+  title: string
+  status: string
+}
+
+/** A raw blocked_by edge — the board flags cards that have an unfinished blocker. */
+export interface TaskDependencyEdgeDTO {
+  task_id: string
+  blocks_task_id: string
+}
+
+export async function listTaskDependencies(taskId: string): Promise<BlockerDTO[]> {
+  return get<BlockerDTO[]>(`/v1/tasks/${taskId}/dependencies`)
+}
+
+/** Add a blocked_by edge (task waits on blocksTaskId); returns the refreshed blocker list. */
+export async function addTaskDependency(taskId: string, blocksTaskId: string): Promise<BlockerDTO[]> {
+  return post<BlockerDTO[]>(`/v1/tasks/${taskId}/dependencies`, { blocks_task_id: blocksTaskId })
+}
+
+export async function removeTaskDependency(taskId: string, blocksTaskId: string): Promise<void> {
+  return del(`/v1/tasks/${taskId}/dependencies/${blocksTaskId}`)
+}
+
+export async function listProjectDependencies(projectId: string): Promise<TaskDependencyEdgeDTO[]> {
+  return get<TaskDependencyEdgeDTO[]>(`/v1/projects/${projectId}/task-dependencies`)
+}
+
 // ── Comments ───────────────────────────────────────────────────────────────────────────
 
 export async function listComments(taskId: string): Promise<CommentDTO[]> {

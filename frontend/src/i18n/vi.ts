@@ -393,6 +393,7 @@ export const vi = {
     deleteConfirmTitle: 'Xóa dự án này?',
     deleteConfirmBody: 'Thao tác này sẽ xóa vĩnh viễn "{{name}}" cùng toàn bộ nhiệm vụ, bình luận và sản phẩm của nó. Không thể hoàn tác.',
     deleting: 'Đang xóa…',
+    blockedBy: 'Chặn bởi {{count}}',
   },
   leaderChat: {
     title: 'Chat với Leader',
@@ -500,6 +501,10 @@ export const vi = {
       definitionOfDone: 'Định nghĩa Hoàn thành',
       checklist: 'Danh sách kiểm tra',
       dependencies: 'Phụ thuộc',
+      noDependencies: 'Không có việc chặn — nhiệm vụ này không chờ việc nào.',
+      addDependency: '+ Thêm việc chặn…',
+      removeDependency: 'Gỡ phụ thuộc',
+      dependencyFailed: 'Không cập nhật được phụ thuộc.',
       artifacts: 'Sản phẩm',
       addArtifact: 'Thêm Sản phẩm',
       doneGateBlocked: 'Nhiệm vụ không thể hoàn thành nếu chưa có sản phẩm tệp hoặc liên kết.',
