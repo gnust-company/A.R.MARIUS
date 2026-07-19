@@ -146,6 +146,25 @@ class _FakeProjectRepo:
     async def list_by_workspace(self, workspace_id: UUID) -> list[Project]:
         return [p for p in self._s.projects.values() if p.workspace_id == workspace_id]
 
+    async def get_by_key(self, workspace_id: UUID, key: str) -> Project | None:
+        return next(
+            (
+                p
+                for p in self._s.projects.values()
+                if p.workspace_id == workspace_id and p.key == key
+            ),
+            None,
+        )
+
+    async def allocate_task_number(self, project_id: UUID) -> int:
+        project = self._s.projects.get(project_id)
+        if project is None:
+            raise LookupError("project not found")
+        # `next_task_seq` is the NEXT number to assign (starts at 1); claim it then advance.
+        claimed = project.next_task_seq
+        project.next_task_seq = claimed + 1
+        return claimed
+
     async def update(self, project: Project) -> Project:
         self._s.projects[project.id] = project
         return project
