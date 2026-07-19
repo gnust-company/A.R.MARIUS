@@ -4,10 +4,10 @@
 import { useEffect } from 'react'
 
 import { subscribeTaskTrace } from '@/lib/sse'
-import { useMockStore } from '@/store/mockStore'
+import { useAppStore } from '@/store/appStore'
 
 export function useTaskStream(taskId: string | null | undefined): void {
-  const appendTrace = useMockStore((s) => s.appendTrace)
+  const appendTrace = useAppStore((s) => s.appendTrace)
 
   useEffect(() => {
     if (!taskId) return

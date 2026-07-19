@@ -5,7 +5,7 @@ import { useEffect } from 'react'
 
 import { livenessToAgentStatus } from '@/lib/mappers'
 import { subscribeWorkspaceEvents } from '@/lib/sse'
-import { useMockStore, type AgentStatus } from '@/store/mockStore'
+import { useAppStore, type AgentStatus } from '@/store/appStore'
 
 /** Map a backend workspace-event `status` to the FE AgentStatus union. */
 function statusToAgent(status: string): AgentStatus {
@@ -17,7 +17,7 @@ function statusToAgent(status: string): AgentStatus {
 }
 
 export function useWorkspaceEvents(workspaceId: string | null | undefined): void {
-  const setSseConnected = useMockStore((s) => s.setSseConnected)
+  const setSseConnected = useAppStore((s) => s.setSseConnected)
 
   useEffect(() => {
     if (!workspaceId) return
@@ -30,14 +30,14 @@ export function useWorkspaceEvents(workspaceId: string | null | undefined): void
         const status = payload.status as string | undefined
         if (mariusId && status) {
           const next = statusToAgent(status)
-          useMockStore.setState((s) => ({
+          useAppStore.setState((s) => ({
             mariuses: s.mariuses.map((m) =>
               m.id === mariusId ? { ...m, status: next } : m,
             ),
           }))
         }
         // Surface every workspace event so any subscriber (e.g. a future toast/log) sees it.
-        useMockStore.getState().emitEvent({ type: event.type, payload })
+        useAppStore.getState().emitEvent({ type: event.type, payload })
       },
       (err) => {
         setSseConnected(false)

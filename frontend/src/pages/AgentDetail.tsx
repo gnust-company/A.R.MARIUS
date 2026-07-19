@@ -27,8 +27,8 @@ import {
   CheckCircle2,
   Plus,
 } from 'lucide-react';
-import { useMockStore } from '@/store/mockStore';
-import type { AgentStatus } from '@/store/mockStore';
+import { useAppStore } from '@/store/appStore';
+import type { AgentStatus } from '@/store/appStore';
 import { listMariusRuns, listRunEvents, type RunDTO, type RunEventDTO } from '@/lib/api';
 import Modal from '@/components/Modal';
 import VellumPanel from '@/components/VellumPanel';
@@ -213,9 +213,9 @@ export default function AgentDetail() {
   const navigate = useNavigate();
   const rel = useRelativeTime();
   const { workspaceId, id } = useParams();
-  const mariuses = useMockStore((s) => s.mariuses);
-  const allSkills = useMockStore((s) => s.skills);
-  const installAgentSkills = useMockStore((s) => s.installAgentSkills);
+  const mariuses = useAppStore((s) => s.mariuses);
+  const allSkills = useAppStore((s) => s.skills);
+  const installAgentSkills = useAppStore((s) => s.installAgentSkills);
   const agent = mariuses.find((m) => m.id === id);
 
   const [runs, setRuns] = useState<RunDTO[] | null>(null);

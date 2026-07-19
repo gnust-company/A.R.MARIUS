@@ -353,7 +353,7 @@ export interface StoreEvent {
 
 // ── Store interface ─────────────────────────────────
 
-interface MockStoreState {
+interface AppStoreState {
   // Data
   currentUser: User | null
   workspaces: Workspace[]
@@ -453,7 +453,7 @@ interface MockStoreState {
 
 // ── Store ───────────────────────────────────────────
 
-export const useMockStore = create<MockStoreState>((set, get) => ({
+export const useAppStore = create<AppStoreState>((set, get) => ({
   currentUser: null,
   workspaces: [],
   projects: [],

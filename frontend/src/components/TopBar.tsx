@@ -3,7 +3,7 @@ import { useLocation, Link } from 'react-router';
 import { motion } from 'framer-motion';
 import { Search, Wifi, WifiOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useMockStore } from '@/store/mockStore';
+import { useAppStore } from '@/store/appStore';
 import { cn, wsHref } from '@/lib/utils';
 
 // Known route segments → i18n nav keys (project/workspace names stay as data)
@@ -23,9 +23,9 @@ const UUID_LIKE = /^[0-9a-f]{8}-[0-9a-f]{4}/i;
 function useBreadcrumbs() {
   const { t } = useTranslation();
   const location = useLocation();
-  const workspaces = useMockStore((s) => s.workspaces);
-  const projects = useMockStore((s) => s.projects);
-  const activeWorkspaceId = useMockStore((s) => s.activeWorkspaceId);
+  const workspaces = useAppStore((s) => s.workspaces);
+  const projects = useAppStore((s) => s.projects);
+  const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId);
 
   const raw = location.pathname.split('/').filter(Boolean);
   // Strip the `/w/:workspaceId` prefix — the workspace gets its own crumb below.
@@ -82,8 +82,8 @@ function useBreadcrumbs() {
 
 export default function TopBar() {
   const { t } = useTranslation();
-  const sseConnected = useMockStore((s) => s.sseConnected);
-  const currentUser = useMockStore((s) => s.currentUser);
+  const sseConnected = useAppStore((s) => s.sseConnected);
+  const currentUser = useAppStore((s) => s.currentUser);
   const crumbs = useBreadcrumbs();
 
   return (

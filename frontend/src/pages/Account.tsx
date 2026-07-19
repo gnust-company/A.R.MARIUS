@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useMockStore } from '@/store/mockStore';
+import { useAppStore } from '@/store/appStore';
 import { useNavigate } from 'react-router';
 import { motion } from 'framer-motion';
 import { LogOut, Globe, User, BookOpen } from 'lucide-react';
@@ -16,7 +16,7 @@ const quillIn = {
 };
 
 export default function Account() {
-  const { currentUser, logout } = useMockStore();
+  const { currentUser, logout } = useAppStore();
   const navigate = useNavigate();
   const { i18n, t } = useTranslation();
 

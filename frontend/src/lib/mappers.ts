@@ -1,4 +1,4 @@
-// Bidirectional mappers: DTO ↔ view‑model (the existing `mockStore` interfaces).
+// Bidirectional mappers: DTO ↔ view‑model (the existing `appStore` interfaces).
 //
 // Central enum mapping so the frontend can speak the same language as the backend without
 // scattering `|| 'unknown'` and `String(foo)` across components. The backend `StrEnum` values
@@ -37,7 +37,7 @@ import type {
   TaskStatus,
   TraceEvent,
   Workspace,
-} from '@/store/mockStore'
+} from '@/store/appStore'
 
 // ── Enums ─────────────────────────────────────────────────────────────────────────────
 

@@ -16,15 +16,15 @@ import SkillEditor from './pages/SkillEditor'
 import Inbox from './pages/Inbox'
 import Account from './pages/Account'
 import CollaborationRoom from './pages/CollaborationRoom'
-import { useMockStore } from './store/mockStore'
+import { useAppStore } from './store/appStore'
 
 /** Boot: rehydrate the session from the stored JWT before rendering routes, so the auth
  * guard doesn't bounce a logged-in user on a hard refresh. Also rehydrates the workspace
  * list + persisted active workspace so a refresh on a workspace-less URL (e.g. `/projects`)
  * keeps the user in context. */
 function useBootSession() {
-  const hydrateMe = useMockStore((s) => s.hydrateMe)
-  const hydrateWorkspaces = useMockStore((s) => s.hydrateWorkspaces)
+  const hydrateMe = useAppStore((s) => s.hydrateMe)
+  const hydrateWorkspaces = useAppStore((s) => s.hydrateWorkspaces)
   const [booted, setBooted] = useState(false)
   useEffect(() => {
     let active = true
@@ -33,7 +33,7 @@ function useBootSession() {
         await hydrateMe()
         // Only fetch workspaces when authenticated; otherwise the auth guard redirects to
         // /login and there's nothing to hydrate (also avoids a stray 401 here).
-        if (useMockStore.getState().currentUser) {
+        if (useAppStore.getState().currentUser) {
           await hydrateWorkspaces().catch(() => {})
         }
       } finally {
@@ -49,7 +49,7 @@ function useBootSession() {
 
 /** Gate every authenticated route: a missing session redirects to /login. */
 function RequireAuth() {
-  const currentUser = useMockStore((s) => s.currentUser)
+  const currentUser = useAppStore((s) => s.currentUser)
   if (!currentUser) return <Navigate to="/login" replace />
   return <Outlet />
 }

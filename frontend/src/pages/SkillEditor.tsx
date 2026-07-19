@@ -17,8 +17,8 @@ import {
   Check,
   ScrollText,
 } from 'lucide-react';
-import { useMockStore } from '@/store/mockStore';
-import type { SkillFile } from '@/store/mockStore';
+import { useAppStore } from '@/store/appStore';
+import type { SkillFile } from '@/store/appStore';
 import VellumPanel from '@/components/VellumPanel';
 import EmptyState from '@/components/EmptyState';
 import { cn, wsHref } from '@/lib/utils';
@@ -208,8 +208,8 @@ export default function SkillEditor() {
   const { id, workspaceId } = useParams<{ id: string; workspaceId: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const skills = useMockStore((s) => s.skills);
-  const updateSkill = useMockStore((s) => s.updateSkill);
+  const skills = useAppStore((s) => s.skills);
+  const updateSkill = useAppStore((s) => s.updateSkill);
 
   const skill = useMemo(() => skills.find((s) => s.id === id), [skills, id]);
 

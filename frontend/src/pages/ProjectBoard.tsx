@@ -19,7 +19,7 @@ import {
   GripVertical,
   Trash2,
 } from 'lucide-react';
-import { useMockStore, type TaskStatus, type Priority, type Task } from '@/store/mockStore';
+import { useAppStore, type TaskStatus, type Priority, type Task } from '@/store/appStore';
 import * as api from '@/lib/api';
 import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
@@ -59,8 +59,8 @@ const PRIORITY_BADGE: Record<Priority, { bg: string; text: string }> = {
 // ─── Task Card ───────────────────────────────────────────────────────────────
 
 function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
-  const mariuses = useMockStore((s) => s.mariuses);
-  const allTasks = useMockStore((s) => s.tasks);
+  const mariuses = useAppStore((s) => s.mariuses);
+  const allTasks = useAppStore((s) => s.tasks);
   const { t } = useTranslation();
 
   // Count blockers that are not yet done (a `blocked_by` edge whose target hasn't finished);
@@ -193,7 +193,7 @@ function AddTaskFormModal({
   defaultStatus?: TaskStatus;
 }) {
   const { t } = useTranslation();
-  const hydrateProject = useMockStore((s) => s.hydrateProject);
+  const hydrateProject = useAppStore((s) => s.hydrateProject);
   const [form, setForm] = useState({
     title: '', description: '', status: defaultStatus as string, assigneeId: '', priority: 'medium', dueDate: '', dod: '',
   });
@@ -360,10 +360,10 @@ export default function ProjectBoard() {
   const { id: projectId, workspaceId } = useParams<{ id: string; workspaceId: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const projects = useMockStore((s) => s.projects);
-  const tasks = useMockStore((s) => s.tasks);
-  const hydrateProject = useMockStore((s) => s.hydrateProject);
-  const deleteProject = useMockStore((s) => s.deleteProject);
+  const projects = useAppStore((s) => s.projects);
+  const tasks = useAppStore((s) => s.tasks);
+  const hydrateProject = useAppStore((s) => s.hydrateProject);
+  const deleteProject = useAppStore((s) => s.deleteProject);
 
   // One add-task form drives every entry point — the gold CTA (status=backlog) and each
   // column's "+" (status=that column). They used to open two different modals (title-only vs

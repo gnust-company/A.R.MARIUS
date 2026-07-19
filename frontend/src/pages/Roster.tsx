@@ -12,7 +12,7 @@ import {
   Plus,
   ChevronLeft,
 } from 'lucide-react';
-import { useMockStore, type ProjectSeat, type Marius } from '@/store/mockStore';
+import { useAppStore, type ProjectSeat, type Marius } from '@/store/appStore';
 import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
 import Modal from '@/components/Modal';
@@ -116,9 +116,9 @@ function GrantSeatModal({
   skillsRequired: string[];
 }) {
   const { t } = useTranslation();
-  const mariuses = useMockStore((s) => s.mariuses);
-  const project = useMockStore((s) => s.projects.find((p) => p.id === projectId));
-  const grantSeat = useMockStore((s) => s.grantSeat);
+  const mariuses = useAppStore((s) => s.mariuses);
+  const project = useAppStore((s) => s.projects.find((p) => p.id === projectId));
+  const grantSeat = useAppStore((s) => s.grantSeat);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
   // Available agents: approved (not invited/pending) and not already seated in this project
@@ -247,10 +247,10 @@ export default function Roster() {
   const { id: projectId, workspaceId } = useParams<{ id: string; workspaceId: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const projects = useMockStore((s) => s.projects);
-  const mariuses = useMockStore((s) => s.mariuses);
-  const hydrateProject = useMockStore((s) => s.hydrateProject);
-  const hydrateWorkspace = useMockStore((s) => s.hydrateWorkspace);
+  const projects = useAppStore((s) => s.projects);
+  const mariuses = useAppStore((s) => s.mariuses);
+  const hydrateProject = useAppStore((s) => s.hydrateProject);
+  const hydrateWorkspace = useAppStore((s) => s.hydrateWorkspace);
   const project = projects.find((p) => p.id === projectId);
 
   const [grantModalRole, setGrantModalRole] = useState<{
@@ -264,7 +264,7 @@ export default function Roster() {
     if (!projectId) return;
     (async () => {
       await hydrateProject(projectId);
-      const wsId = useMockStore.getState().projects.find((p) => p.id === projectId)?.workspaceId;
+      const wsId = useAppStore.getState().projects.find((p) => p.id === projectId)?.workspaceId;
       if (wsId) await hydrateWorkspace(wsId);
     })();
   }, [projectId, hydrateProject, hydrateWorkspace]);
@@ -562,7 +562,7 @@ function GrantedSeatCard({
   showBadge?: boolean;
 }) {
   const { t } = useTranslation();
-  const mariuses = useMockStore((s) => s.mariuses);
+  const mariuses = useAppStore((s) => s.mariuses);
   const agent = mariuses.find((m) => m.id === seat.mariusId);
 
   if (!agent) return null;
