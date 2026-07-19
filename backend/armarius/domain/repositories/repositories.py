@@ -9,7 +9,6 @@ from uuid import UUID
 
 from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.comment import Comment
-from armarius.domain.entities.commission import CommissionSession
 from armarius.domain.entities.label import Label
 from armarius.domain.entities.leader_chat import ProjectLeaderConversation
 from armarius.domain.entities.marius import Marius
@@ -100,22 +99,6 @@ class LabelRepository(ABC):
     async def add(self, label: Label) -> Label: ...
     @abstractmethod
     async def list_by_workspace(self, workspace_id: UUID) -> Sequence[Label]: ...
-
-
-class CommissionRepository(ABC):
-    """Leader-mediated commission chats (LLD §2.13)."""
-
-    @abstractmethod
-    async def add(self, session: CommissionSession) -> CommissionSession: ...
-    @abstractmethod
-    async def get(self, session_id: UUID) -> CommissionSession | None: ...
-    @abstractmethod
-    async def update(self, session: CommissionSession) -> CommissionSession: ...
-    @abstractmethod
-    async def list_open_by_leader(
-        self, leader_marius_id: UUID
-    ) -> Sequence[CommissionSession]:
-        """Open commissions a Leader owns — used to drain queued turns on online."""
 
 
 class LeaderChatRepository(ABC):

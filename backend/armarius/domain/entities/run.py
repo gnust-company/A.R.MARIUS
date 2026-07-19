@@ -26,7 +26,6 @@ class WakeSource(StrEnum):
     ON_DEMAND = "on_demand"
     CONTINUATION = "continuation"  # self/liveness-wake resuming a dropped run
     NUDGE = "nudge"
-    COMMISSION = "commission"  # a Leader turn shaping a draft, or workers on confirm (§2.13)
     LEADER_CHAT = "leader_chat"  # a Leader turn in the project-level Chat-with-Leader tab (#82)
 
 

@@ -22,11 +22,11 @@ class Liveness(StrEnum):
     """Observable liveness state of a Marius, owned by Armarius (not the runtime)."""
 
     OFFLINE = "offline"
-    ONLINE = "online"
-    CHECKING = "checking"  # probing after T1 of silence (replaces legacy IDLE)
+    ONLINE = "online"  # online now (recent signal); also the "free between turns" state — after a
+                       # run finalises the agent returns here (last_seen_at just bumped = a signal).
+    CHECKING = "checking"  # probing after T1 of silence
     WORKING = "working"
     HUNG = "hung"
-    IDLE = "idle"  # DEPRECATED — kept for back-compat; CHECKING supersedes it (LLD §10)
 
 
 class InviteStatus(StrEnum):

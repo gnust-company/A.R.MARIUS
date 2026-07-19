@@ -1,9 +1,9 @@
 """ProjectLeaderConversation — the project-level 1-1 chat with the Leader agent (#82).
 
-Unlike a :class:`CommissionSession` (which shapes exactly ONE task and anchors its
-session/stream on that task), this conversation is **project-scoped**: there is at most
-one per project, it is about *everything* in the project, and it resumes a dedicated
-Leader session ``armarius:project:{project_id}:leader`` on every turn.
+This conversation is **project-scoped**: there is at most one per project, it is about
+*everything* in the project, and it resumes a dedicated Leader session
+``armarius:project:{project_id}:leader`` on every turn (it is not pinned to a single task
+the way the old task-shaping chat was).
 
 The Leader is an agent, so every turn is asynchronous. The patron's message and the
 Leader's reply (reconstructed from the streamed ``assistant.delta`` events) are both

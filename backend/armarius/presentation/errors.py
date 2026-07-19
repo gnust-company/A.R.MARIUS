@@ -5,9 +5,6 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from armarius.application.use_cases.commission import (
-    CommissionError as CommissionOpError,
-)
 from armarius.application.use_cases.enrollment import GatewayUnreachable
 from armarius.application.use_cases.onboarding_session import (
     OnboardingBusy,
@@ -17,9 +14,6 @@ from armarius.application.use_cases.projects import (
     DuplicateProjectKey,
     DuplicateRoleKey,
     SystemOnlyOperation,
-)
-from armarius.domain.entities.commission import (
-    CommissionError as CommissionStateError,
 )
 from armarius.domain.entities.leader_chat import LeaderChatError
 from armarius.domain.entities.marius import InviteError
@@ -80,14 +74,6 @@ def install_error_handlers(app: FastAPI) -> None:
     async def _invalid_project_key(_: Request, exc: InvalidProjectKey) -> JSONResponse:
         # KEY malformed (must be 2–10 uppercase chars, start with a letter) — unprocessable.
         return JSONResponse(status_code=422, content={"detail": str(exc)})
-
-    @app.exception_handler(CommissionOpError)
-    async def _commission_op(_: Request, exc: CommissionOpError) -> JSONResponse:
-        return JSONResponse(status_code=409, content={"detail": str(exc)})
-
-    @app.exception_handler(CommissionStateError)
-    async def _commission_state(_: Request, exc: CommissionStateError) -> JSONResponse:
-        return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(LeaderChatError)
     async def _leader_chat_conflict(_: Request, exc: LeaderChatError) -> JSONResponse:

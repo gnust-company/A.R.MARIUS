@@ -19,7 +19,7 @@ from uuid import UUID, uuid4
 
 
 class TaskStatus(StrEnum):
-    DRAFT = "draft"  # commission proposal; → todo only on /commission/confirm
+    DRAFT = "draft"  # Leader's proposal; → todo only on approve (Leader chat, #82)
     BACKLOG = "backlog"
     TODO = "todo"
     IN_PROGRESS = "in_progress"

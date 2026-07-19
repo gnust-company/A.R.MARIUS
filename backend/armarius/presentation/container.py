@@ -12,7 +12,6 @@ from armarius.application.ports.artifact_store import ArtifactStore
 from armarius.application.ports.event_bus import EventBus
 from armarius.application.use_cases.artifacts import ArtifactService
 from armarius.application.use_cases.auth import AuthService
-from armarius.application.use_cases.commission import CommissionService
 from armarius.application.use_cases.enrollment import InviteService
 from armarius.application.use_cases.labels import LabelService
 from armarius.application.use_cases.leader_chat import LeaderChatService
@@ -54,7 +53,6 @@ class Container:
     projects: ProjectService
     onboarding: OnboardingService
     invite: InviteService
-    commission: CommissionService
     leader_chat: LeaderChatService
     liveness: LivenessEngine
     liveness_watchdog: LivenessWatchdog
@@ -135,7 +133,6 @@ def build_container() -> Container:
         projects=projects,
         onboarding=onboarding,
         invite=InviteService(uow_factory, registry=registry),
-        commission=CommissionService(uow_factory, wake_engine),
         leader_chat=LeaderChatService(
             uow_factory,
             registry=registry,

@@ -176,27 +176,10 @@ class CommentModel(Base):
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
 
-class CommissionModel(Base):
-    """Leader-mediated task-shaping chat (LLD §2.13). Plain UUID refs (no FK) —
-    consistent with the other runtime tables (runs/sessions/wakeups)."""
-
-    __tablename__ = "commission_sessions"
-    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    project_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
-    leader_marius_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
-    task_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
-    session_params: Mapped[dict] = mapped_column(JSON, default=dict)
-    transcript: Mapped[list] = mapped_column(JSON, default=list)
-    status: Mapped[str] = mapped_column(String(20), default="open", index=True)
-    leader_state: Mapped[str] = mapped_column(String(20), default="thinking")
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-
 class ProjectLeaderConversationModel(Base):
     """Project-level Chat-with-Leader conversation (#82). At most one per project
     (``project_id`` is unique). Plain UUID refs (no FK) — consistent with the other
-    runtime chat tables (commission/onboarding sessions)."""
+    runtime chat tables (onboarding sessions)."""
 
     __tablename__ = "project_leader_conversations"
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)

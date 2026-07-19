@@ -49,8 +49,6 @@ async def whoami(marius: CurrentMarius, container: ContainerDep) -> dict:
             "marius.online",
             {"marius_id": str(marius.id)},
         )
-        # A Leader back online drains any commission turns queued while it was away (§2.13).
-        await container.commission.on_leader_online(marius.id)
     directory = await container.mariuses.list_directory(marius.workspace_id)
     return {
         "marius": MariusOut.model_validate(marius).model_dump(mode="json"),

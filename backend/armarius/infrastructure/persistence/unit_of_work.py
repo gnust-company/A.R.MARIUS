@@ -11,7 +11,6 @@ from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.infrastructure.persistence.repositories import (
     SqlArtifactRepository,
     SqlCommentRepository,
-    SqlCommissionRepository,
     SqlLabelRepository,
     SqlLeaderChatRepository,
     SqlMariusRepository,
@@ -41,7 +40,6 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         s = self._session
         self.workspaces = SqlWorkspaceRepository(s)
         self.labels = SqlLabelRepository(s)
-        self.commissions = SqlCommissionRepository(s)
         self.leader_chats = SqlLeaderChatRepository(s)
         self.onboardings = SqlOnboardingRepository(s)
         self.projects = SqlProjectRepository(s)
