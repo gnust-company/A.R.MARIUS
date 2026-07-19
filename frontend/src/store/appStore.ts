@@ -130,7 +130,6 @@ export interface Task {
   comments?: TaskComment[]
   checklist?: ChecklistItem[]
   definitionOfDone?: string
-  participants?: TaskParticipant[]
   createdAt: string
   updatedAt?: string
 }
@@ -190,12 +189,6 @@ export interface TaskComment {
   authorName?: string
   content: string
   timestamp: string
-}
-
-export interface TaskParticipant {
-  id: string
-  name: string
-  role: string
 }
 
 export interface ChecklistItem {
