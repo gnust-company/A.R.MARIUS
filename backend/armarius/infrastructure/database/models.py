@@ -154,6 +154,18 @@ class TaskModel(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class TaskDependencyModel(Base):
+    """A `blocked_by` edge: `task_id` waits on `blocks_task_id` (unique per pair)."""
+
+    __tablename__ = "task_dependencies"
+    __table_args__ = (
+        UniqueConstraint("task_id", "blocks_task_id", name="uq_task_dependency_pair"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    task_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tasks.id"), index=True)
+    blocks_task_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tasks.id"), index=True)
+
+
 class CommentModel(Base):
     __tablename__ = "comments"
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)

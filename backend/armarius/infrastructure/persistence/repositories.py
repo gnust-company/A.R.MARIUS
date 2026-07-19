@@ -20,7 +20,8 @@ from armarius.domain.entities.run import Run, RunEvent
 from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.skill import Skill
-from armarius.domain.entities.task import Task
+from armarius.domain.entities.task import Task, TaskStatus
+from armarius.domain.entities.task_dependency import TaskDependency
 from armarius.domain.entities.user import User
 from armarius.domain.entities.wakeup import WakeupRequest
 from armarius.domain.entities.workspace import Project, Workspace
@@ -39,6 +40,7 @@ from armarius.domain.repositories.repositories import (
     SeatGrantRepository,
     SessionRepository,
     SkillRepository,
+    TaskDependencyRepository,
     TaskRepository,
     UserRepository,
     WakeupRepository,
@@ -59,6 +61,7 @@ from armarius.infrastructure.database.models import (
     SeatGrantModel,
     SessionModel,
     SkillModel,
+    TaskDependencyModel,
     TaskModel,
     UserModel,
     WakeupModel,
@@ -832,6 +835,78 @@ class SqlTaskRepository(TaskRepository):
         m.updated_at = task.updated_at
         await self._s.flush()
         return task
+
+
+class SqlTaskDependencyRepository(TaskDependencyRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, dependency: TaskDependency) -> TaskDependency:
+        self._s.add(
+            TaskDependencyModel(
+                id=dependency.id,
+                task_id=dependency.task_id,
+                blocks_task_id=dependency.blocks_task_id,
+            )
+        )
+        await self._s.flush()
+        return dependency
+
+    async def remove(self, task_id: UUID, blocks_task_id: UUID) -> None:
+        await self._s.execute(
+            delete(TaskDependencyModel).where(
+                TaskDependencyModel.task_id == task_id,
+                TaskDependencyModel.blocks_task_id == blocks_task_id,
+            )
+        )
+        await self._s.flush()
+
+    async def get(
+        self, task_id: UUID, blocks_task_id: UUID
+    ) -> TaskDependency | None:
+        m = (
+            await self._s.execute(
+                select(TaskDependencyModel).where(
+                    TaskDependencyModel.task_id == task_id,
+                    TaskDependencyModel.blocks_task_id == blocks_task_id,
+                )
+            )
+        ).scalar_one_or_none()
+        return mappers.task_dependency_to_entity(m) if m else None
+
+    async def list_blockers(self, task_id: UUID) -> Sequence[TaskDependency]:
+        rows = (
+            await self._s.execute(
+                select(TaskDependencyModel).where(
+                    TaskDependencyModel.task_id == task_id
+                )
+            )
+        ).scalars().all()
+        return [mappers.task_dependency_to_entity(m) for m in rows]
+
+    async def list_by_project(self, project_id: UUID) -> Sequence[TaskDependency]:
+        rows = (
+            await self._s.execute(
+                select(TaskDependencyModel)
+                .join(TaskModel, TaskModel.id == TaskDependencyModel.task_id)
+                .where(TaskModel.project_id == project_id)
+            )
+        ).scalars().all()
+        return [mappers.task_dependency_to_entity(m) for m in rows]
+
+    async def all_blockers_done(self, task_id: UUID) -> bool:
+        # Count blockers not yet done; 0 unfinished ⇒ gate satisfied (also when
+        # the task has no blockers at all).
+        unfinished = await self._s.execute(
+            select(func.count())
+            .select_from(TaskDependencyModel)
+            .join(TaskModel, TaskModel.id == TaskDependencyModel.blocks_task_id)
+            .where(
+                TaskDependencyModel.task_id == task_id,
+                TaskModel.status != str(TaskStatus.DONE),
+            )
+        )
+        return int(unfinished.scalar_one()) == 0
 
 
 class SqlCommentRepository(CommentRepository):

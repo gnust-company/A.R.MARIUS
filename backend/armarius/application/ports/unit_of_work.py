@@ -24,6 +24,7 @@ from armarius.domain.repositories.repositories import (
     SeatGrantRepository,
     SessionRepository,
     SkillRepository,
+    TaskDependencyRepository,
     TaskRepository,
     UserRepository,
     WakeupRepository,
@@ -42,6 +43,7 @@ class UnitOfWork(ABC):
     seat_grants: SeatGrantRepository
     mariuses: MariusRepository
     tasks: TaskRepository
+    dependencies: TaskDependencyRepository
     comments: CommentRepository
     sessions: SessionRepository
     runs: RunRepository
