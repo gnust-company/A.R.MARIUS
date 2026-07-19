@@ -179,7 +179,7 @@ Hai **cổng** miền được thực thi thuần trong `transition_to()` (tần
 `deps_satisfied`): [ĐÚNG-NHƯ-CODE]
 
 - **Cổng DONE:** không thể vào `in_review`/`done` nếu chưa có hiện vật đã publish. → `ArtifactRequiredError`.
-- **Cổng phụ thuộc:** không thể vào `todo`/`in_progress` khi còn một `blocked_by` chưa `done`. → `DependencyNotMetError`.
+- **Cổng phụ thuộc:** không thể vào `todo`/`in_progress` khi còn một `blocked_by` chưa `done`. → `DependencyNotMetError`. Tầng ứng dụng tính `deps_satisfied` từ cạnh **bền** (§4.4) ở mọi đường vào trạng thái bị chặn (`transition`, `claim`, duyệt draft).
 
 ### 4.2 Comment — `entities/comment.py`  [ĐÚNG-NHƯ-CODE]
 
@@ -193,7 +193,9 @@ Một ô tick trên task: `text`, `done`, `order`.
 ### 4.4 TaskDependency — `entities/task_dependency.py`  [ĐÚNG-NHƯ-CODE]
 
 Cạnh `blocked_by`: `task_id` (bị chặn) chờ `blocks_task_id`. Cấm tự-trỏ-chính-mình (`__post_init__`
-ném `TaskDependencyError`). Nuôi cổng phụ thuộc ở §4.1.
+ném `TaskDependencyError`). Lưu bền ở bảng `task_dependencies` (duy nhất theo cặp `(task_id,
+blocks_task_id)`); repository liệt kê blocker của một task và trả lời "mọi blocker đã `done` chưa" để
+nuôi cổng phụ thuộc ở §4.1.
 
 ### 4.5 Artifact — `entities/artifact.py`  [ĐÚNG-NHƯ-CODE]
 

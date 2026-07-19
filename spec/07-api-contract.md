@@ -65,7 +65,9 @@ Ba nhóm theo đối tượng gọi:
 | GET | `/v1/projects/{p}/tasks` · POST | Liệt kê / **thêm task tay** (Patron) → 201 |
 | GET | `/v1/tasks/{t}` | Chi tiết task |
 | POST | `/v1/tasks/{t}/assign` | Gán agent (→ wake `ASSIGNMENT`) |
-| POST | `/v1/tasks/{t}/status` | Chuyển trạng thái (áp cổng DONE) |
+| POST | `/v1/tasks/{t}/status` | Chuyển trạng thái (áp cổng DONE **và cổng phụ thuộc**) |
+| GET/POST | `/v1/tasks/{t}/dependencies` | Liệt kê / thêm cạnh `blocked_by` (`{blocks_task_id}`) → 201; tự-trỏ/trùng → 422 |
+| DELETE | `/v1/tasks/{t}/dependencies/{b}` | Gỡ cạnh `blocked_by` → 204 |
 | POST | `/v1/tasks/{t}/next-action` | Ghi gợi ý tiếp việc |
 | GET/POST | `/v1/tasks/{t}/comments` | Thread task (xem/gửi tin, @mention → wake) |
 | GET/POST | `/v1/tasks/{t}/artifacts` | Hiện vật của task (xem/publish) |
