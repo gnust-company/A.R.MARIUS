@@ -173,6 +173,7 @@ export function mariusToVM(dto: MariusDTO): Marius {
     workspaceId: dto.workspace_id ?? '',
     projectIds: [], // populated by the frontend from roster grants
     skills: dto.skills,
+    skillInstalls: dto.skill_installs ?? {},
     adapterType: dto.adapter_type,
     lastSeen: dto.last_seen_at ?? undefined,
   }

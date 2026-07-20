@@ -552,7 +552,7 @@ export const en = {
     linkSkills: {
       add: 'Link skills',
       title: 'Link skills to {{name}}',
-      hint: 'Pick skills to install on this agent. A one-time install prompt is pushed to it.',
+      hint: 'Pick skills to install (or reinstall an updated copy) on this agent. A one-time install prompt is pushed to it.',
       allLinked: 'Every workspace skill is already linked to this agent.',
       noneAvailable: 'No skills in this workspace yet. Create or import one in Skills first.',
       sent: 'Install prompt sent to the agent.',
@@ -560,6 +560,13 @@ export const en = {
       sending: 'Sending…',
       confirm: 'Send install prompt',
       retry: 'Retry',
+      reinstallHint: 'Already linked — select to re-push the latest copy',
+      linkedTag: 'linked',
+    },
+    installState: {
+      pending: 'Waiting for the agent to install',
+      installed: 'Installed',
+      failed: 'Push failed',
     },
     noSkills: 'No skills linked yet.',
     wakeSource: {

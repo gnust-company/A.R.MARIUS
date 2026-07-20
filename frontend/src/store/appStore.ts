@@ -104,6 +104,8 @@ export interface Marius {
   projectIds: string[]
   description?: string
   skills?: string[]
+  /** Per-skill install state (post-invite loop #74): slug → pending|installed|failed. */
+  skillInstalls?: Record<string, string>
   adapterType?: string
   /** The agent's gateway URL (operator-invite, #63) — shown in details; the key is never kept. */
   gatewayUrl?: string

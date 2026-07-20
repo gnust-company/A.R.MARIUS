@@ -247,6 +247,8 @@ export interface MariusDTO {
   role: string
   skills: string[]
   skill_ids: string[]
+  /** Per-skill install state (post-invite loop #74): slug → pending|installed|failed. */
+  skill_installs?: Record<string, string>
   adapter_type: string
   liveness: string
   /** Invite lifecycle: invited → pending_review → approved (#51). */

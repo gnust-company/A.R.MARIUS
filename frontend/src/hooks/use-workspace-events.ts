@@ -36,6 +36,35 @@ export function useWorkspaceEvents(workspaceId: string | null | undefined): void
             ),
           }))
         }
+        // Post-invite skill install (#74): patch per-skill install state in place so the
+        // AgentDetail badges flip live — pushed → pending/failed, agent-confirmed → installed.
+        if (mariusId && event.type === 'marius.skill_installed' && payload.slug) {
+          const slug = payload.slug as string
+          useAppStore.setState((s) => ({
+            mariuses: s.mariuses.map((m) =>
+              m.id === mariusId
+                ? { ...m, skillInstalls: { ...(m.skillInstalls ?? {}), [slug]: 'installed' } }
+                : m,
+            ),
+          }))
+        }
+        if (mariusId && event.type === 'marius.skills_updated' && Array.isArray(payload.installed)) {
+          const state = payload.send_status === 'sent' ? 'pending' : 'failed'
+          const slugs = payload.installed as string[]
+          useAppStore.setState((s) => ({
+            mariuses: s.mariuses.map((m) =>
+              m.id === mariusId
+                ? {
+                    ...m,
+                    skillInstalls: {
+                      ...(m.skillInstalls ?? {}),
+                      ...Object.fromEntries(slugs.map((sl) => [sl, state])),
+                    },
+                  }
+                : m,
+            ),
+          }))
+        }
         // Surface every workspace event so any subscriber (e.g. a future toast/log) sees it.
         useAppStore.getState().emitEvent({ type: event.type, payload })
       },
