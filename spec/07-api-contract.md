@@ -33,7 +33,7 @@ Ba nhóm theo đối tượng gọi:
 | GET | `/v1/workspaces/{ws}/mariuses/{m}/runs` | Lịch sử chạy của một agent |
 | PATCH | `/v1/workspaces/{ws}/mariuses/{m}` | Sửa agent |
 | POST | `/v1/workspaces/{ws}/mariuses/{m}/designate` | Phong agent làm quản gia (Workspace Agent) |
-| POST | `/v1/workspaces/{ws}/mariuses/{m}/install-skills` | Đẩy prompt cài kỹ năng mới cho agent đã kết nối (xem [02-invite.md](02-invite.md) §6) |
+| POST | `/v1/workspaces/{ws}/mariuses/{m}/install-skills` | Liên kết + đẩy prompt cài kỹ năng cho agent đã kết nối (đẩy được cả bản đã sửa, đặt trạng thái cài `pending`) (xem [02-invite.md](02-invite.md) §6) |
 | DELETE | `/v1/workspaces/{ws}/mariuses/{m}` | Gỡ agent → 204 |
 | GET | `/v1/workspaces/{ws}/labels` · POST | Nhãn task (xem/tạo) |
 | GET | `/v1/workspaces/{ws}/skills` | Kho kỹ năng (Skill Shop) |
@@ -114,6 +114,7 @@ Xác thực bằng `agent_token` (Bearer). Mọi route giới hạn theo workspa
 |---|---|---|
 | GET | `/agent/me` | Hồ sơ mình + danh bạ đồng đội; **gọi cái này = một tín hiệu liveness** (→ ONLINE) |
 | GET | `/agent/skills` · `/agent/skills/{slug}` | Liệt kê / tải cây file một kỹ năng được gán |
+| POST | `/agent/skills/{slug}/installed` | Xác nhận đã cài xong một kỹ năng ⇒ trạng thái cài `installed` (xem [02-invite.md](02-invite.md) §6) → 200; slug không liên kết ⇒ 404 |
 | POST | `/agent/projects/{p}/tasks` | **Công cụ tạo-task của Leader** (draft hay live tuỳ YOLO) → 201 |
 | GET | `/agent/tasks/{t}` | Đọc task |
 | POST | `/agent/tasks/{t}/claim` | Agent tự nhận task |

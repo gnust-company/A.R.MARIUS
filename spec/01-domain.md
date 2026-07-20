@@ -58,6 +58,7 @@ Danh tính một agent, gắn với một adapter runtime. Các trường chính
 | `adapter_config` | thông tin kết nối gateway (`base_url` + `api_key`), lấy từ operator lúc mời |
 | `agent_token` | bearer để agent gọi ngược vào API của Armarius; đúc **lúc mời** |
 | `skills`, `skill_ids` | kỹ năng agent có / id kỹ năng liên kết từ kho |
+| `skill_installs` | trạng thái cài từng kỹ năng (`slug → pending/installed/failed`), cho vòng cài hậu-mời (xem [02-invite.md](02-invite.md) §6) |
 | `invite_status` | FSM mời (xem §5.1) |
 | `liveness`, `last_seen_at`, `probe_attempts`, `backoff_step`, `next_probe_at`, `offline_since` | sổ sách sống/chết (xem [04-liveness.md](04-liveness.md)) |
 | `role` | vai trò **cấp workspace** — chuỗi tự do, thường để rỗng; **không** dùng cho vai trò trong dự án |
