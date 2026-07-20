@@ -41,7 +41,7 @@ của nó. Dựng link bằng `wsHref()`.
 | `projects/new` | `CreateProject` | tạo dự án + roster |
 | `projects/:id` | `ProjectBoard` | **bảng công việc (kanban)** của dự án; nút "+" thêm task theo cột |
 | `projects/:id/roster` | `Roster` | roster: role + ghế + agent ngồi ghế (kèm liveness) |
-| `agents` · `agents/:id` | `Directory` · `AgentDetail` | danh bạ agent workspace + chi tiết + **mời agent** |
+| `agents` · `agents/:id` | `Directory` · `AgentDetail` | danh bạ agent workspace + chi tiết + **mời agent** + **cài/cập nhật kỹ năng** cho agent đã kết nối (kèm trạng thái cài từng kỹ năng) |
 | `skills` · `skills/:id` | `Skills` · `SkillEditor` | Skill Shop + soạn kỹ năng |
 | `inbox` | `Inbox` | hộp thư/nhắc việc |
 | `account` | `Account` | tài khoản |
@@ -84,3 +84,6 @@ của nó. Dựng link bằng `wsHref()`.
 3. Mở đường dẫn cũ `.../commission` hoặc `.../leader-chat` ⇒ tự chuyển về bảng dự án.
 4. Câu trả lời Leader chạy chữ trong panel; khi `thinking` ô nhập bị khoá; Leader offline ⇒ chat vô hiệu.
 5. Mọi dữ liệu đến từ API thật (không còn nhánh mã mock nào chạy).
+6. Trang chi tiết agent (`agents/:id`) cho phép cài/cập nhật kỹ năng cho agent đã kết nối và hiện **trạng thái
+   cài từng kỹ năng** (đang chờ / đã cài / lỗi), cập nhật realtime khi agent xác nhận (xem
+   [02-invite.md](02-invite.md) §6).
