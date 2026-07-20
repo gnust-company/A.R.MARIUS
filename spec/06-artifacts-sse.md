@@ -1,13 +1,10 @@
 # 06 — Kho hiện vật dùng chung & các kênh sự kiện đẩy (SSE)
 
 > Cổng "Done" chống-file-ở-local, và cách trạng thái/sự kiện được **đẩy** về trình duyệt theo thời gian thực.
-> Phản ánh code ngày 18/07/2026.
->
-> Nhãn: **[ĐÚNG-NHƯ-CODE]** / **[ĐÍCH-CẦN-SỬA]**.
 
 ---
 
-## 1. Kho hiện vật dùng chung  [ĐÚNG-NHƯ-CODE]
+## 1. Kho hiện vật dùng chung
 
 `application/use_cases/artifacts.py::ArtifactService` + cổng `application/ports/artifact_store.py`.
 
@@ -21,7 +18,7 @@ Chỉ **hai** loại hiện vật (xem [01-domain.md](01-domain.md) §4.5):
 `publish` luôn gắn với **một task** (từ đó suy ra `project_id`). File thiếu `content`, hoặc link thiếu `uri`
 ⇒ lỗi `ValueError`.
 
-## 2. Cổng "Done" — chống file ở máy agent  [ĐÚNG-NHƯ-CODE]
+## 2. Cổng "Done" — chống file ở máy agent
 
 Đây là điểm chữa "căn bệnh" agent làm xong nhưng để kết quả ở máy nó. Cổng thực thi hai tầng:
 
@@ -34,10 +31,10 @@ link) trong kho chung.**
 
 ---
 
-## 3. Các kênh sự kiện đẩy (SSE)  [ĐÚNG-NHƯ-CODE]
+## 3. Các kênh sự kiện đẩy (SSE)
 
 Nguyên tắc "đẩy, không hỏi-vòng" ([00-intent.md](00-intent.md) §7.4). Có **hai** cơ chế pub/sub trong tiến
-trình (Phase-0 một tiến trình; chỗ để thay bằng Redis sau này là chính hai lớp này, endpoint giữ nguyên).
+trình (một tiến trình; chỗ để thay bằng Redis sau này là chính hai lớp này, endpoint giữ nguyên).
 **Chỉ trình duyệt (web app) đọc SSE — agent không bao giờ đọc SSE.**
 
 ### 3.1 Bus theo chủ đề (topic) — `infrastructure/events/topic_bus.py::TopicEventBus`
@@ -60,7 +57,7 @@ một chủ đề đang có stream (giữ cửa sổ phát lại cho `Last-Event
 Khoá theo `run_id`: dòng sự kiện trace **chi tiết** của một lần chạy cụ thể (kể cả từng mẩu `assistant.delta`).
 Tự kết thúc khi gặp sự kiện chấm dứt `run.finished`.
 
-### 3.3 Cơ chế "tee" hai ngả  [ĐÚNG-NHƯ-CODE]
+### 3.3 Cơ chế "tee" hai ngả
 
 Khi adapter chảy sự kiện về, WakeEngine ghi **đồng thời**:
 
@@ -75,13 +72,9 @@ Sự kiện điều khiển workspace (ví dụ mời agent xong) phát lên `ws
 
 ## 4. Tiêu chí nghiệm thu
 
-**Đúng-như-code:**
-
 1. `publish` loại `file` ⇒ bytes nằm trong bucket MinIO `armarius`, hiện vật có `sha256`/`size`/`stored=True`.
    Loại `link` ⇒ lưu `uri` ngoài, `stored=False`. Cả hai đều thoả cổng DONE.
 2. Chuyển task sang `in_review`/`done` khi chưa có hiện vật nào ⇒ bị chặn; sau khi publish một hiện vật ⇒ cho qua.
 3. Mở SSE `task:{task_id}` giữa một lần chạy ⇒ nhận các sự kiện lifecycle của run theo thời gian thực; nối lại
    với `Last-Event-ID` ⇒ nhận đúng phần bỏ lỡ, không trùng, không sót.
 4. Chat với Leader chạy chữ trên `leader-chat:{project_id}`; agent **không** đọc bất kỳ kênh SSE nào.
-
-**Đích Giai đoạn 2:** không có mục sửa riêng cho vùng này (kho hiện vật + SSE đang khớp thiết kế).

@@ -1,13 +1,11 @@
 # 05 — Vòng đời task, thêm task tay, Chat với Leader & chế độ YOLO
 
-> Cách một task đi qua vòng đời, cách Patron/Leader tạo việc, và cuộc trò chuyện cấp dự án với Leader (#82).
-> Phản ánh code ngày 18/07/2026. FSM task đã tả ở [01-domain.md](01-domain.md) §5.2; file này tả **thao tác**.
->
-> Nhãn: **[ĐÚNG-NHƯ-CODE]** / **[ĐÍCH-CẦN-SỬA]**.
+> Cách một task đi qua vòng đời, cách Patron/Leader tạo việc, và cuộc trò chuyện cấp dự án với Leader.
+> FSM task đã tả ở [01-domain.md](01-domain.md) §5.2; file này tả **thao tác**.
 
 ---
 
-## 1. Thao tác trên task  [ĐÚNG-NHƯ-CODE]
+## 1. Thao tác trên task
 
 `application/use_cases/tasks.py::TaskService`.
 
@@ -21,22 +19,20 @@
 | `reject_proposed(task)` | Từ chối draft: `draft → cancelled` (không wake). |
 | `set_next_action(task, text)` | Ghi gợi ý tiếp việc bền. |
 
-### 1.1 Một người phụ trách — [ĐÚNG-NHƯ-CODE] (đã gỡ participant ở #101)
+### 1.1 Một người phụ trách
 
-Mọi luồng thao tác chỉ dùng **`Task.assigned_marius_id`** (một người) — **nguồn sự thật duy nhất**. Thực thể
-`TaskParticipant` (mô hình nhiều-người song song) **đã được gỡ sạch ở issue #101 (GĐ-2)**: nó là mã chết mồ
-côi (không bảng CSDL, không kho/mapper, không thao tác nào dùng) nên gỡ **không cần di trú**. Frontend cũng
-gỡ danh sách "người tham gia" (luôn rỗng) và nối các chỗ hiển thị vào đúng một người phụ trách. Xem
+Mọi luồng thao tác chỉ dùng **`Task.assigned_marius_id`** (một người) — **nguồn sự thật duy nhất**. Không có
+mô hình nhiều-người song song. Frontend hiển thị đúng một người phụ trách này ở mọi chỗ. Xem
 [01-domain.md](01-domain.md) §4.1.
 
-### 1.2 Mã task `{KEY}-{seq}` — [ĐÚNG-NHƯ-CODE]
+### 1.2 Mã task `{KEY}-{seq}`
 
 Mỗi task sinh mã `{project.key}-{seq}` ngay khi tạo: KEY là mã dự án (Patron đặt, có gợi ý, duy nhất
 workspace, bất biến); seq là bộ đếm monotonic per-project, cấp phát **atomic** (`UPDATE … RETURNING`)
 nên không trùng khi tạo-cùng-lúc và không bao giờ tái sử dụng. Ví dụ dự án "Calculator" (key `CALC`) →
 `CALC-1`, `CALC-2`… Chi tiết ở [01-domain.md](01-domain.md) §3.1 (key + seq) + §4.1.
 
-### 1.3 Cổng phụ thuộc — [ĐÚNG-NHƯ-CODE]
+### 1.3 Cổng phụ thuộc
 
 Cạnh `blocked_by` được **lưu bền** (bảng `task_dependencies`) và cổng phụ thuộc được thực thi
 **đầu-cuối**. Mọi đường vào trạng thái bị chặn — `TaskService.transition`, `claim`, `approve_proposed`
@@ -51,19 +47,19 @@ tự-trỏ-chính-mình, trùng cặp, khác dự án, hoặc tạo vòng lặp 
 
 ## 2. Hai cách tạo việc
 
-### 2.1 Thêm task tay (Patron)  [ĐÚNG-NHƯ-CODE]
+### 2.1 Thêm task tay (Patron)
 
 Patron tự điền đầy đủ định nghĩa task và tạo thẳng (thường vào `backlog`/`todo`, kèm assignee). Đây là hành
 động của bảng công việc; nút "+" trên một cột đặt task vào đúng cột đó (create nhận `status`).
 
-### 2.2 Nhờ Leader tạo (qua Chat với Leader)  [ĐÚNG-NHƯ-CODE]
+### 2.2 Nhờ Leader tạo (qua Chat với Leader)
 
 Trong khi trò chuyện, Patron nhờ Leader tạo việc; Leader dùng công cụ tạo-task của nó. Kết quả **draft hay
 live** tuỳ **chế độ YOLO của dự án** (§4).
 
 ---
 
-## 3. Chat với Leader (#82)  [ĐÚNG-NHƯ-CODE]
+## 3. Chat với Leader
 
 `application/use_cases/leader_chat.py::LeaderChatService` + `domain/services/leader_chat_prompt.py`.
 Cuộc trò chuyện 1-1 **cấp dự án** với Leader về *mọi thứ* trong dự án (định hướng, trạng thái, kế hoạch).
@@ -77,19 +73,16 @@ Cuộc trò chuyện 1-1 **cấp dự án** với Leader về *mọi thứ* tron
 - **Lượt lần lượt (turn-taking).** Tối đa một lượt đang chạy: khi đang chạy, cuộc trò chuyện ở `THINKING` và
   API **từ chối** tin mới bằng **409**; xong lượt về `IDLE` (hoặc `FAILED` để thử lại).
 - **Offline ⇒ tắt hẳn chat, không xếp hàng.** "Leader offline" là thuộc tính **suy ra lúc đọc** từ liveness
-  của Leader (`_AVAILABLE` = online/working/idle/checking), **không lưu**. Không có Leader ngồi ghế, hoặc
+  của Leader (`_AVAILABLE` = `{ONLINE, WORKING, CHECKING}`), **không lưu**. Không có Leader ngồi ghế, hoặc
   Leader offline, hoặc đang bận ⇒ `LeaderChatError` → **409**.
-- **Đây là bản thay thế cho Commission cũ.** Prompt cố ý **không** phải prompt wake-task chung (thứ bảo agent
-  "cập nhật task, publish hiện vật" — vô nghĩa cho một cuộc trò chuyện), lý do khiến wake commission cũ thấy
-  "bạc nhược".
-
-> Ghi chú: danh bạ đội trong prompt chat này đúng phạm vi dự án **và** (sau issue #87) nêu **title vai trò
-> dự án thật** của từng worker + mô tả, kèm mô tả vai trò của chính Leader ở header. Xem
-> [03-roster-wake.md](03-roster-wake.md) §3.
+- **Prompt riêng cho hội thoại.** Prompt cố ý **không** phải prompt wake-task chung (thứ bảo agent "cập nhật
+  task, publish hiện vật" — vô nghĩa cho một cuộc trò chuyện). Danh bạ đội trong prompt này đúng phạm vi dự
+  án **và** nêu **title vai trò dự án thật** của từng worker + mô tả, kèm mô tả vai trò của chính Leader ở
+  header. Xem [03-roster-wake.md](03-roster-wake.md) §3.
 
 ---
 
-## 4. Chế độ YOLO  [ĐÚNG-NHƯ-CODE]
+## 4. Chế độ YOLO
 
 `Project.settings["yolo_mode"]` (mặc định `False`). Bật/tắt qua `ProjectService.set_yolo_mode` (gộp đúng một
 khoá, không đụng cài đặt khác). Ý nghĩa: **Leader toàn quyền hay phải xin Patron duyệt**.
@@ -105,28 +98,13 @@ Prompt Leader luôn nêu trạng thái YOLO hiện tại để Leader hành xử
 
 ---
 
-## 5. Commission cũ — [ĐÚNG-NHƯ-CODE] (đã gỡ ở #99)
-
-Commission cũ (`CommissionSession` + `CommissionStatus` + `LeaderState` thực thể, `WakeSource.COMMISSION`,
-use case `commission.py`, endpoint `/v1/commissions/*`, bảng CSDL `commission_sessions`, và toàn bộ dead
-code FE) **đã được gỡ sạch ở issue #99 (GĐ-2 D)** — di trú `a1c4e8b2d6f9` xoá bảng. Nó từng bị
-`ProjectLeaderConversation` (Chat với Leader) thay thế hoàn toàn về mặt sản phẩm; file đặc tả này không mô
-tả commission như một tính năng sống.
-
----
-
-## 6. Tiêu chí nghiệm thu
-
-**Đúng-như-code:**
+## 5. Tiêu chí nghiệm thu
 
 1. `assign` một task ⇒ người được gán nhận wake `ASSIGNMENT`; `claim` ⇒ **không** wake.
 2. Chuyển sang `in_review`/`done` khi task **chưa** có hiện vật ⇒ bị chặn (cổng DONE).
-6. Có cạnh `blocked_by` chưa `done` ⇒ vào `todo`/`in_progress` (kể cả qua `claim`/duyệt draft) bị chặn
+3. Có cạnh `blocked_by` chưa `done` ⇒ vào `todo`/`in_progress` (kể cả qua `claim`/duyệt draft) bị chặn
    (cổng phụ thuộc, `DependencyNotMetError` → 409); blocker `done` xong ⇒ vào được.
-3. Gửi tin cho Leader khi đang có lượt chạy ⇒ 409 (turn-taking); Leader offline ⇒ 409 (chat tắt).
-4. Câu trả lời của Leader chạy chữ trên kênh `leader-chat:{project_id}` và được lưu vào transcript.
-5. YOLO tắt: Leader tạo việc ⇒ `draft`, không wake ai; Patron duyệt ⇒ `todo` + wake assignee. YOLO bật:
+4. Gửi tin cho Leader khi đang có lượt chạy ⇒ 409 (turn-taking); Leader offline ⇒ 409 (chat tắt).
+5. Câu trả lời của Leader chạy chữ trên kênh `leader-chat:{project_id}` và được lưu vào transcript.
+6. YOLO tắt: Leader tạo việc ⇒ `draft`, không wake ai; Patron duyệt ⇒ `todo` + wake assignee. YOLO bật:
    tạo việc ⇒ live + wake ngay.
-
-**Giai đoạn 2 — đã xong:** §1.1 (một người phụ trách, gỡ participant) hoàn tất ở #101; §5 (gỡ commission)
-đã xong ở #99. Không còn đích Giai đoạn 2 trong file này.
