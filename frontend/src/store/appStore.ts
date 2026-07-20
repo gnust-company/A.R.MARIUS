@@ -260,6 +260,8 @@ export interface SkillFile {
 
 export interface Skill {
   id: string
+  /** Stable URL-safe id; skill_installs on an agent is keyed by this (#74). */
+  slug?: string
   name: string
   description?: string
   mariusId?: string

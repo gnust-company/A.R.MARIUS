@@ -243,6 +243,7 @@ export function labelToVM(dto: LabelDTO): { id: string; name: string; color: str
 export function skillToVM(dto: SkillDTO): Skill {
   return {
     id: dto.id,
+    slug: dto.slug,
     name: dto.name,
     description: dto.description ?? undefined,
     workspaceId: dto.workspace_id ?? undefined,
