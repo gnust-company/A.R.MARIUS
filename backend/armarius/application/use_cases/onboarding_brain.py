@@ -53,9 +53,10 @@ def is_free_text_option(label: str) -> bool:
 
 
 def build_onboarding_guide_prompt(*, base_url: str, session_id: str, workspace_name: str) -> str:
-    """The guide injected into the real Workspace Agent on each wake (replaces the Onboarder skill).
+    """The guide injected into the real Workspace Agent on the first wake of a session.
 
-    Teaches the agent to interview the Patron ONE question at a time as tick-select options and
+    Onboarding is injected into the prompt, not shipped as a skill. Teaches the agent to
+    interview the Patron ONE question at a time as tick-select options and
     finish with a project + roster draft. The agent posts its questions/completion back through
     the agent-facing endpoints; the service reconciles them onto ``OnboardingSession.collected``.
     """
@@ -68,7 +69,9 @@ def build_onboarding_guide_prompt(*, base_url: str, session_id: str, workspace_n
         f"- POST each question to {endpoint}/question ; then STOP and wait for the answer.\n"
         "- The server returns HTTP 409 if you send a new question while the previous is "
         "unanswered — wait, do not retry.\n"
-        "- When the owner answers, decide the single next question from the running context.\n\n"
+        "- When the owner answers, decide the single next question from the running context.\n"
+        "- Use ONLY the two endpoints named here. Do not read any skill, and do not call any "
+        "other endpoint (there is no task list to fetch) — this onboarding is self-contained.\n\n"
         "Cover: what they're building (objective), a short project name, which worker roles the "
         "team needs, how success is measured, a target date, and finally 'anything else?'.\n\n"
         "QUESTION body (send exactly this shape):\n"
@@ -79,6 +82,37 @@ def build_onboarding_guide_prompt(*, base_url: str, session_id: str, workspace_n
         "  Set multi=true when several options can be picked (e.g. roles).\n\n"
         "When you have enough, POST the final draft to "
         f"{endpoint}/complete :\n"
+        '{"project":{"name":"...","objective":"...","success_metrics":{"goal":"..."},'
+        '"target_date":null,"context":"..."},'
+        '"roster":[{"title":"Project Leader","seats":1,"is_leader":true},'
+        '{"title":"Frontend","seats":1,"is_leader":false}]}\n'
+        "The roster MUST have exactly one leader (is_leader=true) plus at least one worker.\n"
+    )
+
+
+def build_onboarding_answer_prompt(*, base_url: str, session_id: str, answer: str) -> str:
+    """Continuation wake (the owner just answered) — self-sufficient so a weak model never wanders.
+
+    Unlike the terse note it replaces, this repeats the exact callback endpoints + body shapes
+    and forbids side-quests (loading skills, calling other endpoints). The agent must do exactly
+    one thing: POST the single next question, or POST the final draft.
+    """
+    endpoint = f"{base_url}/agent/onboarding/{session_id}"
+    return (
+        "ARMARIUS · PROJECT ONBOARDING (continued)\n\n"
+        f"The owner answered: {answer}\n\n"
+        "Do EXACTLY ONE thing now, then stop. Do NOT read any skill, do NOT call any other "
+        "endpoint, do NOT try to list tasks — this onboarding uses only the two endpoints below.\n"
+        f"1) POST the single next question to {endpoint}/question  (one at a time; the server "
+        "returns 409 if a question is still unanswered — then wait, do not retry), OR\n"
+        f"2) POST the final draft to {endpoint}/complete once you have enough to stand the "
+        "project up.\n\n"
+        "QUESTION body (send exactly this shape):\n"
+        '{"question":"...","options":[{"id":"1","label":"..."},{"id":"2","label":"..."}],'
+        '"multi":false}\n'
+        '  Include a free-text escape when useful (an option whose label contains "I\'ll type '
+        'it"). Set multi=true when several options can be picked.\n\n'
+        "DRAFT body (send exactly this shape):\n"
         '{"project":{"name":"...","objective":"...","success_metrics":{"goal":"..."},'
         '"target_date":null,"context":"..."},'
         '"roster":[{"title":"Project Leader","seats":1,"is_leader":true},'

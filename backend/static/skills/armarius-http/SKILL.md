@@ -13,8 +13,8 @@ Your wake prompt names the exact file for the workspace this task belongs to (th
 "Where you are" section). Read THAT file — do not guess:
 
 ```bash
-ls ~/.armarius/tokens/
-cat ~/.armarius/tokens/<workspace>_<agent-name>.json
+ls ~/.armarius/
+cat ~/.armarius/<workspace>_<agent-name>.json
 ```
 
 It is JSON with: `agent_name`, `agent_role`, `agent_token`, `workspace`, `project`, `api_base_url`.
@@ -145,11 +145,11 @@ curl -sS -X POST "API_BASE_URL/agent/tasks/TASK_ID/next-action" \
 
 Required fields: `name`, `kind`, `content` OR `uri`
 
-Kinds: `file`, `patch`, `note`, `link`
+Kinds: `file`, `link`  (a `file` carries inline `content`; a `link` carries a `uri`)
 
 ```bash
 cat > /tmp/artifact.json <<'JSON'
-{"name":"settings-dark.patch","kind":"patch","content":"..."}
+{"name":"settings-dark.diff","kind":"file","content":"..."}
 JSON
 curl -sS -X POST "API_BASE_URL/agent/tasks/TASK_ID/artifact" \
   -H "Authorization: Bearer AGENT_TOKEN" \
