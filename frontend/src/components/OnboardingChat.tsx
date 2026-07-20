@@ -164,28 +164,6 @@ export default function OnboardingChat({ onCreated }: OnboardingChatProps) {
             )}
           </>
         )}
-
-        {phase === 'starting' && (
-          <div className="flex items-center gap-2 font-body text-body-sm text-ink-muted">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            {t('onboarding.starting')}
-          </div>
-        )}
-
-        {phase !== 'starting' && draft && (
-          <DraftCard draft={draft} finalizing={phase === 'finalizing'} onConfirm={finalize} onRestart={restart} />
-        )}
-
-        {phase !== 'starting' && !draft && pending && (
-          <QuestionPanel key={pending.key ?? pending.question} question={pending} onSubmit={submitAnswer} />
-        )}
-
-        {error && (
-          <div className="flex items-center gap-2 font-body text-body-sm text-[#B84A32] bg-[#F5DDD6] border border-[#E9C4BC] rounded-md px-3 py-2">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span className="flex-1">{error}</span>
-          </div>
-        )}
       </div>
     </div>
   );
