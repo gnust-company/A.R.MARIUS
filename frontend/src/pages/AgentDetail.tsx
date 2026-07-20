@@ -221,9 +221,10 @@ export default function AgentDetail() {
   const [runs, setRuns] = useState<RunDTO[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Post-invite skill install (#74): pick skills to link + push a one-time install prompt.
-  // CAVEAT: send_status only confirms the gateway accepted the dispatch — whether the agent
-  // actually installed the skills is NOT tracked yet (confirm loop parked by owner).
+  // Post-invite skill install (#74): (re)install skills on a connected agent + push a one-time
+  // install prompt. send_status confirms only that the gateway accepted the dispatch; the agent
+  // then confirms each install out-of-band (POST /agent/skills/{slug}/installed), flipping the
+  // per-skill badge pending → installed. State is carried on agent.skillInstalls (slug → status).
   const [linkSkillsOpen, setLinkSkillsOpen] = useState(false);
   const [selectedNewIds, setSelectedNewIds] = useState<string[]>([]);
   const [installing, setInstalling] = useState(false);
@@ -250,9 +251,17 @@ export default function AgentDetail() {
   const AdapterIcon = ADAPTER_ICON[agent?.adapterType || ''] || Globe;
   const linkedSkillNames = agent?.skills || [];
 
-  // Workspace skills not yet linked to this agent — what the picker offers.
+  // Per-skill install state (#74) is keyed by slug; the linked pills show it by name.
+  const skillInstalls = agent?.skillInstalls ?? {};
+  const slugByName = new Map(allSkills.map((s) => [s.name, s.slug]));
+  const installStateOf = (name: string): string | undefined => {
+    const slug = slugByName.get(name);
+    return slug ? skillInstalls[slug] : undefined;
+  };
+
+  // The picker offers EVERY workspace skill — a linked one can be re-selected to re-push an
+  // updated copy of its files (#74/#105), not only newly-linked skills.
   const linkedNameSet = new Set(linkedSkillNames);
-  const availableSkills = allSkills.filter((s) => !linkedNameSet.has(s.name));
 
   const toggleNewSkill = (skillId: string) => {
     setSelectedNewIds((prev) =>
@@ -392,11 +401,26 @@ export default function AgentDetail() {
               </div>
               {linkedSkillNames.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5">
-                  {linkedSkillNames.map((s) => (
-                    <span key={s} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#E3D7BC] text-[#6B5E4E]">
-                      {s}
-                    </span>
-                  ))}
+                  {linkedSkillNames.map((s) => {
+                    const st = installStateOf(s);
+                    return (
+                      <span
+                        key={s}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#E3D7BC] text-[#6B5E4E]"
+                      >
+                        {s}
+                        {st === 'installed' && (
+                          <CheckCircle2 className="w-3 h-3 text-[#2A6E3A]" aria-label={t('agentDetail.installState.installed')} />
+                        )}
+                        {st === 'pending' && (
+                          <Loader2 className="w-3 h-3 animate-spin text-[#B8860B]" aria-label={t('agentDetail.installState.pending')} />
+                        )}
+                        {st === 'failed' && (
+                          <AlertTriangle className="w-3 h-3 text-[#8A3B22]" aria-label={t('agentDetail.installState.failed')} />
+                        )}
+                      </span>
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-[12px] text-[#A89880]">{t('agentDetail.noSkills')}</p>
@@ -518,25 +542,33 @@ export default function AgentDetail() {
         <p className="text-[12px] text-[#6B5E4E] mb-3">{t('agentDetail.linkSkills.hint')}</p>
         {allSkills.length === 0 ? (
           <p className="text-[12px] text-[#A89880]">{t('agentDetail.linkSkills.noneAvailable')}</p>
-        ) : availableSkills.length === 0 ? (
-          <p className="text-[12px] text-[#A89880]">{t('agentDetail.linkSkills.allLinked')}</p>
         ) : (
           <div className="flex flex-wrap gap-1.5">
-            {availableSkills.map((skill) => (
-              <button
-                key={skill.id}
-                onClick={() => toggleNewSkill(skill.id)}
-                className={cn(
-                  'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all',
-                  selectedNewIds.includes(skill.id)
-                    ? 'bg-[#C25E3A] text-white'
-                    : 'bg-[#E3D7BC] text-[#6B5E4E] hover:bg-[#D9CDB8]',
-                )}
-              >
-                {selectedNewIds.includes(skill.id) && <Check className="w-3 h-3" />}
-                {skill.name}
-              </button>
-            ))}
+            {allSkills.map((skill) => {
+              const linked = linkedNameSet.has(skill.name);
+              const selected = selectedNewIds.includes(skill.id);
+              return (
+                <button
+                  key={skill.id}
+                  onClick={() => toggleNewSkill(skill.id)}
+                  title={linked ? t('agentDetail.linkSkills.reinstallHint') : undefined}
+                  className={cn(
+                    'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all',
+                    selected
+                      ? 'bg-[#C25E3A] text-white'
+                      : 'bg-[#E3D7BC] text-[#6B5E4E] hover:bg-[#D9CDB8]',
+                  )}
+                >
+                  {selected && <Check className="w-3 h-3" />}
+                  {skill.name}
+                  {linked && !selected && (
+                    <span className="text-[9px] uppercase tracking-wide text-[#A89880]">
+                      {t('agentDetail.linkSkills.linkedTag')}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
         {installStatus === 'sent' && (

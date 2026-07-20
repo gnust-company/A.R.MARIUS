@@ -552,7 +552,7 @@ export const vi = {
     linkSkills: {
       add: 'Liên kết kỹ năng',
       title: 'Liên kết kỹ năng cho {{name}}',
-      hint: 'Chọn kỹ năng để cài cho agent này. Một thông báo cài đặt sẽ được gửi tới agent.',
+      hint: 'Chọn kỹ năng để cài (hoặc cài lại bản đã sửa) cho agent này. Một thông báo cài đặt sẽ được gửi tới agent.',
       allLinked: 'Mọi kỹ năng của workspace đều đã được liên kết với agent này.',
       noneAvailable: 'Workspace chưa có kỹ năng nào. Hãy tạo hoặc nhập kỹ năng ở mục Kỹ năng trước.',
       sent: 'Đã gửi thông báo cài đặt tới agent.',
@@ -560,6 +560,13 @@ export const vi = {
       sending: 'Đang gửi…',
       confirm: 'Gửi thông báo cài đặt',
       retry: 'Thử lại',
+      reinstallHint: 'Đã liên kết — chọn để đẩy lại bản mới nhất',
+      linkedTag: 'đã liên kết',
+    },
+    installState: {
+      pending: 'Đang chờ agent cài',
+      installed: 'Đã cài',
+      failed: 'Đẩy thất bại',
     },
     noSkills: 'Chưa liên kết kỹ năng nào.',
     wakeSource: {
