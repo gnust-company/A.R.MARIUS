@@ -129,7 +129,13 @@ class SkillService:
         Also ships content updates: when the on-disk SKILL.md changed since this
         workspace was seeded, the stored copy is refreshed — unless the owner has
         edited it (update_files sets updated_at; a shipped copy never has one).
+
+        And **prunes de-listed builtins**: a `source="builtin"` skill whose slug is no
+        longer shipped (e.g. the retired `armarius-onboarder`) is deleted, so workspaces
+        seeded by an older version self-clean on the next load. Only builtins are pruned —
+        manual/imported skills are never touched.
         """
+        builtin_slugs = {spec["slug"] for spec in BUILTIN_SKILLS}
         async with self._uow() as uow:
             changed = False
             for spec in BUILTIN_SKILLS:
@@ -156,6 +162,10 @@ class SkillService:
                     )
                 )
                 changed = True
+            for sk in await uow.skills.list_by_workspace(workspace_id):
+                if sk.source == "builtin" and sk.slug not in builtin_slugs:
+                    await uow.skills.remove(sk.id)
+                    changed = True
             if changed:
                 await uow.commit()
 

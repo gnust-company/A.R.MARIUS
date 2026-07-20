@@ -260,6 +260,42 @@ async def test_builtin_content_refreshes_unless_owner_edited():
     assert mcp_skill["files"]["SKILL.md"] == "owner's custom copy"  # preserved
 
 
+async def test_seed_prunes_delisted_builtin_skills():
+    """A builtin no longer shipped (e.g. the retired armarius-onboarder) is pruned from a
+    workspace seeded by an older version, on the next skills load; real builtins survive and
+    a manual skill is never touched (#105)."""
+    from uuid import UUID
+
+    from armarius.domain.entities.skill import Skill
+    from armarius.infrastructure.persistence.unit_of_work import make_uow
+    from armarius.shared.clock import utcnow
+
+    async with await _client() as c:
+        token, ws_id = await _register(c, "prune@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        # A manual skill the owner made (must NOT be pruned).
+        made = await c.post(
+            f"/v1/workspaces/{ws_id}/skills/manual", headers=h,
+            json={"name": "Keeper", "description": "owner's own"},
+        )
+        assert made.status_code == 201, made.text
+        # Simulate a stale builtin seeded before it was retired.
+        async with make_uow() as uow:
+            await uow.skills.add(Skill(
+                workspace_id=UUID(ws_id), slug="armarius-onboarder",
+                name="Armarius Onboarder", description="retired playbook",
+                source="builtin", source_url="/static/skills/armarius-onboarder/SKILL.md",
+                files={"SKILL.md": "old"}, created_at=utcnow(),
+            ))
+            await uow.commit()
+        # The GET triggers seed_builtins → prune.
+        after = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
+    slugs = {s["slug"] for s in after}
+    assert "armarius-onboarder" not in slugs, slugs  # de-listed builtin pruned
+    assert "armarius-http" in slugs and "armarius-mcp" in slugs  # real builtins survive
+    assert any(s["name"] == "Keeper" for s in after)  # manual skill untouched
+
+
 async def test_install_skills_links_and_pushes_install_prompt():
     """Issue #74: after an agent is invited, the patron can link MORE skills and the
     system pushes a one-time install prompt. New links merge (de-duped); the push is
