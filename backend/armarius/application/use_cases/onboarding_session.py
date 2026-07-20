@@ -32,6 +32,7 @@ from armarius.application.use_cases.onboarding import credential_file_for
 from armarius.application.use_cases.onboarding_brain import (
     _leader_role,
     _project_name,
+    build_onboarding_answer_prompt,
     build_onboarding_guide_prompt,
 )
 from armarius.application.use_cases.projects import ProjectService, RoleSpec
@@ -202,9 +203,9 @@ class OnboardingService:
                 "set up the Workspace Agent first — invite an agent with 'Make Workspace "
                 "Agent' and its gateway creds, then ensure it is online and retry"
             )
-        answer_prompt = self._answer_prompt(value) + agent_prompt_footer(
-            credential_file_for(wa, workspace_name)
-        )
+        answer_prompt = build_onboarding_answer_prompt(
+            base_url=self._base_url, session_id=str(session_id), answer=value
+        ) + agent_prompt_footer(credential_file_for(wa, workspace_name))
         await self._wake(wa, session_id, answer_prompt)
 
         async with self._uow() as uow:
@@ -356,15 +357,6 @@ class OnboardingService:
                 session.updated_at = utcnow()
                 await uow.onboardings.update(session)
                 await uow.commit()
-
-    @staticmethod
-    def _answer_prompt(value: str) -> str:
-        return (
-            "ARMARIUS · PROJECT ONBOARDING (continued)\n\n"
-            f"The owner answered: {value}\n\n"
-            "Decide the single next question from the running context and POST it (one at a "
-            "time), or POST the final draft if you now have enough to stand the project up.\n"
-        )
 
     async def _open(self, uow, session_id: UUID) -> OnboardingSession:  # noqa: ANN001
         session = await uow.onboardings.get(session_id)
