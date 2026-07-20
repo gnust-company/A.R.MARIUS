@@ -78,6 +78,22 @@ class MariusService:
             await uow.commit()
             return updated
 
+    async def set_skill_installs(
+        self, marius_id: UUID, updates: dict[str, str]
+    ) -> Marius:
+        """Merge per-skill install-state updates (slug → pending|installed|failed) into an
+        agent (#74). Used when pushing a skill (→ pending/failed) and when the agent confirms
+        an install (→ installed). Other install states are left untouched."""
+        async with self._uow() as uow:
+            marius = await uow.mariuses.get(marius_id)
+            if marius is None:
+                raise LookupError("marius not found")
+            marius.skill_installs = {**marius.skill_installs, **updates}
+            marius.updated_at = utcnow()
+            updated = await uow.mariuses.update(marius)
+            await uow.commit()
+            return updated
+
     async def delete(self, marius_id: UUID) -> None:
         """Remove a Marius from the directory.
 

@@ -295,9 +295,10 @@ async def test_install_skills_links_and_pushes_install_prompt():
     assert marin["skills"] == ["Armarius HTTP API", "Armarius MCP"], marin["skills"]
 
 
-async def test_install_skills_is_idempotent_on_already_linked():
-    """Re-linking a skill the agent already has is a no-op merge (no duplicate) but still
-    returns send_status — the patron may retry a failed push."""
+async def test_install_skills_repushes_already_linked():
+    """Re-installing a skill the agent already has does NOT duplicate the link, but DOES
+    re-push it — so a FIXED/updated skill reaches the agent — and marks it `pending` (#74/#105).
+    (The old behaviour dropped already-linked slugs, so a corrected skill never propagated.)"""
     async with await _client() as c:
         token, ws_id = await _register(c, "idem@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
@@ -312,10 +313,48 @@ async def test_install_skills_is_idempotent_on_already_linked():
             headers=h,
             json={"skill_ids": [http_id]},
         )
+        listed = (await c.get(f"/v1/workspaces/{ws_id}/mariuses", headers=h)).json()
     assert r.status_code == 200, r.text
     out = r.json()
-    assert out["skill_ids"] == [http_id]  # no duplicate
-    assert out["installed"] == []  # nothing newly added this round
+    assert out["skill_ids"] == [http_id]  # no duplicate link
+    assert out["installed"] == ["armarius-http"]  # re-pushed even though already linked
+    assert out["send_status"] == "sent"
+    marin = next(m for m in listed if m["id"] == mid)
+    assert marin["skill_installs"] == {"armarius-http": "pending"}  # awaiting the agent's confirm
+
+
+async def test_agent_confirms_skill_install():
+    """After a push, the agent flips its linked skill to `installed` via the confirm callback;
+    a slug it isn't linked to → 404 (#74/#105)."""
+    async with await _client() as c:
+        token, ws_id = await _register(c, "confirm@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
+        http_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
+
+        created = await invite_agent(c, ws_id, h, name="Marin", skill_ids=[http_id])
+        mid = created["id"]
+        # Push it so the state starts at pending.
+        await c.post(
+            f"/v1/workspaces/{ws_id}/mariuses/{mid}/install-skills",
+            headers=h,
+            json={"skill_ids": [http_id]},
+        )
+
+        agent_token = await agent_token_for(mid)
+        ah = {"Authorization": f"Bearer {agent_token}"}
+
+        # A slug the agent isn't linked to → 404.
+        assert (await c.post("/agent/skills/nope/installed", headers=ah)).status_code == 404
+
+        # Confirm the real one → installed.
+        ok = await c.post("/agent/skills/armarius-http/installed", headers=ah)
+        assert ok.status_code == 200, ok.text
+        assert ok.json() == {"slug": "armarius-http", "status": "installed"}
+
+        listed = (await c.get(f"/v1/workspaces/{ws_id}/mariuses", headers=h)).json()
+    marin = next(m for m in listed if m["id"] == mid)
+    assert marin["skill_installs"] == {"armarius-http": "installed"}
 
 
 async def test_install_skills_on_other_workspace_is_404():

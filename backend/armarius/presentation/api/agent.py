@@ -103,6 +103,25 @@ async def get_my_skill_bundle(
     raise LookupError(f"skill '{slug}' is not linked to you")
 
 
+@router.post("/skills/{slug}/installed", status_code=200)
+async def confirm_skill_installed(
+    slug: str, marius: CurrentMarius, container: ContainerDep
+) -> dict[str, str]:
+    """Confirm you finished installing a linked skill (#74) → install state flips to
+    'installed', and the patron's UI updates in realtime. 404 if the slug is not linked to
+    you (you can only confirm skills you were granted)."""
+    linked = await effective_skills(container, marius)
+    if not any(sk.slug == slug for sk in linked):
+        raise LookupError(f"skill '{slug}' is not linked to you")
+    updated = await container.mariuses.set_skill_installs(marius.id, {slug: "installed"})
+    await container.control_bus.publish(
+        f"ws:{updated.workspace_id}",
+        "marius.skill_installed",
+        {"marius_id": str(marius.id), "slug": slug},
+    )
+    return {"slug": slug, "status": "installed"}
+
+
 # ── onboarding callbacks (a live Workspace-Agent runtime drives the interview) ─
 async def _wa_onboarding_session(container, marius, session_id: UUID):
     """Load an onboarding session, asserting this Marius is its workspace's host agent."""
