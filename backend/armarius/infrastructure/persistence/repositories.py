@@ -594,6 +594,7 @@ class SqlMariusRepository(MariusRepository):
                 adapter_type=marius.adapter_type,
                 adapter_config=dict(marius.adapter_config),
                 skill_ids=[str(x) for x in marius.skill_ids],
+                skill_installs=dict(marius.skill_installs),
                 owner_user_id=marius.owner_user_id,
                 agent_token=marius.agent_token,
                 invite_status=str(marius.invite_status),
@@ -648,6 +649,7 @@ class SqlMariusRepository(MariusRepository):
         m.role = marius.role
         m.skills = list(marius.skills)
         m.skill_ids = [str(x) for x in marius.skill_ids]
+        m.skill_installs = dict(marius.skill_installs)
         m.adapter_type = marius.adapter_type
         m.adapter_config = dict(marius.adapter_config)
         m.owner_user_id = marius.owner_user_id

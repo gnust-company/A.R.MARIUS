@@ -289,7 +289,7 @@ class InstallSkillsOut(_Out):
 
     marius_id: UUID
     skill_ids: list[str] = Field(default_factory=list)
-    installed: list[str] = Field(default_factory=list)  # the newly linked slugs
+    installed: list[str] = Field(default_factory=list)  # slugs pushed this call (now "pending")
     send_status: str = "send_failed"
 
 
@@ -300,6 +300,8 @@ class MariusOut(_Out):
     role: str
     skills: list[str]
     skill_ids: list[str] = Field(default_factory=list)
+    # Per-skill install state (post-invite loop #74): slug → pending|installed|failed.
+    skill_installs: dict[str, str] = Field(default_factory=dict)
     adapter_type: str
     liveness: str
     # Invite lifecycle (operator-invite: invited → approved). `adapter_config` and

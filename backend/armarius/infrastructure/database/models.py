@@ -113,6 +113,8 @@ class MariusModel(Base):
     adapter_type: Mapped[str] = mapped_column(String(80))
     adapter_config: Mapped[dict] = mapped_column(JSON, default=dict)
     skill_ids: Mapped[list] = mapped_column(JSON, default=list)
+    # Per-skill install state (post-invite loop #74): slug → pending|installed|failed.
+    skill_installs: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
     owner_user_id: Mapped[str | None] = mapped_column(String(200))
     agent_token: Mapped[str | None] = mapped_column(String(120), unique=True, index=True)
     # Invite lifecycle (LLD §3.4) — operator-invite: invited → approved (no enroll/approve).

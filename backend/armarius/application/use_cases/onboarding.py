@@ -102,6 +102,10 @@ def _skill_block(skills: list[Skill], base: str, adapter_type: str = "hermes_gat
         lines.append(
             '     Returns: {"slug": "' + sk.slug + '", "files": {"SKILL.md": "...", ...}}'
         )
+        lines.append(
+            f"     Confirm: POST {base}/agent/skills/{sk.slug}/installed  (empty body, once you"
+            " have written the files — so your patron sees it is installed)"
+        )
         lines.append("")
     lines.append(
         f"List everything linked to you (slugs + file counts):  GET {base}/agent/skills"

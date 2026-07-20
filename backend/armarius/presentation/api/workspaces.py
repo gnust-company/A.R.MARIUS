@@ -254,20 +254,19 @@ async def install_skills(
     if marius is None or marius.workspace_id != workspace_id:
         raise LookupError("marius not found")
 
-    # Merge new skill_ids into the existing links (de-dup, preserve order).
+    # Merge requested skill_ids into the existing links (de-dup, preserve order).
     existing = list(marius.skill_ids)
     merged = list(dict.fromkeys([*existing, *body.skill_ids]))
-    newly_added_ids = [s for s in body.skill_ids if s not in existing]
 
-    # Resolve the full merged set in one query: the complete list → display NAMES
-    # (Marius.skills, which the UI pills read via MariusOut.skills), and the newly-added
-    # subset → slugs for the install prompt. Marius.skills MUST mirror skill_ids or a
-    # post-invite link never shows up as a pill (issue #74).
+    # Resolve merged → display NAMES (Marius.skills mirrors skill_ids so pills show), and the
+    # REQUESTED subset → the skills to (re)push. Pushing EVERY requested skill — not only the
+    # newly-linked ones — lets an already-linked skill whose content changed be reinstalled on
+    # the agent; the old "newly-added only" behaviour meant a fixed skill never reached it (#74).
     resolved = list(await container.skills.resolve(merged))
     by_id = {str(sk.id): sk for sk in resolved}
-    new_skills = [by_id[i] for i in newly_added_ids if i in by_id]
+    requested_skills = [by_id[i] for i in body.skill_ids if i in by_id]
     merged_names = [sk.name for sk in resolved]
-    installed_slugs = [sk.slug for sk in new_skills]
+    pushed_slugs = [sk.slug for sk in requested_skills]
 
     marius = await container.mariuses.update(
         marius_id, skill_ids=merged, skills=merged_names
@@ -278,22 +277,31 @@ async def install_skills(
         marius,
         settings.public_api_url,
         workspace_name=ws.name if ws else "the workspace",
-        skills=new_skills,
+        skills=requested_skills,
     )
     send_status = await container.invite.push_setup(marius_id, prompt=prompt)
+
+    # Mark each pushed skill "pending" (gateway accepted the push) or "failed" (push rejected).
+    # The agent flips a slug to "installed" out-of-band via POST /agent/skills/{slug}/installed.
+    pushed_state = "pending" if send_status == "sent" else "failed"
+    if pushed_slugs:
+        marius = await container.mariuses.set_skill_installs(
+            marius_id, {slug: pushed_state for slug in pushed_slugs}
+        )
+
     await container.control_bus.publish(
         f"ws:{workspace_id}",
         "marius.skills_updated",
         {
             "marius_id": str(marius_id),
-            "installed": installed_slugs,
+            "installed": pushed_slugs,
             "send_status": send_status,
         },
     )
     return InstallSkillsOut(
         marius_id=marius.id,
         skill_ids=merged,
-        installed=installed_slugs,
+        installed=pushed_slugs,
         send_status=send_status,
     )
 
