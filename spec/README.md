@@ -1,8 +1,8 @@
 # Armarius — Đặc tả (Spec)
 
 > Đây là **nguồn sự thật có thẩm quyền** của dự án Armarius. Khi tài liệu ở đây và mã nguồn
-> mâu thuẫn nhau, **tài liệu này đúng** — mã nguồn phải được sửa cho khớp (hoặc tài liệu phải
-> được cập nhật trước, theo quy trình bên dưới). Toàn bộ đặc tả viết bằng **tiếng Việt**.
+> mâu thuẫn nhau, **tài liệu này đúng**: mã nguồn phải được sửa cho khớp (hoặc, nếu chính đặc tả
+> sai, sửa đặc tả trước theo vòng ở §2). Toàn bộ đặc tả viết bằng **tiếng Việt**.
 
 ---
 
@@ -12,14 +12,13 @@ Trước đây dự án có hai tầng tài liệu, không tầng nào có thẩ
 
 - Ý định gốc (tiếng Việt): `MY_DEMAND.md`, `PROJECT_DESCRIPTION.md` — brainstorm, không phải đặc tả thi hành.
 - Thiết kế phái sinh (tiếng Anh): `docs/HLD.md`, `docs/LLD.md`, `docs/API_CONTRACT.md`, `docs/FE_UX.md`,
-  `docs/ARCHITECTURE.md` — **đóng băng từ cuối tháng 6 / đầu tháng 7**, trong khi mã nguồn chạy
-  tiếp qua hàng loạt thay đổi lớn (mời agent kiểu mới, chat với Leader, liveness kiểu mới...).
+  `docs/ARCHITECTURE.md` — đóng băng từ cuối tháng 6 / đầu tháng 7, trong khi mã nguồn chạy tiếp qua
+  hàng loạt thay đổi lớn (mời agent kiểu mới, chat với Leader, liveness kiểu mới...).
 
-Hậu quả: mã nguồn trôi khỏi tài liệu, không có cơ chế nào phát hiện. Cứ sửa một lỗi lại lộ ra
-mã nguồn làm khác thiết kế. Thư mục `spec/` sinh ra để **chấm dứt tình trạng đó** bằng cách áp dụng
-**Spec Driven Development (phát triển dẫn dắt bởi đặc tả)**.
+Hậu quả: mã nguồn trôi khỏi tài liệu, không có cơ chế nào phát hiện. Thư mục `spec/` sinh ra để
+**chấm dứt tình trạng đó** — là một nguồn sự thật duy nhất, viết bằng tiếng Việt, mô tả **hệ thống đúng**.
 
-## 2. Spec Driven Development là gì (áp dụng ở đây)
+## 2. Cách làm việc với đặc tả (Spec Driven Development)
 
 Nguyên tắc: **đặc tả đi trước, mã nguồn theo sau và phải chứng minh mình khớp đặc tả.**
 
@@ -37,16 +36,14 @@ Muốn đổi gì đó
 Không một thay đổi hành vi nào được gộp (merge) nếu nó không đi kèm sửa mục đặc tả tương ứng.
 Đây là điều biến `spec/` từ "tài liệu để đọc" thành "tài liệu thi hành".
 
-## 3. Trạng thái hiện tại: bản nền "đúng như đang chạy"
+## 3. Đặc tả này mô tả gì, và xử lý sai lệch ra sao
 
-Bản đặc tả đầu tiên này là **bản nền phản ánh mã nguồn ngày 18/07/2026** (không phải mơ ước tương lai).
-Với mỗi vùng, đặc tả ghi rõ một trong hai nhãn:
+Mỗi mục dưới đây mô tả **hành vi đúng** của hệ thống — không kèm nhãn trạng thái, không kể lịch sử vá lỗi.
+Đặc tả luôn là **đích**.
 
-- **[ĐÚNG-NHƯ-CODE]** — đặc tả chép đúng hành vi mã nguồn đang chạy. Không cần sửa code.
-- **[ĐÍCH-CẦN-SỬA]** — mã nguồn hiện làm sai; đặc tả ghi hành vi **đúng**, và mã nguồn sẽ được
-  sửa cho khớp ở giai đoạn sau (ghi rõ "Giai đoạn 2").
-
-Nhờ vậy ta không trộn lẫn "đang có" với "muốn có".
+Khi phát hiện mã nguồn làm khác đặc tả (qua kiểm thử, hay khi đọc code), đó là **một lỗi**: mở một issue
+mô tả sai lệch và sửa mã cho khớp. Nếu ngược lại chính đặc tả mới là chỗ sai, sửa đặc tả trước theo vòng ở
+§2 rồi mới đụng mã. Sai lệch sống trong hệ thống issue, **không** sống trong tài liệu.
 
 ## 4. Mục lục
 
@@ -68,9 +65,8 @@ Nhờ vậy ta không trộn lẫn "đang có" với "muốn có".
   tên cột), và luôn kèm giải thích tiếng Việt.
 - Mỗi vùng hành vi có phần **"Tiêu chí nghiệm thu"** — điều kiện quan sát được để coi là đúng.
   Đây là cầu nối sang test.
-- Ghi nhãn **[ĐÚNG-NHƯ-CODE]** / **[ĐÍCH-CẦN-SỬA]** ở đầu mỗi mục có liên quan.
 
 ## 6. Quan hệ với `docs/` cũ
 
-Sau khi bản nền này hoàn tất, thư mục `docs/` (tiếng Anh) được **đánh dấu là đã lỗi thời (archived)**;
-không đọc `docs/` để hiểu hành vi hiện tại nữa. Chúng được giữ lại chỉ để tra cứu lịch sử thiết kế.
+Thư mục `docs/` (tiếng Anh) **đã lỗi thời (archived)**; không đọc `docs/` để hiểu hành vi hiện tại nữa.
+Chúng được giữ lại chỉ để tra cứu lịch sử thiết kế.

@@ -1,9 +1,7 @@
 # 07 — Danh mục điểm cuối API (endpoint)
 
-> Danh mục các điểm cuối HTTP **thật đang có** (liệt kê từ `backend/armarius/presentation/api/*.py`, ngày
-> 18/07/2026). Đây là bản tra cứu; hành vi chi tiết nằm ở các file 01–06.
->
-> Nhãn: **[ĐÚNG-NHƯ-CODE]** trừ khi ghi khác.
+> Danh mục các điểm cuối HTTP thật đang có (`backend/armarius/presentation/api/*.py`). Đây là bản tra cứu;
+> hành vi chi tiết nằm ở các file 01–06.
 
 Ba nhóm theo đối tượng gọi:
 
@@ -13,7 +11,7 @@ Ba nhóm theo đối tượng gọi:
 
 ---
 
-## 1. Xác thực — `/auth`  [ĐÚNG-NHƯ-CODE]
+## 1. Xác thực — `/auth`
 
 | Method | Path | Việc |
 |---|---|---|
@@ -22,7 +20,7 @@ Ba nhóm theo đối tượng gọi:
 | POST | `/auth/refresh` | Làm mới access token |
 | GET | `/auth/me` | Hồ sơ người dùng hiện tại |
 
-## 2. Workspace, agent, kỹ năng, nhãn — `/v1`  [ĐÚNG-NHƯ-CODE]
+## 2. Workspace, agent, kỹ năng, nhãn — `/v1`
 
 | Method | Path | Việc |
 |---|---|---|
@@ -35,7 +33,7 @@ Ba nhóm theo đối tượng gọi:
 | GET | `/v1/workspaces/{ws}/mariuses/{m}/runs` | Lịch sử chạy của một agent |
 | PATCH | `/v1/workspaces/{ws}/mariuses/{m}` | Sửa agent |
 | POST | `/v1/workspaces/{ws}/mariuses/{m}/designate` | Phong agent làm quản gia (Workspace Agent) |
-| POST | `/v1/workspaces/{ws}/mariuses/{m}/install-skills` | Đẩy prompt cài kỹ năng mới (**[ĐÍCH-CẦN-SỬA]** #74 đang dở, xem [02-invite.md](02-invite.md) §6) |
+| POST | `/v1/workspaces/{ws}/mariuses/{m}/install-skills` | Đẩy prompt cài kỹ năng mới cho agent đã kết nối (xem [02-invite.md](02-invite.md) §6) |
 | DELETE | `/v1/workspaces/{ws}/mariuses/{m}` | Gỡ agent → 204 |
 | GET | `/v1/workspaces/{ws}/labels` · POST | Nhãn task (xem/tạo) |
 | GET | `/v1/workspaces/{ws}/skills` | Kho kỹ năng (Skill Shop) |
@@ -43,7 +41,7 @@ Ba nhóm theo đối tượng gọi:
 | POST | `/v1/workspaces/{ws}/skills/manual` | Tạo kỹ năng thủ công |
 | POST | `/v1/workspaces/{ws}/skills/import` | Nhập kỹ năng từ GitHub |
 
-## 3. Dự án, roster, ghế — `/v1`  [ĐÚNG-NHƯ-CODE]
+## 3. Dự án, roster, ghế — `/v1`
 
 | Method | Path | Việc |
 |---|---|---|
@@ -58,7 +56,7 @@ Ba nhóm theo đối tượng gọi:
 | DELETE | `/v1/projects/{p}/grant` | Thu ghế |
 | GET | `/v1/projects/{p}/agents` | Danh sách người tham gia dự án (ghế đã cấp) |
 
-## 4. Task, thread, hiện vật, đánh thức — `/v1`  [ĐÚNG-NHƯ-CODE]
+## 4. Task, thread, hiện vật, đánh thức — `/v1`
 
 | Method | Path | Việc |
 |---|---|---|
@@ -73,7 +71,7 @@ Ba nhóm theo đối tượng gọi:
 | GET/POST | `/v1/tasks/{t}/artifacts` | Hiện vật của task (xem/publish) |
 | POST | `/v1/tasks/{t}/wake` | Đánh thức thủ công (on-demand) → 202 |
 
-## 5. Chat với Leader & YOLO — `/v1`  [ĐÚNG-NHƯ-CODE]
+## 5. Chat với Leader & YOLO — `/v1`
 
 | Method | Path | Việc |
 |---|---|---|
@@ -84,7 +82,7 @@ Ba nhóm theo đối tượng gọi:
 | POST | `/v1/tasks/{t}/approve` | Duyệt draft (`draft → todo` + wake) |
 | POST | `/v1/tasks/{t}/reject` | Từ chối draft (`draft → cancelled`) |
 
-## 6. Trace & luồng sự kiện (SSE) — `/v1`  [ĐÚNG-NHƯ-CODE]
+## 6. Trace & luồng sự kiện (SSE) — `/v1`
 
 | Method | Path | Việc |
 |---|---|---|
@@ -97,7 +95,7 @@ Ba nhóm theo đối tượng gọi:
 
 Chi tiết kênh: [06-artifacts-sse.md](06-artifacts-sse.md). **Chỉ web app đọc SSE; agent không đọc SSE.**
 
-## 7. Onboarding dự án qua hội thoại — `/v1`  [ĐÚNG-NHƯ-CODE]
+## 7. Onboarding dự án qua hội thoại — `/v1`
 
 | Method | Path | Việc |
 |---|---|---|
@@ -107,7 +105,7 @@ Chi tiết kênh: [06-artifacts-sse.md](06-artifacts-sse.md). **Chỉ web app đ
 | POST | `/v1/onboarding/{s}/answer` | Patron trả lời (đánh thức quản gia lượt tiếp) |
 | POST | `/v1/onboarding/{s}/finalize` · `/abandon` | Chốt thành dự án / bỏ dở |
 
-## 8. API cho agent gọi ngược — `/agent`  [ĐÚNG-NHƯ-CODE]
+## 8. API cho agent gọi ngược — `/agent`
 
 Xác thực bằng `agent_token` (Bearer). Mọi route giới hạn theo workspace của token (task/dự án chéo workspace
 đọc là "không tìm thấy").
@@ -125,30 +123,18 @@ Xác thực bằng `agent_token` (Bearer). Mọi route giới hạn theo workspa
 | POST | `/agent/tasks/{t}/artifact` | Publish hiện vật (file/link) → 201 |
 | POST | `/agent/onboarding/{s}/question` · `/complete` | Quản gia đăng câu hỏi / chốt onboarding |
 
-> **Đã gỡ sạch (#97):** không còn `POST /agent/enroll` và `POST /agent/claim` (mô hình enroll-and-wait cũ),
-> nhánh `enrollment_code` trong hàm dựng prompt mời, trường `Marius.enrollment_code`, và công cụ
-> `enroll`/`claim` ở MCP. Xem [02-invite.md](02-invite.md) §3.1.
-
-## 9. Meta & sức khoẻ  [ĐÚNG-NHƯ-CODE]
+## 9. Meta & sức khoẻ
 
 | Method | Path | Việc |
 |---|---|---|
 | GET | `/healthz` · `/health` | Thăm sức khoẻ (cũng là endpoint gateway-health dùng cho probe) |
 | GET | `/v1/meta` · `/v1/adapters` | Thông tin build / danh sách adapter |
 
-## 10. Commission — [ĐÚNG-NHƯ-CODE] (đã gỡ ở #99)
-
-Nhóm endpoint commission cũ **đã gỡ sạch** ở issue #99 (GĐ-2 D): `POST /v1/commissions`,
-`POST /v1/commissions/edit`, `GET /v1/commissions/{s}`, `POST /v1/commissions/{s}/refine`,
-`POST /v1/commissions/{s}/confirm`, `POST /v1/commissions/{s}/abandon` — trả 404. Vai trò "giao việc qua
-Leader" được Chat với Leader thay thế hoàn toàn ([05-task-leaderchat.md](05-task-leaderchat.md) §5).
-
 ---
 
-## 11. Ghi chú & tiêu chí nghiệm thu
+## 10. Ghi chú & tiêu chí nghiệm thu
 
 - **Có hai điểm cuối tạo task**: `POST /v1/projects/{p}/tasks` (Patron thêm tay) và
   `POST /agent/projects/{p}/tasks` (công cụ của Leader trong Chat với Leader). Đây là chủ ý, không phải trùng lặp.
-- Tiêu chí đúng-như-code: mọi hàng trong §1–§9 gọi được đúng phương thức/đường dẫn nêu trên; route `/v1/*`
+- Tiêu chí nghiệm thu: mọi hàng trong §1–§9 gọi được đúng phương thức/đường dẫn nêu trên; route `/v1/*`
   chặn truy cập chéo chủ sở hữu (404); route `/agent/*` yêu cầu Bearer token và chặn chéo workspace.
-- **Đích Giai đoạn 2:** hoàn thiện/gỡ `install-skills` (#74). (Nhóm §10 commission đã gỡ ở #99.)
