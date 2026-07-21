@@ -26,14 +26,19 @@ def _skill() -> Skill:
     return Skill(slug="armarius-http", name="Armarius HTTP API", description="Drive the workspace.")
 
 
-def test_footer_names_the_file_and_is_token_free():
+def test_footer_is_a_soft_token_free_hint():
     footer = agent_prompt_footer("~/.armarius/acme_marin.json")
     assert "~/.armarius/acme_marin.json" in footer
-    assert "Authorization: Bearer" in footer
     # Leads with a separator so it reads as an appended footer, not inline body.
     assert footer.startswith("\n\n---\n")
     # Token-free by design: it points at the file, never re-embeds the secret.
     assert _SECRET not in footer
+    # A soft HINT, not an order: nudges reading once + reusing, mentions `cat`, and is
+    # runtime-neutral (no Bearer tutorial, no Hermes-specific dedup line) (#108).
+    assert "ARMARIUS HINT" in footer
+    assert "cat" in footer
+    assert "Authorization: Bearer" not in footer
+    assert "File unchanged" not in footer
 
 
 def test_footer_falls_back_to_a_default_location():
