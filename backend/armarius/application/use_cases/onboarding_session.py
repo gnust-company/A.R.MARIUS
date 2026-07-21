@@ -25,6 +25,7 @@ so re-entering "create a project with the agent" never resurrectes stale chat hi
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from armarius.application.ports.adapter import AdapterRegistry, ExecContext
@@ -63,6 +64,27 @@ def _question_text(question: dict) -> str:
     for opt in question.get("options", []):
         lines.append(f"  • {opt.get('label', '')}")
     return "\n".join(lines)
+
+
+def _qa_pairs(transcript: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    """Pair each agent question with the patron answer that follows it — openclaw-style, so the
+    continuation prompt carries the FULL answered history and the agent always knows what is
+    collected (instead of relying on its own session memory, which degrades on a weak model).
+
+    The agent transcript line is ``_question_text`` output (the question + its option bullets);
+    we keep only the first line (the question itself) for a compact, readable history.
+    """
+    pairs: list[tuple[str, str]] = []
+    pending_q: str | None = None
+    for turn in transcript:
+        role = turn.get("role")
+        text = (turn.get("text") or "").strip()
+        if role == "agent":
+            pending_q = text.split("\n", 1)[0].strip() if text else None
+        elif role == "patron" and pending_q and text:
+            pairs.append((pending_q, text))
+            pending_q = None
+    return pairs
 
 
 def plan_from_collected(collected: dict) -> dict:
@@ -192,6 +214,7 @@ class OnboardingService:
             await uow.commit()
             workspace_id = session.workspace_id
             ws = await uow.workspaces.get(workspace_id) if workspace_id else None
+            history = _qa_pairs(session.transcript)
         if workspace_id is None:
             raise LookupError("onboarding session has no workspace")
         workspace_name = ws.name if ws else "the workspace"
@@ -204,7 +227,7 @@ class OnboardingService:
                 "Agent' and its gateway creds, then ensure it is online and retry"
             )
         answer_prompt = build_onboarding_answer_prompt(
-            base_url=self._base_url, session_id=str(session_id), answer=value
+            base_url=self._base_url, session_id=str(session_id), history=history
         ) + agent_prompt_footer(credential_file_for(wa, workspace_name))
         await self._wake(wa, session_id, answer_prompt)
 
