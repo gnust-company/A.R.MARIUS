@@ -87,17 +87,34 @@ def _qa_pairs(transcript: list[dict[str, Any]]) -> list[tuple[str, str]]:
     return pairs
 
 
+def _looks_like_leader(role: dict[str, Any]) -> bool:
+    """An agent-supplied role that is clearly its (mistaken) attempt at the leader — the
+    canonical Project Leader is always injected, so drop these to avoid a duplicate / mislabeled
+    leader (#110)."""
+    if role.get("is_leader"):
+        return True
+    if str(role.get("key", "")).lower() == "leader":
+        return True
+    return str(role.get("title", "")).lower() == "project leader"
+
+
 def plan_from_collected(collected: dict) -> dict:
     """Materialise the accumulated draft into ``{name, objective, roles, ...}`` for finalize.
 
-    Falls back to a minimal valid plan if the draft is missing, so finalize can always create
-    a valid project + roster (a Project needs one leader + ≥1 worker).
+    The Project Leader is canonical and ALWAYS present — the agent lists only WORKER roles (the
+    onboarding prompt tells it so), mirroring the normal create-project path
+    (``presentation/api/projects.py`` injects the leader; the caller supplies workers). Any role
+    the (weak) agent still cast as the leader is dropped (``_looks_like_leader``) so
+    ``validate_plan`` sees exactly one leader — the canonical one — not a mislabeled worker, and
+    never a duplicate "Project Leader" (#110).
     """
     draft = collected.get("draft") or {}
-    raw_roles = draft.get("roster") or [_leader_role(), *[
-        {"key": "frontend", "title": "Frontend", "seats": 1, "is_leader": False,
-         "description": "Builds the user-facing UI."},
-    ]]
+    default_worker = {"key": "frontend", "title": "Frontend", "seats": 1,
+                      "description": "Builds the user-facing UI."}
+    raw = draft.get("roster") or [default_worker]
+    kept = [{**r, "is_leader": False} for r in raw if not _looks_like_leader(r)]
+    workers = kept or [default_worker]
+    spec_rows = [_leader_role(), *workers]
     roles = [
         RoleSpec(
             key=r.get("key") or r.get("title", "role"),
@@ -107,7 +124,7 @@ def plan_from_collected(collected: dict) -> dict:
             description=r.get("description", ""),
             skill_ids=list(r.get("skills") or []),
         )
-        for r in raw_roles
+        for r in spec_rows
     ]
     objective = (draft.get("objective") or "").strip() or "New project"
     name = (draft.get("name") or "").strip() or _project_name(objective)
