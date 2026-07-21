@@ -87,7 +87,10 @@ Mọi prompt hệ thống→agent (mời, cài skill, onboarding, wake task, lea
 bất kỳ tool đọc file nào cũng được, rồi **dùng lại** cho mọi lệnh gọi — **không bắt agent đọc lại mỗi bước**.
 Không nhúng token vào footer (giữ nguyên nguyên tắc token-free), và **không nhét đặc thù runtime** vào đây:
 ví dụ cơ chế dedup "File unchanged" riêng của Hermes **không thuộc footer chung** (nếu cần, đặt ở chỗ riêng
-của runtime đó). Đây là hạ tầng chung: một sửa ở `agent_prompt_footer` lan ra toàn bộ prompt hệ thống.
+của runtime đó). Đây là hạ tầng chung: một sửa ở `agent_prompt_footer` lan ra toàn bộ prompt hệ thống. Footer
+cũng giữ **một dòng ngắn chống rò rỉ** — *"Never echo the token into a comment, artifact, or any output"* —
+vì `wake_prompt` (task wake) và `leader_chat_prompt` chỉ nhận cảnh báo này qua footer chung (prompt mời có
+riêng, còn các lượt wake lặp lại thì phụ thuộc footer).
 
 ---
 
