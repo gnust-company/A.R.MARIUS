@@ -55,32 +55,42 @@ def is_free_text_option(label: str) -> bool:
 def build_onboarding_guide_prompt(*, base_url: str, session_id: str, workspace_name: str) -> str:
     """The guide injected into the real Workspace Agent on the first wake of a session.
 
-    Onboarding is injected into the prompt, not shipped as a skill. Teaches the agent to
-    interview the Patron ONE question at a time as tick-select options and
-    finish with a project + roster draft. The agent posts its questions/completion back through
-    the agent-facing endpoints; the service reconciles them onto ``OnboardingSession.collected``.
+    Onboarding is injected into the prompt, not shipped as a skill. The agent interviews the
+    Patron ONE question at a time following the ordered FIELD PLAN below (each field maps to the
+    final draft body), then posts the draft. The agent posts its questions/completion back
+    through the agent-facing endpoints; the service reconciles them onto
+    ``OnboardingSession.collected``. The ordered plan keeps a weak model on the rails instead of
+    circling implementation detail.
     """
     endpoint = f"{base_url}/agent/onboarding/{session_id}"
     return (
         "ARMARIUS · PROJECT ONBOARDING\n\n"
         f"You are the Workspace Agent for '{workspace_name}'. Interview the owner and stand up a "
-        "new project. Ask 5-8 focused questions, ONE AT A TIME, and WAIT for each answer.\n\n"
+        "new project by working through the FIELD PLAN below, ONE question per turn, in order.\n\n"
         "PROTOCOL — one question per call:\n"
         f"- POST each question to {endpoint}/question ; then STOP and wait for the answer.\n"
         "- The server returns HTTP 409 if you send a new question while the previous is "
         "unanswered — wait, do not retry.\n"
-        "- When the owner answers, decide the single next question from the running context.\n"
         "- Use ONLY the two endpoints named here. Do not read any skill, and do not call any "
         "other endpoint (there is no task list to fetch) — this onboarding is self-contained.\n\n"
-        "Cover: what they're building (objective), a short project name, which worker roles the "
-        "team needs, how success is measured, a target date, and finally 'anything else?'.\n\n"
+        "FIELD PLAN — ask these IN ORDER, one per turn. Each maps to a field of the final draft:\n"
+        "  1. objective       — What are you building? What problem does it solve?\n"
+        "  2. name            — A short project name (free text).\n"
+        "  3. roster          — Which worker roles does the team need? (multi: Frontend, "
+        "Backend, QA, … + a free-text escape)\n"
+        "  4. success_metrics — How will you measure success?\n"
+        "  5. target_date     — A target date, or 'none'.\n"
+        "  6. context         — Anything else I should know? (free text)\n"
+        "Ask EXACTLY these fields. Do NOT drift into implementation detail (features, UI, tech "
+        "stack) — that is not needed to stand the project up. After the owner answers #6, POST "
+        "the draft.\n\n"
         "QUESTION body (send exactly this shape):\n"
         '{"question":"...","options":[{"id":"1","label":"..."},{"id":"2","label":"..."}],'
         '"multi":false}\n'
         "  Include a free-text escape when useful: an option whose label contains "
         '"I\'ll type it".\n'
-        "  Set multi=true when several options can be picked (e.g. roles).\n\n"
-        "When you have enough, POST the final draft to "
+        "  Set multi=true when several options can be picked (e.g. roster roles).\n\n"
+        "When you have all fields, POST the final draft to "
         f"{endpoint}/complete :\n"
         '{"project":{"name":"...","objective":"...","success_metrics":{"goal":"..."},'
         '"target_date":null,"context":"..."},'
@@ -90,32 +100,60 @@ def build_onboarding_guide_prompt(*, base_url: str, session_id: str, workspace_n
     )
 
 
-def build_onboarding_answer_prompt(*, base_url: str, session_id: str, answer: str) -> str:
+def build_onboarding_answer_prompt(
+    *, base_url: str, session_id: str, history: list[tuple[str, str]],
+) -> str:
     """Continuation wake (the owner just answered) — self-sufficient so a weak model never wanders.
 
-    Unlike the terse note it replaces, this repeats the exact callback endpoints + body shapes
-    and forbids side-quests (loading skills, calling other endpoints). The agent must do exactly
-    one thing: POST the single next question, or POST the final draft.
+    Carries (a) the ordered FIELD PLAN and (b) the FULL history of questions answered so far
+    (built from the session transcript by ``_qa_pairs`` in ``onboarding_session``, openclaw-style),
+    so the agent always knows what is collected and which field is next. Repeats the exact
+    callback endpoints + body shapes and forbids side-quests. The owner's latest answer is the
+    last pair in ``history``.
     """
     endpoint = f"{base_url}/agent/onboarding/{session_id}"
-    return (
-        "ARMARIUS · PROJECT ONBOARDING (continued)\n\n"
-        f"The owner answered: {answer}\n\n"
-        "Do EXACTLY ONE thing now, then stop. Do NOT read any skill, do NOT call any other "
-        "endpoint, do NOT try to list tasks — this onboarding uses only the two endpoints below.\n"
+    lines = [
+        "ARMARIUS · PROJECT ONBOARDING (continued)\n",
+        "FIELD PLAN (ask in order, one per turn): objective → name → roster → success_metrics "
+        "→ target_date → context. After the last is answered, POST the draft. Do NOT drift into "
+        "implementation detail (features, UI, tech stack).",
+    ]
+    if history:
+        lines.append("")
+        lines.append("Answered so far:")
+        for i, (q, a) in enumerate(history, start=1):
+            lines.append(f"  {i}. Q: {q}")
+            lines.append(f"     A: {a}")
+    lines.append("")
+    lines.append(
+        "From the FIELD PLAN above, ask the SINGLE next unanswered question, OR — if every "
+        "field is answered — POST the final draft. Do EXACTLY ONE thing now, then stop. Do NOT "
+        "read any skill, do NOT call any other endpoint, do NOT try to list tasks — this "
+        "onboarding uses only the two endpoints below."
+    )
+    lines.append(
         f"1) POST the single next question to {endpoint}/question  (one at a time; the server "
-        "returns 409 if a question is still unanswered — then wait, do not retry), OR\n"
-        f"2) POST the final draft to {endpoint}/complete once you have enough to stand the "
-        "project up.\n\n"
-        "QUESTION body (send exactly this shape):\n"
+        "returns 409 if a question is still unanswered — then wait, do not retry), OR"
+    )
+    lines.append(f"2) POST the final draft to {endpoint}/complete .")
+    lines.append("")
+    lines.append("QUESTION body (send exactly this shape):")
+    lines.append(
         '{"question":"...","options":[{"id":"1","label":"..."},{"id":"2","label":"..."}],'
-        '"multi":false}\n'
+        '"multi":false}'
+    )
+    lines.append(
         '  Include a free-text escape when useful (an option whose label contains "I\'ll type '
-        'it"). Set multi=true when several options can be picked.\n\n'
-        "DRAFT body (send exactly this shape):\n"
+        'it"). Set multi=true when several options can be picked.'
+    )
+    lines.append("DRAFT body (send exactly this shape):")
+    lines.append(
         '{"project":{"name":"...","objective":"...","success_metrics":{"goal":"..."},'
         '"target_date":null,"context":"..."},'
         '"roster":[{"title":"Project Leader","seats":1,"is_leader":true},'
-        '{"title":"Frontend","seats":1,"is_leader":false}]}\n'
-        "The roster MUST have exactly one leader (is_leader=true) plus at least one worker.\n"
+        '{"title":"Frontend","seats":1,"is_leader":false}]}'
     )
+    lines.append(
+        "The roster MUST have exactly one leader (is_leader=true) plus at least one worker."
+    )
+    return "\n".join(lines)
