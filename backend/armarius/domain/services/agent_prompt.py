@@ -35,5 +35,6 @@ def agent_prompt_footer(credential_file: str | None = None) -> str:
         "ARMARIUS HINT — your credential (agent_token + api_base_url) lives at "
         f"`{location}`. Read it if you don't already have the token in hand — any "
         "file-reading tool works (`cat`, read_file, …) — then reuse it for every call; "
-        "you don't need to open the file each step.\n"
+        "you don't need to open the file each step. Never echo the token into a comment, "
+        "artifact, or any output.\n"
     )

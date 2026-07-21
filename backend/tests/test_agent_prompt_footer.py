@@ -39,6 +39,9 @@ def test_footer_is_a_soft_token_free_hint():
     assert "cat" in footer
     assert "Authorization: Bearer" not in footer
     assert "File unchanged" not in footer
+    # The anti-leak guardrail stays (task-wake/leader-chat get the warning only via this
+    # footer), as a short token-free line — not the old numbered list (#109 review).
+    assert "never echo the token" in footer.lower()
 
 
 def test_footer_falls_back_to_a_default_location():
