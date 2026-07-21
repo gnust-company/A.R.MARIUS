@@ -79,6 +79,16 @@ run vốn đã tới nơi.
   `skill_manage` hoặc `/learn`; Echo ghi file vào `~/.echo/skills/`; Claude Code dùng MCP hoặc
   `~/.claude/skills/`.
 
+### 3.1 Phần chân token là HINT chung, không lệnh
+
+Mọi prompt hệ thống→agent (mời, cài skill, onboarding, wake task, leader-chat) đều ghép thêm
+`agent_prompt_footer` (`domain/services/agent_prompt.py`) — một **gợi ý nhẹ, trung lập runtime**: credential
+(`agent_token` + `api_base_url`) nằm ở `{location}`; **đọc khi nào chưa có token trong tay**, dùng `cat` hay
+bất kỳ tool đọc file nào cũng được, rồi **dùng lại** cho mọi lệnh gọi — **không bắt agent đọc lại mỗi bước**.
+Không nhúng token vào footer (giữ nguyên nguyên tắc token-free), và **không nhét đặc thù runtime** vào đây:
+ví dụ cơ chế dedup "File unchanged" riêng của Hermes **không thuộc footer chung** (nếu cần, đặt ở chỗ riêng
+của runtime đó). Đây là hạ tầng chung: một sửa ở `agent_prompt_footer` lan ra toàn bộ prompt hệ thống.
+
 ---
 
 ## 4. Quản gia workspace (Workspace Agent)
@@ -111,6 +121,14 @@ phải chuỗi vai trò).
   khuôn dữ liệu** (nộp câu hỏi / nộp bản nháp) và dặn agent **chỉ làm đúng một việc đó** — không đi nạp cẩm
   nang khác, không gọi địa chỉ nào khác. Nhờ vậy một mô hình yếu cũng không lạc khỏi giao thức giữa chừng.
   Onboarding **không** phải một skill: toàn bộ chỉ dẫn được nhồi vào prompt.
+- **Kịch bản field có thứ tự (lượt `start`).** Prompt hướng dẫn không để agent tự do liên tưởng: nó liệt kê
+  **đúng các field bản nháp cần, theo thứ tự** — mục tiêu → tên dự án → roster (vai trò người làm) → thước đo
+  thành công → ngày mục tiêu → "còn gì nữa không?" — dặn hỏi **mỗi lượt một câu theo thứ tự**, hỏi hết thì nộp
+  bản nháp. Một mô hình yếu đi theo kịch bản số thay vì xoay quanh chi tiết triển khai (tính năng, tech stack).
+- **Lịch sử hỏi–đáp đầy đủ (lượt `answer`).** Prompt continuation mang theo **toàn bộ các cặp hỏi–đáp đã qua**
+  (xây từ `OnboardingSession.transcript`), kèm đáp án mới nhất — đúng kiểu openclaw-mission-control
+  (`_build_answer_dispatch_message`) — thay vì chỉ một dòng đáp án lẻ. Agent luôn biết đã thu thập gì, còn
+  thiếu field nào, để chọn đúng câu hỏi kế tiếp hoặc nộp bản nháp.
 
 ---
 
@@ -149,3 +167,10 @@ gửi độc lập về sau. Điểm cuối: `POST /v1/workspaces/{ws}/mariuses/
 8. Đẩy lại một kỹ năng **đã liên kết** (bản đã sửa nội dung) ⇒ vẫn được đẩy, không bị bỏ qua vì "đã có".
 9. Agent gọi `POST /agent/skills/{slug}/installed` ⇒ slug chuyển `installed` và giao diện cập nhật; slug lạ
    hoặc không liên kết với agent ⇒ 404.
+10. Prompt hướng dẫn onboarding liệt kê **kịch bản field có thứ tự** (mục tiêu → tên → roster → thước đo →
+    ngày mục tiêu → "còn gì nữa"), gắn đúng body bản nháp — không để agent tự do đi lạc sang chi tiết triển khai.
+11. Prompt continuation onboarding mang theo **toàn bộ lịch sử các cặp hỏi–đáp đã qua** (từ transcript) cùng
+    đáp án mới nhất — không chỉ một dòng đáp án lẻ.
+12. `agent_prompt_footer` là **gợi ý nhẹ, trung lập runtime**: nêu `{location}`, dặn đọc khi chưa có token,
+    dùng lại, dùng được `cat`; không lệnh đọc mỗi bước, không nhúng token, không đặc thù runtime (không nhắc
+    "File unchanged"/dedup của Hermes).
