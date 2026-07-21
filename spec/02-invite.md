@@ -132,6 +132,12 @@ phải chuỗi vai trò).
   (xây từ `OnboardingSession.transcript`), kèm đáp án mới nhất — đúng kiểu openclaw-mission-control
   (`_build_answer_dispatch_message`) — thay vì chỉ một dòng đáp án lẻ. Agent luôn biết đã thu thập gì, còn
   thiếu field nào, để chọn đúng câu hỏi kế tiếp hoặc nộp bản nháp.
+- **Roster chỉ là worker; Project Leader tự thêm.** Agent chỉ liệt kê các role **worker** (Frontend,
+  Backend, …). Role **Project Leader** canonical (key `leader`, `is_leader=true`) được `plan_from_collected`
+  **luôn inject** — đúng như path tạo project bình thường (`presentation/api/projects.py` inject leader,
+  caller gửi worker). Nếu agent yếu đặt nhầm `is_leader=true` hoặc title "Project Leader" trên một role,
+  server **bỏ role đó** rồi inject PL canonical, nên `validate_plan` luôn thấy đúng một leader là PL —
+  không bao giờ ra project kiểu "Business Analyst làm leader" như trước (#110).
 
 ---
 
