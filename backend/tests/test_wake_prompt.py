@@ -38,10 +38,10 @@ def test_prompt_names_workspace_project_and_credential_file():
     assert "## Where you are" in prompt
     assert "Acme Web Platform" in prompt
     assert "Settings Redesign" in prompt
-    # The token-location footer names the exact credential file + the multi-workspace rule.
+    # The soft credential HINT names the exact file and nudges reading once + reusing (#108).
     assert "~/.armarius/acme-web-platform_alice.json" in prompt
-    assert "Authorization: Bearer" in prompt
-    assert "never the others" in prompt
+    assert "ARMARIUS HINT" in prompt
+    assert "cat" in prompt
     # Orientation still leads the prompt (workspace/project before the task brief).
     assert prompt.index("## Where you are") < prompt.index("## Task:")
 
@@ -54,7 +54,7 @@ def test_prompt_without_workspace_context_omits_the_orientation_but_never_the_fo
     assert "## Why you were woken" in prompt
     # The footer is UNCONDITIONAL: even with no workspace context, a task-wake must still
     # tell the agent where its token lives — falling back to the default location (#80).
-    assert "Authorization: Bearer" in prompt
+    assert "ARMARIUS HINT" in prompt
     assert "~/.armarius/<workspace>_<agent>.json" in prompt
 
 
