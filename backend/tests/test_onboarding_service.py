@@ -314,3 +314,19 @@ def test_plan_from_collected_defaults_to_a_valid_roster() -> None:
     assert any(r.is_leader for r in plan["roles"])
     assert any(not r.is_leader for r in plan["roles"])
     assert plan["name"]
+
+
+def test_plan_from_collected_always_injects_canonical_project_leader() -> None:
+    """A weak agent that casts a worker as the leader still yields a canonical Project Leader;
+    the mis-cast role is dropped and the real workers survive — so the project always has a real
+    PL, never a mislabeled one (#110)."""
+    plan = plan_from_collected({"draft": {"roster": [
+        {"title": "Business Analyst", "is_leader": True},
+        {"title": "Developer", "is_leader": False},
+    ]}})
+    roles = plan["roles"]
+    leaders = [r for r in roles if r.is_leader]
+    assert len(leaders) == 1
+    assert leaders[0].title == "Project Leader"  # canonical — not the agent's "Business Analyst"
+    # The mis-cast "Business Analyst" is dropped; "Developer" survives as a worker.
+    assert {r.title for r in roles if not r.is_leader} == {"Developer"}

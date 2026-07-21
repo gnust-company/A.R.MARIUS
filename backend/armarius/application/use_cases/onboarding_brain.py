@@ -76,8 +76,9 @@ def build_onboarding_guide_prompt(*, base_url: str, session_id: str, workspace_n
         "FIELD PLAN — ask these IN ORDER, one per turn. Each maps to a field of the final draft:\n"
         "  1. objective       — What are you building? What problem does it solve?\n"
         "  2. name            — A short project name (free text).\n"
-        "  3. roster          — Which worker roles does the team need? (multi: Frontend, "
-        "Backend, QA, … + a free-text escape)\n"
+        "  3. roster          — Which WORKER roles does the team need? (multi: Frontend, "
+        "Backend, QA, … + a free-text escape). The Project Leader is added automatically — "
+        "list workers only, do NOT include a leader.\n"
         "  4. success_metrics — How will you measure success?\n"
         "  5. target_date     — A target date, or 'none'.\n"
         "  6. context         — Anything else I should know? (free text)\n"
@@ -94,9 +95,9 @@ def build_onboarding_guide_prompt(*, base_url: str, session_id: str, workspace_n
         f"{endpoint}/complete :\n"
         '{"project":{"name":"...","objective":"...","success_metrics":{"goal":"..."},'
         '"target_date":null,"context":"..."},'
-        '"roster":[{"title":"Project Leader","seats":1,"is_leader":true},'
-        '{"title":"Frontend","seats":1,"is_leader":false}]}\n'
-        "The roster MUST have exactly one leader (is_leader=true) plus at least one worker.\n"
+        '"roster":[{"title":"Frontend","seats":1},{"title":"Backend","seats":1}]}\n'
+        "The roster lists WORKER roles only — the Project Leader is added for you; do NOT set "
+        "is_leader.\n"
     )
 
 
@@ -114,9 +115,10 @@ def build_onboarding_answer_prompt(
     endpoint = f"{base_url}/agent/onboarding/{session_id}"
     lines = [
         "ARMARIUS · PROJECT ONBOARDING (continued)\n",
-        "FIELD PLAN (ask in order, one per turn): objective → name → roster → success_metrics "
-        "→ target_date → context. After the last is answered, POST the draft. Do NOT drift into "
-        "implementation detail (features, UI, tech stack).",
+        "FIELD PLAN (ask in order, one per turn): objective → name → roster (worker roles — "
+        "the Project Leader is automatic) → success_metrics → target_date → context. After the "
+        "last is answered, POST the draft. Do NOT drift into implementation detail (features, "
+        "UI, tech stack).",
     ]
     if history:
         lines.append("")
@@ -150,10 +152,10 @@ def build_onboarding_answer_prompt(
     lines.append(
         '{"project":{"name":"...","objective":"...","success_metrics":{"goal":"..."},'
         '"target_date":null,"context":"..."},'
-        '"roster":[{"title":"Project Leader","seats":1,"is_leader":true},'
-        '{"title":"Frontend","seats":1,"is_leader":false}]}'
+        '"roster":[{"title":"Frontend","seats":1},{"title":"Backend","seats":1}]}'
     )
     lines.append(
-        "The roster MUST have exactly one leader (is_leader=true) plus at least one worker."
+        "The roster lists WORKER roles only — the Project Leader is added for you; do NOT set "
+        "is_leader."
     )
     return "\n".join(lines)
