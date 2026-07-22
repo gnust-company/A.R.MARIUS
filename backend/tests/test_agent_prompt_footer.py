@@ -27,8 +27,8 @@ def _skill() -> Skill:
 
 
 def test_footer_is_a_soft_token_free_hint():
-    footer = agent_prompt_footer("~/.armarius/acme_marin.json")
-    assert "~/.armarius/acme_marin.json" in footer
+    footer = agent_prompt_footer("$HOME/.armarius/acme_marin.json")
+    assert "$HOME/.armarius/acme_marin.json" in footer
     # Leads with a separator so it reads as an appended footer, not inline body.
     assert footer.startswith("\n\n---\n")
     # Token-free by design: it points at the file, never re-embeds the secret.
@@ -45,7 +45,7 @@ def test_footer_is_a_soft_token_free_hint():
 
 
 def test_footer_falls_back_to_a_default_location():
-    assert "~/.armarius/<workspace>_<agent>.json" in agent_prompt_footer()
+    assert "$HOME/.armarius/<workspace>_<agent>.json" in agent_prompt_footer()
 
 
 def test_skill_install_prompt_carries_token_location():
