@@ -127,6 +127,40 @@ def test_explicit_credential_file_wins_over_glob(monkeypatch, _isolate_env):
     assert cfg.token == "arm_b"
 
 
+def test_explicit_credential_file_expands_home_var(monkeypatch, tmp_path, _isolate_env):
+    """A ``$HOME/...`` value (what the #114 MCP config now shows) must resolve.
+
+    MCP hosts write the env value verbatim — no shell expansion — so the server itself
+    has to expand ``$HOME``. Point HOME at a temp dir, drop a file under it, then pass the
+    path with a literal ``$HOME`` prefix.
+    """
+    home = tmp_path / "home"
+    (home / ".armarius" / "tokens").mkdir(parents=True)
+    cred = home / ".armarius" / "tokens" / "acme_marin.json"
+    _write_cred(cred.parent, name="acme_marin.json", agent_token="arm_home")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv(
+        "ARMARIUS_CREDENTIAL_FILE", "$HOME/.armarius/tokens/acme_marin.json"
+    )
+    cfg = resolve_config(probe=False)
+    assert cfg.token == "arm_home"
+
+
+def test_explicit_credential_file_still_expands_tilde(monkeypatch, tmp_path, _isolate_env):
+    """The older ``~/...`` form keeps working alongside ``$HOME`` (no regression)."""
+    home = tmp_path / "home"
+    (home / ".armarius" / "tokens").mkdir(parents=True)
+    _write_cred(
+        home / ".armarius" / "tokens", name="acme_marin.json", agent_token="arm_tilde"
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv(
+        "ARMARIUS_CREDENTIAL_FILE", "~/.armarius/tokens/acme_marin.json"
+    )
+    cfg = resolve_config(probe=False)
+    assert cfg.token == "arm_tilde"
+
+
 @respx.mock
 def test_base_url_probes_meta_when_unset(_isolate_env):
     # No env, no file → probe /v1/meta at the default and use its public_base_url.

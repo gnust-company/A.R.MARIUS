@@ -3,7 +3,10 @@
 The backend's invite flow (``backend/armarius/application/use_cases/onboarding.py``)
 tells the agent to store its credentials at
 
-    ~/.armarius/tokens/{workspace_slug}_{agent_name.lower()}.json
+    $HOME/.armarius/tokens/{workspace_slug}_{agent_name.lower()}.json
+
+(``$HOME`` spelled out rather than ``~`` for weak runtimes, #114; ``_expand`` below
+resolves both forms)
 
 as a JSON object with six keys: ``agent_name, agent_role, agent_token, workspace,
 project, api_base_url``. This module reads that file for bootstrap and writes it back
@@ -68,7 +71,12 @@ class Credentials:
 
 
 def _expand(path: str | os.PathLike[str]) -> Path:
-    return Path(os.path.expanduser(os.fspath(path)))
+    # Expand $VARS *then* ~ / ~user. ARMARIUS_CREDENTIAL_FILE reaches us as a literal env
+    # value — MCP hosts write it verbatim into the child's environment and do NOT shell-expand
+    # it — so a config that names "$HOME/.armarius/tokens/..." (#114) would otherwise stay a
+    # relative "$HOME/..." path and never resolve. expandvars handles $HOME; expanduser still
+    # handles a "~/..." path, and an already-absolute path passes through both untouched.
+    return Path(os.path.expanduser(os.path.expandvars(os.fspath(path))))
 
 
 def load(path: str | os.PathLike[str]) -> Credentials:
