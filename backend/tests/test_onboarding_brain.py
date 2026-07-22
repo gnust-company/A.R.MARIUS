@@ -56,3 +56,18 @@ def test_answer_prompt_handles_empty_history():
     assert "Answered so far:" not in prompt
     assert "FIELD PLAN" in prompt
     assert "/agent/onboarding/s1/complete" in prompt
+
+
+def test_both_prompts_ask_each_worker_role_for_a_description():
+    """Spec 03 §3.1 wants every project role to carry a description; the draft body example must
+    model a per-worker `description` and the instruction must ask for one, on BOTH the first wake
+    and every continuation wake (#112)."""
+    guide = build_onboarding_guide_prompt(
+        base_url="http://api.test", session_id="s1", workspace_name="Studio"
+    )
+    answer = build_onboarding_answer_prompt(
+        base_url="http://api.test", session_id="s1", history=[]
+    )
+    for prompt in (guide, answer):
+        assert '"description"' in prompt          # the draft body example carries it
+        assert "one-sentence `description`" in prompt  # the instruction asks for it
