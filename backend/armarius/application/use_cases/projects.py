@@ -199,6 +199,12 @@ class ProjectService:
         if seats is not None:
             role.seats = seats
         if description is not None:
+            # Sửa role không được xoá trắng mô tả (spec 03 §3.1, #112). Chuỗi rỗng đã bị
+            # schema chặn; ở đây bắt luôn trường hợp toàn-khoảng-trắng, đồng bộ add_role.
+            if not description.strip():
+                raise project_rules.InvalidProjectPlan(
+                    "A role's description cannot be blanked out."
+                )
             role.description = description
         if skill_ids is not None:
             role.skill_ids = skill_ids

@@ -272,6 +272,42 @@ async def test_create_rejects_a_role_without_a_description() -> None:
     assert r.status_code == 422, r.text
 
 
+async def test_create_rejects_a_leader_without_a_description() -> None:
+    async with await _client() as c:
+        token, ws_id = await _register(c, "noleaddesc@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        # An empty leader description is just as invalid as a worker's (strict #112).
+        r = await c.post(
+            f"/v1/workspaces/{ws_id}/projects",
+            headers=h,
+            json=_plan(leader={"description": "", "marius_id": None}),
+        )
+    assert r.status_code == 422, r.text
+
+
+async def test_patch_role_cannot_blank_out_its_description() -> None:
+    async with await _client() as c:
+        token, ws_id = await _register(c, "patchblank@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        pid = (await _create(c, ws_id, h))["id"]
+        # Empty string is caught at the schema (422); whitespace-only at the use-case (422).
+        empty = await c.patch(
+            f"/v1/projects/{pid}/roles/backend", headers=h, json={"description": ""}
+        )
+        assert empty.status_code == 422, empty.text
+        blank = await c.patch(
+            f"/v1/projects/{pid}/roles/backend", headers=h, json={"description": "   "}
+        )
+        assert blank.status_code == 422, blank.text
+        # A real edit still goes through.
+        ok = await c.patch(
+            f"/v1/projects/{pid}/roles/backend",
+            headers=h,
+            json={"description": "Owns the API and the data model."},
+        )
+    assert ok.status_code == 200, ok.text
+
+
 async def test_delete_project_cascades_children() -> None:
     async with await _client() as c:
         token, ws_id = await _register(c, "cascade@armarius.dev")
