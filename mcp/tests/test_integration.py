@@ -58,8 +58,10 @@ async def _project_and_task(patron: httpx.AsyncClient, h: dict, ws: str) -> str:
     plan = {
         "name": "Integration",
         "description": "e2e",
-        "leader": {"responsibilities": "lead", "marius_id": None},
-        "roles": [{"title": "Backend", "seats": 1}],
+        # Every role needs a non-empty description since #115 (schema min_length=1) — an
+        # older fixture here omitted them and started 422-ing after that merged.
+        "leader": {"description": "Owns the plan.", "marius_id": None},
+        "roles": [{"title": "Backend", "seats": 1, "description": "Owns the API."}],
     }
     pid = (await patron.post(f"/v1/workspaces/{ws}/projects", headers=h, json=plan)).json()["id"]
     task = await patron.post(f"/v1/projects/{pid}/tasks", headers=h, json={"title": "Do the thing"})
