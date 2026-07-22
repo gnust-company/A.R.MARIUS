@@ -164,6 +164,12 @@ class ProjectService:
             return await uow.roles.list_by_project(project_id)
 
     async def add_role(self, project_id: UUID, spec: RoleSpec) -> Role:
+        # add_role bypasses validate_plan (it adds one role to an existing roster), so it
+        # enforces the same "every role has a description" rule itself (spec 03 §3.1, #112).
+        if not (spec.description or "").strip():
+            raise project_rules.InvalidProjectPlan(
+                f"role '{spec.title or spec.key}' needs a description of what it does."
+            )
         async with self._uow() as uow:
             if await uow.projects.get(project_id) is None:
                 raise LookupError("project not found")

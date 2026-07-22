@@ -33,7 +33,6 @@ from armarius.application.use_cases.onboarding import credential_file_for
 from armarius.application.use_cases.onboarding_brain import (
     _leader_role,
     _project_name,
-    _worker_description,
     build_onboarding_answer_prompt,
     build_onboarding_guide_prompt,
 )
@@ -123,12 +122,11 @@ def plan_from_collected(collected: dict) -> dict:
             seats=int(r.get("seats", 1)),
             is_leader=bool(r.get("is_leader", False)),
             # Spec 03 §3.1: every project role must carry a description the wake/leader-chat
-            # prompts can show. The agent is asked for one per worker; if it still omits it,
-            # fall back to a title-derived line so no role lands with an empty description.
-            # The canonical leader row already carries its own description, so the fallback
-            # only ever fires for a worker.
-            description=(r.get("description") or "").strip()
-            or _worker_description(r.get("title") or r.get("key") or ""),
+            # prompts can show. Strict (#112): the agent's complete-draft schema requires a
+            # description per worker (422 otherwise) and validate_plan rejects any empty one —
+            # so we pass it straight through, no silent fallback. The canonical leader row
+            # carries its own description.
+            description=(r.get("description") or "").strip(),
             skill_ids=list(r.get("skills") or []),
         )
         for r in spec_rows

@@ -37,8 +37,8 @@ _TERMINAL = (RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.TIMED_OUT)
 
 def _roster() -> list[RoleSpec]:
     return [
-        RoleSpec(key="leader", title="Leader", seats=1, is_leader=True),
-        RoleSpec(key="backend", title="Backend", seats=1),
+        RoleSpec(key="leader", title="Leader", seats=1, is_leader=True, description="Leads."),
+        RoleSpec(key="backend", title="Backend", seats=1, description="Owns the API."),
     ]
 
 

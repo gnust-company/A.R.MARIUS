@@ -32,8 +32,8 @@ async def _task(c: AsyncClient, ws_id: str, h: dict) -> str:
     proj = await c.post(
         f"/v1/workspaces/{ws_id}/projects",
         headers=h,
-        json={"name": "Apollo", "leader": {"marius_id": None},
-              "roles": [{"title": "Backend", "seats": 1}]},
+        json={"name": "Apollo", "leader": {"description": "Leads.", "marius_id": None},
+              "roles": [{"title": "Backend", "seats": 1, "description": "Owns the API."}]},
     )
     pid = proj.json()["id"]
     task = await c.post(

@@ -183,8 +183,8 @@ async def test_per_task_stream_frames_and_resumes() -> None:
             headers=h,
             json={
                 "name": "Apollo",
-                "leader": {"marius_id": None},
-                "roles": [{"title": "Backend", "seats": 1}],
+                "leader": {"description": "Leads.", "marius_id": None},
+                "roles": [{"title": "Backend", "seats": 1, "description": "Owns the API."}],
             },
         )
         pid = proj.json()["id"]

@@ -62,14 +62,17 @@ class ProjectOut(_Out):
 
 # ------------------------------------------------- projects + roster (contract §3)
 class LeaderIn(BaseModel):
-    description: str = ""  # mô tả vai trò Leader — vào prompt (#93)
+    # Mô tả vai trò Leader — BẮT BUỘC: vào prompt wake/leader-chat để đồng đội biết vai trò làm gì
+    # (#93, strict #112). Thiếu/rỗng ⇒ 422 rõ ràng ngay ở tầng API.
+    description: str = Field(min_length=1, max_length=2000)
     marius_id: UUID | None = None
 
 
 class RoleIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     seats: int = Field(default=1, ge=1)
-    description: str = ""
+    # BẮT BUỘC: mỗi role phải nêu nó làm gì (spec 03 §3.1). Thiếu/rỗng ⇒ 422 (#112).
+    description: str = Field(min_length=1, max_length=2000)
     skill_ids: list[str] = Field(default_factory=list)
     marius_ids: list[UUID | None] = Field(default_factory=list)  # pre-seat (len ≤ seats)
 
@@ -90,7 +93,9 @@ class CreateProjectPlanIn(BaseModel):
     target_date: datetime | None = None
     github_url: str | None = None
     context: str | None = None
-    leader: LeaderIn = Field(default_factory=LeaderIn)
+    # Leader is REQUIRED (no empty default): strict #112 means the Patron must describe the
+    # leader role too, so the plan can never carry a description-less leader.
+    leader: LeaderIn
     roles: list[RoleIn] = Field(default_factory=list)
     settings: dict | None = None
     onboarding_session_id: UUID | None = None
@@ -148,7 +153,8 @@ class ProjectDetailOut(_Out):
 class AddRoleIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     seats: int = Field(default=1, ge=1)
-    description: str = ""
+    # BẮT BUỘC: thêm role mới cũng phải nêu nó làm gì. Thiếu/rỗng ⇒ 422 (#112).
+    description: str = Field(min_length=1, max_length=2000)
     skill_ids: list[str] = Field(default_factory=list)
     is_leader: bool = False
 
@@ -583,7 +589,9 @@ class OnboardingRosterRoleIn(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     seats: int = Field(default=1, ge=1, le=20)
     is_leader: bool = False
-    description: str = ""
+    # BẮT BUỘC: quản gia phải nêu mỗi worker làm gì. Draft thiếu mô tả bất kỳ role nào ⇒ agent
+    # nhận 422 rõ ràng ngay khi POST /agent/onboarding/{s}/complete (strict #112).
+    description: str = Field(min_length=1, max_length=2000)
     skills: list[str] = Field(default_factory=list)
 
 

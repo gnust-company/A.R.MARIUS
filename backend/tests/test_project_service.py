@@ -32,8 +32,8 @@ def _seed_marius(factory: FakeUowFactory, ws: Workspace, liveness: Liveness) -> 
 
 def _valid_roster() -> list[RoleSpec]:
     return [
-        RoleSpec(key="leader", title="Leader", seats=1, is_leader=True),
-        RoleSpec(key="backend", title="Backend", seats=1),
+        RoleSpec(key="leader", title="Leader", seats=1, is_leader=True, description="Leads."),
+        RoleSpec(key="backend", title="Backend", seats=1, description="Owns the API."),
     ]
 
 
@@ -151,7 +151,9 @@ async def test_roster_crud_round_trip() -> None:
     svc = ProjectService(factory)
     project = await svc.create_project(ws.id, "Apollo", roles=_valid_roster())
 
-    added = await svc.add_role(project.id, RoleSpec(key="qa", title="QA", seats=2))
+    added = await svc.add_role(
+        project.id, RoleSpec(key="qa", title="QA", seats=2, description="Tests the work.")
+    )
     assert {r.key for r in await svc.list_roles(project.id)} == {"leader", "backend", "qa"}
 
     await svc.update_role(added.id, seats=3, title="Quality")
@@ -161,6 +163,15 @@ async def test_roster_crud_round_trip() -> None:
 
     await svc.remove_role(added.id)
     assert {r.key for r in await svc.list_roles(project.id)} == {"leader", "backend"}
+
+
+async def test_add_role_rejects_a_missing_description() -> None:
+    # add_role bypasses validate_plan, so it enforces the description rule itself (#112).
+    factory, ws = _factory_with_workspace()
+    svc = ProjectService(factory)
+    project = await svc.create_project(ws.id, "Apollo", roles=_valid_roster())
+    with pytest.raises(InvalidProjectPlan):
+        await svc.add_role(project.id, RoleSpec(key="qa", title="QA", seats=1))  # no description
 
 
 async def test_revoke_seat_is_system_only_and_idempotent_guard() -> None:

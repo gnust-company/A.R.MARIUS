@@ -43,7 +43,7 @@ def _plan(**overrides) -> dict:
         "description": "ship it",
         "objective": "Launch the platform",
         "leader": {"description": "lead", "marius_id": None},
-        "roles": [{"title": "Backend", "seats": 1}],
+        "roles": [{"title": "Backend", "seats": 1, "description": "Owns the API."}],
     }
     plan.update(overrides)
     return plan
@@ -163,7 +163,9 @@ async def test_roster_role_crud_by_key() -> None:
         pid = (await _create(c, ws_id, h))["id"]
 
         added = await c.post(
-            f"/v1/projects/{pid}/roles", headers=h, json={"title": "QA", "seats": 2}
+            f"/v1/projects/{pid}/roles",
+            headers=h,
+            json={"title": "QA", "seats": 2, "description": "Tests the work."},
         )
         assert added.status_code == 201, added.text
         assert added.json()["key"] == "qa"
@@ -235,7 +237,9 @@ async def test_add_duplicate_role_key_is_409() -> None:
         pid = (await _create(c, ws_id, h))["id"]  # roster already has key "backend"
         # A second role that slugs to the same key must be rejected, not silently duplicated.
         r = await c.post(
-            f"/v1/projects/{pid}/roles", headers=h, json={"title": "Backend", "seats": 1}
+            f"/v1/projects/{pid}/roles",
+            headers=h,
+            json={"title": "Backend", "seats": 1, "description": "Dupes the API role."},
         )
     assert r.status_code == 409, r.text
 
@@ -247,10 +251,25 @@ async def test_add_role_with_long_title_caps_key_length() -> None:
         pid = (await _create(c, ws_id, h))["id"]
         # A 200-char title (allowed by the schema) must not overflow RoleModel.key (120).
         r = await c.post(
-            f"/v1/projects/{pid}/roles", headers=h, json={"title": "Q" * 200, "seats": 1}
+            f"/v1/projects/{pid}/roles",
+            headers=h,
+            json={"title": "Q" * 200, "seats": 1, "description": "Long-title role."},
         )
     assert r.status_code == 201, r.text
     assert len(r.json()["key"]) <= 120
+
+
+async def test_create_rejects_a_role_without_a_description() -> None:
+    async with await _client() as c:
+        token, ws_id = await _register(c, "nodesc@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        # A worker role with no description → clear 422 at the API boundary (strict #112).
+        r = await c.post(
+            f"/v1/workspaces/{ws_id}/projects",
+            headers=h,
+            json=_plan(roles=[{"title": "Backend", "seats": 1}]),  # description omitted
+        )
+    assert r.status_code == 422, r.text
 
 
 async def test_delete_project_cascades_children() -> None:

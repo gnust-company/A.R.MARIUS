@@ -32,8 +32,8 @@ async def _project(c: AsyncClient, ws_id: str, h: dict) -> str:
         json={
             "name": "Apollo",
             "key": "APO",
-            "leader": {"marius_id": None},
-            "roles": [{"title": "Backend", "seats": 1}],
+            "leader": {"description": "Leads.", "marius_id": None},
+            "roles": [{"title": "Backend", "seats": 1, "description": "Owns the API."}],
         },
     )
     return proj.json()["id"]

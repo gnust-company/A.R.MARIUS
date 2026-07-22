@@ -74,8 +74,10 @@ def _completes(onboarding: OnboardingService, name: str, objective: str):
                 "target_date": None,
                 "context": None,
                 "roster": [
-                    {"key": "leader", "title": "Project Leader", "seats": 1, "is_leader": True},
-                    {"key": "frontend", "title": "Frontend", "seats": 1, "is_leader": False},
+                    {"key": "leader", "title": "Project Leader", "seats": 1, "is_leader": True,
+                     "description": "Leads."},
+                    {"key": "frontend", "title": "Frontend", "seats": 1, "is_leader": False,
+                     "description": "Builds the UI."},
                 ],
             },
         )
@@ -332,16 +334,13 @@ def test_plan_from_collected_always_injects_canonical_project_leader() -> None:
     assert {r.title for r in roles if not r.is_leader} == {"Developer"}
 
 
-def test_plan_from_collected_gives_every_role_a_description() -> None:
-    """Spec 03 §3.1 wants every project role to carry a description the wake/leader-chat prompts
-    can show. The agent's own description is kept verbatim; a worker it left blank falls back to a
-    title-derived line — so NO role (leader or worker) lands with an empty description (#112)."""
+def test_plan_from_collected_passes_role_descriptions_through_verbatim() -> None:
+    """Strict (#112): plan_from_collected does NOT invent descriptions — it passes the agent's
+    verbatim and the canonical leader keeps its own. Empty ones are rejected upstream (the
+    complete-draft schema) / downstream (validate_plan), never silently filled here."""
     plan = plan_from_collected({"draft": {"roster": [
-        {"title": "Frontend", "description": "Builds the SPA."},  # agent supplied → kept
-        {"title": "Backend"},                                     # agent omitted → fallback
+        {"title": "Frontend", "description": "Builds the SPA."},
     ]}})
-    roles = plan["roles"]
-    assert all(r.description.strip() for r in roles)  # nobody empty, leader included
-    by_title = {r.title: r.description for r in roles}
+    by_title = {r.title: r.description for r in plan["roles"]}
     assert by_title["Frontend"] == "Builds the SPA."   # verbatim passthrough
-    assert "Backend" in by_title["Backend"]            # title-derived fallback, non-empty
+    assert by_title["Project Leader"].strip()          # canonical leader carries its own

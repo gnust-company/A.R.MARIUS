@@ -47,16 +47,6 @@ def _leader_role() -> dict:
             "description": "Owns the plan and coordinates the roster.", "skills": []}
 
 
-def _worker_description(title: str) -> str:
-    """Fallback one-line role description used when the agent's draft omits it for a worker.
-
-    Spec 03 §3.1 wants EVERY project role to carry a description so the wake / leader-chat
-    prompts can show teammates what each role does. The guide asks the agent for one per worker,
-    but a weak model may skip it — this keeps ``Role.description`` from landing empty."""
-    t = (title or "").strip() or "the assigned"
-    return f"Handles {t} work on this project."
-
-
 def is_free_text_option(label: str) -> bool:
     """An option whose label invites a typed answer (mirrors the guide's free-text escape)."""
     return bool(re.search(r"i'?ll type|type it|type my|other|custom|free\s*text", label, re.I))
@@ -108,8 +98,9 @@ def build_onboarding_guide_prompt(*, base_url: str, session_id: str, workspace_n
         '"roster":[{"title":"Frontend","description":"Builds the user-facing UI.","seats":1},'
         '{"title":"Backend","description":"Owns the API and data layer.","seats":1}]}\n'
         "The roster lists WORKER roles only — the Project Leader is added for you; do NOT set "
-        "is_leader. Give EACH worker role a one-sentence `description` of what it does, so "
-        "teammates know its remit.\n"
+        "is_leader. Give EACH worker role a one-sentence `description` of what it does — this is "
+        "REQUIRED: a draft with any role missing a description is rejected (HTTP 422), so fill "
+        "every one before you POST.\n"
     )
 
 
@@ -169,6 +160,7 @@ def build_onboarding_answer_prompt(
     )
     lines.append(
         "The roster lists WORKER roles only — the Project Leader is added for you; do NOT set "
-        "is_leader. Give EACH worker role a one-sentence `description` of what it does."
+        "is_leader. Give EACH worker role a one-sentence `description` of what it does — this is "
+        "REQUIRED: a draft with any role missing a description is rejected (HTTP 422)."
     )
     return "\n".join(lines)
