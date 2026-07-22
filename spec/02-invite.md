@@ -69,9 +69,10 @@ run vốn đã tới nơi.
 `build_invite_prompt` (`application/use_cases/onboarding.py`). Đây là bước **kết nối một lần**, cố ý
 **không** có task, không có gì phải nhớ về sau — việc thật đến ở một phiên wake riêng mang đủ ngữ cảnh.
 
-- **STEP 1 · Lưu thông tin đăng nhập** — agent tạo file `~/.armarius/{slug-workspace}_{ten-agent}.json`
+- **STEP 1 · Lưu thông tin đăng nhập** — agent tạo file `$HOME/.armarius/{slug-workspace}_{ten-agent}.json`
   (đường dẫn từ `credential_file_for`, quyền 0600), chứa `agent_token` + `api_base_url`. Kỹ năng của agent
-  đọc token từ file này. Một agent nhiều workspace ⇒ mỗi workspace một file.
+  đọc token từ file này. Một agent nhiều workspace ⇒ mỗi workspace một file. Viết `$HOME` (không phải `~`)
+  cho tường minh — runtime yếu hay nhầm khi phải tự giãn dấu ngã (#114).
 - **STEP 2 · Xác nhận đang online** — `GET /agent/me` với Bearer token. `200` kèm hồ sơ + danh bạ đồng đội
   = đã kết nối; `401` = token sai.
 - **STEP 3 · Cài kỹ năng** — với mỗi skill được gán: `GET /agent/skills/{slug}` (một cuộc gọi JSON có xác

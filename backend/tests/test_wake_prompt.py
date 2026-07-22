@@ -32,14 +32,14 @@ def test_prompt_names_workspace_project_and_credential_file():
         _ctx(
             workspace_name="Acme Web Platform",
             project_name="Settings Redesign",
-            credential_file="~/.armarius/acme-web-platform_alice.json",
+            credential_file="$HOME/.armarius/acme-web-platform_alice.json",
         )
     )
     assert "## Where you are" in prompt
     assert "Acme Web Platform" in prompt
     assert "Settings Redesign" in prompt
     # The soft credential HINT names the exact file and nudges reading once + reusing (#108).
-    assert "~/.armarius/acme-web-platform_alice.json" in prompt
+    assert "$HOME/.armarius/acme-web-platform_alice.json" in prompt
     assert "ARMARIUS HINT" in prompt
     assert "cat" in prompt
     # Orientation still leads the prompt (workspace/project before the task brief).
@@ -55,7 +55,7 @@ def test_prompt_without_workspace_context_omits_the_orientation_but_never_the_fo
     # The footer is UNCONDITIONAL: even with no workspace context, a task-wake must still
     # tell the agent where its token lives — falling back to the default location (#80).
     assert "ARMARIUS HINT" in prompt
-    assert "~/.armarius/<workspace>_<agent>.json" in prompt
+    assert "$HOME/.armarius/<workspace>_<agent>.json" in prompt
 
 
 def test_header_states_the_agents_own_project_role_and_description():

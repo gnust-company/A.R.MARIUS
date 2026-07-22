@@ -15,7 +15,7 @@ The task-wake prompt appends this same footer too (see ``wake_prompt``), after i
 
 from __future__ import annotations
 
-_DEFAULT_LOCATION = "~/.armarius/<workspace>_<agent>.json"
+_DEFAULT_LOCATION = "$HOME/.armarius/<workspace>_<agent>.json"
 
 
 def agent_prompt_footer(credential_file: str | None = None) -> str:
