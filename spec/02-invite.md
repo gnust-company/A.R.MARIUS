@@ -138,6 +138,10 @@ phải chuỗi vai trò).
   caller gửi worker). Nếu agent yếu đặt nhầm `is_leader=true` hoặc title "Project Leader" trên một role,
   server **bỏ role đó** rồi inject PL canonical, nên `validate_plan` luôn thấy đúng một leader là PL —
   không bao giờ ra project kiểu "Business Analyst làm leader" như trước (#110).
+- **Mỗi worker có mô tả vai trò.** Prompt dặn agent viết **một câu mô tả** cho mỗi role worker (body bản nháp
+  mẫu đã kèm trường `description`). Nếu agent yếu vẫn bỏ trống, `plan_from_collected` **fallback** một câu suy
+  từ title (`_worker_description`) — nên **không role nào** (leader lẫn worker) lọt vào roster với mô tả rỗng,
+  đúng yêu cầu [03-roster-wake.md](03-roster-wake.md) §3.1 (prompt wake/leader-chat cần mô tả vai trò để hiện) (#112).
 
 ---
 
@@ -183,3 +187,6 @@ gửi độc lập về sau. Điểm cuối: `POST /v1/workspaces/{ws}/mariuses/
 12. `agent_prompt_footer` là **gợi ý nhẹ, trung lập runtime**: nêu `{location}`, dặn đọc khi chưa có token,
     dùng lại, dùng được `cat`; không lệnh đọc mỗi bước, không nhúng token, không đặc thù runtime (không nhắc
     "File unchanged"/dedup của Hermes).
+13. Roster do onboarding tạo: **mọi role có mô tả khác rỗng** — mô tả agent gửi được giữ nguyên, worker bị bỏ
+    trống được fallback một câu suy từ title, leader canonical giữ mô tả sẵn — nên prompt wake/leader-chat luôn
+    có mô tả vai trò để hiện (#112).
