@@ -12,7 +12,10 @@
 Một dự án sinh ra cùng roster của nó, và roster **phải**:
 
 - có **đúng một** role Leader (`is_leader = True`), và role Leader **phải** đúng **1 ghế**;
-- có **ít nhất một** role thợ (không-Leader) với `seats ≥ 1`.
+- có **ít nhất một** role thợ (không-Leader) với `seats ≥ 1`;
+- **mọi** role (leader lẫn thợ) phải có `description` **khác rỗng** — để prompt wake/leader-chat hiện được
+  vai trò của mỗi agent + đồng đội (xem §3.1). Ép ở cả tầng API (schema `min_length=1`) lẫn tầng miền
+  (`validate_plan`, kiểm sau thành phần leader/worker; `add_role` tự guard) (#112).
 
 Vi phạm ⇒ `InvalidProjectPlan`. Dự án khởi tạo ở trạng thái `setup`.
 
@@ -135,7 +138,8 @@ rò rỉ agent của team khác vào ngữ cảnh một dự án, phá nguyên t
 
 ## 4. Tiêu chí nghiệm thu
 
-1. Tạo dự án vi phạm luật roster (không có Leader / Leader nhiều ghế / thiếu thợ) ⇒ `InvalidProjectPlan`.
+1. Tạo dự án vi phạm luật roster (không có Leader / Leader nhiều ghế / thiếu thợ / **role thiếu mô tả**) ⇒
+   `InvalidProjectPlan` (→ 422). — kiểm bởi `test_project_rules.py`, `test_project_service.py`.
 2. Cấp/thu ghế bởi người-không-hệ-thống ⇒ `SystemOnlyOperation`.
 3. Dự án `active` khi và chỉ khi mọi ghế đã cấp và mọi agent ngồi ghế ONLINE; không lùi về `setup`.
 4. Wake luôn có `task_id`; wake trùng cặp `(marius, task)` bị gộp thành `COALESCED`.
