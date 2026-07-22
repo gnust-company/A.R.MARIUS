@@ -162,7 +162,9 @@ class AddRoleIn(BaseModel):
 class UpdateRoleIn(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     seats: int | None = Field(default=None, ge=1)
-    description: str | None = None
+    # None ⇒ giữ nguyên; nhưng nếu SỬA thì không được về rỗng — mọi role phải có mô tả
+    # (spec 03 §3.1). Chặn chuỗi rỗng ngay ở schema (422); toàn-khoảng-trắng chặn ở use-case.
+    description: str | None = Field(default=None, min_length=1, max_length=2000)
     skill_ids: list[str] | None = None
 
 

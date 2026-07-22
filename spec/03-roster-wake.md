@@ -15,7 +15,9 @@ Một dự án sinh ra cùng roster của nó, và roster **phải**:
 - có **ít nhất một** role thợ (không-Leader) với `seats ≥ 1`;
 - **mọi** role (leader lẫn thợ) phải có `description` **khác rỗng** — để prompt wake/leader-chat hiện được
   vai trò của mỗi agent + đồng đội (xem §3.1). Ép ở cả tầng API (schema `min_length=1`) lẫn tầng miền
-  (`validate_plan`, kiểm sau thành phần leader/worker; `add_role` tự guard) (#112).
+  (`validate_plan`, kiểm sau thành phần leader/worker; `add_role` tự guard) (#112). Luật này giữ **suốt
+  vòng đời** roster: sửa role về sau (`update_role`/`PATCH .../roles/{key}`) **không** được xoá trắng mô tả —
+  chuỗi rỗng bị schema chặn, toàn-khoảng-trắng bị use-case chặn, đều ra 422.
 
 Vi phạm ⇒ `InvalidProjectPlan`. Dự án khởi tạo ở trạng thái `setup`.
 
