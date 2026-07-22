@@ -130,6 +130,8 @@ export const vi = {
       noWorkerRoles: 'Thêm ít nhất một vai trò cộng sự',
       workerRoleNoSeats: 'Tất cả vai trò phải có ít nhất 1 ghế',
       workerRoleNoTitle: 'Tất cả vai trò phải có tên',
+      workerRoleNoDescription: 'Tất cả vai trò phải có mô tả',
+      noLeaderDescription: 'Hãy mô tả Leader phụ trách những gì',
     },
     review: {
       projectSummary: 'Tóm tắt Dự án',
