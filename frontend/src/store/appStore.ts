@@ -398,7 +398,7 @@ interface AppStoreState {
     workspaceId?: string
     leaderId?: string
     leaderDescription?: string
-    seats?: Array<{ roleKey: string; roleLabel: string; mariusId: string | null; skillsRequired: string[] }>
+    seats?: Array<{ roleKey: string; roleLabel: string; mariusId: string | null; skillsRequired: string[]; description: string }>
   }) => Promise<Project>
   createTask: (task: Partial<Task> & { title: string; status: TaskStatus; priority: Priority; projectId: string }) => Promise<Task>
   deleteProject: (projectId: string) => Promise<void>
@@ -779,9 +779,10 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     // Reconstruct role specs from the flat seat list the wizard emits (one entry per
     // seat; group worker seats by their display title → {title, seats, skill_ids}).
     const workerSeats = (input.seats ?? []).filter((s) => s.roleKey !== 'leader')
-    const roleMap = new Map<string, { title: string; seats: number; skill_ids: string[] }>()
+    const roleMap = new Map<string, { title: string; seats: number; skill_ids: string[]; description: string }>()
     for (const s of workerSeats) {
-      const entry = roleMap.get(s.roleLabel) ?? { title: s.roleLabel, seats: 0, skill_ids: s.skillsRequired ?? [] }
+      const entry = roleMap.get(s.roleLabel)
+        ?? { title: s.roleLabel, seats: 0, skill_ids: s.skillsRequired ?? [], description: s.description }
       entry.seats += 1
       roleMap.set(s.roleLabel, entry)
     }
@@ -791,7 +792,8 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       description: input.description,
       objective: input.objective,
       leader: { marius_id: input.leaderId || undefined, description: input.leaderDescription?.trim() || '' },
-      roles: [...roleMap.values()].map((r) => ({ title: r.title, seats: r.seats, skill_ids: r.skill_ids })),
+      // description is REQUIRED by the API (strict #112) — every worker role carries its own.
+      roles: [...roleMap.values()].map((r) => ({ title: r.title, seats: r.seats, description: r.description, skill_ids: r.skill_ids })),
     }
     const dto = await api.createProject(workspaceId, body)
     const project = projectDetailToVM(dto)

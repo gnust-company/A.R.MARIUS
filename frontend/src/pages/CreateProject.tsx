@@ -167,16 +167,25 @@ export default function CreateProject() {
       newErrors.roster = t('createProject.validation.noLeader');
     }
 
+    // Leader role description is REQUIRED (strict #112) — it reaches the Leader's prompt.
+    if (!formData.leaderDescription.trim()) {
+      newErrors.leaderDescription = t('createProject.validation.noLeaderDescription');
+    }
+
     if (formData.workerRoles.length === 0) {
       newErrors.workerRoles = t('createProject.validation.noWorkerRoles');
     } else {
       const invalidSeats = formData.workerRoles.some((r) => r.seats < 1);
       const invalidTitles = formData.workerRoles.some((r) => !r.title.trim());
+      const invalidDescriptions = formData.workerRoles.some((r) => !r.description.trim());
       if (invalidSeats) {
         newErrors.workerRoles = t('createProject.validation.workerRoleNoSeats');
       }
       if (invalidTitles) {
         newErrors.workerRoles = t('createProject.validation.workerRoleNoTitle');
+      }
+      if (invalidDescriptions) {
+        newErrors.workerRoles = t('createProject.validation.workerRoleNoDescription');
       }
     }
 
@@ -186,10 +195,13 @@ export default function CreateProject() {
 
   const isRosterValid = useMemo(() => {
     const hasLeaderOrLater = formData.assignLeaderLater || !!formData.leaderId;
+    const hasLeaderDescription = formData.leaderDescription.trim().length > 0;
     const hasWorkerRoles = formData.workerRoles.length > 0;
     const allValidSeats = formData.workerRoles.every((r) => r.seats >= 1);
     const allValidTitles = formData.workerRoles.every((r) => r.title.trim().length > 0);
-    return hasLeaderOrLater && hasWorkerRoles && allValidSeats && allValidTitles;
+    const allValidDescriptions = formData.workerRoles.every((r) => r.description.trim().length > 0);
+    return hasLeaderOrLater && hasLeaderDescription && hasWorkerRoles
+      && allValidSeats && allValidTitles && allValidDescriptions;
   }, [formData]);
 
   // ─── Navigation ────────────────────────────────────────────────────────────
@@ -246,6 +258,7 @@ export default function CreateProject() {
           roleLabel: role.title,
           mariusId: null,
           skillsRequired: role.skills,
+          description: role.description.trim(),
         });
       }
     });

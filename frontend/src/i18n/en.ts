@@ -130,6 +130,8 @@ export const en = {
       noWorkerRoles: 'Add at least one worker role',
       workerRoleNoSeats: 'All worker roles must have at least 1 seat',
       workerRoleNoTitle: 'All worker roles must have a title',
+      workerRoleNoDescription: 'All worker roles must have a description',
+      noLeaderDescription: 'Describe what the Leader is responsible for',
     },
     review: {
       projectSummary: 'Project Summary',
