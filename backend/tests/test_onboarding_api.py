@@ -87,8 +87,10 @@ def _complete(container, name: str, objective: str):
             {"name": name, "objective": objective, "success_metrics": None,
              "target_date": None, "context": None,
              "roster": [
-                 {"key": "leader", "title": "Project Leader", "seats": 1, "is_leader": True},
-                 {"key": "frontend", "title": "Frontend", "seats": 1, "is_leader": False},
+                 {"key": "leader", "title": "Project Leader", "seats": 1, "is_leader": True,
+                  "description": "Leads."},
+                 {"key": "frontend", "title": "Frontend", "seats": 1, "is_leader": False,
+                  "description": "Builds the UI."},
              ]},
         )
 

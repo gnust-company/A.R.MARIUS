@@ -35,8 +35,8 @@ def _services(uow_factory):
 
 def _roster() -> list[RoleSpec]:
     return [
-        RoleSpec(key="leader", title="Leader", seats=1, is_leader=True),
-        RoleSpec(key="worker", title="Worker", seats=1),
+        RoleSpec(key="leader", title="Leader", seats=1, is_leader=True, description="Leads."),
+        RoleSpec(key="worker", title="Worker", seats=1, description="Works."),
     ]
 
 

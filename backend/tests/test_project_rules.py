@@ -19,11 +19,12 @@ from armarius.domain.services.project_rules import (
 
 
 def _leader() -> Role:
-    return Role(key="leader", title="Leader", seats=1, is_leader=True)
+    return Role(key="leader", title="Leader", seats=1, is_leader=True,
+                description="Leads the project.")
 
 
 def _worker(key: str = "backend", seats: int = 1) -> Role:
-    return Role(key=key, title=key.title(), seats=seats)
+    return Role(key=key, title=key.title(), seats=seats, description="Does the work.")
 
 
 # ── validate_plan ────────────────────────────────────────────────────────────
@@ -49,6 +50,17 @@ def test_leader_must_have_one_seat() -> None:
 def test_plan_needs_a_worker() -> None:
     with pytest.raises(InvalidProjectPlan):
         validate_plan([_leader()])
+
+
+def test_plan_needs_a_description_on_every_role() -> None:
+    # Composition is valid, but a role has no (or blank) description → rejected (#112).
+    with pytest.raises(InvalidProjectPlan):
+        validate_plan([_leader(), Role(key="qa", title="QA", seats=1, description="")])
+    with pytest.raises(InvalidProjectPlan):
+        validate_plan([  # whitespace-only counts as missing
+            Role(key="leader", title="Leader", seats=1, is_leader=True, description="  "),
+            _worker(),
+        ])
 
 
 # ── activation rule ──────────────────────────────────────────────────────────

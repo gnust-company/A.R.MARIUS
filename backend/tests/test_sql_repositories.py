@@ -40,8 +40,9 @@ async def _seed_marius(factory, ws_id, liveness: Liveness) -> Marius:
 
 def _valid_roster() -> list[RoleSpec]:
     return [
-        RoleSpec(key="leader", title="Leader", seats=1, is_leader=True),
-        RoleSpec(key="backend", title="Backend", seats=1, skill_ids=[str(uuid4())]),
+        RoleSpec(key="leader", title="Leader", seats=1, is_leader=True, description="Leads."),
+        RoleSpec(key="backend", title="Backend", seats=1, description="Owns the API.",
+                 skill_ids=[str(uuid4())]),
     ]
 
 

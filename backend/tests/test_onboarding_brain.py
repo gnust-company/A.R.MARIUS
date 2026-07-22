@@ -69,5 +69,6 @@ def test_both_prompts_ask_each_worker_role_for_a_description():
         base_url="http://api.test", session_id="s1", history=[]
     )
     for prompt in (guide, answer):
-        assert '"description"' in prompt          # the draft body example carries it
+        assert '"description"' in prompt               # the draft body example carries it
         assert "one-sentence `description`" in prompt  # the instruction asks for it
+        assert "REQUIRED" in prompt                    # ...and says it's mandatory (strict #112)

@@ -24,10 +24,14 @@ class InvalidProjectPlan(Exception):
 
 
 def validate_plan(roles: Iterable[Role]) -> None:
-    """Enforce the create-time roster rule (LLD §2.3, §4).
+    """Enforce the create-time roster rule (LLD §2.3, §4; spec 03 §1.1, §3.1).
 
-    Exactly one leader role, the leader has `seats == 1`, and there is at least one
-    non-leader role with `seats >= 1`.
+    Exactly one leader role, the leader has `seats == 1`, there is at least one non-leader
+    role with `seats >= 1`, AND **every** role carries a non-empty description (so the wake /
+    leader-chat prompts can tell each agent what its role — and its teammates' roles — do).
+
+    Composition is checked first so a plan that is invalid for a stronger reason (no leader,
+    wrong seat count) fails on that, not on a missing description.
     """
     roles = list(roles)
     leaders = [r for r in roles if r.is_leader]
@@ -40,6 +44,12 @@ def validate_plan(roles: Iterable[Role]) -> None:
     workers = [r for r in roles if not r.is_leader and r.seats >= 1]
     if not workers:
         raise InvalidProjectPlan("A project needs at least one worker role with a seat.")
+    undescribed = [r for r in roles if not (r.description or "").strip()]
+    if undescribed:
+        titles = ", ".join(r.title or r.key for r in undescribed)
+        raise InvalidProjectPlan(
+            f"Every role needs a description of what it does — missing for: {titles}."
+        )
 
 
 def _active_grants(grants: Iterable[SeatGrant]) -> list[SeatGrant]:
