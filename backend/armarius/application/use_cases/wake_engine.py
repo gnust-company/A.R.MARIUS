@@ -44,9 +44,6 @@ from armarius.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Event types we persist to the durable trace. Per-token deltas stream live only.
-_DURABLE_EVENT = lambda t: t != "assistant.delta"  # noqa: E731
-
 _BLOCK_REASON_STATUSES = {TaskStatus.BLOCKED, TaskStatus.BACKLOG}
 
 
@@ -193,30 +190,66 @@ class WakeEngine:
             await self._tee_task(task.id, "run.queued", {"prompt_preview": prompt[:400]})
 
             seq = 0
+            assistant_parts: list[str] = []
 
-            async def on_event(event_type: str, payload: dict) -> None:
+            async def _emit(event_type: str, payload: dict) -> None:
+                """Persist a durable event, stream it on the run bus, and tee it to the Room.
+
+                The Room-facing tee carries the event's own ``(_run_id, _seq)`` so a client
+                that both backfills the durable history and replays the SSE backlog can
+                de-duplicate the overlap by identity (#113)."""
                 nonlocal seq
                 seq += 1
-                if _DURABLE_EVENT(event_type):
-                    await uow.run_events.add(
-                        RunEvent(
-                            run_id=run_id,
-                            seq=seq,
-                            type=event_type,
-                            payload=payload,
-                            created_at=utcnow(),
-                        )
+                await uow.run_events.add(
+                    RunEvent(
+                        run_id=run_id,
+                        seq=seq,
+                        type=event_type,
+                        payload=payload,
+                        created_at=utcnow(),
                     )
-                    run.last_output_at = utcnow()
-                    await uow.runs.update(run)
-                    await uow.commit()
+                )
+                run.last_output_at = utcnow()
+                await uow.runs.update(run)
+                await uow.commit()
                 await self._bus.publish(
                     run_id, {"seq": seq, "type": event_type, "payload": payload}
                 )
-                # Tee only durable lifecycle events to the Room's per-task channel; token
-                # deltas stream on the per-run trace only (else 1000 deltas flood the Room).
-                if _DURABLE_EVENT(event_type):
-                    await self._tee_task(task.id, event_type, payload)
+                await self._tee_task(
+                    task.id, event_type, {**payload, "_run_id": str(run_id), "_seq": seq}
+                )
+
+            async def _flush_assistant() -> None:
+                """Coalesce buffered assistant deltas into ONE durable ``assistant.message``.
+
+                Deltas themselves are never stored/teed (they'd flood the Room), so without
+                this the Room stays empty of the agent's actual words. Flushing before every
+                non-delta event (and at turn end) keeps the text↔tool interleaving in order."""
+                if not assistant_parts:
+                    return
+                text = "".join(assistant_parts)
+                assistant_parts.clear()
+                if text.strip():
+                    await _emit(
+                        "assistant.message",
+                        {"text": text, "marius_id": str(marius.id)},
+                    )
+
+            async def on_event(event_type: str, payload: dict) -> None:
+                nonlocal seq
+                if event_type == "assistant.delta":
+                    # Accumulate the "thinking" text; stream it on the per-run bus only (live
+                    # typing effect), never durable/teed — it is coalesced at flush time.
+                    assistant_parts.append(str(payload.get("text") or payload.get("delta") or ""))
+                    seq += 1
+                    await self._bus.publish(
+                        run_id, {"seq": seq, "type": event_type, "payload": payload}
+                    )
+                    return
+                # Any non-delta event closes the current thought: flush it first so the
+                # coalesced message lands BEFORE this event (correct interleaving).
+                await _flush_assistant()
+                await _emit(event_type, payload)
 
             adapter = self._registry.get(marius.adapter_type)
             ctx = ExecContext(
@@ -235,6 +268,10 @@ class WakeEngine:
             except Exception as exc:  # adapter/runtime failure
                 logger.exception("adapter execute failed for run %s", run_id)
                 result = ExecResult(status=RunStatus.FAILED, error=str(exc))
+
+            # Flush any trailing "thinking" the turn ended without punctuating (no tool /
+            # completed event after the last delta) so its text is not lost (#113).
+            await _flush_assistant()
 
             await self._finalise(uow, run, task, marius, session, result)
 
