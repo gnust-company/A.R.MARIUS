@@ -15,6 +15,7 @@ import {
   taskToVM,
   workspaceToVM,
 } from '@/lib/mappers'
+import { loadTaskTrace } from '@/lib/trace'
 
 /** Replace an item by id, or append it. Used to upsert hydrated entities into the store. */
 function upsertById<T extends { id: string }>(list: T[], item: T): T[] {
@@ -377,7 +378,7 @@ interface AppStoreState {
   /** Remove a blocked_by edge. */
   removeTaskDependency: (taskId: string, blocksTaskId: string) => Promise<void>
   addComment: (taskId: string, comment: Partial<TaskComment> & { authorId: string; content: string }) => Promise<void>
-  /** Simulated per-task trace SSE — append one streamed run event. */
+  /** Append one live run event to a task's trace (de-duplicated by id, #113). */
   appendTrace: (taskId: string, event: Partial<TraceEvent> & { type: TraceEvent['type']; content: string }) => void
   publishArtifact: (taskId: string, artifact: TaskArtifact) => Promise<void>
   createSkill: (input: Omit<Skill, 'id'> & { id?: string }) => Promise<Skill>
@@ -605,6 +606,8 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     }
     const updatedTasks = state.tasks.map((t) => {
       if (t.id !== taskId) return t
+      // De-dup by id: a backfilled event may also arrive on the SSE backlog replay (#113).
+      if ((t.trace || []).some((e) => e.id === full.id)) return t
       return { ...t, trace: [...(t.trace || []), full] }
     })
     set({ tasks: updatedTasks })
@@ -932,17 +935,21 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   },
 
   hydrateTask: async (taskId: string) => {
-    const [taskDto, comments, artifacts, blockers] = await Promise.all([
+    const [taskDto, comments, artifacts, blockers, trace] = await Promise.all([
       api.getTask(taskId),
       api.listComments(taskId),
       api.listArtifacts(taskId),
       api.listTaskDependencies(taskId),
+      // Backfill the whole session trace here (single writer) so it can't be clobbered by
+      // this hydrate overwriting the task object — the live SSE tail only appends after (#113).
+      loadTaskTrace(taskId).catch(() => [] as TraceEvent[]),
     ])
     const full: Task = {
       ...taskToVM(taskDto),
       comments: comments.map(commentToVM),
       artifacts: artifacts.map(artifactToVM),
       dependencies: blockers.map((b) => b.id),
+      trace,
     }
     // Ensure the project's sibling tasks are present (so the blocked-by list can resolve
     // titles + the add-dependency picker has candidates) without blanking loaded detail.

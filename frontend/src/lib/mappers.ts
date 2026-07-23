@@ -285,60 +285,92 @@ export function onboardingToVM(dto: OnboardingDTO): OnboardingSessionVM {
 
 // ── Trace event (SSE payload) ─────────────────────────────────────────────────────────────
 
+/** Normalize either the internal `{used,total,prompt,completion}` shape or the gateway's
+ *  `{input_tokens,output_tokens,total_tokens}` usage shape into the VM token counts. */
+function normalizeTokens(raw: unknown): TraceEvent['tokens'] | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const t = raw as Record<string, unknown>
+  const num = (v: unknown): number | undefined =>
+    v === undefined || v === null ? undefined : Number(v)
+  const prompt = num(t.prompt ?? t.input_tokens ?? t.input)
+  const completion = num(t.completion ?? t.output_tokens ?? t.output)
+  const total = num(t.total ?? t.total_tokens) ?? (prompt !== undefined || completion !== undefined ? (prompt ?? 0) + (completion ?? 0) : undefined)
+  const used = num(t.used) ?? total
+  if (prompt === undefined && completion === undefined && total === undefined && used === undefined) return undefined
+  return { prompt, completion, total, used }
+}
+
 /**
- * Parse a per‑task SSE `data:` JSON into a `TraceEvent` view‑model fragment.
+ * Parse a run event (live SSE `data:` JSON, or a backfilled `RunEventDTO`) into a
+ * `TraceEvent` view‑model — or `null` to DROP it.
  *
- * The backend wakes → runs → publishes events to the task topic. We only care about the
- * shapes the UI already renders: `run.delta`, `run.tool`, `run.usage`. Legacy event types
- * (`thought`, `tool_call`, etc.) are kept for back‑compat with frozen demo fixtures.
+ * Maps the real gateway/wake vocabulary (`assistant.message`, `tool.started`, `tool.completed`,
+ * `run.completed`, …) — not the guessed `assistant.tool`/`assistant.complete` names the old
+ * mapper expected, which is why tool calls and agent text never rendered (#113). Pure lifecycle
+ * events with nothing to show (`run.started`, `message.started`, `assistant.completed`,
+ * `run.queued`, `run.finished`, `tool.completed` acks) are dropped so the Room shows no empty
+ * bubbles.
+ *
+ * `meta` lets the caller pin a stable identity + timestamp: backfill passes `${run_id}:${seq}`
+ * and the durable `created_at`; live tee events carry `(_run_id,_seq)` in the payload, so both
+ * paths yield the SAME id and de-duplicate on overlap.
  */
-export function traceEventFromVM(eventData: unknown): TraceEvent | null {
+export function traceEventFromVM(
+  eventData: unknown,
+  meta?: { id?: string; timestamp?: string; taskId?: string },
+): TraceEvent | null {
   if (!eventData || typeof eventData !== 'object') return null
   const d = eventData as Record<string, unknown>
 
-  // The backend `wake_engine.py` tee sends `event_type` + `payload`.
   const type = String(d.event_type ?? d.type ?? '')
   const payload = d.payload
-
   if (!payload || typeof payload !== 'object') return null
   const p = payload as Record<string, unknown>
 
-  // Map the event type to the frontend union.
-  let vmType: TraceEvent['type'] = 'message'
-  if (type === 'assistant.delta' || type === 'run.delta') vmType = 'run.delta'
-  else if (type === 'assistant.tool' || type === 'run.tool') vmType = 'run.tool'
-  else if (type === 'assistant.usage' || type === 'run.usage') vmType = 'run.usage'
-  else if (type === 'assistant.complete' || type === 'run.complete') vmType = 'run.complete'
-  else if (type === 'assistant.error' || type === 'run.error') vmType = 'run.error'
-  else if (type === 'agent.comment') vmType = 'agent.comment'
-  else if (type === 'agent.status') vmType = 'agent.status'
-  else if (type === 'thought' || type === 'tool_call' || type === 'tool_result' || type === 'comment' || type === 'status_change')
-    vmType = type
-
-  const content = String(p.content ?? p.delta ?? p.text ?? '')
+  const content = String(p.content ?? p.text ?? p.delta ?? p.message ?? p.error ?? '')
   const agentId = p.marius_id ? String(p.marius_id) : undefined
   const model = p.model ? String(p.model) : undefined
-  const toolName = p.tool_name ? String(p.tool_name) : undefined
-  const args = p.args
-  const tokens = p.tokens
-    ? {
-        used: Number((p.tokens as Record<string, unknown>)?.used ?? 0),
-        total: Number((p.tokens as Record<string, unknown>)?.total ?? 0),
-        prompt: Number((p.tokens as Record<string, unknown>)?.prompt ?? 0),
-        completion: Number((p.tokens as Record<string, unknown>)?.completion ?? 0),
-      }
-    : undefined
+  const toolName = (p.tool_name ?? p.name ?? p.tool) ? String(p.tool_name ?? p.name ?? p.tool) : undefined
+  const rawArgs = p.args ?? p.arguments ?? p.input
+  const args = rawArgs && typeof rawArgs === 'object' ? (rawArgs as Record<string, unknown>) : undefined
+  const tokens = normalizeTokens(p.tokens ?? p.usage)
+
+  // Classify into the FE union, or leave null to decide-then-drop.
+  let vmType: TraceEvent['type'] | null = null
+  if (type === 'assistant.delta' || type === 'run.delta' || type === 'assistant.message') vmType = 'run.delta'
+  else if (type === 'assistant.tool' || type === 'run.tool' || type === 'tool.started' || type === 'tool.call' || type === 'tool_call') vmType = 'run.tool'
+  else if (type === 'tool.completed' || type === 'tool.result' || type === 'tool_result') {
+    // A completion ack with no textual result is redundant with the call bubble → drop it.
+    if (!content) return null
+    vmType = 'run.tool'
+  } else if (type === 'assistant.usage' || type === 'run.usage' || type === 'run.completed') vmType = 'run.usage'
+  else if (type === 'assistant.error' || type === 'run.error') vmType = 'run.error'
+  else if (type === 'agent.comment' || type === 'comment') vmType = 'agent.comment'
+  else if (type === 'agent.status' || type === 'status_change') vmType = 'agent.status'
+  else if (type === 'thought') vmType = 'thought'
+
+  // Kill empty bubbles: an event with nothing renderable is dropped whatever its type
+  // (this is what silences the lifecycle noise: run.started/queued/finished, …).
+  const hasBody = Boolean(content || toolName || tokens || args)
+  if (!hasBody) return null
+  if (vmType === null) vmType = 'message' // renderable but unknown → generic bubble
+
+  // Stable identity: live tee payload carries (_run_id,_seq); else use meta.id; else random.
+  const runId = p._run_id ? String(p._run_id) : undefined
+  const seq = typeof p._seq === 'number' ? p._seq : undefined
+  const id = meta?.id
+    ?? (runId && seq !== undefined ? `${runId}:${seq}` : `tr_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`)
 
   return {
-    id: `tr_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-    taskId: '', // set by the caller from the subscription context
+    id,
+    taskId: meta?.taskId ?? '',
     type: vmType,
     agentId,
     content,
-    timestamp: new Date().toISOString(),
+    timestamp: meta?.timestamp ?? new Date().toISOString(),
     model,
     toolName,
-    args: args as Record<string, unknown> | undefined,
+    args,
     tokens,
   }
 }
