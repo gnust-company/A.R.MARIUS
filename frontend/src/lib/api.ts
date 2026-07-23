@@ -500,6 +500,11 @@ export async function listMariusRuns(workspaceId: string, mariusId: string): Pro
   return get<RunDTO[]>(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}/runs`)
 }
 
+// All runs of a task (every wake/turn), newest history for the Room's trace backfill (#113).
+export async function listTaskRuns(taskId: string): Promise<RunDTO[]> {
+  return get<RunDTO[]>(`/v1/tasks/${taskId}/runs`)
+}
+
 // The durable per-run trace (assistant deltas, tool calls, …) — reused from the §8.1 trace API.
 export async function listRunEvents(runId: string): Promise<RunEventDTO[]> {
   return get<RunEventDTO[]>(`/v1/runs/${runId}/events`)
