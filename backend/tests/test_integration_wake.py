@@ -205,3 +205,29 @@ async def test_run_trace_tees_to_per_task_sse_channel(uow_factory) -> None:
     types = {e.type for e in traced}
     assert "run.queued" in types
     assert "run.finished" in types
+
+    # #113: the agent's streamed "thinking" (assistant.delta) is coalesced into durable
+    # assistant.message events and teed — the Room shows the agent's actual words, not just
+    # lifecycle. Echo emits two delta groups (before/after the tool call) → two messages.
+    msg_events = [e for e in traced if e.type == "assistant.message"]
+    assert len(msg_events) == 2, [e.type for e in traced]
+    joined = " | ".join(str(e.data.get("text", "")) for e in msg_events)
+    assert "plan my work" in joined and "recording progress" in joined
+    # The tool call is teed with its name (and args), not an empty bubble.
+    tool_events = [e for e in traced if e.type == "tool.started"]
+    assert tool_events and tool_events[0].data.get("tool_name") == "read_directory"
+
+    # #113: every teed event carries (_run_id, _seq) matching its own RunEvent.seq, so a
+    # client that backfills the durable history AND replays the SSE backlog de-dups the overlap.
+    run = (await runs.list_by_task(task.id))[0]
+    for e in msg_events + tool_events:
+        assert e.data.get("_run_id") == str(run.id)
+        assert isinstance(e.data.get("_seq"), int)
+
+    # The same assistant.message events are in the durable trace (the backfill source).
+    durable = await runs.events(run.id)
+    durable_msgs = [ev for ev in durable if ev.type == "assistant.message"]
+    assert len(durable_msgs) == 2
+    # Durable payload stays clean — the (_run_id,_seq) envelope is a tee-only concern.
+    assert "_run_id" not in durable_msgs[0].payload
+    assert durable_msgs[0].seq == msg_events[0].data.get("_seq")
