@@ -1,50 +1,76 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report
+- Phiên bản: (chưa có) → 1.0.0
+- Loại bump: MAJOR — phê chuẩn lần đầu (first ratification).
+- Nguyên tắc thêm: I. Đa tenant nghiêm ngặt; II. Cổng Done; III. Trung lập adapter;
+  IV. Đẩy không hỏi-vòng; V. Góc nhìn dự án; VI. Tiếng Việt cho người dùng.
+- Phần thêm: "Định vị sản phẩm", "Governance".
+- Nguồn chắt: ý định gốc (MY_DEMAND.md, PROJECT_DESCRIPTION.md) và 00-intent (đã dỡ sang _archive/spec-v1/).
+- TODO: không có.
+-->
+
+# Armarius Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Đa tenant nghiêm ngặt
+Mọi đọc/ghi dữ liệu PHẢI giới hạn trong workspace của người gọi. Truy cập chéo workspace PHẢI trả về
+"không tìm thấy" (404) — không được rò rỉ sự tồn tại của tài nguyên thuộc workspace khác.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+Lý do: nhiều team dùng chung cùng hạ tầng; lỗi tách tenant là lỗi bảo mật nghiêm trọng, không phải lỗi
+chức năng.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### II. Cổng Done — không hiện vật thì chưa xong
+Một task KHÔNG ĐƯỢC rời trạng thái "đang làm" nếu chưa đẩy hiện vật đầu ra (artifact) vào kho dùng chung.
+Cấm coi task "xong" khi kết quả chỉ nằm ở máy cục bộ của agent.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+Lý do: chặn căn bệnh "agent làm xong nhưng để kết quả ở máy nó" — lỗi chí mạng của các hệ đa-agent.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### III. Trung lập adapter
+Tầng nghiệp vụ KHÔNG ĐƯỢC nhánh mã theo từng loại agent. Mọi khác biệt giữa các runtime (Hermes, OpenClaw,
+Claude local…) PHẢI nằm sau một hợp đồng adapter chung; hệ thống đối xử mọi agent như nhau.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+Lý do: không bó buộc một nhà cung cấp; thêm loại agent mới không được đụng tới tầng nghiệp vụ.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### IV. Đẩy, không hỏi-vòng
+Trạng thái và sự kiện PHẢI được đẩy về trình duyệt qua kênh sự kiện. Giao diện KHÔNG ĐƯỢC hỏi-vòng (poll)
+để biết trạng thái.
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+Lý do: hỏi-vòng tốn tài nguyên và chậm; đẩy cho khả năng theo dõi theo thời gian thực.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### V. Góc nhìn dự án
+Khi làm việc trong một dự án, ngữ cảnh của agent (vai trò, đồng đội, wake, prompt) PHẢI theo vai trò trong
+dự án đó — KHÔNG ĐƯỢC dùng thuộc tính ở tầng workspace.
+
+Lý do: cùng một agent có thể giữ vai khác nhau giữa các dự án; ngữ cảnh phải bám đúng dự án đang làm.
+
+### VI. Tiếng Việt cho người dùng
+Mọi chuỗi hiển thị với người dùng PHẢI đi qua cơ chế i18n (Việt/Anh). Tiếng Việt hiển thị PHẢI đủ dấu —
+tiếng Việt không dấu là "rác", không được đưa ra giao diện.
+
+Lý do: người dùng cuối là người Việt; chất lượng ngôn ngữ là phần thấy được của chất lượng sản phẩm.
+
+## Định vị sản phẩm
+
+Armarius là nơi làm việc dùng chung: nhiều người ở nhiều team mời agent của mình vào, agent tự nhận việc,
+hỏi/đáp các bên, cộng tác ngang hàng, đẩy kết quả vào kho chung — còn con người chỉ giám sát và phê duyệt.
+Khẩu hiệu: **"Bạn giao việc. Chúng cộng tác. Bạn theo dõi."**
+
+Armarius KHÔNG phải công cụ vận hành cả công ty: không có CEO/Goal/sơ đồ tổ chức, chỉ có **Dự án** và bộ
+vai trò. Armarius tự sở hữu vòng đánh thức (wake) và cơ chế sống/chết (liveness) — không phụ thuộc heartbeat
+của runtime ngoài.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+- Hiến pháp này là tầng **bất biến**: mọi đặc tả chi tiết, mọi quyết định kỹ thuật PHẢI tuân. Một tính năng
+  đi ngược nguyên tắc ở đây thì **tính năng đó sai**, không phải nguyên tắc.
+- Chỉ sửa Hiến pháp khi định vị sản phẩm đổi. Phiên bản hoá theo ngữ nghĩa:
+  - **MAJOR**: bỏ hoặc định nghĩa lại nguyên tắc.
+  - **MINOR**: thêm nguyên tắc/phần, mở rộng hướng dẫn thực chất.
+  - **PATCH**: làm rõ chữ nghĩa, sửa lỗi chính tả, tinh chỉnh không đổi nghĩa.
+- Mọi thay đổi hành vi của hệ thống đi qua quy trình spec-kit:
+  `/speckit-specify` → `/speckit-plan` → `/speckit-tasks` → `/speckit-implement`.
+  Nguyên tắc: **đặc tả đi trước, mã theo sau và phải chứng minh khớp đặc tả.**
+- Mọi PR PHẢI xác nhận tuân Hiến pháp; thay đổi phức tạp PHẢI giải trình lý do.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-07-29 | **Last Amended**: 2026-07-29
