@@ -4,6 +4,10 @@
 # Scratch / notes
 linhtinh.md
 
+# Agent-local config (skills spec-kit, phiên làm việc, có thể chứa token)
+# Cài lại bằng: specify init --here --integration claude
+.claude/
+
 # Local dev SQLite + local artifact store (never commit runtime data)
 backend/*.db
 backend/*.db-shm
