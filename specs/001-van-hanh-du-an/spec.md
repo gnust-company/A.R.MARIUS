@@ -11,6 +11,31 @@
 
 ---
 
+## Làm rõ
+
+### Phiên 2026-07-30
+
+- Hỏi: Trưởng dự án phải quay lại xin người chủ duyệt khi thay đổi chạm tới những thứ nào? → Đáp: đúng năm
+  thứ — phạm vi, mục tiêu/Bối cảnh, chi phí, thời hạn, tiêu chí công nhận. Mọi thay đổi khác Trưởng dự án tự
+  quyết.
+- Hỏi: Đầu việc nào thì phải chờ người chủ công nhận kết quả, ngoài việc Trưởng dự án đã duyệt? → Đáp: **bỏ
+  cơ chế cờ theo từng việc**. Mặc định **mọi** đầu việc cần hai chữ ký — Trưởng dự án và người chủ đã cấp con
+  agent thực hiện việc đó vào dự án ("ai mang agent vào thì chịu trách nhiệm đầu ra của nó"). Kèm một công
+  tắc **tự động công nhận** ở cấp dự án, riêng cho từng người chủ: bật thì mọi việc cần chữ ký của người đó
+  cho công việc của agent do họ cấp coi như đã ký sẵn, kể cả các bước chuyển trạng thái đầu việc cần họ gật.
+- Hỏi: Hết một đợt việc, ai bấm nút chuyển dự án giữa *vận hành* và *bảo trì*? → Đáp: Trưởng dự án **đề
+  xuất**, người chủ **quyết**. Chuyển sang *đóng* luôn là quyết định của người chủ. Hệ quả: công tắc tự động
+  công nhận **không** thay người chủ ở ba quyết định cấp dự án — duyệt kế hoạch, duyệt thay đổi lớn, chuyển
+  giai đoạn (FR-037).
+- Hỏi: Một đầu việc điển hình mất bao lâu từ lúc giao tới lúc nộp bài? → Đáp: **vài giờ tới vài ngày**. Giữ
+  nguyên bộ ngưỡng thời gian đề xuất (nghi treo 10 phút, quét canh gác mỗi phút, nhịp điều phối 15 phút,
+  nhắc người chủ 8 giờ → 24 giờ → 72 giờ).
+- Hỏi: Sau khi người chủ đã duyệt kế hoạch, Trưởng dự án có được tự do tạo thêm đầu việc mới không? → Đáp:
+  **tự do trong khuôn kế hoạch đã duyệt**. Đầu việc nằm ngoài khuôn đó phải ở lại *nháp/đề xuất* chờ người
+  chủ gật, vì nó là một lần nới phạm vi (FR-027, nối với FR-075).
+
+---
+
 ## Kịch bản người dùng & kiểm thử *(bắt buộc)*
 
 **Tiêu chí tối thượng — mọi kịch bản dưới đây phục vụ đúng câu này:**
@@ -97,37 +122,51 @@ lúc tạo. Đi đúng đường thì đầu việc chạy trọn từ nháp t�
    chối ngay tại lúc tạo và nêu rõ vòng đó đi qua những đầu việc nào.
 9. **Cho** một đầu việc vừa chuyển sang *xong*, **khi** hệ thống xử lý hệ quả, **thì** mốc hoàn tất được ghi,
    những đầu việc chỉ còn chờ nó được mở khoá, và Trưởng dự án được đánh thức để giao tiếp.
+10. **Cho** một đầu việc nằm trong khuôn các hạng mục đã được duyệt, **khi** Trưởng dự án tạo và giao nó,
+    **thì** hệ thống cho qua, không cần người chủ gật.
+11. **Cho** một đầu việc nằm ngoài khuôn đã duyệt, **khi** Trưởng dự án cố giao nó, **thì** hệ thống giữ nó
+    ở *nháp/đề xuất* và đặt một mục chờ duyệt vào hộp thư người chủ.
 
 ---
 
-### Câu chuyện 3 — Công nhận đầu ra hai tầng qua hộp thư người chủ (Ưu tiên: P2)
+### Câu chuyện 3 — Hai chữ ký cho mọi đầu ra, kèm công tắc tự động công nhận (Ưu tiên: P2)
 
 Thợ nộp thành phẩm và tự khai "xong phần tôi". Trưởng dự án đặt thành phẩm cạnh bộ tiêu chí công nhận rồi
-chấm từng dòng. Với đầu việc thường, Trưởng dự án gật là đóng. Với đầu việc có bật cờ **cần Chủ đồng-approve**
-— các mốc lớn, các bàn giao — kết quả được đẩy vào hộp thư người chủ và chỉ đóng khi chủ gật.
+chấm từng dòng. Nhưng Trưởng dự án gật **chưa đủ**: mọi đầu việc còn cần chữ ký của **người chủ đã mang con
+agent làm việc đó vào dự án** — ai đưa agent vào thì chịu trách nhiệm cho đầu ra của nó. Người chủ nào thấy
+phiền thì bật **công tắc tự động công nhận** cho phần của mình trong dự án đó; từ lúc ấy chữ ký của họ coi
+như có sẵn và dự án chạy không dừng.
 
 **Vì sao ưu tiên này**: Đây là chốt "công nhận đầu ra" trong tiêu chí tối thượng, và là cơ chế duy nhất chống
-"xong giả". Nó xếp sau câu chuyện 2 vì cần bộ trường và vòng đời đầu việc đã đứng.
+"xong giả". Quy tắc hai chữ ký cho mọi việc là luật đơn giản, không cần ai đoán việc nào đủ lớn để phải xin;
+gánh nặng được điều tiết bằng công tắc chứ không bằng phán đoán. Nó xếp sau câu chuyện 2 vì cần bộ trường và
+vòng đời đầu việc đã đứng.
 
-**Kiểm thử độc lập**: Cho một đầu việc không bật cờ chạy tới nơi → Trưởng dự án gật là đóng, chủ không bị làm
-phiền. Bật cờ trên một đầu việc khác → sau khi Trưởng dự án tán thành, đầu việc vẫn chưa đóng, một mục xuất
-hiện trong hộp thư người chủ; chủ gật thì mới đóng. Từ chối ba lần liên tiếp → Trưởng dự án bị kéo vào soát
-lại đề bài.
+**Kiểm thử độc lập**: Trong một dự án có hai người chủ, mỗi người cấp một thợ. Cho cả hai thợ chạy tới nơi →
+đầu ra của thợ nào phải rơi vào hộp thư của đúng người đã cấp thợ đó, không lẫn sang người kia. Một người bật
+công tắc tự động công nhận → đầu ra của thợ họ cấp đóng ngay sau khi Trưởng dự án gật, nhưng vết vẫn ghi rõ
+họ đã được coi là ký; người còn lại vẫn phải gật tay.
 
 **Kịch bản chấp nhận**:
 
-1. **Cho** một đầu việc *chờ rà soát* không bật cờ, **khi** Trưởng dự án chấm đạt hết tiêu chí, **thì** đầu
-   việc chuyển *xong* ngay, không có mục nào rơi vào hộp thư người chủ.
-2. **Cho** một đầu việc *chờ rà soát* có bật cờ, **khi** Trưởng dự án tán thành, **thì** đầu việc **chưa**
-   đóng, một mục "đầu ra chờ công nhận" xuất hiện trong hộp thư người chủ kèm thành phẩm và bộ tiêu chí.
-3. **Cho** mục chờ công nhận đó, **khi** người chủ approve, **thì** đầu việc chuyển *xong* và các việc phụ
-   thuộc được mở khoá.
-4. **Cho** một lần từ chối approve kèm phản hồi, **khi** quyết định được ghi nhận, **thì** đầu việc quay về
+1. **Cho** một đầu việc *chờ rà soát*, **khi** Trưởng dự án chấm đạt hết tiêu chí, **thì** đầu việc **chưa**
+   đóng — một mục "đầu ra chờ công nhận" xuất hiện trong hộp thư của người chủ đã cấp thợ phụ trách, kèm
+   thành phẩm và bộ tiêu chí.
+2. **Cho** một dự án có hai người chủ cùng cấp thợ, **khi** thợ của người chủ A nộp bài và được Trưởng dự án
+   tán thành, **thì** mục chờ công nhận chỉ rơi vào hộp thư của A — hộp thư của B không có gì.
+3. **Cho** mục chờ công nhận đó, **khi** người chủ chịu trách nhiệm công nhận, **thì** đầu việc chuyển *xong*
+   và các việc phụ thuộc được mở khoá.
+4. **Cho** một người chủ đã bật công tắc tự động công nhận trong dự án, **khi** Trưởng dự án tán thành một
+   đầu ra của agent do người đó cấp, **thì** đầu việc đóng ngay, không mục nào rơi vào hộp thư, và vết ghi rõ
+   người đó được coi là đã ký lúc nào cho đầu việc nào.
+5. **Cho** công tắc tự động công nhận của một người chủ, **khi** Trưởng dự án hoặc một người chủ khác cố bật
+   hoặc tắt nó, **thì** hệ thống từ chối — chỉ chính người đó được đụng vào phần của mình.
+6. **Cho** một lần từ chối approve kèm phản hồi, **khi** quyết định được ghi nhận, **thì** đầu việc quay về
    *đang làm* (không phải *nháp*, không phải *huỷ*), lý do được ghi vết, việc kế tiếp đặt thành "sửa theo
    phản hồi", và **đúng người thợ cũ** được đánh thức lại.
-5. **Cho** một đầu việc đã bị từ chối ba lần, **khi** lần từ chối thứ ba được ghi nhận, **thì** hệ thống kéo
+7. **Cho** một đầu việc đã bị từ chối ba lần, **khi** lần từ chối thứ ba được ghi nhận, **thì** hệ thống kéo
    Trưởng dự án vào soát lại đề bài và bộ tiêu chí công nhận, thay vì để vòng sửa–nộp lặp vô tận.
-6. **Cho** một dự án mà mọi đầu việc của đợt đã *xong*, **khi** hệ thống xử lý, **thì** **không** có cổng
+8. **Cho** một dự án mà mọi đầu việc của đợt đã *xong*, **khi** hệ thống xử lý, **thì** **không** có cổng
    nghiệm thu cấp dự án nào bật lên; thay vào đó người chủ nhận một bản tổng kết đợt kèm các lựa chọn chuyển
    giai đoạn.
 
@@ -304,14 +343,14 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
 - **FR-013**: HỆ THỐNG PHẢI cho người chủ đúng ba lựa chọn tại cổng duyệt: *duyệt*, *yêu cầu chỉnh* (kèm góp
   ý), *hỏi lại*.
 - **FR-014**: HỆ THỐNG PHẢI cấm Trưởng dự án tự duyệt kế hoạch của chính nó và tự thay người chủ công nhận
-  các đầu ra có cờ.
+  bất kỳ đầu ra nào.
 
 #### D. Đầu việc — bộ trường
 
 - **FR-015**: Mỗi đầu việc PHẢI mang các trường: mã định danh, tiêu đề, mô tả chi tiết, trạng thái, lý do
-  trạng thái, độ ưu tiên, người phụ trách, việc phụ thuộc, đầu việc cha, định nghĩa hoàn thành, cờ *cần Chủ
-  đồng-approve*, thành phẩm, việc kế tiếp, hạn chót, người tạo, mốc tạo, mốc bắt đầu làm, mốc hoàn tất, dự án
-  chứa, nhật ký thay đổi.
+  trạng thái, độ ưu tiên, người phụ trách, người chủ chịu trách nhiệm công nhận (suy ra từ người đã cấp
+  agent phụ trách vào ghế), việc phụ thuộc, đầu việc cha, định nghĩa hoàn thành, thành phẩm, việc kế tiếp,
+  hạn chót, người tạo, mốc tạo, mốc bắt đầu làm, mốc hoàn tất, dự án chứa, nhật ký thay đổi.
 - **FR-016**: HỆ THỐNG PHẢI sinh mã định danh dạng *tiền tố tên dự án + số thứ tự* khi tạo đầu việc, và mã đó
   PHẢI bất biến suốt đời đầu việc.
 - **FR-017**: Mỗi đầu việc PHẢI có **đúng một** người phụ trách tại mọi thời điểm. Muốn nhiều người cùng làm
@@ -338,8 +377,9 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
   việc phụ thuộc còn ít nhất một đầu việc chưa *xong*, và PHẢI liệt kê mã của những việc còn thiếu.
 - **FR-026** *(cổng bằng chứng)*: HỆ THỐNG PHẢI chặn một đầu việc vào *chờ rà soát* khi trường thành phẩm còn
   trống.
-- **FR-027** *(cổng duyệt)*: Một đầu việc do Trưởng dự án đề xuất và được đánh dấu cần người chủ đồng ý CHỈ
-  được rời *nháp* sau khi người chủ duyệt.
+- **FR-027** *(cổng duyệt)*: Trưởng dự án ĐƯỢC tự tạo và giao ngay những đầu việc nằm **trong khuôn các hạng
+  mục đã được người chủ duyệt**. Một đầu việc nằm **ngoài** khuôn đó PHẢI ở lại *nháp/đề xuất* và chỉ được
+  rời *nháp* sau khi người chủ duyệt — vì nó là một lần nới phạm vi (nối với FR-075).
 - **FR-028** *(cổng một-người)*: HỆ THỐNG PHẢI từ chối gán người thứ hai vào một đầu việc đã có người phụ
   trách.
 - **FR-029** *(cổng mô tả)*: HỆ THỐNG PHẢI chặn giao một đầu việc khi mô tả chi tiết còn trống.
@@ -352,125 +392,138 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
 
 #### F. Công nhận đầu ra
 
-- **FR-033**: Mỗi đầu việc PHẢI mang một cờ *cần Chủ đồng-approve* do Trưởng dự án đặt khi chẻ việc.
-- **FR-034**: Với đầu việc **không** bật cờ, Trưởng dự án công nhận là đủ để đóng.
-- **FR-035**: Với đầu việc **có** bật cờ, sau khi Trưởng dự án tán thành, HỆ THỐNG PHẢI đẩy đầu ra vào hộp thư
-  người chủ và giữ đầu việc chưa đóng cho tới khi người chủ công nhận. Cờ này áp cho cả các mốc lớn giữa
-  chừng, không riêng đầu ra cuối.
-- **FR-036**: KHI một đầu ra bị từ chối công nhận, HỆ THỐNG PHẢI kéo đầu việc về *đang làm* (không phải *nháp*,
-  không phải *huỷ*), ghi vết lý do, đặt việc kế tiếp thành "sửa theo phản hồi", và đánh thức lại đúng thợ đã
-  làm.
-- **FR-037**: SAU ba vòng từ chối trên cùng một đầu việc, HỆ THỐNG PHẢI kéo Trưởng dự án vào soát lại đề bài
+- **FR-033**: Mỗi đầu việc PHẢI cần **hai chữ ký** mới được đóng: Trưởng dự án, và **người chủ chịu trách
+  nhiệm** cho con agent đã thực hiện đầu việc đó. Đây là mặc định áp cho **mọi** đầu việc — không có khái
+  niệm cờ bật/tắt theo từng việc.
+- **FR-034**: Người chủ chịu trách nhiệm cho một agent là **người đã cấp agent đó vào ghế** trong dự án. HỆ
+  THỐNG PHẢI ghi lại quan hệ này ngay lúc cấp ghế và dùng nó để xác định ai phải ký cho đầu ra của agent đó.
+- **FR-035**: SAU khi Trưởng dự án tán thành một đầu ra, HỆ THỐNG PHẢI đẩy đầu ra đó vào hộp thư của **đúng
+  người chủ chịu trách nhiệm** và giữ đầu việc chưa đóng cho tới khi người đó công nhận.
+- **FR-036**: Mỗi dự án PHẢI có một thiết lập **tự động công nhận** riêng cho từng người chủ tham gia dự án
+  đó. KHI một người chủ bật thiết lập này, HỆ THỐNG PHẢI coi mọi việc cần chữ ký của người đó **cho công việc
+  của các agent do họ cấp** là đã chuẩn thuận sẵn — công nhận đầu ra, và các bước chuyển trạng thái đầu việc
+  cần họ gật — và đóng đầu việc ngay sau khi Trưởng dự án tán thành.
+- **FR-037**: Thiết lập tự động công nhận KHÔNG ĐƯỢC thay người chủ ở ba quyết định cấp dự án: duyệt kế
+  hoạch, duyệt một thay đổi lớn (FR-075), và quyết chuyển giai đoạn. Ba việc đó luôn cần người chủ ra tay
+  thật, dù công tắc đang bật.
+- **FR-038**: Thiết lập tự động công nhận PHẢI mặc định **tắt**. Chỉ chính người chủ đó được bật hoặc tắt cho
+  phần của mình; KHÔNG người chủ nào bật thay người khác, và Trưởng dự án KHÔNG ĐƯỢC đụng tới nó.
+- **FR-039**: KHI tự động công nhận đang bật, HỆ THỐNG PHẢI vẫn ghi vết đầy đủ: ai được coi là đã ký, cho đầu
+  việc nào, vào lúc nào — để người chủ xem lại sau. Mọi lần bật/tắt thiết lập cũng PHẢI ghi vết.
+- **FR-040**: KHI một đầu ra bị từ chối công nhận (bởi Trưởng dự án hoặc bởi người chủ chịu trách nhiệm), HỆ
+  THỐNG PHẢI kéo đầu việc về *đang làm* (không phải *nháp*, không phải *huỷ*), ghi vết lý do, đặt việc kế
+  tiếp thành "sửa theo phản hồi", và đánh thức lại đúng thợ đã làm.
+- **FR-041**: SAU ba vòng từ chối trên cùng một đầu việc, HỆ THỐNG PHẢI kéo Trưởng dự án vào soát lại đề bài
   và định nghĩa hoàn thành.
-- **FR-038**: HỆ THỐNG KHÔNG ĐƯỢC có cổng nghiệm thu ở cấp dự án. Việc công nhận diễn ra ở cấp đầu việc;
+- **FR-042**: HỆ THỐNG KHÔNG ĐƯỢC có cổng nghiệm thu ở cấp dự án. Việc công nhận diễn ra ở cấp đầu việc;
   chuyển giai đoạn diễn ra ở cấp dự án.
-- **FR-039**: KHI cả một đợt việc đã *xong*, HỆ THỐNG PHẢI đánh thức Trưởng dự án soạn bản tổng kết đợt, rồi
+- **FR-043**: KHI cả một đợt việc đã *xong*, HỆ THỐNG PHẢI đánh thức Trưởng dự án soạn bản tổng kết đợt, rồi
   đẩy vào hộp thư người chủ kèm ba lựa chọn: đóng dự án, chuyển bảo trì, hoặc mở đợt việc mới.
 
 #### G. Gói tin đánh thức và điều phối lời gọi
 
-- **FR-040**: Mỗi gói tin đánh thức PHẢI gồm đủ tám phần: vai của agent trong dự án; Bối cảnh dự án; đầu việc
+- **FR-044**: Mỗi gói tin đánh thức PHẢI gồm đủ tám phần: vai của agent trong dự án; Bối cảnh dự án; đầu việc
   đang nói tới cùng mô tả và trạng thái; lý do gọi dậy; danh bạ đồng đội kèm trạng thái trực tuyến; tin nhắn
   mới kể từ lượt trước; việc kế tiếp đang chờ; nơi nộp thành phẩm và cách báo trạng thái.
-- **FR-041**: Phần nào của gói tin không có nội dung PHẢI ghi rõ "không có"; KHÔNG ĐƯỢC để trống âm thầm.
-- **FR-042**: Phần *lý do gọi dậy* PHẢI là một câu người đọc hiểu nói thẳng vì sao agent bị gọi lúc này.
-- **FR-043**: HỆ THỐNG PHẢI đánh thức Trưởng dự án khi và chỉ khi có một trong các cớ: người chủ nhắn hoặc
-  hỏi; người chủ duyệt hoặc yêu cầu chỉnh kế hoạch; người chủ công nhận hoặc từ chối một đầu ra có cờ; người
+- **FR-045**: Phần nào của gói tin không có nội dung PHẢI ghi rõ "không có"; KHÔNG ĐƯỢC để trống âm thầm.
+- **FR-046**: Phần *lý do gọi dậy* PHẢI là một câu người đọc hiểu nói thẳng vì sao agent bị gọi lúc này.
+- **FR-047**: HỆ THỐNG PHẢI đánh thức Trưởng dự án khi và chỉ khi có một trong các cớ: người chủ nhắn hoặc
+  hỏi; người chủ duyệt hoặc yêu cầu chỉnh kế hoạch; người chủ công nhận hoặc từ chối một đầu ra; người
   chủ quyết chuyển giai đoạn hoặc mở đợt mới; một thợ báo kẹt; một đầu việc chuyển sang *chờ rà soát*; một
   đầu việc chuyển sang *xong*; một đầu việc thất bại hoặc quá hạn; hoặc một nhịp điều phối có điểm treo thật.
-- **FR-044**: HỆ THỐNG PHẢI đánh thức một thợ khi và chỉ khi có một trong các cớ: được giao đầu việc mới; bị
+- **FR-048**: HỆ THỐNG PHẢI đánh thức một thợ khi và chỉ khi có một trong các cớ: được giao đầu việc mới; bị
   nhắc tên trong trao đổi; có bình luận mới trên đầu việc mình phụ trách; cần làm tiếp một lượt còn dở; vướng
   của mình đã được gỡ; hoặc bị nhắc vì im lâu.
-- **FR-045**: HỆ THỐNG KHÔNG ĐƯỢC đánh thức một agent chỉ vì dự án có biến động chung — chỉ gọi khi có việc
+- **FR-049**: HỆ THỐNG KHÔNG ĐƯỢC đánh thức một agent chỉ vì dự án có biến động chung — chỉ gọi khi có việc
   thuộc phần của chính nó đang chờ.
-- **FR-046**: Với mỗi cặp *(agent, đầu việc)*, HỆ THỐNG PHẢI giữ tối đa **một** lệnh đánh thức đang treo và
+- **FR-050**: Với mỗi cặp *(agent, đầu việc)*, HỆ THỐNG PHẢI giữ tối đa **một** lệnh đánh thức đang treo và
   tối đa **một** lượt chạy tại một thời điểm. Cớ mới đến khi đã có lệnh treo thì nhập vào lệnh đó và mang
   theo lý do mạnh hơn; cớ đến khi đang có lượt chạy thì lượt chạy hấp thụ, và hệ thống đánh giá lại nhu cầu
   gọi khi lượt kết thúc.
-- **FR-047**: Trước khi kết thúc một lượt, agent PHẢI để lại *việc kế tiếp* — hoặc chỉ rõ bóng đã chuyền cho
+- **FR-051**: Trước khi kết thúc một lượt, agent PHẢI để lại *việc kế tiếp* — hoặc chỉ rõ bóng đã chuyền cho
   ai, hoặc mô tả cụ thể phần còn dở. HỆ THỐNG PHẢI lưu bền phần này.
 
 #### H. Nhịp điều phối của Trưởng dự án
 
-- **FR-048**: HỆ THỐNG PHẢI chạy một nhịp điều phối định kỳ *có kiểm soát* cho Trưởng dự án: trước mỗi nhịp
+- **FR-052**: HỆ THỐNG PHẢI chạy một nhịp điều phối định kỳ *có kiểm soát* cho Trưởng dự án: trước mỗi nhịp
   tự soi bảng việc tìm các điểm treo (im lâu, sắp trễ, chờ quyết định của Trưởng dự án, mắc kẹt).
-- **FR-049**: NẾU không có điểm treo nào, HỆ THỐNG KHÔNG ĐƯỢC đánh thức Trưởng dự án; nhịp đó trôi qua trong
+- **FR-053**: NẾU không có điểm treo nào, HỆ THỐNG KHÔNG ĐƯỢC đánh thức Trưởng dự án; nhịp đó trôi qua trong
   im lặng.
-- **FR-050**: NẾU có điểm treo, gói tin PHẢI nêu đích danh từng điểm cần nhìn, không nói chung chung "đến giờ
+- **FR-054**: NẾU có điểm treo, gói tin PHẢI nêu đích danh từng điểm cần nhìn, không nói chung chung "đến giờ
   rồi".
-- **FR-051**: HỆ THỐNG PHẢI đặt trần số lần đánh thức theo nhịp trong một khoảng thời gian, tự giãn nhịp khi
+- **FR-055**: HỆ THỐNG PHẢI đặt trần số lần đánh thức theo nhịp trong một khoảng thời gian, tự giãn nhịp khi
   dự án chạy trơn tru và làm dày nhịp khi có dấu hiệu ứ đọng.
 
 #### I. Lưới an toàn và thang phục hồi
 
-- **FR-052**: Mỗi đầu việc chưa đóng PHẢI gắn đúng một **động cơ đẩy** trong sáu loại: đang có lượt chạy; đã
+- **FR-056**: Mỗi đầu việc chưa đóng PHẢI gắn đúng một **động cơ đẩy** trong sáu loại: đang có lượt chạy; đã
   hẹn một lần đánh thức; đang chờ một mốc bên ngoài; đang chờ người chủ; đang bị chặn bởi việc khác; đang chờ
   một hành động phục hồi.
-- **FR-053**: HỆ THỐNG PHẢI chạy một vòng quét canh gác định kỳ rà mọi đầu việc chưa đóng, kiểm xem động cơ
+- **FR-057**: HỆ THỐNG PHẢI chạy một vòng quét canh gác định kỳ rà mọi đầu việc chưa đóng, kiểm xem động cơ
   đẩy có tồn tại và còn sống hay không.
-- **FR-054**: KHI một đầu việc không còn động cơ đẩy sống, HỆ THỐNG PHẢI nổi cờ *đình trệ* kèm lý do, và
+- **FR-058**: KHI một đầu việc không còn động cơ đẩy sống, HỆ THỐNG PHẢI nổi cờ *đình trệ* kèm lý do, và
   KHÔNG ĐƯỢC chuyển đầu việc đó sang *xong* trong bất kỳ hoàn cảnh nào.
-- **FR-055**: HỆ THỐNG PHẢI áp thang phục hồi ba mức theo đúng thứ tự, KHÔNG ĐƯỢC nhảy cóc: Mức 1 — hệ thống
+- **FR-059**: HỆ THỐNG PHẢI áp thang phục hồi ba mức theo đúng thứ tự, KHÔNG ĐƯỢC nhảy cóc: Mức 1 — hệ thống
   tự gọi lại, giữ nguyên người phụ trách, không quyết gì mới; Mức 2 — Trưởng dự án quyết một hành động phục
   hồi tường minh; Mức 3 — đẩy lên người chủ, chỉ với những quyết định duy nhất người chủ mới quyết được.
-- **FR-056**: Mức 1 PHẢI có trần số lần tự gọi lại cho mỗi nguyên nhân trên mỗi đầu việc, khoảng cách giãn
+- **FR-060**: Mức 1 PHẢI có trần số lần tự gọi lại cho mỗi nguyên nhân trên mỗi đầu việc, khoảng cách giãn
   dần; bộ đếm PHẢI đặt lại về không khi đầu việc có tiến triển thật.
-- **FR-057**: Mỗi lần leo lên Mức 3, HỆ THỐNG PHẢI kèm hồ sơ đã thử (Mức 1 làm gì mấy lần, Mức 2 quyết gì) và
+- **FR-061**: Mỗi lần leo lên Mức 3, HỆ THỐNG PHẢI kèm hồ sơ đã thử (Mức 1 làm gì mấy lần, Mức 2 quyết gì) và
   nêu chính xác điều cần người chủ quyết.
-- **FR-058**: Mỗi lượt chạy còn hoạt động PHẢI phát tín hiệu báo sống định kỳ. KHI tín hiệu tắt quá ngưỡng
+- **FR-062**: Mỗi lượt chạy còn hoạt động PHẢI phát tín hiệu báo sống định kỳ. KHI tín hiệu tắt quá ngưỡng
   nghi treo, HỆ THỐNG PHẢI mở một cửa sổ ân hạn và thử gọi nhẹ; nếu vẫn im thì tuyên treo, đóng lượt chạy đó,
   kéo đầu việc về *chờ làm*, và gọi lại đúng người phụ trách trỏ vào việc kế tiếp đã lưu.
-- **FR-059**: KHI một lệnh đánh thức không tới được agent, HỆ THỐNG PHẢI thử lại theo nhịp giãn dần và gắn
+- **FR-063**: KHI một lệnh đánh thức không tới được agent, HỆ THỐNG PHẢI thử lại theo nhịp giãn dần và gắn
   động cơ "đang chờ hành động phục hồi" cho đầu việc — không tính là đình trệ. Chỉ tuyên agent ngoại tuyến
   sau một chuỗi thất bại liên tiếp qua một cửa sổ đủ dài.
-- **FR-060**: KHI một thợ bị tuyên ngoại tuyến, HỆ THỐNG PHẢI đưa đầu việc về *bị chặn* với lý do "người phụ
+- **FR-064**: KHI một thợ bị tuyên ngoại tuyến, HỆ THỐNG PHẢI đưa đầu việc về *bị chặn* với lý do "người phụ
   trách ngoại tuyến" và báo Trưởng dự án. KHI Trưởng dự án bị tuyên ngoại tuyến, HỆ THỐNG PHẢI báo thẳng
   người chủ.
-- **FR-061**: KHI một hoặc nhiều mục chờ người chủ vượt ngưỡng nhắc, HỆ THỐNG PHẢI nhắc theo ba bậc thưa dần
+- **FR-065**: KHI một hoặc nhiều mục chờ người chủ vượt ngưỡng nhắc, HỆ THỐNG PHẢI nhắc theo ba bậc thưa dần
   vào hộp thư người chủ, giữ dự án đậu lại đúng chỗ chờ, và KHÔNG ĐƯỢC tự đánh dấu xong hay thất bại.
-- **FR-062**: TRONG lúc chờ một quyết định của người chủ, Trưởng dự án PHẢI cho chạy tiếp mọi nhánh việc
+- **FR-066**: TRONG lúc chờ một quyết định của người chủ, Trưởng dự án PHẢI cho chạy tiếp mọi nhánh việc
   không phụ thuộc vào quyết định đó.
-- **FR-063**: KHI nhiều đầu việc sẵn sàng cùng cần một thợ hoặc một tài nguyên độc chiếm, HỆ THỐNG PHẢI xếp
+- **FR-067**: KHI nhiều đầu việc sẵn sàng cùng cần một thợ hoặc một tài nguyên độc chiếm, HỆ THỐNG PHẢI xếp
   hàng theo thứ tự: độ ưu tiên, rồi hạn chót, rồi tuổi đời — với cơ chế nâng dần việc cũ để không đầu việc
   nào bị bỏ đói.
-- **FR-064**: SAU mọi lần khởi động lại, HỆ THỐNG PHẢI dựng lại động cơ đẩy cho từng đầu việc từ trạng thái
+- **FR-068**: SAU mọi lần khởi động lại, HỆ THỐNG PHẢI dựng lại động cơ đẩy cho từng đầu việc từ trạng thái
   bền đã chốt gần nhất; lượt chạy hỏng giữa chừng xử như treo.
-- **FR-065**: KHI phát hiện thành phẩm đã mất hoặc hỏng lúc chuẩn bị công nhận, HỆ THỐNG PHẢI kéo đầu việc về
+- **FR-069**: KHI phát hiện thành phẩm đã mất hoặc hỏng lúc chuẩn bị công nhận, HỆ THỐNG PHẢI kéo đầu việc về
   đúng bước tạo ra thành phẩm đó, ghi vết mất mát, và giữ lại các phần đã chốt để chỉ làm lại phần thiếu.
 
 #### J. Ranh giới vai trò và quyền hạn
 
-- **FR-066**: Người chủ PHẢI có quyền can thiệp trực tiếp ở mức tương đương Trưởng dự án — bình luận, giao
+- **FR-070**: Người chủ PHẢI có quyền can thiệp trực tiếp ở mức tương đương Trưởng dự án — bình luận, giao
   hoặc sửa một đầu việc, đổi ưu tiên, bố trí thợ. Đây là quyền, không phải nghĩa vụ.
-- **FR-067**: HỆ THỐNG PHẢI cấm thợ báo cáo vượt cấp thẳng lên người chủ hoặc tự xin người chủ duyệt.
-- **FR-068**: HỆ THỐNG PHẢI cấm thợ tự nhận việc ngoài đầu việc được giao và tự đổi phạm vi đầu việc.
-- **FR-069**: HỆ THỐNG KHÔNG ĐƯỢC tự lập kế hoạch, tự chẻ việc, tự chọn thợ, tự duyệt hay tự công nhận đầu ra
+- **FR-071**: HỆ THỐNG PHẢI cấm thợ báo cáo vượt cấp thẳng lên người chủ hoặc tự xin người chủ duyệt.
+- **FR-072**: HỆ THỐNG PHẢI cấm thợ tự nhận việc ngoài đầu việc được giao và tự đổi phạm vi đầu việc.
+- **FR-073**: HỆ THỐNG KHÔNG ĐƯỢC tự lập kế hoạch, tự chẻ việc, tự chọn thợ, tự duyệt hay tự công nhận đầu ra
   thay bất kỳ ai; cũng KHÔNG ĐƯỢC sửa nội dung của các bên khi chuyển tin.
-- **FR-070**: Trưởng dự án PHẢI được tự quyết các thay đổi nội bộ (chẻ nhỏ hơn, đổi thứ tự, đổi người, đổi
+- **FR-074**: Trưởng dự án PHẢI được tự quyết các thay đổi nội bộ (chẻ nhỏ hơn, đổi thứ tự, đổi người, đổi
   cách làm cùng một đích) mà không hỏi người chủ.
-- **FR-071**: Thay đổi chạm tới **phạm vi**, **mục tiêu/Bối cảnh**, **chi phí**, **thời hạn**, hoặc **tiêu chí
+- **FR-075**: Thay đổi chạm tới **phạm vi**, **mục tiêu/Bối cảnh**, **chi phí**, **thời hạn**, hoặc **tiêu chí
   công nhận** PHẢI treo chờ người chủ duyệt lại trước khi có hiệu lực.
-- **FR-072**: KHI Trưởng dự án tái hoạch định, HỆ THỐNG PHẢI bắt chuyển tiếp sạch: mọi đầu việc bị ảnh hưởng
+- **FR-076**: KHI Trưởng dự án tái hoạch định, HỆ THỐNG PHẢI bắt chuyển tiếp sạch: mọi đầu việc bị ảnh hưởng
   phải về một trạng thái có động cơ đẩy hợp lệ; cái nào bỏ thì vào *huỷ* kèm lý do — không đầu việc nào được
   mồ côi.
 
 #### K. Hiển thị, ghi vết và ràng buộc nền
 
-- **FR-073**: HỆ THỐNG PHẢI gom mọi thứ cần người chủ để mắt (kế hoạch chờ duyệt, câu hỏi chờ đáp, đầu ra chờ
+- **FR-077**: HỆ THỐNG PHẢI gom mọi thứ cần người chủ để mắt (kế hoạch chờ duyệt, câu hỏi chờ đáp, đầu ra chờ
   công nhận, cảnh báo leo thang, nhắc nhở) vào **hộp thư người chủ**.
-- **FR-074**: HỆ THỐNG PHẢI cung cấp một kênh đối thoại hai chiều giữa người chủ và Trưởng dự án, và một
+- **FR-078**: HỆ THỐNG PHẢI cung cấp một kênh đối thoại hai chiều giữa người chủ và Trưởng dự án, và một
   **bảng dự án** trình toàn cảnh đầu việc, trạng thái, tiến độ.
-- **FR-075**: HỆ THỐNG PHẢI ghi vết mọi tin nhắn, mọi lần chuyển trạng thái, mọi quyết định duyệt/công nhận,
+- **FR-079**: HỆ THỐNG PHẢI ghi vết mọi tin nhắn, mọi lần chuyển trạng thái, mọi quyết định duyệt/công nhận,
   mọi lần giao việc và mọi lần đánh thức, theo dòng thời gian tra cứu được.
-- **FR-076**: Trạng thái và sự kiện PHẢI được đẩy về giao diện; giao diện KHÔNG ĐƯỢC hỏi vòng để biết trạng
+- **FR-080**: Trạng thái và sự kiện PHẢI được đẩy về giao diện; giao diện KHÔNG ĐƯỢC hỏi vòng để biết trạng
   thái *(Hiến pháp IV)*.
-- **FR-077**: Mọi truy vấn dữ liệu của tính năng này PHẢI giới hạn trong workspace của người gọi; truy cập
+- **FR-081**: Mọi truy vấn dữ liệu của tính năng này PHẢI giới hạn trong workspace của người gọi; truy cập
   chéo workspace PHẢI trả về "không tìm thấy" *(Hiến pháp I)*.
-- **FR-078**: Ngữ cảnh của agent (vai, đồng đội, đánh thức, lời nhắc vai) PHẢI lấy theo vai trong **dự án**
+- **FR-082**: Ngữ cảnh của agent (vai, đồng đội, đánh thức, lời nhắc vai) PHẢI lấy theo vai trong **dự án**
   đang làm, KHÔNG ĐƯỢC lấy theo thuộc tính ở tầng workspace *(Hiến pháp V)*.
-- **FR-079**: Tầng nghiệp vụ KHÔNG ĐƯỢC nhánh mã theo từng loại agent; mọi khác biệt runtime nằm sau một hợp
+- **FR-083**: Tầng nghiệp vụ KHÔNG ĐƯỢC nhánh mã theo từng loại agent; mọi khác biệt runtime nằm sau một hợp
   đồng chung *(Hiến pháp III)*.
-- **FR-080**: Mọi chuỗi hiển thị PHẢI đi qua cơ chế đa ngôn ngữ, và tiếng Việt hiển thị PHẢI đủ dấu *(Hiến
+- **FR-084**: Mọi chuỗi hiển thị PHẢI đi qua cơ chế đa ngôn ngữ, và tiếng Việt hiển thị PHẢI đủ dấu *(Hiến
   pháp VI)*.
 
 ### Thực thể chính
@@ -481,8 +534,12 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
   chung. Có phiên bản và trạng thái duyệt; đính vào mọi gói tin đánh thức.
 - **Bản kế hoạch** — các hạng mục lớn, thứ tự, phụ thuộc, rủi ro, mốc dự kiến, định nghĩa hoàn thành theo
   hạng mục; kèm trạng thái ở cổng duyệt (đang trình, được duyệt, bị yêu cầu chỉnh).
-- **Ghế** — một vai cần có trong dự án và người thợ được cấp vào đó; mang trạng thái trực tuyến. Điều kiện
-  rời giai đoạn thiết lập đọc từ tập ghế này.
+- **Ghế** — một vai cần có trong dự án, người thợ được cấp vào đó, và **người chủ đã cấp** — người này chịu
+  trách nhiệm công nhận đầu ra của con agent ngồi ghế ấy. Ghế mang trạng thái trực tuyến; điều kiện rời giai
+  đoạn thiết lập đọc từ tập ghế này.
+- **Thiết lập tự động công nhận** — một công tắc theo cặp *(dự án, người chủ)*: bật thì mọi việc cần chữ ký
+  của người chủ đó trong dự án ấy coi như đã chuẩn thuận sẵn. Mặc định tắt; chỉ chính người đó đổi được; mọi
+  lần đổi đều ghi vết.
 - **Đầu việc** — đơn vị công việc nhỏ nhất, mang bộ trường ở FR-015, thuộc đúng một dự án, có đúng một người
   phụ trách, một trạng thái trong tám, và một động cơ đẩy khi chưa đóng.
 - **Tiêu chí công nhận** — một dòng trong định nghĩa hoàn thành: một khẳng định đúng/sai kiểm được, trỏ tới
@@ -507,8 +564,9 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
 ### Kết quả đo được
 
 - **SC-001**: Chạy trọn một dự án từ mở tới đóng, số thao tác **bắt buộc** của người chủ chỉ gồm: nêu mục
-  tiêu, cấp thợ vào ghế, duyệt kế hoạch, công nhận các đầu ra có cờ, trả lời khi được hỏi, quyết chuyển giai
-  đoạn. Không có khâu điều phối nào bắt buộc rơi vào tay người chủ.
+  tiêu, cấp thợ vào ghế, duyệt kế hoạch, công nhận đầu ra của các agent do mình cấp (bằng không nếu đã bật
+  tự động công nhận), trả lời khi được hỏi, quyết chuyển giai đoạn. Không có khâu điều phối nào bắt buộc rơi
+  vào tay người chủ.
 - **SC-002**: Tại mọi thời điểm quét, 100% đầu việc chưa đóng hoặc gắn đúng một động cơ đẩy còn sống, hoặc
   mang cờ đình trệ. Không tồn tại đầu việc đứng im mà không có cờ.
 - **SC-003**: 0 đầu việc đạt trạng thái *xong* mà không có thành phẩm đính kèm.
@@ -527,6 +585,8 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
   không hành động quan trọng nào thiếu vết.
 - **SC-012**: 100% trường hợp thử truy cập tài nguyên của workspace khác trả về "không tìm thấy".
 - **SC-013**: 0 chuỗi hiển thị nằm ngoài cơ chế đa ngôn ngữ; 0 chuỗi tiếng Việt thiếu dấu trên giao diện.
+- **SC-014**: Trong một dự án có nhiều người chủ cùng cấp agent, 100% mục chờ công nhận rơi đúng vào hộp thư
+  của người đã cấp agent thực hiện đầu việc đó; 0 trường hợp lẫn sang người chủ khác.
 
 ---
 
@@ -542,13 +602,15 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
 
 **Bốn điểm tài liệu gốc để ngỏ — đã lấy chính đề xuất trong tài liệu làm mặc định, chờ người chủ chốt lại**
 
-- **Ranh giới "thay đổi lớn"** (FR-071): lấy đúng năm thứ — phạm vi, mục tiêu/Bối cảnh, chi phí, thời hạn,
-  tiêu chí công nhận. Mọi thay đổi khác Trưởng dự án tự quyết.
-- **Mặc định cờ *cần Chủ đồng-approve*** (FR-033): mặc định **tắt**; Trưởng dự án bật cho các mốc lớn (bàn
-  giao một hạng mục, kết quả cuối) và cho những đầu việc người chủ đánh dấu.
-- **Ai kích chuyển giai đoạn giữa vận hành và bảo trì** (FR-004): Trưởng dự án **đề xuất**, người chủ
-  **quyết**. Chuyển sang đóng luôn là quyết định của người chủ.
-- **Các ngưỡng thời gian**: lấy bộ mặc định gợi ý trong tài liệu gốc — nhịp báo sống 60 giây; vòng quét canh
+- ~~**Ranh giới "thay đổi lớn"** (FR-075)~~ — **đã chốt 2026-07-30**: đúng năm thứ (phạm vi, mục tiêu/Bối
+  cảnh, chi phí, thời hạn, tiêu chí công nhận). Xem mục Làm rõ.
+- ~~**Mặc định cờ *cần Chủ đồng-approve*** (FR-033)~~ — **đã chốt 2026-07-30, khác đề xuất ban đầu**: bỏ hẳn
+  cơ chế cờ theo từng việc; mọi đầu việc cần hai chữ ký, và gánh nặng điều tiết bằng công tắc tự động công
+  nhận theo từng người chủ. Xem mục Làm rõ và FR-033 đến FR-039.
+- ~~**Ai kích chuyển giai đoạn giữa vận hành và bảo trì** (FR-004)~~ — **đã chốt 2026-07-30**: Trưởng dự án
+  đề xuất, người chủ quyết; chuyển sang đóng luôn là của người chủ. Xem mục Làm rõ.
+- ~~**Các ngưỡng thời gian**~~ — **đã chốt 2026-07-30** (nhịp dự án: mỗi đầu việc vài giờ tới vài ngày): giữ
+  nguyên bộ mặc định gợi ý trong tài liệu gốc — nhịp báo sống 60 giây; vòng quét canh
   gác 60 giây; ngưỡng nghi treo 10 phút; ân hạn 2 phút; hết hạn một lần gọi 20 giây; nhịp thử lại 30 giây →
   1 phút → 2 phút → 4 phút → 8 phút; tuyên ngoại tuyến sau 5 lần thất bại liên tiếp trong khoảng 15 phút;
   trần tự phục hồi Mức 1 là 3 lần; trần vòng từ chối công nhận là 3 lần; nhắc người chủ ở 8 giờ → 24 giờ →
