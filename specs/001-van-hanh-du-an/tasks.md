@@ -48,10 +48,10 @@ Bước `/speckit-analyze` tìm ra mười lăm chỗ hở giữa ba tài liệu
 
 **Mục đích**: biết mình đang đứng ở đâu trước khi siết. Ba trong bốn việc dưới đây là để không bị bất ngờ.
 
-- [ ] T001 Rà cơ sở dữ liệu thật đếm số đầu việc đã đi thẳng *đang làm → xong* và số đầu việc đang *xong* mà không có thành phẩm, ghi kết quả vào `specs/001-van-hanh-du-an/khao-sat-du-lieu.md`
-- [ ] T002 [P] Ghi mốc nền vào `specs/001-van-hanh-du-an/khao-sat-du-lieu.md`: số bài kiểm máy chủ đang xanh, số lỗi mypy, số cảnh báo lint giao diện — để sau này phân biệt "đỏ đúng" với "đỏ do mình làm hỏng"
-- [ ] T003 [P] Rà mọi nơi gọi `TaskService.claim` trong `mcp/src/`, `frontend/src/` và `backend/armarius/presentation/`, ghi kết quả vào `specs/001-van-hanh-du-an/khao-sat-du-lieu.md` (rủi ro của QĐ-8)
-- [ ] T004 [P] Khai bộ ngưỡng thời gian mặc định của hệ thống trong `backend/armarius/shared/config.py` (nghi treo 10 phút, ân hạn 2 phút, quét canh gác 60 giây, nhịp điều phối 15 phút, nhắc 8/24/72 giờ, trần Mức 1 là 3, trần từ chối là 3, **im lâu 5 phút**, **sắp trễ ở bốn mốc 24/12/6/1 giờ**)
+- [X] T001 Rà cơ sở dữ liệu thật đếm số đầu việc đã đi thẳng *đang làm → xong* và số đầu việc đang *xong* mà không có thành phẩm, ghi kết quả vào `specs/001-van-hanh-du-an/khao-sat-du-lieu.md`
+- [X] T002 [P] Ghi mốc nền vào `specs/001-van-hanh-du-an/khao-sat-du-lieu.md`: số bài kiểm máy chủ đang xanh, số lỗi mypy, số cảnh báo lint giao diện — để sau này phân biệt "đỏ đúng" với "đỏ do mình làm hỏng"
+- [X] T003 [P] Rà mọi nơi gọi `TaskService.claim` trong `mcp/src/`, `frontend/src/` và `backend/armarius/presentation/`, ghi kết quả vào `specs/001-van-hanh-du-an/khao-sat-du-lieu.md` (rủi ro của QĐ-8)
+- [X] T004 [P] Khai bộ ngưỡng thời gian mặc định của hệ thống trong `backend/armarius/shared/config.py` (nghi treo 10 phút, ân hạn 2 phút, quét canh gác 60 giây, nhịp điều phối 15 phút, nhắc 8/24/72 giờ, trần Mức 1 là 3, trần từ chối là 3, **im lâu 5 phút**, **sắp trễ ở bốn mốc 24/12/6/1 giờ**)
 
 ---
 

@@ -11,6 +11,22 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ENV_FILE = BACKEND_ROOT / ".env"
 
 
+def _parse_int_csv(raw: str) -> list[int]:
+    """Parse a comma-separated list of positive ints, ignoring blanks and junk."""
+    values: list[int] = []
+    for chunk in raw.split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        try:
+            value = int(chunk)
+        except ValueError:
+            continue
+        if value > 0:
+            values.append(value)
+    return values
+
+
 class Settings(BaseSettings):
     """Application settings. Override via environment variables or backend/.env."""
 
@@ -45,6 +61,36 @@ class Settings(BaseSettings):
     # Liveness watchdog cadence — how often the background loop advances every Marius.
     liveness_watchdog_interval_seconds: float = 30.0
 
+    # --- Autonomous project operation (spec 001) -------------------------------
+    # System-wide FLOOR for every timing threshold the safety net and the orchestrator
+    # rely on. A project may override any of these per-project (see `default_thresholds`
+    # on the Project entity); a field the project leaves unset falls back here.
+    # Every value is a deliberate decision recorded in spec.md — do not tune blindly.
+
+    # A run that has emitted nothing for this long is *suspected* hung.
+    hang_suspect_seconds: int = 600
+    # Grace window after suspicion before the run is *declared* hung and reaped.
+    hang_grace_seconds: int = 120
+    # How often the stall watchdog sweeps every open task looking for a missing or
+    # expired push reason. Cheap query — it only compares one timestamp column.
+    stall_scan_interval_seconds: float = 60.0
+    # Orchestration heartbeat per project. Skips silently when nothing hangs (FR-053).
+    orchestration_cadence_seconds: int = 900
+    # A task with no activity AND no live run for this long counts as *silent* (FR-052).
+    task_silence_seconds: int = 300
+    # Hours-before-deadline marks at which a task counts as *due soon* (FR-052). A task
+    # with no deadline is never due soon.
+    due_soon_hours: str = "24,12,6,1"
+    # Escalating reminder tiers for a patron inbox item left unanswered, in hours (FR-065).
+    patron_reminder_hours: str = "8,24,72"
+    # Level-1 self-recovery budget: how many times the system re-wakes the same assignee
+    # for the same task before escalating to the Leader (FR-059). Distinct from
+    # `wake_max_continuation_attempts`, which caps continuations *within* one run.
+    level1_recovery_attempts: int = 3
+    # How many review rejections on one task before the Leader is pulled in to re-examine
+    # the brief and the acceptance criteria (FR-042).
+    rejection_round_cap: int = 3
+
     # Demo seed ("Acme Web Platform" scenario). OFF by default — real users get
     # their own empty workspace on register. Set ARMARIUS_SEED_DEMO=true to repopulate
     # the demo story (e.g. for a fresh showcase instance). The seed registers the demo
@@ -69,6 +115,16 @@ class Settings(BaseSettings):
     @property
     def public_api_url(self) -> str:
         return self.public_base_url.rstrip("/")
+
+    @property
+    def due_soon_hour_marks(self) -> list[int]:
+        """Due-soon marks, descending — a task crosses each one at most once."""
+        return sorted(_parse_int_csv(self.due_soon_hours), reverse=True)
+
+    @property
+    def patron_reminder_hour_tiers(self) -> list[int]:
+        """Reminder tiers, ascending — tier 1 fires first, then 2, then 3."""
+        return sorted(_parse_int_csv(self.patron_reminder_hours))
 
     @property
     def artifact_store_path(self) -> Path:
