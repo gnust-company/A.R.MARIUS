@@ -1,11 +1,17 @@
 <!--
 Sync Impact Report
-- Phiên bản: (chưa có) → 1.0.0
-- Loại bump: MAJOR — phê chuẩn lần đầu (first ratification).
-- Nguyên tắc thêm: I. Đa tenant nghiêm ngặt; II. Cổng Done; III. Trung lập adapter;
-  IV. Đẩy không hỏi-vòng; V. Góc nhìn dự án; VI. Tiếng Việt cho người dùng.
-- Phần thêm: "Định vị sản phẩm", "Governance".
-- Nguồn chắt: ý định gốc (MY_DEMAND.md, PROJECT_DESCRIPTION.md) và 00-intent (đã dỡ sang _archive/spec-v1/).
+- Phiên bản: 1.0.0 → 1.0.1
+- Loại bump: PATCH — làm rõ chữ nghĩa Nguyên tắc II cho khớp ý định vốn có; không nguyên tắc nào
+  được thêm, bớt, hay đổi mục đích.
+- Nguyên tắc sửa: II. Cổng Done — mốc cưỡng chế nêu rõ là **đánh dấu "xong"**, thay cho chữ "rời
+  trạng thái đang làm". Chữ cũ đọc theo mặt chữ thì cấm cả *đang làm → bị chặn* và *đang làm →
+  chờ làm*, điều chưa bao giờ là ý định và mã cưỡng chế cũng chưa bao giờ làm vậy
+  (ARTIFACT_REQUIRED_STATUSES vốn chỉ gồm hai trạng thái *chờ rà soát* và *xong*). Phát hiện ở
+  bước soi chéo đặc tả 001 (mã V1), người chủ chốt ngày 2026-07-31.
+- Bổ sung: một câu nói rõ nguyên tắc này đặt **sàn**, không đặt trần — đặc tả tính năng được dựng
+  cổng sớm hơn nhưng không được hạ thấp hơn mốc "xong". Ghi điều này để việc FR-026 chặn ngay lối
+  vào vòng rà soát là một lựa chọn hợp lệ chứ không phải vượt rào.
+- Phần thêm / bớt: không có.
 - TODO: không có.
 -->
 
@@ -21,8 +27,11 @@ Lý do: nhiều team dùng chung cùng hạ tầng; lỗi tách tenant là lỗi
 chức năng.
 
 ### II. Cổng Done — không hiện vật thì chưa xong
-Một task KHÔNG ĐƯỢC rời trạng thái "đang làm" nếu chưa đẩy hiện vật đầu ra (artifact) vào kho dùng chung.
-Cấm coi task "xong" khi kết quả chỉ nằm ở máy cục bộ của agent.
+Một task KHÔNG ĐƯỢC đánh dấu "xong" nếu chưa đẩy **hiện vật đầu ra** — sản phẩm thật mà task ấy sinh ra —
+vào kho dùng chung. Cấm coi task "xong" khi kết quả chỉ nằm ở máy cục bộ của agent.
+
+Nguyên tắc này đặt **sàn**, không đặt trần: một đặc tả tính năng ĐƯỢC dựng cổng sớm hơn — chẳng hạn chặn
+ngay lối vào vòng rà soát — nhưng KHÔNG ĐƯỢC hạ thấp hơn mốc "xong".
 
 Lý do: chặn căn bệnh "agent làm xong nhưng để kết quả ở máy nó" — lỗi chí mạng của các hệ đa-agent.
 
@@ -73,4 +82,4 @@ của runtime ngoài.
   Nguyên tắc: **đặc tả đi trước, mã theo sau và phải chứng minh khớp đặc tả.**
 - Mọi PR PHẢI xác nhận tuân Hiến pháp; thay đổi phức tạp PHẢI giải trình lý do.
 
-**Version**: 1.0.0 | **Ratified**: 2026-07-29 | **Last Amended**: 2026-07-29
+**Version**: 1.0.1 | **Ratified**: 2026-07-29 | **Last Amended**: 2026-07-31
