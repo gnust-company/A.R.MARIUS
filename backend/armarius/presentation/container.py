@@ -13,6 +13,7 @@ from armarius.application.ports.event_bus import EventBus
 from armarius.application.use_cases.artifacts import ArtifactService
 from armarius.application.use_cases.auth import AuthService
 from armarius.application.use_cases.enrollment import InviteService
+from armarius.application.use_cases.inbox import InboxService
 from armarius.application.use_cases.labels import LabelService
 from armarius.application.use_cases.leader_chat import LeaderChatService
 from armarius.application.use_cases.liveness import LivenessEngine
@@ -22,11 +23,13 @@ from armarius.application.use_cases.onboarding_session import OnboardingService
 from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.runs import RunQueryService
 from armarius.application.use_cases.skills import SkillService
+from armarius.application.use_cases.task_log import TaskLogService
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.threads import ThreadService
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.application.use_cases.workspace_agent import WorkspaceAgentService
 from armarius.application.use_cases.workspaces import WorkspaceService
+from armarius.domain.entities.project import ProjectThresholds
 from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.adapters.hermes_gateway import HermesGatewayAdapter
 from armarius.infrastructure.adapters.liveness_probe import GatewayHealthLivenessProbe
@@ -56,9 +59,11 @@ class Container:
     leader_chat: LeaderChatService
     liveness: LivenessEngine
     liveness_watchdog: LivenessWatchdog
+    inbox: InboxService
     labels: LabelService
     mariuses: MariusService
     tasks: TaskService
+    task_logs: TaskLogService
     threads: ThreadService
     artifacts: ArtifactService
     artifact_store: ArtifactStore
@@ -67,6 +72,21 @@ class Container:
     skills: SkillService
     jwt_service: JWTService
     uow_factory: object
+
+
+def _system_thresholds() -> ProjectThresholds:
+    """The system floor for every timing knob (spec 001). Read the environment here, in
+    the composition root, so no service below has to."""
+    return ProjectThresholds(
+        hang_suspect_seconds=settings.hang_suspect_seconds,
+        hang_grace_seconds=settings.hang_grace_seconds,
+        orchestration_cadence_seconds=settings.orchestration_cadence_seconds,
+        task_silence_seconds=settings.task_silence_seconds,
+        due_soon_hours=tuple(settings.due_soon_hour_marks),
+        patron_reminder_hours=tuple(settings.patron_reminder_hour_tiers),
+        level1_recovery_attempts=settings.level1_recovery_attempts,
+        rejection_round_cap=settings.rejection_round_cap,
+    )
 
 
 def build_container() -> Container:
@@ -106,7 +126,7 @@ def build_container() -> Container:
     skills = SkillService(uow_factory)
     workspaces = WorkspaceService(uow_factory, skills)
 
-    projects = ProjectService(uow_factory)
+    projects = ProjectService(uow_factory, system_thresholds=_system_thresholds())
     workspace_agent = WorkspaceAgentService(uow_factory)
     onboarding = OnboardingService(
         uow_factory,
@@ -143,9 +163,11 @@ def build_container() -> Container:
         ),
         liveness=liveness,
         liveness_watchdog=liveness_watchdog,
+        inbox=InboxService(uow_factory, control_bus),
         labels=LabelService(uow_factory),
         mariuses=MariusService(uow_factory),
         tasks=TaskService(uow_factory, wake_engine),
+        task_logs=TaskLogService(uow_factory),
         threads=ThreadService(uow_factory, wake_engine),
         artifacts=ArtifactService(uow_factory, store),
         artifact_store=store,

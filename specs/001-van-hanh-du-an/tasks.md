@@ -63,36 +63,36 @@ Bước `/speckit-analyze` tìm ra mười lăm chỗ hở giữa ba tài liệu
 
 ### Bài kiểm nền
 
-- [ ] T005 [P] Bài kiểm nhật ký thay đổi đầu việc — chỉ thêm không sửa, đúng thứ tự thời gian — trong `backend/tests/test_task_log.py`
-- [ ] T006 [P] Bài kiểm hộp thư: tạo mục, đọc theo người nhận, đánh dấu đã giải quyết, cách ly theo workspace — trong `backend/tests/test_inbox_api.py`
+- [X] T005 [P] Bài kiểm nhật ký thay đổi đầu việc — chỉ thêm không sửa, đúng thứ tự thời gian — trong `backend/tests/test_task_log.py`
+- [X] T006 [P] Bài kiểm hộp thư: tạo mục, đọc theo người nhận, đánh dấu đã giải quyết, cách ly theo workspace — trong `backend/tests/test_inbox_api.py`
 
 ### Thực thể và lưu trữ
 
-- [ ] T007 [P] Thực thể nhật ký thay đổi đầu việc trong `backend/armarius/domain/entities/task_log.py`
-- [ ] T008 [P] Thực thể mục hộp thư người chủ (loại, người nhận, dự án, đầu việc, bậc nhắc, hồ sơ đã thử) trong `backend/armarius/domain/entities/inbox_item.py`
-- [ ] T009 Bảng `task_logs` và `inbox_items` trong `backend/armarius/infrastructure/database/models.py`
-- [ ] T010 Bản di trú nền chung trong `backend/armarius/infrastructure/alembic/versions/` (hai bảng mới, chỉ mục theo đầu việc và theo người nhận)
-- [ ] T011 Bộ ánh xạ hai thực thể mới trong `backend/armarius/infrastructure/persistence/mappers.py`
-- [ ] T012 Giao diện kho trong `backend/armarius/domain/repositories/repositories.py` và bản dựng trong `backend/armarius/infrastructure/persistence/repositories.py`
-- [ ] T013 Nối hai kho vào đơn vị công việc trong `backend/armarius/infrastructure/persistence/unit_of_work.py` và cổng `backend/armarius/application/ports/unit_of_work.py`
+- [X] T007 [P] Thực thể nhật ký thay đổi đầu việc trong `backend/armarius/domain/entities/task_log.py`
+- [X] T008 [P] Thực thể mục hộp thư người chủ (loại, người nhận, dự án, đầu việc, bậc nhắc, hồ sơ đã thử) trong `backend/armarius/domain/entities/inbox_item.py`
+- [X] T009 Bảng `task_logs` và `inbox_items` trong `backend/armarius/infrastructure/database/models.py`
+- [X] T010 Bản di trú nền chung trong `backend/armarius/infrastructure/alembic/versions/` (hai bảng mới, chỉ mục theo đầu việc và theo người nhận)
+- [X] T011 Bộ ánh xạ hai thực thể mới trong `backend/armarius/infrastructure/persistence/mappers.py`
+- [X] T012 Giao diện kho trong `backend/armarius/domain/repositories/repositories.py` và bản dựng trong `backend/armarius/infrastructure/persistence/repositories.py`
+- [X] T013 Nối hai kho vào đơn vị công việc trong `backend/armarius/infrastructure/persistence/unit_of_work.py` và cổng `backend/armarius/application/ports/unit_of_work.py`
 
 ### Dịch vụ và mặt giao tiếp
 
-- [ ] T014 Dịch vụ ghi nhật ký đầu việc trong `backend/armarius/application/use_cases/task_log.py` — một điểm vào duy nhất cho mọi loại việc xảy ra
-- [ ] T015 Dịch vụ hộp thư (đặt mục, đọc theo người, giải quyết) trong `backend/armarius/application/use_cases/inbox.py`, **bắn `hop-thu.muc-moi` và `hop-thu.da-giai-quyet` lên kênh người chủ ở mọi lối vào ra** — không có bước này thì hộp thư ở giao diện buộc phải hỏi vòng, trái Hiến pháp IV
-- [ ] T016 Bộ ngưỡng thời gian theo dự án trong `backend/armarius/domain/entities/project.py` — mở rộng `default_project_settings()`, thiếu trường nào thì lấy mặc định hệ thống ở T004
-- [ ] T017 Hai kênh sự kiện mới (theo dự án, theo người chủ) trong `backend/armarius/infrastructure/events/topic_bus.py`, giữ số thứ tự để nối lại sau khi đứt
-- [ ] T018 Lối vào dòng sự kiện cho hai kênh mới trong `backend/armarius/presentation/api/events.py`, giới hạn theo workspace người nghe
-- [ ] T019 Lối vào `GET /v1/tasks/{id}/log` trong `backend/armarius/presentation/api/tasks.py` và lược đồ đáp trong `backend/armarius/presentation/schemas.py`
-- [ ] T020 Lối vào `GET/PUT /v1/projects/{id}/thresholds` trong `backend/armarius/presentation/api/projects.py`
-- [ ] T021 Bộ định tuyến hộp thư `GET /v1/inbox` và `POST /v1/inbox/{item_id}/resolve` trong `backend/armarius/presentation/api/inbox.py`, gắn vào `backend/armarius/main.py`
-- [ ] T022 Bơm dịch vụ nhật ký và hộp thư vào `backend/armarius/presentation/container.py`
+- [X] T014 Dịch vụ ghi nhật ký đầu việc trong `backend/armarius/application/use_cases/task_log.py` — một điểm vào duy nhất cho mọi loại việc xảy ra
+- [X] T015 Dịch vụ hộp thư (đặt mục, đọc theo người, giải quyết) trong `backend/armarius/application/use_cases/inbox.py`, **bắn `hop-thu.muc-moi` và `hop-thu.da-giai-quyet` lên kênh người chủ ở mọi lối vào ra** — không có bước này thì hộp thư ở giao diện buộc phải hỏi vòng, trái Hiến pháp IV
+- [X] T016 Bộ ngưỡng thời gian theo dự án trong `backend/armarius/domain/entities/project.py` — mở rộng `default_project_settings()`, thiếu trường nào thì lấy mặc định hệ thống ở T004
+- [X] T017 Hai kênh sự kiện mới (theo dự án, theo người chủ) trong `backend/armarius/infrastructure/events/topic_bus.py`, giữ số thứ tự để nối lại sau khi đứt
+- [X] T018 Lối vào dòng sự kiện cho hai kênh mới trong `backend/armarius/presentation/api/events.py`, giới hạn theo workspace người nghe
+- [X] T019 Lối vào `GET /v1/tasks/{id}/log` trong `backend/armarius/presentation/api/tasks.py` và lược đồ đáp trong `backend/armarius/presentation/schemas.py`
+- [X] T020 Lối vào `GET/PUT /v1/projects/{id}/thresholds` trong `backend/armarius/presentation/api/projects.py`
+- [X] T021 Bộ định tuyến hộp thư `GET /v1/inbox` và `POST /v1/inbox/{item_id}/resolve` trong `backend/armarius/presentation/api/inbox.py`, gắn vào `backend/armarius/main.py`
+- [X] T022 Bơm dịch vụ nhật ký và hộp thư vào `backend/armarius/presentation/container.py`
 
 ### Giao diện — chỉ phần ống dẫn
 
-- [ ] T023 [P] Đăng ký hai kênh sự kiện mới trong `frontend/src/lib/sse.ts`
-- [ ] T024 [P] Kiểu dữ liệu và lời gọi hộp thư, nhật ký trong `frontend/src/lib/api.ts`
-- [ ] T025 [P] Bộ ánh xạ mục hộp thư và dòng nhật ký trong `frontend/src/lib/mappers.ts`
+- [X] T023 [P] Đăng ký hai kênh sự kiện mới trong `frontend/src/lib/sse.ts`
+- [X] T024 [P] Kiểu dữ liệu và lời gọi hộp thư, nhật ký trong `frontend/src/lib/api.ts`
+- [X] T025 [P] Bộ ánh xạ mục hộp thư và dòng nhật ký trong `frontend/src/lib/mappers.ts`
 
 **Chốt chặn**: `cd backend && uv run pytest -q` xanh, `uv run pytest tests/test_migration_schema_parity.py` xanh. Nền sẵn sàng — bắt đầu được Đợt 1.
 

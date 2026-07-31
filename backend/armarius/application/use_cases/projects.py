@@ -14,12 +14,12 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import datetime
 from uuid import UUID
 
 from armarius.application.use_cases.types import UowFactory
-from armarius.domain.entities.project import Project, ProjectStatus
+from armarius.domain.entities.project import Project, ProjectStatus, ProjectThresholds
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
 from armarius.domain.services import project_key, project_rules
@@ -81,8 +81,16 @@ class RosterRoleView:
 
 
 class ProjectService:
-    def __init__(self, uow_factory: UowFactory) -> None:
+    def __init__(
+        self,
+        uow_factory: UowFactory,
+        system_thresholds: ProjectThresholds | None = None,
+    ) -> None:
         self._uow = uow_factory
+        # The system floor every project falls back to (spec 001). Injected so the domain
+        # and application layers never read the environment; None only in narrow tests
+        # that do not touch thresholds.
+        self._system_thresholds = system_thresholds
 
     # ── create with the hard roster rule ────────────────────────────────────────
     async def create_project(
@@ -279,6 +287,41 @@ class ProjectService:
             updated = await uow.projects.update(project)
             await uow.commit()
             return updated
+
+    # ── timing thresholds (spec 001) ──────────────────────────────────────────────
+    async def get_thresholds(self, project_id: UUID) -> ProjectThresholds:
+        """The project's effective thresholds — system floor plus its own overrides."""
+        async with self._uow() as uow:
+            project = await uow.projects.get(project_id)
+            if project is None:
+                raise LookupError("project not found")
+        return self._resolve(project)
+
+    async def set_thresholds(
+        self, project_id: UUID, overrides: dict[str, object]
+    ) -> ProjectThresholds:
+        """Store per-project overrides. Only keys that name a real threshold survive, and
+        an empty dict resets the project back to the system floor."""
+        async with self._uow() as uow:
+            project = await uow.projects.get(project_id)
+            if project is None:
+                raise LookupError("project not found")
+            known = {f.name for f in fields(ProjectThresholds)}
+            project.settings = {
+                **project.settings,
+                "thresholds": {k: v for k, v in overrides.items() if k in known},
+            }
+            project.updated_at = utcnow()
+            updated = await uow.projects.update(project)
+            await uow.commit()
+        return self._resolve(updated)
+
+    def _resolve(self, project: Project) -> ProjectThresholds:
+        if self._system_thresholds is None:
+            raise RuntimeError("ProjectService was built without system thresholds")
+        return self._system_thresholds.with_overrides(
+            (project.settings or {}).get("thresholds")
+        )
 
     async def delete_project(self, project_id: UUID) -> None:
         async with self._uow() as uow:

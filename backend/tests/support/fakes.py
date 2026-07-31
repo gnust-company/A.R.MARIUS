@@ -20,6 +20,7 @@ from armarius.application.ports.adapter import (
 )
 from armarius.application.ports.liveness_probe import LivenessProbe
 from armarius.application.ports.unit_of_work import UnitOfWork
+from armarius.domain.entities.inbox_item import InboxItem, InboxItemStatus
 from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.onboarding import OnboardingSession
@@ -29,6 +30,7 @@ from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.entities.skill import Skill
 from armarius.domain.entities.task import Task, TaskStatus
 from armarius.domain.entities.task_dependency import TaskDependency
+from armarius.domain.entities.task_log import TaskLogEntry
 from armarius.domain.entities.workspace import Project, Workspace
 
 
@@ -39,6 +41,8 @@ class _Store:
     onboardings: dict[UUID, OnboardingSession] = field(default_factory=dict)
     projects: dict[UUID, Project] = field(default_factory=dict)
     tasks: dict[UUID, Task] = field(default_factory=dict)
+    task_logs: dict[UUID, TaskLogEntry] = field(default_factory=dict)
+    inbox: dict[UUID, InboxItem] = field(default_factory=dict)
     dependencies: dict[UUID, TaskDependency] = field(default_factory=dict)
     roles: dict[UUID, Role] = field(default_factory=dict)
     seat_grants: dict[UUID, SeatGrant] = field(default_factory=dict)
@@ -326,6 +330,66 @@ class _FakeOnboardingRepo:
         return items
 
 
+class _FakeTaskLogRepo:
+    def __init__(self, store: _Store) -> None:
+        self._s = store
+
+    async def append(self, entry: TaskLogEntry) -> TaskLogEntry:
+        self._s.task_logs[entry.id] = entry
+        return entry
+
+    async def next_seq(self, task_id: UUID) -> int:
+        seqs = [e.seq for e in self._s.task_logs.values() if e.task_id == task_id]
+        return (max(seqs) if seqs else 0) + 1
+
+    async def list_by_task(self, task_id: UUID) -> list[TaskLogEntry]:
+        entries = [e for e in self._s.task_logs.values() if e.task_id == task_id]
+        entries.sort(key=lambda e: e.seq)
+        return entries
+
+
+class _FakeInboxRepo:
+    def __init__(self, store: _Store) -> None:
+        self._s = store
+
+    async def add(self, item: InboxItem) -> InboxItem:
+        self._s.inbox[item.id] = item
+        return item
+
+    async def get(self, item_id: UUID) -> InboxItem | None:
+        return self._s.inbox.get(item_id)
+
+    async def update(self, item: InboxItem) -> InboxItem:
+        self._s.inbox[item.id] = item
+        return item
+
+    async def list_for_recipient(
+        self,
+        recipient_user_id: str,
+        *,
+        status: InboxItemStatus | None = None,
+        project_id: UUID | None = None,
+    ) -> list[InboxItem]:
+        epoch = datetime.min.replace(tzinfo=UTC)
+        items = [
+            i for i in self._s.inbox.values()
+            if i.recipient_user_id == recipient_user_id
+            and (status is None or i.status == status)
+            and (project_id is None or i.project_id == project_id)
+        ]
+        items.sort(key=lambda i: i.created_at or epoch)
+        return items
+
+    async def list_pending_for_task(self, task_id: UUID) -> list[InboxItem]:
+        epoch = datetime.min.replace(tzinfo=UTC)
+        items = [
+            i for i in self._s.inbox.values()
+            if i.task_id == task_id and i.status == InboxItemStatus.PENDING
+        ]
+        items.sort(key=lambda i: i.created_at or epoch)
+        return items
+
+
 class FakeUnitOfWork(UnitOfWork):
     """A UoW backed by an in-memory store. Only the repos the Sprint-2 use cases need."""
 
@@ -339,6 +403,8 @@ class FakeUnitOfWork(UnitOfWork):
         self.onboardings = _FakeOnboardingRepo(s)  # type: ignore[assignment]
         self.projects = _FakeProjectRepo(s)  # type: ignore[assignment]
         self.tasks = _FakeTaskRepo(s)  # type: ignore[assignment]
+        self.task_logs = _FakeTaskLogRepo(s)  # type: ignore[assignment]
+        self.inbox = _FakeInboxRepo(s)  # type: ignore[assignment]
         self.dependencies = _FakeTaskDependencyRepo(s)  # type: ignore[assignment]
         self.roles = _FakeRoleRepo(s)  # type: ignore[assignment]
         self.seat_grants = _FakeSeatGrantRepo(s)  # type: ignore[assignment]

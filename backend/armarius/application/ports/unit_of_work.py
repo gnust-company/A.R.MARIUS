@@ -12,6 +12,7 @@ from types import TracebackType
 from armarius.domain.repositories.repositories import (
     ArtifactRepository,
     CommentRepository,
+    InboxRepository,
     LabelRepository,
     LeaderChatRepository,
     MariusRepository,
@@ -24,6 +25,7 @@ from armarius.domain.repositories.repositories import (
     SessionRepository,
     SkillRepository,
     TaskDependencyRepository,
+    TaskLogRepository,
     TaskRepository,
     UserRepository,
     WakeupRepository,
@@ -41,7 +43,9 @@ class UnitOfWork(ABC):
     seat_grants: SeatGrantRepository
     mariuses: MariusRepository
     tasks: TaskRepository
+    task_logs: TaskLogRepository
     dependencies: TaskDependencyRepository
+    inbox: InboxRepository
     comments: CommentRepository
     sessions: SessionRepository
     runs: RunRepository

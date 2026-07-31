@@ -614,3 +614,66 @@ class OnboardingOut(_Out):
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
+
+
+# ------------------------------------------------- task log / inbox / thresholds
+class TaskLogEntryOut(_Out):
+    """One line of a task's history (spec 001 §10)."""
+
+    id: UUID
+    task_id: UUID | None = None
+    seq: int
+    kind: str
+    actor_kind: str
+    actor_marius_id: UUID | None = None
+    actor_user_id: str | None = None
+    before: str | None = None
+    after: str | None = None
+    reason: str | None = None
+    detail: dict[str, object] = Field(default_factory=dict)
+    created_at: datetime | None = None
+
+
+class InboxItemOut(_Out):
+    """A decision waiting on the calling patron (spec 001 §11)."""
+
+    id: UUID
+    workspace_id: UUID | None = None
+    project_id: UUID | None = None
+    task_id: UUID | None = None
+    kind: str
+    status: str
+    title: str
+    body: str | None = None
+    reminder_tier: int = 0
+    attempt_dossier: dict[str, object] = Field(default_factory=dict)
+    created_at: datetime | None = None
+    last_reminded_at: datetime | None = None
+    resolved_at: datetime | None = None
+
+
+class ThresholdsOut(_Out):
+    """A project's effective timing thresholds — system floor plus its overrides."""
+
+    hang_suspect_seconds: int
+    hang_grace_seconds: int
+    orchestration_cadence_seconds: int
+    task_silence_seconds: int
+    due_soon_hours: list[int]
+    patron_reminder_hours: list[int]
+    level1_recovery_attempts: int
+    rejection_round_cap: int
+
+
+class ThresholdsIn(BaseModel):
+    """Per-project overrides. Every field optional — omit one to keep the system floor,
+    and send an empty body to reset the project back to it entirely."""
+
+    hang_suspect_seconds: int | None = Field(default=None, gt=0)
+    hang_grace_seconds: int | None = Field(default=None, gt=0)
+    orchestration_cadence_seconds: int | None = Field(default=None, gt=0)
+    task_silence_seconds: int | None = Field(default=None, gt=0)
+    due_soon_hours: list[int] | None = None
+    patron_reminder_hours: list[int] | None = None
+    level1_recovery_attempts: int | None = Field(default=None, gt=0)
+    rejection_round_cap: int | None = Field(default=None, gt=0)

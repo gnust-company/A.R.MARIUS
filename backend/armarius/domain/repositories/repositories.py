@@ -9,6 +9,7 @@ from uuid import UUID
 
 from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.comment import Comment
+from armarius.domain.entities.inbox_item import InboxItem, InboxItemStatus
 from armarius.domain.entities.label import Label
 from armarius.domain.entities.leader_chat import ProjectLeaderConversation
 from armarius.domain.entities.marius import Marius
@@ -20,6 +21,7 @@ from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.skill import Skill
 from armarius.domain.entities.task import Task
 from armarius.domain.entities.task_dependency import TaskDependency
+from armarius.domain.entities.task_log import TaskLogEntry
 from armarius.domain.entities.user import User
 from armarius.domain.entities.wakeup import WakeupRequest
 from armarius.domain.entities.workspace import Project, Workspace
@@ -291,3 +293,45 @@ class UserRepository(ABC):
 
     @abstractmethod
     async def list(self) -> Sequence[User]: ...
+
+
+class TaskLogRepository(ABC):
+    """Append-only task history (spec 001 §10).
+
+    Deliberately has no ``update`` and no ``remove``: a correction is a new entry, never
+    a rewrite. Anything that needs to change history is asking the wrong question.
+    """
+
+    @abstractmethod
+    async def append(self, entry: TaskLogEntry) -> TaskLogEntry: ...
+
+    @abstractmethod
+    async def next_seq(self, task_id: UUID) -> int: ...
+
+    @abstractmethod
+    async def list_by_task(self, task_id: UUID) -> Sequence[TaskLogEntry]: ...
+
+
+class InboxRepository(ABC):
+    """Patron inbox items (spec 001 §11)."""
+
+    @abstractmethod
+    async def add(self, item: InboxItem) -> InboxItem: ...
+
+    @abstractmethod
+    async def get(self, item_id: UUID) -> InboxItem | None: ...
+
+    @abstractmethod
+    async def update(self, item: InboxItem) -> InboxItem: ...
+
+    @abstractmethod
+    async def list_for_recipient(
+        self,
+        recipient_user_id: str,
+        *,
+        status: InboxItemStatus | None = None,
+        project_id: UUID | None = None,
+    ) -> Sequence[InboxItem]: ...
+
+    @abstractmethod
+    async def list_pending_for_task(self, task_id: UUID) -> Sequence[InboxItem]: ...

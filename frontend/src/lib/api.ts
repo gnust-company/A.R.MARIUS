@@ -809,3 +809,82 @@ export function workspaceEventsUrl(workspaceId: string): string {
 export function taskStreamUrl(taskId: string): string {
   return `${API_BASE}/v1/tasks/${taskId}/stream`
 }
+
+// ── Task change log · patron inbox · project thresholds (spec 001) ────────────────────────
+
+/** One line of a task's history (spec 001 §10). Follows the task, not a single run. */
+export interface TaskLogEntryDTO {
+  id: string
+  task_id?: string | null
+  seq: number
+  kind: string
+  actor_kind: string
+  actor_marius_id?: string | null
+  actor_user_id?: string | null
+  before?: string | null
+  after?: string | null
+  reason?: string | null
+  detail: Record<string, unknown>
+  created_at?: string | null
+}
+
+/** A decision waiting on the calling patron (spec 001 §11). */
+export interface InboxItemDTO {
+  id: string
+  workspace_id?: string | null
+  project_id?: string | null
+  task_id?: string | null
+  kind: string
+  status: string
+  title: string
+  body?: string | null
+  reminder_tier: number
+  attempt_dossier: Record<string, unknown>
+  created_at?: string | null
+  last_reminded_at?: string | null
+  resolved_at?: string | null
+}
+
+/** Effective timing thresholds — the system floor with the project's overrides applied. */
+export interface ThresholdsDTO {
+  hang_suspect_seconds: number
+  hang_grace_seconds: number
+  orchestration_cadence_seconds: number
+  task_silence_seconds: number
+  due_soon_hours: number[]
+  patron_reminder_hours: number[]
+  level1_recovery_attempts: number
+  rejection_round_cap: number
+}
+
+export async function getTaskLog(taskId: string): Promise<TaskLogEntryDTO[]> {
+  return get<TaskLogEntryDTO[]>(`/v1/tasks/${taskId}/log`)
+}
+
+/** `status` accepts `pending` (default), `resolved` or `all`. */
+export async function getInbox(params?: {
+  status?: 'pending' | 'resolved' | 'all'
+  projectId?: string
+}): Promise<InboxItemDTO[]> {
+  const query = new URLSearchParams()
+  if (params?.status) query.set('status', params.status)
+  if (params?.projectId) query.set('project_id', params.projectId)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return get<InboxItemDTO[]>(`/v1/inbox${suffix}`)
+}
+
+export async function resolveInboxItem(itemId: string): Promise<InboxItemDTO> {
+  return post<InboxItemDTO>(`/v1/inbox/${itemId}/resolve`, {})
+}
+
+export async function getProjectThresholds(projectId: string): Promise<ThresholdsDTO> {
+  return get<ThresholdsDTO>(`/v1/projects/${projectId}/thresholds`)
+}
+
+/** Replace the project's overrides. Omit a field to keep the system floor for it. */
+export async function setProjectThresholds(
+  projectId: string,
+  overrides: Partial<ThresholdsDTO>,
+): Promise<ThresholdsDTO> {
+  return put<ThresholdsDTO>(`/v1/projects/${projectId}/thresholds`, overrides)
+}

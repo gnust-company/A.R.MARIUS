@@ -194,6 +194,40 @@ export interface TaskComment {
   timestamp: string
 }
 
+/** One line of a task's history (spec 001 §10) — follows the task, not one agent run. */
+export interface TaskLogEntryVM {
+  id: string
+  taskId: string
+  seq: number
+  kind: string
+  actorKind: 'user' | 'agent' | 'system'
+  actorId?: string
+  before?: string
+  after?: string
+  reason?: string
+  detail: Record<string, unknown>
+  timestamp: string
+}
+
+/** A decision parked on the current patron (spec 001 §11). */
+export interface InboxItemVM {
+  id: string
+  workspaceId?: string
+  projectId?: string
+  taskId?: string
+  kind: string
+  status: 'pending' | 'resolved'
+  title: string
+  body?: string
+  /** 0 → 1 → 2 → 3 as the thinning reminders go out (FR-065). */
+  reminderTier: number
+  /** Only on escalations: what was tried, and the exact question to answer (FR-061). */
+  attemptDossier: Record<string, unknown>
+  createdAt: string
+  lastRemindedAt?: string
+  resolvedAt?: string
+}
+
 export interface ChecklistItem {
   id: string
   text: string

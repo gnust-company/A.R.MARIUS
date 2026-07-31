@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.comment import Comment
+from armarius.domain.entities.inbox_item import InboxItem, InboxItemStatus
 from armarius.domain.entities.label import Label
 from armarius.domain.entities.leader_chat import ProjectLeaderConversation
 from armarius.domain.entities.marius import Marius
@@ -21,12 +22,14 @@ from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.skill import Skill
 from armarius.domain.entities.task import Task, TaskStatus
 from armarius.domain.entities.task_dependency import TaskDependency
+from armarius.domain.entities.task_log import TaskLogEntry
 from armarius.domain.entities.user import User
 from armarius.domain.entities.wakeup import WakeupRequest
 from armarius.domain.entities.workspace import Project, Workspace
 from armarius.domain.repositories.repositories import (
     ArtifactRepository,
     CommentRepository,
+    InboxRepository,
     LabelRepository,
     LeaderChatRepository,
     MariusRepository,
@@ -39,6 +42,7 @@ from armarius.domain.repositories.repositories import (
     SessionRepository,
     SkillRepository,
     TaskDependencyRepository,
+    TaskLogRepository,
     TaskRepository,
     UserRepository,
     WakeupRepository,
@@ -47,6 +51,7 @@ from armarius.domain.repositories.repositories import (
 from armarius.infrastructure.database.models import (
     ArtifactModel,
     CommentModel,
+    InboxItemModel,
     LabelModel,
     MariusModel,
     OnboardingSessionModel,
@@ -59,6 +64,7 @@ from armarius.infrastructure.database.models import (
     SessionModel,
     SkillModel,
     TaskDependencyModel,
+    TaskLogModel,
     TaskModel,
     UserModel,
     WakeupModel,
@@ -1258,3 +1264,126 @@ class SqlSkillRepository(SkillRepository):
         if m is not None:
             await self._s.delete(m)
         await self._s.flush()
+
+
+class SqlTaskLogRepository(TaskLogRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def append(self, entry: TaskLogEntry) -> TaskLogEntry:
+        self._s.add(
+            TaskLogModel(
+                id=entry.id,
+                task_id=entry.task_id,
+                seq=entry.seq,
+                kind=str(entry.kind),
+                actor_kind=str(entry.actor_kind),
+                actor_marius_id=entry.actor_marius_id,
+                actor_user_id=entry.actor_user_id,
+                before_value=entry.before,
+                after_value=entry.after,
+                reason=entry.reason,
+                detail=dict(entry.detail or {}),
+                created_at=entry.created_at,
+            )
+        )
+        await self._s.flush()
+        return entry
+
+    async def next_seq(self, task_id: UUID) -> int:
+        """One past the highest seq recorded for this task (1 for a fresh task).
+
+        The ``uq_task_log_task_seq`` constraint is what actually makes this safe: two
+        writers reading the same maximum cannot both commit.
+        """
+        highest = (
+            await self._s.execute(
+                select(func.max(TaskLogModel.seq)).where(TaskLogModel.task_id == task_id)
+            )
+        ).scalar_one_or_none()
+        return int(highest or 0) + 1
+
+    async def list_by_task(self, task_id: UUID) -> Sequence[TaskLogEntry]:
+        rows = (
+            await self._s.execute(
+                select(TaskLogModel)
+                .where(TaskLogModel.task_id == task_id)
+                .order_by(TaskLogModel.seq)
+            )
+        ).scalars().all()
+        return [mappers.task_log_to_entity(m) for m in rows]
+
+
+class SqlInboxRepository(InboxRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, item: InboxItem) -> InboxItem:
+        self._s.add(
+            InboxItemModel(
+                id=item.id,
+                workspace_id=item.workspace_id,
+                recipient_user_id=item.recipient_user_id,
+                project_id=item.project_id,
+                task_id=item.task_id,
+                kind=str(item.kind),
+                status=str(item.status),
+                title=item.title,
+                body=item.body,
+                reminder_tier=item.reminder_tier,
+                attempt_dossier=dict(item.attempt_dossier or {}),
+                created_at=item.created_at,
+                last_reminded_at=item.last_reminded_at,
+                resolved_at=item.resolved_at,
+            )
+        )
+        await self._s.flush()
+        return item
+
+    async def get(self, item_id: UUID) -> InboxItem | None:
+        m = await self._s.get(InboxItemModel, item_id)
+        return mappers.inbox_item_to_entity(m) if m else None
+
+    async def update(self, item: InboxItem) -> InboxItem:
+        m = await self._s.get(InboxItemModel, item.id)
+        if m is None:
+            return item
+        m.status = str(item.status)
+        m.title = item.title
+        m.body = item.body
+        m.reminder_tier = item.reminder_tier
+        m.attempt_dossier = dict(item.attempt_dossier or {})
+        m.last_reminded_at = item.last_reminded_at
+        m.resolved_at = item.resolved_at
+        await self._s.flush()
+        return item
+
+    async def list_for_recipient(
+        self,
+        recipient_user_id: str,
+        *,
+        status: InboxItemStatus | None = None,
+        project_id: UUID | None = None,
+    ) -> Sequence[InboxItem]:
+        stmt = select(InboxItemModel).where(
+            InboxItemModel.recipient_user_id == recipient_user_id
+        )
+        if status is not None:
+            stmt = stmt.where(InboxItemModel.status == str(status))
+        if project_id is not None:
+            stmt = stmt.where(InboxItemModel.project_id == project_id)
+        rows = (
+            await self._s.execute(stmt.order_by(InboxItemModel.created_at))
+        ).scalars().all()
+        return [mappers.inbox_item_to_entity(m) for m in rows]
+
+    async def list_pending_for_task(self, task_id: UUID) -> Sequence[InboxItem]:
+        rows = (
+            await self._s.execute(
+                select(InboxItemModel)
+                .where(InboxItemModel.task_id == task_id)
+                .where(InboxItemModel.status == str(InboxItemStatus.PENDING))
+                .order_by(InboxItemModel.created_at)
+            )
+        ).scalars().all()
+        return [mappers.inbox_item_to_entity(m) for m in rows]

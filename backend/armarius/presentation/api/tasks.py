@@ -22,6 +22,7 @@ from armarius.presentation.schemas import (
     PublishArtifactIn,
     RunStartedOut,
     TaskDependencyEdgeOut,
+    TaskLogEntryOut,
     TaskOut,
     TransitionIn,
     WakeIn,
@@ -193,3 +194,16 @@ async def wake_task(task_id: UUID, body: WakeIn, container: ContainerDep) -> Run
         reason=body.reason or "manual wake from dashboard",
     )
     return RunStartedOut(run_id=run_id)
+
+
+@router.get("/tasks/{task_id}/log", response_model=list[TaskLogEntryOut])
+async def task_log(task_id: UUID, container: ContainerDep) -> list[TaskLogEntryOut]:
+    """The task's whole history, oldest first (spec 001 §10, FR-079).
+
+    Distinct from ``/tasks/{id}/stream``, which follows one agent run — this follows the
+    task across every run, assignee and signature it ever had.
+    """
+    if await container.tasks.get(task_id) is None:
+        raise LookupError("task not found")
+    entries = await container.task_logs.list_for_task(task_id)
+    return [TaskLogEntryOut.model_validate(e) for e in entries]

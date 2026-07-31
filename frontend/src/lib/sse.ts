@@ -237,6 +237,53 @@ export function subscribeLeaderChat(
   )
 }
 
+/**
+ * Subscribe to the project board SSE (`/v1/projects/{id}/events`, spec 001).
+ *
+ * Carries phase changes, task status changes, stall flags and plan decisions. The
+ * callback receives the raw `{ type, data }` (data already JSON-parsed) — events are a
+ * signal, not the source of truth: on receipt the page re-reads the slice it needs.
+ */
+export function subscribeProjectEvents(
+  projectId: string,
+  onEvent: (event: { type: string; data: Record<string, unknown> }) => void,
+  onError?: (error: Error) => void,
+  lastEventId?: string | number,
+): () => void {
+  const url = `${API_BASE}/v1/projects/${projectId}/events`
+  return subscribeSSE(
+    url,
+    (msg) => {
+      onEvent({ type: msg.type, data: (parseData(msg.data) ?? {}) as Record<string, unknown> })
+    },
+    onError,
+    { lastEventId },
+  )
+}
+
+/**
+ * Subscribe to the caller's inbox SSE (`/v1/inbox/events`, spec 001).
+ *
+ * Keyed server-side by the authenticated user — there is no id to pass, and no way to
+ * watch anyone else's inbox. This is what keeps the Inbox page off a polling loop
+ * (Constitution IV).
+ */
+export function subscribeInboxEvents(
+  onEvent: (event: { type: string; data: Record<string, unknown> }) => void,
+  onError?: (error: Error) => void,
+  lastEventId?: string | number,
+): () => void {
+  const url = `${API_BASE}/v1/inbox/events`
+  return subscribeSSE(
+    url,
+    (msg) => {
+      onEvent({ type: msg.type, data: (parseData(msg.data) ?? {}) as Record<string, unknown> })
+    },
+    onError,
+    { lastEventId },
+  )
+}
+
 function parseData(data: unknown): unknown {
   if (typeof data === 'string') {
     try {

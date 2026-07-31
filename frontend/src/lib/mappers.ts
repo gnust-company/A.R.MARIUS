@@ -12,6 +12,7 @@
 import type {
   ArtifactDTO,
   CommentDTO,
+  InboxItemDTO,
   LabelDTO,
   MariusDTO,
   OnboardingDTO,
@@ -19,11 +20,13 @@ import type {
   ProjectDetailDTO,
   SkillDTO,
   TaskDTO,
+  TaskLogEntryDTO,
   WorkspaceDTO,
 } from './api'
 import type {
   AgentStatus,
   Artifact,
+  InboxItemVM,
   Marius,
   OnboardingSessionVM,
   Priority,
@@ -32,6 +35,7 @@ import type {
   Skill,
   Task,
   TaskComment,
+  TaskLogEntryVM,
   TaskStatus,
   TraceEvent,
   Workspace,
@@ -395,4 +399,46 @@ export function workspaceEventFromVM(eventData: unknown): { type: string; payloa
   }
 
   return { type, payload: payload as Record<string, unknown> }
+}
+
+// ── Task change log · patron inbox (spec 001) ─────────────────────────────────────────
+
+/** `actor_kind` is a closed set server-side; anything else is a bug, so fall back to
+ * `system` rather than widening the view-model union. */
+function actorKindFromDTO(raw: string): TaskLogEntryVM['actorKind'] {
+  return raw === 'user' || raw === 'agent' ? raw : 'system'
+}
+
+export function taskLogEntryFromDTO(dto: TaskLogEntryDTO): TaskLogEntryVM {
+  return {
+    id: dto.id,
+    taskId: dto.task_id ?? '',
+    seq: dto.seq,
+    kind: dto.kind,
+    actorKind: actorKindFromDTO(dto.actor_kind),
+    actorId: dto.actor_marius_id ?? dto.actor_user_id ?? undefined,
+    before: dto.before ?? undefined,
+    after: dto.after ?? undefined,
+    reason: dto.reason ?? undefined,
+    detail: dto.detail ?? {},
+    timestamp: dto.created_at ?? '',
+  }
+}
+
+export function inboxItemFromDTO(dto: InboxItemDTO): InboxItemVM {
+  return {
+    id: dto.id,
+    workspaceId: dto.workspace_id ?? undefined,
+    projectId: dto.project_id ?? undefined,
+    taskId: dto.task_id ?? undefined,
+    kind: dto.kind,
+    status: dto.status === 'resolved' ? 'resolved' : 'pending',
+    title: dto.title,
+    body: dto.body ?? undefined,
+    reminderTier: dto.reminder_tier ?? 0,
+    attemptDossier: dto.attempt_dossier ?? {},
+    createdAt: dto.created_at ?? '',
+    lastRemindedAt: dto.last_reminded_at ?? undefined,
+    resolvedAt: dto.resolved_at ?? undefined,
+  }
 }
