@@ -34,6 +34,25 @@
   **tự do trong khuôn kế hoạch đã duyệt**. Đầu việc nằm ngoài khuôn đó phải ở lại *nháp/đề xuất* chờ người
   chủ gật, vì nó là một lần nới phạm vi (FR-027, nối với FR-075).
 
+### Phiên 2026-07-31 — vá các lỗ tìm ra khi soi chéo
+
+- Hỏi: "Im lâu" và "sắp trễ" ở FR-052 là bao lâu? → Đáp: *im lâu* vài phút là phải soi — lấy **5 phút**, kèm
+  điều kiện không có lượt chạy đang sống để không đè lên ngưỡng nghi treo. *Sắp trễ* lấy bốn mốc **24 giờ,
+  12 giờ, 6 giờ, 1 giờ**. Đầu việc không đặt hạn chót thì không tính.
+- Hỏi: "Đình trệ" và "mắc kẹt" ở FR-052 với FR-058 là một hay hai thứ? → Đáp: **hai thứ khác hẳn**.
+  *Mắc kẹt* = đầu việc đang ở trạng thái *bị chặn* — hợp lệ, có động cơ đẩy đàng hoàng. *Đình trệ* = mất hết
+  động cơ đẩy — đây là báo động rằng hệ thống vừa đánh rơi một đầu việc, không phải một trạng thái nghiệp vụ.
+  *Sắp trễ* là chuyện thứ ba, thuộc nhịp bình thường của công việc.
+- Hỏi: Dự án vào *đóng* thì có phải thông báo toàn đội không? → Đáp: **không cần**. Agent không được đánh
+  thức nữa thì tự nhiên hết việc. Chỉ giữ vế lịch sử ở dạng chỉ đọc (FR-005).
+- Hỏi: Cấm thợ báo cáo vượt cấp (FR-071) có cứng nhắc quá không? → Đáp: **viết lại cho đúng cách hệ chạy**.
+  Thợ chỉ cần biết đầu việc của nó, nộp thành phẩm, và báo cáo trong phòng cộng tác hoặc bình luận của đầu
+  việc đó. Trưởng dự án được đánh thức và đọc thay; người chủ thích thì vào đọc, không thì thôi. Không cần
+  một lệnh cấm — chỉ cần không mở lối nào cho thợ đi thẳng tới hộp thư người chủ.
+- Hỏi: Công tắc `yolo_mode` đang có trong mã thì giữ hay gỡ? → Đáp: **gỡ hẳn**. Nó không liên quan tới tính
+  năng này, và việc nó từng làm đã được hai cơ chế chuẩn hơn thay: luật "trong khuôn kế hoạch đã duyệt" cho
+  khâu tạo đầu việc, và công tắc tự động công nhận riêng từng người chủ cho khâu ký đầu ra.
+
 ---
 
 ## Kịch bản người dùng & kiểm thử *(bắt buộc)*
@@ -317,8 +336,9 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
   *bảo trì*.
 - **FR-004**: Chỉ người chủ được chuyển dự án sang *đóng*. Chuyển giữa *vận hành* và *bảo trì* do Trưởng dự
   án đề xuất và người chủ quyết.
-- **FR-005**: KHI dự án chuyển sang *đóng*, HỆ THỐNG PHẢI dừng mọi nhịp đánh thức của dự án đó, thông báo
-  toàn đội, và giữ toàn bộ lịch sử ở dạng chỉ đọc để người chủ xem lại bất cứ lúc nào.
+- **FR-005**: KHI dự án chuyển sang *đóng*, HỆ THỐNG PHẢI dừng mọi nhịp đánh thức của dự án đó và giữ toàn
+  bộ lịch sử ở dạng chỉ đọc để người chủ xem lại bất cứ lúc nào. KHÔNG cần thông báo cho đội — agent không
+  được đánh thức nữa thì tự nhiên hết việc.
 - **FR-006**: HỆ THỐNG KHÔNG ĐƯỢC tự tuyên bất kỳ dự án nào là hoàn thành. "Dự án xong" chỉ là một quyết định
   chuyển giai đoạn của người chủ.
 
@@ -433,7 +453,7 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
   đầu việc chuyển sang *xong*; một đầu việc thất bại hoặc quá hạn; hoặc một nhịp điều phối có điểm treo thật.
 - **FR-048**: HỆ THỐNG PHẢI đánh thức một thợ khi và chỉ khi có một trong các cớ: được giao đầu việc mới; bị
   nhắc tên trong trao đổi; có bình luận mới trên đầu việc mình phụ trách; cần làm tiếp một lượt còn dở; vướng
-  của mình đã được gỡ; hoặc bị nhắc vì im lâu.
+  của mình đã được gỡ; hoặc bị nhắc vì **im lâu** (định nghĩa ở FR-052, ngưỡng ở mục Giả định).
 - **FR-049**: HỆ THỐNG KHÔNG ĐƯỢC đánh thức một agent chỉ vì dự án có biến động chung — chỉ gọi khi có việc
   thuộc phần của chính nó đang chờ.
 - **FR-050**: Với mỗi cặp *(agent, đầu việc)*, HỆ THỐNG PHẢI giữ tối đa **một** lệnh đánh thức đang treo và
@@ -446,7 +466,13 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
 #### H. Nhịp điều phối của Trưởng dự án
 
 - **FR-052**: HỆ THỐNG PHẢI chạy một nhịp điều phối định kỳ *có kiểm soát* cho Trưởng dự án: trước mỗi nhịp
-  tự soi bảng việc tìm các điểm treo (im lâu, sắp trễ, chờ quyết định của Trưởng dự án, mắc kẹt).
+  tự soi bảng việc tìm các **điểm treo**. Đúng bốn loại, mỗi loại có một định nghĩa kiểm được:
+  - *im lâu* — đầu việc không có hoạt động nào quá ngưỡng **và** không có lượt chạy nào đang sống. Vế thứ
+    hai để không giẫm lên cơ chế nghi treo (FR-062), thứ vốn đã lo trường hợp agent đang chạy rồi đứng hình.
+  - *sắp trễ* — đầu việc có hạn chót và thời gian còn lại vừa chạm một trong các mốc cảnh báo. Đầu việc
+    **không đặt hạn chót thì không bao giờ tính là sắp trễ**.
+  - *mắc kẹt* — đầu việc đang ở trạng thái *bị chặn*.
+  - *chờ quyết định của Trưởng dự án* — có một việc đang đợi chính Trưởng dự án ra tay.
 - **FR-053**: NẾU không có điểm treo nào, HỆ THỐNG KHÔNG ĐƯỢC đánh thức Trưởng dự án; nhịp đó trôi qua trong
   im lặng.
 - **FR-054**: NẾU có điểm treo, gói tin PHẢI nêu đích danh từng điểm cần nhìn, không nói chung chung "đến giờ
@@ -463,6 +489,11 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
   đẩy có tồn tại và còn sống hay không.
 - **FR-058**: KHI một đầu việc không còn động cơ đẩy sống, HỆ THỐNG PHẢI nổi cờ *đình trệ* kèm lý do, và
   KHÔNG ĐƯỢC chuyển đầu việc đó sang *xong* trong bất kỳ hoàn cảnh nào.
+
+  Cờ *đình trệ* **không phải một trạng thái nghiệp vụ** — nó là báo động rằng hệ thống vừa đánh rơi một đầu
+  việc. Trong một hệ chạy đúng nó không bao giờ nổi; nổi tức là có lỗi hoặc có sự cố. Vì vậy nó khác hẳn
+  *sắp trễ* (nhịp bình thường của công việc, không ai làm sai) và khác *mắc kẹt* (đầu việc đang ở *bị chặn*,
+  một tình trạng hợp lệ có động cơ đẩy đàng hoàng).
 - **FR-059**: HỆ THỐNG PHẢI áp thang phục hồi ba mức theo đúng thứ tự, KHÔNG ĐƯỢC nhảy cóc: Mức 1 — hệ thống
   tự gọi lại, giữ nguyên người phụ trách, không quyết gì mới; Mức 2 — Trưởng dự án quyết một hành động phục
   hồi tường minh; Mức 3 — đẩy lên người chủ, chỉ với những quyết định duy nhất người chủ mới quyết được.
@@ -495,7 +526,9 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
 
 - **FR-070**: Người chủ PHẢI có quyền can thiệp trực tiếp ở mức tương đương Trưởng dự án — bình luận, giao
   hoặc sửa một đầu việc, đổi ưu tiên, bố trí thợ. Đây là quyền, không phải nghĩa vụ.
-- **FR-071**: HỆ THỐNG PHẢI cấm thợ báo cáo vượt cấp thẳng lên người chủ hoặc tự xin người chủ duyệt.
+- **FR-071**: Thợ giao tiếp **qua đầu việc** — bình luận và phòng cộng tác của chính đầu việc nó phụ trách,
+  cộng với thành phẩm nó nộp. HỆ THỐNG KHÔNG ĐƯỢC cho thợ đặt bất cứ thứ gì thẳng vào hộp thư người chủ.
+  Trưởng dự án được đánh thức khi có trao đổi mới và đọc thay; người chủ đọc nếu muốn, không bắt buộc.
 - **FR-072**: HỆ THỐNG PHẢI cấm thợ tự nhận việc ngoài đầu việc được giao và tự đổi phạm vi đầu việc.
 - **FR-073**: HỆ THỐNG KHÔNG ĐƯỢC tự lập kế hoạch, tự chẻ việc, tự chọn thợ, tự duyệt hay tự công nhận đầu ra
   thay bất kỳ ai; cũng KHÔNG ĐƯỢC sửa nội dung của các bên khi chuyển tin.
@@ -617,6 +650,11 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
   72 giờ rồi thưa dần. Riêng **nhịp điều phối** tài liệu gốc không cho số — lấy mặc định: rà mỗi 15 phút,
   trần 4 lần đánh thức theo nhịp trong một giờ, giãn tối đa lên 2 giờ khi dự án chạy trơn tru. Mọi ngưỡng
   PHẢI chỉnh được, không đóng cứng.
+- **Hai ngưỡng của điểm treo** — chốt 2026-07-31, tài liệu gốc không có:
+  - *im lâu* = **5 phút** không có hoạt động nào trên đầu việc **và** không có lượt chạy nào đang sống. Vế
+    thứ hai để không giẫm lên ngưỡng nghi treo 10 phút — hai cơ chế lo hai kiểu im khác nhau.
+  - *sắp trễ* = bốn mốc cảnh báo trước hạn chót: **24 giờ, 12 giờ, 6 giờ, 1 giờ**, mỗi mốc báo đúng một lần.
+    Hạn chót là trường không bắt buộc, nên đầu việc không đặt hạn chót thì **không bao giờ** tính là sắp trễ.
 
 **Mặc định hợp lý khác**
 

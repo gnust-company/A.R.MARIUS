@@ -131,8 +131,13 @@ là một nhánh, một PR, dừng chờ người chủ duyệt**.
 | **5** | 5 (P3) | Nhịp điều phối có kiểm soát | FR-052…055 | Đợt 4 |
 | **6** | 6 (P3) | Động cơ đẩy, cờ đình trệ, thang ba mức, nhắc chủ ba bậc, xếp hàng, khôi phục | FR-056…069, FR-075, FR-076 | Đợt 3, 5 |
 
-Ba yêu cầu nền (FR-078 → FR-084) không thành đợt riêng — chúng là ràng buộc mọi đợt phải giữ, kiểm ở mục
+Bảy yêu cầu nền (FR-078 → FR-084) không thành đợt riêng — chúng là ràng buộc mọi đợt phải giữ, kiểm ở mục
 Hiến pháp trong [quickstart.md](./quickstart.md).
+
+**Một điều chỉnh sau bước soi chéo (2026-07-31)**: thực thể *mục hộp thư* và *nhật ký thay đổi đầu việc* dời
+lên **giai đoạn nền chung** thay vì nằm trong Đợt 3 — vì Đợt 1 đã cần chỗ đặt mục chờ duyệt kế hoạch và Đợt 2
+cần chỗ đặt mục chờ duyệt đầu việc ngoài khuôn. Đợt 3 giữ phần khó thật của nó: định tuyến theo người cấp
+agent, công tắc tự động, bậc nhắc. Chi tiết trong [tasks.md](./tasks.md).
 
 **Đợt 1 và 2 là mốc dùng được đầu tiên**: sau hai đợt này, một dự án đã chạy đúng vòng thiết lập → lập kế
 hoạch → duyệt → vận hành với đầu việc không còn lối tắt nào. Đó là lát cắt nhỏ nhất mà người chủ thấy được
