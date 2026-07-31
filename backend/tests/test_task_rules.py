@@ -93,3 +93,16 @@ def test_dependency_gate_does_not_apply_to_review() -> None:
     task = Task(status=TaskStatus.IN_PROGRESS)
     task.transition_to(TaskStatus.IN_REVIEW, utcnow(), has_artifact=True, deps_satisfied=False)
     assert task.status == TaskStatus.IN_REVIEW
+
+
+# ── FR-003: no real task before the plan is approved (spec 001) ───────────────────
+# Pure-rule half of the gate. The HTTP half lives in test_plan_api.py; this pins the
+# law itself so a later refactor cannot quietly widen which phases accept work.
+
+
+def test_only_operating_and_maintaining_accept_real_tasks() -> None:
+    from armarius.domain.entities.project import ProjectStatus
+    from armarius.domain.services.project_rules import accepts_real_tasks
+
+    accepting = {p for p in ProjectStatus if accepts_real_tasks(p)}
+    assert accepting == {ProjectStatus.OPERATING, ProjectStatus.MAINTAINING}

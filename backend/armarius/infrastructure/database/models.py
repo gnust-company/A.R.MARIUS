@@ -389,3 +389,63 @@ class InboxItemModel(Base):
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     last_reminded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProjectContextModel(Base):
+    """One version of a project's five-part brief (spec 001 §2)."""
+
+    __tablename__ = "project_contexts"
+    __table_args__ = (
+        UniqueConstraint("project_id", "version", name="uq_project_context_version"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("projects.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    objective: Mapped[str] = mapped_column(Text, default="")
+    background: Mapped[str] = mapped_column(Text, default="")
+    constraints: Mapped[str] = mapped_column(Text, default="")
+    scope: Mapped[str] = mapped_column(Text, default="")
+    principles: Mapped[str] = mapped_column(Text, default="")
+    approval_status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approved_by_user_id: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PlanModel(Base):
+    """One version of a project's plan (spec 001 §3)."""
+
+    __tablename__ = "plans"
+    __table_args__ = (UniqueConstraint("project_id", "version", name="uq_plan_version"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("projects.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    risks: Mapped[str] = mapped_column(Text, default="")
+    milestones: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
+    patron_note: Mapped[str | None] = mapped_column(Text)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by_user_id: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PlanItemModel(Base):
+    """A plan item — the thing a task points at to prove it is in scope (FR-027)."""
+
+    __tablename__ = "plan_items"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    plan_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("plans.id"), index=True)
+    title: Mapped[str] = mapped_column(String(300), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    # `order` is reserved in SQL — the column carries the suffix, the entity does not.
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    depends_on: Mapped[list[str]] = mapped_column(JSON, default=list)
+    definition_of_done: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

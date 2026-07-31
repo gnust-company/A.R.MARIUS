@@ -194,6 +194,9 @@ export interface TaskComment {
   timestamp: string
 }
 
+/** The five project phases (spec 001 FR-001). A full roster opens *planning*, not work. */
+export type ProjectPhase = 'setup' | 'planning' | 'operating' | 'maintaining' | 'closed'
+
 /** One line of a task's history (spec 001 §10) — follows the task, not one agent run. */
 export interface TaskLogEntryVM {
   id: string
@@ -329,7 +332,8 @@ export interface Project {
   // array is loaded. Detail hydration (`seats`) is authoritative when present.
   seatsTotal?: number
   seatsFilled?: number
-  status?: 'active' | 'archived' | 'setup'
+  /** Five project phases (spec 001): setup → planning → operating ⇄ maintaining → closed. */
+  status?: ProjectPhase
   definitionOfDone?: string
   objective?: string
   githubUrl?: string
@@ -786,7 +790,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     // The backend grants the seat (system-only) and recomputes setup→active.
     await api.grantSeat(projectId, { marius_id: mariusId, role_key: role })
     await get().hydrateProject(projectId)
-    if (get().projects.find((p) => p.id === projectId)?.status === 'active') {
+    if (get().projects.find((p) => p.id === projectId)?.status === 'operating') {
       get().emitEvent({ type: 'project.active', payload: { projectId } })
     }
   },

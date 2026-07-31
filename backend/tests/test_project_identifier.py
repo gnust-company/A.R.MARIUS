@@ -20,6 +20,7 @@ from armarius.domain.services.project_key import InvalidProjectKey
 from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
+from tests.support.projects import force_phase
 
 
 def _services(uow_factory):
@@ -46,6 +47,7 @@ async def test_explicit_key_drives_task_identifiers(uow_factory) -> None:
     project = await projects.create_project(ws.id, "Calculator", key="CALC", roles=_roster())
 
     assert project.key == "CALC"
+    await force_phase(uow_factory, project.id)
     t1 = await tasks.create(project_id=project.id, title="a")
     t2 = await tasks.create(project_id=project.id, title="b")
     t3 = await tasks.create(project_id=project.id, title="c")
@@ -57,6 +59,7 @@ async def test_missing_key_is_suggested_from_name(uow_factory) -> None:
     ws = await workspaces.create_workspace("WS")
     project = await projects.create_project(ws.id, "Calculator", roles=_roster())
     assert project.key == "CALC"  # suggested from the name
+    await force_phase(uow_factory, project.id)
     task = await tasks.create(project_id=project.id, title="a")
     assert task.identifier == "CALC-1"
 
@@ -89,6 +92,7 @@ async def test_counter_advances_and_identifier_persists(uow_factory) -> None:
     projects, tasks, workspaces = _services(uow_factory)
     ws = await workspaces.create_workspace("WS")
     project = await projects.create_project(ws.id, "Calculator", key="CALC", roles=_roster())
+    await force_phase(uow_factory, project.id)
     created = await tasks.create(project_id=project.id, title="a")
 
     reloaded_task = await tasks.get(created.id)
@@ -105,6 +109,8 @@ async def test_each_project_has_its_own_sequence(uow_factory) -> None:
     ws = await workspaces.create_workspace("WS")
     calc = await projects.create_project(ws.id, "Calculator", key="CALC", roles=_roster())
     bot = await projects.create_project(ws.id, "AI Bot", key="BOT", roles=_roster())
+    await force_phase(uow_factory, calc.id)
+    await force_phase(uow_factory, bot.id)
     c1 = await tasks.create(project_id=calc.id, title="a")
     b1 = await tasks.create(project_id=bot.id, title="a")
     c2 = await tasks.create(project_id=calc.id, title="b")

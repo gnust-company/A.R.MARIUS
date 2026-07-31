@@ -15,6 +15,8 @@ from armarius.domain.entities.label import Label
 from armarius.domain.entities.leader_chat import ProjectLeaderConversation
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.onboarding import OnboardingSession
+from armarius.domain.entities.plan import Plan
+from armarius.domain.entities.project_context import ContextApprovalStatus, ProjectContext
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import Run, RunEvent
 from armarius.domain.entities.seat_grant import SeatGrant
@@ -34,6 +36,8 @@ from armarius.domain.repositories.repositories import (
     LeaderChatRepository,
     MariusRepository,
     OnboardingRepository,
+    PlanRepository,
+    ProjectContextRepository,
     ProjectRepository,
     RoleRepository,
     RunEventRepository,
@@ -55,6 +59,9 @@ from armarius.infrastructure.database.models import (
     LabelModel,
     MariusModel,
     OnboardingSessionModel,
+    PlanItemModel,
+    PlanModel,
+    ProjectContextModel,
     ProjectLeaderConversationModel,
     ProjectModel,
     RoleModel,
@@ -1387,3 +1394,192 @@ class SqlInboxRepository(InboxRepository):
             )
         ).scalars().all()
         return [mappers.inbox_item_to_entity(m) for m in rows]
+
+
+class SqlProjectContextRepository(ProjectContextRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, context: ProjectContext) -> ProjectContext:
+        self._s.add(
+            ProjectContextModel(
+                id=context.id,
+                project_id=context.project_id,
+                version=context.version,
+                objective=context.objective,
+                background=context.background,
+                constraints=context.constraints,
+                scope=context.scope,
+                principles=context.principles,
+                approval_status=str(context.approval_status),
+                approved_at=context.approved_at,
+                approved_by_user_id=context.approved_by_user_id,
+                created_at=context.created_at,
+                updated_at=context.updated_at,
+            )
+        )
+        await self._s.flush()
+        return context
+
+    async def update(self, context: ProjectContext) -> ProjectContext:
+        m = await self._s.get(ProjectContextModel, context.id)
+        if m is None:
+            return context
+        m.objective = context.objective
+        m.background = context.background
+        m.constraints = context.constraints
+        m.scope = context.scope
+        m.principles = context.principles
+        m.approval_status = str(context.approval_status)
+        m.approved_at = context.approved_at
+        m.approved_by_user_id = context.approved_by_user_id
+        m.updated_at = context.updated_at
+        await self._s.flush()
+        return context
+
+    async def _by_status(
+        self, project_id: UUID, status: ContextApprovalStatus
+    ) -> ProjectContext | None:
+        row = (
+            await self._s.execute(
+                select(ProjectContextModel)
+                .where(ProjectContextModel.project_id == project_id)
+                .where(ProjectContextModel.approval_status == str(status))
+                .order_by(ProjectContextModel.version.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        return mappers.project_context_to_entity(row) if row else None
+
+    async def get_approved(self, project_id: UUID) -> ProjectContext | None:
+        """The version in force — the one attached to wake packets (FR-009)."""
+        return await self._by_status(project_id, ContextApprovalStatus.APPROVED)
+
+    async def get_pending(self, project_id: UUID) -> ProjectContext | None:
+        """The version awaiting the patron. Has no effect until approved (FR-010)."""
+        return await self._by_status(project_id, ContextApprovalStatus.SUBMITTED)
+
+    async def latest_version(self, project_id: UUID) -> int:
+        highest = (
+            await self._s.execute(
+                select(func.max(ProjectContextModel.version)).where(
+                    ProjectContextModel.project_id == project_id
+                )
+            )
+        ).scalar_one_or_none()
+        return int(highest or 0)
+
+
+class SqlPlanRepository(PlanRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, plan: Plan) -> Plan:
+        self._s.add(
+            PlanModel(
+                id=plan.id,
+                project_id=plan.project_id,
+                version=plan.version,
+                summary=plan.summary,
+                risks=plan.risks,
+                milestones=plan.milestones,
+                status=str(plan.status),
+                patron_note=plan.patron_note,
+                submitted_at=plan.submitted_at,
+                decided_at=plan.decided_at,
+                decided_by_user_id=plan.decided_by_user_id,
+                created_at=plan.created_at,
+                updated_at=plan.updated_at,
+            )
+        )
+        for item in plan.items:
+            item.plan_id = plan.id
+            self._s.add(
+                PlanItemModel(
+                    id=item.id,
+                    plan_id=plan.id,
+                    title=item.title,
+                    description=item.description,
+                    order_index=item.order,
+                    depends_on=[str(x) for x in item.depends_on],
+                    definition_of_done=item.definition_of_done,
+                    created_at=item.created_at,
+                )
+            )
+        await self._s.flush()
+        return plan
+
+    async def update(self, plan: Plan) -> Plan:
+        """Plan-level fields only. Items are replaced by submitting a new version, so a
+        decision can never silently land on a different set of items than the one the
+        patron read."""
+        m = await self._s.get(PlanModel, plan.id)
+        if m is None:
+            return plan
+        m.summary = plan.summary
+        m.risks = plan.risks
+        m.milestones = plan.milestones
+        m.status = str(plan.status)
+        m.patron_note = plan.patron_note
+        m.submitted_at = plan.submitted_at
+        m.decided_at = plan.decided_at
+        m.decided_by_user_id = plan.decided_by_user_id
+        m.updated_at = plan.updated_at
+        await self._s.flush()
+        return plan
+
+    async def _items(self, plan_id: UUID) -> list[PlanItemModel]:
+        return list(
+            (
+                await self._s.execute(
+                    select(PlanItemModel)
+                    .where(PlanItemModel.plan_id == plan_id)
+                    .order_by(PlanItemModel.order_index)
+                )
+            ).scalars().all()
+        )
+
+    async def get(self, plan_id: UUID) -> Plan | None:
+        m = await self._s.get(PlanModel, plan_id)
+        if m is None:
+            return None
+        return mappers.plan_to_entity(m, await self._items(plan_id))
+
+    async def get_current(self, project_id: UUID) -> Plan | None:
+        """The newest version, whatever its status — what both surfaces show."""
+        row = (
+            await self._s.execute(
+                select(PlanModel)
+                .where(PlanModel.project_id == project_id)
+                .order_by(PlanModel.version.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        return mappers.plan_to_entity(row, await self._items(row.id))
+
+    async def get_approved(self, project_id: UUID) -> Plan | None:
+        """The version in force — its items define what counts as in scope (FR-027)."""
+        row = (
+            await self._s.execute(
+                select(PlanModel)
+                .where(PlanModel.project_id == project_id)
+                .where(PlanModel.status == "approved")
+                .order_by(PlanModel.version.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        return mappers.plan_to_entity(row, await self._items(row.id))
+
+    async def latest_version(self, project_id: UUID) -> int:
+        highest = (
+            await self._s.execute(
+                select(func.max(PlanModel.version)).where(
+                    PlanModel.project_id == project_id
+                )
+            )
+        ).scalar_one_or_none()
+        return int(highest or 0)

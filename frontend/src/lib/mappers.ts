@@ -31,6 +31,7 @@ import type {
   OnboardingSessionVM,
   Priority,
   Project,
+  ProjectPhase,
   ProjectSeat,
   Skill,
   Task,
@@ -97,6 +98,21 @@ export function workspaceToVM(dto: WorkspaceDTO, ownerId = ''): Workspace {
 
 // ── Project ─────────────────────────────────────────────────────────────────────────────
 
+const PROJECT_PHASES: readonly ProjectPhase[] = [
+  'setup',
+  'planning',
+  'operating',
+  'maintaining',
+  'closed',
+]
+
+/** Map the backend phase, tolerating the pre-spec-001 names an old tab may still hold. */
+export function projectPhaseFromDTO(raw: string | null | undefined): ProjectPhase {
+  if (raw === 'active') return 'operating'
+  if (raw === 'archived') return 'closed'
+  return PROJECT_PHASES.includes(raw as ProjectPhase) ? (raw as ProjectPhase) : 'setup'
+}
+
 export function projectToVM(dto: ProjectDTO): Project {
   // List-level projects carry `status` + seat *counts* (backend `ProjectOut`) so the grid
   // shows a real status chip and roster fill without opening the detail. The full `seats`
@@ -108,7 +124,7 @@ export function projectToVM(dto: ProjectDTO): Project {
     key: dto.key ?? undefined,
     description: dto.description ?? undefined,
     workspaceId: dto.workspace_id ?? '',
-    status: dto.status === 'active' ? 'active' : dto.status === 'archived' ? 'archived' : 'setup',
+    status: projectPhaseFromDTO(dto.status),
     objective: dto.objective ?? undefined,
     seatsTotal: dto.seats_total ?? 0,
     seatsFilled: dto.seats_filled ?? 0,
@@ -143,7 +159,7 @@ export function projectDetailToVM(dto: ProjectDetailDTO): Project {
     key: dto.key ?? undefined,
     description: dto.description ?? undefined,
     workspaceId: dto.workspace_id ?? '',
-    status: dto.status === 'setup' ? 'setup' : dto.status === 'active' ? 'active' : 'archived',
+    status: projectPhaseFromDTO(dto.status),
     objective: dto.objective ?? undefined,
     githubUrl: dto.github_url ?? undefined,
     createdAt: dto.created_at ?? undefined,

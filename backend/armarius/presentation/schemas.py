@@ -677,3 +677,95 @@ class ThresholdsIn(BaseModel):
     patron_reminder_hours: list[int] | None = None
     level1_recovery_attempts: int | None = Field(default=None, gt=0)
     rejection_round_cap: int | None = Field(default=None, gt=0)
+
+
+# --------------------------------------------- project context / plan (spec 001)
+class ProjectContextIn(BaseModel):
+    """The five parts of the brief. All optional — an empty part reads as "không có"."""
+
+    objective: str = ""
+    background: str = ""
+    constraints: str = ""
+    scope: str = ""
+    principles: str = ""
+
+
+class ProjectContextOut(_Out):
+    id: UUID
+    project_id: UUID | None = None
+    version: int
+    objective: str = ""
+    background: str = ""
+    constraints: str = ""
+    scope: str = ""
+    principles: str = ""
+    approval_status: str
+    approved_at: datetime | None = None
+    approved_by_user_id: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class ProjectContextViewOut(BaseModel):
+    """What the patron sees: the version in force, plus one awaiting them if any."""
+
+    approved: ProjectContextOut | None = None
+    pending: ProjectContextOut | None = None
+
+
+class ContextDecisionIn(BaseModel):
+    approve: bool
+    note: str | None = None
+
+
+class PlanItemIn(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    description: str = ""
+    order: int = 0
+    definition_of_done: str = ""
+    depends_on: list[UUID] = Field(default_factory=list)
+
+
+class PlanItemOut(_Out):
+    id: UUID
+    title: str
+    description: str = ""
+    order: int = 0
+    definition_of_done: str = ""
+    depends_on: list[UUID] = Field(default_factory=list)
+
+
+class PlanIn(BaseModel):
+    summary: str = ""
+    risks: str = ""
+    milestones: str = ""
+    items: list[PlanItemIn] = Field(default_factory=list)
+
+
+class PlanOut(_Out):
+    id: UUID
+    project_id: UUID | None = None
+    version: int
+    summary: str = ""
+    risks: str = ""
+    milestones: str = ""
+    status: str
+    patron_note: str | None = None
+    submitted_at: datetime | None = None
+    decided_at: datetime | None = None
+    decided_by_user_id: str | None = None
+    items: list[PlanItemOut] = Field(default_factory=list)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class PlanDecisionIn(BaseModel):
+    """The patron's three choices (FR-013). `note` is required for the last two."""
+
+    decision: str
+    note: str | None = None
+
+
+class PhaseChangeIn(BaseModel):
+    target_phase: str
+    reason: str | None = None

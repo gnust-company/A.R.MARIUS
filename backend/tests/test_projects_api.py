@@ -20,6 +20,7 @@ from armarius.infrastructure.database.models import (
     TaskModel,
 )
 from armarius.main import app
+from tests.support.projects import force_operating
 
 
 async def _client() -> AsyncClient:
@@ -319,6 +320,9 @@ async def test_delete_project_cascades_children() -> None:
             headers=h,
             json={"marius_id": mid, "role_key": "backend"},
         )
+        # FR-003: a real task needs a project past the plan gate. Cascade-on-delete is
+        # not what the gate is about, so step over it rather than replaying the loop.
+        await force_operating(pid)
         task = await c.post(f"/v1/projects/{pid}/tasks", headers=h, json={"title": "T"})
         task_id = task.json()["id"]
         art = await c.post(
@@ -355,7 +359,7 @@ async def test_delete_project_cascades_children() -> None:
     assert (roles, grants, tasks, arts) == (0, 0, 0, 0)
 
 
-async def test_all_seats_granted_to_online_agents_activates() -> None:
+async def test_all_seats_granted_to_online_agents_opens_planning() -> None:
     async with await _client() as c:
         token, ws_id = await _register(c, "p7@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
@@ -377,7 +381,8 @@ async def test_all_seats_granted_to_online_agents_activates() -> None:
             json={"marius_id": worker, "role_key": "backend"},
         )
         final = await c.get(f"/v1/projects/{pid}", headers=h)
-    assert final.json()["status"] == "active"
+    # FR-002: a full, online roster opens the *planning* gate — not the work.
+    assert final.json()["status"] == "planning"
 
 
 async def test_cross_workspace_project_is_404() -> None:
@@ -400,6 +405,7 @@ async def test_create_task_carries_full_definition() -> None:
         token, ws_id = await _register(c, "taskdef@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
         pid = (await _create(c, ws_id, h))["id"]
+        await force_operating(pid)
         mid = await _online_agent(c, ws_id, h, "Doer-1")
         body = {
             "title": "Ship the calculator",
@@ -431,6 +437,7 @@ async def test_create_task_lands_in_supplied_status() -> None:
         token, ws_id = await _register(c, "taskcol@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
         pid = (await _create(c, ws_id, h))["id"]
+        await force_operating(pid)
 
         in_progress = await c.post(
             f"/v1/projects/{pid}/tasks",

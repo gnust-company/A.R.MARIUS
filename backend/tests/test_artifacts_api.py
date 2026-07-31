@@ -12,6 +12,7 @@ import hashlib
 from httpx import ASGITransport, AsyncClient
 
 from armarius.main import app
+from tests.support.projects import force_operating
 
 
 async def _client() -> AsyncClient:
@@ -36,6 +37,9 @@ async def _task(c: AsyncClient, ws_id: str, h: dict) -> str:
               "roles": [{"title": "Backend", "seats": 1, "description": "Owns the API."}]},
     )
     pid = proj.json()["id"]
+    # FR-003: real tasks need a project past the plan gate. The Done-gate is what this
+    # file is about, so step over the plan gate rather than replaying it here.
+    await force_operating(pid)
     task = await c.post(
         f"/v1/projects/{pid}/tasks", headers=h, json={"title": "Implement /login"}
     )

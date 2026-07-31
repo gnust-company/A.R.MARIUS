@@ -64,6 +64,12 @@ async def _project_and_task(patron: httpx.AsyncClient, h: dict, ws: str) -> str:
         "roles": [{"title": "Backend", "seats": 1, "description": "Owns the API."}],
     }
     pid = (await patron.post(f"/v1/workspaces/{ws}/projects", headers=h, json=plan)).json()["id"]
+    # Cổng FR-003 (đặc tả 001): dự án chưa duyệt kế hoạch thì không nhận đầu việc thật.
+    # Bài kiểm này soi vòng lặp công cụ của agent, không soi cổng kế hoạch — đẩy dự án
+    # thẳng sang *vận hành* bằng lớp lưu trữ.
+    from tests.support.projects import force_operating
+
+    await force_operating(pid)
     task = await patron.post(f"/v1/projects/{pid}/tasks", headers=h, json={"title": "Do the thing"})
     assert task.status_code == 201, task.text
     task_id = task.json()["id"]

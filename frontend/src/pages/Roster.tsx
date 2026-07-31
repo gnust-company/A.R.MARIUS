@@ -303,7 +303,8 @@ export default function Roster() {
   }).length;
 
   const isFullyGranted = seatsGranted === seatsTotal;
-  const isActive = project.status === 'active';
+  // Past the plan gate — the roster is settled and the board is where work happens.
+  const isActive = project.status === 'operating' || project.status === 'maintaining';
   const isSetup = project.status === 'setup';
 
   const progressPercent = seatsTotal > 0 ? (seatsGranted / seatsTotal) * 100 : 0;
@@ -362,7 +363,7 @@ export default function Roster() {
                   isActive ? 'text-success' : isSetup ? 'text-warning' : 'text-ink-muted'
                 )}
               >
-                {isActive ? t('projects.status.active') : t('projects.status.setup')}
+                {isActive ? t('projects.status.operating') : t('projects.status.setup')}
               </span>
             </p>
             <span className="font-mono text-mono-md text-ink">{Math.round(progressPercent)}%</span>

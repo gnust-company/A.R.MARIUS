@@ -10,11 +10,14 @@ from armarius.application.use_cases.onboarding_session import (
     OnboardingBusy,
     WorkspaceAgentUnavailable,
 )
+from armarius.application.use_cases.plans import PlanningError, ProjectClosed
 from armarius.application.use_cases.projects import (
     DuplicateProjectKey,
     DuplicateRoleKey,
     SystemOnlyOperation,
 )
+from armarius.application.use_cases.projects import ProjectClosed as ProjectClosedService
+from armarius.application.use_cases.tasks import ProjectNotReadyForTasks
 from armarius.domain.entities.leader_chat import LeaderChatError
 from armarius.domain.entities.marius import InviteError
 from armarius.domain.entities.onboarding import OnboardingError
@@ -25,14 +28,43 @@ from armarius.domain.entities.task import (
     TaskTransitionError,
 )
 from armarius.domain.entities.task_dependency import TaskDependencyError
+from armarius.domain.services.plan_gate import PlanGateError
 from armarius.domain.services.project_key import InvalidProjectKey
-from armarius.domain.services.project_rules import InvalidProjectPlan
+from armarius.domain.services.project_rules import InvalidPhaseTransition, InvalidProjectPlan
 
 
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(LookupError)
     async def _not_found(_: Request, exc: LookupError) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": str(exc) or "not found"})
+
+    @app.exception_handler(ProjectNotReadyForTasks)
+    async def _plan_not_approved(_: Request, exc: ProjectNotReadyForTasks) -> JSONResponse:
+        # FR-003 — the gate is a conflict with the project's phase, not a bad request.
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(InvalidPhaseTransition)
+    async def _bad_phase(_: Request, exc: InvalidPhaseTransition) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(ProjectClosed)
+    async def _closed_project(_: Request, exc: ProjectClosed) -> JSONResponse:
+        # FR-005 — a closed project is readable, never writable.
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(ProjectClosedService)
+    async def _closed_project_service(
+        _: Request, exc: ProjectClosedService
+    ) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(PlanGateError)
+    async def _plan_gate(_: Request, exc: PlanGateError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(PlanningError)
+    async def _planning(_: Request, exc: PlanningError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(TaskTransitionError)
     async def _bad_transition(_: Request, exc: TaskTransitionError) -> JSONResponse:

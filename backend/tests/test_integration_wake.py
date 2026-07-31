@@ -16,6 +16,7 @@ from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.events.task_trace import ControlBusTaskTrace
 from armarius.infrastructure.events.topic_bus import TopicEventBus
+from tests.support.projects import force_phase
 
 
 def _wake_engine(uow_factory, *, task_trace=None) -> WakeEngine:
@@ -64,6 +65,7 @@ async def test_assignment_wakes_agent_runs_and_persists_session(uow_factory) -> 
 
     ws = await workspaces.create_workspace("WS")
     project = await workspaces.create_project(ws.id, "P")
+    await force_phase(uow_factory, project.id)  # FR-003 — wake routing is the subject here
     alice = await mariuses.register(
         workspace_id=ws.id,
         name="Alice",
@@ -113,6 +115,7 @@ async def test_wake_directory_is_project_scoped_with_project_roles(uow_factory) 
             RoleSpec(key="design", title="Design", seats=1, description="Owns UX."),
         ],
     )
+    await force_phase(uow_factory, project.id)  # FR-003 — wake routing is the subject here
 
     async def reg(name: str):
         # role="" on purpose: the workspace-level role is empty, so a correct directory
@@ -155,6 +158,7 @@ async def test_mention_wakes_the_mentioned_agent(uow_factory) -> None:
 
     ws = await workspaces.create_workspace("WS")
     project = await workspaces.create_project(ws.id, "P")
+    await force_phase(uow_factory, project.id)  # FR-003 — wake routing is the subject here
     bob = await mariuses.register(
         workspace_id=ws.id,
         name="Bob",
@@ -187,6 +191,7 @@ async def test_run_trace_tees_to_per_task_sse_channel(uow_factory) -> None:
 
     ws = await workspaces.create_workspace("WS")
     project = await workspaces.create_project(ws.id, "P")
+    await force_phase(uow_factory, project.id)  # FR-003 — wake routing is the subject here
     cara = await mariuses.register(
         workspace_id=ws.id,
         name="Cara",

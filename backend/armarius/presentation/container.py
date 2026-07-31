@@ -20,6 +20,7 @@ from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.liveness_watchdog import LivenessWatchdog
 from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.onboarding_session import OnboardingService
+from armarius.application.use_cases.plans import PlanService
 from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.runs import RunQueryService
 from armarius.application.use_cases.skills import SkillService
@@ -54,6 +55,7 @@ class Container:
     workspaces: WorkspaceService
     workspace_agent: WorkspaceAgentService
     projects: ProjectService
+    plans: PlanService
     onboarding: OnboardingService
     invite: InviteService
     leader_chat: LeaderChatService
@@ -114,6 +116,10 @@ def build_container() -> Container:
     jwt_service = JWTService()
     password_service = PasswordService()
 
+    # Built before the services that need it — the Leader chat is also the project-level
+    # wake path (spec 001), so ProjectService and PlanService both take it.
+    liveness_for_chat = LivenessEngine(uow_factory, GatewayHealthLivenessProbe(registry))
+
     wake_engine = WakeEngine(
         uow_factory,
         registry,
@@ -126,7 +132,22 @@ def build_container() -> Container:
     skills = SkillService(uow_factory)
     workspaces = WorkspaceService(uow_factory, skills)
 
-    projects = ProjectService(uow_factory, system_thresholds=_system_thresholds())
+    inbox = InboxService(uow_factory, control_bus)
+    leader_chat = LeaderChatService(
+        uow_factory,
+        registry=registry,
+        control_bus=control_bus,
+        liveness=liveness_for_chat,
+        base_url=settings.public_api_url,
+        run_timeout_seconds=settings.run_timeout_seconds,
+    )
+    projects = ProjectService(
+        uow_factory,
+        system_thresholds=_system_thresholds(),
+        control_bus=control_bus,
+        inbox=inbox,
+        leader_chat=leader_chat,
+    )
     workspace_agent = WorkspaceAgentService(uow_factory)
     onboarding = OnboardingService(
         uow_factory,
@@ -136,7 +157,7 @@ def build_container() -> Container:
         settings.public_api_url,
     )
 
-    liveness = LivenessEngine(uow_factory, GatewayHealthLivenessProbe(registry))
+    liveness = liveness_for_chat
     liveness_watchdog = LivenessWatchdog(
         uow_factory,
         liveness,
@@ -151,19 +172,19 @@ def build_container() -> Container:
         workspaces=workspaces,
         workspace_agent=workspace_agent,
         projects=projects,
+        plans=PlanService(
+            uow_factory,
+            control_bus=control_bus,
+            inbox=inbox,
+            leader_chat=leader_chat,
+            task_logs=TaskLogService(uow_factory),
+        ),
         onboarding=onboarding,
         invite=InviteService(uow_factory, registry=registry),
-        leader_chat=LeaderChatService(
-            uow_factory,
-            registry=registry,
-            control_bus=control_bus,
-            liveness=liveness,
-            base_url=settings.public_api_url,
-            run_timeout_seconds=settings.run_timeout_seconds,
-        ),
+        leader_chat=leader_chat,
         liveness=liveness,
         liveness_watchdog=liveness_watchdog,
-        inbox=InboxService(uow_factory, control_bus),
+        inbox=inbox,
         labels=LabelService(uow_factory),
         mariuses=MariusService(uow_factory),
         tasks=TaskService(uow_factory, wake_engine),

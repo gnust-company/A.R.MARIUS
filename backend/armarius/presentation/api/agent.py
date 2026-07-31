@@ -12,8 +12,10 @@ from uuid import UUID
 from fastapi import APIRouter
 
 from armarius.application.use_cases.onboarding_brain import _slug
+from armarius.application.use_cases.plans import PlanItemSpec
 from armarius.domain.entities.comment import AuthorKind
-from armarius.domain.entities.marius import Liveness
+from armarius.domain.entities.marius import Liveness, Marius
+from armarius.domain.entities.project import ProjectStatus
 from armarius.domain.entities.task import TaskStatus
 from armarius.presentation.deps import ContainerDep, CurrentMarius
 from armarius.presentation.schemas import (
@@ -29,6 +31,11 @@ from armarius.presentation.schemas import (
     MariusOut,
     NextActionIn,
     OnboardingOut,
+    PhaseChangeIn,
+    PlanIn,
+    PlanOut,
+    ProjectContextIn,
+    ProjectContextOut,
     TaskOut,
     TransitionIn,
     decode_artifact_content,
@@ -293,3 +300,93 @@ async def publish_artifact(
         marius_id=marius.id,
     )
     return ArtifactOut.model_validate(artifact)
+
+
+# ── Leader: context, plan, phase proposal (spec 001, contracts/mat-agent.md §2) ───
+#
+# Note what is NOT here: there is no route for deciding on a plan or moving a phase. The
+# Leader submits and proposes; the patron decides (FR-004, FR-014). The absence is the
+# enforcement — a missing route cannot be called by mistake.
+
+
+async def _leader_seat(container, marius: Marius, project_id: UUID) -> None:
+    """Refuse unless the caller holds the leader seat on this project (Constitution V).
+
+    Cross-workspace and non-leader both read as *not found*, so a token cannot be used to
+    probe which projects exist elsewhere.
+    """
+    project = await container.projects.get_project(project_id)
+    if project is None or project.workspace_id != marius.workspace_id:
+        raise LookupError("project not found")
+    seats = await container.projects.list_agents(project_id)
+    if not any(s.marius_id == marius.id and s.is_primary for s in seats):
+        raise LookupError("project not found")
+
+
+@router.post("/projects/{project_id}/context", response_model=ProjectContextOut)
+async def submit_project_context(
+    project_id: UUID,
+    body: ProjectContextIn,
+    marius: CurrentMarius,
+    container: ContainerDep,
+) -> ProjectContextOut:
+    """Submit the brief agreed with the patron → awaits their approval (FR-008)."""
+    await _leader_seat(container, marius, project_id)
+    context = await container.plans.submit_context(
+        project_id,
+        objective=body.objective,
+        background=body.background,
+        constraints=body.constraints,
+        scope=body.scope,
+        principles=body.principles,
+    )
+    return ProjectContextOut.model_validate(context)
+
+
+@router.post("/projects/{project_id}/plan", response_model=PlanOut)
+async def submit_project_plan(
+    project_id: UUID, body: PlanIn, marius: CurrentMarius, container: ContainerDep
+) -> PlanOut:
+    """Submit the plan → it parks in the patron's inbox, and stays there (FR-011)."""
+    await _leader_seat(container, marius, project_id)
+    plan = await container.plans.submit_plan(
+        project_id,
+        summary=body.summary,
+        risks=body.risks,
+        milestones=body.milestones,
+        items=[
+            PlanItemSpec(
+                title=item.title,
+                description=item.description,
+                order=item.order,
+                definition_of_done=item.definition_of_done,
+                depends_on=list(item.depends_on),
+            )
+            for item in body.items
+        ],
+    )
+    return PlanOut.model_validate(plan)
+
+
+@router.post("/projects/{project_id}/phase-proposal", status_code=200)
+async def propose_project_phase(
+    project_id: UUID,
+    body: PhaseChangeIn,
+    marius: CurrentMarius,
+    container: ContainerDep,
+) -> dict:
+    """Ask the patron to move the project. Changes nothing on its own (FR-004)."""
+    await _leader_seat(container, marius, project_id)
+    await container.projects.propose_phase(
+        project_id,
+        target_phase=_parse_phase(body.target_phase),
+        reason=body.reason or "",
+    )
+    return {"status": "proposed", "target_phase": body.target_phase}
+
+
+def _parse_phase(value: str) -> ProjectStatus:
+    try:
+        return ProjectStatus(value)
+    except ValueError as exc:
+        raise ValueError(f"unknown project phase '{value}'") from exc

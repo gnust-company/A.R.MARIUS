@@ -888,3 +888,93 @@ export async function setProjectThresholds(
 ): Promise<ThresholdsDTO> {
   return put<ThresholdsDTO>(`/v1/projects/${projectId}/thresholds`, overrides)
 }
+
+// ── Project context · plan · phase (spec 001) ─────────────────────────────────────────────
+
+/** One version of the five-part project brief (spec 001 §2). */
+export interface ProjectContextDTO {
+  id: string
+  project_id?: string | null
+  version: number
+  objective: string
+  background: string
+  constraints: string
+  scope: string
+  principles: string
+  approval_status: string
+  approved_at?: string | null
+  approved_by_user_id?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+/** The brief in force, plus one awaiting the patron if the Leader submitted a change. */
+export interface ProjectContextViewDTO {
+  approved: ProjectContextDTO | null
+  pending: ProjectContextDTO | null
+}
+
+export interface PlanItemDTO {
+  id: string
+  title: string
+  description: string
+  order: number
+  definition_of_done: string
+  depends_on: string[]
+}
+
+export interface PlanDTO {
+  id: string
+  project_id?: string | null
+  version: number
+  summary: string
+  risks: string
+  milestones: string
+  status: string
+  patron_note?: string | null
+  submitted_at?: string | null
+  decided_at?: string | null
+  decided_by_user_id?: string | null
+  items: PlanItemDTO[]
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+/** The patron's three choices at the plan gate (FR-013). */
+export type PlanDecisionValue = 'duyet' | 'yeu_cau_chinh' | 'hoi_lai'
+
+export async function getProjectContext(projectId: string): Promise<ProjectContextViewDTO> {
+  return get<ProjectContextViewDTO>(`/v1/projects/${projectId}/context`)
+}
+
+export async function approveProjectContext(
+  projectId: string,
+  approve: boolean,
+  note?: string,
+): Promise<ProjectContextDTO> {
+  return post<ProjectContextDTO>(`/v1/projects/${projectId}/context/approve`, { approve, note })
+}
+
+/** 404 when the Leader has not submitted a plan yet — the caller renders the empty state. */
+export async function getProjectPlan(projectId: string): Promise<PlanDTO> {
+  return get<PlanDTO>(`/v1/projects/${projectId}/plan`)
+}
+
+export async function decideProjectPlan(
+  projectId: string,
+  decision: PlanDecisionValue,
+  note?: string,
+): Promise<PlanDTO> {
+  return post<PlanDTO>(`/v1/projects/${projectId}/plan/decision`, { decision, note })
+}
+
+export async function changeProjectPhase(
+  projectId: string,
+  targetPhase: string,
+  reason?: string,
+): Promise<ProjectDetailDTO> {
+  return post<ProjectDetailDTO>(`/v1/projects/${projectId}/phase`, {
+    target_phase: targetPhase,
+    reason,
+  })
+}

@@ -30,8 +30,9 @@ from armarius.domain.entities.leader_chat import (
     ProjectLeaderConversation,
 )
 from armarius.domain.entities.marius import Liveness
-from armarius.domain.entities.run import RunStatus
+from armarius.domain.entities.run import RunStatus, WakeSource
 from armarius.domain.entities.seat_grant import SeatGrantStatus
+from armarius.domain.entities.wakeup import WakeupRequest, WakeupStatus
 from armarius.domain.services.leader_chat_prompt import (
     ChatDirectoryEntry,
     ChatTurn,
@@ -157,6 +158,77 @@ class LeaderChatService:
         )
         self._spawn_turn(conversation.id)
         return view
+
+    # ── system-initiated wake (spec 001) ─────────────────────────────────────────
+    async def notify(
+        self, *, project_id: UUID, text: str, source: WakeSource, reason: str
+    ) -> bool:
+        """Wake the Leader about the **project** — no task involved (FR-002, FR-013).
+
+        Story-1 wakes are project-level: "the roster filled up, go clarify the context and
+        plan", "the patron approved, go split the work". They ride the same shared project
+        session the Chat-with-Leader tab uses, so the Leader keeps one continuous thread
+        about its project instead of waking cold.
+
+        Always records a durable `WakeupRequest` so the wake is auditable even when it
+        cannot be delivered. Returns True if the Leader was actually woken; False when it
+        is offline or already mid-turn — the phase change still stands, and the pending
+        reason is on the record for the orchestration cadence to pick up.
+        """
+        async with self._uow() as uow:
+            project = await uow.projects.get(project_id)
+            if project is None:
+                raise LookupError("project not found")
+            conversation = await uow.leader_chats.get_by_project(project_id)
+            leader_id = await self._leader_of(uow, project_id)
+            leader = await uow.mariuses.get(leader_id) if leader_id else None
+
+            now = utcnow()
+            deliverable = (
+                leader is not None
+                and leader.liveness in _AVAILABLE
+                and (conversation is None or conversation.state != ChatState.THINKING)
+            )
+            await uow.wakeups.add(
+                WakeupRequest(
+                    project_id=project_id,
+                    marius_id=leader_id,
+                    task_id=None,
+                    source=source,
+                    reason=reason,
+                    prompt=text,
+                    status=WakeupStatus.DISPATCHED if deliverable else WakeupStatus.QUEUED,
+                    created_at=now,
+                )
+            )
+            if not deliverable:
+                await uow.commit()
+                logger.info(
+                    "project wake %s queued for project %s (leader unavailable)",
+                    source,
+                    project_id,
+                )
+                return False
+
+            if conversation is None:
+                conversation = ProjectLeaderConversation(
+                    project_id=project_id,
+                    leader_marius_id=leader_id,
+                    created_at=now,
+                    updated_at=now,
+                )
+                await uow.leader_chats.add(conversation)
+            conversation.leader_marius_id = leader_id
+            conversation.append("system", text, now)
+            conversation.state = ChatState.THINKING
+            conversation.updated_at = now
+            await uow.leader_chats.update(conversation)
+            await uow.commit()
+
+        await self._publish(project_id, "system.message", {"text": text, "reason": reason})
+        await self._publish(project_id, "chat.state", {"state": str(ChatState.THINKING)})
+        self._spawn_turn(conversation.id)
+        return True
 
     # ── the isolated project-scoped turn ─────────────────────────────────────────
     def _spawn_turn(self, conversation_id: UUID) -> None:

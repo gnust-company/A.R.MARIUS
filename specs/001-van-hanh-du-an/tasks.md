@@ -109,46 +109,46 @@ Trưởng dự án tự duyệt kế hoạch của mình → bị chặn. Ngư�
 
 ### Bài kiểm (viết trước, phải đỏ) ⚠️
 
-- [ ] T026 [P] [US1] Bài kiểm luật năm giai đoạn bằng hàm thuần trong `backend/tests/test_project_phases.py`
-- [ ] T027 [P] [US1] Bài kiểm cổng duyệt: ba lựa chọn, cấm Trưởng dự án tự duyệt, *yêu cầu chỉnh* giữ dự án ở *lập kế hoạch* — trong `backend/tests/test_plan_gate.py`
-- [ ] T028 [P] [US1] Bài kiểm mặt giao tiếp Bối cảnh và kế hoạch hai chiều người dùng/agent trong `backend/tests/test_plan_api.py`
-- [ ] T029 [P] [US1] Bài kiểm FR-003 — chặn tạo và giao đầu việc khi dự án chưa *vận hành*/*bảo trì* — bổ sung vào `backend/tests/test_task_rules.py`
+- [X] T026 [P] [US1] Bài kiểm luật năm giai đoạn bằng hàm thuần trong `backend/tests/test_project_phases.py`
+- [X] T027 [P] [US1] Bài kiểm cổng duyệt: ba lựa chọn, cấm Trưởng dự án tự duyệt, *yêu cầu chỉnh* giữ dự án ở *lập kế hoạch* — trong `backend/tests/test_plan_gate.py`
+- [X] T028 [P] [US1] Bài kiểm mặt giao tiếp Bối cảnh và kế hoạch hai chiều người dùng/agent trong `backend/tests/test_plan_api.py`
+- [X] T029 [P] [US1] Bài kiểm FR-003 — chặn tạo và giao đầu việc khi dự án chưa *vận hành*/*bảo trì* — bổ sung vào `backend/tests/test_task_rules.py`
 
 ### Thực thể và luật thuần
 
-- [ ] T030 [P] [US1] Mở rộng vòng đời dự án lên năm giai đoạn trong `backend/armarius/domain/entities/project.py`, bỏ cờ chết `require_approval_for_done` khỏi `default_project_settings()`
-- [ ] T031 [P] [US1] Thực thể Bối cảnh dự án có phiên bản và trạng thái duyệt trong `backend/armarius/domain/entities/project_context.py`
-- [ ] T032 [P] [US1] Thực thể bản kế hoạch và hạng mục trong `backend/armarius/domain/entities/plan.py`
-- [ ] T033 [US1] Đổi đích của `recompute_active` sang *lập kế hoạch* và thêm bảng chuyển giai đoạn hợp lệ trong `backend/armarius/domain/services/project_rules.py` (giữ nguyên luật đủ đội — nó đã đúng)
-- [ ] T034 [US1] Luật cổng duyệt trong `backend/armarius/domain/services/plan_gate.py`: ba lựa chọn, cấm tự duyệt (FR-014), điều kiện rời *lập kế hoạch*
+- [X] T030 [P] [US1] Mở rộng vòng đời dự án lên năm giai đoạn trong `backend/armarius/domain/entities/project.py`, bỏ cờ chết `require_approval_for_done` khỏi `default_project_settings()`
+- [X] T031 [P] [US1] Thực thể Bối cảnh dự án có phiên bản và trạng thái duyệt trong `backend/armarius/domain/entities/project_context.py`
+- [X] T032 [P] [US1] Thực thể bản kế hoạch và hạng mục trong `backend/armarius/domain/entities/plan.py`
+- [X] T033 [US1] Đổi đích của `recompute_active` sang *lập kế hoạch* và thêm bảng chuyển giai đoạn hợp lệ trong `backend/armarius/domain/services/project_rules.py` (giữ nguyên luật đủ đội — nó đã đúng)
+- [X] T034 [US1] Luật cổng duyệt trong `backend/armarius/domain/services/plan_gate.py`: ba lựa chọn, cấm tự duyệt (FR-014), điều kiện rời *lập kế hoạch*
 
 ### Lưu trữ
 
-- [ ] T035 [US1] Cột giai đoạn và ba bảng `project_contexts`, `plans`, `plan_items` trong `backend/armarius/infrastructure/database/models.py`
-- [ ] T036 [US1] Bản di trú Đợt 1 trong `backend/armarius/infrastructure/alembic/versions/`: thêm hai giai đoạn, ánh xạ *lưu trữ* → *đóng*, ba bảng mới, gỡ **hai** cờ khỏi thiết lập dự án: cờ chết `require_approval_for_done` và công tắc `yolo_mode` (xem T062)
-- [ ] T037 [US1] Bộ ánh xạ Bối cảnh và kế hoạch trong `backend/armarius/infrastructure/persistence/mappers.py`
-- [ ] T038 [US1] Kho chứa Bối cảnh và kế hoạch trong `backend/armarius/infrastructure/persistence/repositories.py` và giao diện ở `backend/armarius/domain/repositories/repositories.py`, nối vào `backend/armarius/infrastructure/persistence/unit_of_work.py`
+- [X] T035 [US1] Cột giai đoạn và ba bảng `project_contexts`, `plans`, `plan_items` trong `backend/armarius/infrastructure/database/models.py`
+- [X] T036 [US1] Bản di trú Đợt 1 trong `backend/armarius/infrastructure/alembic/versions/`: thêm hai giai đoạn, ánh xạ *lưu trữ* → *đóng*, ba bảng mới, gỡ **hai** cờ khỏi thiết lập dự án: cờ chết `require_approval_for_done` và công tắc `yolo_mode` (xem T062)
+- [X] T037 [US1] Bộ ánh xạ Bối cảnh và kế hoạch trong `backend/armarius/infrastructure/persistence/mappers.py`
+- [X] T038 [US1] Kho chứa Bối cảnh và kế hoạch trong `backend/armarius/infrastructure/persistence/repositories.py` và giao diện ở `backend/armarius/domain/repositories/repositories.py`, nối vào `backend/armarius/infrastructure/persistence/unit_of_work.py`
 
 ### Ứng dụng
 
-- [ ] T039 [US1] Ca sử dụng trình Bối cảnh, trình kế hoạch, ghi quyết định của người chủ trong `backend/armarius/application/use_cases/plans.py` — kèm đặt mục *chờ duyệt kế hoạch* vào hộp thư qua dịch vụ ở T015 và bắn `ke-hoach.trinh` lên kênh dự án
-- [ ] T040 [US1] Chuyển giai đoạn (Trưởng dự án đề xuất, người chủ quyết), dừng nhịp khi vào *đóng*, và **khoá toàn bộ lịch sử dự án đã đóng ở dạng chỉ đọc** — mọi lối vào ghi trả `409` (FR-005) — trong `backend/armarius/application/use_cases/projects.py`
-- [ ] T041 [US1] Cổng FR-003 chặn tạo và giao đầu việc thật khi dự án chưa *vận hành*/*bảo trì* trong `backend/armarius/application/use_cases/tasks.py`
-- [ ] T042 [US1] Cớ đánh thức "dự án vừa đủ đội" và "người chủ quyết kế hoạch" trong `backend/armarius/domain/entities/wakeup.py`, bắn từ `backend/armarius/application/use_cases/wake_engine.py`
-- [ ] T043 [US1] Ghi nhật ký mốc duyệt và mốc chuyển giai đoạn qua dịch vụ T014, phát sự kiện `du-an.doi-giai-doan` và `ke-hoach.quyet` lên kênh dự án
+- [X] T039 [US1] Ca sử dụng trình Bối cảnh, trình kế hoạch, ghi quyết định của người chủ trong `backend/armarius/application/use_cases/plans.py` — kèm đặt mục *chờ duyệt kế hoạch* vào hộp thư qua dịch vụ ở T015 và bắn `ke-hoach.trinh` lên kênh dự án
+- [X] T040 [US1] Chuyển giai đoạn (Trưởng dự án đề xuất, người chủ quyết), dừng nhịp khi vào *đóng*, và **khoá toàn bộ lịch sử dự án đã đóng ở dạng chỉ đọc** — mọi lối vào ghi trả `409` (FR-005) — trong `backend/armarius/application/use_cases/projects.py`
+- [X] T041 [US1] Cổng FR-003 chặn tạo và giao đầu việc thật khi dự án chưa *vận hành*/*bảo trì* trong `backend/armarius/application/use_cases/tasks.py`
+- [X] T042 [US1] Cớ đánh thức "dự án vừa đủ đội" và "người chủ quyết kế hoạch" trong `backend/armarius/domain/entities/wakeup.py`, bắn từ `backend/armarius/application/use_cases/wake_engine.py`
+- [X] T043 [US1] Ghi nhật ký mốc duyệt và mốc chuyển giai đoạn qua dịch vụ T014, phát sự kiện `du-an.doi-giai-doan` và `ke-hoach.quyet` lên kênh dự án
 
 ### Mặt giao tiếp
 
-- [ ] T044 [US1] Lối vào cho người chủ — giai đoạn, Bối cảnh, kế hoạch, quyết định — trong `backend/armarius/presentation/api/projects.py` theo [contracts/mat-nguoi-dung.md](./contracts/mat-nguoi-dung.md) mục 1–3
-- [ ] T045 [US1] Lối vào cho Trưởng dự án — nộp Bối cảnh, trình kế hoạch, đề xuất chuyển giai đoạn — trong `backend/armarius/presentation/api/agent.py` theo [contracts/mat-agent.md](./contracts/mat-agent.md) mục 2
-- [ ] T046 [US1] Lược đồ yêu cầu và đáp cho Bối cảnh, kế hoạch, quyết định trong `backend/armarius/presentation/schemas.py`
+- [X] T044 [US1] Lối vào cho người chủ — giai đoạn, Bối cảnh, kế hoạch, quyết định — trong `backend/armarius/presentation/api/projects.py` theo [contracts/mat-nguoi-dung.md](./contracts/mat-nguoi-dung.md) mục 1–3
+- [X] T045 [US1] Lối vào cho Trưởng dự án — nộp Bối cảnh, trình kế hoạch, đề xuất chuyển giai đoạn — trong `backend/armarius/presentation/api/agent.py` theo [contracts/mat-agent.md](./contracts/mat-agent.md) mục 2
+- [X] T046 [US1] Lược đồ yêu cầu và đáp cho Bối cảnh, kế hoạch, quyết định trong `backend/armarius/presentation/schemas.py`
 
 ### Giao diện
 
-- [ ] T047 [P] [US1] Kiểu và lời gọi giai đoạn, Bối cảnh, kế hoạch trong `frontend/src/lib/api.ts` và bộ ánh xạ trong `frontend/src/lib/mappers.ts`
-- [ ] T048 [US1] Trang kế hoạch và cổng duyệt ba nút trong `frontend/src/pages/ProjectPlan.tsx`, gắn tuyến lồng dưới `/w/:workspaceId` trong `frontend/src/App.tsx`
-- [ ] T049 [US1] Huy hiệu giai đoạn và vô hiệu nút tạo đầu việc khi dự án chưa *vận hành* trong `frontend/src/pages/ProjectBoard.tsx`
-- [ ] T050 [P] [US1] Chuỗi hiển thị tiếng Việt đủ dấu và bản tiếng Anh trong `frontend/src/i18n/vi.ts` và `frontend/src/i18n/en.ts`
+- [X] T047 [P] [US1] Kiểu và lời gọi giai đoạn, Bối cảnh, kế hoạch trong `frontend/src/lib/api.ts` và bộ ánh xạ trong `frontend/src/lib/mappers.ts`
+- [X] T048 [US1] Trang kế hoạch và cổng duyệt ba nút trong `frontend/src/pages/ProjectPlan.tsx`, gắn tuyến lồng dưới `/w/:workspaceId` trong `frontend/src/App.tsx`
+- [X] T049 [US1] Huy hiệu giai đoạn và vô hiệu nút tạo đầu việc khi dự án chưa *vận hành* trong `frontend/src/pages/ProjectBoard.tsx`
+- [X] T050 [P] [US1] Chuỗi hiển thị tiếng Việt đủ dấu và bản tiếng Anh trong `frontend/src/i18n/vi.ts` và `frontend/src/i18n/en.ts`
 
 ### Kiểm chứng chạy thật
 

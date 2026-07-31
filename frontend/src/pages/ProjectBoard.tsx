@@ -404,6 +404,11 @@ export default function ProjectBoard() {
   }
 
   const isSetup = project.status === 'setup';
+  // FR-003: a real task exists only once the patron approved the plan. Anything before
+  // *operating* (and anything after *closed*) refuses task creation server-side, so the
+  // board must not offer a button that is guaranteed to 409.
+  const acceptsTasks = project.status === 'operating' || project.status === 'maintaining';
+  const isPlanning = project.status === 'planning';
   const seatsTotal = (project.seats || []).length;
   const seatsFilled = (project.seats || []).filter((s) => s.mariusId).length;
 
@@ -482,7 +487,7 @@ export default function ProjectBoard() {
         {/* Right-side actions: Add Task. (Leader chat moved to the floating bubble — LeaderChatWidget.) */}
         <div className="ml-auto mb-1 flex items-center gap-2">
           <AnimatePresence>
-            {!isSetup && (
+            {acceptsTasks && (
               <motion.button
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -503,6 +508,31 @@ export default function ProjectBoard() {
       </motion.div>
 
       {/* ─── Setup Banner ───────────────────────────────────────────── */}
+      {/* ─── Planning Banner (spec 001 FR-003) ─────────────────────── */}
+      <AnimatePresence>
+        {isPlanning && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+            className="mb-4 bg-warning-bg border-l-4 border-warning rounded-md px-4 py-3 flex items-start gap-3"
+          >
+            <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-body text-body-md text-ink">{t('board.planningBanner')}</p>
+            </div>
+            <Link
+              to={wsHref(workspaceId, `/projects/${projectId}/plan`)}
+              className="flex items-center gap-1 font-body text-body-sm font-medium text-warning hover:text-terracotta transition-colors whitespace-nowrap"
+            >
+              {t('board.goToPlan')}
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {isSetup && (
           <motion.div
@@ -568,7 +598,7 @@ export default function ProjectBoard() {
                     ({colTasks.length})
                   </span>
                 </div>
-                {!isSetup && (
+                {acceptsTasks && (
                   <button
                     onClick={() => setAddTask({ open: true, status: col.status })}
                     className="p-1 rounded text-ink-muted hover:text-terracotta transition-colors"
@@ -604,7 +634,7 @@ export default function ProjectBoard() {
                 )}
 
                 {/* Add button at bottom */}
-                {!isSetup && (
+                {acceptsTasks && (
                   <button
                     onClick={() => setAddTask({ open: true, status: col.status })}
                     className="flex items-center justify-center gap-1 py-2 rounded-md text-ink-muted hover:text-terracotta hover:bg-vellum-deep/50 transition-colors"

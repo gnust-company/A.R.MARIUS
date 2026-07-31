@@ -9,6 +9,7 @@ from __future__ import annotations
 from httpx import ASGITransport, AsyncClient
 
 from armarius.main import app
+from tests.support.projects import force_operating
 
 
 async def _client() -> AsyncClient:
@@ -36,7 +37,9 @@ async def _project(c: AsyncClient, ws_id: str, h: dict) -> str:
             "roles": [{"title": "Backend", "seats": 1, "description": "Owns the API."}],
         },
     )
-    return proj.json()["id"]
+    pid = proj.json()["id"]
+    await force_operating(pid)  # FR-003 — this file tests the dependency gate, not the plan gate
+    return pid
 
 
 async def _new_task(c: AsyncClient, pid: str, h: dict, title: str) -> str:
