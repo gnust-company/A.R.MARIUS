@@ -152,7 +152,7 @@ Trưởng dự án tự duyệt kế hoạch của mình → bị chặn. Ngư�
 
 ### Kiểm chứng chạy thật
 
-- [ ] T051 [US1] Dựng lại vùng chứa máy chủ và giao diện, chạy trọn Kịch bản 1 của `specs/001-van-hanh-du-an/quickstart.md`, lái giao diện bằng Playwright, không lỗi ở bảng điều khiển trình duyệt
+- [X] T051 [US1] Dựng lại vùng chứa máy chủ và giao diện, chạy trọn Kịch bản 1 của `specs/001-van-hanh-du-an/quickstart.md`, lái giao diện bằng Playwright, không lỗi ở bảng điều khiển trình duyệt
 
 **Chốt chặn**: Câu chuyện 1 chạy độc lập được. Một PR, dừng chờ người chủ duyệt.
 
