@@ -38,8 +38,14 @@ async def get_task(state: ServerState, task_id: str) -> Any:
     return await state.client.get_task(task_id)
 
 
-async def claim_task(state: ServerState, task_id: str) -> Any:
-    return await state.client.claim_task(task_id)
+async def request_task(state: ServerState, task_id: str, note: str | None = None) -> Any:
+    return await state.client.request_task(task_id, note)
+
+
+async def hand_back_task(state: ServerState, task_id: str, reason: str) -> Any:
+    if not reason.strip():
+        raise ToolError("hand-back reason cannot be empty.")
+    return await state.client.hand_back_task(task_id, reason)
 
 
 async def post_comment(state: ServerState, task_id: str, body: str) -> Any:

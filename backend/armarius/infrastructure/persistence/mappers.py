@@ -5,6 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from armarius.domain.entities.artifact import Artifact
+from armarius.domain.entities.checklist_item import AcceptanceResult, ChecklistItem
 from armarius.domain.entities.comment import AuthorKind, Comment
 from armarius.domain.entities.inbox_item import (
     InboxItem,
@@ -30,7 +31,7 @@ from armarius.domain.entities.run import Run, RunEvent, RunStatus, WakeSource
 from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.skill import Skill
-from armarius.domain.entities.task import Task, TaskPriority, TaskStatus
+from armarius.domain.entities.task import Task, TaskDrive, TaskPriority, TaskStatus
 from armarius.domain.entities.task_dependency import TaskDependency
 from armarius.domain.entities.task_log import ActorKind, TaskLogEntry, TaskLogKind
 from armarius.domain.entities.user import User, UserRole
@@ -38,6 +39,7 @@ from armarius.domain.entities.wakeup import WakeupRequest, WakeupStatus
 from armarius.domain.entities.workspace import Workspace
 from armarius.infrastructure.database.models import (
     ArtifactModel,
+    ChecklistItemModel,
     CommentModel,
     InboxItemModel,
     LabelModel,
@@ -179,6 +181,10 @@ def task_to_entity(m: TaskModel) -> Task:
         priority=_task_priority(m.priority),
         due_date=m.due_date,
         definition_of_done=m.definition_of_done,
+        plan_item_id=m.plan_item_id,
+        drive=TaskDrive(m.drive) if m.drive else None,
+        stalled=bool(m.stalled),
+        stalled_reason=m.stalled_reason,
         assigned_marius_id=m.assigned_marius_id,
         created_by_user_id=m.created_by_user_id,
         created_by_marius_id=m.created_by_marius_id,
@@ -187,6 +193,18 @@ def task_to_entity(m: TaskModel) -> Task:
         completed_at=m.completed_at,
         created_at=m.created_at,
         updated_at=m.updated_at,
+    )
+
+
+def checklist_item_to_entity(m: ChecklistItemModel) -> ChecklistItem:
+    return ChecklistItem(
+        id=m.id,
+        task_id=m.task_id,
+        text=m.text,
+        done=bool(m.done),
+        order=m.order_index,
+        result=AcceptanceResult(m.result),
+        evidence_artifact_id=m.evidence_artifact_id,
     )
 
 

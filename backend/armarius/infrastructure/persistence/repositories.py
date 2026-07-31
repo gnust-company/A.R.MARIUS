@@ -9,6 +9,7 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from armarius.domain.entities.artifact import Artifact
+from armarius.domain.entities.checklist_item import ChecklistItem
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.inbox_item import InboxItem, InboxItemStatus
 from armarius.domain.entities.label import Label
@@ -30,6 +31,7 @@ from armarius.domain.entities.wakeup import WakeupRequest
 from armarius.domain.entities.workspace import Project, Workspace
 from armarius.domain.repositories.repositories import (
     ArtifactRepository,
+    ChecklistItemRepository,
     CommentRepository,
     InboxRepository,
     LabelRepository,
@@ -54,6 +56,7 @@ from armarius.domain.repositories.repositories import (
 )
 from armarius.infrastructure.database.models import (
     ArtifactModel,
+    ChecklistItemModel,
     CommentModel,
     InboxItemModel,
     LabelModel,
@@ -731,6 +734,10 @@ class SqlTaskRepository(TaskRepository):
                 priority=str(task.priority),
                 due_date=task.due_date,
                 definition_of_done=task.definition_of_done,
+                plan_item_id=task.plan_item_id,
+                drive=str(task.drive) if task.drive else None,
+                stalled=task.stalled,
+                stalled_reason=task.stalled_reason,
                 assigned_marius_id=task.assigned_marius_id,
                 created_by_user_id=task.created_by_user_id,
                 created_by_marius_id=task.created_by_marius_id,
@@ -770,6 +777,10 @@ class SqlTaskRepository(TaskRepository):
         m.priority = str(task.priority)
         m.due_date = task.due_date
         m.definition_of_done = task.definition_of_done
+        m.plan_item_id = task.plan_item_id
+        m.drive = str(task.drive) if task.drive else None
+        m.stalled = task.stalled
+        m.stalled_reason = task.stalled_reason
         m.assigned_marius_id = task.assigned_marius_id
         m.next_action = task.next_action
         m.in_progress_at = task.in_progress_at
@@ -777,6 +788,59 @@ class SqlTaskRepository(TaskRepository):
         m.updated_at = task.updated_at
         await self._s.flush()
         return task
+
+
+class SqlChecklistItemRepository(ChecklistItemRepository):
+    """Acceptance criteria, stored and replaced as one list (spec 001 §7)."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def list_by_task(self, task_id: UUID) -> Sequence[ChecklistItem]:
+        rows = (
+            await self._s.execute(
+                select(ChecklistItemModel)
+                .where(ChecklistItemModel.task_id == task_id)
+                .order_by(ChecklistItemModel.order_index)
+            )
+        ).scalars().all()
+        return [mappers.checklist_item_to_entity(m) for m in rows]
+
+    async def replace_for_task(
+        self, task_id: UUID, items: Sequence[ChecklistItem]
+    ) -> Sequence[ChecklistItem]:
+        """Swap the whole yardstick in one transaction — never half of one."""
+        await self._s.execute(
+            delete(ChecklistItemModel).where(ChecklistItemModel.task_id == task_id)
+        )
+        await self._s.flush()
+        for item in items:
+            item.task_id = task_id
+            self._s.add(
+                ChecklistItemModel(
+                    id=item.id,
+                    task_id=task_id,
+                    text=item.text,
+                    done=item.done,
+                    order_index=item.order,
+                    result=str(item.result),
+                    evidence_artifact_id=item.evidence_artifact_id,
+                )
+            )
+        await self._s.flush()
+        return list(items)
+
+    async def update(self, item: ChecklistItem) -> ChecklistItem:
+        m = await self._s.get(ChecklistItemModel, item.id)
+        if m is None:
+            return item
+        m.text = item.text
+        m.done = item.done
+        m.order_index = item.order
+        m.result = str(item.result)
+        m.evidence_artifact_id = item.evidence_artifact_id
+        await self._s.flush()
+        return item
 
 
 class SqlTaskDependencyRepository(TaskDependencyRepository):
@@ -821,6 +885,16 @@ class SqlTaskDependencyRepository(TaskDependencyRepository):
             await self._s.execute(
                 select(TaskDependencyModel).where(
                     TaskDependencyModel.task_id == task_id
+                )
+            )
+        ).scalars().all()
+        return [mappers.task_dependency_to_entity(m) for m in rows]
+
+    async def list_dependents(self, task_id: UUID) -> Sequence[TaskDependency]:
+        rows = (
+            await self._s.execute(
+                select(TaskDependencyModel).where(
+                    TaskDependencyModel.blocks_task_id == task_id
                 )
             )
         ).scalars().all()

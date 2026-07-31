@@ -74,7 +74,11 @@ async def test_assignment_wakes_agent_runs_and_persists_session(uow_factory) -> 
         adapter_type="echo",
         adapter_config={},
     )
-    task = await tasks.create(project_id=project.id, title="Add dark mode")
+    task = await tasks.create(
+        project_id=project.id,
+        title="Add dark mode",
+        description="Thêm chế độ nền tối cho toàn bộ giao diện.",
+    )
 
     await tasks.assign(task.id, alice.id)
     completed = await _wait_for_completion(runs, task.id)
@@ -200,7 +204,11 @@ async def test_run_trace_tees_to_per_task_sse_channel(uow_factory) -> None:
         adapter_type="echo",
         adapter_config={},
     )
-    task = await tasks.create(project_id=project.id, title="Wire it up")
+    task = await tasks.create(
+        project_id=project.id,
+        title="Wire it up",
+        description="Nối phần giao diện vào lối gọi máy chủ.",
+    )
 
     await tasks.assign(task.id, cara.id)
     await _wait_for_completion(runs, task.id)

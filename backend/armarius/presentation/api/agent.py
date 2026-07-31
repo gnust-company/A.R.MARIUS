@@ -16,12 +16,15 @@ from armarius.application.use_cases.plans import PlanItemSpec
 from armarius.domain.entities.comment import AuthorKind
 from armarius.domain.entities.marius import Liveness, Marius
 from armarius.domain.entities.project import ProjectStatus
-from armarius.domain.entities.task import TaskStatus
+from armarius.domain.entities.task import Task, TaskStatus
+from armarius.presentation.container import Container
 from armarius.presentation.deps import ContainerDep, CurrentMarius
 from armarius.presentation.schemas import (
     AgentArtifactIn,
+    AgentAssignmentRequestIn,
     AgentCommentIn,
     AgentCreateTaskIn,
+    AgentHandbackIn,
     AgentOnboardingCompleteIn,
     AgentOnboardingQuestionIn,
     AgentSkillBundleOut,
@@ -185,6 +188,21 @@ async def post_onboarding_complete(
     return OnboardingOut.model_validate(session)
 
 
+async def _task_in_caller_workspace(
+    container: Container, marius: Marius, task_id: UUID
+) -> Task:
+    """Resolve a task through the caller's workspace, or 404.
+
+    Every ``/agent/tasks/*`` route goes through here: agent tokens are per-workspace, so a
+    task from another workspace must read as *not found* rather than *forbidden* — its
+    existence is not something another tenant gets to learn (Constitution I). Also the one
+    place that narrows the agent's optional workspace id, instead of each route doing it.
+    """
+    if marius.workspace_id is None:
+        raise LookupError("task not found")
+    return await container.tasks.get_in_workspace(task_id, marius.workspace_id)
+
+
 @router.post("/projects/{project_id}/tasks", response_model=TaskOut, status_code=201)
 async def agent_create_task(
     project_id: UUID,
@@ -192,22 +210,22 @@ async def agent_create_task(
     marius: CurrentMarius,
     container: ContainerDep,
 ) -> TaskOut:
-    """The Leader's create-task tool (Chat-with-Leader, #82). Creates a DRAFT awaiting the
-    patron's approval; if the project's YOLO mode is on, it is auto-approved (→ todo, and
-    the proposed assignee is woken). Scoped to the caller's workspace (#15)."""
+    """The Leader's create-task tool.
+
+    Work attached to an approved plan item goes live and is assigned at once; work
+    attached to nothing stays a draft and the patron is asked, because it widens the
+    project's scope (FR-027). Scoped to the caller's workspace (#15)."""
     project = await container.projects.get_project(project_id)
     if project is None or project.workspace_id != marius.workspace_id:
         raise LookupError("project not found")  # cross-workspace → 404
-    task = await container.tasks.create(
+    task = await container.tasks.propose(
         project_id=project_id,
         title=body.title,
         description=body.description,
-        status=TaskStatus.DRAFT,
         created_by_marius_id=marius.id,
         assigned_marius_id=body.assignee_marius_id,
+        plan_item_id=body.plan_item_id,
     )
-    if project.settings.get("yolo_mode", False):
-        task = await container.tasks.approve_proposed(task.id)
     return TaskOut.model_validate(task)
 
 
@@ -217,7 +235,7 @@ async def get_task_view(
 ) -> dict:
     # Agent tokens are per-workspace: every /agent/tasks/* route resolves the task
     # through get_in_workspace so a token can't touch another workspace's tasks (#15).
-    task = await container.tasks.get_in_workspace(task_id, marius.workspace_id)
+    task = await _task_in_caller_workspace(container, marius, task_id)
     comments = await container.threads.list_comments(task_id)
     artifacts = await container.artifacts.list_by_task(task_id)
     directory = await container.mariuses.list_directory(marius.workspace_id)
@@ -237,12 +255,35 @@ async def get_task_view(
     }
 
 
-@router.post("/tasks/{task_id}/claim", response_model=TaskOut)
-async def claim_task(
-    task_id: UUID, marius: CurrentMarius, container: ContainerDep
+# The self-claim route is gone (FR-072). A worker no longer takes work; it asks, and the
+# Leader — which can see the whole board — decides. Both routes below leave the assignee
+# untouched on purpose.
+
+
+@router.post("/tasks/{task_id}/request", response_model=TaskOut)
+async def request_task(
+    task_id: UUID,
+    body: AgentAssignmentRequestIn,
+    marius: CurrentMarius,
+    container: ContainerDep,
 ) -> TaskOut:
-    await container.tasks.get_in_workspace(task_id, marius.workspace_id)
-    task = await container.tasks.claim(task_id, marius.id)
+    """Ask to be put on a task. Routed to the Leader; nothing is assigned here."""
+    await _task_in_caller_workspace(container, marius, task_id)
+    task = await container.tasks.request_assignment(task_id, marius.id, note=body.note)
+    return TaskOut.model_validate(task)
+
+
+@router.post("/tasks/{task_id}/handback", response_model=TaskOut)
+async def handback_task(
+    task_id: UUID,
+    body: AgentHandbackIn,
+    marius: CurrentMarius,
+    container: ContainerDep,
+) -> TaskOut:
+    """Hand work back, or ask a clarifying question. Healthy behaviour: the task keeps a
+    live drive (a wake is booked for the Leader) and is not counted as stalled."""
+    await _task_in_caller_workspace(container, marius, task_id)
+    task = await container.tasks.hand_back(task_id, marius.id, reason=body.reason)
     return TaskOut.model_validate(task)
 
 
@@ -250,7 +291,7 @@ async def claim_task(
 async def post_comment(
     task_id: UUID, body: AgentCommentIn, marius: CurrentMarius, container: ContainerDep
 ) -> CommentOut:
-    await container.tasks.get_in_workspace(task_id, marius.workspace_id)
+    await _task_in_caller_workspace(container, marius, task_id)
     comment = await container.threads.post_comment(
         task_id=task_id,
         body=body.body,
@@ -264,12 +305,14 @@ async def post_comment(
 async def update_status(
     task_id: UUID, body: TransitionIn, marius: CurrentMarius, container: ContainerDep
 ) -> TaskOut:
-    await container.tasks.get_in_workspace(task_id, marius.workspace_id)
+    await _task_in_caller_workspace(container, marius, task_id)
     try:
         target = TaskStatus(body.status)
     except ValueError as exc:
         raise ValueError(f"unknown status '{body.status}'") from exc
-    task = await container.tasks.transition(task_id, target, reason=body.reason)
+    task = await container.tasks.transition(
+        task_id, target, reason=body.reason, marius_id=marius.id
+    )
     return TaskOut.model_validate(task)
 
 
@@ -277,7 +320,7 @@ async def update_status(
 async def set_next_action(
     task_id: UUID, body: NextActionIn, marius: CurrentMarius, container: ContainerDep
 ) -> TaskOut:
-    await container.tasks.get_in_workspace(task_id, marius.workspace_id)
+    await _task_in_caller_workspace(container, marius, task_id)
     task = await container.tasks.set_next_action(task_id, body.next_action)
     return TaskOut.model_validate(task)
 
@@ -286,7 +329,7 @@ async def set_next_action(
 async def publish_artifact(
     task_id: UUID, body: AgentArtifactIn, marius: CurrentMarius, container: ContainerDep
 ) -> ArtifactOut:
-    await container.tasks.get_in_workspace(task_id, marius.workspace_id)
+    await _task_in_caller_workspace(container, marius, task_id)
     artifact = await container.artifacts.publish(
         task_id=task_id,
         name=body.name,

@@ -31,6 +31,8 @@ class WakeSource(StrEnum):
     # as a whole, so they ride the shared project session rather than a task session.
     PROJECT_READY = "project_ready"  # roster complete + everyone online → go plan (FR-002)
     PATRON_DECISION = "patron_decision"  # the patron decided something (FR-013, FR-004)
+    TASK_DONE = "task_done"  # a task reached *done* → go pass the word (FR-031)
+    WORKER_HANDBACK = "worker_handback"  # a worker handed work back or asked (FR-071)
 
 
 @dataclass

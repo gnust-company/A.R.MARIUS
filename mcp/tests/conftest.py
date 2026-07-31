@@ -34,8 +34,11 @@ class FakeClient:
     async def get_task(self, task_id: str) -> Any:
         return self._record("get_task", task_id)
 
-    async def claim_task(self, task_id: str) -> Any:
-        return self._record("claim_task", task_id)
+    async def request_task(self, task_id: str, note: str | None = None) -> Any:
+        return self._record("request_task", task_id, note)
+
+    async def hand_back_task(self, task_id: str, reason: str) -> Any:
+        return self._record("hand_back_task", task_id, reason)
 
     async def post_comment(self, task_id: str, body: str) -> Any:
         return self._record("post_comment", task_id, body)

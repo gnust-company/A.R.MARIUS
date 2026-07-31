@@ -25,6 +25,9 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
 
 from armarius.infrastructure.adapters.echo import EchoAdapter  # noqa: E402
 from armarius.infrastructure.database import engine as engine_mod  # noqa: E402
+from armarius.infrastructure.database.engine import (  # noqa: E402
+    enforce_sqlite_foreign_keys,
+)
 from armarius.infrastructure.database.models import Base  # noqa: E402
 from armarius.infrastructure.persistence.unit_of_work import (  # noqa: E402
     SqlAlchemyUnitOfWork,
@@ -60,6 +63,9 @@ async def uow_factory(tmp_path) -> AsyncIterator[Callable[[], SqlAlchemyUnitOfWo
     engine = create_async_engine(
         f"sqlite+aiosqlite:///{db_path}", connect_args={"timeout": 30}
     )
+    # Same pragma the app engine sets: a foreign key the deployed database would refuse
+    # must be refused here too, or a whole class of bug only ever shows up in production.
+    enforce_sqlite_foreign_keys(engine)
     async with engine.begin() as conn:
         await conn.exec_driver_sql("PRAGMA journal_mode=WAL;")
         await conn.run_sync(Base.metadata.create_all)

@@ -7,8 +7,9 @@ agent to "update the task, publish an artifact, move to review/done" — meaning
 Here the Leader is framed as the project's lead in an ongoing chat with the patron about
 the *whole* project. It answers/advises directly (its reply streams straight back, like
 Open WebUI — we never ask the agent to call an API to deliver its answer). When the patron
-asks it to create work, it uses its create-task tool; whether that becomes a draft awaiting
-approval or a live task is governed by the project's YOLO mode, stated in the prompt.
+asks it to create work, it uses its create-task tool; whether that becomes a live task or a
+draft awaiting approval is governed by the **approved plan** (spec 001 FR-027) — the items
+the patron signed off are listed in the prompt, and work outside them is a scope change.
 """
 
 from __future__ import annotations
@@ -29,6 +30,14 @@ class ChatDirectoryEntry:
 
 
 @dataclass(frozen=True)
+class PlanScopeEntry:
+    """One item of the approved plan — what the Leader is allowed to start on its own."""
+
+    item_id: UUID
+    title: str
+
+
+@dataclass(frozen=True)
 class ChatTurn:
     role: str  # "patron" | "leader"
     text: str
@@ -43,7 +52,7 @@ class LeaderChatContext:
     project_context: str | None
     directory: list[ChatDirectoryEntry]
     recent_turns: list[ChatTurn]
-    yolo_mode: bool
+    plan_items: list[PlanScopeEntry]
     # The Leader's own project role description (its leader Role), shown in the header so the
     # Leader knows the duties attached to its seat. Empty when the leader role has none.
     leader_role_description: str = ""
@@ -101,20 +110,30 @@ def build_leader_chat_prompt(ctx: LeaderChatContext) -> str:
     lines.append(
         "- Create the task with your create-task tool: "
         f"`POST /agent/projects/{ctx.project_id}/tasks` with JSON "
-        '`{"title": ..., "description": ..., "assignee_marius_id": <optional>}`. '
+        '`{"title": ..., "description": ..., "assignee_marius_id": <optional>, '
+        '"plan_item_id": <optional>}`. '
         "Break the request down and fill in a clear title + description and, when obvious, "
-        "the best worker to assign from your team above."
+        "the best worker to assign from your team above. The description is mandatory "
+        "before anyone can be assigned — a title alone is refused."
     )
-    if ctx.yolo_mode:
+    if ctx.plan_items:
         lines.append(
-            "- YOLO mode is **ON** for this project: the task is created live and assigned "
-            "immediately. Only create tasks the patron actually asked for."
+            "- The patron approved these plan items. Work that belongs to one of them is "
+            "**yours to start**: pass its `plan_item_id` and the task goes live and is "
+            "assigned immediately, no approval round."
+        )
+        for item in ctx.plan_items:
+            lines.append(f"  - `{item.item_id}` — {item.title}")
+        lines.append(
+            "- Work that fits **none** of them widens the project's scope: create it "
+            "without a `plan_item_id`. It stays a draft and the patron is asked to decide. "
+            "Tell them you have proposed it and it is awaiting their approval."
         )
     else:
         lines.append(
-            "- YOLO mode is **OFF**: the task is created as a **draft** and waits for the "
-            "patron to approve it before any worker is woken. Tell the patron you've "
-            "proposed it and it's awaiting their approval."
+            "- No plan item has been approved for this project yet, so every task you "
+            "create stays a **draft** awaiting the patron's approval. Say so when you "
+            "propose one."
         )
     lines.append(
         "- Do NOT create a task for a question or a discussion — only when the patron "

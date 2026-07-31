@@ -65,7 +65,7 @@ async def _make_task(c: AsyncClient, h: dict, ws_id: str) -> str:
     )
     assert task.status_code == 201, task.text
     task_id = task.json()["id"]
-    # backlog → todo so an agent can claim it (backlog tasks aren't claimable).
+    # backlog → todo so an agent has something live to act on.
     moved = await c.post(
         f"/v1/tasks/{task_id}/status", headers=h, json={"status": "todo"}
     )
@@ -89,7 +89,10 @@ async def test_agent_token_is_confined_to_its_workspace():
         # this token, whether reading or writing.
         probes = [
             c.get(f"/agent/tasks/{task_id}", headers=ih),
-            c.post(f"/agent/tasks/{task_id}/claim", headers=ih, json={}),
+            c.post(f"/agent/tasks/{task_id}/request", headers=ih, json={}),
+            c.post(
+                f"/agent/tasks/{task_id}/handback", headers=ih, json={"reason": "x"}
+            ),
             c.post(f"/agent/tasks/{task_id}/comment", headers=ih, json={"body": "hi"}),
             c.post(
                 f"/agent/tasks/{task_id}/status",
@@ -115,6 +118,7 @@ async def test_agent_token_is_confined_to_its_workspace():
         insider = await _provision_agent(c, ha, ws_a, "Alice")
         ah = {"Authorization": f"Bearer {insider}"}
         assert (await c.get(f"/agent/tasks/{task_id}", headers=ah)).status_code == 200
-        claimed = await c.post(f"/agent/tasks/{task_id}/claim", headers=ah, json={})
-        assert claimed.status_code == 200, claimed.text
-        assert claimed.json()["status"] == "in_progress"
+        asked = await c.post(f"/agent/tasks/{task_id}/request", headers=ah, json={})
+        assert asked.status_code == 200, asked.text
+        # Asking changes nothing about who owns the work — that is the Leader's call.
+        assert asked.json()["assigned_marius_id"] is None

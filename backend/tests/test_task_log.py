@@ -11,15 +11,35 @@ FR-061 and FR-079 all read from, so its two invariants are non-negotiable:
 
 from __future__ import annotations
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from armarius.application.use_cases.task_log import TaskLogService
+from armarius.domain.entities.project import Project
+from armarius.domain.entities.task import Task
 from armarius.domain.entities.task_log import ActorKind, TaskLogKind
+from armarius.domain.entities.workspace import Workspace
+
+
+async def _real_task(uow_factory, *, title: str = "Việc") -> UUID:
+    """A committed task row to hang the log off.
+
+    The log carries a real foreign key to `tasks`, and the test database enforces foreign
+    keys the same way the deployed one does — so a made-up task id is not a shortcut, it
+    is a row the database will refuse.
+    """
+    async with uow_factory() as uow:
+        workspace = await uow.workspaces.add(Workspace(name="WS", slug="ws"))
+        project = await uow.projects.add(
+            Project(workspace_id=workspace.id, name="P", slug="p", key="P")
+        )
+        task = await uow.tasks.add(Task(project_id=project.id, title=title))
+        await uow.commit()
+        return task.id
 
 
 async def test_appends_in_order_with_per_task_seq(uow_factory) -> None:
     log = TaskLogService(uow_factory)
-    task_id = uuid4()
+    task_id = await _real_task(uow_factory)
 
     await log.record(
         task_id,
@@ -59,7 +79,8 @@ async def test_seq_is_scoped_per_task(uow_factory) -> None:
     """Two tasks each start their own numbering — one task's history never renumbers
     because another task was busy."""
     log = TaskLogService(uow_factory)
-    task_a, task_b = uuid4(), uuid4()
+    task_a = await _real_task(uow_factory, title="Một")
+    task_b = await _real_task(uow_factory, title="Hai")
 
     await log.record(task_a, TaskLogKind.STATUS_CHANGED, after="todo")
     await log.record(task_b, TaskLogKind.STATUS_CHANGED, after="todo")
@@ -73,7 +94,7 @@ async def test_log_is_append_only(uow_factory) -> None:
     """There is no update and no delete on the port — recording a correction appends a
     new line instead of rewriting history."""
     log = TaskLogService(uow_factory)
-    task_id = uuid4()
+    task_id = await _real_task(uow_factory)
     await log.record(task_id, TaskLogKind.STATUS_CHANGED, after="in_progress")
 
     async with uow_factory() as uow:
@@ -90,7 +111,7 @@ async def test_log_is_append_only(uow_factory) -> None:
 
 async def test_records_actor_and_structured_detail(uow_factory) -> None:
     log = TaskLogService(uow_factory)
-    task_id = uuid4()
+    task_id = await _real_task(uow_factory)
     marius_id = uuid4()
 
     await log.record(
