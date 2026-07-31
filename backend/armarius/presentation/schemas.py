@@ -346,11 +346,16 @@ class CreateTaskIn(BaseModel):
     due_date: datetime | None = None
     definition_of_done: str | None = None
     assigned_marius_id: UUID | None = None
+    # The approved plan item this task belongs to (FR-027). Omitted → out of scope.
+    plan_item_id: UUID | None = None
     created_by_user_id: str | None = None
 
 
 class AssignIn(BaseModel):
     marius_id: UUID
+    # A task has exactly one owner (FR-028). Putting a different worker on a task that
+    # already has one is a **transfer**, and a transfer says why.
+    transfer_reason: str | None = Field(default=None, max_length=2000)
 
 
 class TransitionIn(BaseModel):
@@ -374,6 +379,15 @@ class TaskOut(_Out):
     priority: str = "medium"
     due_date: datetime | None = None
     definition_of_done: str | None = None
+    # spec 001 §6 — the four fields the board draws from (T069): what makes this task in
+    # scope, what is moving it, whether the system dropped it, and who has signed off.
+    plan_item_id: UUID | None = None
+    drive: str | None = None
+    stalled: bool = False
+    stalled_reason: str | None = None
+    # Filled by Story 3's two-signature rule; an empty list until then, never omitted, so
+    # the board can render one shape whatever đợt it is talking to.
+    signatures: list[dict[str, object]] = Field(default_factory=list)
     assigned_marius_id: UUID | None = None
     next_action: str | None = None
     created_at: datetime | None = None
@@ -529,10 +543,6 @@ class LeaderChatSendIn(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
 
 
-class YoloModeIn(BaseModel):
-    yolo_mode: bool
-
-
 class LeaderChatOut(BaseModel):
     """Project-level Leader conversation + live, derived context (built from a
     ``LeaderChatView``, not an ORM row — leader_online/name are computed on read)."""
@@ -541,18 +551,58 @@ class LeaderChatOut(BaseModel):
     leader_marius_id: UUID | None = None
     leader_name: str | None = None
     leader_online: bool = False
-    yolo_mode: bool = False
     state: str = "idle"
     transcript: list[dict] = Field(default_factory=list)
     updated_at: datetime | None = None
 
 
 class AgentCreateTaskIn(BaseModel):
-    """The Leader's create-task tool payload (Chat-with-Leader, #82)."""
+    """The Leader's create-task tool payload (Chat-with-Leader, #82).
+
+    `plan_item_id` is what decides whether the task goes live or waits for the patron
+    (FR-027) — the Leader gets the list of approved items in its prompt."""
 
     title: str = Field(min_length=1, max_length=300)
     description: str | None = None
     assignee_marius_id: UUID | None = None
+    plan_item_id: UUID | None = None
+
+
+class ReopenTaskIn(BaseModel):
+    """Bringing a closed task back always costs a reason (FR-022)."""
+
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+class CriterionIn(BaseModel):
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class SetCriteriaIn(BaseModel):
+    """The whole yardstick, replaced in one move (FR-019)."""
+
+    items: list[CriterionIn] = Field(default_factory=list)
+
+
+class CriterionOut(_Out):
+    id: UUID
+    task_id: UUID | None = None
+    text: str
+    order: int = 0
+    result: str = "unrated"
+    evidence_artifact_id: UUID | None = None
+
+
+class AgentAssignmentRequestIn(BaseModel):
+    """A worker asking to be put on a task — a request, never a claim (FR-072)."""
+
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class AgentHandbackIn(BaseModel):
+    """A worker handing work back or asking a clarifying question."""
+
+    reason: str = Field(min_length=1, max_length=2000)
 
 
 # ------------------------------------------------------------------ onboarding

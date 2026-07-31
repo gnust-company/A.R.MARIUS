@@ -21,7 +21,6 @@ from armarius.presentation.schemas import (
     LeaderChatOut,
     LeaderChatSendIn,
     TaskOut,
-    YoloModeIn,
 )
 
 router = APIRouter(prefix="/v1", tags=["leader-chat"])
@@ -43,7 +42,6 @@ def _to_out(view) -> LeaderChatOut:  # noqa: ANN001 - LeaderChatView (applicatio
         leader_marius_id=view.conversation.leader_marius_id,
         leader_name=view.leader_name,
         leader_online=view.leader_online,
-        yolo_mode=view.yolo_mode,
         state=str(view.conversation.state),
         transcript=list(view.conversation.transcript),
         updated_at=view.conversation.updated_at,
@@ -68,19 +66,6 @@ async def send_leader_chat(
 ) -> LeaderChatOut:
     await _require_owned_project(container, user, project_id)
     view = await container.leader_chat.send(project_id=project_id, message=body.message)
-    return _to_out(view)
-
-
-@router.put("/projects/{project_id}/yolo-mode", response_model=LeaderChatOut)
-async def set_yolo_mode(
-    project_id: UUID,
-    body: YoloModeIn,
-    container: ContainerDep,
-    user: CurrentUser,
-) -> LeaderChatOut:
-    await _require_owned_project(container, user, project_id)
-    await container.projects.set_yolo_mode(project_id, body.yolo_mode)
-    view = await container.leader_chat.get_or_open(project_id)
     return _to_out(view)
 
 

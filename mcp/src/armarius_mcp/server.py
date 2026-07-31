@@ -28,10 +28,12 @@ def build_server(state: ServerState) -> FastMCP:
         instructions=(
             "Armarius workspace tools. Your token was provided in the setup prompt pushed "
             "via your gateway. Start with `whoami` to confirm you're online, then `get_task` "
-            "for context, `claim_task` before working, `post_comment` (use @Name to wake a "
-            "teammate), `publish_artifact` before moving a task to in_review/done, "
-            "`update_status`, and `set_next_action` before you stop. Never write curl — "
-            "these tools are the whole interface."
+            "for context. Work the task you were **assigned** — you cannot take work for "
+            "yourself; `request_task` asks your project Leader, and `hand_back_task` returns "
+            "it with a reason or a question. Use `post_comment` (@Name wakes a teammate), "
+            "`publish_artifact` before moving a task to in_review, `update_status`, and "
+            "`set_next_action` before you stop. Never write curl — these tools are the whole "
+            "interface."
         ),
     )
 
@@ -46,9 +48,14 @@ def build_server(state: ServerState) -> FastMCP:
         return await tools.get_task(state, task_id)
 
     @mcp.tool
-    async def claim_task(task_id: str) -> Any:
-        """Claim a task (assign it to yourself) before you start working it."""
-        return await tools.claim_task(state, task_id)
+    async def request_task(task_id: str, note: str | None = None) -> Any:
+        """Ask your Leader to put you on a task. It decides — this assigns nothing."""
+        return await tools.request_task(state, task_id, note)
+
+    @mcp.tool
+    async def hand_back_task(task_id: str, reason: str) -> Any:
+        """Hand a task back, or ask a clarifying question. Your Leader is woken to read it."""
+        return await tools.hand_back_task(state, task_id, reason)
 
     @mcp.tool
     async def post_comment(task_id: str, body: str) -> Any:

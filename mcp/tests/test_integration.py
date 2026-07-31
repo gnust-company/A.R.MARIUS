@@ -6,7 +6,7 @@ own tests use. Under operator-invite (issue #63) the agent's token is minted at 
 time and delivered in the pushed setup prompt; the MCP server has no ``enroll``/``claim``
 anymore (issue #64), so this test reads the token from the repo (as a real agent would
 have received it) and proves the whole loop is tool calls: whoami → get_task →
-claim_task → comment → status → artifact → review → next_action. No curl anywhere.
+request → comment → status → artifact → review → next_action. No curl anywhere.
 """
 
 from __future__ import annotations
@@ -70,11 +70,17 @@ async def _project_and_task(patron: httpx.AsyncClient, h: dict, ws: str) -> str:
     from tests.support.projects import force_operating
 
     await force_operating(pid)
-    task = await patron.post(f"/v1/projects/{pid}/tasks", headers=h, json={"title": "Do the thing"})
+    task = await patron.post(
+        f"/v1/projects/{pid}/tasks",
+        headers=h,
+        json={
+            "title": "Do the thing",
+            "description": "Làm phần việc được mô tả trong bối cảnh dự án.",
+        },
+    )
     assert task.status_code == 201, task.text
     task_id = task.json()["id"]
-    # A new task is `backlog`; the leader puts it on the board (todo) before an agent
-    # can claim it (claim only auto-starts a todo task; backlog→in_progress is illegal).
+    # A new task is `backlog`; the patron puts it on the board (todo) before assigning.
     moved = await patron.post(
         f"/v1/tasks/{task_id}/status", headers=h, json={"status": "todo"}
     )
@@ -117,8 +123,14 @@ async def test_full_agent_loop_is_all_tools(backend, tmp_path, monkeypatch):
         view = await tools.get_task(state, task_id)
         assert view["task"]["id"] == task_id
 
-        claimed = await tools.claim_task(state, task_id)
-        assert claimed["assigned_marius_id"] == mid
+        # FR-072: the worker cannot take the task. It asks; the patron/Leader assigns.
+        asked = await tools.request_task(state, task_id, "tôi nhận việc này được")
+        assert asked["assigned_marius_id"] is None
+        assigned = await patron.post(
+            f"/v1/tasks/{task_id}/assign", headers=h, json={"marius_id": mid}
+        )
+        assert assigned.status_code == 200, assigned.text
+        assert assigned.json()["assigned_marius_id"] == mid
 
         await tools.post_comment(state, task_id, "On it. @Patron will update shortly.")
         await tools.update_status(state, task_id, "in_progress", "starting")

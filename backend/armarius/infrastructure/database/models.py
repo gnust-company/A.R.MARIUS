@@ -145,6 +145,14 @@ class TaskModel(Base):
     priority: Mapped[str] = mapped_column(String(20), default="medium")
     due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     definition_of_done: Mapped[str | None] = mapped_column(Text)
+    # spec 001 §6 — what makes this task "in scope", what is moving it, and whether the
+    # system has dropped it. No FK on `plan_item_id`: a plan item can be superseded by a
+    # new plan version while the task it spawned lives on, and losing the task with the
+    # item would be worse than a dangling pointer we already treat as "out of scope".
+    plan_item_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
+    drive: Mapped[str | None] = mapped_column(String(20), index=True)
+    stalled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    stalled_reason: Mapped[str | None] = mapped_column(Text)
     assigned_marius_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
     created_by_user_id: Mapped[str | None] = mapped_column(String(200))
     created_by_marius_id: Mapped[UUID | None] = mapped_column(Uuid)
@@ -153,6 +161,26 @@ class TaskModel(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ChecklistItemModel(Base):
+    """One acceptance criterion on a task (spec 001 §7, FR-019).
+
+    `done` is the legacy tick the old checklist UI writes; `result` is the real score and
+    `done` is kept in step with it by the entity. Evidence points at the artifact that
+    proves the criterion — no FK, because an artifact can be superseded while the score
+    it justified stays part of the record."""
+
+    __tablename__ = "checklist_items"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    task_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tasks.id"), index=True)
+    text: Mapped[str] = mapped_column(Text, default="")
+    done: Mapped[bool] = mapped_column(Boolean, default=False)
+    # `order` is reserved in SQL — the column carries the suffix, the entity does not.
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    result: Mapped[str] = mapped_column(String(20), default="unrated")
+    evidence_artifact_id: Mapped[UUID | None] = mapped_column(Uuid)
 
 
 class TaskDependencyModel(Base):

@@ -10,6 +10,7 @@ from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.infrastructure.persistence.repositories import (
     SqlArtifactRepository,
+    SqlChecklistItemRepository,
     SqlCommentRepository,
     SqlInboxRepository,
     SqlLabelRepository,
@@ -53,6 +54,7 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         self.seat_grants = SqlSeatGrantRepository(s)
         self.mariuses = SqlMariusRepository(s)
         self.tasks = SqlTaskRepository(s)
+        self.criteria = SqlChecklistItemRepository(s)
         self.task_logs = SqlTaskLogRepository(s)
         self.dependencies = SqlTaskDependencyRepository(s)
         self.inbox = SqlInboxRepository(s)

@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from armarius.domain.entities.comment import AuthorKind
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.task import TaskStatus
+from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
     AddDependencyIn,
@@ -17,10 +18,13 @@ from armarius.presentation.schemas import (
     BlockerOut,
     CommentOut,
     CreateTaskIn,
+    CriterionOut,
     NextActionIn,
     PostCommentIn,
     PublishArtifactIn,
+    ReopenTaskIn,
     RunStartedOut,
+    SetCriteriaIn,
     TaskDependencyEdgeOut,
     TaskLogEntryOut,
     TaskOut,
@@ -52,6 +56,7 @@ async def create_task(
         due_date=body.due_date,
         definition_of_done=body.definition_of_done,
         assigned_marius_id=body.assigned_marius_id,
+        plan_item_id=body.plan_item_id,
         created_by_user_id=body.created_by_user_id,
     )
     return TaskOut.model_validate(task)
@@ -75,19 +80,52 @@ async def get_task(task_id: UUID, container: ContainerDep) -> TaskOut:
 
 
 @router.post("/tasks/{task_id}/assign", response_model=TaskOut)
-async def assign_task(task_id: UUID, body: AssignIn, container: ContainerDep) -> TaskOut:
-    task = await container.tasks.assign(task_id, body.marius_id)
+async def assign_task(
+    task_id: UUID, body: AssignIn, container: ContainerDep, user: CurrentUser
+) -> TaskOut:
+    task = await container.tasks.assign(
+        task_id,
+        body.marius_id,
+        transfer_reason=body.transfer_reason,
+        user_id=str(user.id),
+    )
     return TaskOut.model_validate(task)
 
 
 @router.post("/tasks/{task_id}/status", response_model=TaskOut)
 async def transition_task(
-    task_id: UUID, body: TransitionIn, container: ContainerDep
+    task_id: UUID, body: TransitionIn, container: ContainerDep, user: CurrentUser
 ) -> TaskOut:
     task = await container.tasks.transition(
-        task_id, _parse_status(body.status), reason=body.reason
+        task_id, _parse_status(body.status), reason=body.reason, user_id=str(user.id)
     )
     return TaskOut.model_validate(task)
+
+
+@router.post("/tasks/{task_id}/reopen", response_model=TaskOut)
+async def reopen_task(
+    task_id: UUID, body: ReopenTaskIn, container: ContainerDep, user: CurrentUser
+) -> TaskOut:
+    """The only way out of *done*/*cancelled* (FR-022). Reason mandatory, trace kept."""
+    task = await container.tasks.reopen(task_id, reason=body.reason, user_id=str(user.id))
+    return TaskOut.model_validate(task)
+
+
+@router.get("/tasks/{task_id}/criteria", response_model=list[CriterionOut])
+async def list_criteria(task_id: UUID, container: ContainerDep) -> list[CriterionOut]:
+    items = await container.tasks.list_criteria(task_id)
+    return [CriterionOut.model_validate(i) for i in items]
+
+
+@router.put("/tasks/{task_id}/criteria", response_model=list[CriterionOut])
+async def set_criteria(
+    task_id: UUID, body: SetCriteriaIn, container: ContainerDep, user: CurrentUser
+) -> list[CriterionOut]:
+    """Replace the yardstick — refused (409) once the worker has started (FR-019)."""
+    items = await container.tasks.set_criteria(
+        task_id, [i.text for i in body.items], user_id=str(user.id)
+    )
+    return [CriterionOut.model_validate(i) for i in items]
 
 
 @router.post("/tasks/{task_id}/next-action", response_model=TaskOut)

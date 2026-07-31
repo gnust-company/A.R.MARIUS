@@ -33,7 +33,7 @@ def _ctx(**overrides) -> LeaderChatContext:
             )
         ],
         recent_turns=[],
-        yolo_mode=False,
+        plan_items=[],
     )
     base.update(overrides)
     return LeaderChatContext(**base)

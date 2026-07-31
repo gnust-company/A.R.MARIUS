@@ -17,7 +17,11 @@ from armarius.application.use_cases.projects import (
     SystemOnlyOperation,
 )
 from armarius.application.use_cases.projects import ProjectClosed as ProjectClosedService
-from armarius.application.use_cases.tasks import ProjectNotReadyForTasks
+from armarius.application.use_cases.tasks import (
+    AlreadyAssignedError,
+    ProjectNotReadyForTasks,
+)
+from armarius.domain.entities.checklist_item import CriteriaLockedError
 from armarius.domain.entities.leader_chat import LeaderChatError
 from armarius.domain.entities.marius import InviteError
 from armarius.domain.entities.onboarding import OnboardingError
@@ -25,6 +29,10 @@ from armarius.domain.entities.seat_grant import SeatGrantError
 from armarius.domain.entities.task import (
     ArtifactRequiredError,
     DependencyNotMetError,
+    DescriptionLockedError,
+    DescriptionRequiredError,
+    StalledTaskError,
+    StatusReasonRequiredError,
     TaskTransitionError,
 )
 from armarius.domain.entities.task_dependency import TaskDependencyError
@@ -77,6 +85,39 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(DependencyNotMetError)
     async def _dependency_not_met(_: Request, exc: DependencyNotMetError) -> JSONResponse:
         # Entering todo/in_progress while a blocked_by task is unfinished (§1.3) — conflict.
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    # The four gates Story 2 added. All 409: the request is well-formed, the task's own
+    # state is what refuses it — and the message says which rule, verbatim, so the board
+    # can show the patron why rather than a bare "not allowed".
+    @app.exception_handler(DescriptionRequiredError)
+    async def _description_required(
+        _: Request, exc: DescriptionRequiredError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(StatusReasonRequiredError)
+    async def _reason_required(
+        _: Request, exc: StatusReasonRequiredError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(StalledTaskError)
+    async def _stalled(_: Request, exc: StalledTaskError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(DescriptionLockedError)
+    async def _description_locked(
+        _: Request, exc: DescriptionLockedError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(AlreadyAssignedError)
+    async def _already_assigned(_: Request, exc: AlreadyAssignedError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(CriteriaLockedError)
+    async def _criteria_locked(_: Request, exc: CriteriaLockedError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(TaskDependencyError)

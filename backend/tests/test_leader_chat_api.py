@@ -49,7 +49,7 @@ async def _project_with_seated_leader(c: AsyncClient, ws_id: str, h: dict) -> st
     return pid
 
 
-async def test_leader_chat_get_send_offline_and_yolo() -> None:
+async def test_leader_chat_get_send_offline_and_proposed_list() -> None:
     async with await _client() as c:
         token, ws_id = await _register(c, "lc1@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
@@ -61,7 +61,6 @@ async def test_leader_chat_get_send_offline_and_yolo() -> None:
         body = got.json()
         assert body["leader_online"] is False
         assert body["state"] == "idle"
-        assert body["yolo_mode"] is False
         assert body["transcript"] == []
 
         # Sending while the Leader is offline is a conflict (chat disabled, no queue).
@@ -71,12 +70,12 @@ async def test_leader_chat_get_send_offline_and_yolo() -> None:
         )
         assert sent.status_code == 409, sent.text
 
-        # YOLO toggle flips the project setting and is reflected on read-back.
-        yolo = await c.put(
+        # The toggle that used to live here is gone (spec 001 T062): what the Leader may
+        # start on its own is decided by the approved plan, not by a project-wide switch.
+        gone = await c.put(
             f"/v1/projects/{pid}/yolo-mode", headers=h, json={"yolo_mode": True}
         )
-        assert yolo.status_code == 200, yolo.text
-        assert yolo.json()["yolo_mode"] is True
+        assert gone.status_code in (404, 405), gone.text
 
         # No Leader-proposed drafts yet.
         proposed = await c.get(f"/v1/projects/{pid}/proposed-tasks", headers=h)

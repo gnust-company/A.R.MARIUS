@@ -37,6 +37,7 @@ from armarius.domain.services.leader_chat_prompt import (
     ChatDirectoryEntry,
     ChatTurn,
     LeaderChatContext,
+    PlanScopeEntry,
     build_leader_chat_prompt,
 )
 from armarius.infrastructure.events.topic_bus import TopicEventBus
@@ -58,7 +59,6 @@ class LeaderChatView:
     conversation: ProjectLeaderConversation
     leader_online: bool
     leader_name: str | None
-    yolo_mode: bool
 
 
 class LeaderChatService:
@@ -274,7 +274,13 @@ class LeaderChatService:
             project_id = project.id
             adapter_type = leader.adapter_type
             adapter_config = dict(leader.adapter_config)
-            yolo = bool(project.settings.get("yolo_mode", False))
+            # What the patron already signed off (FR-027) — the Leader needs the item ids
+            # to attach work to, otherwise everything it creates lands as a scope change.
+            approved_plan = await uow.plans.get_approved(project.id)
+            plan_items = [
+                PlanScopeEntry(item_id=i.id, title=i.title)
+                for i in (approved_plan.items if approved_plan else [])
+            ]
             prompt = build_leader_chat_prompt(
                 LeaderChatContext(
                     leader_name=leader.name,
@@ -287,7 +293,7 @@ class LeaderChatService:
                         ChatTurn(role=t.get("role", ""), text=t.get("text", ""))
                         for t in conversation.transcript[-_PROMPT_TURN_TAIL:]
                     ],
-                    yolo_mode=yolo,
+                    plan_items=plan_items,
                     leader_role_description=(
                         leader_role.description if leader_role else ""
                     ),
@@ -401,7 +407,6 @@ class LeaderChatService:
             conversation=conversation,
             leader_online=bool(leader is not None and leader.liveness in _AVAILABLE),
             leader_name=leader.name if leader else None,
-            yolo_mode=bool(project.settings.get("yolo_mode", False)),
         )
 
     async def _leader_of(self, uow, project_id: UUID) -> UUID | None:  # noqa: ANN001

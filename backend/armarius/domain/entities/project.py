@@ -34,10 +34,6 @@ def default_project_settings() -> dict:
     return {
         "require_review_before_done": True,
         "comment_required_for_review": False,
-        # YOLO mode (#82): when False (default), a task the Leader proposes in the
-        # Chat-with-Leader tab is created as a `draft` awaiting the patron's approval;
-        # when True, the Leader's task creation + assignment is auto-approved.
-        "yolo_mode": False,
         # Per-project timing overrides (spec 001). Empty means "use the system floor" —
         # only the keys a patron actually tuned live here, so raising a system default
         # lifts every project that never overrode it.

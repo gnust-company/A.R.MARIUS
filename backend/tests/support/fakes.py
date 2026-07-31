@@ -20,6 +20,7 @@ from armarius.application.ports.adapter import (
 )
 from armarius.application.ports.liveness_probe import LivenessProbe
 from armarius.application.ports.unit_of_work import UnitOfWork
+from armarius.domain.entities.checklist_item import ChecklistItem
 from armarius.domain.entities.inbox_item import InboxItem, InboxItemStatus
 from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import Marius
@@ -41,6 +42,7 @@ class _Store:
     onboardings: dict[UUID, OnboardingSession] = field(default_factory=dict)
     projects: dict[UUID, Project] = field(default_factory=dict)
     tasks: dict[UUID, Task] = field(default_factory=dict)
+    criteria: dict[UUID, ChecklistItem] = field(default_factory=dict)
     task_logs: dict[UUID, TaskLogEntry] = field(default_factory=dict)
     inbox: dict[UUID, InboxItem] = field(default_factory=dict)
     dependencies: dict[UUID, TaskDependency] = field(default_factory=dict)
@@ -110,6 +112,30 @@ class _FakeTaskRepo:
         return task
 
 
+class _FakeChecklistItemRepo:
+    def __init__(self, store: _Store) -> None:
+        self._s = store
+
+    async def list_by_task(self, task_id: UUID) -> list[ChecklistItem]:
+        items = [i for i in self._s.criteria.values() if i.task_id == task_id]
+        items.sort(key=lambda i: i.order)
+        return items
+
+    async def replace_for_task(
+        self, task_id: UUID, items: list[ChecklistItem]
+    ) -> list[ChecklistItem]:
+        for iid in [i.id for i in self._s.criteria.values() if i.task_id == task_id]:
+            self._s.criteria.pop(iid, None)
+        for item in items:
+            item.task_id = task_id
+            self._s.criteria[item.id] = item
+        return list(items)
+
+    async def update(self, item: ChecklistItem) -> ChecklistItem:
+        self._s.criteria[item.id] = item
+        return item
+
+
 class _FakeTaskDependencyRepo:
     def __init__(self, store: _Store) -> None:
         self._s = store
@@ -137,6 +163,9 @@ class _FakeTaskDependencyRepo:
 
     async def list_blockers(self, task_id: UUID) -> list[TaskDependency]:
         return [d for d in self._s.dependencies.values() if d.task_id == task_id]
+
+    async def list_dependents(self, task_id: UUID) -> list[TaskDependency]:
+        return [d for d in self._s.dependencies.values() if d.blocks_task_id == task_id]
 
     async def list_by_project(self, project_id: UUID) -> list[TaskDependency]:
         out = []
@@ -403,6 +432,7 @@ class FakeUnitOfWork(UnitOfWork):
         self.onboardings = _FakeOnboardingRepo(s)  # type: ignore[assignment]
         self.projects = _FakeProjectRepo(s)  # type: ignore[assignment]
         self.tasks = _FakeTaskRepo(s)  # type: ignore[assignment]
+        self.criteria = _FakeChecklistItemRepo(s)  # type: ignore[assignment]
         self.task_logs = _FakeTaskLogRepo(s)  # type: ignore[assignment]
         self.inbox = _FakeInboxRepo(s)  # type: ignore[assignment]
         self.dependencies = _FakeTaskDependencyRepo(s)  # type: ignore[assignment]

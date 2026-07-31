@@ -180,6 +180,7 @@ async def test_proposed_task_approve_flips_todo_and_wakes(uow_factory) -> None:
 
     draft = await tasks.create(
         project_id=project.id, title="Build /login", status=TaskStatus.DRAFT,
+        description="Dựng màn hình đăng nhập và nối vào lối xác thực.",
         assigned_marius_id=worker.id,
     )
     assert draft.status == TaskStatus.DRAFT

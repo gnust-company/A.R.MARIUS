@@ -134,6 +134,10 @@ async def test_delete_workspace_cascades_runtime_rows():
             s.add(ProjectModel(id=project_id, workspace_id=UUID(ws_id), name="P", slug="p"))
             s.add(TaskModel(id=task_id, project_id=project_id, title="T"))
             s.add(RunModel(id=run_id, project_id=project_id, marius_id=marius_id, task_id=task_id))
+            # Flush the run before its events: `run_events.run_id` is a plain FK column
+            # with no ORM relationship behind it, so SQLAlchemy has no dependency to sort
+            # by and will happily emit the child INSERT first.
+            await s.flush()
             s.add(RunEventModel(id=uuid4(), run_id=run_id, type="log"))
             s.add(SessionModel(id=uuid4(), project_id=project_id, marius_id=marius_id,
                                adapter_type="echo", task_id=task_id))
@@ -171,6 +175,7 @@ async def test_delete_marius_cascades_runtime_rows():
         task_id, run_id = uuid4(), uuid4()
         async with get_sessionmaker()() as s:
             s.add(RunModel(id=run_id, marius_id=marius_id, task_id=task_id))
+            await s.flush()  # parent before child — see the note above
             s.add(RunEventModel(id=uuid4(), run_id=run_id, type="log"))
             s.add(SessionModel(id=uuid4(), marius_id=marius_id,
                                adapter_type="echo", task_id=task_id))

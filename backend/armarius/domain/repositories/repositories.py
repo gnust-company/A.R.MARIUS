@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from uuid import UUID
 
 from armarius.domain.entities.artifact import Artifact
+from armarius.domain.entities.checklist_item import ChecklistItem
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.inbox_item import InboxItem, InboxItemStatus
 from armarius.domain.entities.label import Label
@@ -172,6 +173,23 @@ class TaskRepository(ABC):
     async def update(self, task: Task) -> Task: ...
 
 
+class ChecklistItemRepository(ABC):
+    """Acceptance criteria — the yardstick a task is measured against (FR-019).
+
+    Whole-list replacement rather than per-row edits: the criteria are read as one
+    yardstick, and swapping the list in one move means nobody can ever see half of an
+    edit while approving against it."""
+
+    @abstractmethod
+    async def list_by_task(self, task_id: UUID) -> Sequence[ChecklistItem]: ...
+    @abstractmethod
+    async def replace_for_task(
+        self, task_id: UUID, items: Sequence[ChecklistItem]
+    ) -> Sequence[ChecklistItem]: ...
+    @abstractmethod
+    async def update(self, item: ChecklistItem) -> ChecklistItem: ...
+
+
 class TaskDependencyRepository(ABC):
     """`blocked_by` edges. Feeds the dependency-gate (a task cannot enter
     todo/in_progress while any task it is blocked_by is unfinished)."""
@@ -187,6 +205,11 @@ class TaskDependencyRepository(ABC):
     @abstractmethod
     async def list_blockers(self, task_id: UUID) -> Sequence[TaskDependency]:
         """Edges where `task_id` is the blocked task (its `blocked_by` list)."""
+    @abstractmethod
+    async def list_dependents(self, task_id: UUID) -> Sequence[TaskDependency]:
+        """The mirror: edges where `task_id` is the blocker — who is waiting on it.
+
+        Read when a task finishes, to work out what it just freed (FR-031)."""
     @abstractmethod
     async def list_by_project(self, project_id: UUID) -> Sequence[TaskDependency]:
         """All edges whose blocked task lives in this project (board view)."""

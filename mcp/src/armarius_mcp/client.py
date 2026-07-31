@@ -110,8 +110,15 @@ class ArmariusClient:
     async def get_task(self, task_id: str) -> Any:
         return await self._request("GET", f"/agent/tasks/{task_id}")
 
-    async def claim_task(self, task_id: str) -> Any:
-        return await self._request("POST", f"/agent/tasks/{task_id}/claim", json={})
+    async def request_task(self, task_id: str, note: str | None = None) -> Any:
+        return await self._request(
+            "POST", f"/agent/tasks/{task_id}/request", json={"note": note}
+        )
+
+    async def hand_back_task(self, task_id: str, reason: str) -> Any:
+        return await self._request(
+            "POST", f"/agent/tasks/{task_id}/handback", json={"reason": reason}
+        )
 
     async def post_comment(self, task_id: str, body: str) -> Any:
         return await self._request(

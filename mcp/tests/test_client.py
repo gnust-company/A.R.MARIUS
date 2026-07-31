@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 import respx
@@ -37,12 +39,24 @@ async def test_get_task_path(client: ArmariusClient):
 
 
 @respx.mock
-async def test_claim_task_posts_empty_body(client: ArmariusClient):
-    route = respx.post(f"{BASE}/agent/tasks/T1/claim").mock(
-        return_value=httpx.Response(200, json={"id": "T1", "status": "in_progress"})
+async def test_request_task_asks_and_does_not_assign(client: ArmariusClient):
+    """FR-072: đường tự-nhận đã gỡ. Thợ chỉ xin, người phụ trách vẫn để trống."""
+    route = respx.post(f"{BASE}/agent/tasks/T1/request").mock(
+        return_value=httpx.Response(200, json={"id": "T1", "assigned_marius_id": None})
     )
-    await client.claim_task("T1")
-    assert route.calls.last.request.content == b"{}"
+    result = await client.request_task("T1", "tôi làm được việc này")
+    assert route.called
+    assert result["assigned_marius_id"] is None
+
+
+@respx.mock
+async def test_hand_back_task_carries_the_reason(client: ArmariusClient):
+    route = respx.post(f"{BASE}/agent/tasks/T1/handback").mock(
+        return_value=httpx.Response(200, json={"id": "T1"})
+    )
+    await client.hand_back_task("T1", "thiếu quyền truy cập kho mã")
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["reason"] == "thiếu quyền truy cập kho mã"
 
 
 @respx.mock
