@@ -183,7 +183,7 @@ export default function Projects() {
 
                 {/* Action link */}
                 <div className="mt-auto">
-                  {project.status === 'active' && (
+                  {(project.status === 'operating' || project.status === 'maintaining') && (
                     <span className="font-body font-medium text-body-sm text-[#C25E3A]">
                       {t('projects.enterBoard')}
                     </span>
@@ -193,7 +193,12 @@ export default function Projects() {
                       {t('projects.staffRoster')}
                     </span>
                   )}
-                  {project.status === 'archived' && (
+                  {project.status === 'planning' && (
+                    <span className="font-body font-medium text-body-sm text-[#C4903A]">
+                      {t('projects.openPlan')}
+                    </span>
+                  )}
+                  {project.status === 'closed' && (
                     <span className="font-body font-medium text-body-sm text-ink-muted">
                       {t('projects.viewProject')}
                     </span>

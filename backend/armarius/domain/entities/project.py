@@ -1,9 +1,14 @@
 """Project entity — a single initiative inside a workspace (LLD §2.2).
 
 A project owns its roster (Roles + SeatGrants), tasks and a shared artifact folder.
-Its `status` is a small lifecycle (LLD §3.1): `setup → active → archived`. Activation
-is reached ONCE — every seat granted AND every seated agent ONLINE — and never rolls
-back. The only behavioral gate keyed off `active` is task commission.
+Its `status` is the five-phase lifecycle of spec 001 (FR-001 → FR-006):
+
+    setup → planning → operating ⇄ maintaining → closed
+
+Reaching a full, online roster no longer opens the doors — it opens the *planning* gate.
+Real work only starts once the patron approves the plan, and `closed` is terminal: the
+history stays readable, every write is refused. The transition table and the gates live
+in `domain.services.project_rules`; this module only names the phases.
 """
 
 from __future__ import annotations
@@ -15,16 +20,19 @@ from uuid import UUID, uuid4
 
 
 class ProjectStatus(StrEnum):
+    """The five phases. Declaration order is the forward order of the lifecycle."""
+
     SETUP = "setup"
-    ACTIVE = "active"
-    ARCHIVED = "archived"
+    PLANNING = "planning"
+    OPERATING = "operating"
+    MAINTAINING = "maintaining"
+    CLOSED = "closed"
 
 
 def default_project_settings() -> dict:
     """Patron-tunable gates (LLD §2.2). Conservative defaults: review before done."""
     return {
         "require_review_before_done": True,
-        "require_approval_for_done": False,
         "comment_required_for_review": False,
         # YOLO mode (#82): when False (default), a task the Leader proposes in the
         # Chat-with-Leader tab is created as a `draft` awaiting the patron's approval;

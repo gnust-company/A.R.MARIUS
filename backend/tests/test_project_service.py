@@ -96,7 +96,7 @@ async def test_project_activates_when_all_seats_online() -> None:
     assert factory.store.projects[project.id].status == ProjectStatus.SETUP
 
     await svc.grant_seat(project.id, "backend", worker.id, system=True)
-    assert factory.store.projects[project.id].status == ProjectStatus.ACTIVE
+    assert factory.store.projects[project.id].status == ProjectStatus.PLANNING
 
 
 async def test_project_stays_setup_when_a_seat_is_offline() -> None:
@@ -126,10 +126,10 @@ async def test_recompute_activates_after_agent_comes_online() -> None:
     flipped = await svc.recompute_active(project.id)
 
     assert flipped is True
-    assert factory.store.projects[project.id].status == ProjectStatus.ACTIVE
+    assert factory.store.projects[project.id].status == ProjectStatus.PLANNING
 
 
-async def test_active_project_never_rolls_back() -> None:
+async def test_activated_project_never_rolls_back() -> None:
     factory, ws = _factory_with_workspace()
     svc = ProjectService(factory)
     project = await svc.create_project(ws.id, "Apollo", roles=_valid_roster())
@@ -137,13 +137,13 @@ async def test_active_project_never_rolls_back() -> None:
     worker = _seed_marius(factory, ws, Liveness.ONLINE)
     await svc.grant_seat(project.id, "leader", leader.id, system=True)
     await svc.grant_seat(project.id, "backend", worker.id, system=True)
-    assert factory.store.projects[project.id].status == ProjectStatus.ACTIVE
+    assert factory.store.projects[project.id].status == ProjectStatus.PLANNING
 
     worker.liveness = Liveness.OFFLINE  # an agent drops
     flipped = await svc.recompute_active(project.id)
 
     assert flipped is False  # nothing changed
-    assert factory.store.projects[project.id].status == ProjectStatus.ACTIVE
+    assert factory.store.projects[project.id].status == ProjectStatus.PLANNING
 
 
 async def test_roster_crud_round_trip() -> None:

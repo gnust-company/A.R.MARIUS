@@ -11,6 +11,7 @@ from armarius.infrastructure.database.engine import init_db
 from armarius.main import app
 from armarius.presentation.container import build_container
 from tests.support.agents import agent_token_for, invite_agent
+from tests.support.projects import force_operating
 
 
 @pytest.fixture(autouse=True)
@@ -57,6 +58,8 @@ async def _make_task(c: AsyncClient, h: dict, ws_id: str) -> str:
         },
     )
     assert project.status_code == 201, project.text
+    # FR-003 — this file tests the agent-token workspace guard, not the plan gate.
+    await force_operating(project.json()["id"])
     task = await c.post(
         f"/v1/projects/{project.json()['id']}/tasks", headers=h, json={"title": "T"}
     )

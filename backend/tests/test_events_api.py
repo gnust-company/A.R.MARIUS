@@ -13,6 +13,7 @@ from httpx import ASGITransport, AsyncClient
 
 from armarius.infrastructure.events.topic_bus import TopicEventBus
 from armarius.main import app
+from tests.support.projects import force_operating
 
 
 # ── TopicEventBus unit ────────────────────────────────────────────────────────
@@ -188,6 +189,7 @@ async def test_per_task_stream_frames_and_resumes() -> None:
             },
         )
         pid = proj.json()["id"]
+        await force_operating(pid)  # FR-003 — the SSE frame is the subject here
         task = await c.post(
             f"/v1/projects/{pid}/tasks", headers=h, json={"title": "Implement /login"}
         )

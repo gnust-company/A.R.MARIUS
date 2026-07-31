@@ -104,7 +104,8 @@ def test_revoked_grant_does_not_count() -> None:
     assert should_activate(roles, grants, liveness) is False
 
 
-def test_recompute_flips_setup_to_active_once() -> None:
+def test_recompute_flips_setup_to_planning_once() -> None:
+    """Spec 001 FR-002: a full, online roster opens the *planning* gate, not the work."""
     project = Project(status=ProjectStatus.SETUP)
     roles = [_leader(), _worker()]
     lead, back = uuid4(), uuid4()
@@ -113,14 +114,14 @@ def test_recompute_flips_setup_to_active_once() -> None:
     online = {lead: Liveness.ONLINE, back: Liveness.ONLINE}
 
     assert recompute_active(project, roles, grants, online) is True
-    assert project.status == ProjectStatus.ACTIVE
+    assert project.status == ProjectStatus.PLANNING
 
     # idempotent: a second call does not "re-activate"
     assert recompute_active(project, roles, grants, online) is False
 
 
-def test_active_never_rolls_back_when_agent_drops() -> None:
-    project = Project(status=ProjectStatus.ACTIVE)
+def test_activation_never_rolls_back_when_agent_drops() -> None:
+    project = Project(status=ProjectStatus.PLANNING)
     roles = [_leader(), _worker()]
     lead, back = uuid4(), uuid4()
     grants = [SeatGrant(role_key="leader", marius_id=lead),
@@ -128,4 +129,4 @@ def test_active_never_rolls_back_when_agent_drops() -> None:
     dropped = {lead: Liveness.ONLINE, back: Liveness.OFFLINE}
 
     assert recompute_active(project, roles, grants, dropped) is False
-    assert project.status == ProjectStatus.ACTIVE  # stays active
+    assert project.status == ProjectStatus.PLANNING  # one-way, never rolls back

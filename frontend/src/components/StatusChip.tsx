@@ -18,10 +18,12 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; dot: string }> =
   pending: { bg: 'bg-[#F5E8CC]', text: 'text-[#8B6A28]', dot: 'bg-status-pending' },
   invited: { bg: 'bg-[#E8E0D8]', text: 'text-[#8B7A6A]', dot: 'bg-status-invited' },
   revoked: { bg: 'bg-[#E8E0D8]', text: 'text-[#8B7A6A]', dot: 'bg-status-revoked' },
-  // Project status
+  // Project phase (spec 001): setup → planning → operating ⇄ maintaining → closed
   setup: { bg: 'bg-[#F5DDD6]', text: 'text-[#B84A32]', dot: 'bg-[#B84A32]' },
-  active: { bg: 'bg-[#D8EADD]', text: 'text-[#2A6E3A]', dot: 'bg-[#2A6E3A]' },
-  archived: { bg: 'bg-[#E8E0D8]', text: 'text-[#8B7A6A]', dot: 'bg-[#8B7A6A]' },
+  planning: { bg: 'bg-[#F5E8CC]', text: 'text-[#8B6A28]', dot: 'bg-[#8B6A28]' },
+  operating: { bg: 'bg-[#D8EADD]', text: 'text-[#2A6E3A]', dot: 'bg-[#2A6E3A]' },
+  maintaining: { bg: 'bg-[#D4E8F0]', text: 'text-[#2A5A6E]', dot: 'bg-[#2A5A6E]' },
+  closed: { bg: 'bg-[#E8E0D8]', text: 'text-[#8B7A6A]', dot: 'bg-[#8B7A6A]' },
   // Task status
   draft: { bg: 'bg-[#F5E8CC]', text: 'text-[#8B6A28]', dot: 'bg-[#8B6A28]' },
   backlog: { bg: 'bg-[#EDE4CE]', text: 'text-[#6B5E4E]', dot: 'bg-[#6B5E4E]' },

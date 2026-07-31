@@ -6,8 +6,11 @@ Three responsibilities the application layer owns on top of the pure rules in
     leader seat and at least one worker role (`validate_plan`); it starts in SETUP.
   - **system-only seat grants** — only the system assigns a Marius to a seat; every grant
     re-evaluates activation.
-  - **activation** — `recompute_active` flips SETUP→ACTIVE once every seat is granted and
-    every seated agent is ONLINE; it never rolls back.
+  - **activation** — `recompute_active` flips SETUP→PLANNING once every seat is granted
+    and every seated agent is ONLINE; it never rolls back. A full roster buys the right to
+    *plan*, not to start work (spec 001 FR-002).
+  - **phase changes** — the Leader proposes, the patron decides (FR-004); a closed project
+    refuses every write (FR-005).
 """
 
 from __future__ import annotations
@@ -16,14 +19,21 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field, fields
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID
 
+from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.project import Project, ProjectStatus, ProjectThresholds
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
 from armarius.domain.services import project_key, project_rules
 from armarius.shared.clock import utcnow
+
+if TYPE_CHECKING:  # imported for typing only — these are injected, never constructed here
+    from armarius.application.use_cases.inbox import InboxService
+    from armarius.application.use_cases.leader_chat import LeaderChatService
+    from armarius.infrastructure.events.topic_bus import TopicEventBus
 
 
 class SystemOnlyOperation(Exception):
@@ -36,6 +46,10 @@ class DuplicateRoleKey(Exception):
 
 class DuplicateProjectKey(Exception):
     """Raised when a project key collides with an existing one in the same workspace."""
+
+
+class ProjectClosed(Exception):
+    """Raised when anything tries to write to a closed project (spec 001 FR-005)."""
 
 
 def _slugify(value: str) -> str:
@@ -85,8 +99,17 @@ class ProjectService:
         self,
         uow_factory: UowFactory,
         system_thresholds: ProjectThresholds | None = None,
+        *,
+        control_bus: TopicEventBus | None = None,
+        inbox: InboxService | None = None,
+        leader_chat: LeaderChatService | None = None,
     ) -> None:
         self._uow = uow_factory
+        # Phase changes need to reach the board, the patron's inbox and the Leader. All
+        # optional so narrow unit tests can build the service with a UoW alone.
+        self._bus = control_bus
+        self._inbox = inbox
+        self._leader_chat = leader_chat
         # The system floor every project falls back to (spec 001). Injected so the domain
         # and application layers never read the environment; None only in narrow tests
         # that do not touch thresholds.
@@ -477,9 +500,12 @@ class ProjectService:
                 created_at=now,
             )
             await uow.seat_grants.add(grant)
-            await self._recompute_active(uow, project)
+            flipped = await self._recompute_active(uow, project)
             await uow.commit()
-            return grant
+
+        if flipped:
+            await self._announce_planning(project_id)
+        return grant
 
     async def revoke_seat(self, grant_id: UUID, *, system: bool = False) -> SeatGrant:
         """Revoke a seat. SYSTEM-ONLY. Activation never rolls back (LLD §4)."""
@@ -535,10 +561,147 @@ class ProjectService:
             flipped = await self._recompute_active(uow, project)
             if flipped:
                 await uow.commit()
-            return flipped
+
+        if flipped:
+            await self._announce_planning(project_id)
+        return flipped
+
+    # ── phase changes (spec 001 FR-004, FR-005) ─────────────────────────────────
+    async def propose_phase(
+        self, project_id: UUID, *, target_phase: ProjectStatus, reason: str
+    ) -> None:
+        """The Leader asks for a phase change; it parks in the patron's inbox.
+
+        Deliberately changes nothing by itself — an agent never moves a project between
+        phases (FR-004). The proposal is a question, and the patron answers it by calling
+        `change_phase`.
+        """
+        async with self._uow() as uow:
+            project = await self._writable(uow, project_id)
+            project_rules.assert_phase_transition(project.status, target_phase)
+            workspace_id = project.workspace_id
+            recipient = project.created_by_user_id
+
+        if self._inbox is None or not recipient or workspace_id is None:
+            return
+        from armarius.domain.entities.inbox_item import InboxItemKind
+
+        await self._inbox.place(
+            workspace_id=workspace_id,
+            recipient_user_id=recipient,
+            kind=InboxItemKind.PHASE_DECISION,
+            title=f"Trưởng dự án đề xuất chuyển sang giai đoạn '{target_phase}'",
+            body=reason,
+            project_id=project_id,
+        )
+
+    async def change_phase(
+        self,
+        project_id: UUID,
+        *,
+        user_id: str,
+        target_phase: ProjectStatus,
+        reason: str | None = None,
+    ) -> Project:
+        """The patron moves the project. The only way a phase ever changes (FR-004).
+
+        Closing is terminal and takes the wake cadence with it: once closed, nothing wakes
+        for this project again, so the team simply runs out of work — there is nothing to
+        announce to them (FR-005).
+        """
+        async with self._uow() as uow:
+            project = await self._writable(uow, project_id)
+            before = project.status
+            project_rules.assert_phase_transition(before, target_phase)
+            project.status = target_phase
+            project.updated_at = utcnow()
+            updated = await uow.projects.update(project)
+            await uow.commit()
+
+        await self._publish(
+            project_id,
+            "du-an.doi-giai-doan",
+            {
+                "before": str(before),
+                "after": str(target_phase),
+                "decided_by": user_id,
+                "reason": reason,
+            },
+        )
+        await self._resolve_phase_questions(project_id, updated.created_by_user_id)
+        return updated
+
+    async def _announce_planning(self, project_id: UUID) -> None:
+        """The roster just filled and everyone is online — wake the Leader once (FR-002).
+
+        Once, on the flip only: `recompute_active` is one-way, so this cannot fire twice
+        for the same project no matter how many grants or liveness signals arrive later.
+        """
+        await self._publish(
+            project_id,
+            "du-an.doi-giai-doan",
+            {
+                "before": str(ProjectStatus.SETUP),
+                "after": str(ProjectStatus.PLANNING),
+                "decided_by": "system",
+                "reason": "đủ đội và mọi thợ đã trực tuyến",
+            },
+        )
+        if self._leader_chat is None:
+            return
+        from armarius.domain.entities.run import WakeSource
+
+        try:
+            await self._leader_chat.notify(
+                project_id=project_id,
+                text=(
+                    "Dự án vừa đủ đội và mọi thợ đã trực tuyến. "
+                    "Việc của bạn bây giờ: làm rõ Bối cảnh dự án với người chủ, "
+                    "rồi lập kế hoạch và trình cho người chủ duyệt."
+                ),
+                source=WakeSource.PROJECT_READY,
+                reason="dự án vừa đủ đội",
+            )
+        except LookupError:  # pragma: no cover - project vanished mid-flight
+            return
+
+    async def _writable(self, uow: UnitOfWork, project_id: UUID) -> Project:
+        """Load a project and refuse every write once it is closed (FR-005)."""
+        project = await uow.projects.get(project_id)
+        if project is None:
+            raise LookupError("project not found")
+        if project_rules.is_closed(project.status):
+            raise ProjectClosed("This project is closed — its history is read-only.")
+        return project
+
+    async def assert_writable(self, project_id: UUID) -> Project:
+        """Public form of the closed-project guard, for callers outside this service."""
+        async with self._uow() as uow:
+            return await self._writable(uow, project_id)
+
+    async def _resolve_phase_questions(
+        self, project_id: UUID, recipient: str | None
+    ) -> None:
+        """Deciding closes what was waiting — the patron does not tidy up by hand."""
+        if self._inbox is None or not recipient:
+            return
+        from armarius.domain.entities.inbox_item import InboxItemKind
+
+        for item in await self._inbox.list_for(recipient, project_id=project_id):
+            if item.kind is InboxItemKind.PHASE_DECISION:
+                await self._inbox.resolve(item.id)
+
+    async def _publish(
+        self, project_id: UUID, event: str, payload: dict[str, object]
+    ) -> None:
+        if self._bus is None:
+            return
+        from armarius.infrastructure.events.topic_bus import project_topic
+
+        await self._bus.publish(project_topic(project_id), event, payload)
 
     @staticmethod
-    async def _recompute_active(uow, project: Project) -> bool:
+    async def _recompute_active(uow: UnitOfWork, project: Project) -> bool:
         roles = await uow.roles.list_by_project(project.id)
         grants = await uow.seat_grants.list_by_project(project.id)
         liveness_by_marius = {}

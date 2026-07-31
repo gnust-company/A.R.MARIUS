@@ -16,6 +16,8 @@ from armarius.infrastructure.persistence.repositories import (
     SqlLeaderChatRepository,
     SqlMariusRepository,
     SqlOnboardingRepository,
+    SqlPlanRepository,
+    SqlProjectContextRepository,
     SqlProjectRepository,
     SqlRoleRepository,
     SqlRunEventRepository,
@@ -45,6 +47,8 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         self.leader_chats = SqlLeaderChatRepository(s)
         self.onboardings = SqlOnboardingRepository(s)
         self.projects = SqlProjectRepository(s)
+        self.project_contexts = SqlProjectContextRepository(s)
+        self.plans = SqlPlanRepository(s)
         self.roles = SqlRoleRepository(s)
         self.seat_grants = SqlSeatGrantRepository(s)
         self.mariuses = SqlMariusRepository(s)

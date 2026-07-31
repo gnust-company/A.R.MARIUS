@@ -17,6 +17,7 @@ from armarius.domain.entities.task import (
     TaskStatus,
 )
 from armarius.domain.entities.task_dependency import TaskDependency, TaskDependencyError
+from armarius.domain.services import project_rules
 from armarius.shared.clock import utcnow
 
 
@@ -28,6 +29,10 @@ def _coerce_priority(value: str | TaskPriority | None) -> TaskPriority:
         return TaskPriority(str(value).lower())
     except ValueError:
         return TaskPriority.MEDIUM
+
+
+class ProjectNotReadyForTasks(Exception):
+    """Raised when a real task is created before the plan gate opened (spec 001 FR-003)."""
 
 
 class TaskService:
@@ -57,6 +62,16 @@ class TaskService:
             project = await uow.projects.get(project_id)
             if project is None:
                 raise LookupError("project not found")
+            # FR-003: a real task exists only once the patron has approved the plan. A
+            # draft is exempt — a proposal is precisely the thing you make before the
+            # answer is in, and it cannot wake anyone.
+            if status is not TaskStatus.DRAFT and not project_rules.accepts_real_tasks(
+                project.status
+            ):
+                raise ProjectNotReadyForTasks(
+                    "Kế hoạch chưa được duyệt — dự án chưa nhận đầu việc thật "
+                    f"(giai đoạn hiện tại: '{project.status}')."
+                )
             # Mint "{KEY}-{seq}" — the seq is allocated atomically (UPDATE … RETURNING) so
             # concurrent creates never share a number and the number is never reused.
             seq = await uow.projects.allocate_task_number(project_id)

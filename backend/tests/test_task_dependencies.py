@@ -21,6 +21,7 @@ from armarius.domain.entities.task_dependency import TaskDependencyError
 from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
+from tests.support.projects import force_phase
 
 
 def _services(uow_factory):
@@ -41,9 +42,13 @@ def _roster() -> list[RoleSpec]:
     ]
 
 
-async def _make_project(projects, workspaces, *, name="Proj", key="PROJ"):
+async def _make_project(projects, workspaces, *, name="Proj", key="PROJ", uow_factory=None):
     ws = await workspaces.create_workspace(name + "-WS")
     project = await projects.create_project(ws.id, name, key=key, roles=_roster())
+    if uow_factory is not None:
+        # Cổng FR-003: dự án chưa duyệt kế hoạch thì không nhận đầu việc thật. Bài kiểm
+        # này soi cổng phụ thuộc, không soi cổng kế hoạch — đẩy thẳng sang *vận hành*.
+        await force_phase(uow_factory, project.id)
     return ws, project
 
 
@@ -59,7 +64,7 @@ async def _mark_done(uow_factory, task_id) -> None:
 
 async def test_transition_blocked_until_blocker_done(uow_factory) -> None:
     projects, tasks, workspaces = _services(uow_factory)
-    _ws, project = await _make_project(projects, workspaces)
+    _ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
     blocker = await tasks.create(project_id=project.id, title="blocker")
     blocked = await tasks.create(project_id=project.id, title="blocked")
     await tasks.add_dependency(blocked.id, blocker.id)
@@ -75,7 +80,7 @@ async def test_transition_blocked_until_blocker_done(uow_factory) -> None:
 
 async def test_claim_respects_gate(uow_factory) -> None:
     projects, tasks, workspaces = _services(uow_factory)
-    _ws, project = await _make_project(projects, workspaces)
+    _ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
     blocker = await tasks.create(project_id=project.id, title="blocker")
     blocked = await tasks.create(
         project_id=project.id, title="blocked", status=TaskStatus.TODO
@@ -92,7 +97,7 @@ async def test_claim_respects_gate(uow_factory) -> None:
 
 async def test_approve_proposed_respects_gate(uow_factory) -> None:
     projects, tasks, workspaces = _services(uow_factory)
-    _ws, project = await _make_project(projects, workspaces)
+    _ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
     blocker = await tasks.create(project_id=project.id, title="blocker")
     draft = await tasks.create(
         project_id=project.id, title="draft", status=TaskStatus.DRAFT
@@ -110,7 +115,7 @@ async def test_approve_proposed_respects_gate(uow_factory) -> None:
 async def test_assign_leaves_blocked_task_in_backlog(uow_factory) -> None:
     projects, tasks, workspaces = _services(uow_factory)
     mariuses = MariusService(uow_factory)
-    ws, project = await _make_project(projects, workspaces)
+    ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
     alice = await mariuses.register(
         workspace_id=ws.id,
         name="Alice",
@@ -133,7 +138,7 @@ async def test_assign_leaves_blocked_task_in_backlog(uow_factory) -> None:
 
 async def test_add_dependency_rejects_self_loop(uow_factory) -> None:
     projects, tasks, workspaces = _services(uow_factory)
-    _ws, project = await _make_project(projects, workspaces)
+    _ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
     t = await tasks.create(project_id=project.id, title="t")
     with pytest.raises(TaskDependencyError):
         await tasks.add_dependency(t.id, t.id)
@@ -141,7 +146,7 @@ async def test_add_dependency_rejects_self_loop(uow_factory) -> None:
 
 async def test_add_dependency_rejects_duplicate(uow_factory) -> None:
     projects, tasks, workspaces = _services(uow_factory)
-    _ws, project = await _make_project(projects, workspaces)
+    _ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
     a = await tasks.create(project_id=project.id, title="a")
     b = await tasks.create(project_id=project.id, title="b")
     await tasks.add_dependency(a.id, b.id)
@@ -151,8 +156,12 @@ async def test_add_dependency_rejects_duplicate(uow_factory) -> None:
 
 async def test_add_dependency_rejects_cross_project(uow_factory) -> None:
     projects, tasks, workspaces = _services(uow_factory)
-    _ws1, p1 = await _make_project(projects, workspaces, name="One", key="ONE")
-    _ws2, p2 = await _make_project(projects, workspaces, name="Two", key="TWO")
+    _ws1, p1 = await _make_project(
+        projects, workspaces, name="One", key="ONE", uow_factory=uow_factory
+    )
+    _ws2, p2 = await _make_project(
+        projects, workspaces, name="Two", key="TWO", uow_factory=uow_factory
+    )
     a = await tasks.create(project_id=p1.id, title="a")
     b = await tasks.create(project_id=p2.id, title="b")
     with pytest.raises(TaskDependencyError):
@@ -161,7 +170,7 @@ async def test_add_dependency_rejects_cross_project(uow_factory) -> None:
 
 async def test_add_dependency_rejects_cycle(uow_factory) -> None:
     projects, tasks, workspaces = _services(uow_factory)
-    _ws, project = await _make_project(projects, workspaces)
+    _ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
     a = await tasks.create(project_id=project.id, title="a")
     b = await tasks.create(project_id=project.id, title="b")
     c = await tasks.create(project_id=project.id, title="c")
@@ -173,7 +182,7 @@ async def test_add_dependency_rejects_cycle(uow_factory) -> None:
 
 async def test_remove_dependency_unblocks(uow_factory) -> None:
     projects, tasks, workspaces = _services(uow_factory)
-    _ws, project = await _make_project(projects, workspaces)
+    _ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
     blocker = await tasks.create(project_id=project.id, title="blocker")
     blocked = await tasks.create(project_id=project.id, title="blocked")
     await tasks.add_dependency(blocked.id, blocker.id)
@@ -184,7 +193,7 @@ async def test_remove_dependency_unblocks(uow_factory) -> None:
 
 async def test_list_blockers_and_project_edges(uow_factory) -> None:
     projects, tasks, workspaces = _services(uow_factory)
-    _ws, project = await _make_project(projects, workspaces)
+    _ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
     blocker = await tasks.create(project_id=project.id, title="blocker")
     blocked = await tasks.create(project_id=project.id, title="blocked")
     await tasks.add_dependency(blocked.id, blocker.id)

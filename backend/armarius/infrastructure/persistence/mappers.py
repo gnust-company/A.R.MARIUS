@@ -18,11 +18,13 @@ from armarius.domain.entities.leader_chat import (
 )
 from armarius.domain.entities.marius import InviteStatus, Liveness, Marius
 from armarius.domain.entities.onboarding import OnboardingSession, OnboardingStatus
+from armarius.domain.entities.plan import Plan, PlanItem, PlanStatus
 from armarius.domain.entities.project import (
     Project,
     ProjectStatus,
     default_project_settings,
 )
+from armarius.domain.entities.project_context import ContextApprovalStatus, ProjectContext
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import Run, RunEvent, RunStatus, WakeSource
 from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
@@ -41,6 +43,9 @@ from armarius.infrastructure.database.models import (
     LabelModel,
     MariusModel,
     OnboardingSessionModel,
+    PlanItemModel,
+    PlanModel,
+    ProjectContextModel,
     ProjectLeaderConversationModel,
     ProjectModel,
     RoleModel,
@@ -380,4 +385,54 @@ def inbox_item_to_entity(m: InboxItemModel) -> InboxItem:
         created_at=m.created_at,
         last_reminded_at=m.last_reminded_at,
         resolved_at=m.resolved_at,
+    )
+
+
+def project_context_to_entity(m: ProjectContextModel) -> ProjectContext:
+    return ProjectContext(
+        id=m.id,
+        project_id=m.project_id,
+        version=m.version,
+        objective=m.objective or "",
+        background=m.background or "",
+        constraints=m.constraints or "",
+        scope=m.scope or "",
+        principles=m.principles or "",
+        approval_status=ContextApprovalStatus(m.approval_status),
+        approved_at=m.approved_at,
+        approved_by_user_id=m.approved_by_user_id,
+        created_at=m.created_at,
+        updated_at=m.updated_at,
+    )
+
+
+def plan_item_to_entity(m: PlanItemModel) -> PlanItem:
+    return PlanItem(
+        id=m.id,
+        plan_id=m.plan_id,
+        title=m.title or "",
+        description=m.description or "",
+        order=m.order_index,
+        depends_on=[UUID(x) for x in (m.depends_on or [])],
+        definition_of_done=m.definition_of_done or "",
+        created_at=m.created_at,
+    )
+
+
+def plan_to_entity(m: PlanModel, items: list[PlanItemModel] | None = None) -> Plan:
+    return Plan(
+        id=m.id,
+        project_id=m.project_id,
+        version=m.version,
+        summary=m.summary or "",
+        risks=m.risks or "",
+        milestones=m.milestones or "",
+        status=PlanStatus(m.status),
+        patron_note=m.patron_note,
+        submitted_at=m.submitted_at,
+        decided_at=m.decided_at,
+        decided_by_user_id=m.decided_by_user_id,
+        created_at=m.created_at,
+        updated_at=m.updated_at,
+        items=[plan_item_to_entity(i) for i in (items or [])],
     )

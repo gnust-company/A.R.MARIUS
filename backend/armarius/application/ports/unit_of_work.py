@@ -17,6 +17,8 @@ from armarius.domain.repositories.repositories import (
     LeaderChatRepository,
     MariusRepository,
     OnboardingRepository,
+    PlanRepository,
+    ProjectContextRepository,
     ProjectRepository,
     RoleRepository,
     RunEventRepository,
@@ -39,6 +41,8 @@ class UnitOfWork(ABC):
     leader_chats: LeaderChatRepository
     onboardings: OnboardingRepository
     projects: ProjectRepository
+    project_contexts: ProjectContextRepository
+    plans: PlanRepository
     roles: RoleRepository
     seat_grants: SeatGrantRepository
     mariuses: MariusRepository

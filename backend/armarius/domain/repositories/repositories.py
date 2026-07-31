@@ -14,6 +14,8 @@ from armarius.domain.entities.label import Label
 from armarius.domain.entities.leader_chat import ProjectLeaderConversation
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.onboarding import OnboardingSession
+from armarius.domain.entities.plan import Plan
+from armarius.domain.entities.project_context import ProjectContext
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import Run, RunEvent
 from armarius.domain.entities.seat_grant import SeatGrant
@@ -335,3 +337,44 @@ class InboxRepository(ABC):
 
     @abstractmethod
     async def list_pending_for_task(self, task_id: UUID) -> Sequence[InboxItem]: ...
+
+
+class ProjectContextRepository(ABC):
+    """Versioned project brief (spec 001 §2)."""
+
+    @abstractmethod
+    async def add(self, context: ProjectContext) -> ProjectContext: ...
+
+    @abstractmethod
+    async def update(self, context: ProjectContext) -> ProjectContext: ...
+
+    @abstractmethod
+    async def get_approved(self, project_id: UUID) -> ProjectContext | None: ...
+
+    @abstractmethod
+    async def get_pending(self, project_id: UUID) -> ProjectContext | None: ...
+
+    @abstractmethod
+    async def latest_version(self, project_id: UUID) -> int: ...
+
+
+class PlanRepository(ABC):
+    """Project plan and its items (spec 001 §3). Items ride with their plan."""
+
+    @abstractmethod
+    async def add(self, plan: Plan) -> Plan: ...
+
+    @abstractmethod
+    async def update(self, plan: Plan) -> Plan: ...
+
+    @abstractmethod
+    async def get(self, plan_id: UUID) -> Plan | None: ...
+
+    @abstractmethod
+    async def get_current(self, project_id: UUID) -> Plan | None: ...
+
+    @abstractmethod
+    async def get_approved(self, project_id: UUID) -> Plan | None: ...
+
+    @abstractmethod
+    async def latest_version(self, project_id: UUID) -> int: ...

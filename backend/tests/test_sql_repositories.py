@@ -78,7 +78,7 @@ async def test_activation_flip_persists_to_db(uow_factory) -> None:
     # Re-read from a brand-new UoW: the SETUP→ACTIVE flip must be durable.
     async with uow_factory() as uow:
         reloaded = await uow.projects.get(project.id)
-    assert reloaded.status == ProjectStatus.ACTIVE
+    assert reloaded.status == ProjectStatus.PLANNING
 
 
 async def test_project_brief_round_trips(uow_factory) -> None:
@@ -94,7 +94,7 @@ async def test_project_brief_round_trips(uow_factory) -> None:
         github_url="https://github.com/acme/apollo",
         context="greenfield",
         settings={"require_review_before_done": False},
-        status=ProjectStatus.ACTIVE,
+        status=ProjectStatus.PLANNING,
         created_by_user_id="u1",
         created_at=utcnow(),
         updated_at=utcnow(),
@@ -111,7 +111,7 @@ async def test_project_brief_round_trips(uow_factory) -> None:
     assert got.github_url == "https://github.com/acme/apollo"
     assert got.context == "greenfield"
     assert got.settings == {"require_review_before_done": False}
-    assert got.status == ProjectStatus.ACTIVE
+    assert got.status == ProjectStatus.PLANNING
     assert got.created_by_user_id == "u1"
 
 

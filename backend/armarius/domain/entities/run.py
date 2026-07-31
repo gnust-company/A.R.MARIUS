@@ -27,6 +27,10 @@ class WakeSource(StrEnum):
     CONTINUATION = "continuation"  # self/liveness-wake resuming a dropped run
     NUDGE = "nudge"
     LEADER_CHAT = "leader_chat"  # a Leader turn in the project-level Chat-with-Leader tab (#82)
+    # Project-level wakes (spec 001). Neither is task-scoped: they are about the project
+    # as a whole, so they ride the shared project session rather than a task session.
+    PROJECT_READY = "project_ready"  # roster complete + everyone online → go plan (FR-002)
+    PATRON_DECISION = "patron_decision"  # the patron decided something (FR-013, FR-004)
 
 
 @dataclass

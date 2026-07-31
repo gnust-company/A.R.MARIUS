@@ -13,13 +13,20 @@ from uuid import UUID
 from fastapi import APIRouter
 
 from armarius.application.use_cases.projects import RoleSpec
-from armarius.domain.entities.project import Project
+from armarius.domain.entities.project import Project, ProjectStatus
+from armarius.domain.services.plan_gate import PlanDecision
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
     AddRoleIn,
+    ContextDecisionIn,
     CreateProjectPlanIn,
     GrantSeatIn,
+    PhaseChangeIn,
+    PlanDecisionIn,
+    PlanOut,
+    ProjectContextOut,
+    ProjectContextViewOut,
     ProjectDetailOut,
     ProjectOut,
     RoleOut,
@@ -354,3 +361,93 @@ async def set_thresholds(
         project_id, body.model_dump(exclude_none=True)
     )
     return ThresholdsOut.model_validate(resolved)
+
+
+# ── project context, plan and phase (spec 001, contracts/mat-nguoi-dung.md §1–3) ──
+
+
+@router.get("/projects/{project_id}/context", response_model=ProjectContextViewOut)
+async def get_project_context(
+    project_id: UUID, container: ContainerDep, user: CurrentUser
+) -> ProjectContextViewOut:
+    """The brief in force, plus one awaiting the patron if the Leader submitted a change.
+    An edit never overwrites the approved version (FR-010)."""
+    await _require_owned_project(container, user, project_id)
+    approved, pending = await container.plans.get_context(project_id)
+    return ProjectContextViewOut(
+        approved=ProjectContextOut.model_validate(approved) if approved else None,
+        pending=ProjectContextOut.model_validate(pending) if pending else None,
+    )
+
+
+@router.post("/projects/{project_id}/context/approve", response_model=ProjectContextOut)
+async def approve_project_context(
+    project_id: UUID, body: ContextDecisionIn, container: ContainerDep, user: CurrentUser
+) -> ProjectContextOut:
+    await _require_owned_project(container, user, project_id)
+    context = await container.plans.approve_context(
+        project_id, user_id=str(user.id), approve=body.approve, note=body.note
+    )
+    return ProjectContextOut.model_validate(context)
+
+
+@router.get("/projects/{project_id}/plan", response_model=PlanOut)
+async def get_project_plan(
+    project_id: UUID, container: ContainerDep, user: CurrentUser
+) -> PlanOut:
+    await _require_owned_project(container, user, project_id)
+    plan = await container.plans.get_plan(project_id)
+    if plan is None:
+        raise LookupError("plan not found")
+    return PlanOut.model_validate(plan)
+
+
+@router.post("/projects/{project_id}/plan/decision", response_model=PlanOut)
+async def decide_project_plan(
+    project_id: UUID, body: PlanDecisionIn, container: ContainerDep, user: CurrentUser
+) -> PlanOut:
+    """The patron's three choices at the plan gate (FR-013).
+
+    There is deliberately no counterpart on the agent surface: the Leader that wrote the
+    plan has no route to approve it (FR-014).
+    """
+    await _require_owned_project(container, user, project_id)
+    plan = await container.plans.decide_plan(
+        project_id,
+        user_id=str(user.id),
+        decision=_parse_decision(body.decision),
+        note=body.note,
+    )
+    return PlanOut.model_validate(plan)
+
+
+@router.post("/projects/{project_id}/phase", response_model=ProjectDetailOut)
+async def change_project_phase(
+    project_id: UUID, body: PhaseChangeIn, container: ContainerDep, user: CurrentUser
+) -> ProjectDetailOut:
+    """Only the patron moves a project between phases (FR-004). An agent may propose;
+    the decision is never delegated, and no auto-accept switch reaches this route."""
+    await _require_owned_project(container, user, project_id)
+    project = await container.projects.change_phase(
+        project_id,
+        user_id=str(user.id),
+        target_phase=_parse_phase(body.target_phase),
+        reason=body.reason,
+    )
+    return await _detail(container, project)
+
+
+def _parse_decision(value: str) -> PlanDecision:
+    try:
+        return PlanDecision(value)
+    except ValueError as exc:
+        raise ValueError(
+            f"unknown decision '{value}' — expected duyet, yeu_cau_chinh or hoi_lai"
+        ) from exc
+
+
+def _parse_phase(value: str) -> ProjectStatus:
+    try:
+        return ProjectStatus(value)
+    except ValueError as exc:
+        raise ValueError(f"unknown project phase '{value}'") from exc

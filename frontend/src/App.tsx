@@ -8,6 +8,7 @@ import Workspaces from './pages/Workspaces'
 import Projects from './pages/Projects'
 import CreateProject from './pages/CreateProject'
 import ProjectBoard from './pages/ProjectBoard'
+import ProjectPlan from '@/pages/ProjectPlan';
 import Roster from './pages/Roster'
 import Directory from './pages/Directory'
 import AgentDetail from './pages/AgentDetail'
@@ -83,6 +84,7 @@ export default function App() {
           <Route path="projects/new" element={<CreateProject />} />
           <Route path="projects/:id" element={<ProjectBoard />} />
           <Route path="projects/:id/roster" element={<Roster />} />
+          <Route path="projects/:id/plan" element={<ProjectPlan />} />
           {/* Leader chat is a side panel on the board; redirect old deep links there. */}
           <Route
             path="projects/:id/leader-chat"
