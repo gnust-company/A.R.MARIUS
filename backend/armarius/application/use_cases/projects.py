@@ -613,6 +613,14 @@ class ProjectService:
             project = await self._writable(uow, project_id)
             before = project.status
             project_rules.assert_phase_transition(before, target_phase)
+            # Leaving *planning* is the plan gate's decision, not a free phase move: the
+            # patron approves a plan and the project follows. Without this, this route
+            # would be a way to skip the approval FR-011 exists to require.
+            if before is ProjectStatus.PLANNING:
+                raise project_rules.InvalidPhaseTransition(
+                    "Rời giai đoạn lập kế hoạch bằng cách duyệt kế hoạch, "
+                    "không đổi giai đoạn thẳng."
+                )
             project.status = target_phase
             project.updated_at = utcnow()
             updated = await uow.projects.update(project)

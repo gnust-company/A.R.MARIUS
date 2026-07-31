@@ -1492,6 +1492,12 @@ class SqlPlanRepository(PlanRepository):
                 updated_at=plan.updated_at,
             )
         )
+        # Flush the plan BEFORE its items. There is no ORM relationship between the two
+        # (plain FK column), so SQLAlchemy has no dependency to sort by and can emit the
+        # child INSERTs first — which PostgreSQL rejects on the foreign key while SQLite,
+        # with FK enforcement off by default, silently accepts. Found by running the real
+        # stack, not by the test suite.
+        await self._s.flush()
         for item in plan.items:
             item.plan_id = plan.id
             self._s.add(

@@ -297,3 +297,19 @@ async def _submit_context_and_plan(c: AsyncClient, pid: str, ah: dict) -> None:
         },
     )
     assert plan.status_code == 200, plan.text
+
+
+async def test_the_phase_route_cannot_skip_the_plan_gate() -> None:
+    """FR-011: leaving *planning* is what approving a plan does. If the phase route also
+    did it, the gate would be decorative — a patron could move to operating without ever
+    reading what the Leader proposed."""
+    async with await _client() as c:
+        h, pid, _, _ = await _project_in_planning(c, "plan-skip@armarius.dev")
+        r = await c.post(
+            f"/v1/projects/{pid}/phase",
+            headers=h,
+            json={"target_phase": "operating", "reason": "Bỏ qua cổng duyệt."},
+        )
+        assert r.status_code == 409, r.text
+        detail = await c.get(f"/v1/projects/{pid}", headers=h)
+    assert detail.json()["status"] == "planning"
