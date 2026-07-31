@@ -8,7 +8,7 @@ back. The only behavioral gate keyed off `active` is task commission.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
@@ -30,7 +30,70 @@ def default_project_settings() -> dict:
         # Chat-with-Leader tab is created as a `draft` awaiting the patron's approval;
         # when True, the Leader's task creation + assignment is auto-approved.
         "yolo_mode": False,
+        # Per-project timing overrides (spec 001). Empty means "use the system floor" —
+        # only the keys a patron actually tuned live here, so raising a system default
+        # lifts every project that never overrode it.
+        "thresholds": {},
     }
+
+
+@dataclass(frozen=True)
+class ProjectThresholds:
+    """Every timing knob the safety net and the orchestrator read.
+
+    Resolved per project: a project's own `settings["thresholds"]` overrides field by
+    field, and anything it leaves out falls back to the system floor built from config.
+    Pure data — the domain never reads the environment itself.
+    """
+
+    hang_suspect_seconds: int
+    hang_grace_seconds: int
+    orchestration_cadence_seconds: int
+    task_silence_seconds: int
+    due_soon_hours: tuple[int, ...]
+    patron_reminder_hours: tuple[int, ...]
+    level1_recovery_attempts: int
+    rejection_round_cap: int
+
+    def with_overrides(self, overrides: dict[str, object] | None) -> ProjectThresholds:
+        """Apply a project's overrides on top of these values, ignoring junk.
+
+        A malformed override is dropped rather than raising: a bad number typed into
+        project settings must not be able to stop the watchdog from running.
+        """
+        if not overrides:
+            return self
+        merged = {f.name: getattr(self, f.name) for f in fields(self)}
+        for name, value in overrides.items():
+            if name not in merged:
+                continue
+            current = merged[name]
+            if isinstance(current, tuple):
+                parsed = _coerce_int_tuple(value)
+                if parsed:
+                    merged[name] = parsed
+            else:
+                parsed_int = _coerce_positive_int(value)
+                if parsed_int is not None:
+                    merged[name] = parsed_int
+        return ProjectThresholds(**merged)
+
+
+def _coerce_positive_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _coerce_int_tuple(value: object) -> tuple[int, ...]:
+    if not isinstance(value, list | tuple):
+        return ()
+    parsed = [n for n in (_coerce_positive_int(v) for v in value) if n is not None]
+    return tuple(parsed)
 
 
 @dataclass

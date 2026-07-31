@@ -6,6 +6,11 @@ from uuid import UUID
 
 from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.comment import AuthorKind, Comment
+from armarius.domain.entities.inbox_item import (
+    InboxItem,
+    InboxItemKind,
+    InboxItemStatus,
+)
 from armarius.domain.entities.label import Label
 from armarius.domain.entities.leader_chat import (
     ChatState,
@@ -25,12 +30,14 @@ from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.skill import Skill
 from armarius.domain.entities.task import Task, TaskPriority, TaskStatus
 from armarius.domain.entities.task_dependency import TaskDependency
+from armarius.domain.entities.task_log import ActorKind, TaskLogEntry, TaskLogKind
 from armarius.domain.entities.user import User, UserRole
 from armarius.domain.entities.wakeup import WakeupRequest, WakeupStatus
 from armarius.domain.entities.workspace import Workspace
 from armarius.infrastructure.database.models import (
     ArtifactModel,
     CommentModel,
+    InboxItemModel,
     LabelModel,
     MariusModel,
     OnboardingSessionModel,
@@ -43,6 +50,7 @@ from armarius.infrastructure.database.models import (
     SessionModel,
     SkillModel,
     TaskDependencyModel,
+    TaskLogModel,
     TaskModel,
     UserModel,
     WakeupModel,
@@ -336,4 +344,40 @@ def user_to_entity(m: UserModel) -> User:
         created_at=m.created_at,
         updated_at=m.updated_at,
         last_login_at=m.last_login_at,
+    )
+
+
+def task_log_to_entity(m: TaskLogModel) -> TaskLogEntry:
+    return TaskLogEntry(
+        id=m.id,
+        task_id=m.task_id,
+        seq=m.seq,
+        kind=TaskLogKind(m.kind),
+        actor_kind=ActorKind(m.actor_kind),
+        actor_marius_id=m.actor_marius_id,
+        actor_user_id=m.actor_user_id,
+        before=m.before_value,
+        after=m.after_value,
+        reason=m.reason,
+        detail=dict(m.detail or {}),
+        created_at=m.created_at,
+    )
+
+
+def inbox_item_to_entity(m: InboxItemModel) -> InboxItem:
+    return InboxItem(
+        id=m.id,
+        workspace_id=m.workspace_id,
+        recipient_user_id=m.recipient_user_id,
+        project_id=m.project_id,
+        task_id=m.task_id,
+        kind=InboxItemKind(m.kind),
+        status=InboxItemStatus(m.status),
+        title=m.title,
+        body=m.body,
+        reminder_tier=m.reminder_tier,
+        attempt_dossier=dict(m.attempt_dossier or {}),
+        created_at=m.created_at,
+        last_reminded_at=m.last_reminded_at,
+        resolved_at=m.resolved_at,
     )

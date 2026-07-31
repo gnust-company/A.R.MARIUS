@@ -26,6 +26,8 @@ from armarius.presentation.schemas import (
     RosterRoleOut,
     SeatGrantOut,
     SeatOut,
+    ThresholdsIn,
+    ThresholdsOut,
     UpdateProjectIn,
     UpdateRoleIn,
 )
@@ -327,3 +329,28 @@ async def list_agents(
         )
         for s in seats
     ]
+
+
+@router.get("/projects/{project_id}/thresholds", response_model=ThresholdsOut)
+async def get_thresholds(
+    project_id: UUID, container: ContainerDep, user: CurrentUser
+) -> ThresholdsOut:
+    """Effective timing thresholds: the system floor with this project's overrides on
+    top (spec 001). A patron reading this sees the numbers actually in force, not the
+    sparse override dict."""
+    await _require_owned_project(container, user, project_id)
+    resolved = await container.projects.get_thresholds(project_id)
+    return ThresholdsOut.model_validate(resolved)
+
+
+@router.put("/projects/{project_id}/thresholds", response_model=ThresholdsOut)
+async def set_thresholds(
+    project_id: UUID, body: ThresholdsIn, container: ContainerDep, user: CurrentUser
+) -> ThresholdsOut:
+    """Replace this project's overrides. Omitted fields fall back to the system floor;
+    an empty body resets the project to it entirely."""
+    await _require_owned_project(container, user, project_id)
+    resolved = await container.projects.set_thresholds(
+        project_id, body.model_dump(exclude_none=True)
+    )
+    return ThresholdsOut.model_validate(resolved)

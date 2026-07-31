@@ -1,7 +1,9 @@
-"""Hybrid SSE — the two server→browser streams (API_CONTRACT §2, §8).
+"""Hybrid SSE — the server→browser streams (API_CONTRACT §2, §8; spec 001).
 
-  - ``GET /v1/workspaces/{ws}/events`` — always-on workspace control-plane stream.
-  - ``GET /v1/tasks/{task_id}/stream`` — per-task live run trace, opened on demand.
+  - ``GET /v1/workspaces/{ws}/events``   — always-on workspace control-plane stream.
+  - ``GET /v1/tasks/{task_id}/stream``   — per-task live run trace, opened on demand.
+  - ``GET /v1/projects/{id}/events``     — project board: phase, task status, stall flags.
+  - ``GET /v1/inbox/events``             — the caller's own inbox: new items, resolutions.
 
 Both are **Web-App-only** (JWT-scoped; agents never read SSE), frame one event per
 ``event:``/``data:``/``id:`` block, and honour ``Last-Event-ID`` (header or
@@ -18,6 +20,7 @@ from uuid import UUID
 from fastapi import APIRouter, Request
 from sse_starlette.sse import EventSourceResponse
 
+from armarius.infrastructure.events.topic_bus import patron_topic, project_topic
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
 
@@ -42,6 +45,18 @@ def _is_live(request: Request) -> bool:
 
 def _frame(event) -> dict:
     return {"id": str(event.seq), "event": event.type, "data": json.dumps(event.data)}
+
+
+async def _require_own_workspace(container, user, workspace_id: UUID | None, missing: str) -> None:
+    """Every stream is workspace-scoped: not yours reads as *not found*, never *forbidden*,
+    so a caller cannot probe for the existence of another workspace's rows (Constitution I)."""
+    ws = (
+        await container.workspaces.get_workspace(workspace_id)
+        if workspace_id is not None
+        else None
+    )
+    if ws is None or ws.owner_user_id != str(user.id):
+        raise LookupError(missing)
 
 
 async def _stream(container, request: Request, topic: str) -> EventSourceResponse:
@@ -98,9 +113,7 @@ async def workspace_events(
     container: ContainerDep,
     user: CurrentUser,
 ) -> EventSourceResponse:
-    ws = await container.workspaces.get_workspace(workspace_id)
-    if ws is None or ws.owner_user_id != str(user.id):
-        raise LookupError("workspace not found")  # cross-workspace → 404
+    await _require_own_workspace(container, user, workspace_id, "workspace not found")
     return await _stream(container, request, f"ws:{workspace_id}")
 
 
@@ -117,9 +130,7 @@ async def task_stream(
     project = await container.projects.get_project(task.project_id)
     if project is None:
         raise LookupError("task not found")
-    ws = await container.workspaces.get_workspace(project.workspace_id)
-    if ws is None or ws.owner_user_id != str(user.id):
-        raise LookupError("task not found")  # cross-workspace → 404
+    await _require_own_workspace(container, user, project.workspace_id, "task not found")
     return await _stream(container, request, f"task:{task_id}")
 
 
@@ -135,7 +146,31 @@ async def leader_chat_stream(
     project = await container.projects.get_project(project_id)
     if project is None:
         raise LookupError("project not found")
-    ws = await container.workspaces.get_workspace(project.workspace_id)
-    if ws is None or ws.owner_user_id != str(user.id):
-        raise LookupError("project not found")  # cross-workspace → 404
+    await _require_own_workspace(container, user, project.workspace_id, "project not found")
     return await _stream(container, request, f"leader-chat:{project_id}")
+
+
+@router.get("/projects/{project_id}/events")
+async def project_events(
+    project_id: UUID,
+    request: Request,
+    container: ContainerDep,
+    user: CurrentUser,
+) -> EventSourceResponse:
+    """Project board channel (spec 001) — phase changes, task status, stall flags."""
+    project = await container.projects.get_project(project_id)
+    if project is None:
+        raise LookupError("project not found")
+    await _require_own_workspace(container, user, project.workspace_id, "project not found")
+    return await _stream(container, request, project_topic(project_id))
+
+
+@router.get("/inbox/events")
+async def inbox_events(
+    request: Request,
+    container: ContainerDep,
+    user: CurrentUser,
+) -> EventSourceResponse:
+    """The caller's inbox channel (spec 001). Keyed by the authenticated user, so there
+    is no id to tamper with and no way to subscribe to someone else's inbox."""
+    return await _stream(container, request, patron_topic(user.id))

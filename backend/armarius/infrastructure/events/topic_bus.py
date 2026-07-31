@@ -26,6 +26,26 @@ class StreamEvent:
     data: dict
 
 
+# Topic naming. The two original channels are built inline as ``ws:{id}`` / ``task:{id}``;
+# the two added for autonomous project operation (spec 001) get named builders so the
+# string lives in exactly one place. Resume-after-disconnect needs nothing extra — every
+# event already carries the process-monotonic ``seq`` the SSE layer sends as its id.
+
+
+def project_topic(project_id: object) -> str:
+    """Project board channel — phase changes, task status, stall flags."""
+    return f"project:{project_id}"
+
+
+def patron_topic(user_id: object) -> str:
+    """One patron's inbox channel — new items, resolutions, reminders.
+
+    Keyed by user, not by workspace: a patron watches their own inbox across every
+    workspace they are in, and must never receive another patron's items.
+    """
+    return f"patron:{user_id}"
+
+
 class TopicEventBus:
     def __init__(self, replay_size: int = 256, max_topics: int = 4096) -> None:
         self._seq = 0

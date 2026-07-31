@@ -17,6 +17,7 @@ from armarius.presentation.api import (
     auth,
     events,
     health,
+    inbox,
     leader_chat,
     onboarding,
     projects,
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(leader_chat.router)
     app.include_router(onboarding.router)
     app.include_router(events.router)
+    app.include_router(inbox.router)
     app.include_router(tasks.router)
     app.include_router(trace.router)
     app.include_router(agent.router)

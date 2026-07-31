@@ -10,6 +10,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -333,3 +334,58 @@ class UserModel(Base):
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TaskLogModel(Base):
+    """Append-only history of one task (spec 001 §10). Never updated, never deleted.
+
+    ``seq`` is per-task, so the unique constraint doubles as the allocator's guard: two
+    concurrent appends for the same task cannot both claim the same number.
+    """
+
+    __tablename__ = "task_logs"
+    __table_args__ = (UniqueConstraint("task_id", "seq", name="uq_task_log_task_seq"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    task_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tasks.id"), index=True)
+    seq: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(40), index=True)
+    actor_kind: Mapped[str] = mapped_column(String(20), default="system")
+    actor_marius_id: Mapped[UUID | None] = mapped_column(Uuid)
+    actor_user_id: Mapped[str | None] = mapped_column(String(200))
+    # Named *_value to stay clear of SQL's BEFORE/AFTER trigger keywords.
+    before_value: Mapped[str | None] = mapped_column(Text)
+    after_value: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str | None] = mapped_column(Text)
+    detail: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class InboxItemModel(Base):
+    """One decision waiting on one patron (spec 001 §11).
+
+    The hot read is "everything still pending for me", so recipient+status carry a
+    composite index; project-scoped reads add the project filter on top of it.
+    """
+
+    __tablename__ = "inbox_items"
+    __table_args__ = (
+        Index("ix_inbox_items_recipient_status", "recipient_user_id", "status"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    workspace_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("workspaces.id"), index=True
+    )
+    recipient_user_id: Mapped[str] = mapped_column(String(200), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
+    task_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
+    kind: Mapped[str] = mapped_column(String(40), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    title: Mapped[str] = mapped_column(String(300), default="")
+    body: Mapped[str | None] = mapped_column(Text)
+    reminder_tier: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    attempt_dossier: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    last_reminded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
