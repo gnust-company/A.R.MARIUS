@@ -27,12 +27,17 @@ import Modal from '@/components/Modal';
 import LeaderChatWidget from '@/components/LeaderChatWidget';
 import { cn, wsHref } from '@/lib/utils';
 
-const KANBAN_COLUMNS: { status: TaskStatus; label: string; bg: string; headerBg: string; borderColor: string }[] = [
-  { status: 'backlog', label: 'Backlog', bg: 'bg-[#EDE4CE]', headerBg: 'bg-[#EDE4CE]', borderColor: 'border-[#E3D7BC]' },
-  { status: 'todo', label: 'To Do', bg: 'bg-[#E8DED0]', headerBg: 'bg-[#E8DED0]', borderColor: 'border-[#D9CDB8]' },
-  { status: 'in_progress', label: 'In Progress', bg: 'bg-[#D4E8F0]', headerBg: 'bg-[#D4E8F0]', borderColor: 'border-[#A8D0E0]' },
-  { status: 'in_review', label: 'In Review', bg: 'bg-[#F5E8CC]', headerBg: 'bg-[#F5E8CC]', borderColor: 'border-[#E8D5A0]' },
-  { status: 'done', label: 'Done', bg: 'bg-[#D8EADD]', headerBg: 'bg-[#D8EADD]', borderColor: 'border-[#A8D8B8]' },
+// The board's columns. *Bị chặn* earns one: a blocked task used to fall off the board
+// entirely, which is the exact failure spec 001 is built to prevent — a task nobody can
+// see is a task the system has dropped. Labels come from the shared status strings, so the
+// headers speak the reader's language (Hiến pháp VI) instead of hardcoded English.
+const KANBAN_COLUMNS: { status: TaskStatus; bg: string; headerBg: string; borderColor: string }[] = [
+  { status: 'backlog', bg: 'bg-[#EDE4CE]', headerBg: 'bg-[#EDE4CE]', borderColor: 'border-[#E3D7BC]' },
+  { status: 'todo', bg: 'bg-[#E8DED0]', headerBg: 'bg-[#E8DED0]', borderColor: 'border-[#D9CDB8]' },
+  { status: 'in_progress', bg: 'bg-[#D4E8F0]', headerBg: 'bg-[#D4E8F0]', borderColor: 'border-[#A8D0E0]' },
+  { status: 'blocked', bg: 'bg-[#F5DDD6]', headerBg: 'bg-[#F5DDD6]', borderColor: 'border-[#E8B8A8]' },
+  { status: 'in_review', bg: 'bg-[#F5E8CC]', headerBg: 'bg-[#F5E8CC]', borderColor: 'border-[#E8D5A0]' },
+  { status: 'done', bg: 'bg-[#D8EADD]', headerBg: 'bg-[#D8EADD]', borderColor: 'border-[#A8D8B8]' },
 ];
 
 type BoardPriority = 'P0' | 'P1' | 'P2'
@@ -589,6 +594,7 @@ export default function ProjectBoard() {
         <div className="flex gap-4 overflow-x-auto pb-4 flex-1 min-h-0">
         {KANBAN_COLUMNS.map((col, colIndex) => {
           const canCreateHere = CREATABLE_PHASES.includes(col.status as TaskPhase);
+          const colLabel = t('tasks.status.' + col.status);
           const colTasks = tasksByColumn[col.status] || [];
           return (
             <motion.div
@@ -612,7 +618,7 @@ export default function ProjectBoard() {
               >
                 <div className="flex items-center gap-2">
                   <span className="font-body text-body-sm font-semibold uppercase tracking-[0.05em] text-ink-light">
-                    {col.label}
+                    {colLabel}
                   </span>
                   <span className="font-mono text-mono-sm text-ink-muted">
                     ({colTasks.length})
@@ -622,7 +628,7 @@ export default function ProjectBoard() {
                   <button
                     onClick={() => setAddTask({ open: true, status: col.status })}
                     className="p-1 rounded text-ink-muted hover:text-terracotta transition-colors"
-                    aria-label={`Add task to ${col.label}`}
+                    aria-label={`${t('board.addTask')} — ${colLabel}`}
                   >
                     <Plus className="w-4 h-4" />
                   </button>
@@ -646,10 +652,13 @@ export default function ProjectBoard() {
                   ))}
                 </AnimatePresence>
 
-                {/* Empty state */}
+                {/* Empty state. A column you cannot create into says so instead of
+                    inviting a drop that would skip every gate. */}
                 {colTasks.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-8 border-2 border-dashed border-vellum-dark rounded-md text-ink-muted">
-                    <span className="font-body text-body-sm">{t('board.dropHere')}</span>
+                    <span className="font-body text-body-sm px-3 text-center">
+                      {canCreateHere ? t('board.dropHere') : t('board.reachedByWorking')}
+                    </span>
                   </div>
                 )}
 

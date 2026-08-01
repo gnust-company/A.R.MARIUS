@@ -241,7 +241,11 @@ export default function CollaborationRoom() {
   }, [taskId]);
 
   const [commentInput, setCommentInput] = useState('');
-  const [statusValue, setStatusValue] = useState<Task['status']>(task?.status ?? 'todo');
+  // Read straight off the task, never mirrored into local state. A copy went stale the
+  // moment the real task arrived: on a cold load the box froze on its `todo` fallback and
+  // kept reporting it — a status control showing the wrong status is worse than none. The
+  // store already updates optimistically, so the box follows a change without help.
+  const statusValue: Task['status'] = task?.status ?? 'todo';
   const [isTraceActive, setIsTraceActive] = useState(true);
   const [showAddArtifactModal, setShowAddArtifactModal] = useState(false);
   const [artifactForm, setArtifactForm] = useState({ name: '', url: '', type: 'file' as 'file' | 'link' });
@@ -299,7 +303,6 @@ export default function CollaborationRoom() {
       if (!answer || !answer.trim()) return;  // no reason, no move — the server agrees
       reason = answer.trim();
     }
-    setStatusValue(to as Task['status']);
     store.updateTask(task.id, { status: to as Task['status'], statusReason: reason });
   }, [task, hasArtifacts, blockedByUnfinished, store, t]);
 
@@ -367,7 +370,6 @@ export default function CollaborationRoom() {
   const handleApprove = useCallback(() => {
     if (!task) return;
     store.updateTask(task.id, { status: 'done' });
-    setStatusValue('done');
   }, [task, store]);
 
   const handleRequestChanges = useCallback(() => {
@@ -377,7 +379,6 @@ export default function CollaborationRoom() {
     const answer = window.prompt(t('taskRules.reworkPrompt'));
     if (!answer || !answer.trim()) return;
     store.updateTask(task.id, { status: 'in_progress', statusReason: answer.trim() });
-    setStatusValue('in_progress');
   }, [task, store, t]);
 
   if (!task) {

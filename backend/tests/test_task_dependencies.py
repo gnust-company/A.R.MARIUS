@@ -342,3 +342,21 @@ async def test_the_project_channel_hears_the_unlock(uow_factory) -> None:
     types = [e.type for e in bus.backlog(project_topic(project.id))]
     assert "dau-viec.mo-khoa" in types
     assert "dau-viec.doi-trang-thai" in types
+
+
+async def test_a_refused_move_names_the_blockers_that_are_missing(uow_factory) -> None:
+    """FR-025: "còn việc phụ thuộc" không giúp được ai — phải nói rõ việc nào."""
+    projects, tasks, workspaces, _leader, _bus = _services_with_leader(uow_factory)
+    _ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
+    first = await tasks.create(project_id=project.id, title="một", description="mô tả")
+    second = await tasks.create(project_id=project.id, title="hai", description="mô tả")
+    blocked = await tasks.create(project_id=project.id, title="chờ", description="mô tả")
+    await tasks.add_dependency(blocked.id, first.id)
+    await tasks.add_dependency(blocked.id, second.id)
+
+    with pytest.raises(DependencyNotMetError) as refused:
+        await tasks.transition(blocked.id, TaskStatus.TODO)
+
+    assert set(refused.value.blockers) == {first.identifier, second.identifier}
+    for identifier in (first.identifier, second.identifier):
+        assert identifier in str(refused.value)

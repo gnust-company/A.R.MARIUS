@@ -469,8 +469,12 @@ class TaskService:
             before = str(task.status)
             artifact_count = await uow.artifacts.count_by_task(task_id)
             deps_satisfied = True
+            unmet: tuple[str, ...] = ()
             if target in DEPENDENCY_GATED_STATUSES:
-                deps_satisfied = await uow.dependencies.all_blockers_done(task_id)
+                # Name what is missing, don't just say something is (FR-025).
+                open_blockers = await uow.dependencies.list_unfinished_blockers(task_id)
+                deps_satisfied = not open_blockers
+                unmet = tuple(b.identifier or str(b.id) for b in open_blockers)
             now = utcnow()
             task.transition_to(
                 target,
@@ -478,6 +482,7 @@ class TaskService:
                 has_artifact=artifact_count > 0,
                 deps_satisfied=deps_satisfied,
                 reason=reason,
+                unmet_blockers=unmet,
             )
             task.drive = _drive_for(target)
             task.updated_at = now

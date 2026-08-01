@@ -214,6 +214,9 @@ class TaskDependencyRepository(ABC):
     async def list_by_project(self, project_id: UUID) -> Sequence[TaskDependency]:
         """All edges whose blocked task lives in this project (board view)."""
     @abstractmethod
+    async def list_unfinished_blockers(self, task_id: UUID) -> Sequence[Task]:
+        """The blockers that have not finished yet — named, so a refusal can say which."""
+    @abstractmethod
     async def all_blockers_done(self, task_id: UUID) -> bool:
         """True when every task `task_id` is blocked_by has status `done`
         (vacuously true when it has no blockers)."""

@@ -171,50 +171,50 @@ tạo và giao ngay; ngoài khuôn → ở lại *nháp*, mục chờ duyệt v�
 
 ### Bài kiểm (viết trước, phải đỏ) ⚠️
 
-- [ ] T052 [P] [US2] Bài kiểm bảng chuyển trạng thái đã siết — ba đường bị cấm, một đường được thêm — bổ sung vào `backend/tests/test_task_rules.py`
-- [ ] T053 [P] [US2] Bài kiểm cổng mô tả và cổng lý do bắt buộc trong `backend/tests/test_task_gates.py`
-- [ ] T054 [P] [US2] Bài kiểm cổng duyệt theo khuôn kế hoạch (trong khuôn cho qua, ngoài khuôn ở lại *nháp*) trong `backend/tests/test_task_scope_gate.py`
-- [ ] T055 [P] [US2] Bài kiểm mở khoá việc phụ thuộc và đánh thức Trưởng dự án khi một đầu việc *xong* — bổ sung vào `backend/tests/test_task_dependencies.py`
-- [ ] T056 [P] [US2] Bài kiểm danh sách tiêu chí công nhận thay chuỗi tự do trong `backend/tests/test_task_criteria.py`
+- [X] T052 [P] [US2] Bài kiểm bảng chuyển trạng thái đã siết — ba đường bị cấm, một đường được thêm — bổ sung vào `backend/tests/test_task_rules.py`
+- [X] T053 [P] [US2] Bài kiểm cổng mô tả và cổng lý do bắt buộc trong `backend/tests/test_task_gates.py`
+- [X] T054 [P] [US2] Bài kiểm cổng duyệt theo khuôn kế hoạch (trong khuôn cho qua, ngoài khuôn ở lại *nháp*) trong `backend/tests/test_task_scope_gate.py`
+- [X] T055 [P] [US2] Bài kiểm mở khoá việc phụ thuộc và đánh thức Trưởng dự án khi một đầu việc *xong* — bổ sung vào `backend/tests/test_task_dependencies.py`
+- [X] T056 [P] [US2] Bài kiểm danh sách tiêu chí công nhận thay chuỗi tự do trong `backend/tests/test_task_criteria.py`
 
 ### Siết vòng đời
 
-- [ ] T057 [US2] Siết `VALID_TRANSITIONS` trong `backend/armarius/domain/entities/task.py`: bỏ *đang làm → xong*, đưa *xong → đang làm* và *huỷ → tồn kho* ra khỏi đường thường ngày, thêm *nháp → tồn kho*, và **chặn cứng mọi đường vào *xong* khi đầu việc đang mang cờ đình trệ** (FR-058)
-- [ ] T058 [US2] Cổng mô tả (FR-029), cổng lý do bắt buộc (FR-030), và **chặn thợ sửa mô tả gốc của đầu việc** — thợ chỉ được thêm ghi chú tiến trình (FR-018) — trong `backend/armarius/domain/entities/task.py`
-- [ ] T059 [US2] Trường hạng mục kế hoạch trên đầu việc và luật "trong khuôn / ngoài khuôn" (FR-027) trong `backend/armarius/domain/entities/task.py`
-- [ ] T060 [US2] Nâng định nghĩa hoàn thành lên danh sách tiêu chí — nối `backend/armarius/domain/entities/checklist_item.py` vào vai trò cái thước, thêm kết quả chấm và bằng chứng đối chiếu
+- [X] T057 [US2] Siết `VALID_TRANSITIONS` trong `backend/armarius/domain/entities/task.py`: bỏ *đang làm → xong*, đưa *xong → đang làm* và *huỷ → tồn kho* ra khỏi đường thường ngày, thêm *nháp → tồn kho*, và **chặn cứng mọi đường vào *xong* khi đầu việc đang mang cờ đình trệ** (FR-058)
+- [X] T058 [US2] Cổng mô tả (FR-029), cổng lý do bắt buộc (FR-030), và **chặn thợ sửa mô tả gốc của đầu việc** — thợ chỉ được thêm ghi chú tiến trình (FR-018) — trong `backend/armarius/domain/entities/task.py`
+- [X] T059 [US2] Trường hạng mục kế hoạch trên đầu việc và luật "trong khuôn / ngoài khuôn" (FR-027) trong `backend/armarius/domain/entities/task.py`
+- [X] T060 [US2] Nâng định nghĩa hoàn thành lên danh sách tiêu chí — nối `backend/armarius/domain/entities/checklist_item.py` vào vai trò cái thước, thêm kết quả chấm và bằng chứng đối chiếu
 
 ### Ứng dụng
 
-- [ ] T061 [US2] Gỡ `TaskService.claim` khỏi `backend/armarius/application/use_cases/tasks.py` (FR-072), thay bằng ca sử dụng "xin nhận việc" định tuyến tới Trưởng dự án
-- [ ] T062 [US2] **Gỡ hẳn** `yolo_mode`, thay bằng điều kiện "trong khuôn hạng mục đã duyệt" ở `approve_proposed` trong `backend/armarius/application/use_cases/tasks.py` — rà sạch mọi chỗ đọc nó ở `backend/armarius/domain/services/leader_chat_prompt.py`, `backend/armarius/presentation/` và `frontend/src/`, không để lại cờ chết thứ hai
-- [ ] T063 [US2] Xử lý hệ quả khi đầu việc *xong* (FR-031): ghi mốc hoàn tất, rà và mở khoá việc phụ thuộc, đánh thức Trưởng dự án — trong `backend/armarius/application/use_cases/tasks.py`
-- [ ] T064 [US2] Thao tác mở lại đầu việc đã đóng, bắt buộc lý do và ghi vết, trong `backend/armarius/application/use_cases/tasks.py`
-- [ ] T065 [US2] Ghi nhật ký mọi lần đổi trạng thái, gán người, đổi tiêu chí qua dịch vụ T014 và phát `dau-viec.doi-trang-thai`, `dau-viec.mo-khoa` lên kênh dự án
+- [X] T061 [US2] Gỡ `TaskService.claim` khỏi `backend/armarius/application/use_cases/tasks.py` (FR-072), thay bằng ca sử dụng "xin nhận việc" định tuyến tới Trưởng dự án
+- [X] T062 [US2] **Gỡ hẳn** `yolo_mode`, thay bằng điều kiện "trong khuôn hạng mục đã duyệt" ở `approve_proposed` trong `backend/armarius/application/use_cases/tasks.py` — rà sạch mọi chỗ đọc nó ở `backend/armarius/domain/services/leader_chat_prompt.py`, `backend/armarius/presentation/` và `frontend/src/`, không để lại cờ chết thứ hai
+- [X] T063 [US2] Xử lý hệ quả khi đầu việc *xong* (FR-031): ghi mốc hoàn tất, rà và mở khoá việc phụ thuộc, đánh thức Trưởng dự án — trong `backend/armarius/application/use_cases/tasks.py`
+- [X] T064 [US2] Thao tác mở lại đầu việc đã đóng, bắt buộc lý do và ghi vết, trong `backend/armarius/application/use_cases/tasks.py`
+- [X] T065 [US2] Ghi nhật ký mọi lần đổi trạng thái, gán người, đổi tiêu chí qua dịch vụ T014 và phát `dau-viec.doi-trang-thai`, `dau-viec.mo-khoa` lên kênh dự án
 
 ### Lưu trữ và mặt giao tiếp
 
-- [ ] T066 [US2] Cột hạng mục kế hoạch trên bảng đầu việc và cột kết quả chấm, bằng chứng trên bảng mục danh mục trong `backend/armarius/infrastructure/database/models.py`
-- [ ] T067 [US2] Bản di trú Đợt 2 trong `backend/armarius/infrastructure/alembic/versions/`, kèm chuyển chuỗi định nghĩa hoàn thành cũ thành **một** tiêu chí *chưa chấm* (không tự tách dòng)
-- [ ] T068 [US2] Bộ ánh xạ các trường mới trong `backend/armarius/infrastructure/persistence/mappers.py`
-- [ ] T069 [US2] Lối vào `POST /v1/tasks/{id}/reopen` và `GET/PUT /v1/tasks/{id}/criteria` trong `backend/armarius/presentation/api/tasks.py`, mã lỗi `409` cho vi phạm cổng; **mở rộng lối vào đọc một đầu việc để trả thêm hạng mục kế hoạch, động cơ đẩy, cờ đình trệ và các chữ ký đã có** — bốn trường này là thứ giao diện cần để vẽ (T099, T152), thiếu chúng thì bảng dự án không có dữ liệu
-- [ ] T070 [US2] Lối vào `POST /agent/tasks/{id}/request` và `POST /agent/tasks/{id}/handback` trong `backend/armarius/presentation/api/agent.py`, gỡ đường tự-nhận; **rà xác nhận mặt agent không có lối nào cho thợ đặt thứ gì vào hộp thư người chủ** — thợ chỉ nói qua bình luận và phòng cộng tác của đầu việc, Trưởng dự án được đánh thức đọc thay (FR-071)
-- [ ] T071 [US2] Thêm trường hạng mục vào lối vào tạo đầu việc ở cả `backend/armarius/presentation/api/projects.py` và `backend/armarius/presentation/api/agent.py`
+- [X] T066 [US2] Cột hạng mục kế hoạch trên bảng đầu việc và cột kết quả chấm, bằng chứng trên bảng mục danh mục trong `backend/armarius/infrastructure/database/models.py`
+- [X] T067 [US2] Bản di trú Đợt 2 trong `backend/armarius/infrastructure/alembic/versions/`, kèm chuyển chuỗi định nghĩa hoàn thành cũ thành **một** tiêu chí *chưa chấm* (không tự tách dòng)
+- [X] T068 [US2] Bộ ánh xạ các trường mới trong `backend/armarius/infrastructure/persistence/mappers.py`
+- [X] T069 [US2] Lối vào `POST /v1/tasks/{id}/reopen` và `GET/PUT /v1/tasks/{id}/criteria` trong `backend/armarius/presentation/api/tasks.py`, mã lỗi `409` cho vi phạm cổng; **mở rộng lối vào đọc một đầu việc để trả thêm hạng mục kế hoạch, động cơ đẩy, cờ đình trệ và các chữ ký đã có** — bốn trường này là thứ giao diện cần để vẽ (T099, T152), thiếu chúng thì bảng dự án không có dữ liệu
+- [X] T070 [US2] Lối vào `POST /agent/tasks/{id}/request` và `POST /agent/tasks/{id}/handback` trong `backend/armarius/presentation/api/agent.py`, gỡ đường tự-nhận; **rà xác nhận mặt agent không có lối nào cho thợ đặt thứ gì vào hộp thư người chủ** — thợ chỉ nói qua bình luận và phòng cộng tác của đầu việc, Trưởng dự án được đánh thức đọc thay (FR-071)
+- [X] T071 [US2] Thêm trường hạng mục vào lối vào tạo đầu việc ở cả `backend/armarius/presentation/api/projects.py` và `backend/armarius/presentation/api/agent.py`
 
 ### Sửa hậu quả
 
-- [ ] T072 [US2] Sửa các bài kiểm hiện có đang dựa vào đường *đang làm → xong* trong `backend/tests/` — sửa bài kiểm theo luật mới, **không** nới luật cho bài kiểm xanh
-- [ ] T073 [US2] Chạy bộ kiểm của gói lớp trung gian (`cd mcp && uv run pytest`) và sửa `mcp/src/`, `mcp/tests/` theo lược đồ đầu việc mới
+- [X] T072 [US2] Sửa các bài kiểm hiện có đang dựa vào đường *đang làm → xong* trong `backend/tests/` — sửa bài kiểm theo luật mới, **không** nới luật cho bài kiểm xanh
+- [X] T073 [US2] Chạy bộ kiểm của gói lớp trung gian (`cd mcp && uv run pytest`) và sửa `mcp/src/`, `mcp/tests/` theo lược đồ đầu việc mới
 
 ### Giao diện
 
-- [ ] T074 [P] [US2] Ô danh sách tiêu chí công nhận trên thẻ đầu việc trong `frontend/src/pages/CollaborationRoom.tsx`
-- [ ] T075 [US2] Bỏ nút chuyển thẳng sang *xong* và hiện lý do bị chặn trong `frontend/src/pages/ProjectBoard.tsx`
-- [ ] T076 [P] [US2] Chuỗi hiển thị mới trong `frontend/src/i18n/vi.ts` và `frontend/src/i18n/en.ts`
+- [X] T074 [P] [US2] Ô danh sách tiêu chí công nhận trên thẻ đầu việc trong `frontend/src/pages/CollaborationRoom.tsx`
+- [X] T075 [US2] Bỏ nút chuyển thẳng sang *xong* và hiện lý do bị chặn trong `frontend/src/pages/ProjectBoard.tsx`
+- [X] T076 [P] [US2] Chuỗi hiển thị mới trong `frontend/src/i18n/vi.ts` và `frontend/src/i18n/en.ts`
 
 ### Kiểm chứng chạy thật
 
-- [ ] T077 [US2] Dựng lại hai vùng chứa, chạy trọn Kịch bản 2 của `specs/001-van-hanh-du-an/quickstart.md` gồm bảng chín phép thử, lái giao diện bằng Playwright
+- [X] T077 [US2] Dựng lại hai vùng chứa, chạy trọn Kịch bản 2 của `specs/001-van-hanh-du-an/quickstart.md` gồm bảng chín phép thử, lái giao diện bằng Playwright
 
 **Chốt chặn**: Đợt 1 và 2 xong — **mốc dùng được đầu tiên**. Dự án chạy đúng vòng và đầu việc không còn lối tắt nào.
 
