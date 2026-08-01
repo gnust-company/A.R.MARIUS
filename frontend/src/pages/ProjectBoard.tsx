@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -19,7 +18,8 @@ import {
   GripVertical,
   Trash2,
 } from 'lucide-react';
-import { useAppStore, type TaskStatus, type Priority, type Task } from '@/store/appStore';
+import { useAppStore, type TaskStatus, type Task } from '@/store/appStore';
+import { CREATABLE_PHASES, type TaskPhase } from '@/lib/taskRules';
 import * as api from '@/lib/api';
 import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
@@ -35,7 +35,9 @@ const KANBAN_COLUMNS: { status: TaskStatus; label: string; bg: string; headerBg:
   { status: 'done', label: 'Done', bg: 'bg-[#D8EADD]', headerBg: 'bg-[#D8EADD]', borderColor: 'border-[#A8D8B8]' },
 ];
 
-const PRIORITY_BORDER: Record<Priority, string> = {
+type BoardPriority = 'P0' | 'P1' | 'P2'
+
+const PRIORITY_BORDER: Record<BoardPriority, string> = {
   P0: 'border-l-[#C25E3A]',
   P1: 'border-l-[#D4A843]',
   P2: 'border-l-[#A89880]',
@@ -50,7 +52,7 @@ const STATUS_BORDER: Record<string, string> = {
   done: 'border-b-[#A8D8B8]',
 };
 
-const PRIORITY_BADGE: Record<Priority, { bg: string; text: string }> = {
+const PRIORITY_BADGE: Record<BoardPriority, { bg: string; text: string }> = {
   P0: { bg: 'bg-[#F5DDD6]', text: 'text-[#B84A32]' },
   P1: { bg: 'bg-[#F5E8CC]', text: 'text-[#8B6A28]' },
   P2: { bg: 'bg-[#E8E0D8]', text: 'text-[#8B7A6A]' },
@@ -74,7 +76,9 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
   // priority, so tasks can arrive with values (e.g. 'normal') that have no PRIORITY_BADGE /
   // PRIORITY_BORDER entry — reading `.bg` off the resulting undefined crashed the whole board
   // (#70). Fall back to the lowest tier for anything unrecognized.
-  const priorityKey = PRIORITY_BADGE[task.priority] ? task.priority : 'P2';
+  const priorityKey: BoardPriority = (['P0', 'P1', 'P2'] as const).includes(task.priority as BoardPriority)
+    ? (task.priority as BoardPriority)
+    : 'P2';
   const checklistTotal = (task.checklist || []).length;
   const checklistDone = (task.checklist || []).filter((c) => c.done).length;
   const hasArtifacts = (task.artifacts || []).length > 0;
@@ -144,6 +148,23 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
           </span>
         )}
       </div>
+
+      {/* Why this card is not moving. The stall flag comes first: it means the system
+          dropped the task, and no door into *done* will open until it clears (FR-058).
+          Below it, the reason whoever blocked or cancelled the task had to write (FR-030). */}
+      {task.stalled && (
+        <div className="flex items-start gap-1.5 mb-2 px-2 py-1.5 rounded-sm bg-[#F5DDD6]">
+          <AlertTriangle className="w-3.5 h-3.5 text-[#B84A32] flex-shrink-0 mt-0.5" />
+          <span className="font-body text-body-xs text-[#B84A32]">
+            {task.stalledReason || t('board.stalled')}
+          </span>
+        </div>
+      )}
+      {!task.stalled && task.statusReason && (task.status === 'blocked' || task.status === 'cancelled') && (
+        <p className="mb-2 font-body text-body-xs text-ink-muted italic line-clamp-2">
+          {task.statusReason}
+        </p>
+      )}
 
       {/* Assignee avatar (single owner per task) */}
       {assigneeAgent && (
@@ -262,11 +283,9 @@ function AddTaskFormModal({
               onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
               className={inputCls}
             >
-              <option value="backlog">{t('tasks.status.backlog')}</option>
-              <option value="todo">{t('tasks.status.todo')}</option>
-              <option value="in_progress">{t('tasks.status.in_progress')}</option>
-              <option value="in_review">{t('tasks.status.in_review')}</option>
-              <option value="done">{t('tasks.status.done')}</option>
+              {CREATABLE_PHASES.map((phase) => (
+                <option key={phase} value={phase}>{t('tasks.status.' + phase)}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -425,7 +444,7 @@ export default function ProjectBoard() {
           <div className="flex items-start justify-between mb-3">
             <h1 className="font-display text-display-lg text-ink">{project.name}</h1>
             <div className="flex items-center gap-3">
-              <StatusChip status={project.status} label={t(`projects.status.${project.status}`)} />
+              <StatusChip status={project.status ?? 'setup'} label={t(`projects.status.${project.status}`)} />
               <button
                 onClick={() => setConfirmDelete(true)}
                 className="p-1.5 rounded-md text-ink-muted hover:text-[#B84A32] hover:bg-[#F5DDD6] transition-colors"
@@ -569,6 +588,7 @@ export default function ProjectBoard() {
         <div className="flex-1 min-w-0 min-h-0 flex">
         <div className="flex gap-4 overflow-x-auto pb-4 flex-1 min-h-0">
         {KANBAN_COLUMNS.map((col, colIndex) => {
+          const canCreateHere = CREATABLE_PHASES.includes(col.status as TaskPhase);
           const colTasks = tasksByColumn[col.status] || [];
           return (
             <motion.div
@@ -598,7 +618,7 @@ export default function ProjectBoard() {
                     ({colTasks.length})
                   </span>
                 </div>
-                {acceptsTasks && (
+                {acceptsTasks && canCreateHere && (
                   <button
                     onClick={() => setAddTask({ open: true, status: col.status })}
                     className="p-1 rounded text-ink-muted hover:text-terracotta transition-colors"
@@ -633,8 +653,11 @@ export default function ProjectBoard() {
                   </div>
                 )}
 
-                {/* Add button at bottom */}
-                {acceptsTasks && (
+                {/* Add button at bottom — only where a new task may legally start.
+                    A task cannot be born *in review* or *done*: those are reached by doing
+                    the work, and offering the button here was a lane straight past every
+                    gate (spec 001 FR-024). */}
+                {acceptsTasks && canCreateHere && (
                   <button
                     onClick={() => setAddTask({ open: true, status: col.status })}
                     className="flex items-center justify-center gap-1 py-2 rounded-md text-ink-muted hover:text-terracotta hover:bg-vellum-deep/50 transition-colors"
@@ -642,6 +665,11 @@ export default function ProjectBoard() {
                     <Plus className="w-4 h-4" />
                     <span className="font-body text-body-xs font-medium">{t('board.addTask')}</span>
                   </button>
+                )}
+                {acceptsTasks && !canCreateHere && colTasks.length > 0 && (
+                  <p className="py-2 text-center font-body text-body-xs text-ink-muted">
+                    {t('board.reachedByWorking')}
+                  </p>
                 )}
               </div>
             </motion.div>

@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import type { SetStateAction } from 'react'
 
 import { clearTokens } from '@/lib/auth'
 import * as api from '@/lib/api'
@@ -7,6 +6,7 @@ import type { OnboardingCollected, OnboardingDraft, OnboardingQuestion } from '@
 import {
   artifactToVM,
   commentToVM,
+  criterionToVM,
   mariusToVM,
   onboardingToVM,
   projectDetailToVM,
@@ -133,9 +133,22 @@ export interface Task {
   comments?: TaskComment[]
   checklist?: ChecklistItem[]
   definitionOfDone?: string
+  /** Why the task sits where it does — mandatory on blocked/cancelled/send-back (FR-030). */
+  statusReason?: string
+  /** The approved plan item that makes this task in scope (FR-027); absent = outside it. */
+  planItemId?: string
+  /** What is going to move it forward (FR-056). */
+  drive?: string
+  /** The safety net dropped a flag: every door into `done` is sealed (FR-058). */
+  stalled?: boolean
+  stalledReason?: string
   createdAt: string
   updatedAt?: string
 }
+
+/** A patch, or a function over the whole task. The store merges a patch onto the
+ * current task — which is what every call site has always passed. */
+export type TaskUpdate = Partial<Task> | ((prev: Task) => Task)
 
 export type TaskStatus = 'pending' | 'in-progress' | 'review' | 'done' | 'cancelled' | 'todo' | 'in_review' | 'in_progress' | 'backlog' | 'blocked' | 'draft'
 export type Priority = 'low' | 'normal' | 'high' | 'urgent' | 'P0' | 'P1' | 'P2'
@@ -155,6 +168,10 @@ export interface TaskArtifact {
   url?: string
   path?: string
 }
+
+/** What a caller can actually supply when publishing: the server mints id/taskId. */
+export type NewArtifact = Pick<TaskArtifact, 'type'> &
+  Partial<Pick<TaskArtifact, 'name' | 'title' | 'url' | 'content'>>
 
 export type TraceEventType =
   | 'run.delta'
@@ -235,6 +252,10 @@ export interface ChecklistItem {
   id: string
   text: string
   done: boolean
+  /** The score (FR-019). `done` is kept in step with it for the older checklist UI. */
+  result?: 'unrated' | 'passed' | 'failed'
+  /** Which published artifact proves this criterion. */
+  evidenceArtifactId?: string
 }
 
 export interface ProjectSeat {
@@ -410,7 +431,7 @@ interface AppStoreState {
   logout: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
   setSseConnected: (connected: boolean) => void
-  updateTask: (taskId: string, updater: SetStateAction<Task>) => Promise<void>
+  updateTask: (taskId: string, updater: TaskUpdate) => Promise<void>
   /** Add a blocked_by edge (this task waits on blocksTaskId), then refresh its blocker list. */
   addTaskDependency: (taskId: string, blocksTaskId: string) => Promise<void>
   /** Remove a blocked_by edge. */
@@ -418,7 +439,7 @@ interface AppStoreState {
   addComment: (taskId: string, comment: Partial<TaskComment> & { authorId: string; content: string }) => Promise<void>
   /** Append one live run event to a task's trace (de-duplicated by id, #113). */
   appendTrace: (taskId: string, event: Partial<TraceEvent> & { type: TraceEvent['type']; content: string }) => void
-  publishArtifact: (taskId: string, artifact: TaskArtifact) => Promise<void>
+  publishArtifact: (taskId: string, artifact: NewArtifact) => Promise<void>
   createSkill: (input: Omit<Skill, 'id'> & { id?: string }) => Promise<Skill>
   importSkill: (url: string, workspaceId?: string) => Promise<Skill>
   updateSkill: (skillId: string, skill: Partial<Skill>) => void
@@ -461,6 +482,8 @@ interface AppStoreState {
   hydrateWorkspace: (workspaceId: string) => Promise<void>
   hydrateProject: (projectId: string) => Promise<void>
   hydrateTask: (taskId: string) => Promise<void>
+  setTaskCriteria: (taskId: string, texts: string[]) => Promise<void>
+  reopenTask: (taskId: string, reason: string) => Promise<void>
 }
 
 // ── Store ───────────────────────────────────────────
@@ -579,7 +602,23 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     set({ currentUser: null, activeWorkspaceId: null })
   },
 
-  updateTask: async (taskId: string, updater: SetStateAction<Task>) => {
+  setTaskCriteria: async (taskId: string, texts: string[]) => {
+    // No optimistic write: the server refuses (409) once the worker has started, and a
+    // yardstick that flickers into place and then vanishes is worse than a moment's wait.
+    const items = await api.setTaskCriteria(taskId, texts)
+    set({
+      tasks: get().tasks.map((t) =>
+        t.id === taskId ? { ...t, checklist: items.map(criterionToVM) } : t,
+      ),
+    })
+  },
+
+  reopenTask: async (taskId: string, reason: string) => {
+    const dto = await api.reopenTask(taskId, reason)
+    set({ tasks: get().tasks.map((t) => (t.id === taskId ? { ...t, ...taskToVM(dto) } : t)) })
+  },
+
+  updateTask: async (taskId: string, updater: TaskUpdate) => {
     const prev = get().tasks.find((t) => t.id === taskId)
     if (!prev) return
     const newTask = typeof updater === 'function' ? (updater as (prev: Task) => Task)(prev) : { ...prev, ...updater }
@@ -589,7 +628,9 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     // forget, so we revert + log rather than throw (avoids unhandled promise rejections).
     if (newTask.status !== prev.status) {
       try {
-        await api.updateTaskStatus(taskId, newTask.status)
+        // The reason rides along: blocked/cancelled and sending work back are refused
+        // without one (spec 001 FR-030).
+        await api.updateTaskStatus(taskId, newTask.status, newTask.statusReason)
       } catch (e) {
         set({ tasks: get().tasks.map((t) => (t.id === taskId ? prev : t)) })
         console.error('updateTask status failed, reverted:', e)
@@ -651,7 +692,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     set({ tasks: updatedTasks })
   },
 
-  publishArtifact: async (taskId: string, artifact: TaskArtifact) => {
+  publishArtifact: async (taskId: string, artifact: NewArtifact) => {
     const kind = artifact.type === 'link' ? 'link' : 'file'
     const name = artifact.name || artifact.title || 'artifact'
     const dto = await api.publishArtifact(taskId, name, kind, artifact.url)
@@ -973,11 +1014,12 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   },
 
   hydrateTask: async (taskId: string) => {
-    const [taskDto, comments, artifacts, blockers, trace] = await Promise.all([
+    const [taskDto, comments, artifacts, blockers, criteria, trace] = await Promise.all([
       api.getTask(taskId),
       api.listComments(taskId),
       api.listArtifacts(taskId),
       api.listTaskDependencies(taskId),
+      api.listTaskCriteria(taskId).catch(() => [] as api.CriterionDTO[]),
       // Backfill the whole session trace here (single writer) so it can't be clobbered by
       // this hydrate overwriting the task object — the live SSE tail only appends after (#113).
       loadTaskTrace(taskId).catch(() => [] as TraceEvent[]),
@@ -987,6 +1029,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       comments: comments.map(commentToVM),
       artifacts: artifacts.map(artifactToVM),
       dependencies: blockers.map((b) => b.id),
+      checklist: criteria.map(criterionToVM),
       trace,
     }
     // Ensure the project's sibling tasks are present (so the blocked-by list can resolve
