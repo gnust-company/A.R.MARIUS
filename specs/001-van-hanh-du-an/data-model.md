@@ -146,8 +146,10 @@ stateDiagram-v2
     ChoRaSoat --> Xong : đủ hai chữ ký
     ChoRaSoat --> DangLam : trả lại, bắt buộc lý do
     ChoRaSoat --> BiChan
+    ChoRaSoat --> Huy
     BiChan --> DangLam
     BiChan --> ChoLam
+    BiChan --> TonKho
     BiChan --> Huy
 ```
 
@@ -159,6 +161,13 @@ stateDiagram-v2
 | *xong → đang làm* | cho phép thường ngày | chỉ qua thao tác **mở lại** có ghi vết | *Xong* là trạng thái đóng (FR-022) |
 | *huỷ → tồn kho* | cho phép thường ngày | chỉ qua thao tác **mở lại** có ghi vết | Như trên |
 | *nháp → tồn kho* | thiếu | **thêm** | Cất để dành một đề xuất |
+
+Bản vẽ ở trên trước đây sót hai mũi tên *chờ rà soát → huỷ* và *bị chặn → tồn kho*; hai đường này không nằm
+trong bảng thay đổi nên vẫn được giữ, và bản vẽ đã bổ sung lại cho khớp bảng chuyển trạng thái đang chạy.
+
+**Khoảng hở còn mở tới Câu chuyện 3**: nhãn "đủ hai chữ ký" trên đường *chờ rà soát → xong* là **đích**, chưa
+phải luật đang chạy. Hiện cổng chỉ hỏi bằng chứng và cờ đình trệ, không phân biệt ai bấm — nên một thợ vẫn
+tự đóng được đầu việc của chính mình khi đã nộp thành phẩm. Cổng người-duyệt thật nằm ở T078–T098.
 
 ### Năm cổng
 

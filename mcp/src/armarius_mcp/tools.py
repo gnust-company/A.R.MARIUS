@@ -1,7 +1,11 @@
 """Tool implementations — pure functions over a ServerState.
 
 Each maps to one ``ArmariusClient`` call and adds the guardrails a weak model needs:
-- ``update_status`` constrains the target to the agent-settable enum (no ``draft``).
+- ``update_status`` constrains the target to the agent-settable enum (no ``draft``). This is a
+  *spelling* check only — it says which words are statuses, never who may move to them. Every
+  gate (transition table, evidence, dependency, reason, stall seal) lives in the backend domain
+  and answers the same way no matter which client asks. ``done`` is listed here because it is a
+  status name, not because an agent is entitled to set it.
 - ``publish_artifact`` enforces the content-vs-uri rule per kind before the round-trip.
 
 ``server.py`` wraps these with FastMCP typing; tests drive them with a fake client, so
