@@ -326,28 +326,49 @@ class TaskService:
                     "chuyển giao kèm lý do, hoặc chẻ thành hai đầu việc."
                 )
             assert_assignable(task)
+            now = utcnow()
             task.assigned_marius_id = marius_id
             # Convenience promotion backlog→todo, but honour the dependency-gate: a task
             # with an unfinished blocked_by stays in backlog rather than being forced up.
+            # It goes through the transition table like every other move, and leaves its
+            # own log line — a status that changed without a line in the log is a hole in
+            # the audit trail (FR-079), even when the change was a side effect.
+            promoted_from: str | None = None
             if task.status == TaskStatus.BACKLOG and await uow.dependencies.all_blockers_done(
                 task_id
             ):
-                task.status = TaskStatus.TODO
+                promoted_from = str(task.status)
+                task.transition_to(TaskStatus.TODO, now, deps_satisfied=True)
             task.drive = TaskDrive.WAKE_SCHEDULED
-            task.updated_at = utcnow()
+            task.updated_at = now
             await uow.tasks.update(task)
+            actor_kind = ActorKind.USER if user_id else ActorKind.SYSTEM
             await self._log(
                 uow,
                 task_id,
                 TaskLogKind.ASSIGNED,
-                actor_kind=ActorKind.USER if user_id else ActorKind.SYSTEM,
+                actor_kind=actor_kind,
                 actor_user_id=user_id,
                 before=str(previous) if previous else None,
                 after=str(marius_id),
                 reason=transfer_reason,
             )
+            if promoted_from is not None:
+                await self._log(
+                    uow,
+                    task_id,
+                    TaskLogKind.STATUS_CHANGED,
+                    actor_kind=actor_kind,
+                    actor_user_id=user_id,
+                    before=promoted_from,
+                    after=str(TaskStatus.TODO),
+                    reason="giao người phụ trách",
+                )
             await uow.commit()
+            project_id = task.project_id
 
+        if promoted_from is not None:
+            await self._publish_status(project_id, task_id, TaskStatus.TODO)
         await self._wake.enqueue(
             marius_id=marius_id,
             task_id=task_id,

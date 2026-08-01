@@ -18,6 +18,7 @@ from armarius.domain.entities.project import Project
 from armarius.domain.entities.task import Task
 from armarius.domain.entities.task_log import ActorKind, TaskLogKind
 from armarius.domain.entities.workspace import Workspace
+from tests.support.planning import client, operating_project
 
 
 async def _real_task(uow_factory, *, title: str = "Việc") -> UUID:
@@ -126,3 +127,81 @@ async def test_records_actor_and_structured_detail(uow_factory) -> None:
     assert entry.actor_kind is ActorKind.SYSTEM
     assert entry.actor_marius_id == marius_id
     assert entry.detail == {"level": 3, "tried": ["re-wake", "reassign"]}
+
+
+async def test_assigning_a_backlog_task_logs_the_status_it_quietly_changed() -> None:
+    """Giao người cho một đầu việc ở *tồn kho* đẩy nó lên *cần làm* — và lần đổi đó phải
+    có dòng nhật ký của chính nó.
+
+    Đây là đường đổi trạng thái duy nhất không do người dùng bấm nút trạng thái, nên cũng
+    là đường dễ rơi khỏi sổ nhật ký nhất. Sổ mà thủng đúng chỗ này thì FR-079 chỉ đúng
+    trên giấy: bảng nhảy một cột mà không ai truy được ai làm.
+
+    Kiểm qua giao tiếp thật vì lỗ hổng nằm ở chỗ nối tầng ứng dụng với sổ, chứ không ở
+    thực thể — bài kiểm đọc thẳng thực thể sẽ không bao giờ thấy.
+    """
+    async with client() as c:
+        p = await operating_project(c, "assign-log@armarius.dev")
+        r = await c.post(
+            f"/v1/projects/{p.project_id}/tasks",
+            headers=p.headers,
+            json={
+                "title": "Kết xuất báo cáo tháng",
+                "description": "Gom số liệu tháng rồi kết xuất ra tệp bảng tính.",
+            },
+        )
+        assert r.status_code == 201, r.text
+        task_id = r.json()["id"]
+        assert r.json()["status"] == "backlog"
+
+        assigned = await c.post(
+            f"/v1/tasks/{task_id}/assign",
+            headers=p.headers,
+            json={"marius_id": p.worker_id},
+        )
+        assert assigned.status_code == 200, assigned.text
+        assert assigned.json()["status"] == "todo"
+
+        entries = (await c.get(f"/v1/tasks/{task_id}/log", headers=p.headers)).json()
+
+    kinds = [e["kind"] for e in entries]
+    assert "assigned" in kinds
+    moved = [e for e in entries if e["kind"] == "status_changed"]
+    assert len(moved) == 1, kinds
+    assert (moved[0]["before"], moved[0]["after"]) == ("backlog", "todo")
+    assert moved[0]["actor_kind"] == "user"
+
+
+async def test_assigning_a_blocked_task_logs_no_status_it_did_not_change() -> None:
+    """Mặt còn lại: đầu việc còn bị chặn thì ở lại *tồn kho*, và sổ không được bịa ra
+    một dòng đổi trạng thái chưa hề xảy ra."""
+    async with client() as c:
+        p = await operating_project(c, "assign-log-2@armarius.dev")
+        made = []
+        for title in ("Việc chặn", "Việc bị chặn"):
+            r = await c.post(
+                f"/v1/projects/{p.project_id}/tasks",
+                headers=p.headers,
+                json={"title": title, "description": "Mô tả đủ dài để giao được."},
+            )
+            assert r.status_code == 201, r.text
+            made.append(r.json()["id"])
+        blocker, blocked = made
+        dep = await c.post(
+            f"/v1/tasks/{blocked}/dependencies",
+            headers=p.headers,
+            json={"blocks_task_id": blocker},
+        )
+        assert dep.status_code in (200, 201), dep.text
+
+        assigned = await c.post(
+            f"/v1/tasks/{blocked}/assign",
+            headers=p.headers,
+            json={"marius_id": p.worker_id},
+        )
+        assert assigned.status_code == 200, assigned.text
+        assert assigned.json()["status"] == "backlog"
+
+        entries = (await c.get(f"/v1/tasks/{blocked}/log", headers=p.headers)).json()
+
+    assert [e["kind"] for e in entries if e["kind"] == "status_changed"] == []
