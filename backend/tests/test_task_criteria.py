@@ -156,3 +156,40 @@ async def test_the_task_read_route_carries_the_four_fields_the_board_draws() -> 
     body = got.json()
     for field in ("plan_item_id", "drive", "stalled", "stalled_reason", "signatures"):
         assert field in body, f"thiếu trường '{field}' ở lối đọc đầu việc"
+
+
+async def test_the_completion_mark_survives_the_trip_out_over_http() -> None:
+    """FR-031: mốc hoàn tất ghi vào cơ sở dữ liệu rồi rơi mất ở lối ra thì coi như không có.
+
+    Chỗ này chỉ bắt được khi chạy thật — bài kiểm tầng ứng dụng đọc thẳng thực thể nên
+    không bao giờ đi qua lược đồ trả về.
+    """
+    async with client() as c:
+        p = await operating_project(c, "mark-a@armarius.dev")
+        created = await c.post(
+            f"/v1/projects/{p.project_id}/tasks",
+            headers=p.headers,
+            json={"title": "Việc chạy trọn đường", "description": "Có mô tả đàng hoàng."},
+        )
+        task_id = created.json()["id"]
+        for status in ("todo", "in_progress"):
+            moved = await c.post(
+                f"/v1/tasks/{task_id}/status", headers=p.headers, json={"status": status}
+            )
+            assert moved.status_code == 200, moved.text
+        assert moved.json()["in_progress_at"] is not None
+
+        published = await c.post(
+            f"/v1/tasks/{task_id}/artifacts",
+            headers=p.headers,
+            json={"name": "ket-qua.txt", "kind": "file", "content": "xong"},
+        )
+        assert published.status_code == 201, published.text
+        await c.post(
+            f"/v1/tasks/{task_id}/status", headers=p.headers, json={"status": "in_review"}
+        )
+        done = await c.post(
+            f"/v1/tasks/{task_id}/status", headers=p.headers, json={"status": "done"}
+        )
+    assert done.status_code == 200, done.text
+    assert done.json()["completed_at"] is not None

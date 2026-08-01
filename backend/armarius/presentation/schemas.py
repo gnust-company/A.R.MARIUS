@@ -390,6 +390,11 @@ class TaskOut(_Out):
     signatures: list[dict[str, object]] = Field(default_factory=list)
     assigned_marius_id: UUID | None = None
     next_action: str | None = None
+    # The two lifecycle marks (FR-015). The completion mark is what FR-031 requires a
+    # finished task to carry — and it was being written to the database and then dropped
+    # on the way out, so nothing outside the database could tell it had happened.
+    in_progress_at: datetime | None = None
+    completed_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

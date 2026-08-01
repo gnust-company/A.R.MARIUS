@@ -137,7 +137,15 @@ class ArtifactRequiredError(Exception):
 
 
 class DependencyNotMetError(Exception):
-    """Raised when entering todo/in_progress while a blocked_by dependency is unfinished."""
+    """Raised when entering todo/in_progress while a blocked_by dependency is unfinished.
+
+    Carries the identifiers of what is still missing (FR-025). "A dependency is not done"
+    tells the reader nothing they can act on; "TASK-3, TASK-7" tells them where to look.
+    """
+
+    def __init__(self, message: str, *, blockers: tuple[str, ...] = ()) -> None:
+        super().__init__(message)
+        self.blockers = blockers
 
 
 class DescriptionRequiredError(Exception):
@@ -232,6 +240,7 @@ class Task:
         has_artifact: bool = False,
         deps_satisfied: bool = True,
         reason: str | None = None,
+        unmet_blockers: tuple[str, ...] = (),
     ) -> None:
         """Validate and apply a status transition.
 
@@ -257,8 +266,11 @@ class Task:
                 "A published artifact must be linked before review/done."
             )
         if target in DEPENDENCY_GATED_STATUSES and not deps_satisfied:
+            listed = ", ".join(unmet_blockers)
             raise DependencyNotMetError(
-                "A blocked_by dependency is not done yet."
+                "Còn việc phụ thuộc chưa xong"
+                + (f": {listed}." if listed else "."),
+                blockers=unmet_blockers,
             )
         if self._reason_required(target) and _is_blank(reason):
             raise StatusReasonRequiredError(

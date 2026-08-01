@@ -910,6 +910,23 @@ class SqlTaskDependencyRepository(TaskDependencyRepository):
         ).scalars().all()
         return [mappers.task_dependency_to_entity(m) for m in rows]
 
+    async def list_unfinished_blockers(self, task_id: UUID) -> Sequence[Task]:
+        rows = (
+            await self._s.execute(
+                select(TaskModel)
+                .join(
+                    TaskDependencyModel,
+                    TaskDependencyModel.blocks_task_id == TaskModel.id,
+                )
+                .where(
+                    TaskDependencyModel.task_id == task_id,
+                    TaskModel.status != str(TaskStatus.DONE),
+                )
+                .order_by(TaskModel.identifier)
+            )
+        ).scalars().all()
+        return [mappers.task_to_entity(m) for m in rows]
+
     async def all_blockers_done(self, task_id: UUID) -> bool:
         # Count blockers not yet done; 0 unfinished ⇒ gate satisfied (also when
         # the task has no blockers at all).

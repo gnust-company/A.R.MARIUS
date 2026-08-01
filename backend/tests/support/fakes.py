@@ -175,6 +175,16 @@ class _FakeTaskDependencyRepo:
                 out.append(d)
         return out
 
+    async def list_unfinished_blockers(self, task_id: UUID) -> list[Task]:
+        out = []
+        for d in self._s.dependencies.values():
+            if d.task_id != task_id or d.blocks_task_id is None:
+                continue
+            blocker = self._s.tasks.get(d.blocks_task_id)
+            if blocker is not None and blocker.status != TaskStatus.DONE:
+                out.append(blocker)
+        return out
+
     async def all_blockers_done(self, task_id: UUID) -> bool:
         for d in self._s.dependencies.values():
             if d.task_id != task_id:
