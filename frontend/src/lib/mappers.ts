@@ -12,6 +12,7 @@
 import type {
   ArtifactDTO,
   CommentDTO,
+  CriterionDTO,
   InboxItemDTO,
   LabelDTO,
   MariusDTO,
@@ -26,6 +27,7 @@ import type {
 import type {
   AgentStatus,
   Artifact,
+  ChecklistItem,
   InboxItemVM,
   Marius,
   OnboardingSessionVM,
@@ -211,6 +213,12 @@ export function taskToVM(dto: TaskDTO): Task {
     priority: priorityFromDTO(),
     projectId: dto.project_id ?? '',
     assigneeId: dto.assigned_marius_id ?? undefined,
+    statusReason: dto.status_reason ?? undefined,
+    planItemId: dto.plan_item_id ?? undefined,
+    drive: dto.drive ?? undefined,
+    stalled: dto.stalled ?? false,
+    stalledReason: dto.stalled_reason ?? undefined,
+    definitionOfDone: dto.definition_of_done ?? undefined,
     createdAt: dto.created_at ?? new Date().toISOString(),
     updatedAt: dto.updated_at ?? undefined,
     trace: [],
@@ -218,6 +226,17 @@ export function taskToVM(dto: TaskDTO): Task {
     artifacts: [],
     checklist: [],
     dependencies: [],
+  }
+}
+
+/** One acceptance criterion. `done` mirrors a *passed* score so the older tick UI works. */
+export function criterionToVM(dto: CriterionDTO): ChecklistItem {
+  return {
+    id: dto.id,
+    text: dto.text,
+    done: dto.result === 'passed',
+    result: dto.result,
+    evidenceArtifactId: dto.evidence_artifact_id ?? undefined,
   }
 }
 

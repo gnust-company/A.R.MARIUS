@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -23,11 +22,13 @@ import {
   User,
   Star,
   MessageSquare,
+  XCircle,
 } from 'lucide-react';
 import { ApiError } from '@/lib/api';
 import { useAppStore, type TraceEvent, type Task } from '@/store/appStore';
 import { useTaskStream } from '@/hooks/use-task-stream';
 import { cn, wsHref } from '@/lib/utils';
+import { blockedReasonKey, needsReason, type TaskPhase } from '@/lib/taskRules';
 
 // ─── Trace Event Type Colors ─────────────────────────────────────────────────
 
@@ -257,7 +258,7 @@ export default function CollaborationRoom() {
 
   // Get dependency (blocked_by) tasks + the candidates the picker can add (same project,
   // not itself, not already a blocker).
-  const dependencyTasks = store.tasks.filter((t) => task?.dependencies.includes(t.id));
+  const dependencyTasks = store.tasks.filter((t) => task?.dependencies?.includes(t.id));
   const candidateBlockers = store.tasks.filter(
     (x) =>
       x.projectId === task?.projectId &&
@@ -266,28 +267,41 @@ export default function CollaborationRoom() {
   );
 
   // Check DONE gate
-  const hasArtifacts = (task?.artifacts.length ?? 0) > 0;
-  const checklistDone = task?.checklist.filter((c) => c.done).length ?? 0;
-  const checklistTotal = task?.checklist.length ?? 0;
+  const hasArtifacts = (task?.artifacts?.length ?? 0) > 0;
+  // The dependency gate, from what the board already knows: a blocker that has not finished.
+  const blockedByUnfinished = dependencyTasks.some((d) => d.status !== 'done');
+  // Acceptance criteria — scored at approval (Story 3); here we render the yardstick.
+  const criteriaPassed = task?.checklist?.filter((c) => c.result === 'passed').length ?? 0;
+  const criteriaTotal = task?.checklist?.length ?? 0;
+  const criteriaEditable = ['draft', 'backlog', 'todo'].includes(task?.status ?? '');
 
   // Auto-scroll
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [task?.comments.length]);
+  }, [task?.comments?.length]);
 
   useEffect(() => {
     traceEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [task?.trace.length]);
+  }, [task?.trace?.length]);
 
   const handleStatusChange = useCallback((newStatus: string) => {
     if (!task) return;
-    // DONE gate: block done/in_review without artifacts
-    if ((newStatus === 'done' || newStatus === 'in_review') && !hasArtifacts) {
+    const from = task.status as TaskPhase;
+    const to = newStatus as TaskPhase;
+    // Mirror of the server's gates — the point is not to enforce (the server does that)
+    // but not to offer a move that is certain to come back a 409.
+    if (blockedReasonKey(from, to, { hasArtifact: hasArtifacts, stalled: !!task.stalled, depsSatisfied: !blockedByUnfinished })) {
       return;
     }
-    setStatusValue(newStatus as Task['status']);
-    store.updateTask(task.id, { status: newStatus as Task['status'] });
-  }, [task, hasArtifacts, store]);
+    let reason: string | undefined;
+    if (needsReason(from, to)) {
+      const answer = window.prompt(t('taskRules.reasonPrompt'));
+      if (!answer || !answer.trim()) return;  // no reason, no move — the server agrees
+      reason = answer.trim();
+    }
+    setStatusValue(to as Task['status']);
+    store.updateTask(task.id, { status: to as Task['status'], statusReason: reason });
+  }, [task, hasArtifacts, blockedByUnfinished, store, t]);
 
   const handleSendComment = useCallback(() => {
     if (!commentInput.trim() || !task) return;
@@ -299,13 +313,22 @@ export default function CollaborationRoom() {
     setCommentInput('');
   }, [commentInput, task, store, currentUser]);
 
-  const handleChecklistToggle = useCallback((checkId: string) => {
-    if (!task) return;
-    const newChecklist = task.checklist.map((c) =>
-      c.id === checkId ? { ...c, done: !c.done } : c
-    );
-    store.updateTask(task.id, { checklist: newChecklist });
-  }, [task, store]);
+  const [criteriaDraft, setCriteriaDraft] = useState<string | null>(null);
+  const [criteriaError, setCriteriaError] = useState<string | null>(null);
+
+  const handleSaveCriteria = useCallback(async () => {
+    if (!task || criteriaDraft === null) return;
+    setCriteriaError(null);
+    try {
+      await store.setTaskCriteria(
+        task.id,
+        criteriaDraft.split('\n').map((line) => line.trim()).filter(Boolean),
+      );
+      setCriteriaDraft(null);
+    } catch (e) {
+      setCriteriaError(e instanceof Error ? e.message : String(e));
+    }
+  }, [task, criteriaDraft, store]);
 
   const handleAddDependency = async (blocksTaskId: string) => {
     if (!task || !blocksTaskId) return;
@@ -336,7 +359,6 @@ export default function CollaborationRoom() {
       name: artifactForm.name.trim(),
       url: artifactForm.url.trim() || undefined,
       content: artifactForm.type === 'file' ? 'file-content-placeholder' : undefined,
-      createdBy: 'patron',
     });
     setArtifactForm({ name: '', url: '', type: 'file' });
     setShowAddArtifactModal(false);
@@ -350,9 +372,13 @@ export default function CollaborationRoom() {
 
   const handleRequestChanges = useCallback(() => {
     if (!task) return;
-    store.updateTask(task.id, { status: 'todo' });
-    setStatusValue('todo');
-  }, [task, store]);
+    // Sending work back is *in_review → in_progress*, and it costs a reason: the worker
+    // has to know what to fix (spec 001 FR-030).
+    const answer = window.prompt(t('taskRules.reworkPrompt'));
+    if (!answer || !answer.trim()) return;
+    store.updateTask(task.id, { status: 'in_progress', statusReason: answer.trim() });
+    setStatusValue('in_progress');
+  }, [task, store, t]);
 
   if (!task) {
     return (
@@ -437,12 +463,22 @@ export default function CollaborationRoom() {
                 onChange={(e) => handleStatusChange(e.target.value)}
                 className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-md font-body text-body-sm text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors appearance-none cursor-pointer"
               >
-                {STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s} disabled={(s === 'done' || s === 'in_review') && !hasArtifacts}>
-                    {t('tasks.status.' + s)}
-                    {(s === 'done' || s === 'in_review') && !hasArtifacts ? t('collaborationRoom.needsArtifact') : ''}
-                  </option>
-                ))}
+                {STATUS_OPTIONS.map((s) => {
+                  const why =
+                    s === task.status
+                      ? null
+                      : blockedReasonKey(task.status as TaskPhase, s as TaskPhase, {
+                          hasArtifact: hasArtifacts,
+                          stalled: !!task.stalled,
+                          depsSatisfied: !blockedByUnfinished,
+                        });
+                  return (
+                    <option key={s} value={s} disabled={!!why}>
+                      {t('tasks.status.' + s)}
+                      {why ? ` — ${t(why)}` : ''}
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
@@ -483,55 +519,97 @@ export default function CollaborationRoom() {
               </div>
             </div>
 
-            {/* Definition of Done */}
-            <div>
-              <label className="block font-body text-body-xs font-semibold text-ink-light uppercase tracking-wider mb-1.5">
-                {t('collaborationRoom.context.definitionOfDone')}
-              </label>
-              <textarea
-                value={task.definitionOfDone}
-                onChange={(e) => store.updateTask(task.id, { definitionOfDone: e.target.value })}
-                rows={3}
-                className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors resize-none"
-              />
-            </div>
-
-            {/* Checklist */}
+            {/* Acceptance criteria (spec 001 FR-019) — the yardstick, replacing the old
+                free-text "definition of done". Written before the worker starts; after
+                that the server refuses an edit, because moving the bar mid-work is a
+                scope change the patron has to decide on. */}
             <div>
               <label className="block font-body text-body-xs font-semibold text-ink-light uppercase tracking-wider mb-2">
-                {t('collaborationRoom.context.checklist')}
+                {t('collaborationRoom.context.criteria')}
               </label>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="flex-1 h-1.5 bg-vellum-dark rounded-full overflow-hidden">
-                  <motion.div
-                    className="h-full bg-success rounded-full"
-                    initial={{ width: 0 }}
-                    animate={{ width: checklistTotal > 0 ? `${(checklistDone / checklistTotal) * 100}%` : '0%' }}
-                    transition={{ duration: 0.3 }}
+
+              {criteriaDraft !== null ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={criteriaDraft}
+                    onChange={(e) => setCriteriaDraft(e.target.value)}
+                    rows={5}
+                    placeholder={t('collaborationRoom.context.criteriaPlaceholder')}
+                    className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors resize-none"
                   />
+                  <p className="font-body text-body-xs text-ink-muted">
+                    {t('collaborationRoom.context.criteriaHint')}
+                  </p>
+                  {criteriaError && (
+                    <p className="font-body text-body-xs text-error">{criteriaError}</p>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSaveCriteria}
+                      className="px-3 py-1.5 rounded-md bg-gold text-ink font-body text-body-xs font-medium hover:bg-gold-light transition-colors"
+                    >
+                      {t('common.save')}
+                    </button>
+                    <button
+                      onClick={() => { setCriteriaDraft(null); setCriteriaError(null); }}
+                      className="px-3 py-1.5 rounded-md border border-vellum-dark text-ink-light font-body text-body-xs hover:text-ink transition-colors"
+                    >
+                      {t('common.cancel')}
+                    </button>
+                  </div>
                 </div>
-                <span className="font-mono text-mono-sm text-ink-light">
-                  {checklistDone}/{checklistTotal}
-                </span>
-              </div>
-              <div className="space-y-1">
-                {task.checklist.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => handleChecklistToggle(item.id)}
-                    className="flex items-center gap-2 w-full text-left group"
-                  >
-                    {item.done ? (
-                      <CheckCircle2 className="w-4 h-4 text-success flex-shrink-0" />
-                    ) : (
-                      <Circle className="w-4 h-4 text-ink-muted group-hover:text-terracotta transition-colors flex-shrink-0" />
+              ) : (
+                <>
+                  {criteriaTotal > 0 && (
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="flex-1 h-1.5 bg-vellum-dark rounded-full overflow-hidden">
+                        <motion.div
+                          className="h-full bg-success rounded-full"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${(criteriaPassed / criteriaTotal) * 100}%` }}
+                          transition={{ duration: 0.3 }}
+                        />
+                      </div>
+                      <span className="font-mono text-mono-sm text-ink-light">
+                        {criteriaPassed}/{criteriaTotal}
+                      </span>
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    {task.checklist?.map((item) => (
+                      <div key={item.id} className="flex items-start gap-2">
+                        {item.result === 'passed' ? (
+                          <CheckCircle2 className="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
+                        ) : item.result === 'failed' ? (
+                          <XCircle className="w-4 h-4 text-error flex-shrink-0 mt-0.5" />
+                        ) : (
+                          <Circle className="w-4 h-4 text-ink-muted flex-shrink-0 mt-0.5" />
+                        )}
+                        <span className="font-body text-body-sm text-ink">{item.text}</span>
+                      </div>
+                    ))}
+                    {criteriaTotal === 0 && (
+                      <p className="font-body text-body-sm text-ink-muted">
+                        {t('collaborationRoom.context.criteriaEmpty')}
+                      </p>
                     )}
-                    <span className={cn('font-body text-body-sm', item.done && 'line-through text-ink-muted')}>
-                      {item.text}
-                    </span>
-                  </button>
-                ))}
-              </div>
+                  </div>
+                  {criteriaEditable ? (
+                    <button
+                      onClick={() => setCriteriaDraft((task.checklist || []).map((c) => c.text).join('\n'))}
+                      className="mt-2 font-body text-body-xs text-terracotta hover:underline"
+                    >
+                      {criteriaTotal === 0
+                        ? t('collaborationRoom.context.criteriaSet')
+                        : t('collaborationRoom.context.criteriaEdit')}
+                    </button>
+                  ) : (
+                    <p className="mt-2 font-body text-body-xs text-ink-muted">
+                      {t('collaborationRoom.context.criteriaLocked')}
+                    </p>
+                  )}
+                </>
+              )}
             </div>
 
             {/* Dependencies (blocked_by, #91) */}
@@ -600,7 +678,7 @@ export default function CollaborationRoom() {
                 {t('collaborationRoom.context.artifacts')}
               </label>
               <div className="space-y-1.5">
-                {task.artifacts.map((artifact) => (
+                {(task.artifacts ?? []).map((artifact) => (
                   <a
                     key={artifact.id}
                     href={artifact.url || '#'}
@@ -711,17 +789,17 @@ export default function CollaborationRoom() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-4">
-            {task.comments.length === 0 ? (
+            {(task.comments?.length ?? 0) === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <MessageSquare className="w-10 h-10 text-ink-muted mb-3" strokeWidth={1.5} />
                 <p className="font-body text-body-md text-ink-light">{t('collaborationRoom.noComments')}</p>
                 <p className="font-body text-body-sm text-ink-muted">{t('collaborationRoom.startConversation')}</p>
               </div>
             ) : (
-              task.comments.map((comment) => (
+              (task.comments ?? []).map((comment) => (
                 <CommentBubble
                   key={comment.id}
-                  authorName={comment.authorName}
+                  authorName={comment.authorName ?? t('collaborationRoom.patron')}
                   authorId={comment.authorId}
                   authorRole={
                     store.mariuses.find((m) => m.id === comment.authorId)?.role || t('collaborationRoom.patron')
@@ -787,7 +865,7 @@ export default function CollaborationRoom() {
 
           {/* Trace Stream */}
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
-            {task.trace.length === 0 ? (
+            {(task.trace?.length ?? 0) === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <Activity className="w-10 h-10 text-ink-muted mb-3" strokeWidth={1.5} />
                 <p className="font-body text-body-md text-ink-light">{t('collaborationRoom.noTrace')}</p>
@@ -797,7 +875,7 @@ export default function CollaborationRoom() {
               </div>
             ) : (
               <>
-                {task.trace.map((event) => (
+                {(task.trace ?? []).map((event) => (
                   <TraceEventCard key={event.id} event={event} />
                 ))}
               </>

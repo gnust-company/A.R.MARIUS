@@ -10,13 +10,13 @@
 //
 // The composer (textarea + send) stays hand-rolled because it carries domain
 // behavior assistant-ui has no opinion about: turn-taking (input locks while the
-// Leader replies), offline disabling, the YOLO toggle, and the proposed-task
+// Leader replies), offline disabling, and the proposed-task
 // approval queue. The widget shell (floating bubble + large panel) lives in
 // LeaderChatWidget; this component is just the panel contents.
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Bot, Loader2, WifiOff, Check, X, Sparkles, Zap } from 'lucide-react';
+import { Send, Bot, Loader2, WifiOff, Check, X } from 'lucide-react';
 import {
   AssistantRuntimeProvider,
   useExternalStoreRuntime,
@@ -69,11 +69,9 @@ export default function LeaderChatPanel({
   const [input, setInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [proposed, setProposed] = useState<api.TaskDTO[]>([]);
-  const [yoloBusy, setYoloBusy] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const leaderOnline = chat?.leader_online ?? false;
-  const yolo = chat?.yolo_mode ?? false;
   const locked = !leaderOnline || state === 'thinking';
   const hasStreamingPartial =
     messages.length > 0 && messages[messages.length - 1].role === 'leader' && !!messages[messages.length - 1].streaming;
@@ -207,19 +205,6 @@ export default function LeaderChatPanel({
     void sendMessage(text);
   }, [input, locked, sendMessage]);
 
-  const toggleYolo = useCallback(async () => {
-    if (!projectId || yoloBusy) return;
-    setYoloBusy(true);
-    try {
-      const dto = await api.setYoloMode(projectId, !yolo);
-      setChat(dto);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setYoloBusy(false);
-    }
-  }, [projectId, yolo, yoloBusy]);
-
   const decide = useCallback(async (taskId: string, approve: boolean) => {
     try {
       if (approve) await api.approveTask(taskId);
@@ -269,20 +254,6 @@ export default function LeaderChatPanel({
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           <button
-            onClick={toggleYolo}
-            disabled={yoloBusy}
-            title={t('leaderChat.yoloHint')}
-            className={cn(
-              'flex items-center gap-1 px-2 py-1 rounded-md font-body text-body-xs font-medium border transition-colors',
-              yolo
-                ? 'bg-gold/15 border-gold text-gold-dark'
-                : 'bg-vellum-deep border-vellum-dark text-ink-light hover:text-ink',
-            )}
-          >
-            {yolo ? <Zap className="w-3 h-3" /> : <Sparkles className="w-3 h-3" />}
-            {yolo ? t('leaderChat.on') : t('leaderChat.off')}
-          </button>
-          <button
             onClick={onClose}
             className="p-1 rounded-md text-ink-muted hover:text-ink hover:bg-vellum-dark transition-colors"
             aria-label={t('common.closeDialog')}
@@ -292,7 +263,8 @@ export default function LeaderChatPanel({
         </div>
       </div>
 
-      {/* Proposed tasks awaiting approval (YOLO off) */}
+      {/* Drafts the Leader proposed outside the approved plan — each one is a scope
+          widening the patron has to decide on (spec 001 FR-027). */}
       <AnimatePresence>
         {proposed.length > 0 && (
           <motion.div
@@ -387,7 +359,7 @@ export default function LeaderChatPanel({
         </div>
       )}
 
-      {/* Input (hand-rolled — carries turn-taking + offline lock + YOLO gating). */}
+      {/* Input (hand-rolled — carries turn-taking + the offline lock). */}
       <div className="mt-2 mx-1 flex items-end gap-2 border-t border-vellum-dark pt-3 flex-shrink-0">
         <textarea
           value={input}

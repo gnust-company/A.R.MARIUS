@@ -296,10 +296,29 @@ export interface TaskDTO {
   priority?: string
   due_date?: string | null
   definition_of_done?: string | null
+  /** The approved plan item this task belongs to (spec 001 FR-027); null = out of scope. */
+  plan_item_id?: string | null
+  /** What is going to move this task forward (FR-056); null on a closed task. */
+  drive?: string | null
+  /** The system dropped this task — every door into `done` is sealed (FR-058). */
+  stalled?: boolean
+  stalled_reason?: string | null
+  /** Filled by the two-signature rule; empty until that ships. */
+  signatures?: Record<string, unknown>[]
   assigned_marius_id?: string | null
   next_action?: string | null
   created_at?: string | null
   updated_at?: string | null
+}
+
+/** One acceptance criterion — a checkable true/false statement (FR-019). */
+export interface CriterionDTO {
+  id: string
+  task_id?: string | null
+  text: string
+  order: number
+  result: 'unrated' | 'passed' | 'failed'
+  evidence_artifact_id?: string | null
 }
 
 export interface CommentDTO {
@@ -582,6 +601,22 @@ export async function updateTaskStatus(taskId: string, status: string, reason?: 
   return post<TaskDTO>(`/v1/tasks/${taskId}/status`, { status, reason })
 }
 
+/** Bring a closed task back. The reason is mandatory — the server refuses without it. */
+export async function reopenTask(taskId: string, reason: string): Promise<TaskDTO> {
+  return post<TaskDTO>(`/v1/tasks/${taskId}/reopen`, { reason })
+}
+
+export async function listTaskCriteria(taskId: string): Promise<CriterionDTO[]> {
+  return get<CriterionDTO[]>(`/v1/tasks/${taskId}/criteria`)
+}
+
+/** Replace the whole yardstick. Refused (409) once the worker has started (FR-019). */
+export async function setTaskCriteria(taskId: string, texts: string[]): Promise<CriterionDTO[]> {
+  return put<CriterionDTO[]>(`/v1/tasks/${taskId}/criteria`, {
+    items: texts.map((text) => ({ text })),
+  })
+}
+
 // ── Dependencies (blocked_by edges, #91) ─────────────────────────────────────
 /** A task that blocks another (rendered in the blocked-by list). */
 export interface BlockerDTO {
@@ -656,7 +691,6 @@ export interface LeaderChatDTO {
   leader_marius_id?: string | null
   leader_name?: string | null
   leader_online: boolean
-  yolo_mode: boolean
   state: string // 'idle' | 'thinking' | 'failed'
   transcript: LeaderChatTurn[]
   updated_at?: string | null
@@ -673,9 +707,6 @@ export async function sendLeaderChatMessage(
   return post<LeaderChatDTO>(`/v1/projects/${projectId}/leader-chat/messages`, { message })
 }
 
-export async function setYoloMode(projectId: string, yoloMode: boolean): Promise<LeaderChatDTO> {
-  return put<LeaderChatDTO>(`/v1/projects/${projectId}/yolo-mode`, { yolo_mode: yoloMode })
-}
 
 export async function listProposedTasks(projectId: string): Promise<TaskDTO[]> {
   return get<TaskDTO[]>(`/v1/projects/${projectId}/proposed-tasks`)
