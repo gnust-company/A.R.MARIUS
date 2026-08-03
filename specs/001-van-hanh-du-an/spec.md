@@ -53,6 +53,24 @@
   năng này, và việc nó từng làm đã được hai cơ chế chuẩn hơn thay: luật "trong khuôn kế hoạch đã duyệt" cho
   khâu tạo đầu việc, và công tắc tự động công nhận riêng từng người chủ cho khâu ký đầu ra.
 
+### Phiên 2026-08-03 — một người chủ cho mỗi dự án
+
+- Hỏi: Câu chuyện 3 viết theo giả định **nhiều người chủ** cùng cấp agent vào một dự án. Sản phẩm hiện không
+  có khái niệm đó — mỗi vùng làm việc có đúng một người sở hữu, mọi lối vào đều kiểm "có phải chủ vùng này
+  không", và không có bảng nào ghi ai được tham gia vùng của người khác. Lối mời sẵn có là mời **agent**,
+  không phải mời người. Vậy làm gì? → Đáp *(người chủ chốt)*: **tạm thời một người chủ cho mỗi dự án**. Cơ
+  chế mời người vào vùng làm việc là **tính năng sau**, không nằm trong đặc tả này.
+- Hệ quả: quy tắc **hai chữ ký không đổi** — Trưởng dự án là agent, người chủ là người, hai bên vẫn kiểm được
+  nhau. Công tắc tự động công nhận cũng không đổi. Thứ hoãn lại chỉ là phần **định tuyến giữa nhiều người
+  chủ**: SC-014, vế "không người chủ nào bật thay người khác" ở FR-038, và bước kiểm "hộp thư người kia không
+  có gì".
+- Vẫn ghi **ai đã cấp agent vào ghế** ngay từ bây giờ (FR-034), dù hiện luôn ra cùng một người. Không ghi thì
+  ngày bật nhiều người chủ, hệ thống phải **đoán ngược** lịch sử ai cấp ai, và bản đoán đó nằm vĩnh viễn
+  trong dữ liệu thật — không ai phân biệt được đâu là sự thật, đâu là suy đoán.
+- Sửa luôn một câu sai gốc ở mục Giả định: đặc tả này từng ghi tính năng "bám trên nền hạ tầng đã có: vùng
+  làm việc, **quyền**…". Phần quyền cho **người** chưa hề có, và chính câu đó đẻ ra toàn bộ giả định nhiều
+  người chủ ở trên.
+
 ---
 
 ## Kịch bản người dùng & kiểm thử *(bắt buộc)*
@@ -152,35 +170,44 @@ lúc tạo. Đi đúng đường thì đầu việc chạy trọn từ nháp t�
 
 Thợ nộp thành phẩm và tự khai "xong phần tôi". Trưởng dự án đặt thành phẩm cạnh bộ tiêu chí công nhận rồi
 chấm từng dòng. Nhưng Trưởng dự án gật **chưa đủ**: mọi đầu việc còn cần chữ ký của **người chủ đã mang con
-agent làm việc đó vào dự án** — ai đưa agent vào thì chịu trách nhiệm cho đầu ra của nó. Người chủ nào thấy
-phiền thì bật **công tắc tự động công nhận** cho phần của mình trong dự án đó; từ lúc ấy chữ ký của họ coi
-như có sẵn và dự án chạy không dừng.
+agent làm việc đó vào dự án** — ai đưa agent vào thì chịu trách nhiệm cho đầu ra của nó. Người chủ thấy phiền
+thì bật **công tắc tự động công nhận** cho phần của mình trong dự án đó; từ lúc ấy chữ ký của họ coi như có
+sẵn và dự án chạy không dừng.
+
+> **Phạm vi hiện tại — một người chủ cho mỗi dự án** *(chốt 2026-08-03)*. Sản phẩm chưa có cơ chế mời người
+> vào vùng làm việc, nên "người chủ đã cấp agent" hiện luôn ra chính chủ vùng. Quan hệ *ai cấp agent nào* vẫn
+> được ghi thật ngay lúc cấp ghế, để ngày mở nhiều người chủ không phải đoán ngược lịch sử. Phần **định tuyến
+> giữa nhiều người chủ** hoãn sang tính năng sau; xem mục Làm rõ phiên 2026-08-03.
 
 **Vì sao ưu tiên này**: Đây là chốt "công nhận đầu ra" trong tiêu chí tối thượng, và là cơ chế duy nhất chống
 "xong giả". Quy tắc hai chữ ký cho mọi việc là luật đơn giản, không cần ai đoán việc nào đủ lớn để phải xin;
 gánh nặng được điều tiết bằng công tắc chứ không bằng phán đoán. Nó xếp sau câu chuyện 2 vì cần bộ trường và
 vòng đời đầu việc đã đứng.
 
-**Kiểm thử độc lập**: Trong một dự án có hai người chủ, mỗi người cấp một thợ. Cho cả hai thợ chạy tới nơi →
-đầu ra của thợ nào phải rơi vào hộp thư của đúng người đã cấp thợ đó, không lẫn sang người kia. Một người bật
-công tắc tự động công nhận → đầu ra của thợ họ cấp đóng ngay sau khi Trưởng dự án gật, nhưng vết vẫn ghi rõ
-họ đã được coi là ký; người còn lại vẫn phải gật tay.
+**Kiểm thử độc lập**: Một dự án, một người chủ, một thợ. Thợ chạy tới nơi và Trưởng dự án chấm đạt → đầu việc
+**chưa** đóng, một mục chờ công nhận rơi vào hộp thư người chủ, và hệ thống chỉ ra được nó rơi vào đó vì
+người đó là **người đã cấp thợ**, chứ không phải vì họ tình cờ là chủ vùng làm việc. Người chủ công nhận →
+đầu việc *xong*. Bật công tắc tự động công nhận → đầu ra kế tiếp đóng ngay sau khi Trưởng dự án gật, không
+mục nào vào hộp thư, nhưng vết vẫn ghi rõ họ được coi là đã ký, lúc nào, cho đầu việc nào.
 
 **Kịch bản chấp nhận**:
 
 1. **Cho** một đầu việc *chờ rà soát*, **khi** Trưởng dự án chấm đạt hết tiêu chí, **thì** đầu việc **chưa**
    đóng — một mục "đầu ra chờ công nhận" xuất hiện trong hộp thư của người chủ đã cấp thợ phụ trách, kèm
    thành phẩm và bộ tiêu chí.
-2. **Cho** một dự án có hai người chủ cùng cấp thợ, **khi** thợ của người chủ A nộp bài và được Trưởng dự án
-   tán thành, **thì** mục chờ công nhận chỉ rơi vào hộp thư của A — hộp thư của B không có gì.
+2. **Cho** một đầu ra vừa được Trưởng dự án tán thành, **khi** hệ thống chọn người phải ký, **thì** nó chọn
+   theo **quan hệ ai đã cấp thợ đó vào ghế** — quan hệ này được ghi thật lúc cấp ghế và tra ra được, chứ
+   không phải suy ra từ "ai là chủ vùng làm việc". *(Với một người chủ, hai đường ra cùng một người; luật vẫn
+   phải đi đúng đường đầu, vì đó là thứ ngày mai mở nhiều người chủ sẽ dùng lại nguyên vẹn.)*
 3. **Cho** mục chờ công nhận đó, **khi** người chủ chịu trách nhiệm công nhận, **thì** đầu việc chuyển *xong*
    và các việc phụ thuộc được mở khoá.
 4. **Cho** một người chủ đã bật công tắc tự động công nhận trong dự án, **khi** Trưởng dự án tán thành một
    đầu ra của agent do người đó cấp, **thì** đầu việc đóng ngay, không mục nào rơi vào hộp thư, và vết ghi rõ
    người đó được coi là đã ký lúc nào cho đầu việc nào.
-5. **Cho** công tắc tự động công nhận của một người chủ, **khi** Trưởng dự án hoặc một người chủ khác cố bật
-   hoặc tắt nó, **thì** hệ thống từ chối — chỉ chính người đó được đụng vào phần của mình.
-6. **Cho** một lần từ chối approve kèm phản hồi, **khi** quyết định được ghi nhận, **thì** đầu việc quay về
+5. **Cho** công tắc tự động công nhận của một người chủ, **khi** Trưởng dự án cố bật hoặc tắt nó, **thì** hệ
+   thống từ chối — công tắc là của người chủ, agent không đụng tới. *(Vế "một người chủ khác cố bật thay"
+   hoãn cùng phần nhiều người chủ.)*
+6. **Cho** một lần từ chối công nhận kèm phản hồi, **khi** quyết định được ghi nhận, **thì** đầu việc quay về
    *đang làm* (không phải *nháp*, không phải *huỷ*), lý do được ghi vết, việc kế tiếp đặt thành "sửa theo
    phản hồi", và **đúng người thợ cũ** được đánh thức lại.
 7. **Cho** một đầu việc đã bị từ chối ba lần, **khi** lần từ chối thứ ba được ghi nhận, **thì** hệ thống kéo
@@ -417,17 +444,22 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
   niệm cờ bật/tắt theo từng việc.
 - **FR-034**: Người chủ chịu trách nhiệm cho một agent là **người đã cấp agent đó vào ghế** trong dự án. HỆ
   THỐNG PHẢI ghi lại quan hệ này ngay lúc cấp ghế và dùng nó để xác định ai phải ký cho đầu ra của agent đó.
+  Quy tắc này giữ nguyên trong phạm vi **một người chủ**: quan hệ vẫn phải được ghi thật và tra cứu thật, dù
+  hôm nay nó luôn ra chính chủ vùng làm việc. Suy thẳng từ "ai là chủ vùng" là **sai** — nó bỏ mất dữ kiện mà
+  ngày mở nhiều người chủ sẽ không còn cách nào dựng lại.
 - **FR-035**: SAU khi Trưởng dự án tán thành một đầu ra, HỆ THỐNG PHẢI đẩy đầu ra đó vào hộp thư của **đúng
   người chủ chịu trách nhiệm** và giữ đầu việc chưa đóng cho tới khi người đó công nhận.
 - **FR-036**: Mỗi dự án PHẢI có một thiết lập **tự động công nhận** riêng cho từng người chủ tham gia dự án
-  đó. KHI một người chủ bật thiết lập này, HỆ THỐNG PHẢI coi mọi việc cần chữ ký của người đó **cho công việc
+  đó — khoá theo cặp *(dự án, người chủ)*, kể cả khi cặp đó hiện chỉ có một. KHI một người chủ bật thiết lập
+  này, HỆ THỐNG PHẢI coi mọi việc cần chữ ký của người đó **cho công việc
   của các agent do họ cấp** là đã chuẩn thuận sẵn — công nhận đầu ra, và các bước chuyển trạng thái đầu việc
   cần họ gật — và đóng đầu việc ngay sau khi Trưởng dự án tán thành.
 - **FR-037**: Thiết lập tự động công nhận KHÔNG ĐƯỢC thay người chủ ở ba quyết định cấp dự án: duyệt kế
   hoạch, duyệt một thay đổi lớn (FR-075), và quyết chuyển giai đoạn. Ba việc đó luôn cần người chủ ra tay
   thật, dù công tắc đang bật.
 - **FR-038**: Thiết lập tự động công nhận PHẢI mặc định **tắt**. Chỉ chính người chủ đó được bật hoặc tắt cho
-  phần của mình; KHÔNG người chủ nào bật thay người khác, và Trưởng dự án KHÔNG ĐƯỢC đụng tới nó.
+  phần của mình, và Trưởng dự án KHÔNG ĐƯỢC đụng tới nó. *(Vế "không người chủ nào bật thay người khác" hoãn
+  cùng phần nhiều người chủ — hiện chưa dựng được tình huống đó.)*
 - **FR-039**: KHI tự động công nhận đang bật, HỆ THỐNG PHẢI vẫn ghi vết đầy đủ: ai được coi là đã ký, cho đầu
   việc nào, vào lúc nào — để người chủ xem lại sau. Mọi lần bật/tắt thiết lập cũng PHẢI ghi vết.
 - **FR-040**: KHI một đầu ra bị từ chối công nhận (bởi Trưởng dự án hoặc bởi người chủ chịu trách nhiệm), HỆ
@@ -618,8 +650,12 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
   không hành động quan trọng nào thiếu vết.
 - **SC-012**: 100% trường hợp thử truy cập tài nguyên của workspace khác trả về "không tìm thấy".
 - **SC-013**: 0 chuỗi hiển thị nằm ngoài cơ chế đa ngôn ngữ; 0 chuỗi tiếng Việt thiếu dấu trên giao diện.
-- **SC-014**: Trong một dự án có nhiều người chủ cùng cấp agent, 100% mục chờ công nhận rơi đúng vào hộp thư
-  của người đã cấp agent thực hiện đầu việc đó; 0 trường hợp lẫn sang người chủ khác.
+- **SC-014** *(hoãn — chờ tính năng mời người vào vùng làm việc)*: Trong một dự án có nhiều người chủ cùng
+  cấp agent, 100% mục chờ công nhận rơi đúng vào hộp thư của người đã cấp agent thực hiện đầu việc đó; 0
+  trường hợp lẫn sang người chủ khác. Không đo được trong phạm vi một người chủ; giữ nguyên câu chữ để ngày
+  mở nhiều người chủ có sẵn thước đo. Thay bằng **SC-014b** cho phạm vi hiện tại.
+- **SC-014b**: 100% mục chờ công nhận được định tuyến bằng quan hệ **ai đã cấp agent vào ghế** đọc từ dữ
+  liệu, 0 trường hợp suy thẳng từ "ai là chủ vùng làm việc"; và 100% ghế được cấp đều có ghi người cấp.
 
 ---
 
@@ -630,8 +666,11 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
 - Bản đặc tả này mô tả **cơ chế vận hành**, không bàn tới chất lượng sản phẩm mà đội agent làm ra.
 - Đây là mô tả **trạng thái đích**. Mã nguồn hiện có sẽ được khảo sát ở bước thiết kế (`/speckit-plan`) để
   biết phần nào đã đúng, phần nào lệch, phần nào chưa có — bản đặc tả này không giả định gì về hiện trạng.
-- Tính năng bám trên nền hạ tầng đã có của sản phẩm: workspace, quyền, danh tính agent, kho hiện vật dùng
-  chung, và lớp trung gian đứng ra chuyển lệnh đánh thức tới agent.
+- Tính năng bám trên nền hạ tầng đã có của sản phẩm: vùng làm việc, danh tính agent, kho hiện vật dùng chung,
+  và lớp trung gian đứng ra chuyển lệnh đánh thức tới agent.
+- **Quyền cho *người* thì chưa có** *(sửa 2026-08-03 — câu trên trước đây ghi nhầm là đã có)*. Mỗi vùng làm
+  việc có đúng một người sở hữu; không có cơ chế mời người thứ hai vào. Vì vậy đặc tả này nằm trong phạm vi
+  **một người chủ cho mỗi dự án**; phần nhiều người chủ là tính năng sau. Xem mục Làm rõ phiên 2026-08-03.
 
 **Bốn điểm tài liệu gốc để ngỏ — đã lấy chính đề xuất trong tài liệu làm mặc định, chờ người chủ chốt lại**
 

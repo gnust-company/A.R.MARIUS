@@ -28,4 +28,4 @@ Ba mặt giao tiếp phải mở rộng. Ký hiệu: **[có]** đã tồn tại 
 | `404` | Không tìm thấy, **kể cả** khi tài nguyên tồn tại ở workspace khác |
 | `409` | Vi phạm một cổng: chuyển trạng thái sai đường, còn việc phụ thuộc, chưa nộp thành phẩm, đã có người phụ trách, thiếu mô tả, chưa đủ hai chữ ký, dự án chưa ở giai đoạn cho phép |
 | `422` | Dữ liệu vào sai: thiếu lý do bắt buộc, cạnh phụ thuộc khép vòng, khoá dự án sai khuôn |
-| `403` | Sai vai: thợ báo cáo vượt cấp, Trưởng dự án tự duyệt kế hoạch của mình, người chủ này đổi công tắc của người chủ khác |
+| `403` | Sai vai: thợ báo cáo vượt cấp, Trưởng dự án tự duyệt kế hoạch của mình, Trưởng dự án đụng vào công tắc tự động công nhận của người chủ *(vế "người chủ này đổi công tắc của người chủ khác" hoãn cùng phần nhiều người chủ — chốt 2026-08-03)* |

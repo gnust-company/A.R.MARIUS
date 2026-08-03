@@ -71,21 +71,26 @@ Trưởng dự án được gọi dậy để giao tiếp.
 
 ## Kịch bản 3 — Hai chữ ký và công tắc tự động *(Câu chuyện 3)*
 
-Cần **hai người chủ**, mỗi người cấp một thợ vào dự án.
+Một dự án, **một người chủ** (phạm vi hiện tại — xem Làm rõ phiên 2026-08-03), một thợ do người đó cấp ghế.
 
-1. Thợ của người chủ A nộp bài; Trưởng dự án tán thành.
-   → Đầu việc **chưa** đóng. Mục chờ công nhận rơi vào hộp thư của **A**. Hộp thư của **B** không có gì.
-2. A công nhận → đầu việc *xong*, việc phụ thuộc mở khoá.
-3. Lặp lại với thợ của B nhưng cho **B từ chối** kèm phản hồi.
+1. Thợ nộp bài; Trưởng dự án tán thành.
+   → Đầu việc **chưa** đóng. Mục chờ công nhận rơi vào hộp thư người chủ.
+   → Kiểm ngay tại đây: mục đó được định tuyến bằng quan hệ **ai đã cấp thợ vào ghế** đọc từ dữ liệu — ghế
+   phải có ghi người cấp, và người cấp đó là người nhận mục. Không được suy thẳng từ "ai là chủ vùng".
+2. Người chủ công nhận → đầu việc *xong*, việc phụ thuộc mở khoá, vết ghi đủ hai chữ ký.
+3. Với một đầu việc khác, cho người chủ **từ chối** kèm phản hồi.
    → Đầu việc về *đang làm*, việc kế tiếp là "sửa theo phản hồi", **đúng thợ cũ** được gọi lại.
 4. Từ chối thêm hai lần nữa (tổng ba).
    → Trưởng dự án bị kéo vào soát lại đề bài và bộ tiêu chí.
-5. A bật công tắc tự động công nhận cho phần của mình.
-   → Đầu ra kế tiếp của thợ do A cấp đóng ngay sau khi Trưởng dự án gật; **không** mục nào vào hộp thư;
-   nhưng nhật ký đầu việc vẫn ghi A được coi là đã ký, lúc nào.
-6. Thử cho **B** tắt công tắc của **A** → từ chối. Thử cho Trưởng dự án đụng vào → từ chối.
-7. Với công tắc của A **đang bật**, cho Trưởng dự án đề xuất chuyển sang *bảo trì*.
-   → Vẫn phải có mục chờ trong hộp thư A; công tắc **không** tự quyết chuyển giai đoạn.
+5. Người chủ bật công tắc tự động công nhận cho phần của mình.
+   → Đầu ra kế tiếp đóng ngay sau khi Trưởng dự án gật; **không** mục nào vào hộp thư; nhưng nhật ký đầu việc
+   vẫn ghi người chủ được coi là đã ký, lúc nào.
+6. Thử cho Trưởng dự án bật hoặc tắt công tắc đó → từ chối.
+7. Với công tắc **đang bật**, cho Trưởng dự án đề xuất chuyển sang *bảo trì*.
+   → Vẫn phải có mục chờ trong hộp thư người chủ; công tắc **không** tự quyết chuyển giai đoạn.
+
+**Hoãn tới tính năng mời người vào vùng làm việc**: bước kiểm "hộp thư của người chủ kia không có gì" và bước
+"một người chủ cố tắt công tắc của người khác". Cả hai cần người chủ thứ hai, hiện chưa dựng được.
 
 ## Kịch bản 4 — Gói tin đánh thức và gộp lời gọi *(Câu chuyện 4)*
 
