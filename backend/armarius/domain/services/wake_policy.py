@@ -15,6 +15,46 @@ from dataclasses import dataclass
 from armarius.domain.entities.run import RunStatus, WakeSource
 from armarius.domain.entities.task import TERMINAL_STATUSES, TaskStatus
 
+# ── the two closed lists (FR-047, FR-048) ────────────────────────────────────
+#
+# "When and only when" is the whole point: an agent that can be woken for anything is an
+# agent nobody can reason about, and FR-049 exists precisely to stop project-wide noise
+# from reaching someone who has nothing waiting on them. Writing the lists down as data
+# turns the requirement into something a test can hold the code to — see
+# `test_wake_policy.py`, which fails if a new cause is added without deciding who it may
+# wake.
+
+#: Causes that may wake a **Leader** (FR-047).
+LEADER_WAKE_CAUSES: frozenset[WakeSource] = frozenset(
+    {
+        WakeSource.LEADER_CHAT,  # the patron wrote or asked
+        WakeSource.PATRON_DECISION,  # plan approved/changed, output accepted/refused,
+        #                              phase changed or a new batch opened
+        WakeSource.WORKER_HANDBACK,  # a worker handed work back or said it is stuck
+        WakeSource.TASK_IN_REVIEW,  # something is waiting to be judged
+        WakeSource.TASK_DONE,  # something closed — go pass the word
+        WakeSource.BRIEF_REVIEW,  # three rejections: look at the brief, not the worker
+        WakeSource.PROJECT_READY,  # roster complete → go plan
+    }
+)
+
+#: Causes that may wake a **worker** (FR-048).
+WORKER_WAKE_CAUSES: frozenset[WakeSource] = frozenset(
+    {
+        WakeSource.ASSIGNMENT,  # given a task
+        WakeSource.MENTION,  # named in a conversation
+        WakeSource.COMMENT,  # new comment on a task it owns
+        WakeSource.APPROVAL_REJECTED,  # its output came back for rework
+        WakeSource.IDLE_REMINDER,  # its task went quiet past the threshold (FR-052)
+    }
+)
+
+#: Causes that belong to neither list because they are the system talking to itself: the
+#: self-wake policy resuming its own dropped work, and the manual "wake now" button.
+SYSTEM_WAKE_CAUSES: frozenset[WakeSource] = frozenset(
+    {WakeSource.CONTINUATION, WakeSource.NUDGE, WakeSource.ON_DEMAND}
+)
+
 
 @dataclass(frozen=True)
 class WakeDecision:

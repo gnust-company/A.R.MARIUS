@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from armarius.domain.entities.approval import Approval
@@ -21,7 +22,7 @@ from armarius.domain.entities.onboarding import OnboardingSession
 from armarius.domain.entities.plan import Plan
 from armarius.domain.entities.project_context import ContextApprovalStatus, ProjectContext
 from armarius.domain.entities.role import Role
-from armarius.domain.entities.run import Run, RunEvent
+from armarius.domain.entities.run import ACTIVE_RUN_STATUSES, Run, RunEvent
 from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.skill import Skill
@@ -29,7 +30,12 @@ from armarius.domain.entities.task import Task, TaskStatus
 from armarius.domain.entities.task_dependency import TaskDependency
 from armarius.domain.entities.task_log import TaskLogEntry
 from armarius.domain.entities.user import User
-from armarius.domain.entities.wakeup import WakeupRequest
+from armarius.domain.entities.wakeup import (
+    PENDING_WAKEUP_STATUSES,
+    WakePairBusyError,
+    WakeupRequest,
+    WakeupStatus,
+)
 from armarius.domain.entities.workspace import Project, Workspace
 from armarius.domain.repositories.repositories import (
     ApprovalRepository,
@@ -1145,7 +1151,13 @@ class SqlRunRepository(RunRepository):
                 created_at=run.created_at,
             )
         )
-        await self._s.flush()
+        try:
+            await self._s.flush()
+        except IntegrityError as exc:
+            # The other half of FR-050: a live run already holds this (agent, task) pair.
+            raise WakePairBusyError(
+                "đã có một lượt chạy đang giữ cặp agent–đầu việc này"
+            ) from exc
         return run
 
     async def get(self, run_id: UUID) -> Run | None:
@@ -1191,6 +1203,18 @@ class SqlRunRepository(RunRepository):
             )
         ).scalars().all()
         return [mappers.run_to_entity(m) for m in rows]
+
+    async def get_active_for(self, marius_id: UUID, task_id: UUID) -> Run | None:
+        m = (
+            await self._s.execute(
+                select(RunModel).where(
+                    RunModel.marius_id == marius_id,
+                    RunModel.task_id == task_id,
+                    RunModel.status.in_([str(s) for s in ACTIVE_RUN_STATUSES]),
+                )
+            )
+        ).scalars().first()
+        return mappers.run_to_entity(m) if m else None
 
 
 class SqlRunEventRepository(RunEventRepository):
@@ -1283,13 +1307,24 @@ class SqlWakeupRepository(WakeupRepository):
                 updated_at=wakeup.updated_at,
             )
         )
-        await self._s.flush()
+        try:
+            await self._s.flush()
+        except IntegrityError as exc:
+            # The partial unique index refused a second pending wake for this pair. Hand
+            # the caller a domain error rather than a driver one: the application layer
+            # decides to fold the losing cause in, and it should not have to know which
+            # database said no (FR-050).
+            raise WakePairBusyError(
+                "đã có một lệnh đánh thức đang treo cho cặp agent–đầu việc này"
+            ) from exc
         return wakeup
 
     async def update(self, wakeup: WakeupRequest) -> WakeupRequest:
         m = await self._s.get(WakeupModel, wakeup.id)
         if m is None:
             raise LookupError("wakeup not found")
+        m.source = str(wakeup.source)
+        m.reason = wakeup.reason
         m.status = str(wakeup.status)
         m.run_id = wakeup.run_id
         m.updated_at = wakeup.updated_at
@@ -1304,8 +1339,21 @@ class SqlWakeupRepository(WakeupRepository):
                 select(WakeupModel).where(
                     WakeupModel.marius_id == marius_id,
                     WakeupModel.task_id == task_id,
-                    WakeupModel.status.in_(["queued", "dispatched"]),
+                    WakeupModel.status.in_([str(s) for s in PENDING_WAKEUP_STATUSES]),
                 )
+            )
+        ).scalars().all()
+        return [mappers.wakeup_to_entity(m) for m in rows]
+
+    async def list_coalesced_into(self, run_id: UUID) -> Sequence[WakeupRequest]:
+        rows = (
+            await self._s.execute(
+                select(WakeupModel)
+                .where(
+                    WakeupModel.run_id == run_id,
+                    WakeupModel.status == str(WakeupStatus.COALESCED),
+                )
+                .order_by(WakeupModel.created_at)
             )
         ).scalars().all()
         return [mappers.wakeup_to_entity(m) for m in rows]

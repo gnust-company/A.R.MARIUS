@@ -1,7 +1,8 @@
 """Wake engine — the heart of Armarius (§4.3, §8.1).
 
 Responsibilities:
-  * enqueue task-scoped wakes (event or self/liveness), with in-process coalescing;
+  * enqueue task-scoped wakes (event or self/liveness), coalescing them in the database
+    so one (agent, task) pair never has two wakes owed or two runs live (FR-050);
   * for each wake, open/resume the (marius, adapter, task) session and run one bounded
     adapter turn;
   * tee the adapter's streamed events to a durable run-log AND a live event bus;
@@ -25,16 +26,29 @@ from armarius.application.use_cases.onboarding import credential_file_for
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.marius import Liveness, Marius
+from armarius.domain.entities.project_context import ProjectContext
 from armarius.domain.entities.role import Role
-from armarius.domain.entities.run import Run, RunEvent, RunStatus, WakeSource
+from armarius.domain.entities.run import (
+    ACTIVE_RUN_STATUSES,
+    Run,
+    RunEvent,
+    RunStatus,
+    WakeSource,
+)
 from armarius.domain.entities.seat_grant import SeatGrantStatus
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.task import Task, TaskStatus
-from armarius.domain.entities.wakeup import WakeupRequest, WakeupStatus
+from armarius.domain.entities.wakeup import (
+    WakePairBusyError,
+    WakeupRequest,
+    WakeupStatus,
+)
 from armarius.domain.entities.workspace import Project, Workspace
+from armarius.domain.services.wake_coalesce import merge_causes, stronger_source
 from armarius.domain.services.wake_policy import decide_self_wake
 from armarius.domain.services.wake_prompt import (
     DirectoryEntry,
+    ProjectBrief,
     ThreadMessage,
     WakeContext,
     build_wake_prompt,
@@ -65,8 +79,8 @@ class WakeEngine:
         self._task_trace = task_trace
         self._timeout = run_timeout_seconds
         self._max_attempts = max_continuation_attempts
-        # In-process coalescing: (marius_id, task_id) -> active run_id.
-        self._active: dict[tuple[UUID, UUID], UUID] = {}
+        # Coalescing is decided in the database (FR-050). This lock only keeps the
+        # common in-process case from doing redundant work — it is not the guarantee.
         self._lock = asyncio.Lock()
         self._bg: set[asyncio.Task[None]] = set()
 
@@ -81,63 +95,149 @@ class WakeEngine:
         reason: str | None = None,
         continuation_attempt: int = 0,
     ) -> UUID:
-        """Queue a task-scoped wake. Returns the run id (existing one if coalesced)."""
-        async with self._lock:
-            key = (marius_id, task_id)
-            if key in self._active:
-                run_id = self._active[key]
-                async with self._uow() as uow:
-                    await uow.wakeups.add(
-                        WakeupRequest(
-                            marius_id=marius_id,
-                            task_id=task_id,
-                            source=source,
-                            reason=reason,
-                            status=WakeupStatus.COALESCED,
-                            run_id=run_id,
-                            created_at=utcnow(),
-                        )
-                    )
-                    await uow.commit()
-                logger.info("wake coalesced into run %s (%s)", run_id, source)
-                return run_id
+        """Queue a task-scoped wake. Returns the run id (the existing one if coalesced).
 
-            async with self._uow() as uow:
-                task = await uow.tasks.get(task_id)
-                marius = await uow.mariuses.get(marius_id)
-                if task is None or marius is None:
-                    raise LookupError("task or marius not found")
-                run = Run(
+        FR-050 in one place: at most one pending wake and one live run per *(agent, task)*.
+        The decision is made from the database, not from a dictionary in this process —
+        which is what makes it survive a restart and hold across more than one worker.
+
+        The lock below still helps (it keeps the common case from doing wasted work) but it
+        is no longer what guarantees the invariant. The partial unique index is. If two
+        callers race past the lock, the loser is told the pair is busy and folds in.
+        """
+        async with self._lock:
+            for attempt in (0, 1):
+                folded = await self._fold_into_pending(marius_id, task_id, source, reason)
+                if folded is not None:
+                    logger.info("wake coalesced into run %s (%s)", folded, source)
+                    return folded
+                try:
+                    run_id = await self._open_run(
+                        marius_id, task_id, source, reason, continuation_attempt
+                    )
+                except WakePairBusyError:
+                    if attempt == 0:
+                        continue  # someone opened a run between our read and our write
+                    raise
+                break
+            else:  # pragma: no cover - the loop always returns or breaks
+                raise RuntimeError("wake enqueue did not settle")
+
+        self._spawn(run_id, marius_id, task_id)
+        return run_id
+
+    async def _fold_into_pending(
+        self,
+        marius_id: UUID,
+        task_id: UUID,
+        source: WakeSource,
+        reason: str | None,
+    ) -> UUID | None:
+        """Merge one more cause into the wake this pair already owes, if there is one.
+
+        Returns the run id the cause was folded into, or ``None`` when the pair is free.
+        """
+        async with self._uow() as uow:
+            pending = list(await uow.wakeups.list_active_for(marius_id, task_id))
+            if not pending:
+                return None
+            target = pending[0]
+            run = await uow.runs.get(target.run_id) if target.run_id else None
+            if run is None or run.status not in ACTIVE_RUN_STATUSES:
+                # A pending wake whose run is already over (or was never opened) is a dead
+                # row: it would wedge this pair forever, since nothing will ever come back
+                # to close it. Retire it and let the caller open a fresh run.
+                #
+                # Note the case this does NOT cover: a process killed mid-run leaves its
+                # run row saying *running* forever, so the pair stays held. Reclaiming
+                # those is the watchdog's job in Story 6 (FR-068) — guessing at it here
+                # would mean racing a run that may well still be alive.
+                for stale in pending:
+                    stale.status = WakeupStatus.FAILED
+                    stale.updated_at = utcnow()
+                    await uow.wakeups.update(stale)
+                await uow.commit()
+                return None
+
+            target.source = stronger_source(target.source, source)
+            target.reason = merge_causes(target.reason, source, reason)
+            target.updated_at = utcnow()
+            await uow.wakeups.update(target)
+
+            # The individual cause is kept as its own row. The merged reason says *what*
+            # the agent is owed; these rows say *when each cause arrived*, which is what
+            # tells us afterwards whether a cause made it into the prompt or missed it.
+            await uow.wakeups.add(
+                WakeupRequest(
+                    project_id=target.project_id,
+                    marius_id=marius_id,
+                    task_id=task_id,
+                    source=source,
+                    reason=reason,
+                    status=WakeupStatus.COALESCED,
+                    run_id=run.id,
+                    created_at=utcnow(),
+                )
+            )
+
+            # A run that has not started yet has no prompt: fold the cause into the run
+            # itself so the packet the agent eventually reads names all of them
+            # (quickstart scenario 4 step 2). Once it is running the prompt is already out
+            # — that cause is handled by the re-evaluation when the run ends (step 3).
+            if run.status == RunStatus.QUEUED:
+                run.wake_source = target.source
+                run.trigger_detail = target.reason
+                await uow.runs.update(run)
+
+            await uow.commit()
+            return run.id
+
+    async def _open_run(
+        self,
+        marius_id: UUID,
+        task_id: UUID,
+        source: WakeSource,
+        reason: str | None,
+        continuation_attempt: int,
+    ) -> UUID:
+        async with self._uow() as uow:
+            task = await uow.tasks.get(task_id)
+            marius = await uow.mariuses.get(marius_id)
+            if task is None or marius is None:
+                raise LookupError("task or marius not found")
+            run = Run(
+                project_id=task.project_id,
+                marius_id=marius_id,
+                task_id=task_id,
+                adapter_type=marius.adapter_type,
+                wake_source=source,
+                trigger_detail=reason,
+                status=RunStatus.QUEUED,
+                continuation_attempt=continuation_attempt,
+                created_at=utcnow(),
+            )
+            # The wake goes in first: it is the row whose index arbitrates the race, and
+            # its rejection is the one the caller knows how to recover from.
+            await uow.wakeups.add(
+                WakeupRequest(
                     project_id=task.project_id,
                     marius_id=marius_id,
                     task_id=task_id,
-                    adapter_type=marius.adapter_type,
-                    wake_source=source,
-                    trigger_detail=reason,
-                    status=RunStatus.QUEUED,
-                    continuation_attempt=continuation_attempt,
+                    source=source,
+                    reason=reason,
+                    status=WakeupStatus.DISPATCHED,
+                    run_id=run.id,
                     created_at=utcnow(),
                 )
-                run = await uow.runs.add(run)
-                await uow.wakeups.add(
-                    WakeupRequest(
-                        marius_id=marius_id,
-                        task_id=task_id,
-                        source=source,
-                        reason=reason,
-                        status=WakeupStatus.DISPATCHED,
-                        run_id=run.id,
-                        created_at=utcnow(),
-                    )
-                )
-                await uow.commit()
+            )
+            await uow.runs.add(run)
+            await uow.commit()
+            return run.id
 
-            self._active[key] = run.id
-
-        bg = asyncio.create_task(self._execute_run(run.id, marius_id, task_id))
+    def _spawn(self, run_id: UUID, marius_id: UUID, task_id: UUID) -> None:
+        bg = asyncio.create_task(self._execute_run(run_id, marius_id, task_id))
         self._bg.add(bg)
         bg.add_done_callback(self._bg.discard)
-        return run.id
 
     async def drain(self, *, wait_seconds: float = 5.0) -> None:
         """Wait for every in-flight run to finish.
@@ -164,8 +264,59 @@ class WakeEngine:
         except Exception:  # pragma: no cover - defensive
             logger.exception("run %s crashed", run_id)
         finally:
-            async with self._lock:
-                self._active.pop((marius_id, task_id), None)
+            # Release the pair whatever happened. Leaving the wake pending after a crash
+            # would wedge this agent out of this task permanently.
+            await self._close_wakeup(run_id)
+        # Both of these may enqueue, so they run only after the pair is free.
+        await self._rewake_for_absorbed_causes(run_id, marius_id, task_id)
+        await self._maybe_self_wake(run_id)
+
+    async def _close_wakeup(self, run_id: UUID) -> None:
+        async with self._uow() as uow:
+            run = await uow.runs.get(run_id)
+            if run is None or run.marius_id is None or run.task_id is None:
+                return
+            for w in await uow.wakeups.list_active_for(run.marius_id, run.task_id):
+                if w.run_id != run_id:
+                    continue
+                w.status = WakeupStatus.DONE
+                w.updated_at = utcnow()
+                await uow.wakeups.update(w)
+            await uow.commit()
+
+    async def _rewake_for_absorbed_causes(
+        self, run_id: UUID, marius_id: UUID, task_id: UUID
+    ) -> None:
+        """FR-050, last clause: a cause that landed mid-run is reconsidered when it ends.
+
+        "The running turn absorbs it" must not quietly mean "it is dropped". A cause that
+        arrived after the prompt was built was never shown to the agent — if nothing looks
+        again, a question asked one second too late is simply never answered.
+        """
+        async with self._uow() as uow:
+            run = await uow.runs.get(run_id)
+            if run is None:
+                return
+            absorbed = await uow.wakeups.list_coalesced_into(run_id)
+
+        started = run.started_at
+        owed = [
+            w
+            for w in absorbed
+            if started is None or (w.created_at is not None and w.created_at >= started)
+        ]
+        if not owed:
+            return
+
+        source = owed[0].source
+        merged: str | None = None
+        for w in owed:
+            source = stronger_source(source, w.source)
+            merged = merge_causes(merged, w.source, w.reason)
+        logger.info("re-waking %s for %d cause(s) absorbed mid-run", marius_id, len(owed))
+        await self.enqueue(
+            marius_id=marius_id, task_id=task_id, source=source, reason=merged
+        )
 
     async def _do_execute_run(self, run_id: UUID) -> None:
         async with self._uow() as uow:
@@ -182,10 +333,25 @@ class WakeEngine:
             new_messages = await self._new_messages(uow, task, marius)
             workspace = await uow.workspaces.get(marius.workspace_id)
             project = await uow.projects.get(task.project_id)
+            # FR-009: only the APPROVED version rides the packet. A brief still under
+            # review is a proposal — acting on it would make the approval gate cosmetic.
+            brief = (
+                await uow.project_contexts.get_approved(task.project_id)
+                if task.project_id
+                else None
+            )
 
             prompt = build_wake_prompt(
                 _wake_context(
-                    run, marius, task, directory, self_role, new_messages, workspace, project
+                    run,
+                    marius,
+                    task,
+                    directory,
+                    self_role,
+                    new_messages,
+                    workspace,
+                    project,
+                    brief,
                 )
             )
 
@@ -291,9 +457,6 @@ class WakeEngine:
             await _flush_assistant()
 
             await self._finalise(uow, run, task, marius, session, result)
-
-        # Self-wake policy runs after the transaction closes (may enqueue a new run).
-        await self._maybe_self_wake(run_id)
 
     async def _finalise(
         self,
@@ -460,6 +623,7 @@ def _wake_context(
     messages: Sequence[Comment],
     workspace: Workspace | None = None,
     project: Project | None = None,
+    brief: ProjectContext | None = None,
 ) -> WakeContext:
     dir_entries = [
         DirectoryEntry(
@@ -493,6 +657,17 @@ def _wake_context(
         reason=run.trigger_detail,
         self_role=(self_role.title if self_role else ""),
         self_role_description=(self_role.description if self_role else ""),
+        project_brief=(
+            ProjectBrief(
+                objective=brief.objective,
+                background=brief.background,
+                constraints=brief.constraints,
+                scope=brief.scope,
+                principles=brief.principles,
+            )
+            if brief
+            else None
+        ),
         workspace_name=workspace.name if workspace else "",
         project_name=project.name if project else "",
         credential_file=(

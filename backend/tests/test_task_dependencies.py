@@ -335,13 +335,15 @@ async def test_finishing_a_task_wakes_the_leader_to_pass_the_word(uow_factory) -
 
     await _walk_to_done(tasks, uow_factory, task.id)
 
-    # Hai lần gọi, không phải một: đầu việc xong (FR-031), và vì đây là đầu việc duy nhất
-    # nên cả đợt cũng khép luôn — Trưởng dự án được gọi lần nữa để soạn bản tổng kết
-    # (FR-043). Gộp hai chuyện đó vào một lần gọi sẽ mất mất một trong hai.
-    assert len(leader.calls) == 2
+    # Ba lần gọi, không phải một. Đường đi tới *xong* chạm ba chuyện khác nhau và mỗi
+    # chuyện là một cớ riêng trong danh sách đóng của FR-047: bài nộp chờ chấm, rồi đầu
+    # việc xong (FR-031), rồi — vì đây là đầu việc duy nhất — cả đợt cũng khép, nên Trưởng
+    # dự án được gọi lần nữa để soạn bản tổng kết (FR-043). Gộp chúng lại là mất bớt.
+    assert len(leader.calls) == 3
     assert all(c["project_id"] == project.id for c in leader.calls)
-    assert leader.calls[0]["reason"] == "một đầu việc vừa xong"
-    assert leader.calls[1]["reason"] == "cả đợt việc đã xong"
+    assert leader.calls[0]["reason"] == "một đầu việc chuyển sang chờ rà soát"
+    assert leader.calls[1]["reason"] == "một đầu việc vừa xong"
+    assert leader.calls[2]["reason"] == "cả đợt việc đã xong"
 
 
 async def test_the_project_channel_hears_the_unlock(uow_factory) -> None:

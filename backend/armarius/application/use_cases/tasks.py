@@ -551,6 +551,19 @@ class TaskService:
                 EVENT_TASK_UNLOCKED,
                 {"task_id": str(freed.id), "unblocked_by": str(task_id)},
             )
+        if target is TaskStatus.IN_REVIEW:
+            # FR-047: handing work in is a cause to wake the **Leader**, who owes the
+            # judgement. FR-049 is the other half — the worker is not woken for its own
+            # submission; it has nothing left to do until somebody answers.
+            await self._notify_leader(
+                project_id,
+                text=(
+                    f"Đầu việc {updated.identifier or task_id} đã nộp và đang chờ bạn chấm "
+                    "theo bộ tiêu chí."
+                ),
+                reason="một đầu việc chuyển sang chờ rà soát",
+                source=WakeSource.TASK_IN_REVIEW,
+            )
         if target is TaskStatus.DONE:
             await self._notify_leader(
                 project_id,
