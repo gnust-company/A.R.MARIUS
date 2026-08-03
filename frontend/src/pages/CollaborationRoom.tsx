@@ -24,7 +24,7 @@ import {
   MessageSquare,
   XCircle,
 } from 'lucide-react';
-import { ApiError } from '@/lib/api';
+import { ApiError, listTaskApprovals, signTaskApproval, type ApprovalDTO } from '@/lib/api';
 import { useAppStore, type TraceEvent, type Task } from '@/store/appStore';
 import { useTaskStream } from '@/hooks/use-task-stream';
 import { cn, wsHref } from '@/lib/utils';
@@ -333,6 +333,63 @@ export default function CollaborationRoom() {
     }
   }, [task, criteriaDraft, store]);
 
+  // ── Công nhận đầu ra (FR-033, FR-035) ──────────────────────────────────────
+  const [approvals, setApprovals] = useState<ApprovalDTO[]>([]);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
+  const [signing, setSigning] = useState(false);
+
+  // Tải danh sách chữ ký bằng chuỗi lời hứa, không dùng `await` thẳng trong thân hiệu
+  // ứng: đặt trạng thái đồng bộ ở đó kéo theo một vòng vẽ lại thừa mỗi lần đầu việc đổi.
+  const [approvalsKey, setApprovalsKey] = useState(0);
+  const signedTaskId = task?.id;
+  const signedTaskStatus = task?.status;
+
+  useEffect(() => {
+    if (!signedTaskId) return;
+    let alive = true;
+    listTaskApprovals(signedTaskId)
+      .then((rows) => {
+        if (alive) setApprovals(rows);
+      })
+      .catch(() => {
+        // Danh sách chữ ký chỉ để đọc; hỏng thì ô ký vẫn dùng được, không chặn cả trang.
+        if (alive) setApprovals([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [signedTaskId, signedTaskStatus, approvalsKey]);
+
+  /** Vòng hiện tại = số lần bị trả lại + 1; chữ ký vòng cũ không tính sang vòng mới. */
+  const currentRound = approvals.filter((a) => a.result === 'reject').length + 1;
+  const leaderSigned = approvals.some(
+    (a) => a.round === currentRound && a.signer_kind === 'leader' && a.result === 'approve',
+  );
+
+  const handleSign = useCallback(
+    async (approve: boolean) => {
+      if (!task) return;
+      let reason: string | undefined;
+      if (!approve) {
+        const said = window.prompt(t('collaborationRoom.acceptance.reasonPrompt'));
+        if (!said || !said.trim()) return;
+        reason = said.trim();
+      }
+      setSigning(true);
+      setApprovalError(null);
+      try {
+        await signTaskApproval(task.id, approve, reason);
+        await store.hydrateTask(task.id);
+        setApprovalsKey((n) => n + 1);
+      } catch (e) {
+        setApprovalError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setSigning(false);
+      }
+    },
+    [task, store, t],
+  );
+
   const handleAddDependency = async (blocksTaskId: string) => {
     if (!task || !blocksTaskId) return;
     setDepError(null);
@@ -612,6 +669,54 @@ export default function CollaborationRoom() {
                 </>
               )}
             </div>
+
+            {/* Công nhận đầu ra (spec 001 FR-033) — đặt ngay dưới bộ tiêu chí và thành
+                phẩm, vì đó chính là hai thứ người ký phải nhìn trước khi ký. Ô này chỉ
+                hiện khi đầu việc đang *chờ rà soát*: ký sớm hơn thì chưa có gì để chấm,
+                ký muộn hơn thì việc đã đóng. */}
+            {statusValue === 'in_review' && (
+              <div>
+                <label className="block font-body text-body-xs font-semibold text-ink-light uppercase tracking-wider mb-2">
+                  {t('collaborationRoom.acceptance.title')}
+                </label>
+                <p className="font-body text-body-xs text-ink-muted mb-2">
+                  {leaderSigned
+                    ? t('collaborationRoom.acceptance.yourTurn')
+                    : t('collaborationRoom.acceptance.waitingLeader')}
+                </p>
+                {approvals.length > 0 && (
+                  <ul className="space-y-1 mb-2">
+                    {approvals.map((a) => (
+                      <li key={a.id} className="font-body text-body-xs text-ink-light">
+                        {t(`collaborationRoom.acceptance.signer.${a.signer_kind}`)} ·{' '}
+                        {t(`collaborationRoom.acceptance.result.${a.result}`)}
+                        {a.is_auto && ` · ${t('collaborationRoom.acceptance.auto')}`}
+                        {a.reason && ` — ${a.reason}`}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {approvalError && (
+                  <p className="font-body text-body-xs text-error mb-2">{approvalError}</p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    disabled={!leaderSigned || signing}
+                    onClick={() => void handleSign(true)}
+                    className="px-3 py-1.5 rounded-md bg-gold text-white font-body text-body-xs disabled:opacity-50"
+                  >
+                    {t('collaborationRoom.acceptance.accept')}
+                  </button>
+                  <button
+                    disabled={!leaderSigned || signing}
+                    onClick={() => void handleSign(false)}
+                    className="px-3 py-1.5 rounded-md bg-vellum-dark text-ink font-body text-body-xs disabled:opacity-50"
+                  >
+                    {t('collaborationRoom.acceptance.sendBack')}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Dependencies (blocked_by, #91) */}
             <div>

@@ -617,6 +617,56 @@ export async function setTaskCriteria(taskId: string, texts: string[]): Promise<
   })
 }
 
+// ── Output acceptance: the two signatures that close a task (spec 001 Story 3) ──
+/** One recorded signature. `is_auto` marks one the auto-approval switch supplied. */
+export interface ApprovalDTO {
+  id: string
+  task_id?: string | null
+  round: number
+  signer_kind: 'leader' | 'patron'
+  signer_marius_id?: string | null
+  signer_user_id?: string | null
+  result: 'approve' | 'reject'
+  reason?: string | null
+  is_auto: boolean
+  signed_at?: string | null
+}
+
+export async function listTaskApprovals(taskId: string): Promise<ApprovalDTO[]> {
+  return get<ApprovalDTO[]>(`/v1/tasks/${taskId}/approvals`)
+}
+
+/**
+ * The patron's signature. Refusing needs a reason — it becomes the worker's next action,
+ * so an empty one leaves them nothing to fix (FR-040).
+ */
+export async function signTaskApproval(
+  taskId: string,
+  approve: boolean,
+  reason?: string,
+): Promise<TaskDTO> {
+  return post<TaskDTO>(`/v1/tasks/${taskId}/approval`, { approve, reason: reason ?? null })
+}
+
+/** This patron's own auto-approval switch on one project. Off until they turn it on. */
+export interface AutoApprovalDTO {
+  project_id?: string | null
+  user_id: string
+  enabled: boolean
+  updated_at?: string | null
+}
+
+export async function getAutoApproval(projectId: string): Promise<AutoApprovalDTO> {
+  return get<AutoApprovalDTO>(`/v1/projects/${projectId}/auto-approval`)
+}
+
+export async function setAutoApproval(
+  projectId: string,
+  enabled: boolean,
+): Promise<AutoApprovalDTO> {
+  return put<AutoApprovalDTO>(`/v1/projects/${projectId}/auto-approval`, { enabled })
+}
+
 // ── Dependencies (blocked_by edges, #91) ─────────────────────────────────────
 /** A task that blocks another (rendered in the blocked-by list). */
 export interface BlockerDTO {

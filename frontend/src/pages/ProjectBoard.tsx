@@ -386,6 +386,32 @@ export default function ProjectBoard() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Công tắc tự động công nhận của **chính người đang xem** (FR-036 → FR-038). Không phải
+  // một thiết lập của dự án: mỗi người chủ có công tắc riêng, và không ai bật hộ ai.
+  const [autoApproval, setAutoApproval] = useState<boolean | null>(null);
+  const [switching, setSwitching] = useState(false);
+
+  useEffect(() => {
+    if (!projectId) return;
+    api
+      .getAutoApproval(projectId)
+      .then((row) => setAutoApproval(row.enabled))
+      .catch(() => setAutoApproval(null));
+  }, [projectId]);
+
+  const toggleAutoApproval = async () => {
+    if (!projectId || autoApproval === null) return;
+    setSwitching(true);
+    try {
+      const row = await api.setAutoApproval(projectId, !autoApproval);
+      setAutoApproval(row.enabled);
+    } catch {
+      // Giữ nguyên trạng thái đang hiện: thà không đổi còn hơn hiện sai điều người chủ đã chọn.
+    } finally {
+      setSwitching(false);
+    }
+  };
+
   const handleDeleteProject = async () => {
     if (!projectId) return;
     setDeleting(true);
@@ -460,6 +486,27 @@ export default function ProjectBoard() {
               </button>
             </div>
           </div>
+
+          {/* Công tắc tự động công nhận — chỉ hiện khi dự án đã nhận việc thật, vì trước
+              đó chưa có đầu ra nào để công nhận. */}
+          {autoApproval !== null && acceptsTasks && (
+            <div className="mb-3 flex items-start gap-2">
+              <input
+                id="auto-approval"
+                type="checkbox"
+                checked={autoApproval}
+                disabled={switching}
+                onChange={() => void toggleAutoApproval()}
+                className="mt-1"
+              />
+              <label htmlFor="auto-approval" className="font-body text-body-sm text-ink-light">
+                <span className="text-ink">{t('board.autoApproval')}</span>
+                <span className="block text-body-xs text-ink-muted">
+                  {autoApproval ? t('board.autoApprovalOn') : t('board.autoApprovalOff')}
+                </span>
+              </label>
+            </div>
+          )}
 
           {/* Objective */}
           <p className="font-body text-body-md text-ink-light mb-3">{project.objective || ''}</p>
