@@ -89,6 +89,10 @@ Một công tắc theo cặp *(dự án, người chủ)*.
 Khi bật: mọi việc cần chữ ký của người đó **cho công việc của agent do họ cấp** coi như đã ký sẵn. **Không**
 áp cho ba quyết định cấp dự án — duyệt kế hoạch, duyệt thay đổi lớn, chuyển giai đoạn (FR-037).
 
+Khoá đôi giữ nguyên dù phạm vi hiện tại là **một người chủ cho mỗi dự án** (chốt 2026-08-03). Gộp thành một
+công tắc cấp dự án sẽ tiết kiệm được đúng một cột, đổi lại ngày mở nhiều người chủ phải di trú lại và không
+có cách nào biết công tắc cũ là của ai.
+
 ## 6. Đầu việc
 
 | Trường | Trạng thái | Ghi chú |
@@ -299,7 +303,7 @@ Tám phần bắt buộc (FR-044). Phần nào rỗng thì ghi rõ "không có" 
 | Việc | Rủi ro | Cách làm |
 |---|---|---|
 | Thêm hai giai đoạn dự án | Thấp | Dự án đang ở *vận hành* giữ nguyên; *lưu trữ* ánh xạ sang *đóng* |
-| Thêm người cấp vào ghế | **Trung bình** | Ghế cũ không biết ai cấp. Lấp bằng người tạo dự án, ghi rõ đây là suy đoán |
+| Thêm người cấp vào ghế | **Thấp** *(hạ 2026-08-03)* | Ghế cũ không biết ai cấp. Lấp bằng chủ vùng làm việc — trong phạm vi một người chủ, suy đoán này đang đúng. Vẫn ghi rõ trong chú thích bản di trú rằng đây là suy đoán, và ghế cấp từ nay phải ghi người thật |
 | Siết bảng chuyển trạng thái | **Cao** | Rà dữ liệu thật xem có đầu việc nào đã đi *đang làm → xong*. Đầu việc đang *xong* giữ nguyên, không hồi tố |
 | Nâng định nghĩa hoàn thành thành danh sách | Trung bình | Chuỗi tự do cũ thành **một** tiêu chí *chưa chấm*, không cố tự tách dòng |
 | Bỏ cờ chết `require_approval_for_done` | Thấp | Không nơi nào đọc |

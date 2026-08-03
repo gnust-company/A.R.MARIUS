@@ -222,20 +222,25 @@ tạo và giao ngay; ngoài khuôn → ở lại *nháp*, mục chờ duyệt v�
 
 ## Giai đoạn 5: Câu chuyện 3 — Hai chữ ký và công tắc tự động công nhận (Ưu tiên: P2)
 
-**Đích**: mọi đầu việc cần hai chữ ký; đầu ra định tuyến về đúng người chủ đã cấp agent; công tắc tự động
-riêng cho từng người chủ. Phủ FR-033 → FR-043 và FR-077.
+**Đích**: mọi đầu việc cần hai chữ ký; đầu ra định tuyến bằng quan hệ **ai đã cấp agent vào ghế**; công tắc
+tự động theo cặp *(dự án, người chủ)*. Phủ FR-033 → FR-043 và FR-077.
 
-**Kiểm độc lập**: hai người chủ, mỗi người cấp một thợ. Đầu ra của thợ nào rơi vào hộp thư người ấy, không
-lẫn. Một người bật công tắc → đầu ra của thợ họ cấp đóng ngay sau khi Trưởng dự án gật, nhưng vết vẫn ghi rõ
-họ được coi là đã ký; người kia vẫn phải gật tay.
+**Phạm vi — một người chủ** *(chốt 2026-08-03)*: sản phẩm chưa có cơ chế mời người vào vùng làm việc, nên mỗi
+dự án hiện có đúng một người chủ. Quy tắc hai chữ ký và công tắc **không đổi** — Trưởng dự án là agent, người
+chủ là người. Thứ hoãn sang tính năng sau chỉ là phần **định tuyến giữa nhiều người chủ**.
+
+**Kiểm độc lập**: một người chủ, một thợ do người đó cấp ghế. Trưởng dự án gật → đầu việc **chưa** đóng, mục
+chờ công nhận rơi vào hộp thư người chủ **theo quan hệ ai cấp ghế đọc từ dữ liệu**, không suy từ "ai là chủ
+vùng". Người chủ gật → *xong*. Bật công tắc → đầu ra kế tiếp đóng ngay, không mục nào vào hộp thư, nhưng vết
+vẫn ghi rõ họ được coi là đã ký.
 
 **Phụ thuộc**: Giai đoạn 4.
 
 ### Bài kiểm (viết trước, phải đỏ) ⚠️
 
 - [ ] T078 [P] [US3] Bài kiểm luật hai chữ ký bằng hàm thuần trong `backend/tests/test_approval_rules.py`
-- [ ] T079 [P] [US3] Bài kiểm định tuyến theo người cấp agent — hai người chủ, không lẫn hộp thư — trong `backend/tests/test_approval_routing.py`
-- [ ] T080 [P] [US3] Bài kiểm công tắc tự động: mặc định tắt, chỉ chủ sở hữu đổi được, **không** áp cho ba quyết định cấp dự án (FR-037) — trong `backend/tests/test_auto_approval.py`
+- [ ] T079 [P] [US3] Bài kiểm định tuyến theo người cấp agent — mục chờ công nhận phải tra ra người nhận từ **người cấp ghế** đã ghi, và ghế không ghi người cấp thì hỏng chứ không âm thầm rơi về chủ vùng — trong `backend/tests/test_approval_routing.py`. *(Vế hai người chủ không lẫn hộp thư: hoãn.)*
+- [ ] T080 [P] [US3] Bài kiểm công tắc tự động: mặc định tắt, Trưởng dự án không đụng được, **không** áp cho ba quyết định cấp dự án (FR-037) — trong `backend/tests/test_auto_approval.py`. *(Vế người chủ khác bật thay: hoãn.)*
 - [ ] T081 [P] [US3] Bài kiểm vòng từ chối: về *đang làm*, đánh thức đúng thợ cũ, ba vòng thì kéo Trưởng dự án vào — trong `backend/tests/test_approval_rejection.py`
 
 ### Thực thể và luật thuần
@@ -248,7 +253,7 @@ họ được coi là đã ký; người kia vẫn phải gật tay.
 ### Lưu trữ
 
 - [ ] T086 [US3] Cột người cấp trên bảng ghế, bảng `task_approvals` và `project_auto_approvals` trong `backend/armarius/infrastructure/database/models.py`
-- [ ] T087 [US3] Bản di trú Đợt 3 trong `backend/armarius/infrastructure/alembic/versions/`, lấp người cấp cho ghế cũ bằng người tạo dự án và **ghi rõ trong chú thích bản di trú rằng đây là suy đoán, không phải sự thật lịch sử**
+- [ ] T087 [US3] Bản di trú Đợt 3 trong `backend/armarius/infrastructure/alembic/versions/`, lấp người cấp cho ghế cũ bằng chủ vùng làm việc và **ghi rõ trong chú thích bản di trú rằng đây là suy đoán, không phải sự thật lịch sử** — trong phạm vi một người chủ suy đoán này đang đúng, nhưng ghế cấp **từ nay trở đi** phải ghi người thật (T097), không được dựa vào suy đoán đó
 - [ ] T088 [US3] Bộ ánh xạ và kho chứa cho chữ ký, công tắc trong `backend/armarius/infrastructure/persistence/mappers.py` và `backend/armarius/infrastructure/persistence/repositories.py`, nối vào `backend/armarius/infrastructure/persistence/unit_of_work.py`
 
 ### Ứng dụng
@@ -262,7 +267,7 @@ họ được coi là đã ký; người kia vẫn phải gật tay.
 
 ### Mặt giao tiếp
 
-- [ ] T095 [US3] Lối vào `POST /v1/tasks/{id}/approval` và `GET/PUT /v1/projects/{id}/auto-approval` trong `backend/armarius/presentation/api/tasks.py` và `backend/armarius/presentation/api/projects.py`, trả `403` khi người gọi không phải người chủ chịu trách nhiệm
+- [ ] T095 [US3] Lối vào `POST /v1/tasks/{id}/approval` và `GET/PUT /v1/projects/{id}/auto-approval` trong `backend/armarius/presentation/api/tasks.py` và `backend/armarius/presentation/api/projects.py`, trả `403` khi người gọi không phải người chủ chịu trách nhiệm — kiểm bằng **người cấp ghế**, giữ nguyên phép kiểm này dù hôm nay nó luôn trùng chủ vùng
 - [ ] T096 [US3] Lối vào `POST /agent/tasks/{id}/approval` cho Trưởng dự án trong `backend/armarius/presentation/api/agent.py`
 - [ ] T097 [US3] Ghi người cấp ngay lúc cấp ghế trong `backend/armarius/application/use_cases/projects.py` và lối vào cấp ghế tương ứng
 
@@ -274,7 +279,7 @@ họ được coi là đã ký; người kia vẫn phải gật tay.
 
 ### Kiểm chứng chạy thật
 
-- [ ] T101 [US3] Dựng lại hai vùng chứa, tạo **hai** người chủ mỗi người cấp một thợ, chạy trọn bảy bước của Kịch bản 3 trong `specs/001-van-hanh-du-an/quickstart.md`
+- [ ] T101 [US3] Dựng lại hai vùng chứa, tạo **một** người chủ cấp một thợ, chạy trọn bảy bước của Kịch bản 3 trong `specs/001-van-hanh-du-an/quickstart.md`, và soi cơ sở dữ liệu thật để chắc ghế có ghi người cấp
 
 **Chốt chặn**: Câu chuyện 3 chạy độc lập được. Một PR, dừng chờ người chủ duyệt.
 
