@@ -28,6 +28,8 @@ from armarius.domain.entities.inbox_item import InboxItemKind
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.task import (
     DEPENDENCY_GATED_STATUSES,
+    SIGNATURE_REQUIRED_STATUSES,
+    TERMINAL_STATUSES,
     Task,
     TaskDrive,
     TaskPriority,
@@ -38,6 +40,11 @@ from armarius.domain.entities.task import (
 from armarius.domain.entities.task_dependency import TaskDependency, TaskDependencyError
 from armarius.domain.entities.task_log import ActorKind, TaskLogKind
 from armarius.domain.services import project_rules
+from armarius.domain.services.approval_rules import (
+    is_closable,
+    missing_signatures,
+    rejection_rounds,
+)
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import utcnow
 
@@ -496,6 +503,17 @@ class TaskService:
                 open_blockers = await uow.dependencies.list_unfinished_blockers(task_id)
                 deps_satisfied = not open_blockers
                 unmet = tuple(b.identifier or str(b.id) for b in open_blockers)
+            signed = True
+            missing: tuple[str, ...] = ()
+            if target in SIGNATURE_REQUIRED_STATUSES:
+                # The two-signature gate (FR-033). Reading it here is what makes
+                # "move it straight to done" stop working from every entry point at once
+                # — the board, the agent surface and the middle layer all land here.
+                history = await uow.approvals.list_for_task(task_id)
+                round_no = rejection_rounds(history) + 1
+                this_round = [a for a in history if a.round == round_no]
+                signed = is_closable(this_round)
+                missing = tuple(str(k) for k in missing_signatures(this_round))
             now = utcnow()
             task.transition_to(
                 target,
@@ -504,6 +522,8 @@ class TaskService:
                 deps_satisfied=deps_satisfied,
                 reason=reason,
                 unmet_blockers=unmet,
+                signatures_complete=signed,
+                missing_signatures=missing,
             )
             task.drive = _drive_for(target)
             task.updated_at = now
@@ -545,7 +565,28 @@ class TaskService:
                 reason="một đầu việc vừa xong",
                 source=WakeSource.TASK_DONE,
             )
+            if not await self._project_has_open_tasks(project_id):
+                # FR-043: cả đợt việc đã khép — Trưởng dự án soạn bản tổng kết, rồi người
+                # chủ quyết đóng dự án / chuyển bảo trì / mở đợt mới. Không có cổng nghiệm
+                # thu cấp dự án (FR-042): công việc đã được công nhận từng đầu việc rồi.
+                await self._notify_leader(
+                    project_id,
+                    text=(
+                        "Mọi đầu việc của đợt đã khép. Soạn bản tổng kết đợt rồi gửi "
+                        "người chủ kèm ba lựa chọn: đóng dự án, chuyển bảo trì, "
+                        "hoặc mở đợt việc mới."
+                    ),
+                    reason="cả đợt việc đã xong",
+                    source=WakeSource.TASK_DONE,
+                )
         return updated
+
+    async def _project_has_open_tasks(self, project_id: UUID | None) -> bool:
+        if project_id is None:
+            return True
+        async with self._uow() as uow:
+            tasks = await uow.tasks.list_by_project(project_id)
+        return any(t.status not in TERMINAL_STATUSES for t in tasks)
 
     async def reopen(
         self, task_id: UUID, *, reason: str, user_id: str | None = None

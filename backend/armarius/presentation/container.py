@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from armarius.application.ports.artifact_store import ArtifactStore
 from armarius.application.ports.event_bus import EventBus
+from armarius.application.use_cases.approvals import ApprovalService
 from armarius.application.use_cases.artifacts import ArtifactService
 from armarius.application.use_cases.auth import AuthService
 from armarius.application.use_cases.enrollment import InviteService
@@ -65,6 +66,7 @@ class Container:
     labels: LabelService
     mariuses: MariusService
     tasks: TaskService
+    approvals: ApprovalService
     task_logs: TaskLogService
     threads: ThreadService
     artifacts: ArtifactService
@@ -157,6 +159,17 @@ def build_container() -> Container:
         settings.public_api_url,
     )
 
+    # Tasks and approvals are built here rather than inline below: the approval service
+    # closes a task through the task service, so it needs the same instance the API uses.
+    tasks = TaskService(
+        uow_factory,
+        wake_engine,
+        leader_chat=leader_chat,
+        task_logs=TaskLogService(uow_factory),
+        control_bus=control_bus,
+        inbox=inbox,
+    )
+
     liveness = liveness_for_chat
     liveness_watchdog = LivenessWatchdog(
         uow_factory,
@@ -187,13 +200,13 @@ def build_container() -> Container:
         inbox=inbox,
         labels=LabelService(uow_factory),
         mariuses=MariusService(uow_factory),
-        tasks=TaskService(
+        tasks=tasks,
+        approvals=ApprovalService(
             uow_factory,
-            wake_engine,
-            leader_chat=leader_chat,
+            tasks=tasks,
+            wake=wake_engine,
             task_logs=TaskLogService(uow_factory),
             control_bus=control_bus,
-            inbox=inbox,
         ),
         task_logs=TaskLogService(uow_factory),
         threads=ThreadService(uow_factory, wake_engine),

@@ -19,6 +19,7 @@ from armarius.domain.entities.checklist_item import (
     assert_criteria_editable,
 )
 from armarius.domain.entities.task import Task, TaskStatus
+from tests.support.approvals import task_awaiting_acceptance
 from tests.support.planning import client, operating_project
 
 # ── thực thể: một tiêu chí là một khẳng định chấm được ────────────────────────────
@@ -166,30 +167,25 @@ async def test_the_completion_mark_survives_the_trip_out_over_http() -> None:
     """
     async with client() as c:
         p = await operating_project(c, "mark-a@armarius.dev")
-        created = await c.post(
-            f"/v1/projects/{p.project_id}/tasks",
-            headers=p.headers,
-            json={"title": "Việc chạy trọn đường", "description": "Có mô tả đàng hoàng."},
-        )
-        task_id = created.json()["id"]
-        for status in ("todo", "in_progress"):
-            moved = await c.post(
-                f"/v1/tasks/{task_id}/status", headers=p.headers, json={"status": status}
-            )
-            assert moved.status_code == 200, moved.text
-        assert moved.json()["in_progress_at"] is not None
+        task_id = await task_awaiting_acceptance(c, p, title="Việc chạy trọn đường")
+        detail = await c.get(f"/v1/tasks/{task_id}", headers=p.headers)
+        assert detail.json()["in_progress_at"] is not None
 
-        published = await c.post(
-            f"/v1/tasks/{task_id}/artifacts",
-            headers=p.headers,
-            json={"name": "ket-qua.txt", "kind": "file", "content": "xong"},
-        )
-        assert published.status_code == 201, published.text
-        await c.post(
-            f"/v1/tasks/{task_id}/status", headers=p.headers, json={"status": "in_review"}
-        )
-        done = await c.post(
+        # Từ Câu chuyện 3, cửa vào *xong* là hai chữ ký chứ không phải ô chọn trạng thái.
+        shortcut = await c.post(
             f"/v1/tasks/{task_id}/status", headers=p.headers, json={"status": "done"}
         )
+        assert shortcut.status_code == 409, shortcut.text
+
+        leader = await c.post(
+            f"/agent/tasks/{task_id}/approval",
+            headers=p.leader_headers,
+            json={"approve": True},
+        )
+        assert leader.status_code == 200, leader.text
+        done = await c.post(
+            f"/v1/tasks/{task_id}/approval", headers=p.headers, json={"approve": True}
+        )
     assert done.status_code == 200, done.text
+    assert done.json()["status"] == "done", done.text
     assert done.json()["completed_at"] is not None

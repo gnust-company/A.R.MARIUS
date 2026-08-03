@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from armarius.domain.entities.approval import Approval, ApprovalResult, SignerKind
 from armarius.domain.entities.artifact import Artifact
+from armarius.domain.entities.auto_approval import AutoApproval
 from armarius.domain.entities.checklist_item import AcceptanceResult, ChecklistItem
 from armarius.domain.entities.comment import AuthorKind, Comment
 from armarius.domain.entities.inbox_item import (
@@ -47,6 +49,7 @@ from armarius.infrastructure.database.models import (
     OnboardingSessionModel,
     PlanItemModel,
     PlanModel,
+    ProjectAutoApprovalModel,
     ProjectContextModel,
     ProjectLeaderConversationModel,
     ProjectModel,
@@ -56,6 +59,7 @@ from armarius.infrastructure.database.models import (
     SeatGrantModel,
     SessionModel,
     SkillModel,
+    TaskApprovalModel,
     TaskDependencyModel,
     TaskLogModel,
     TaskModel,
@@ -130,6 +134,7 @@ def seat_grant_to_entity(m: SeatGrantModel) -> SeatGrant:
         role_key=m.role_key,
         marius_id=m.marius_id,
         status=SeatGrantStatus(m.status),
+        granted_by_user_id=m.granted_by_user_id,
         granted_at=m.granted_at,
         created_at=m.created_at,
     )
@@ -453,4 +458,30 @@ def plan_to_entity(m: PlanModel, items: list[PlanItemModel] | None = None) -> Pl
         created_at=m.created_at,
         updated_at=m.updated_at,
         items=[plan_item_to_entity(i) for i in (items or [])],
+    )
+
+
+def approval_to_entity(m: TaskApprovalModel) -> Approval:
+    return Approval(
+        id=m.id,
+        task_id=m.task_id,
+        round=m.round,
+        signer_kind=SignerKind(m.signer_kind),
+        signer_marius_id=m.signer_marius_id,
+        signer_user_id=m.signer_user_id,
+        result=ApprovalResult(m.result),
+        reason=m.reason,
+        is_auto=bool(m.is_auto),
+        signed_at=m.signed_at,
+    )
+
+
+def auto_approval_to_entity(m: ProjectAutoApprovalModel) -> AutoApproval:
+    return AutoApproval(
+        id=m.id,
+        project_id=m.project_id,
+        user_id=m.user_id,
+        enabled=bool(m.enabled),
+        created_at=m.created_at,
+        updated_at=m.updated_at,
     )

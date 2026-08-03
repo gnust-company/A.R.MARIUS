@@ -238,48 +238,48 @@ vẫn ghi rõ họ được coi là đã ký.
 
 ### Bài kiểm (viết trước, phải đỏ) ⚠️
 
-- [ ] T078 [P] [US3] Bài kiểm luật hai chữ ký bằng hàm thuần trong `backend/tests/test_approval_rules.py`
-- [ ] T079 [P] [US3] Bài kiểm định tuyến theo người cấp agent — mục chờ công nhận phải tra ra người nhận từ **người cấp ghế** đã ghi, và ghế không ghi người cấp thì hỏng chứ không âm thầm rơi về chủ vùng — trong `backend/tests/test_approval_routing.py`. *(Vế hai người chủ không lẫn hộp thư: hoãn.)*
-- [ ] T080 [P] [US3] Bài kiểm công tắc tự động: mặc định tắt, Trưởng dự án không đụng được, **không** áp cho ba quyết định cấp dự án (FR-037) — trong `backend/tests/test_auto_approval.py`. *(Vế người chủ khác bật thay: hoãn.)*
-- [ ] T081 [P] [US3] Bài kiểm vòng từ chối: về *đang làm*, đánh thức đúng thợ cũ, ba vòng thì kéo Trưởng dự án vào — trong `backend/tests/test_approval_rejection.py`
+- [X] T078 [P] [US3] Bài kiểm luật hai chữ ký bằng hàm thuần trong `backend/tests/test_approval_rules.py`
+- [X] T079 [P] [US3] Bài kiểm định tuyến theo người cấp agent — mục chờ công nhận phải tra ra người nhận từ **người cấp ghế** đã ghi, và ghế không ghi người cấp thì hỏng chứ không âm thầm rơi về chủ vùng — trong `backend/tests/test_approval_routing.py`. *(Vế hai người chủ không lẫn hộp thư: hoãn.)*
+- [X] T080 [P] [US3] Bài kiểm công tắc tự động: mặc định tắt, Trưởng dự án không đụng được, **không** áp cho ba quyết định cấp dự án (FR-037) — trong `backend/tests/test_auto_approval.py`. *(Vế người chủ khác bật thay: hoãn.)*
+- [X] T081 [P] [US3] Bài kiểm vòng từ chối: về *đang làm*, đánh thức đúng thợ cũ, ba vòng thì kéo Trưởng dự án vào — trong `backend/tests/test_approval_rejection.py`
 
 ### Thực thể và luật thuần
 
-- [ ] T082 [P] [US3] Trường "người chủ đã cấp" trên ghế trong `backend/armarius/domain/entities/seat_grant.py`
-- [ ] T083 [P] [US3] Thực thể chữ ký công nhận trong `backend/armarius/domain/entities/approval.py`
-- [ ] T084 [P] [US3] Thực thể thiết lập tự động công nhận theo cặp *(dự án, người chủ)* trong `backend/armarius/domain/entities/auto_approval.py`
-- [ ] T085 [US3] Luật công nhận trong `backend/armarius/domain/services/approval_rules.py`: đủ hai chữ ký mới đóng, suy người chủ chịu trách nhiệm từ ghế, ba quyết định cấp dự án nằm ngoài công tắc
+- [X] T082 [P] [US3] Trường "người chủ đã cấp" trên ghế trong `backend/armarius/domain/entities/seat_grant.py`
+- [X] T083 [P] [US3] Thực thể chữ ký công nhận trong `backend/armarius/domain/entities/approval.py`
+- [X] T084 [P] [US3] Thực thể thiết lập tự động công nhận theo cặp *(dự án, người chủ)* trong `backend/armarius/domain/entities/auto_approval.py`
+- [X] T085 [US3] Luật công nhận trong `backend/armarius/domain/services/approval_rules.py`: đủ hai chữ ký mới đóng, suy người chủ chịu trách nhiệm từ ghế, ba quyết định cấp dự án nằm ngoài công tắc
 
 ### Lưu trữ
 
-- [ ] T086 [US3] Cột người cấp trên bảng ghế, bảng `task_approvals` và `project_auto_approvals` trong `backend/armarius/infrastructure/database/models.py`
-- [ ] T087 [US3] Bản di trú Đợt 3 trong `backend/armarius/infrastructure/alembic/versions/`, lấp người cấp cho ghế cũ bằng chủ vùng làm việc và **ghi rõ trong chú thích bản di trú rằng đây là suy đoán, không phải sự thật lịch sử** — trong phạm vi một người chủ suy đoán này đang đúng, nhưng ghế cấp **từ nay trở đi** phải ghi người thật (T097), không được dựa vào suy đoán đó
-- [ ] T088 [US3] Bộ ánh xạ và kho chứa cho chữ ký, công tắc trong `backend/armarius/infrastructure/persistence/mappers.py` và `backend/armarius/infrastructure/persistence/repositories.py`, nối vào `backend/armarius/infrastructure/persistence/unit_of_work.py`
+- [X] T086 [US3] Cột người cấp trên bảng ghế, bảng `task_approvals` và `project_auto_approvals` trong `backend/armarius/infrastructure/database/models.py`
+- [X] T087 [US3] Bản di trú Đợt 3 trong `backend/armarius/infrastructure/alembic/versions/`, lấp người cấp cho ghế cũ bằng chủ vùng làm việc và **ghi rõ trong chú thích bản di trú rằng đây là suy đoán, không phải sự thật lịch sử** — trong phạm vi một người chủ suy đoán này đang đúng, nhưng ghế cấp **từ nay trở đi** phải ghi người thật (T097), không được dựa vào suy đoán đó
+- [X] T088 [US3] Bộ ánh xạ và kho chứa cho chữ ký, công tắc trong `backend/armarius/infrastructure/persistence/mappers.py` và `backend/armarius/infrastructure/persistence/repositories.py`, nối vào `backend/armarius/infrastructure/persistence/unit_of_work.py`
 
 ### Ứng dụng
 
-- [ ] T089 [US3] Ca sử dụng ký công nhận trong `backend/armarius/application/use_cases/approvals.py`: chữ ký Trưởng dự án, chữ ký người chủ, ký tự động khi công tắc bật
-- [ ] T090 [US3] Định tuyến mục *chờ công nhận đầu ra* vào hộp thư đúng người chủ (FR-035) trong `backend/armarius/application/use_cases/approvals.py`
-- [ ] T091 [US3] Xử lý từ chối (FR-040): kéo về *đang làm*, đặt việc kế tiếp "sửa theo phản hồi", đánh thức đúng thợ cũ — trong `backend/armarius/application/use_cases/approvals.py`
-- [ ] T092 [US3] Đếm vòng từ chối và kéo Trưởng dự án vào soát lại đề bài sau vòng thứ ba (FR-041) trong `backend/armarius/application/use_cases/approvals.py`
-- [ ] T093 [US3] Bản tổng kết đợt khi cả đợt việc đã *xong* kèm ba lựa chọn chuyển giai đoạn (FR-043) trong `backend/armarius/application/use_cases/projects.py`
-- [ ] T094 [US3] Ghi vết đầy đủ mọi chữ ký kể cả ký tự động và mọi lần bật/tắt công tắc (FR-039) qua dịch vụ T014, phát `cong-nhan.ky` lên kênh dự án
+- [X] T089 [US3] Ca sử dụng ký công nhận trong `backend/armarius/application/use_cases/approvals.py`: chữ ký Trưởng dự án, chữ ký người chủ, ký tự động khi công tắc bật
+- [X] T090 [US3] Định tuyến mục *chờ công nhận đầu ra* vào hộp thư đúng người chủ (FR-035) trong `backend/armarius/application/use_cases/approvals.py`
+- [X] T091 [US3] Xử lý từ chối (FR-040): kéo về *đang làm*, đặt việc kế tiếp "sửa theo phản hồi", đánh thức đúng thợ cũ — trong `backend/armarius/application/use_cases/approvals.py`
+- [X] T092 [US3] Đếm vòng từ chối và kéo Trưởng dự án vào soát lại đề bài sau vòng thứ ba (FR-041) trong `backend/armarius/application/use_cases/approvals.py`
+- [X] T093 [US3] Bản tổng kết đợt khi cả đợt việc đã *xong* kèm ba lựa chọn chuyển giai đoạn (FR-043) trong `backend/armarius/application/use_cases/projects.py`
+- [X] T094 [US3] Ghi vết đầy đủ mọi chữ ký kể cả ký tự động và mọi lần bật/tắt công tắc (FR-039) qua dịch vụ T014, phát `cong-nhan.ky` lên kênh dự án
 
 ### Mặt giao tiếp
 
-- [ ] T095 [US3] Lối vào `POST /v1/tasks/{id}/approval` và `GET/PUT /v1/projects/{id}/auto-approval` trong `backend/armarius/presentation/api/tasks.py` và `backend/armarius/presentation/api/projects.py`, trả `403` khi người gọi không phải người chủ chịu trách nhiệm — kiểm bằng **người cấp ghế**, giữ nguyên phép kiểm này dù hôm nay nó luôn trùng chủ vùng
-- [ ] T096 [US3] Lối vào `POST /agent/tasks/{id}/approval` cho Trưởng dự án trong `backend/armarius/presentation/api/agent.py`
-- [ ] T097 [US3] Ghi người cấp ngay lúc cấp ghế trong `backend/armarius/application/use_cases/projects.py` và lối vào cấp ghế tương ứng
+- [X] T095 [US3] Lối vào `POST /v1/tasks/{id}/approval` và `GET/PUT /v1/projects/{id}/auto-approval` trong `backend/armarius/presentation/api/tasks.py` và `backend/armarius/presentation/api/projects.py`, trả `403` khi người gọi không phải người chủ chịu trách nhiệm — kiểm bằng **người cấp ghế**, giữ nguyên phép kiểm này dù hôm nay nó luôn trùng chủ vùng
+- [X] T096 [US3] Lối vào `POST /agent/tasks/{id}/approval` cho Trưởng dự án trong `backend/armarius/presentation/api/agent.py`
+- [X] T097 [US3] Ghi người cấp ngay lúc cấp ghế trong `backend/armarius/application/use_cases/projects.py` và lối vào cấp ghế tương ứng
 
 ### Giao diện
 
-- [ ] T098 [US3] Thay bộ lọc phía trình duyệt bằng hộp thư thật đọc từ `GET /v1/inbox`, phân loại mục và hiện bậc nhắc, trong `frontend/src/pages/Inbox.tsx`
-- [ ] T099 [US3] Ô công nhận đầu ra đặt cạnh danh sách tiêu chí và thành phẩm trong `frontend/src/pages/CollaborationRoom.tsx`
-- [ ] T100 [P] [US3] Công tắc tự động công nhận của chính người dùng trong `frontend/src/pages/ProjectBoard.tsx` kèm chuỗi hiển thị trong `frontend/src/i18n/vi.ts` và `frontend/src/i18n/en.ts`
+- [X] T098 [US3] Thay bộ lọc phía trình duyệt bằng hộp thư thật đọc từ `GET /v1/inbox`, phân loại mục và hiện bậc nhắc, trong `frontend/src/pages/Inbox.tsx`
+- [X] T099 [US3] Ô công nhận đầu ra đặt cạnh danh sách tiêu chí và thành phẩm trong `frontend/src/pages/CollaborationRoom.tsx`
+- [X] T100 [P] [US3] Công tắc tự động công nhận của chính người dùng trong `frontend/src/pages/ProjectBoard.tsx` kèm chuỗi hiển thị trong `frontend/src/i18n/vi.ts` và `frontend/src/i18n/en.ts`
 
 ### Kiểm chứng chạy thật
 
-- [ ] T101 [US3] Dựng lại hai vùng chứa, tạo **một** người chủ cấp một thợ, chạy trọn bảy bước của Kịch bản 3 trong `specs/001-van-hanh-du-an/quickstart.md`, và soi cơ sở dữ liệu thật để chắc ghế có ghi người cấp
+- [X] T101 [US3] Dựng lại hai vùng chứa, tạo **một** người chủ cấp một thợ, chạy trọn bảy bước của Kịch bản 3 trong `specs/001-van-hanh-du-an/quickstart.md`, và soi cơ sở dữ liệu thật để chắc ghế có ghi người cấp
 
 **Chốt chặn**: Câu chuyện 3 chạy độc lập được. Một PR, dừng chờ người chủ duyệt.
 

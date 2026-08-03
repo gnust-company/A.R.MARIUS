@@ -10,7 +10,9 @@ from abc import ABC, abstractmethod
 from types import TracebackType
 
 from armarius.domain.repositories.repositories import (
+    ApprovalRepository,
     ArtifactRepository,
+    AutoApprovalRepository,
     ChecklistItemRepository,
     CommentRepository,
     InboxRepository,
@@ -46,6 +48,8 @@ class UnitOfWork(ABC):
     plans: PlanRepository
     roles: RoleRepository
     seat_grants: SeatGrantRepository
+    approvals: ApprovalRepository
+    auto_approvals: AutoApprovalRepository
     mariuses: MariusRepository
     tasks: TaskRepository
     criteria: ChecklistItemRepository

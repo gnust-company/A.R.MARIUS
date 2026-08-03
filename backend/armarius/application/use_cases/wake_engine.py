@@ -139,6 +139,23 @@ class WakeEngine:
         bg.add_done_callback(self._bg.discard)
         return run.id
 
+    async def drain(self, *, wait_seconds: float = 5.0) -> None:
+        """Wait for every in-flight run to finish.
+
+        Wakes are fire-and-forget by design, which leaves background work still writing
+        after the call that started it returned. Anything that tears the database down —
+        shutdown, or a test resetting the schema — has to wait for that work first, or it
+        races the writes it is about to delete.
+
+        Gives up rather than hanging forever if a run refuses to finish: this is a
+        courtesy before teardown, not a guarantee.
+        """
+        while self._bg:
+            pending = set(self._bg)
+            done, _ = await asyncio.wait(pending, timeout=wait_seconds)
+            if not done:
+                return
+
     # -------------------------------------------------------------- run executor
 
     async def _execute_run(self, run_id: UUID, marius_id: UUID, task_id: UUID) -> None:

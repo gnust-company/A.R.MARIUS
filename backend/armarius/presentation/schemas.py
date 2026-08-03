@@ -199,12 +199,55 @@ class GrantSeatIn(BaseModel):
     role_key: str = Field(min_length=1, max_length=200)
 
 
+class SignApprovalIn(BaseModel):
+    """One signature on a task's output (spec 001 FR-033, FR-040)."""
+
+    approve: bool
+    # Required when refusing: a rejection with no feedback leaves the worker nothing to
+    # fix, and the next action written onto the task would be empty.
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class SprintSummaryIn(BaseModel):
+    """The Leader's wrap-up when a batch of work closes (FR-043)."""
+
+    summary: str = Field(min_length=1, max_length=20000)
+
+
+class AutoApprovalIn(BaseModel):
+    enabled: bool
+
+
+class AutoApprovalOut(_Out):
+    project_id: UUID | None = None
+    user_id: str = ""
+    enabled: bool = False
+    updated_at: datetime | None = None
+
+
+class ApprovalOut(_Out):
+    """One recorded signature (spec 001 §8)."""
+
+    id: UUID
+    task_id: UUID | None = None
+    round: int = 1
+    signer_kind: str
+    signer_marius_id: UUID | None = None
+    signer_user_id: str | None = None
+    result: str
+    reason: str | None = None
+    is_auto: bool = False
+    signed_at: datetime | None = None
+
+
 class SeatGrantOut(_Out):
     id: UUID
     project_id: UUID | None = None
     role_key: str
     marius_id: UUID | None = None
     status: str
+    # Who put this agent in the seat (FR-034) — what decides who signs for its output.
+    granted_by_user_id: str | None = None
     granted_at: datetime | None = None
     created_at: datetime | None = None
 

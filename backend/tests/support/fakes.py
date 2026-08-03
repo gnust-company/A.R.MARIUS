@@ -20,6 +20,8 @@ from armarius.application.ports.adapter import (
 )
 from armarius.application.ports.liveness_probe import LivenessProbe
 from armarius.application.ports.unit_of_work import UnitOfWork
+from armarius.domain.entities.approval import Approval
+from armarius.domain.entities.auto_approval import AutoApproval
 from armarius.domain.entities.checklist_item import ChecklistItem
 from armarius.domain.entities.inbox_item import InboxItem, InboxItemStatus
 from armarius.domain.entities.label import Label
@@ -48,6 +50,8 @@ class _Store:
     dependencies: dict[UUID, TaskDependency] = field(default_factory=dict)
     roles: dict[UUID, Role] = field(default_factory=dict)
     seat_grants: dict[UUID, SeatGrant] = field(default_factory=dict)
+    approvals: list[Approval] = field(default_factory=list)
+    auto_approvals: dict[tuple[UUID, str], AutoApproval] = field(default_factory=dict)
     mariuses: dict[UUID, Marius] = field(default_factory=dict)
     skills: dict[UUID, Skill] = field(default_factory=dict)
 
@@ -284,6 +288,36 @@ class _FakeSeatGrantRepo:
         return grant
 
 
+class _FakeApprovalRepo:
+    def __init__(self, store: _Store) -> None:
+        self._s = store
+
+    async def add(self, approval: Approval) -> Approval:
+        self._s.approvals.append(approval)
+        return approval
+
+    async def list_for_task(self, task_id: UUID) -> list[Approval]:
+        return [a for a in self._s.approvals if a.task_id == task_id]
+
+
+class _FakeAutoApprovalRepo:
+    def __init__(self, store: _Store) -> None:
+        self._s = store
+
+    async def get(self, project_id: UUID, user_id: str) -> AutoApproval | None:
+        return self._s.auto_approvals.get((project_id, user_id))
+
+    async def set_enabled(
+        self, project_id: UUID, user_id: str, *, enabled: bool
+    ) -> AutoApproval:
+        row = self._s.auto_approvals.get((project_id, user_id)) or AutoApproval(
+            project_id=project_id, user_id=user_id
+        )
+        row.enabled = enabled
+        self._s.auto_approvals[(project_id, user_id)] = row
+        return row
+
+
 class _FakeMariusRepo:
     def __init__(self, store: _Store) -> None:
         self._s = store
@@ -448,6 +482,8 @@ class FakeUnitOfWork(UnitOfWork):
         self.dependencies = _FakeTaskDependencyRepo(s)  # type: ignore[assignment]
         self.roles = _FakeRoleRepo(s)  # type: ignore[assignment]
         self.seat_grants = _FakeSeatGrantRepo(s)  # type: ignore[assignment]
+        self.approvals = _FakeApprovalRepo(s)  # type: ignore[assignment]
+        self.auto_approvals = _FakeAutoApprovalRepo(s)  # type: ignore[assignment]
         self.mariuses = _FakeMariusRepo(s)  # type: ignore[assignment]
         self.skills = _FakeSkillRepo(s)  # type: ignore[assignment]
         return self

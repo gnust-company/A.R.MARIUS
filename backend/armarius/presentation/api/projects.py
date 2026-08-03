@@ -19,6 +19,8 @@ from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
     AddRoleIn,
+    AutoApprovalIn,
+    AutoApprovalOut,
     ContextDecisionIn,
     CreateProjectPlanIn,
     GrantSeatIn,
@@ -186,13 +188,21 @@ async def create_project(
     # Pre-seat any agents the plan named (system-only grants → may activate the project).
     if body.leader.marius_id is not None:
         await container.projects.grant_seat(
-            project.id, "leader", body.leader.marius_id, system=True
+            project.id,
+            "leader",
+            body.leader.marius_id,
+            system=True,
+            granted_by_user_id=str(user.id),
         )
     for role, key in zip(body.roles, worker_keys, strict=True):
         for marius_id in role.marius_ids:
             if marius_id is not None:
                 await container.projects.grant_seat(
-                    project.id, key, marius_id, system=True
+                    project.id,
+                    key,
+                    marius_id,
+                    system=True,
+                    granted_by_user_id=str(user.id),
                 )
 
     project = await container.projects.get_project(project.id)
@@ -287,6 +297,41 @@ async def remove_role(
     await container.projects.remove_role_by_key(project_id, role_key)
 
 
+# ── auto-approval switch (spec 001 FR-036 → FR-038) ───────────────────────────
+@router.get("/projects/{project_id}/auto-approval", response_model=AutoApprovalOut)
+async def get_auto_approval(
+    project_id: UUID, container: ContainerDep, user: CurrentUser
+) -> AutoApprovalOut:
+    """This patron's own switch. Off until they turn it on (FR-038)."""
+    await _require_owned_project(container, user, project_id)
+    enabled = await container.approvals.auto_approval(project_id, str(user.id))
+    return AutoApprovalOut(project_id=project_id, user_id=str(user.id), enabled=enabled)
+
+
+@router.put("/projects/{project_id}/auto-approval", response_model=AutoApprovalOut)
+async def set_auto_approval(
+    project_id: UUID, body: AutoApprovalIn, container: ContainerDep, user: CurrentUser
+) -> AutoApprovalOut:
+    """Only the patron flips their own switch — there is no agent-facing route for this
+    on purpose (FR-038): an agent that could waive its own second signature would have
+    turned two signatures into one."""
+    await _require_owned_project(container, user, project_id)
+    enabled = await container.approvals.set_auto_approval(
+        project_id, str(user.id), enabled=body.enabled
+    )
+    return AutoApprovalOut(project_id=project_id, user_id=str(user.id), enabled=enabled)
+
+
+@router.get("/projects/{project_id}/grants", response_model=list[SeatGrantOut])
+async def list_seat_grants(
+    project_id: UUID, container: ContainerDep, user: CurrentUser
+) -> list[SeatGrantOut]:
+    """Who sits in which seat, and **who put them there** (FR-034)."""
+    await _require_owned_project(container, user, project_id)
+    grants = await container.projects.list_seat_grants(project_id)
+    return [SeatGrantOut.model_validate(g) for g in grants]
+
+
 # ── seat grants (system-only — the Patron action IS the system action) ─────────
 @router.post("/projects/{project_id}/grant", response_model=SeatGrantOut, status_code=201)
 async def grant_seat(
@@ -295,7 +340,11 @@ async def grant_seat(
     project = await _require_owned_project(container, user, project_id)
     was_active = str(project.status) == "active"
     grant = await container.projects.grant_seat(
-        project_id, body.role_key, body.marius_id, system=True
+        project_id,
+        body.role_key,
+        body.marius_id,
+        system=True,
+        granted_by_user_id=str(user.id),
     )
     if not was_active:
         after = await container.projects.get_project(project_id)

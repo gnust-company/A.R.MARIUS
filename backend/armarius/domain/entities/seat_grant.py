@@ -29,6 +29,11 @@ class SeatGrant:
     role_key: str = ""
     marius_id: UUID | None = None
     status: SeatGrantStatus = SeatGrantStatus.GRANTED
+    # Which patron put this agent in the seat (FR-034). This is what decides who must
+    # sign for the agent's output — recorded at grant time, never inferred afterwards.
+    # Today it always resolves to the workspace owner; the day a project has more than one
+    # patron, an inferred value would be a guess nobody could tell apart from the truth.
+    granted_by_user_id: str | None = None
     granted_at: datetime | None = None
     created_at: datetime | None = None
 
