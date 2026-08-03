@@ -39,6 +39,8 @@ from armarius.presentation.schemas import (
     PlanOut,
     ProjectContextIn,
     ProjectContextOut,
+    SignApprovalIn,
+    SprintSummaryIn,
     TaskOut,
     TransitionIn,
     decode_artifact_content,
@@ -316,6 +318,26 @@ async def update_status(
     return TaskOut.model_validate(task)
 
 
+@router.post("/tasks/{task_id}/approval", response_model=TaskOut)
+async def sign_approval(
+    task_id: UUID, body: SignApprovalIn, marius: CurrentMarius, container: ContainerDep
+) -> TaskOut:
+    """The Leader's signature — the first of the two (FR-033).
+
+    Only the Leader signs here. A worker signing off its own output is exactly the "fake
+    done" this story exists to stop, so a non-leader caller reads as *not found* rather
+    than *forbidden*: the route is not theirs to know about.
+    """
+    task = await _task_in_caller_workspace(container, marius, task_id)
+    if task.project_id is None:
+        raise LookupError("task not found")
+    await _leader_seat(container, marius, task.project_id)
+    signed = await container.approvals.sign_as_leader(
+        task_id, marius_id=marius.id, approve=body.approve, reason=body.reason
+    )
+    return TaskOut.model_validate(signed)
+
+
 @router.post("/tasks/{task_id}/next-action", response_model=TaskOut)
 async def set_next_action(
     task_id: UUID, body: NextActionIn, marius: CurrentMarius, container: ContainerDep
@@ -426,6 +448,23 @@ async def propose_project_phase(
         reason=body.reason or "",
     )
     return {"status": "proposed", "target_phase": body.target_phase}
+
+
+@router.post("/projects/{project_id}/sprint-summary", status_code=200)
+async def submit_sprint_summary(
+    project_id: UUID,
+    body: SprintSummaryIn,
+    marius: CurrentMarius,
+    container: ContainerDep,
+) -> dict[str, object]:
+    """Wrap up a finished batch and hand the patron their three choices (FR-043).
+
+    Not an acceptance gate — there is none at project level (FR-042). The work was signed
+    off task by task; what is left is deciding what happens next.
+    """
+    await _leader_seat(container, marius, project_id)
+    await container.projects.submit_sprint_summary(project_id, summary=body.summary)
+    return {"status": "sent", "choices": list(container.projects.SPRINT_CHOICES)}
 
 
 def _parse_phase(value: str) -> ProjectStatus:

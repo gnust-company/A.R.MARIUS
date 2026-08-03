@@ -459,10 +459,16 @@ class ProjectService:
         marius_id: UUID,
         *,
         system: bool = False,
+        granted_by_user_id: str | None = None,
     ) -> SeatGrant:
         """Seat a Marius. SYSTEM-ONLY: a non-system caller is rejected (LLD §3.3).
 
         Re-evaluates activation after the grant. Returns the new grant.
+
+        ``granted_by_user_id`` records **which patron** put this agent here (FR-034) —
+        the one who will have to sign for its output. Captured at the moment of the grant
+        because it cannot be reconstructed afterwards: today it happens to equal the
+        workspace owner, and a later guess would be indistinguishable from a fact.
         """
         if not system:
             raise SystemOnlyOperation("Seat grants are issued by the system only.")
@@ -481,6 +487,7 @@ class ProjectService:
                 role_key=role_key,
                 marius_id=marius_id,
                 status=SeatGrantStatus.GRANTED,
+                granted_by_user_id=granted_by_user_id,
                 granted_at=now,
                 created_at=now,
             )
@@ -491,6 +498,10 @@ class ProjectService:
         if flipped:
             await self._announce_planning(project_id)
         return grant
+
+    async def list_seat_grants(self, project_id: UUID) -> Sequence[SeatGrant]:
+        async with self._uow() as uow:
+            return await uow.seat_grants.list_by_project(project_id)
 
     async def revoke_seat(self, grant_id: UUID, *, system: bool = False) -> SeatGrant:
         """Revoke a seat. SYSTEM-ONLY. Activation never rolls back (LLD §4)."""
@@ -578,6 +589,43 @@ class ProjectService:
             title=f"Trưởng dự án đề xuất chuyển sang giai đoạn '{target_phase}'",
             body=reason,
             project_id=project_id,
+        )
+
+    # Ba lựa chọn người chủ có sau khi một đợt việc khép lại (FR-043). Vocabulary trên
+    # dây — giao diện hiển thị nhãn, tầng này không dịch.
+    SPRINT_CHOICES: tuple[str, ...] = ("dong_du_an", "chuyen_bao_tri", "mo_dot_moi")
+
+    async def has_open_tasks(self, project_id: UUID) -> bool:
+        """Còn đầu việc nào chưa khép trong dự án không?"""
+        async with self._uow() as uow:
+            tasks = await uow.tasks.list_by_project(project_id)
+        return any(str(t.status) not in {"done", "cancelled"} for t in tasks)
+
+    async def submit_sprint_summary(self, project_id: UUID, *, summary: str) -> None:
+        """The Leader's wrap-up for a finished batch, parked on the patron (FR-043).
+
+        There is **no project-level acceptance gate** (FR-042): the work was already
+        accepted task by task. What the patron gets here is a decision about what happens
+        next — close, move to maintenance, or open another batch — not a second review of
+        work already signed off.
+        """
+        async with self._uow() as uow:
+            project = await self._writable(uow, project_id)
+            workspace_id = project.workspace_id
+            recipient = project.created_by_user_id
+
+        if self._inbox is None or not recipient or workspace_id is None:
+            return
+        from armarius.domain.entities.inbox_item import InboxItemKind
+
+        await self._inbox.place(
+            workspace_id=workspace_id,
+            recipient_user_id=recipient,
+            kind=InboxItemKind.PHASE_DECISION,
+            title=f"Đợt việc đã khép — {project.name}",
+            body=summary,
+            project_id=project_id,
+            attempt_dossier={"choices": list(self.SPRINT_CHOICES)},
         )
 
     async def change_phase(

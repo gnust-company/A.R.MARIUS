@@ -13,6 +13,7 @@ from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
     AddDependencyIn,
+    ApprovalOut,
     ArtifactOut,
     AssignIn,
     BlockerOut,
@@ -25,6 +26,7 @@ from armarius.presentation.schemas import (
     ReopenTaskIn,
     RunStartedOut,
     SetCriteriaIn,
+    SignApprovalIn,
     TaskDependencyEdgeOut,
     TaskLogEntryOut,
     TaskOut,
@@ -109,6 +111,33 @@ async def reopen_task(
     """The only way out of *done*/*cancelled* (FR-022). Reason mandatory, trace kept."""
     task = await container.tasks.reopen(task_id, reason=body.reason, user_id=str(user.id))
     return TaskOut.model_validate(task)
+
+
+@router.post("/tasks/{task_id}/approval", response_model=TaskOut)
+async def sign_approval(
+    task_id: UUID, body: SignApprovalIn, container: ContainerDep, user: CurrentUser
+) -> TaskOut:
+    """The patron's signature on an output (FR-033, FR-035).
+
+    Only the patron **responsible for the agent that did the work** may sign — the one who
+    granted its seat (FR-034). Anyone else gets a 403; the task is not theirs to close.
+    """
+    responsible = await container.approvals.responsible_patron(task_id)
+    if responsible != str(user.id):
+        raise PermissionError(
+            "Chỉ người chủ đã cấp agent làm đầu việc này mới ký công nhận được."
+        )
+    task = await container.approvals.sign_as_patron(
+        task_id, user_id=str(user.id), approve=body.approve, reason=body.reason
+    )
+    return TaskOut.model_validate(task)
+
+
+@router.get("/tasks/{task_id}/approvals", response_model=list[ApprovalOut])
+async def list_approvals(task_id: UUID, container: ContainerDep) -> list[ApprovalOut]:
+    """Every signature on the task, oldest first — including the automatic ones (FR-039)."""
+    rows = await container.approvals.list_for_task(task_id)
+    return [ApprovalOut.model_validate(a) for a in rows]
 
 
 @router.get("/tasks/{task_id}/criteria", response_model=list[CriterionOut])

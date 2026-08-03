@@ -258,8 +258,15 @@ def _services_with_leader(uow_factory):
 
 
 async def _walk_to_done(tasks, uow_factory, task_id) -> None:
-    """Đưa một đầu việc đi trọn đường hợp lệ tới *xong* (kèm thành phẩm giả)."""
+    """Đưa một đầu việc đi trọn đường hợp lệ tới *xong* (kèm thành phẩm và hai chữ ký).
+
+    Từ Câu chuyện 3, *xong* cần đủ hai chữ ký (FR-033) — nên đường "hợp lệ" bây giờ có
+    thêm khâu ký. Ghi thẳng hai chữ ký ở tầng lưu trữ vì bài kiểm này soi cổng phụ thuộc,
+    không soi khâu công nhận; khâu đó có bộ kiểm riêng.
+    """
+    from armarius.domain.entities.approval import Approval, SignerKind
     from armarius.domain.entities.artifact import Artifact
+    from armarius.shared.clock import utcnow
 
     await tasks.transition(task_id, TaskStatus.TODO)
     await tasks.transition(task_id, TaskStatus.IN_PROGRESS)
@@ -267,6 +274,10 @@ async def _walk_to_done(tasks, uow_factory, task_id) -> None:
         await uow.artifacts.add(
             Artifact(task_id=task_id, name="ket-qua.txt", kind="file", uri="local://x")
         )
+        for kind in (SignerKind.LEADER, SignerKind.PATRON):
+            await uow.approvals.add(
+                Approval(task_id=task_id, signer_kind=kind, signed_at=utcnow())
+            )
         await uow.commit()
     await tasks.transition(task_id, TaskStatus.IN_REVIEW)
     await tasks.transition(task_id, TaskStatus.DONE)
@@ -324,8 +335,13 @@ async def test_finishing_a_task_wakes_the_leader_to_pass_the_word(uow_factory) -
 
     await _walk_to_done(tasks, uow_factory, task.id)
 
-    assert len(leader.calls) == 1
-    assert leader.calls[0]["project_id"] == project.id
+    # Hai lần gọi, không phải một: đầu việc xong (FR-031), và vì đây là đầu việc duy nhất
+    # nên cả đợt cũng khép luôn — Trưởng dự án được gọi lần nữa để soạn bản tổng kết
+    # (FR-043). Gộp hai chuyện đó vào một lần gọi sẽ mất mất một trong hai.
+    assert len(leader.calls) == 2
+    assert all(c["project_id"] == project.id for c in leader.calls)
+    assert leader.calls[0]["reason"] == "một đầu việc vừa xong"
+    assert leader.calls[1]["reason"] == "cả đợt việc đã xong"
 
 
 async def test_the_project_channel_hears_the_unlock(uow_factory) -> None:

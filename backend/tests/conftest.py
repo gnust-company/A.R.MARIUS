@@ -55,6 +55,10 @@ async def _isolated_app_db() -> AsyncIterator[None]:
     container.registry.register(EchoAdapter(step_delay=0.0))
     app.state.container = container
     yield
+    # Wakes are fire-and-forget: a run started by the test just finished may still be
+    # writing. Let it land before the next test drops the schema out from under it,
+    # otherwise the reset races those writes and SQLite reports a locked database.
+    await container.wake_engine.drain()
 
 
 @pytest_asyncio.fixture

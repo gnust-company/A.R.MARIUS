@@ -33,6 +33,10 @@ class WakeSource(StrEnum):
     PATRON_DECISION = "patron_decision"  # the patron decided something (FR-013, FR-004)
     TASK_DONE = "task_done"  # a task reached *done* → go pass the word (FR-031)
     WORKER_HANDBACK = "worker_handback"  # a worker handed work back or asked (FR-071)
+    # Story 3 wakes: an output was sent back for rework (FR-040), and the brake that pulls
+    # the Leader back to the brief after three rounds (FR-041).
+    APPROVAL_REJECTED = "approval_rejected"
+    BRIEF_REVIEW = "brief_review"
 
 
 @dataclass

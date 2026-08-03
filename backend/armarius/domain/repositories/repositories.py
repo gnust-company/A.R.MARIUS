@@ -7,7 +7,9 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from uuid import UUID
 
+from armarius.domain.entities.approval import Approval
 from armarius.domain.entities.artifact import Artifact
+from armarius.domain.entities.auto_approval import AutoApproval
 from armarius.domain.entities.checklist_item import ChecklistItem
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.inbox_item import InboxItem, InboxItemStatus
@@ -95,6 +97,26 @@ class SeatGrantRepository(ABC):
     async def list_by_project(self, project_id: UUID) -> Sequence[SeatGrant]: ...
     @abstractmethod
     async def update(self, grant: SeatGrant) -> SeatGrant: ...
+
+
+class ApprovalRepository(ABC):
+    """Signatures on tasks — append-only (spec 001 §8, FR-033)."""
+
+    @abstractmethod
+    async def add(self, approval: Approval) -> Approval: ...
+    @abstractmethod
+    async def list_for_task(self, task_id: UUID) -> Sequence[Approval]: ...
+
+
+class AutoApprovalRepository(ABC):
+    """One patron's auto-approval switch per project (spec 001 §5, FR-036)."""
+
+    @abstractmethod
+    async def get(self, project_id: UUID, user_id: str) -> AutoApproval | None: ...
+    @abstractmethod
+    async def set_enabled(
+        self, project_id: UUID, user_id: str, *, enabled: bool
+    ) -> AutoApproval: ...
 
 
 class LabelRepository(ABC):

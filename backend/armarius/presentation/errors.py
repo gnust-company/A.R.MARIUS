@@ -5,6 +5,10 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from armarius.application.use_cases.approvals import (
+    NotReadyForSignatureError,
+    ResponsiblePatronUnknown,
+)
 from armarius.application.use_cases.enrollment import GatewayUnreachable
 from armarius.application.use_cases.onboarding_session import (
     OnboardingBusy,
@@ -21,6 +25,7 @@ from armarius.application.use_cases.tasks import (
     AlreadyAssignedError,
     ProjectNotReadyForTasks,
 )
+from armarius.domain.entities.approval import RejectionNeedsReasonError
 from armarius.domain.entities.checklist_item import CriteriaLockedError
 from armarius.domain.entities.leader_chat import LeaderChatError
 from armarius.domain.entities.marius import InviteError
@@ -31,6 +36,7 @@ from armarius.domain.entities.task import (
     DependencyNotMetError,
     DescriptionLockedError,
     DescriptionRequiredError,
+    SignaturesRequiredError,
     StalledTaskError,
     StatusReasonRequiredError,
     TaskTransitionError,
@@ -132,6 +138,36 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(SystemOnlyOperation)
     async def _system_only(_: Request, exc: SystemOnlyOperation) -> JSONResponse:
+        return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+    @app.exception_handler(SignaturesRequiredError)
+    async def _signatures_required(
+        _: Request, exc: SignaturesRequiredError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(NotReadyForSignatureError)
+    async def _not_ready_to_sign(
+        _: Request, exc: NotReadyForSignatureError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(RejectionNeedsReasonError)
+    async def _rejection_needs_reason(
+        _: Request, exc: RejectionNeedsReasonError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(ResponsiblePatronUnknown)
+    async def _responsible_patron_unknown(
+        _: Request, exc: ResponsiblePatronUnknown
+    ) -> JSONResponse:
+        # 409, not 404: the task exists and the caller may see it — what is broken is the
+        # seat record it points at, and saying so is the only way it gets fixed.
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(PermissionError)
+    async def _forbidden(_: Request, exc: PermissionError) -> JSONResponse:
         return JSONResponse(status_code=403, content={"detail": str(exc)})
 
     @app.exception_handler(DuplicateRoleKey)

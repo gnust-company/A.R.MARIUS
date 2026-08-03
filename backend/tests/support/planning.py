@@ -29,11 +29,16 @@ class OperatingProject:
     leader_token: str
     leader_id: str
     worker_id: str
+    worker_token: str = ""
     plan_items: list[dict] = field(default_factory=list)
 
     @property
     def leader_headers(self) -> dict:
         return {"Authorization": f"Bearer {self.leader_token}"}
+
+    @property
+    def worker_headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.worker_token}"}
 
     def item_id(self, index: int = 0) -> str:
         return self.plan_items[index]["id"]
@@ -86,7 +91,7 @@ async def operating_project(
     pid = created.json()["id"]
 
     leader_id, leader_token = await invite_and_online(c, ws_id, h, name="Leader")
-    worker_id, _ = await invite_and_online(c, ws_id, h, name="Dev")
+    worker_id, worker_token = await invite_and_online(c, ws_id, h, name="Dev")
     for marius_id, role_key in ((leader_id, "leader"), (worker_id, "backend")):
         g = await c.post(
             f"/v1/projects/{pid}/grant",
@@ -138,5 +143,6 @@ async def operating_project(
         leader_token=leader_token,
         leader_id=leader_id,
         worker_id=worker_id,
+        worker_token=worker_token,
         plan_items=decided.json()["items"],
     )

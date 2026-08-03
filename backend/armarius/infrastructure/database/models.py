@@ -100,6 +100,8 @@ class SeatGrantModel(Base):
     role_key: Mapped[str] = mapped_column(String(120))
     marius_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
     status: Mapped[str] = mapped_column(String(20), default="granted")
+    # Who put this agent in the seat (FR-034) — the patron who must sign for its output.
+    granted_by_user_id: Mapped[str | None] = mapped_column(String(200), index=True)
     granted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -181,6 +183,53 @@ class ChecklistItemModel(Base):
     order_index: Mapped[int] = mapped_column(Integer, default=0)
     result: Mapped[str] = mapped_column(String(20), default="unrated")
     evidence_artifact_id: Mapped[UUID | None] = mapped_column(Uuid)
+
+
+class TaskApprovalModel(Base):
+    """One signature on one task (spec 001 §8, FR-033).
+
+    Append-only: a rejection is never overwritten by a later approval. `round` separates
+    attempts, so a signature given for a rejected deliverable cannot close the reworked
+    one. The hot read is "every signature on this task, in order", hence the composite
+    index rather than a bare task index."""
+
+    __tablename__ = "task_approvals"
+    __table_args__ = (
+        Index("ix_task_approvals_task_round", "task_id", "round", "signed_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    task_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tasks.id"), index=True)
+    round: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    signer_kind: Mapped[str] = mapped_column(String(20), default="leader")
+    signer_marius_id: Mapped[UUID | None] = mapped_column(Uuid)
+    signer_user_id: Mapped[str | None] = mapped_column(String(200))
+    result: Mapped[str] = mapped_column(String(20), default="approve")
+    reason: Mapped[str | None] = mapped_column(Text)
+    # True when the auto-approval switch supplied the patron's signature (FR-039 still
+    # demands the row — the switch saves keystrokes, not record-keeping).
+    is_auto: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProjectAutoApprovalModel(Base):
+    """One patron's auto-approval switch on one project (spec 001 §5, FR-036).
+
+    Keyed by the *(project, patron)* pair even though a project has exactly one patron
+    today — a project-level flag would lose whose switch it was, and that is not
+    recoverable once the rows exist."""
+
+    __tablename__ = "project_auto_approvals"
+    __table_args__ = (
+        UniqueConstraint("project_id", "user_id", name="uq_auto_approval_project_user"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("projects.id"), index=True)
+    user_id: Mapped[str] = mapped_column(String(200), index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class TaskDependencyModel(Base):

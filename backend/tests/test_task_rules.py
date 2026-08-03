@@ -6,6 +6,7 @@ from armarius.domain.entities.task import (
     VALID_TRANSITIONS,
     ArtifactRequiredError,
     DependencyNotMetError,
+    SignaturesRequiredError,
     StalledTaskError,
     StatusReasonRequiredError,
     Task,
@@ -33,12 +34,38 @@ def test_done_requires_artifact() -> None:
     # checked on the way *out* of review rather than out of in_progress.
     task = Task(status=TaskStatus.IN_REVIEW)
     with pytest.raises(ArtifactRequiredError):
-        task.transition_to(TaskStatus.DONE, utcnow(), has_artifact=False)
+        task.transition_to(
+            TaskStatus.DONE, utcnow(), has_artifact=False, signatures_complete=True
+        )
+
+
+def test_done_requires_both_signatures() -> None:
+    """FR-033: thành phẩm đủ, cờ đình trệ sạch — vẫn không đóng được nếu thiếu chữ ký."""
+    task = Task(status=TaskStatus.IN_REVIEW)
+    with pytest.raises(SignaturesRequiredError) as refused:
+        task.transition_to(
+            TaskStatus.DONE,
+            utcnow(),
+            has_artifact=True,
+            missing_signatures=("patron",),
+        )
+    assert refused.value.missing == ("patron",)
+    assert "patron" in str(refused.value)
+    assert task.status == TaskStatus.IN_REVIEW
+
+
+def test_the_signature_gate_fails_shut_when_nobody_looked() -> None:
+    """Người gọi quên tra chữ ký thì bị từ chối, không phải được đóng im lặng."""
+    task = Task(status=TaskStatus.IN_REVIEW)
+    with pytest.raises(SignaturesRequiredError):
+        task.transition_to(TaskStatus.DONE, utcnow(), has_artifact=True)
 
 
 def test_done_with_artifact_sets_completed_at() -> None:
     task = Task(status=TaskStatus.IN_REVIEW)
-    task.transition_to(TaskStatus.DONE, utcnow(), has_artifact=True)
+    task.transition_to(
+        TaskStatus.DONE, utcnow(), has_artifact=True, signatures_complete=True
+    )
     assert task.status == TaskStatus.DONE
     assert task.completed_at is not None
 

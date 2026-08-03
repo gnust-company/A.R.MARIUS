@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from armarius.domain.entities.approval import Approval
 from armarius.domain.entities.artifact import Artifact
+from armarius.domain.entities.auto_approval import AutoApproval
 from armarius.domain.entities.checklist_item import ChecklistItem
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.inbox_item import InboxItem, InboxItemStatus
@@ -30,7 +32,9 @@ from armarius.domain.entities.user import User
 from armarius.domain.entities.wakeup import WakeupRequest
 from armarius.domain.entities.workspace import Project, Workspace
 from armarius.domain.repositories.repositories import (
+    ApprovalRepository,
     ArtifactRepository,
+    AutoApprovalRepository,
     ChecklistItemRepository,
     CommentRepository,
     InboxRepository,
@@ -64,6 +68,7 @@ from armarius.infrastructure.database.models import (
     OnboardingSessionModel,
     PlanItemModel,
     PlanModel,
+    ProjectAutoApprovalModel,
     ProjectContextModel,
     ProjectLeaderConversationModel,
     ProjectModel,
@@ -73,6 +78,7 @@ from armarius.infrastructure.database.models import (
     SeatGrantModel,
     SessionModel,
     SkillModel,
+    TaskApprovalModel,
     TaskDependencyModel,
     TaskLogModel,
     TaskModel,
@@ -81,6 +87,7 @@ from armarius.infrastructure.database.models import (
     WorkspaceModel,
 )
 from armarius.infrastructure.persistence import mappers
+from armarius.shared.clock import utcnow
 
 
 class SqlWorkspaceRepository(WorkspaceRepository):
@@ -562,6 +569,7 @@ class SqlSeatGrantRepository(SeatGrantRepository):
                 role_key=grant.role_key,
                 marius_id=grant.marius_id,
                 status=str(grant.status),
+                granted_by_user_id=grant.granted_by_user_id,
                 granted_at=grant.granted_at,
                 created_at=grant.created_at,
             )
@@ -590,9 +598,90 @@ class SqlSeatGrantRepository(SeatGrantRepository):
         m.role_key = grant.role_key
         m.marius_id = grant.marius_id
         m.status = str(grant.status)
+        m.granted_by_user_id = grant.granted_by_user_id
         m.granted_at = grant.granted_at
         await self._s.flush()
         return grant
+
+
+class SqlApprovalRepository(ApprovalRepository):
+    """Append-only signatures. There is no update and no delete on purpose: a signature
+    that can be edited afterwards is not evidence of anything (FR-039)."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, approval: Approval) -> Approval:
+        self._s.add(
+            TaskApprovalModel(
+                id=approval.id,
+                task_id=approval.task_id,
+                round=approval.round,
+                signer_kind=str(approval.signer_kind),
+                signer_marius_id=approval.signer_marius_id,
+                signer_user_id=approval.signer_user_id,
+                result=str(approval.result),
+                reason=approval.reason,
+                is_auto=approval.is_auto,
+                signed_at=approval.signed_at,
+            )
+        )
+        await self._s.flush()
+        return approval
+
+    async def list_for_task(self, task_id: UUID) -> Sequence[Approval]:
+        rows = (
+            await self._s.execute(
+                select(TaskApprovalModel)
+                .where(TaskApprovalModel.task_id == task_id)
+                .order_by(TaskApprovalModel.round, TaskApprovalModel.signed_at)
+            )
+        ).scalars().all()
+        return [mappers.approval_to_entity(m) for m in rows]
+
+
+class SqlAutoApprovalRepository(AutoApprovalRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def get(self, project_id: UUID, user_id: str) -> AutoApproval | None:
+        m = (
+            await self._s.execute(
+                select(ProjectAutoApprovalModel).where(
+                    ProjectAutoApprovalModel.project_id == project_id,
+                    ProjectAutoApprovalModel.user_id == user_id,
+                )
+            )
+        ).scalars().first()
+        return mappers.auto_approval_to_entity(m) if m else None
+
+    async def set_enabled(
+        self, project_id: UUID, user_id: str, *, enabled: bool
+    ) -> AutoApproval:
+        now = utcnow()
+        m = (
+            await self._s.execute(
+                select(ProjectAutoApprovalModel).where(
+                    ProjectAutoApprovalModel.project_id == project_id,
+                    ProjectAutoApprovalModel.user_id == user_id,
+                )
+            )
+        ).scalars().first()
+        if m is None:
+            m = ProjectAutoApprovalModel(
+                id=uuid4(),
+                project_id=project_id,
+                user_id=user_id,
+                enabled=enabled,
+                created_at=now,
+                updated_at=now,
+            )
+            self._s.add(m)
+        else:
+            m.enabled = enabled
+            m.updated_at = now
+        await self._s.flush()
+        return mappers.auto_approval_to_entity(m)
 
 
 class SqlMariusRepository(MariusRepository):
