@@ -1325,6 +1325,7 @@ class SqlWakeupRepository(WakeupRepository):
             raise LookupError("wakeup not found")
         m.source = str(wakeup.source)
         m.reason = wakeup.reason
+        m.prompt = wakeup.prompt
         m.status = str(wakeup.status)
         m.run_id = wakeup.run_id
         m.updated_at = wakeup.updated_at

@@ -302,3 +302,102 @@ async def test_a_cause_that_arrived_mid_run_is_reconsidered_when_the_run_ends(
     assert len(runs) == 2, "cớ đến giữa lượt chạy bị nuốt mất"
     follow_up = sorted(runs, key=lambda r: r.created_at or utcnow())[-1]
     assert "Bob nhắc tên bạn giữa lúc đang chạy" in (follow_up.trigger_detail or "")
+
+
+async def test_the_packet_that_went_out_is_kept(uow_factory) -> None:
+    """What an agent was actually told is worth keeping. Rebuilding it later from the
+    current code answers a different question — the builder has changed since."""
+    _project, alice, task = await _world(uow_factory)
+    adapter = BlockingAdapter()
+    engine = _engine(uow_factory, adapter)
+
+    await engine.enqueue(
+        marius_id=alice.id, task_id=task.id, source=WakeSource.COMMENT,
+        reason="Bob bình luận trên đầu việc",
+    )
+    await asyncio.wait_for(adapter.started.wait(), timeout=5)
+
+    sent = (await _pending(uow_factory, alice.id, task.id))[0].prompt or ""
+    assert "## Project context" in sent
+    assert "## Where to put your work and how to report status" in sent
+    assert "Bob bình luận trên đầu việc" in sent
+
+    adapter.release.set()
+    await engine.drain()
+
+
+async def test_a_cause_still_coalesces_when_the_run_outlived_its_wake_row(
+    uow_factory,
+) -> None:
+    """The shape the service is left in when it is told to stop mid-turn: the wake was
+    settled on the way out, the run it was driving never got to finish.
+
+    Reading only the wake row here says "the pair is free", the engine tries to open a
+    second run, and the index refuses it — which turns an ordinary restart into an error
+    on the next comment. It has to read the run.
+    """
+    _project, alice, task = await _world(uow_factory)
+    adapter = BlockingAdapter()
+    engine = _engine(uow_factory, adapter)
+
+    run_id = await engine.enqueue(
+        marius_id=alice.id, task_id=task.id, source=WakeSource.COMMENT,
+        reason="Bob bình luận trên đầu việc",
+    )
+    await asyncio.wait_for(adapter.started.wait(), timeout=5)
+    async with uow_factory() as uow:
+        for w in await uow.wakeups.list_active_for(alice.id, task.id):
+            w.status = WakeupStatus.DONE
+            w.updated_at = utcnow()
+            await uow.wakeups.update(w)
+        await uow.commit()
+
+    again = await engine.enqueue(
+        marius_id=alice.id, task_id=task.id, source=WakeSource.MENTION,
+        reason="Bob nhắc tên bạn",
+    )
+    assert again == run_id
+
+    async with uow_factory() as uow:
+        runs = await uow.runs.list_by_task(task.id)
+        absorbed = await uow.wakeups.list_coalesced_into(run_id)
+    assert len(runs) == 1
+    # The cause is not lost just because there was no row to merge it into: it is recorded
+    # against the run, which is what the end-of-run re-evaluation reads.
+    assert [w.reason for w in absorbed] == ["Bob nhắc tên bạn"]
+
+    adapter.release.set()
+    await engine.drain()
+
+
+async def test_a_turn_cut_short_hands_the_pair_back(uow_factory) -> None:
+    """Being told to stop mid-turn must not cost the agent that task forever. The run
+    never finished, so it has to be recorded as stopped rather than left saying it is
+    still running — otherwise every later cause folds into a turn nobody is driving."""
+    _project, alice, task = await _world(uow_factory)
+    adapter = BlockingAdapter()
+    engine = _engine(uow_factory, adapter)
+
+    run_id = await engine.enqueue(
+        marius_id=alice.id, task_id=task.id, source=WakeSource.COMMENT,
+        reason="Bob bình luận trên đầu việc",
+    )
+    await asyncio.wait_for(adapter.started.wait(), timeout=5)
+    for bg in list(engine._bg):
+        bg.cancel()
+    await asyncio.sleep(0.2)
+
+    async with uow_factory() as uow:
+        stopped = await uow.runs.get(run_id)
+    assert stopped is not None
+    assert stopped.status == RunStatus.STOPPED
+    assert not await _pending(uow_factory, alice.id, task.id)
+
+    # And the pair really is free: the next cause opens a fresh run rather than erroring.
+    adapter.release.set()
+    fresh = await engine.enqueue(
+        marius_id=alice.id, task_id=task.id, source=WakeSource.MENTION,
+        reason="Bob nhắc tên bạn",
+    )
+    assert fresh != run_id
+    await engine.drain()
