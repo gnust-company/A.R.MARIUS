@@ -70,6 +70,24 @@ class ThreadService:
                 source=WakeSource.MENTION,
                 reason="you were mentioned in the task thread",
             )
+
+        # FR-048: a new comment on a task you are responsible for is a cause in its own
+        # right. Until now only an @mention woke anyone, so asking a question the plain
+        # way — the way people actually write — reached nobody until something else
+        # happened to wake the worker. Note the scope: the **assignee**, and nobody else
+        # (FR-049). A comment is not a project-wide announcement.
+        assignee = task.assigned_marius_id
+        if (
+            assignee is not None
+            and assignee != author_marius_id
+            and assignee not in mention_ids
+        ):
+            await self._wake.enqueue(
+                marius_id=assignee,
+                task_id=task_id,
+                source=WakeSource.COMMENT,
+                reason="a new comment was posted on the task you are responsible for",
+            )
         return created
 
     async def list_comments(self, task_id: UUID) -> Sequence[Comment]:

@@ -136,40 +136,44 @@ class WakeEngine:
         """Merge one more cause into the wake this pair already owes, if there is one.
 
         Returns the run id the cause was folded into, or ``None`` when the pair is free.
+
+        The question asked here is **"is a run still holding this pair?"**, not "is there a
+        pending wake row?". Those come apart: a process stopped mid-turn closes its wake on
+        the way out but cannot finalise the run it was driving. Keying off the wake row
+        would then read the pair as free, try to open a second run, and be refused by the
+        index — turning an ordinary restart into an error on the next comment.
         """
         async with self._uow() as uow:
+            run = await uow.runs.get_active_for(marius_id, task_id)
             pending = list(await uow.wakeups.list_active_for(marius_id, task_id))
-            if not pending:
-                return None
-            target = pending[0]
-            run = await uow.runs.get(target.run_id) if target.run_id else None
-            if run is None or run.status not in ACTIVE_RUN_STATUSES:
-                # A pending wake whose run is already over (or was never opened) is a dead
-                # row: it would wedge this pair forever, since nothing will ever come back
-                # to close it. Retire it and let the caller open a fresh run.
-                #
-                # Note the case this does NOT cover: a process killed mid-run leaves its
-                # run row saying *running* forever, so the pair stays held. Reclaiming
-                # those is the watchdog's job in Story 6 (FR-068) — guessing at it here
-                # would mean racing a run that may well still be alive.
+            if run is None:
+                # No run holds the pair. Any wake row still marked pending is a leftover
+                # that nothing will ever come back to close — retire it so the pair is
+                # genuinely free rather than wedged behind a dead row.
                 for stale in pending:
                     stale.status = WakeupStatus.FAILED
                     stale.updated_at = utcnow()
                     await uow.wakeups.update(stale)
-                await uow.commit()
+                if pending:
+                    await uow.commit()
                 return None
 
-            target.source = stronger_source(target.source, source)
-            target.reason = merge_causes(target.reason, source, reason)
-            target.updated_at = utcnow()
-            await uow.wakeups.update(target)
+            # Usually there is a pending wake to merge into. When there is not — the run
+            # outlived its wake row — the cause is still recorded against the run, and the
+            # re-evaluation at the end of the run is what makes sure it is not lost.
+            target = pending[0] if pending else None
+            if target is not None:
+                target.source = stronger_source(target.source, source)
+                target.reason = merge_causes(target.reason, source, reason)
+                target.updated_at = utcnow()
+                await uow.wakeups.update(target)
 
             # The individual cause is kept as its own row. The merged reason says *what*
             # the agent is owed; these rows say *when each cause arrived*, which is what
             # tells us afterwards whether a cause made it into the prompt or missed it.
             await uow.wakeups.add(
                 WakeupRequest(
-                    project_id=target.project_id,
+                    project_id=run.project_id,
                     marius_id=marius_id,
                     task_id=task_id,
                     source=source,
@@ -184,7 +188,7 @@ class WakeEngine:
             # itself so the packet the agent eventually reads names all of them
             # (quickstart scenario 4 step 2). Once it is running the prompt is already out
             # — that cause is handled by the re-evaluation when the run ends (step 3).
-            if run.status == RunStatus.QUEUED:
+            if run.status == RunStatus.QUEUED and target is not None:
                 run.wake_source = target.source
                 run.trigger_detail = target.reason
                 await uow.runs.update(run)
@@ -264,14 +268,27 @@ class WakeEngine:
         except Exception:  # pragma: no cover - defensive
             logger.exception("run %s crashed", run_id)
         finally:
-            # Release the pair whatever happened. Leaving the wake pending after a crash
-            # would wedge this agent out of this task permanently.
-            await self._close_wakeup(run_id)
+            # Release the pair whatever happened — including a cancellation, which is what
+            # a container being told to stop looks like from in here. Leaving either half
+            # behind wedges this agent out of this task permanently.
+            await self._release_pair(run_id)
         # Both of these may enqueue, so they run only after the pair is free.
         await self._rewake_for_absorbed_causes(run_id, marius_id, task_id)
         await self._maybe_self_wake(run_id)
 
-    async def _close_wakeup(self, run_id: UUID) -> None:
+    async def _release_pair(self, run_id: UUID) -> None:
+        """Give the (agent, task) pair back: settle the wake, and the run if it never was.
+
+        A run that is still *running* here never reached ``_finalise`` — the turn was
+        cancelled out from under it, which in practice means the process was told to stop
+        mid-turn. Saying so ("stopped") is both true and what frees the pair; leaving it
+        *running* would mean the next comment on that task, forever after, folds into a
+        turn nobody is driving.
+
+        A process killed outright gets no chance to run this at all, and its run does stay
+        *running*. Reclaiming those needs a watchdog that can tell "crashed" from "slow" —
+        that is Story 6 (FR-068), not something to guess at here.
+        """
         async with self._uow() as uow:
             run = await uow.runs.get(run_id)
             if run is None or run.marius_id is None or run.task_id is None:
@@ -282,6 +299,11 @@ class WakeEngine:
                 w.status = WakeupStatus.DONE
                 w.updated_at = utcnow()
                 await uow.wakeups.update(w)
+            if run.status in ACTIVE_RUN_STATUSES:
+                run.status = RunStatus.STOPPED
+                run.error = run.error or "máy chủ dừng giữa lượt chạy"
+                run.finished_at = utcnow()
+                await uow.runs.update(run)
             await uow.commit()
 
     async def _rewake_for_absorbed_causes(
@@ -354,6 +376,17 @@ class WakeEngine:
                     brief,
                 )
             )
+
+            # Keep the exact packet that went out. Until now nothing recorded what an
+            # agent was actually told, so "why did it do that?" could only ever be
+            # answered by guessing at what the builder would have produced — and the
+            # answer changes with every deploy. The column was always meant for this.
+            for pending in await uow.wakeups.list_active_for(marius.id, task.id):
+                if pending.run_id != run_id:
+                    continue
+                pending.prompt = prompt
+                pending.updated_at = utcnow()
+                await uow.wakeups.update(pending)
 
             run.status = RunStatus.RUNNING
             run.started_at = utcnow()

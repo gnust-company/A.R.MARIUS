@@ -10,7 +10,7 @@ from armarius.application.use_cases.threads import ThreadService
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.domain.entities.comment import AuthorKind
-from armarius.domain.entities.run import RunStatus
+from armarius.domain.entities.run import RunStatus, WakeSource
 from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
@@ -244,3 +244,88 @@ async def test_run_trace_tees_to_per_task_sse_channel(uow_factory) -> None:
     # Durable payload stays clean — the (_run_id,_seq) envelope is a tee-only concern.
     assert "_run_id" not in durable_msgs[0].payload
     assert durable_msgs[0].seq == msg_events[0].data.get("_seq")
+
+
+async def test_a_plain_comment_wakes_the_worker_who_owns_the_task(uow_factory) -> None:
+    """FR-048: a new comment on a task you are responsible for is a cause on its own.
+
+    Only an @mention used to wake anyone, so a question asked the plain way — the way
+    people actually write — reached nobody until something else happened to wake the
+    worker. Nothing in the wake sources said so; `comment` existed and was never produced.
+    """
+    wake = _wake_engine(uow_factory)
+    workspaces = WorkspaceService(uow_factory)
+    mariuses = MariusService(uow_factory)
+    tasks = TaskService(uow_factory, wake)
+    threads = ThreadService(uow_factory, wake)
+    runs = RunQueryService(uow_factory)
+
+    ws = await workspaces.create_workspace("WS")
+    project = await workspaces.create_project(ws.id, "P")
+    await force_phase(uow_factory, project.id)
+    dana = await mariuses.register(
+        workspace_id=ws.id, name="Dana", role="Backend", skills=[],
+        adapter_type="echo", adapter_config={},
+    )
+    task = await tasks.create(
+        project_id=project.id,
+        title="Kết xuất báo cáo",
+        description="Gom số liệu tháng rồi kết xuất ra tệp bảng tính.",
+    )
+    await tasks.assign(task.id, dana.id)
+    await _wait_for_completion(runs, task.id)
+
+    await threads.post_comment(
+        task_id=task.id,
+        body="Nhớ kèm ghi chú nguồn số liệu.",  # no @mention anywhere
+        author_kind=AuthorKind.HUMAN,
+        author_user_id="patron@acme.dev",
+    )
+    await _wait_for_completion(runs, task.id)
+
+    async with uow_factory() as uow:
+        every = await uow.runs.list_by_task(task.id)
+    assert any(r.wake_source == WakeSource.COMMENT for r in every), [
+        str(r.wake_source) for r in every
+    ]
+
+
+async def test_a_comment_does_not_wake_a_worker_with_nothing_at_stake(uow_factory) -> None:
+    """FR-049, the other side: a comment is not a project-wide announcement. Someone who
+    holds a seat but not this task has nothing waiting on them."""
+    wake = _wake_engine(uow_factory)
+    workspaces = WorkspaceService(uow_factory)
+    mariuses = MariusService(uow_factory)
+    tasks = TaskService(uow_factory, wake)
+    threads = ThreadService(uow_factory, wake)
+    runs = RunQueryService(uow_factory)
+
+    ws = await workspaces.create_workspace("WS")
+    project = await workspaces.create_project(ws.id, "P")
+    await force_phase(uow_factory, project.id)
+    dana, eve = [
+        await mariuses.register(
+            workspace_id=ws.id, name=n, role="Backend", skills=[],
+            adapter_type="echo", adapter_config={},
+        )
+        for n in ("Dana", "Eve")
+    ]
+    task = await tasks.create(
+        project_id=project.id,
+        title="Kết xuất báo cáo",
+        description="Gom số liệu tháng rồi kết xuất ra tệp bảng tính.",
+    )
+    await tasks.assign(task.id, dana.id)
+    await _wait_for_completion(runs, task.id)
+
+    await threads.post_comment(
+        task_id=task.id,
+        body="Nhớ kèm ghi chú nguồn số liệu.",
+        author_kind=AuthorKind.HUMAN,
+        author_user_id="patron@acme.dev",
+    )
+    await _wait_for_completion(runs, task.id)
+
+    async with uow_factory() as uow:
+        every = await uow.runs.list_by_task(task.id)
+    assert not [r for r in every if r.marius_id == eve.id]

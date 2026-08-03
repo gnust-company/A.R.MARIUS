@@ -298,29 +298,29 @@ chứa máy chủ giữa lúc có lệnh treo** → vẫn chỉ một lệnh tre
 
 ### Bài kiểm (viết trước, phải đỏ) ⚠️
 
-- [ ] T102 [P] [US4] Bài kiểm tám phần và quy tắc "không có" cho phần rỗng — bổ sung vào `backend/tests/test_wake_prompt.py`
-- [ ] T103 [P] [US4] Bài kiểm bất biến gộp ở tầng lưu trữ: hai cớ đồng thời cho cùng cặp chỉ sinh một lệnh treo — trong `backend/tests/test_wake_coalesce.py`
-- [ ] T104 [P] [US4] Bài kiểm sống sót qua khởi động lại: dựng lại bộ máy đánh thức từ dữ liệu bền, không sinh lệnh thứ hai — trong `backend/tests/test_wake_coalesce.py`
+- [X] T102 [P] [US4] Bài kiểm tám phần và quy tắc "không có" cho phần rỗng — bổ sung vào `backend/tests/test_wake_prompt.py`
+- [X] T103 [P] [US4] Bài kiểm bất biến gộp ở tầng lưu trữ: hai cớ đồng thời cho cùng cặp chỉ sinh một lệnh treo — trong `backend/tests/test_wake_coalesce.py`
+- [X] T104 [P] [US4] Bài kiểm sống sót qua khởi động lại: dựng lại bộ máy đánh thức từ dữ liệu bền, không sinh lệnh thứ hai — trong `backend/tests/test_wake_coalesce.py`
 
 ### Gói tin
 
-- [ ] T105 [US4] Thêm Bối cảnh dự án đã duyệt vào `WakeContext` trong `backend/armarius/domain/services/wake_prompt.py`
-- [ ] T106 [US4] Tách "nơi nộp thành phẩm và cách báo trạng thái" thành mục riêng, không lẫn trong đoạn hướng dẫn, trong `backend/armarius/domain/services/wake_prompt.py`
-- [ ] T107 [US4] Ghi rõ "không có" cho mọi phần rỗng thay vì bỏ qua im lặng (FR-045) trong `backend/armarius/domain/services/wake_prompt.py`
-- [ ] T108 [US4] Nạp Bối cảnh vào ngữ cảnh đánh thức trong `backend/armarius/application/use_cases/wake_engine.py`
+- [X] T105 [US4] Thêm Bối cảnh dự án đã duyệt vào `WakeContext` trong `backend/armarius/domain/services/wake_prompt.py`
+- [X] T106 [US4] Tách "nơi nộp thành phẩm và cách báo trạng thái" thành mục riêng, không lẫn trong đoạn hướng dẫn, trong `backend/armarius/domain/services/wake_prompt.py`
+- [X] T107 [US4] Ghi rõ "không có" cho mọi phần rỗng thay vì bỏ qua im lặng (FR-045) trong `backend/armarius/domain/services/wake_prompt.py`
+- [X] T108 [US4] Nạp Bối cảnh vào ngữ cảnh đánh thức trong `backend/armarius/application/use_cases/wake_engine.py`
 
 ### Gộp lời gọi bền
 
-- [ ] T109 [US4] Ràng buộc duy nhất "tối đa một lệnh treo và một lượt chạy cho mỗi cặp *(agent, đầu việc)*" trong `backend/armarius/infrastructure/database/models.py`
-- [ ] T110 [US4] Bản di trú Đợt 4 trong `backend/armarius/infrastructure/alembic/versions/`, kèm dọn lệnh treo trùng còn sót trước khi đặt ràng buộc
-- [ ] T111 [US4] Bỏ từ điển trong tiến trình `WakeEngine._active`, chuyển quyết định gộp sang đọc/ghi cơ sở dữ liệu và ghi trạng thái *đã gộp* trong `backend/armarius/application/use_cases/wake_engine.py`
-- [ ] T112 [US4] Lý do gộp liệt kê đủ mọi cớ và giữ lý do mạnh hơn trong `backend/armarius/application/use_cases/wake_engine.py`
-- [ ] T113 [US4] Đánh giá lại nhu cầu gọi khi một lượt chạy kết thúc (FR-050) trong `backend/armarius/application/use_cases/runs.py`
-- [ ] T114 [US4] Bổ sung cớ đánh thức còn thiếu (*đầu việc chờ rà soát*, *đầu việc xong*, *người chủ quyết*, *thợ trả việc*, *nhắc vì im lâu*) trong `backend/armarius/domain/entities/wakeup.py` và luật chọn cớ trong `backend/armarius/domain/services/wake_policy.py`
+- [X] T109 [US4] Ràng buộc duy nhất "tối đa một lệnh treo và một lượt chạy cho mỗi cặp *(agent, đầu việc)*" trong `backend/armarius/infrastructure/database/models.py`
+- [X] T110 [US4] Bản di trú Đợt 4 trong `backend/armarius/infrastructure/alembic/versions/`, kèm dọn lệnh treo trùng còn sót trước khi đặt ràng buộc
+- [X] T111 [US4] Bỏ từ điển trong tiến trình `WakeEngine._active`, chuyển quyết định gộp sang đọc/ghi cơ sở dữ liệu và ghi trạng thái *đã gộp* trong `backend/armarius/application/use_cases/wake_engine.py`
+- [X] T112 [US4] Lý do gộp liệt kê đủ mọi cớ và giữ lý do mạnh hơn trong `backend/armarius/application/use_cases/wake_engine.py`
+- [X] T113 [US4] Đánh giá lại nhu cầu gọi khi một lượt chạy kết thúc (FR-050) trong `backend/armarius/application/use_cases/runs.py`
+- [X] T114 [US4] Bổ sung cớ đánh thức còn thiếu (*đầu việc chờ rà soát*, *đầu việc xong*, *người chủ quyết*, *thợ trả việc*, *nhắc vì im lâu*) trong `backend/armarius/domain/entities/wakeup.py` và luật chọn cớ trong `backend/armarius/domain/services/wake_policy.py`
 
 ### Kiểm chứng chạy thật
 
-- [ ] T115 [US4] Dựng lại vùng chứa máy chủ, chạy trọn năm bước của Kịch bản 4 trong `specs/001-van-hanh-du-an/quickstart.md`, **bao gồm bước khởi động lại giữa lúc có lệnh treo**
+- [X] T115 [US4] Dựng lại vùng chứa máy chủ, chạy trọn năm bước của Kịch bản 4 trong `specs/001-van-hanh-du-an/quickstart.md`, **bao gồm bước khởi động lại giữa lúc có lệnh treo**
 
 **Chốt chặn**: Câu chuyện 4 chạy độc lập được. Một PR, dừng chờ người chủ duyệt.
 
