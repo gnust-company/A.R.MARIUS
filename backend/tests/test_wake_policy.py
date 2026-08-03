@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from armarius.domain.entities.run import RunStatus, WakeSource
 from armarius.domain.entities.task import TaskStatus
-from armarius.domain.services.wake_policy import decide_self_wake
+from armarius.domain.services.wake_policy import (
+    LEADER_WAKE_CAUSES,
+    SYSTEM_WAKE_CAUSES,
+    WORKER_WAKE_CAUSES,
+    decide_self_wake,
+)
 
 
 def _decide(**kw):
@@ -64,3 +69,29 @@ def test_budget_exhausted_escalates() -> None:
 def test_terminal_status_is_silent() -> None:
     assert _decide(task_status=TaskStatus.DONE).should_wake is False
     assert _decide(task_status=TaskStatus.CANCELLED).should_wake is False
+
+
+# ── the closed lists are closed (spec 001 FR-047, FR-048) ──────────────────────
+
+
+def test_every_wake_cause_is_assigned_to_somebody() -> None:
+    """A cause nobody claimed is a cause that can wake anyone — which is the opposite of
+    what "when and only when" means. Adding a new one without deciding who it may wake
+    fails here rather than quietly widening both lists."""
+    claimed = LEADER_WAKE_CAUSES | WORKER_WAKE_CAUSES | SYSTEM_WAKE_CAUSES
+    unclaimed = set(WakeSource) - claimed
+    assert not unclaimed, f"cớ chưa ai nhận: {sorted(str(s) for s in unclaimed)}"
+
+
+def test_the_two_lists_do_not_overlap() -> None:
+    """Overlap would mean a cause reads as both 'the Leader owes something' and 'a worker
+    owes something', which is exactly the ambiguity FR-049 removes."""
+    assert not (LEADER_WAKE_CAUSES & WORKER_WAKE_CAUSES)
+
+
+def test_a_worker_is_not_on_the_hook_for_reviewing_or_deciding() -> None:
+    """FR-049 in the concrete: a task reaching review, or the patron deciding something,
+    is not the worker's business — it has nothing left to do until someone answers."""
+    assert WakeSource.TASK_IN_REVIEW not in WORKER_WAKE_CAUSES
+    assert WakeSource.PATRON_DECISION not in WORKER_WAKE_CAUSES
+    assert WakeSource.TASK_DONE not in WORKER_WAKE_CAUSES

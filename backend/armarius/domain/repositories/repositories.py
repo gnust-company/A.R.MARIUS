@@ -276,6 +276,14 @@ class RunRepository(ABC):
     @abstractmethod
     async def list_by_marius(self, marius_id: UUID) -> Sequence[Run]: ...
 
+    @abstractmethod
+    async def get_active_for(self, marius_id: UUID, task_id: UUID) -> Run | None:
+        """The run currently holding this (agent, task) pair, if any (FR-050).
+
+        There can be at most one — a partial unique index guarantees it — so the answer is
+        a single run rather than a list.
+        """
+
 
 class RunEventRepository(ABC):
     @abstractmethod
@@ -302,6 +310,14 @@ class WakeupRepository(ABC):
     async def list_active_for(
         self, marius_id: UUID, task_id: UUID
     ) -> Sequence[WakeupRequest]: ...
+
+    @abstractmethod
+    async def list_coalesced_into(self, run_id: UUID) -> Sequence[WakeupRequest]:
+        """Every cause that was folded into this run, oldest first.
+
+        Read when the run ends: a cause that arrived after the prompt was built was never
+        shown to the agent, so the system still owes it a wake (FR-050).
+        """
 
 
 class SkillRepository(ABC):

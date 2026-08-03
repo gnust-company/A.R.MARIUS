@@ -37,6 +37,17 @@ class WakeSource(StrEnum):
     # the Leader back to the brief after three rounds (FR-041).
     APPROVAL_REJECTED = "approval_rejected"
     BRIEF_REVIEW = "brief_review"
+    # Story 4 wakes (FR-047, FR-048) — the two causes the closed list named but no code
+    # could ever produce, which made both lists aspirational rather than exhaustive.
+    TASK_IN_REVIEW = "task_in_review"  # a task reached *in review* → the Leader must judge it
+    IDLE_REMINDER = "idle_reminder"  # the task went quiet past its threshold (FR-052)
+
+
+# A run that is still holding the (agent, task) pair. FR-050 allows at most one at a time,
+# enforced in the schema alongside the pending-wake index.
+ACTIVE_RUN_STATUSES: frozenset[RunStatus] = frozenset(
+    {RunStatus.QUEUED, RunStatus.RUNNING}
+)
 
 
 @dataclass

@@ -22,6 +22,24 @@ class WakeupStatus(StrEnum):
     FAILED = "failed"
 
 
+# The two statuses that mean "this wake is still owed". FR-050 allows at most one of these
+# per (agent, task) at a time, and the storage layer enforces it — a partial unique index
+# rather than a check in application code, so a second process or a restart cannot slip a
+# duplicate past it.
+PENDING_WAKEUP_STATUSES: frozenset[WakeupStatus] = frozenset(
+    {WakeupStatus.QUEUED, WakeupStatus.DISPATCHED}
+)
+
+
+class WakePairBusyError(Exception):
+    """The storage layer refused a second pending wake for one (agent, task) pair.
+
+    Raised by the repository when the unique index trips, i.e. when two causes raced each
+    other. The caller's answer is never to force the write through — it is to re-read and
+    fold the losing cause into the wake that won.
+    """
+
+
 @dataclass
 class WakeupRequest:
     id: UUID = field(default_factory=uuid4)

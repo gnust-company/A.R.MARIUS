@@ -16,6 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -309,6 +310,20 @@ class SessionModel(Base):
 
 class RunModel(Base):
     __tablename__ = "runs"
+    __table_args__ = (
+        # FR-050: at most ONE live run per (agent, task). Partial, so the pair frees up the
+        # moment the run reaches a terminal status — otherwise an agent could be woken for
+        # a given task exactly once in its life. Rows with a NULL task_id (project-level
+        # runs) are exempt: NULL never equals NULL, so they never collide here.
+        Index(
+            "uq_run_active_per_agent_task",
+            "marius_id",
+            "task_id",
+            unique=True,
+            sqlite_where=text("status IN ('queued','running')"),
+            postgresql_where=text("status IN ('queued','running')"),
+        ),
+    )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     project_id: Mapped[UUID | None] = mapped_column(Uuid)
     marius_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
@@ -356,6 +371,21 @@ class ArtifactModel(Base):
 
 class WakeupModel(Base):
     __tablename__ = "wakeup_requests"
+    __table_args__ = (
+        # The other half of FR-050: at most ONE wake still owed per (agent, task). This is
+        # the invariant that used to live in a dictionary inside one process — which meant
+        # it was not an invariant at all, just a habit that a restart or a second worker
+        # forgot. Coalesced/done/failed rows stay out of the index so the audit trail of
+        # every individual cause can still be written.
+        Index(
+            "uq_wakeup_pending_per_agent_task",
+            "marius_id",
+            "task_id",
+            unique=True,
+            sqlite_where=text("status IN ('queued','dispatched')"),
+            postgresql_where=text("status IN ('queued','dispatched')"),
+        ),
+    )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     project_id: Mapped[UUID | None] = mapped_column(Uuid)
     marius_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
