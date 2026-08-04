@@ -13,9 +13,11 @@ exactly once, ever".
 easily violate them — the old engine had no way to prevent a restart from leaving two.
 The rule for choosing which row survives is *keep the newest*: an older pending wake whose
 process is long gone is precisely the wedge this migration exists to clear, and the newest
-row is the one whose cause is still relevant. Losers are marked `failed` rather than
+row is the one whose cause is still relevant. Losers are marked `superseded` rather than
 deleted — they are real history, and the audit trail of why an agent was woken is worth
-more than a tidy table.
+more than a tidy table. `superseded` and not `failed`, because a wake that something newer
+replaced is a different fact from one that was dropped on the floor, and a table cannot
+tell them apart later if both read the same.
 
 Rows with a NULL `task_id` (project-level runs) are untouched: NULL never equals NULL, so
 they cannot collide in either index.
@@ -46,10 +48,10 @@ _ACTIVE_RUN = "status IN ('queued','running')"
 
 
 def _retire_duplicate_pending_wakes() -> None:
-    """Leave one pending wake per pair — the newest — and mark the rest failed."""
+    """Leave one pending wake per pair — the newest — and mark the rest superseded."""
     op.get_bind().execute(
         sa.text(
-            "UPDATE wakeup_requests SET status = 'failed' "
+            "UPDATE wakeup_requests SET status = 'superseded' "
             "WHERE status IN ('queued','dispatched') "
             "  AND marius_id IS NOT NULL AND task_id IS NOT NULL "
             "  AND id NOT IN ("

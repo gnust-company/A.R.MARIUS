@@ -151,7 +151,7 @@ class WakeEngine:
                 # that nothing will ever come back to close — retire it so the pair is
                 # genuinely free rather than wedged behind a dead row.
                 for stale in pending:
-                    stale.status = WakeupStatus.FAILED
+                    stale.status = WakeupStatus.ORPHANED
                     stale.updated_at = utcnow()
                     await uow.wakeups.update(stale)
                 if pending:
