@@ -51,7 +51,15 @@ def strength(source: WakeSource) -> int:
 
 
 def stronger_source(current: WakeSource, incoming: WakeSource) -> WakeSource:
-    """Which cause the merged wake is filed under. Ties keep the one already recorded."""
+    """Which cause the merged wake is filed under.
+
+    Ties keep the cause already recorded, and several pairs above are deliberately tied —
+    a task reaching review and a task closing are equally urgent to a Leader, and pretending
+    otherwise would be inventing a distinction. So for those pairs the order of arrival does
+    settle it. That is fine: the ranking exists to stop a loud cause being filed under a
+    quiet one, not to impose a total order on causes that are genuinely the same weight.
+    Either way the merged reason still names both.
+    """
     return incoming if strength(incoming) > strength(current) else current
 
 
@@ -61,6 +69,11 @@ def merge_causes(existing: str | None, source: WakeSource, reason: str | None) -
     The first cause is stored plainly (an un-merged wake reads like an ordinary sentence);
     the moment a second arrives the whole thing becomes a list, so the agent can see it was
     woken for more than one thing.
+
+    Duplicates are dropped by comparing the text, so two causes of different kinds that
+    happen to be worded identically collapse into one line. That is the right trade here:
+    repeating the same sentence twice tells the agent nothing, and each cause still has its
+    own row in ``wakeup_requests`` — the merged reason is a summary, not the record.
     """
     incoming = (reason or "").strip() or str(source)
     causes = split_causes(existing)

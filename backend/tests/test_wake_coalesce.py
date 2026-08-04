@@ -61,9 +61,11 @@ class BlockingAdapter(MariusAdapter):
         self.release = asyncio.Event()
         self.started = asyncio.Event()
         self.turns = 0
+        self.prompts: list[str] = []
 
     async def execute(self, ctx: ExecContext) -> ExecResult:
         self.turns += 1
+        self.prompts.append(ctx.prompt)
         self.started.set()
         await self.release.wait()
         return ExecResult(status=RunStatus.COMPLETED, session_params={"session_id": "s1"})
@@ -401,3 +403,46 @@ async def test_a_turn_cut_short_hands_the_pair_back(uow_factory) -> None:
     )
     assert fresh != run_id
     await engine.drain()
+
+
+async def test_a_cause_that_lands_before_the_turn_starts_reaches_the_packet(
+    uow_factory, monkeypatch
+) -> None:
+    """The window between opening a run and the turn actually starting.
+
+    A cause landing here is folded into the run itself, precisely so the packet names it
+    (quickstart scenario 4 step 2). And it is deliberately excluded from the end-of-run
+    re-evaluation, because it is *supposed* to have been in the packet — so if the fold
+    does not stick, the cause is in neither place and is gone for good.
+
+    Every other test here waits for the turn to start before firing the second cause, so
+    none of them ever touches this branch.
+    """
+    _project, alice, task = await _world(uow_factory)
+    adapter = BlockingAdapter()
+    engine = _engine(uow_factory, adapter)
+    # Hold the run at *queued*: open it, but do not let the turn begin.
+    monkeypatch.setattr(engine, "_spawn", lambda *args: None)
+
+    run_id = await engine.enqueue(
+        marius_id=alice.id, task_id=task.id, source=WakeSource.COMMENT,
+        reason="Bob bình luận trên đầu việc",
+    )
+    await engine.enqueue(
+        marius_id=alice.id, task_id=task.id, source=WakeSource.MENTION,
+        reason="Bob nhắc tên bạn",
+    )
+
+    async with uow_factory() as uow:
+        queued = await uow.runs.get(run_id)
+    assert queued is not None
+    assert queued.wake_source == WakeSource.MENTION, queued.wake_source
+    assert "Bob nhắc tên bạn" in (queued.trigger_detail or ""), queued.trigger_detail
+
+    # End to end, read off the adapter: this is the text the agent was actually handed.
+    adapter.release.set()
+    await engine._execute_run(run_id, alice.id, task.id)
+
+    assert adapter.prompts, "lượt chạy không hề khởi động"
+    assert "Bob nhắc tên bạn" in adapter.prompts[0], adapter.prompts[0]
+    assert "Bob bình luận trên đầu việc" in adapter.prompts[0]

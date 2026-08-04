@@ -20,6 +20,12 @@ class WakeupStatus(StrEnum):
     COALESCED = "coalesced"  # folded into an already-running wake for same (marius, task)
     DONE = "done"
     FAILED = "failed"
+    # Two ways a pending wake can end without ever being delivered. They look the same in
+    # a table and mean opposite things, so they get their own names: reading `failed` for
+    # both would make the audit trail unable to answer "did we drop this, or did something
+    # replace it?".
+    SUPERSEDED = "superseded"  # a newer pending wake for the same pair took its place
+    ORPHANED = "orphaned"  # no run was ever going to close it (the process that owned it died)
 
 
 # The two statuses that mean "this wake is still owed". FR-050 allows at most one of these

@@ -1169,6 +1169,13 @@ class SqlRunRepository(RunRepository):
         if m is None:
             raise LookupError("run not found")
         m.status = str(run.status)
+        # Both of these change after a run is created: a cause folded in before the turn
+        # starts re-files the run under the stronger cause and rewrites the merged reason
+        # (FR-050). Leaving them out here dropped that write silently — no error, and the
+        # cause was then excluded from the end-of-run re-check too, on the assumption it
+        # had already reached the packet. It had not.
+        m.wake_source = str(run.wake_source)
+        m.trigger_detail = run.trigger_detail
         m.external_run_id = run.external_run_id
         m.session_id_before = run.session_id_before
         m.session_id_after = run.session_id_after
@@ -1205,13 +1212,19 @@ class SqlRunRepository(RunRepository):
         return [mappers.run_to_entity(m) for m in rows]
 
     async def get_active_for(self, marius_id: UUID, task_id: UUID) -> Run | None:
+        # The partial unique index means there is at most one row, so the ordering should
+        # never matter. It is here for the case where it does: a database the migration has
+        # not reached yet would otherwise return whichever row the planner happened to hand
+        # back first, and "which run holds this pair" would stop being a stable answer.
         m = (
             await self._s.execute(
-                select(RunModel).where(
+                select(RunModel)
+                .where(
                     RunModel.marius_id == marius_id,
                     RunModel.task_id == task_id,
                     RunModel.status.in_([str(s) for s in ACTIVE_RUN_STATUSES]),
                 )
+                .order_by(RunModel.created_at.desc())
             )
         ).scalars().first()
         return mappers.run_to_entity(m) if m else None
