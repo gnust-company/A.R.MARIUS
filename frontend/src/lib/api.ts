@@ -936,6 +936,30 @@ export interface ThresholdsDTO {
   patron_reminder_hours: number[]
   level1_recovery_attempts: number
   rejection_round_cap: number
+  orchestration_wakes_per_hour: number
+}
+
+/** One thing the last orchestration sweep found on the board (spec 001 FR-052). */
+export interface SnagDTO {
+  kind: 'silent' | 'due_soon' | 'blocked' | 'awaiting_leader'
+  task_id: string
+  identifier: string
+  detail: string
+}
+
+/**
+ * The Leader's last look at a project's board (spec 001 FR-052 → FR-055).
+ *
+ * Reports the sweep that actually happened rather than a list computed on read: a
+ * recomputed list would look healthy while the loop behind it was dead.
+ */
+export interface OrchestrationDTO {
+  last_swept_at: string | null
+  next_sweep_at: string | null
+  interval_seconds: number
+  woke_leader: boolean
+  skipped_reason: string | null
+  snags: SnagDTO[]
 }
 
 export async function getTaskLog(taskId: string): Promise<TaskLogEntryDTO[]> {
@@ -956,6 +980,12 @@ export async function getInbox(params?: {
 
 export async function resolveInboxItem(itemId: string): Promise<InboxItemDTO> {
   return post<InboxItemDTO>(`/v1/inbox/${itemId}/resolve`, {})
+}
+
+export async function getProjectOrchestration(
+  projectId: string,
+): Promise<OrchestrationDTO> {
+  return get<OrchestrationDTO>(`/v1/projects/${projectId}/orchestration`)
 }
 
 export async function getProjectThresholds(projectId: string): Promise<ThresholdsDTO> {

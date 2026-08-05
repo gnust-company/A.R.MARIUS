@@ -19,6 +19,7 @@ from armarius.domain.entities.label import Label
 from armarius.domain.entities.leader_chat import ProjectLeaderConversation
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.onboarding import OnboardingSession
+from armarius.domain.entities.orchestration_sweep import OrchestrationSweep
 from armarius.domain.entities.plan import Plan
 from armarius.domain.entities.project_context import ContextApprovalStatus, ProjectContext
 from armarius.domain.entities.role import Role
@@ -48,6 +49,7 @@ from armarius.domain.repositories.repositories import (
     LeaderChatRepository,
     MariusRepository,
     OnboardingRepository,
+    OrchestrationSweepRepository,
     PlanRepository,
     ProjectContextRepository,
     ProjectRepository,
@@ -72,6 +74,7 @@ from armarius.infrastructure.database.models import (
     LabelModel,
     MariusModel,
     OnboardingSessionModel,
+    OrchestrationSweepModel,
     PlanItemModel,
     PlanModel,
     ProjectAutoApprovalModel,
@@ -1229,6 +1232,19 @@ class SqlRunRepository(RunRepository):
         ).scalars().first()
         return mappers.run_to_entity(m) if m else None
 
+    async def has_active_for_task(self, task_id: UUID) -> bool:
+        found = (
+            await self._s.execute(
+                select(RunModel.id)
+                .where(
+                    RunModel.task_id == task_id,
+                    RunModel.status.in_([str(s) for s in ACTIVE_RUN_STATUSES]),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        return found is not None
+
 
 class SqlRunEventRepository(RunEventRepository):
     def __init__(self, session: AsyncSession) -> None:
@@ -1831,3 +1847,49 @@ class SqlPlanRepository(PlanRepository):
             )
         ).scalar_one_or_none()
         return int(highest or 0)
+
+
+class SqlOrchestrationSweepRepository(OrchestrationSweepRepository):
+    """Append-only, newest-first (spec 001 FR-052 → FR-055).
+
+    The whole point of these rows is that a quiet sweep is still evidence the loop ran,
+    so there is no path here that skips writing one.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, sweep: OrchestrationSweep) -> OrchestrationSweep:
+        self._s.add(
+            OrchestrationSweepModel(
+                id=sweep.id,
+                project_id=sweep.project_id,
+                swept_at=sweep.swept_at,
+                snags=[mappers.snag_to_row(s) for s in sweep.snags],
+                snag_count=sweep.snag_count,
+                woke_leader=sweep.woke_leader,
+                skipped_reason=sweep.skipped_reason,
+                next_interval_seconds=sweep.next_interval_seconds,
+                reported_marks=dict(sweep.reported_marks),
+            )
+        )
+        await self._s.flush()
+        return sweep
+
+    async def list_recent(
+        self, project_id: UUID, *, limit: int = 32
+    ) -> Sequence[OrchestrationSweep]:
+        rows = (
+            await self._s.execute(
+                select(OrchestrationSweepModel)
+                .where(OrchestrationSweepModel.project_id == project_id)
+                # `id` breaks the tie so two sweeps sharing a timestamp — which the tests'
+                # fixed clock produces on purpose — still come back in a stable order.
+                .order_by(
+                    OrchestrationSweepModel.swept_at.desc(),
+                    OrchestrationSweepModel.id.desc(),
+                )
+                .limit(limit)
+            )
+        ).scalars()
+        return [mappers.orchestration_sweep_to_entity(r) for r in rows]

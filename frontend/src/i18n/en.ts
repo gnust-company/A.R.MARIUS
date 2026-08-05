@@ -458,6 +458,22 @@ export const en = {
     deleteConfirmBody: 'This permanently deletes "{{name}}" and all of its tasks, comments and artifacts. This cannot be undone.',
     deleting: 'Deleting…',
     blockedBy: 'Blocked by {{count}}',
+    cadence: {
+      title: 'Orchestration cadence',
+      neverSwept: 'No sweep yet.',
+      lastSwept: 'Last swept: {{when}}',
+      nextSweep: 'Next sweep: {{when}}',
+      allClear: 'Nothing hanging. The sweep passed in silence.',
+      snagCount_one: '{{count}} snag',
+      snagCount_other: '{{count}} snags',
+      skipped: 'Leader not woken: {{reason}}',
+      kind: {
+        silent: 'Silent',
+        due_soon: 'Due soon',
+        blocked: 'Blocked',
+        awaiting_leader: 'Awaiting your decision',
+      },
+    },
   },
   leaderChat: {
     title: 'Chat with Leader',

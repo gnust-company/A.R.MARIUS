@@ -338,28 +338,28 @@ cảnh → nhịp kế tiếp gọi **đúng một lần**, lý do nêu đích d
 
 ### Bài kiểm (viết trước, phải đỏ) ⚠️
 
-- [ ] T116 [P] [US5] Bài kiểm dò điểm treo bằng hàm thuần với đồng hồ cố định trong `backend/tests/test_orchestration_cadence.py`
-- [ ] T117 [P] [US5] Bài kiểm nhịp im lặng khi không có điểm treo và trần số lần gọi trong một giờ — trong `backend/tests/test_orchestrator_loop.py`
+- [X] T116 [P] [US5] Bài kiểm dò điểm treo bằng hàm thuần với đồng hồ cố định trong `backend/tests/test_orchestration_cadence.py`
+- [X] T117 [P] [US5] Bài kiểm nhịp im lặng khi không có điểm treo và trần số lần gọi trong một giờ — trong `backend/tests/test_orchestrator_loop.py`
 
 ### Thực thể và luật thuần
 
-- [ ] T118 [US5] Luật dò bốn loại điểm treo trong `backend/armarius/domain/services/orchestration_cadence.py` theo đúng định nghĩa ở FR-052: *im lâu* (5 phút không hoạt động **và** không có lượt chạy sống), *sắp trễ* (chạm mốc 24/12/6/1 giờ trước hạn chót, đầu việc không có hạn chót thì bỏ qua), *mắc kẹt* (đang ở *bị chặn*), *chờ Trưởng dự án quyết*
-- [ ] T119 [US5] Luật giãn và làm dày nhịp kèm trần số lần gọi trong một giờ (FR-055) trong `backend/armarius/domain/services/orchestration_cadence.py`
+- [X] T118 [US5] Luật dò bốn loại điểm treo trong `backend/armarius/domain/services/orchestration_cadence.py` theo đúng định nghĩa ở FR-052: *im lâu* (5 phút không hoạt động **và** không có lượt chạy sống), *sắp trễ* (chạm mốc 24/12/6/1 giờ trước hạn chót, đầu việc không có hạn chót thì bỏ qua), *mắc kẹt* (đang ở *bị chặn*), *chờ Trưởng dự án quyết*
+- [X] T119 [US5] Luật giãn và làm dày nhịp kèm trần số lần gọi trong một giờ (FR-055) trong `backend/armarius/domain/services/orchestration_cadence.py`
 
 ### Vòng lặp nền
 
-- [ ] T120 [US5] Vòng điều phối theo khuôn `LivenessWatchdog` — thân vòng gọi được riêng để kiểm thử — trong `backend/armarius/application/use_cases/orchestrator.py`
-- [ ] T121 [US5] Gắn vòng điều phối vào vòng đời ứng dụng trong `backend/armarius/main.py` và `backend/armarius/presentation/container.py`
-- [ ] T122 [US5] Gói tin nhịp điều phối nêu đích danh từng điểm treo (FR-054) trong `backend/armarius/domain/services/wake_prompt.py`
-- [ ] T123 [US5] Đọc ngưỡng nhịp từ thiết lập dự án (T016), không đóng cứng, trong `backend/armarius/application/use_cases/orchestrator.py`
+- [X] T120 [US5] Vòng điều phối theo khuôn `LivenessWatchdog` — thân vòng gọi được riêng để kiểm thử — trong `backend/armarius/application/use_cases/orchestrator.py`
+- [X] T121 [US5] Gắn vòng điều phối vào vòng đời ứng dụng trong `backend/armarius/main.py` và `backend/armarius/presentation/container.py`
+- [X] T122 [US5] Gói tin nhịp điều phối nêu đích danh từng điểm treo (FR-054) trong `backend/armarius/domain/services/wake_prompt.py`
+- [X] T123 [US5] Đọc ngưỡng nhịp từ thiết lập dự án (T016), không đóng cứng, trong `backend/armarius/application/use_cases/orchestrator.py`
 
 ### Giao diện
 
-- [ ] T124 [P] [US5] Hiện lần rà gần nhất và các điểm treo đang có trên `frontend/src/pages/ProjectBoard.tsx` kèm chuỗi hiển thị trong `frontend/src/i18n/vi.ts` và `frontend/src/i18n/en.ts`
+- [X] T124 [P] [US5] Hiện lần rà gần nhất và các điểm treo đang có trên `frontend/src/pages/ProjectBoard.tsx` kèm chuỗi hiển thị trong `frontend/src/i18n/vi.ts` và `frontend/src/i18n/en.ts`
 
 ### Kiểm chứng chạy thật
 
-- [ ] T125 [US5] Dựng lại vùng chứa máy chủ, chạy trọn bốn bước của Kịch bản 5 trong `specs/001-van-hanh-du-an/quickstart.md` — **đếm số lần gọi theo nhịp phải bằng không** ở bước 1
+- [X] T125 [US5] Dựng lại vùng chứa máy chủ, chạy trọn bốn bước của Kịch bản 5 trong `specs/001-van-hanh-du-an/quickstart.md` — **đếm số lần gọi theo nhịp phải bằng không** ở bước 1
 
 **Chốt chặn**: Câu chuyện 5 chạy độc lập được. Một PR, dừng chờ người chủ duyệt.
 

@@ -58,6 +58,9 @@ class ProjectThresholds:
     patron_reminder_hours: tuple[int, ...]
     level1_recovery_attempts: int
     rejection_round_cap: int
+    # Ceiling on cadence wakes per hour (FR-055). Zero means *no ceiling configured*,
+    # never *never wake anyone* — see `within_hourly_cap`.
+    orchestration_wakes_per_hour: int = 4
 
     def with_overrides(self, overrides: dict[str, object] | None) -> ProjectThresholds:
         """Apply a project's overrides on top of these values, ignoring junk.

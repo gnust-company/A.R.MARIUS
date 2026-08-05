@@ -21,6 +21,7 @@ from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.liveness_watchdog import LivenessWatchdog
 from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.onboarding_session import OnboardingService
+from armarius.application.use_cases.orchestrator import OrchestrationLoop
 from armarius.application.use_cases.plans import PlanService
 from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.runs import RunQueryService
@@ -62,6 +63,7 @@ class Container:
     leader_chat: LeaderChatService
     liveness: LivenessEngine
     liveness_watchdog: LivenessWatchdog
+    orchestrator: OrchestrationLoop
     inbox: InboxService
     labels: LabelService
     mariuses: MariusService
@@ -90,6 +92,7 @@ def _system_thresholds() -> ProjectThresholds:
         patron_reminder_hours=tuple(settings.patron_reminder_hour_tiers),
         level1_recovery_attempts=settings.level1_recovery_attempts,
         rejection_round_cap=settings.rejection_round_cap,
+        orchestration_wakes_per_hour=settings.orchestration_wakes_per_hour,
     )
 
 
@@ -176,6 +179,15 @@ def build_container() -> Container:
         liveness,
         interval_seconds=settings.liveness_watchdog_interval_seconds,
     )
+    # The Leader's controlled heartbeat (spec 001 FR-052 → FR-055). Ticks often and
+    # cheaply; each project is swept on its own rhythm, and only a sweep that found
+    # something costs the Leader a turn.
+    orchestrator = OrchestrationLoop(
+        uow_factory,
+        projects,
+        leader_notifier=leader_chat,
+        interval_seconds=settings.orchestration_tick_seconds,
+    )
 
     return Container(
         event_bus=event_bus,
@@ -197,6 +209,7 @@ def build_container() -> Container:
         leader_chat=leader_chat,
         liveness=liveness,
         liveness_watchdog=liveness_watchdog,
+        orchestrator=orchestrator,
         inbox=inbox,
         labels=LabelService(uow_factory),
         mariuses=MariusService(uow_factory),

@@ -20,6 +20,7 @@ from armarius.domain.repositories.repositories import (
     LeaderChatRepository,
     MariusRepository,
     OnboardingRepository,
+    OrchestrationSweepRepository,
     PlanRepository,
     ProjectContextRepository,
     ProjectRepository,
@@ -62,6 +63,7 @@ class UnitOfWork(ABC):
     run_events: RunEventRepository
     artifacts: ArtifactRepository
     wakeups: WakeupRepository
+    orchestration_sweeps: OrchestrationSweepRepository
     users: UserRepository
     skills: SkillRepository
 

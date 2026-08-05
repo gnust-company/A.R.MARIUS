@@ -17,6 +17,7 @@ from armarius.domain.entities.label import Label
 from armarius.domain.entities.leader_chat import ProjectLeaderConversation
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.onboarding import OnboardingSession
+from armarius.domain.entities.orchestration_sweep import OrchestrationSweep
 from armarius.domain.entities.plan import Plan
 from armarius.domain.entities.project_context import ProjectContext
 from armarius.domain.entities.role import Role
@@ -284,6 +285,16 @@ class RunRepository(ABC):
         a single run rather than a list.
         """
 
+    @abstractmethod
+    async def has_active_for_task(self, task_id: UUID) -> bool:
+        """Whether *anyone* is mid-run on this task.
+
+        Deliberately not "the assignee's run": a run outlives a reassignment, and the
+        orchestrator's question is whether the task is being worked on at all (FR-052),
+        not by whom. Asking about the current assignee would call an unassigned task idle
+        while an agent was still finishing a turn on it.
+        """
+
 
 class RunEventRepository(ABC):
     @abstractmethod
@@ -318,6 +329,25 @@ class WakeupRepository(ABC):
         Read when the run ends: a cause that arrived after the prompt was built was never
         shown to the agent, so the system still owes it a wake (FR-050).
         """
+
+
+class OrchestrationSweepRepository(ABC):
+    """Append-only record of the orchestration cadence (spec 001 FR-052 → FR-055).
+
+    No ``update`` and no ``remove``: a sweep is something that happened. Reads are all the
+    same shape — the project's most recent sweeps, newest first — because the three
+    questions the loop asks (when did I last look, how long has this been quiet, how many
+    wakes have I spent this hour) are all answered from the same short window.
+    """
+
+    @abstractmethod
+    async def add(self, sweep: OrchestrationSweep) -> OrchestrationSweep: ...
+
+    @abstractmethod
+    async def list_recent(
+        self, project_id: UUID, *, limit: int = 32
+    ) -> Sequence[OrchestrationSweep]:
+        """Newest first."""
 
 
 class SkillRepository(ABC):

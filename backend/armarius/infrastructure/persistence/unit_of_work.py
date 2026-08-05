@@ -19,6 +19,7 @@ from armarius.infrastructure.persistence.repositories import (
     SqlLeaderChatRepository,
     SqlMariusRepository,
     SqlOnboardingRepository,
+    SqlOrchestrationSweepRepository,
     SqlPlanRepository,
     SqlProjectContextRepository,
     SqlProjectRepository,
@@ -68,6 +69,7 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         self.run_events = SqlRunEventRepository(s)
         self.artifacts = SqlArtifactRepository(s)
         self.wakeups = SqlWakeupRepository(s)
+        self.orchestration_sweeps = SqlOrchestrationSweepRepository(s)
         self.users = SqlUserRepository(s)
         self.skills = SqlSkillRepository(s)
         return self

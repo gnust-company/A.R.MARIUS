@@ -556,3 +556,29 @@ class PlanItemModel(Base):
     depends_on: Mapped[list[str]] = mapped_column(JSON, default=list)
     definition_of_done: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class OrchestrationSweepModel(Base):
+    """One pass of the orchestration cadence over one project (spec 001 FR-052 → FR-055).
+
+    Append-only. The hot read is "this project's most recent sweeps, newest first" — for
+    the board, for the quiet streak that sets the rhythm, and for counting wakes inside the
+    last hour — so project+time carry a composite index.
+    """
+
+    __tablename__ = "orchestration_sweeps"
+    __table_args__ = (
+        Index("ix_sweep_project_time", "project_id", "swept_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("projects.id"), index=True)
+    swept_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The snags as found, whole. A count alone would make the board unable to say *what*
+    # the last look saw without redoing the look.
+    snags: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list)
+    snag_count: Mapped[int] = mapped_column(Integer, default=0)
+    woke_leader: Mapped[bool] = mapped_column(Boolean, default=False)
+    skipped_reason: Mapped[str | None] = mapped_column(Text)
+    next_interval_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    reported_marks: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
