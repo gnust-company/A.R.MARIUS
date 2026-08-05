@@ -30,9 +30,17 @@ class OrchestrationSweep:
     # What the sweep found. Kept whole rather than as a count so the board can show the
     # Leader's last look without re-deriving it, and so a sweep stays readable months later.
     snags: list[Snag] = field(default_factory=list)
+    # Whether this sweep **spent** a wake against the hourly ceiling. A wake the Leader
+    # could not receive still counts as spent: it is on the record as a pending cause and
+    # the Leader reads it when it returns, so charging it keeps an hour offline from
+    # handing the same backlog over four times.
     woke_leader: bool = False
-    # Set when snags were found but no wake went out — today only the hourly ceiling, but
-    # it is stated in words rather than as a flag so a future reason reads as itself.
+    # Why the Leader did not hear about this sweep, when it did not. Two different cases
+    # land here and they must stay tellable apart afterwards, so they are stated in words:
+    #   * `woke_leader` false — no wake was sent at all (the ceiling stopped it);
+    #   * `woke_leader` true — a wake was spent but could not be delivered.
+    # A boolean would collapse "the ceiling is working" and "the Leader has been offline
+    # all hour" into one indistinguishable silence, and only the second needs a human.
     skipped_reason: str | None = None
     # The gap this sweep decided on. Stored, not recomputed, so the board can say when the
     # next look is due and so a rhythm change is visible in the record.

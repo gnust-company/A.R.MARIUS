@@ -464,8 +464,6 @@ export const en = {
       lastSwept: 'Last swept: {{when}}',
       nextSweep: 'Next sweep: {{when}}',
       allClear: 'Nothing hanging. The sweep passed in silence.',
-      snagCount_one: '{{count}} snag',
-      snagCount_other: '{{count}} snags',
       skipped: 'Leader not woken: {{reason}}',
       kind: {
         silent: 'Silent',

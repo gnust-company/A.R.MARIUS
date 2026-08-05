@@ -399,10 +399,19 @@ export default function ProjectBoard() {
 
   useEffect(() => {
     if (!projectId) return;
-    api
-      .getProjectOrchestration(projectId)
-      .then(setCadence)
-      .catch(() => setCadence(null));
+    let alive = true;
+    const load = () => {
+      api
+        .getProjectOrchestration(projectId)
+        .then((row) => { if (alive) setCadence(row); })
+        .catch(() => { if (alive) setCadence(null); });
+    };
+    load();
+    // Khối này nói "lượt kế tiếp lúc mấy giờ"; nếu chỉ nạp một lần lúc mở trang thì một tab
+    // để lâu sẽ chỉ vào một mốc đã trôi qua — ngược hẳn với điều nó định cho thấy, là vòng
+    // điều phối còn sống. Nạp lại theo nhịp thưa: đây là nền, không phải dữ liệu nóng.
+    const timer = window.setInterval(load, 60_000);
+    return () => { alive = false; window.clearInterval(timer); };
   }, [projectId]);
 
   useEffect(() => {
