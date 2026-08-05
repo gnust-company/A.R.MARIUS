@@ -464,8 +464,6 @@ export const vi = {
       lastSwept: 'Rà gần nhất: {{when}}',
       nextSweep: 'Lượt kế tiếp: {{when}}',
       allClear: 'Không có điểm treo nào. Nhịp trôi qua trong im lặng.',
-      snagCount_one: '{{count}} điểm treo',
-      snagCount_other: '{{count}} điểm treo',
       skipped: 'Chưa gọi Trưởng dự án: {{reason}}',
       kind: {
         silent: 'Im lâu',

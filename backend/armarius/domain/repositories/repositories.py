@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from datetime import datetime
 from uuid import UUID
 
 from armarius.domain.entities.approval import Approval
@@ -107,6 +108,17 @@ class ApprovalRepository(ABC):
     async def add(self, approval: Approval) -> Approval: ...
     @abstractmethod
     async def list_for_task(self, task_id: UUID) -> Sequence[Approval]: ...
+
+    @abstractmethod
+    async def list_for_tasks(
+        self, task_ids: Sequence[UUID]
+    ) -> Sequence[Approval]:
+        """Signatures for many tasks at once, for readers that sweep a whole board.
+
+        The orchestration cadence asks "is this task waiting on the Leader?" of every open
+        task on every pass; one query per task turns a board into hundreds of round trips
+        on a loop that never stops running.
+        """
 
 
 class AutoApprovalRepository(ABC):
@@ -286,6 +298,13 @@ class RunRepository(ABC):
         """
 
     @abstractmethod
+    async def task_ids_with_active_run(
+        self, task_ids: Sequence[UUID]
+    ) -> set[UUID]:
+        """Which of these tasks have someone mid-run. Same question as
+        ``has_active_for_task``, asked once for a whole board."""
+
+    @abstractmethod
     async def has_active_for_task(self, task_id: UUID) -> bool:
         """Whether *anyone* is mid-run on this task.
 
@@ -347,7 +366,21 @@ class OrchestrationSweepRepository(ABC):
     async def list_recent(
         self, project_id: UUID, *, limit: int = 32
     ) -> Sequence[OrchestrationSweep]:
-        """Newest first."""
+        """Newest first. A bounded look back for questions counted in *sweeps* — the
+        quiet streak that earns a project its slack, and the deadline marks already
+        announced. Never for questions counted in *time*: see below."""
+
+    @abstractmethod
+    async def count_wakes_since(self, project_id: UUID, since: datetime) -> int:
+        """How many cadence wakes this project has spent since a moment in time.
+
+        Its own query rather than a filter over ``list_recent``, because the hourly
+        ceiling (FR-055) is a question about **time** and a row limit answers a question
+        about **rows**. Filtering N fetched rows by timestamp makes the real window
+        ``min(N sweeps, one hour)``: on a project with a short cadence, N sweeps stop
+        covering an hour, older wakes drop out of the count, and the ceiling silently
+        lifts — worst on exactly the busy projects it exists to protect.
+        """
 
 
 class SkillRepository(ABC):

@@ -27,6 +27,11 @@ from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.application.use_cases.workspaces import WorkspaceService
+from armarius.domain.entities.approval import (
+    Approval,
+    ApprovalResult,
+    SignerKind,
+)
 from armarius.domain.entities.project import ProjectThresholds
 from armarius.domain.entities.run import Run, RunStatus, WakeSource
 from armarius.domain.entities.task import TaskStatus
@@ -235,6 +240,44 @@ async def test_a_task_with_a_live_run_is_left_to_the_hang_detector(uow_factory) 
     assert notifier.calls == []
 
 
+@pytest.mark.asyncio
+async def test_a_task_the_leader_already_signed_is_not_still_waiting_on_it(
+    uow_factory,
+) -> None:
+    """*Waiting on the Leader* means the current round has no Leader signature.
+
+    A task sitting in review with the Leader's signature already on it is waiting on the
+    **patron**, not on the Leader (FR-033). Waking the Leader about it would be telling it
+    to do something it has already done — and a board of those teaches it to skim.
+    """
+    project, alice = await _world(uow_factory)
+    task = await _task(
+        uow_factory,
+        project.id,
+        title="Việc đã có chữ ký Trưởng dự án",
+        status=TaskStatus.IN_REVIEW,
+        updated_at=T0,
+    )
+    async with uow_factory() as uow:
+        await uow.approvals.add(
+            Approval(
+                task_id=task.id,
+                round=1,
+                signer_kind=SignerKind.LEADER,
+                signer_marius_id=alice.id,
+                result=ApprovalResult.APPROVE,
+                signed_at=T0,
+            )
+        )
+        await uow.commit()
+    notifier = RecordingNotifier()
+
+    sweep = await _loop(uow_factory, notifier).sweep_project(project.id, now=T0)
+
+    assert sweep.snags == []
+    assert notifier.calls == []
+
+
 # ── bước 3: giãn khi trơn tru, dày lại khi ứ đọng ────────────────────────────────
 
 @pytest.mark.asyncio
@@ -303,6 +346,49 @@ async def test_the_hourly_cap_holds_across_a_restart(uow_factory) -> None:
     capped = (await _sweeps(uow_factory, project.id))[0]
     assert capped.woke_leader is False
     assert capped.skipped_reason is not None  # the sweep says *why* it stayed quiet
+
+
+@pytest.mark.asyncio
+async def test_the_hourly_cap_holds_when_the_project_sweeps_often(uow_factory) -> None:
+    """The ceiling is an hour, so it has to be counted over an hour.
+
+    Reading the sweep history "a fixed number of rows back" and then filtering that slice
+    by time makes the real window `min(N rows, one hour)`. On a project with a short
+    cadence, N rows stop covering an hour, wakes older than the slice fall out of the
+    count, and the ceiling quietly lifts — worst on exactly the busy projects the ceiling
+    exists to protect.
+
+    A two-minute cadence is not an exotic setting: the threshold endpoint accepts any
+    positive number, and a patron watching an urgent project will reach for one.
+    """
+    project, _ = await _world(uow_factory)
+    await _task(
+        uow_factory,
+        project.id,
+        title="Việc mắc kẹt",
+        status=TaskStatus.BLOCKED,
+        status_reason="đợi bên thứ ba trả lời",
+        updated_at=T0,
+    )
+    async with uow_factory() as uow:
+        stored = await uow.projects.get(project.id)
+        assert stored is not None
+        stored.settings = {
+            **(stored.settings or {}),
+            "thresholds": {"orchestration_cadence_seconds": 120},
+        }
+        await uow.projects.update(stored)
+        await uow.commit()
+
+    notifier = RecordingNotifier()
+    loop = _loop(uow_factory, notifier)
+
+    # Every sweep finds the blocked task, so every one of them wants a wake. Fifty-nine
+    # sweeps a minute apart all sit inside a single hour.
+    for minute in range(59):
+        await loop.sweep_project(project.id, now=T0 + timedelta(minutes=minute))
+
+    assert len(notifier.calls) <= THRESHOLDS.orchestration_wakes_per_hour
 
 
 @pytest.mark.asyncio

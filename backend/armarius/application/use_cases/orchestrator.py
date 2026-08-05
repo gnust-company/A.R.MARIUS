@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 from uuid import UUID
 
@@ -35,10 +35,11 @@ from armarius.application.use_cases.projects import ProjectService
 # about this project". One protocol, so a second way to reach a Leader never grows here.
 from armarius.application.use_cases.tasks import LeaderNotifier
 from armarius.application.use_cases.types import UowFactory
+from armarius.domain.entities.approval import Approval
 from armarius.domain.entities.orchestration_sweep import OrchestrationSweep
 from armarius.domain.entities.project import ProjectStatus, ProjectThresholds
 from armarius.domain.entities.run import WakeSource
-from armarius.domain.entities.task import Task, TaskStatus
+from armarius.domain.entities.task import TaskStatus
 from armarius.domain.services.orchestration_cadence import (
     CadenceState,
     Snag,
@@ -61,8 +62,10 @@ _LIVE_PHASES: frozenset[ProjectStatus] = frozenset(
     {ProjectStatus.OPERATING, ProjectStatus.MAINTAINING}
 )
 
-# How far back the loop reads its own history. Long enough to cover an hour of wakes at
-# the tightest rhythm and a quiet streak deep enough to reach the stretch cap.
+# How far back the loop reads its own history for the two questions counted in *sweeps*:
+# the quiet streak (which needs at most `_MAX_STRETCH` rows to saturate) and the deadline
+# marks already announced. Nothing counted in *time* may be answered from this slice — the
+# hourly ceiling asks the store directly, because a row limit cannot bound a duration.
 _HISTORY_WINDOW = 32
 
 _CAP_REACHED = "chạm trần số lần đánh thức trong một giờ"
@@ -117,6 +120,11 @@ class OrchestrationLoop:
                 await uow.orchestration_sweeps.list_recent(project_id, limit=_HISTORY_WINDOW)
             )
             snapshots = await self._snapshot_board(uow, project_id)
+            # Counted in the store, over an hour of wall clock — never by filtering the
+            # rows above, whose bound is a row count and not a duration (FR-055).
+            wakes_this_hour = await uow.orchestration_sweeps.count_wakes_since(
+                project_id, now - timedelta(hours=1)
+            )
 
         carried = _carry_marks(history)
         snags = find_snags(
@@ -128,7 +136,7 @@ class OrchestrationLoop:
         )
 
         woke, skipped_reason = await self._maybe_wake(
-            project_id, snags, history=history, now=now, thresholds=thresholds
+            project_id, snags, wakes_this_hour=wakes_this_hour, thresholds=thresholds
         )
 
         sweep = OrchestrationSweep(
@@ -157,14 +165,13 @@ class OrchestrationLoop:
         project_id: UUID,
         snags: list[Snag],
         *,
-        history: list[OrchestrationSweep],
-        now: datetime,
+        wakes_this_hour: int,
         thresholds: ProjectThresholds,
     ) -> tuple[bool, str | None]:
         if not snags:
             return False, None  # FR-053 — the sweep passes in silence
         if not within_hourly_cap(
-            wakes_in_last_hour=_wakes_since(history, now - timedelta(hours=1)),
+            wakes_in_last_hour=wakes_this_hour,
             cap=thresholds.orchestration_wakes_per_hour,
         ):
             # Not an error: the ceiling did its job. The snags stay on the record and the
@@ -195,37 +202,59 @@ class OrchestrationLoop:
         Two of the fields are answers about other tables — is a run live for this task, is
         the Leader's signature the thing this task is waiting on — and they are gathered
         here rather than inside the rule so the rule stays a pure function.
-        """
-        tasks = await uow.tasks.list_by_project(project_id)
-        snapshots: list[TaskSnapshot] = []
-        for task in tasks:
-            if task.status in (TaskStatus.DONE, TaskStatus.CANCELLED, TaskStatus.DRAFT):
-                continue
-            snapshots.append(
-                TaskSnapshot(
-                    task_id=task.id,
-                    identifier=task.identifier or str(task.id),
-                    title=task.title,
-                    status=task.status,
-                    due_date=as_utc(task.due_date),
-                    last_activity_at=as_utc(task.updated_at or task.created_at),
-                    has_active_run=await uow.runs.has_active_for_task(task.id),
-                    awaiting_leader_decision=await self._awaiting_leader(uow, task),
-                )
-            )
-        return snapshots
 
-    async def _awaiting_leader(self, uow: UnitOfWork, task: Task) -> bool:
-        """A task in review with no Leader signature on the current round (FR-033)."""
-        if task.status is not TaskStatus.IN_REVIEW:
-            return False
-        approvals = await uow.approvals.list_for_task(task.id)
-        if not approvals:
-            return True
-        current_round = max(a.round for a in approvals)
-        return not any(
-            a.round == current_round and str(a.signer_kind) == "leader" for a in approvals
+        Both are asked **once for the whole board**, not once per task. This runs on a loop
+        that never stops: a per-task lookup would turn a two-hundred-task project into some
+        four hundred round trips every pass, on every project, forever.
+        """
+        tasks = [
+            t
+            for t in await uow.tasks.list_by_project(project_id)
+            if t.status not in (TaskStatus.DONE, TaskStatus.CANCELLED, TaskStatus.DRAFT)
+        ]
+        open_ids = [t.id for t in tasks]
+        running = await uow.runs.task_ids_with_active_run(open_ids)
+        in_review = [t.id for t in tasks if t.status is TaskStatus.IN_REVIEW]
+        awaiting = self._awaiting_leader(
+            in_review, await uow.approvals.list_for_tasks(in_review)
         )
+        return [
+            TaskSnapshot(
+                task_id=task.id,
+                identifier=task.identifier or str(task.id),
+                title=task.title,
+                status=task.status,
+                due_date=as_utc(task.due_date),
+                last_activity_at=as_utc(task.updated_at or task.created_at),
+                has_active_run=task.id in running,
+                awaiting_leader_decision=task.id in awaiting,
+            )
+            for task in tasks
+        ]
+
+    @staticmethod
+    def _awaiting_leader(
+        in_review: Sequence[UUID], approvals: Sequence[Approval]
+    ) -> set[UUID]:
+        """Which tasks in review are waiting on the Leader's signature (FR-033).
+
+        A task whose current round carries no Leader signature is waiting on one. A task
+        in review with no signatures at all has not been looked at yet, so it is waiting
+        too — that is the case a rule keyed off "the newest round" would quietly miss.
+        """
+        rounds: dict[UUID, int] = {}
+        signed: set[tuple[UUID, int]] = set()
+        for approval in approvals:
+            if approval.task_id is None:
+                continue
+            rounds[approval.task_id] = max(rounds.get(approval.task_id, 0), approval.round)
+            if str(approval.signer_kind) == "leader":
+                signed.add((approval.task_id, approval.round))
+        return {
+            task_id
+            for task_id in in_review
+            if (task_id, rounds.get(task_id, 1)) not in signed
+        }
 
     async def _live_projects(self) -> list[UUID]:
         async with self._uow() as uow:
@@ -269,14 +298,6 @@ class OrchestrationLoop:
             except Exception:  # pragma: no cover - a bad tick must not kill the loop
                 logger.exception("orchestration tick failed")
             await asyncio.sleep(self._interval)
-
-
-def _wakes_since(history: list[OrchestrationSweep], cutoff: datetime) -> int:
-    return sum(
-        1
-        for s in history
-        if s.woke_leader and (swept := as_utc(s.swept_at)) is not None and swept >= cutoff
-    )
 
 
 def _carry_marks(history: list[OrchestrationSweep]) -> dict[UUID, int]:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, func, or_, select, update
@@ -648,6 +649,18 @@ class SqlApprovalRepository(ApprovalRepository):
         ).scalars().all()
         return [mappers.approval_to_entity(m) for m in rows]
 
+    async def list_for_tasks(self, task_ids: Sequence[UUID]) -> Sequence[Approval]:
+        if not task_ids:
+            return []
+        rows = (
+            await self._s.execute(
+                select(TaskApprovalModel)
+                .where(TaskApprovalModel.task_id.in_(list(task_ids)))
+                .order_by(TaskApprovalModel.round, TaskApprovalModel.signed_at)
+            )
+        ).scalars().all()
+        return [mappers.approval_to_entity(m) for m in rows]
+
 
 class SqlAutoApprovalRepository(AutoApprovalRepository):
     def __init__(self, session: AsyncSession) -> None:
@@ -1231,6 +1244,21 @@ class SqlRunRepository(RunRepository):
             )
         ).scalars().first()
         return mappers.run_to_entity(m) if m else None
+
+    async def task_ids_with_active_run(self, task_ids: Sequence[UUID]) -> set[UUID]:
+        if not task_ids:
+            return set()
+        rows = (
+            await self._s.execute(
+                select(RunModel.task_id)
+                .where(
+                    RunModel.task_id.in_(list(task_ids)),
+                    RunModel.status.in_([str(s) for s in ACTIVE_RUN_STATUSES]),
+                )
+                .distinct()
+            )
+        ).scalars().all()
+        return {r for r in rows if r is not None}
 
     async def has_active_for_task(self, task_id: UUID) -> bool:
         found = (
@@ -1893,3 +1921,17 @@ class SqlOrchestrationSweepRepository(OrchestrationSweepRepository):
             )
         ).scalars()
         return [mappers.orchestration_sweep_to_entity(r) for r in rows]
+
+    async def count_wakes_since(self, project_id: UUID, since: datetime) -> int:
+        total = (
+            await self._s.execute(
+                select(func.count())
+                .select_from(OrchestrationSweepModel)
+                .where(
+                    OrchestrationSweepModel.project_id == project_id,
+                    OrchestrationSweepModel.woke_leader.is_(True),
+                    OrchestrationSweepModel.swept_at >= since,
+                )
+            )
+        ).scalar_one()
+        return int(total or 0)
