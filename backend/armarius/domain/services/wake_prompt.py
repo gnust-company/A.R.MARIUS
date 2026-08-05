@@ -21,10 +21,12 @@ it fills the gap with a guess. An explicitly empty section is a fact it can act 
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.services.agent_prompt import agent_prompt_footer
+from armarius.domain.services.orchestration_cadence import Snag
 
 # What an empty part reads as. One constant so no caller invents its own wording, and so a
 # test can count the empty parts of a packet.
@@ -196,3 +198,47 @@ def build_wake_prompt(ctx: WakeContext) -> str:
     # model always knows where its token lives — unconditional, identical to the invite,
     # skill-install and onboarding prompts (#80). No task-wake ever goes out without it.
     return "\n".join(lines) + agent_prompt_footer(ctx.credential_file)
+
+
+# ── the orchestration-cadence packet (FR-054) ────────────────────────────────────
+
+_CADENCE_HEADING = "## Nhịp điều phối — những điểm treo cần bạn nhìn"
+
+_SNAG_HEADINGS: dict[str, str] = {
+    "silent": "Im lâu, không ai đang làm",
+    "due_soon": "Sắp tới hạn",
+    "blocked": "Đang bị chặn",
+    "awaiting_leader": "Đang chờ chính bạn quyết",
+}
+
+
+def build_cadence_prompt(snags: Sequence[Snag]) -> str:
+    """The Leader's cadence wake, naming every snag it is being woken for (FR-054).
+
+    "Đến giờ rà bảng rồi" is the packet this requirement exists to forbid: it costs a turn
+    and hands over nothing, so the Leader has to go and re-derive what the sweep already
+    knew. Every line here names a task the Leader can open.
+
+    Grouped by kind rather than listed flat because the four kinds want four different
+    responses — a stuck task needs unblocking, a task waiting on the Leader needs a
+    decision — and a flat list makes the reader sort them again.
+    """
+    lines = [_CADENCE_HEADING, ""]
+    by_kind: dict[str, list[Snag]] = {}
+    for snag in snags:
+        by_kind.setdefault(str(snag.kind), []).append(snag)
+
+    for kind, heading in _SNAG_HEADINGS.items():
+        group = by_kind.get(kind)
+        if not group:
+            continue
+        lines.append(f"**{heading}**")
+        lines.extend(f"- {s.detail}" for s in group)
+        lines.append("")
+
+    lines.append(
+        "Đây là một lượt rà theo nhịp, không phải một đầu việc mới được giao. Xem từng "
+        "điểm ở trên rồi hành động: gỡ chặn, giục người phụ trách, chấm bài đang chờ, hoặc "
+        "ghi rõ vì sao để nguyên."
+    )
+    return "\n".join(lines)

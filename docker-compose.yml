@@ -77,6 +77,11 @@ services:
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       JWT_ACCESS_EXPIRE_MINUTES: ${JWT_ACCESS_EXPIRE_MINUTES:-30}
       JWT_REFRESH_EXPIRE_DAYS: ${JWT_REFRESH_EXPIRE_DAYS:-7}
+      # How often the orchestration loop looks for projects that are due a sweep
+      # (spec 001 FR-052). Much shorter than any project's own rhythm — the loop ticks,
+      # each project decides. Exposed so a verification run can watch the cadence without
+      # waiting a quarter of an hour per step.
+      ORCHESTRATION_TICK_SECONDS: ${ARMARIUS_ORCHESTRATION_TICK_SECONDS:-60}
       # Demo seed — runs once on a fresh DB so the showcase journey is reachable.
       # (The .env var is ARMARIUS_*-namespaced; compose maps it to the Settings field
       # name the app reads — same pattern as PUBLIC_BASE_URL below.)

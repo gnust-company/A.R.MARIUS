@@ -76,6 +76,14 @@ class Settings(BaseSettings):
     stall_scan_interval_seconds: float = 60.0
     # Orchestration heartbeat per project. Skips silently when nothing hangs (FR-053).
     orchestration_cadence_seconds: int = 900
+    # Ceiling on how many times the cadence may wake one project's Leader in an hour
+    # (FR-055). Four at the 15-minute base rhythm means a project that is genuinely on
+    # fire still gets every sweep, and one that is merely noisy cannot monopolise the
+    # Leader's turns.
+    orchestration_wakes_per_hour: int = 4
+    # How often the orchestration loop body wakes up to see which projects are due.
+    # Much shorter than any project's own rhythm: the loop ticks, the project decides.
+    orchestration_tick_seconds: float = 60.0
     # A task with no activity AND no live run for this long counts as *silent* (FR-052).
     task_silence_seconds: int = 300
     # Hours-before-deadline marks at which a task counts as *due soon* (FR-052). A task

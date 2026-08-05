@@ -761,6 +761,7 @@ class ThresholdsOut(_Out):
     patron_reminder_hours: list[int]
     level1_recovery_attempts: int
     rejection_round_cap: int
+    orchestration_wakes_per_hour: int
 
 
 class ThresholdsIn(BaseModel):
@@ -775,6 +776,32 @@ class ThresholdsIn(BaseModel):
     patron_reminder_hours: list[int] | None = None
     level1_recovery_attempts: int | None = Field(default=None, gt=0)
     rejection_round_cap: int | None = Field(default=None, gt=0)
+    orchestration_wakes_per_hour: int | None = Field(default=None, gt=0)
+
+
+class SnagOut(_Out):
+    """One thing the last sweep found on the board (spec 001 FR-052)."""
+
+    kind: str
+    task_id: UUID
+    identifier: str
+    detail: str
+
+
+class OrchestrationOut(BaseModel):
+    """The Leader's last look at this project's board (spec 001 FR-052 → FR-055).
+
+    Deliberately reports the *sweep*, not a freshly computed list: what the board should
+    show is what the orchestrator actually saw and acted on. A recomputed list would look
+    right while the loop was dead — the exact confusion the sweep record exists to remove.
+    """
+
+    last_swept_at: datetime | None = None
+    next_sweep_at: datetime | None = None
+    interval_seconds: int = 0
+    woke_leader: bool = False
+    skipped_reason: str | None = None
+    snags: list[SnagOut] = Field(default_factory=list)
 
 
 # --------------------------------------------- project context / plan (spec 001)

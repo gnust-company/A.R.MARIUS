@@ -458,6 +458,22 @@ export const vi = {
     deleteConfirmBody: 'Thao tác này sẽ xóa vĩnh viễn "{{name}}" cùng toàn bộ nhiệm vụ, bình luận và sản phẩm của nó. Không thể hoàn tác.',
     deleting: 'Đang xóa…',
     blockedBy: 'Chặn bởi {{count}}',
+    cadence: {
+      title: 'Nhịp điều phối',
+      neverSwept: 'Chưa có lượt rà nào.',
+      lastSwept: 'Rà gần nhất: {{when}}',
+      nextSweep: 'Lượt kế tiếp: {{when}}',
+      allClear: 'Không có điểm treo nào. Nhịp trôi qua trong im lặng.',
+      snagCount_one: '{{count}} điểm treo',
+      snagCount_other: '{{count}} điểm treo',
+      skipped: 'Chưa gọi Trưởng dự án: {{reason}}',
+      kind: {
+        silent: 'Im lâu',
+        due_soon: 'Sắp tới hạn',
+        blocked: 'Bị chặn',
+        awaiting_leader: 'Chờ Trưởng dự án quyết',
+      },
+    },
   },
   leaderChat: {
     title: 'Chat với Leader',

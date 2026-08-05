@@ -17,6 +17,7 @@ import {
   ArrowRight,
   GripVertical,
   Trash2,
+  Radar,
 } from 'lucide-react';
 import { useAppStore, type TaskStatus, type Task } from '@/store/appStore';
 import { CREATABLE_PHASES, type TaskPhase } from '@/lib/taskRules';
@@ -391,6 +392,19 @@ export default function ProjectBoard() {
   const [autoApproval, setAutoApproval] = useState<boolean | null>(null);
   const [switching, setSwitching] = useState(false);
 
+  // Lượt rà gần nhất của nhịp điều phối (spec 001 FR-052 → FR-055). Đọc **bản ghi lượt rà**
+  // chứ không tự tính lại danh sách điểm treo: một danh sách tính lại lúc mở trang sẽ trông
+  // vẫn ổn ngay cả khi vòng điều phối đã chết — đúng thứ mà bản ghi này sinh ra để lộ.
+  const [cadence, setCadence] = useState<api.OrchestrationDTO | null>(null);
+
+  useEffect(() => {
+    if (!projectId) return;
+    api
+      .getProjectOrchestration(projectId)
+      .then(setCadence)
+      .catch(() => setCadence(null));
+  }, [projectId]);
+
   useEffect(() => {
     if (!projectId) return;
     api
@@ -542,6 +556,63 @@ export default function ProjectBoard() {
               {t('board.taskCount', { count: projectTasks.length })}
             </span>
           </div>
+
+          {/* ─── Nhịp điều phối ────────────────────────────────────────
+              Chỉ hiện khi dự án đã thật sự chạy: trước giai đoạn *đang chạy* chưa có
+              bảng việc nào để rà, nên một ô trống ở đó chỉ gây hoang mang. */}
+          {acceptsTasks && cadence !== null && (
+            <div className="mt-3 pt-3 border-t border-vellum-dark">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-body text-body-sm">
+                <span className="flex items-center gap-1.5 text-ink">
+                  <Radar className="w-4 h-4" />
+                  {t('board.cadence.title')}
+                </span>
+                <span className="text-ink-muted">&middot;</span>
+                <span className="text-ink-light">
+                  {cadence.last_swept_at
+                    ? t('board.cadence.lastSwept', {
+                        when: new Date(cadence.last_swept_at).toLocaleString(),
+                      })
+                    : t('board.cadence.neverSwept')}
+                </span>
+                {cadence.next_sweep_at && (
+                  <>
+                    <span className="text-ink-muted">&middot;</span>
+                    <span className="text-ink-light">
+                      {t('board.cadence.nextSweep', {
+                        when: new Date(cadence.next_sweep_at).toLocaleString(),
+                      })}
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {cadence.last_swept_at && cadence.snags.length === 0 && (
+                <p className="mt-1.5 font-body text-body-sm text-ink-muted">
+                  {t('board.cadence.allClear')}
+                </p>
+              )}
+
+              {cadence.snags.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {cadence.snags.map((snag) => (
+                    <li key={`${snag.kind}-${snag.task_id}`} className="flex items-start gap-2">
+                      <span className="mt-0.5 shrink-0 rounded px-1.5 py-0.5 bg-[#F5DDD6] text-[#B84A32] font-body text-body-xs">
+                        {t(`board.cadence.kind.${snag.kind}`)}
+                      </span>
+                      <span className="font-body text-body-sm text-ink-light">{snag.detail}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {cadence.skipped_reason && (
+                <p className="mt-1.5 font-body text-body-xs text-ink-muted">
+                  {t('board.cadence.skipped', { reason: cadence.skipped_reason })}
+                </p>
+              )}
+            </div>
+          )}
         </VellumPanel>
       </motion.div>
 

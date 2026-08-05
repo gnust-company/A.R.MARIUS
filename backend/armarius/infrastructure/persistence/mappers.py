@@ -21,6 +21,7 @@ from armarius.domain.entities.leader_chat import (
 )
 from armarius.domain.entities.marius import InviteStatus, Liveness, Marius
 from armarius.domain.entities.onboarding import OnboardingSession, OnboardingStatus
+from armarius.domain.entities.orchestration_sweep import OrchestrationSweep
 from armarius.domain.entities.plan import Plan, PlanItem, PlanStatus
 from armarius.domain.entities.project import (
     Project,
@@ -39,6 +40,7 @@ from armarius.domain.entities.task_log import ActorKind, TaskLogEntry, TaskLogKi
 from armarius.domain.entities.user import User, UserRole
 from armarius.domain.entities.wakeup import WakeupRequest, WakeupStatus
 from armarius.domain.entities.workspace import Workspace
+from armarius.domain.services.orchestration_cadence import Snag, SnagKind
 from armarius.infrastructure.database.models import (
     ArtifactModel,
     ChecklistItemModel,
@@ -47,6 +49,7 @@ from armarius.infrastructure.database.models import (
     LabelModel,
     MariusModel,
     OnboardingSessionModel,
+    OrchestrationSweepModel,
     PlanItemModel,
     PlanModel,
     ProjectAutoApprovalModel,
@@ -484,4 +487,39 @@ def auto_approval_to_entity(m: ProjectAutoApprovalModel) -> AutoApproval:
         enabled=bool(m.enabled),
         created_at=m.created_at,
         updated_at=m.updated_at,
+    )
+
+
+def snag_to_row(snag: Snag) -> dict[str, object]:
+    """One snag as it is stored. Plain JSON — a sweep row must stay readable to a person
+    with a database client and no application to run it through."""
+    return {
+        "kind": str(snag.kind),
+        "task_id": str(snag.task_id),
+        "identifier": snag.identifier,
+        "detail": snag.detail,
+        "mark_hours": snag.mark_hours,
+    }
+
+
+def snag_from_row(row: dict[str, object]) -> Snag:
+    return Snag(
+        kind=SnagKind(str(row.get("kind", SnagKind.SILENT))),
+        task_id=UUID(str(row["task_id"])),
+        identifier=str(row.get("identifier", "")),
+        detail=str(row.get("detail", "")),
+        mark_hours=int(str(mark)) if (mark := row.get("mark_hours")) is not None else None,
+    )
+
+
+def orchestration_sweep_to_entity(m: OrchestrationSweepModel) -> OrchestrationSweep:
+    return OrchestrationSweep(
+        id=m.id,
+        project_id=m.project_id,
+        swept_at=m.swept_at,
+        snags=[snag_from_row(r) for r in (m.snags or [])],
+        woke_leader=bool(m.woke_leader),
+        skipped_reason=m.skipped_reason,
+        next_interval_seconds=int(m.next_interval_seconds or 0),
+        reported_marks={str(k): int(str(v)) for k, v in (m.reported_marks or {}).items()},
     )

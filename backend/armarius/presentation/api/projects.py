@@ -8,6 +8,7 @@ touching a project in someone else's workspace is a 404.
 from __future__ import annotations
 
 import re
+from datetime import timedelta
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -24,6 +25,7 @@ from armarius.presentation.schemas import (
     ContextDecisionIn,
     CreateProjectPlanIn,
     GrantSeatIn,
+    OrchestrationOut,
     PhaseChangeIn,
     PlanDecisionIn,
     PlanOut,
@@ -35,11 +37,13 @@ from armarius.presentation.schemas import (
     RosterRoleOut,
     SeatGrantOut,
     SeatOut,
+    SnagOut,
     ThresholdsIn,
     ThresholdsOut,
     UpdateProjectIn,
     UpdateRoleIn,
 )
+from armarius.shared.clock import as_utc
 
 router = APIRouter(prefix="/v1", tags=["projects"])
 
@@ -410,6 +414,44 @@ async def set_thresholds(
         project_id, body.model_dump(exclude_none=True)
     )
     return ThresholdsOut.model_validate(resolved)
+
+
+@router.get("/projects/{project_id}/orchestration", response_model=OrchestrationOut)
+async def get_orchestration(
+    project_id: UUID, container: ContainerDep, user: CurrentUser
+) -> OrchestrationOut:
+    """The Leader's last look at this board and what it saw (spec 001 FR-052 → FR-055).
+
+    A project that has never been swept comes back empty rather than 404 — "not looked at
+    yet" is a real state of a young project, not a missing resource.
+    """
+    await _require_owned_project(container, user, project_id)
+    async with container.uow_factory() as uow:  # type: ignore[operator]
+        recent = await uow.orchestration_sweeps.list_recent(project_id, limit=1)
+    if not recent:
+        return OrchestrationOut()
+    last = recent[0]
+    swept_at = as_utc(last.swept_at)
+    return OrchestrationOut(
+        last_swept_at=swept_at,
+        next_sweep_at=(
+            swept_at + timedelta(seconds=last.next_interval_seconds)
+            if swept_at is not None
+            else None
+        ),
+        interval_seconds=last.next_interval_seconds,
+        woke_leader=last.woke_leader,
+        skipped_reason=last.skipped_reason,
+        snags=[
+            SnagOut(
+                kind=str(s.kind),
+                task_id=s.task_id,
+                identifier=s.identifier,
+                detail=s.detail,
+            )
+            for s in last.snags
+        ],
+    )
 
 
 # ── project context, plan and phase (spec 001, contracts/mat-nguoi-dung.md §1–3) ──

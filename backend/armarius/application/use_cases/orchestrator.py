@@ -1,0 +1,306 @@
+"""The orchestration loop — the Leader's controlled heartbeat (spec 001 FR-052 → FR-055).
+
+A Leader is a manager, and a manager needs a rhythm. But a rhythm that wakes it every
+fifteen minutes to look at a board where nothing changed is a rhythm that spends the
+Leader's turns on discovering that nothing changed — and an agent turn is the most
+expensive thing this system does.
+
+So the loop separates the two halves that a naive timer conflates:
+
+  * **the looking** happens on the clock, every project on its own rhythm, and costs a
+    handful of queries;
+  * **the waking** happens only when the looking found something (FR-053).
+
+Built to the same shape as ``LivenessWatchdog``: one background task, cancelled on
+shutdown, with the loop body callable on its own so tests can drive it off a fixed clock
+instead of waiting for real seconds to pass.
+
+Every pass writes a row, including — especially — the passes that found nothing. A quiet
+project and a broken loop produce the same silence otherwise, and the whole feature would
+be unfalsifiable on a running service.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+from collections.abc import Callable
+from datetime import datetime, timedelta
+from uuid import UUID
+
+from armarius.application.ports.unit_of_work import UnitOfWork
+from armarius.application.use_cases.projects import ProjectService
+
+# The same narrow port the task use cases wake the Leader through: "tell the Leader this
+# about this project". One protocol, so a second way to reach a Leader never grows here.
+from armarius.application.use_cases.tasks import LeaderNotifier
+from armarius.application.use_cases.types import UowFactory
+from armarius.domain.entities.orchestration_sweep import OrchestrationSweep
+from armarius.domain.entities.project import ProjectStatus, ProjectThresholds
+from armarius.domain.entities.run import WakeSource
+from armarius.domain.entities.task import Task, TaskStatus
+from armarius.domain.services.orchestration_cadence import (
+    CadenceState,
+    Snag,
+    TaskSnapshot,
+    find_snags,
+    next_interval_seconds,
+    quiet_streak,
+    within_hourly_cap,
+)
+from armarius.domain.services.wake_prompt import build_cadence_prompt
+from armarius.shared.clock import as_utc, utcnow
+from armarius.shared.logging import get_logger
+
+logger = get_logger(__name__)
+
+# Phases in which a project is actually being run. *Setup* and *planning* have no board to
+# sweep yet, and *closed* is read-only history (FR-005) — waking a Leader about either
+# would be asking it to manage something that is not being managed.
+_LIVE_PHASES: frozenset[ProjectStatus] = frozenset(
+    {ProjectStatus.OPERATING, ProjectStatus.MAINTAINING}
+)
+
+# How far back the loop reads its own history. Long enough to cover an hour of wakes at
+# the tightest rhythm and a quiet streak deep enough to reach the stretch cap.
+_HISTORY_WINDOW = 32
+
+_CAP_REACHED = "chạm trần số lần đánh thức trong một giờ"
+_LEADER_UNREACHABLE = "không gửi được tới Trưởng dự án (ngoại tuyến hoặc đang bận lượt)"
+
+
+class OrchestrationLoop:
+    def __init__(
+        self,
+        uow_factory: UowFactory,
+        projects: ProjectService,
+        *,
+        leader_notifier: LeaderNotifier | None = None,
+        interval_seconds: float = 60.0,
+        clock: Callable[[], datetime] = utcnow,
+    ) -> None:
+        self._uow = uow_factory
+        self._projects = projects
+        self._notifier = leader_notifier
+        self._interval = interval_seconds
+        self._clock = clock
+        self._task: asyncio.Task[None] | None = None
+
+    # ── the loop body ────────────────────────────────────────────────────────────
+    async def sweep_all(self, now: datetime | None = None) -> int:
+        """Sweep every project whose own rhythm says it is due. Returns how many.
+
+        The loop ticks often; a project is swept on *its* interval. Sweeping everything on
+        every tick would make the per-project rhythm decorative and would leave the hourly
+        ceiling doing the pacing — the wrong job for a ceiling.
+        """
+        now = now or self._clock()
+        swept = 0
+        for project_id in await self._live_projects():
+            try:
+                if await self._is_due(project_id, now):
+                    await self.sweep_project(project_id, now=now)
+                    swept += 1
+            except Exception:  # pragma: no cover - one bad project must not stop the rest
+                logger.exception("orchestration sweep failed for project %s", project_id)
+        return swept
+
+    async def sweep_project(
+        self, project_id: UUID, *, now: datetime | None = None
+    ) -> OrchestrationSweep:
+        """One pass over one project's board. Always leaves a row behind."""
+        now = now or self._clock()
+        thresholds = await self._projects.get_thresholds(project_id)
+
+        async with self._uow() as uow:
+            history = list(
+                await uow.orchestration_sweeps.list_recent(project_id, limit=_HISTORY_WINDOW)
+            )
+            snapshots = await self._snapshot_board(uow, project_id)
+
+        carried = _carry_marks(history)
+        snags = find_snags(
+            snapshots,
+            now=now,
+            silence_seconds=thresholds.task_silence_seconds,
+            due_soon_hours=thresholds.due_soon_hours,
+            reported_marks=carried,
+        )
+
+        woke, skipped_reason = await self._maybe_wake(
+            project_id, snags, history=history, now=now, thresholds=thresholds
+        )
+
+        sweep = OrchestrationSweep(
+            project_id=project_id,
+            swept_at=now,
+            snags=snags,
+            woke_leader=woke,
+            skipped_reason=skipped_reason,
+            next_interval_seconds=next_interval_seconds(
+                thresholds.orchestration_cadence_seconds,
+                state=CadenceState(
+                    quiet_streak=quiet_streak([s.snag_count for s in history]),
+                    found_snags=bool(snags),
+                ),
+            ),
+            reported_marks=_next_marks(carried, snags),
+        )
+        async with self._uow() as uow:
+            await uow.orchestration_sweeps.add(sweep)
+            await uow.commit()
+        return sweep
+
+    # ── deciding whether to spend a wake ─────────────────────────────────────────
+    async def _maybe_wake(
+        self,
+        project_id: UUID,
+        snags: list[Snag],
+        *,
+        history: list[OrchestrationSweep],
+        now: datetime,
+        thresholds: ProjectThresholds,
+    ) -> tuple[bool, str | None]:
+        if not snags:
+            return False, None  # FR-053 — the sweep passes in silence
+        if not within_hourly_cap(
+            wakes_in_last_hour=_wakes_since(history, now - timedelta(hours=1)),
+            cap=thresholds.orchestration_wakes_per_hour,
+        ):
+            # Not an error: the ceiling did its job. The snags stay on the record and the
+            # next sweep past the hour will carry them, so nothing is forgotten — only
+            # delayed (FR-055).
+            return False, _CAP_REACHED
+        if self._notifier is None:  # pragma: no cover - only in narrow unit wiring
+            return False, "không có kênh gửi tới Trưởng dự án"
+
+        delivered = await self._notifier.notify(
+            project_id=project_id,
+            text=build_cadence_prompt(snags),
+            source=WakeSource.IDLE_REMINDER,
+            reason=_wake_reason(snags),
+        )
+        # A wake that could not be delivered is still a wake spent against the ceiling —
+        # it is on the record as a pending cause, and the Leader will read it when it comes
+        # back. Counting it keeps an offline Leader from being handed the same backlog four
+        # times over the same hour.
+        return True, None if delivered else _LEADER_UNREACHABLE
+
+    # ── reading the board ────────────────────────────────────────────────────────
+    async def _snapshot_board(
+        self, uow: UnitOfWork, project_id: UUID
+    ) -> list[TaskSnapshot]:
+        """Everything the rules need about every open task, in one place.
+
+        Two of the fields are answers about other tables — is a run live for this task, is
+        the Leader's signature the thing this task is waiting on — and they are gathered
+        here rather than inside the rule so the rule stays a pure function.
+        """
+        tasks = await uow.tasks.list_by_project(project_id)
+        snapshots: list[TaskSnapshot] = []
+        for task in tasks:
+            if task.status in (TaskStatus.DONE, TaskStatus.CANCELLED, TaskStatus.DRAFT):
+                continue
+            snapshots.append(
+                TaskSnapshot(
+                    task_id=task.id,
+                    identifier=task.identifier or str(task.id),
+                    title=task.title,
+                    status=task.status,
+                    due_date=as_utc(task.due_date),
+                    last_activity_at=as_utc(task.updated_at or task.created_at),
+                    has_active_run=await uow.runs.has_active_for_task(task.id),
+                    awaiting_leader_decision=await self._awaiting_leader(uow, task),
+                )
+            )
+        return snapshots
+
+    async def _awaiting_leader(self, uow: UnitOfWork, task: Task) -> bool:
+        """A task in review with no Leader signature on the current round (FR-033)."""
+        if task.status is not TaskStatus.IN_REVIEW:
+            return False
+        approvals = await uow.approvals.list_for_task(task.id)
+        if not approvals:
+            return True
+        current_round = max(a.round for a in approvals)
+        return not any(
+            a.round == current_round and str(a.signer_kind) == "leader" for a in approvals
+        )
+
+    async def _live_projects(self) -> list[UUID]:
+        async with self._uow() as uow:
+            workspaces = list(await uow.workspaces.list())
+            live: list[UUID] = []
+            for ws in workspaces:
+                for project in await uow.projects.list_by_workspace(ws.id):
+                    if project.status in _LIVE_PHASES:
+                        live.append(project.id)
+        return live
+
+    async def _is_due(self, project_id: UUID, now: datetime) -> bool:
+        async with self._uow() as uow:
+            recent = await uow.orchestration_sweeps.list_recent(project_id, limit=1)
+        if not recent:
+            return True  # never swept — look now
+        last = recent[0]
+        if last.swept_at is None:  # pragma: no cover - defensive
+            return True
+        swept_at = as_utc(last.swept_at)
+        assert swept_at is not None
+        return now >= swept_at + timedelta(seconds=last.next_interval_seconds)
+
+    # ── background lifecycle ─────────────────────────────────────────────────────
+    def start(self) -> None:
+        """Spawn the background loop (idempotent)."""
+        if self._task is None or self._task.done():
+            self._task = asyncio.create_task(self._run())
+
+    async def stop(self) -> None:
+        if self._task is not None:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+            self._task = None
+
+    async def _run(self) -> None:
+        while True:
+            try:
+                await self.sweep_all()
+            except Exception:  # pragma: no cover - a bad tick must not kill the loop
+                logger.exception("orchestration tick failed")
+            await asyncio.sleep(self._interval)
+
+
+def _wakes_since(history: list[OrchestrationSweep], cutoff: datetime) -> int:
+    return sum(
+        1
+        for s in history
+        if s.woke_leader and (swept := as_utc(s.swept_at)) is not None and swept >= cutoff
+    )
+
+
+def _carry_marks(history: list[OrchestrationSweep]) -> dict[UUID, int]:
+    """The deadline marks already announced, from the most recent sweep that has any."""
+    for sweep in history:
+        if sweep.reported_marks:
+            return {UUID(k): int(v) for k, v in sweep.reported_marks.items()}
+    return {}
+
+
+def _next_marks(carried: dict[UUID, int], snags: list[Snag]) -> dict[str, int]:
+    """Carried marks plus whatever this sweep just announced.
+
+    Nothing is ever dropped from this map while the sweep history is being read: a task
+    that closes stops producing snags, so its entry simply stops mattering. Rebuilding it
+    from the live board instead would re-announce every mark after any gap in sweeps.
+    """
+    merged = {str(k): v for k, v in carried.items()}
+    for snag in snags:
+        if snag.mark_hours is not None:
+            merged[str(snag.task_id)] = snag.mark_hours
+    return merged
+
+
+def _wake_reason(snags: list[Snag]) -> str:
+    """One line for the wake record. The detail lives in the packet (FR-054)."""
+    return f"nhịp điều phối: {len(snags)} điểm treo trên bảng việc"

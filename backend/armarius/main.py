@@ -48,7 +48,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await maybe_seed(app.state.container)
     # Start the liveness watchdog — the background clock that decays silent agents (§10).
     app.state.container.liveness_watchdog.start()
+    # Start the orchestration loop — sweeps each project's board on its own rhythm and
+    # wakes the Leader only when the sweep found something (spec 001 FR-052 → FR-055).
+    app.state.container.orchestrator.start()
     yield
+    await app.state.container.orchestrator.stop()
     await app.state.container.liveness_watchdog.stop()
     logger.info("Armarius shutting down")
 
