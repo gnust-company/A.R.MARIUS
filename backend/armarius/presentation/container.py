@@ -25,7 +25,7 @@ from armarius.application.use_cases.orchestrator import OrchestrationLoop
 from armarius.application.use_cases.plans import PlanService
 from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.push_reason import PushReasonService
-from armarius.application.use_cases.recovery import RecoveryEscalator
+from armarius.application.use_cases.recovery import OfflineFalloutService, RecoveryEscalator
 from armarius.application.use_cases.runs import RunQueryService
 from armarius.application.use_cases.skills import SkillService
 from armarius.application.use_cases.stall_watchdog import StallWatchdog
@@ -230,8 +230,21 @@ def build_container() -> Container:
             task_log=TaskLogService(uow_factory),
             control_bus=control_bus,
             leader_notifier=leader_chat,
+            backoff_base_seconds=settings.level1_backoff_seconds,
         ),
         interval_seconds=settings.stall_scan_interval_seconds,
+    )
+    # An agent declared offline has fallout on the board (FR-064). Attached rather than
+    # injected: the handler needs the Leader chat, and the Leader chat needs the liveness
+    # engine — see `LivenessEngine.attach_fallout`.
+    liveness.attach_fallout(
+        OfflineFalloutService(
+            uow_factory,
+            inbox=inbox,
+            task_log=TaskLogService(uow_factory),
+            push_reasons=push_reasons,
+            leader_notifier=leader_chat,
+        )
     )
 
     return Container(
