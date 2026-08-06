@@ -12,9 +12,27 @@ before it.
 `superseded` is read, not computed. It is set on every signature a task carries at the
 moment the task goes back to being worked on.
 
-**Backfill.** Existing rows are marked superseded when the task has since left review —
-that is, any task not currently in *in_review*, *done* or *cancelled*. Signatures on tasks
-sitting in review keep counting, which is what their owners intended when they gave them.
+**Backfill.** Every pre-existing signature is retired except on tasks that are already
+closed. Deliberately blunt, and chosen over the precise version after the precise version
+turned out to be wrong.
+
+The precise version asked "has this task left review?" and spared anything still sitting
+in *in_review*. It missed the shape in the middle: a task rejected once, reworked,
+re-submitted, and in review at upgrade time. Its old **rejection** row survived as a live
+signature, and the closing gate vetoes on any live rejection — so that task could never
+reach *done* again, while `missing_signatures` stayed empty and the orchestrator reported
+nothing. Stuck, and silent, which is the exact failure this whole feature exists to
+prevent.
+
+So: a task waiting on its second signature has to collect the first one again. That is one
+round of annoyance, once, at upgrade — and it heals itself, because the orchestrator sees
+a missing Leader signature and wakes the right party. The alternative failure is a task
+wedged for good. A migration runs once, unattended, on data nobody can inspect afterwards;
+it is the worst possible place to bet on a clever predicate, so this one fails **shut**
+rather than **stuck**.
+
+Tasks already in *done* or *cancelled* keep their signatures: the review that closed them
+is still the review that stands, and reopening one retires them anyway (FR-041a).
 
 Revises: c4f1a8b3d2e7
 Create Date: 2026-08-06
@@ -42,15 +60,17 @@ def upgrade() -> None:
             server_default=sa.text('false'),
         ),
     )
-    # Retire signatures whose task has already moved on. Anything still in review, done or
-    # cancelled keeps them — those are the tasks whose deliverable has not been reworked.
+    # Retire every signature except on tasks that are already closed. See the module
+    # docstring for why this is blunt on purpose: the invariant it buys is that no task
+    # comes out of the upgrade carrying a rejection that still counts, and a live
+    # rejection is a task that can never close again without anything saying so.
     op.execute(
         """
         UPDATE task_approvals
            SET superseded = true
          WHERE task_id IN (
                SELECT id FROM tasks
-                WHERE status NOT IN ('in_review', 'done', 'cancelled')
+                WHERE status NOT IN ('done', 'cancelled')
          )
         """
     )

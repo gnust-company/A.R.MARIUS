@@ -130,6 +130,10 @@ class ApprovalRepository(ABC):
 
         The only write on this repository that is not an insert, and it is a flag flip, so
         the "a signature you can edit is not evidence" rule still holds.
+
+        The count is **advisory** — for logs and assertions, never for a branch. Some
+        drivers do not promise an exact affected-row count on an UPDATE, and a caller that
+        decided something on this number would be deciding on the driver.
         """
 
 
