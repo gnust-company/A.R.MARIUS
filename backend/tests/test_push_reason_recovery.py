@@ -26,10 +26,12 @@ from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.domain.entities.project import ProjectThresholds
+from armarius.domain.entities.push_reason import TaskPushReason
 from armarius.domain.entities.run import Run, RunStatus, WakeSource
 from armarius.domain.entities.task import TaskDrive, TaskStatus
 from armarius.domain.entities.task_dependency import TaskDependency
 from armarius.domain.entities.task_log import TaskLogKind
+from armarius.domain.services.escalation import EscalationLevel
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
@@ -383,3 +385,53 @@ async def test_a_run_left_mid_flight_by_a_dead_process_is_treated_as_hung(uow_fa
     assert await _watchdog(uow_factory).sweep(now=T0) == 1, (
         "khởi động lại xong, lượt quét đầu tiên vẫn không thấy đầu việc bị bỏ rơi"
     )
+
+
+# ── hồi quy: cái thang không được che mất tiếng chuông ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_recovery_ladder_does_not_lower_the_flag_it_is_responding_to(
+    uow_factory,
+) -> None:
+    """Found on the running service, not here.
+
+    The watchdog flagged a dropped task, the ladder booked its next Level-1 attempt, and
+    the very next sweep read that booking as a live drive and lowered the flag. The alarm
+    flickered on and off, and the board showed a dropped task as healthy most of the time —
+    which is not a subtle regression, it is FR-058 not working at all.
+
+    A task the safety net is retrying **is** stalled. The retry is the response to the
+    stall, not evidence against it.
+    """
+    project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, status=TaskStatus.IN_PROGRESS)
+    ladder = RecordingLadder()
+    watchdog = _watchdog(uow_factory, ladder=ladder)
+
+    await watchdog.sweep(now=T0)
+    assert (await _get(uow_factory, task.id)).stalled is True
+
+    # Whatever the ladder writes about its own schedule, the next sweep must still see a
+    # dropped task. Written through the real repository so a future change to the ladder
+    # row is caught here rather than on a running service.
+    async with uow_factory() as uow:
+        await uow.push_reasons.upsert(
+            TaskPushReason(
+                task_id=task.id,
+                level=EscalationLevel.LEVEL_1,
+                attempts=1,
+                cause="không có gì được hẹn để đẩy đầu việc này đi tiếp",
+                next_retry_at=T0 + timedelta(minutes=5),
+            )
+        )
+        await uow.commit()
+
+    await watchdog.sweep(now=T0 + timedelta(minutes=1))
+
+    stored = await _get(uow_factory, task.id)
+    assert stored is not None
+    assert stored.stalled is True, (
+        "lịch thử lại của cái thang đã hạ mất chính tiếng chuông nó đang đáp lại"
+    )
+    assert stored.drive is None
