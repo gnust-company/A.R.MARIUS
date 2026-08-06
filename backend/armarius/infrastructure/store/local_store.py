@@ -31,3 +31,18 @@ class LocalArtifactStore(ArtifactStore):
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(data)
         return StoredObject(uri=str(rel), sha256=sha, size_bytes=len(data))
+
+    async def exists(self, uri: str) -> bool:
+        """Whether the file behind this key is still on disk (FR-069).
+
+        A path that escapes the root answers *no* rather than reaching outside it: a
+        reference that walks out of the store is not a stored artifact by definition, and
+        following it would let a stray `..` make the store report on the host filesystem.
+        """
+        if not uri:
+            return False
+        candidate = (self._root / uri).resolve()
+        root = self._root.resolve()
+        if not candidate.is_relative_to(root):
+            return False
+        return candidate.is_file()

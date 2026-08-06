@@ -29,3 +29,15 @@ class ArtifactStore(ABC):
     async def healthy(self) -> bool:
         """Liveness probe for the store, surfaced on GET /health. Default: True."""
         return True
+
+    async def exists(self, uri: str) -> bool:  # noqa: B027
+        """Whether the bytes behind this reference are still there (FR-069).
+
+        Asked at the moment somebody is about to sign for a deliverable, because a
+        signature is a claim about a thing that exists. A row in the artifact table is
+        not that claim — it says something *was* published, and buckets get pruned,
+        volumes get remounted empty, and a task can be closed against a file nobody can
+        open. The default is optimistic so a store that cannot answer never blocks a
+        signature; a store that *can* answer is expected to override this.
+        """
+        return True

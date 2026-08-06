@@ -280,6 +280,9 @@ def build_container() -> Container:
             wake=wake_engine,
             task_logs=TaskLogService(uow_factory),
             control_bus=control_bus,
+            # Asked one question, at one moment: is the deliverable still there when
+            # somebody is about to sign for it (FR-069).
+            artifact_store=store,
         ),
         task_logs=TaskLogService(uow_factory),
         threads=ThreadService(uow_factory, wake_engine),

@@ -24,6 +24,7 @@ second alarm competing with the one already watching, and the two would disagree
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
@@ -210,3 +211,117 @@ _EXPIRED_WORDING: dict[TaskDrive, str] = {
     TaskDrive.WAITING_RECOVERY: "đã hết hạn chờ lần thử lại mà không có lần nào tới nơi",
     TaskDrive.WAITING_EXTERNAL: "mốc bên ngoài đã trôi qua mà không có gì xảy ra",
 }
+
+
+# ── xếp hàng khi nhiều đầu việc cùng cần một thợ (FR-067) ───────────────────────
+
+# How much a task's wait counts for, in priority steps per day. Anti-starvation: without
+# it, a *low* task behind a steady trickle of *high* ones is never reached, and "we will
+# get to it" becomes a lie the queue tells forever. One step a day means a low task that
+# has waited three days outranks a high one filed this morning — long enough that priority
+# still means something day to day, short enough that nothing waits a fortnight.
+_AGE_PROMOTION_PER_DAY = 1.0
+
+# Priority as a number the queue can add to. Larger is more urgent.
+_PRIORITY_RANK: dict[str, int] = {
+    "critical": 3,
+    "high": 2,
+    "medium": 1,
+    "low": 0,
+}
+
+
+@dataclass(frozen=True)
+class QueueCandidate:
+    """One task competing for a worker or an exclusive resource."""
+
+    task_id: UUID
+    identifier: str
+    priority: str
+    due_date: datetime | None
+    created_at: datetime | None
+
+
+def queue_order(
+    candidates: Sequence[QueueCandidate], *, now: datetime
+) -> list[QueueCandidate]:
+    """Who goes first (FR-067): priority, then deadline, then age — with ageing.
+
+    The three keys are in that order because they answer different questions. Priority is
+    what somebody *decided*. A deadline is what the outside world will do regardless of
+    anyone's opinion. Age is the tiebreaker that keeps the queue honest.
+
+    "With ageing" is what turns the rule from a sort into a promise. A plain
+    priority-first sort starves the bottom of the queue: on a busy project there is always
+    another *high* task, so a *low* one waits forever while the board cheerfully reports it
+    as queued. Effective priority therefore climbs with the wait, so everything eventually
+    reaches the front — later than the urgent work, but not never.
+
+    Ties are broken by identifier so two runs over the same board produce the same order.
+    An unstable queue makes every "why did it pick that one?" unanswerable.
+    """
+    def key(c: QueueCandidate) -> tuple[float, float, float, str]:
+        base = _PRIORITY_RANK.get(c.priority.lower(), 1)
+        waited_days = (
+            (now - c.created_at).total_seconds() / 86400.0 if c.created_at else 0.0
+        )
+        effective = base + max(waited_days, 0.0) * _AGE_PROMOTION_PER_DAY
+        # Negated so that `sorted` ascending puts the most urgent first, and a task with no
+        # deadline sorts behind every task that has one rather than ahead of them.
+        deadline = c.due_date.timestamp() if c.due_date else float("inf")
+        age = c.created_at.timestamp() if c.created_at else float("inf")
+        return (-effective, deadline, age, c.identifier)
+
+    return sorted(candidates, key=key)
+
+
+# ── nhánh nào chạy tiếp được trong lúc chờ người chủ (FR-066) ───────────────────
+
+
+def blocked_behind(
+    waiting_on: Sequence[UUID], edges: Sequence[tuple[UUID, UUID]]
+) -> set[UUID]:
+    """Every task whose dependency chain passes through one of ``waiting_on``.
+
+    ``edges`` are ``(task, blocked_by)`` pairs. The answer is the transitive closure, not
+    just the direct dependents: a task waiting on a task waiting on the parked decision is
+    every bit as parked, and stopping one level down would leave the middle of a chain
+    looking runnable to whoever reads the board.
+
+    This is the *complement* of what FR-066 asks for, and it is stated this way on purpose.
+    "What must wait" is a closed, checkable set; "what may run" is everything else, which
+    means the default is **keep going**. Written the other way round, any branch the closure
+    forgot to mention would quietly stop — and a project that halts because one question
+    went unanswered on a Friday is exactly the failure this requirement exists to prevent.
+    """
+    parked = set(waiting_on)
+    if not parked:
+        return set()
+    dependents: dict[UUID, list[UUID]] = {}
+    for task_id, blocker_id in edges:
+        dependents.setdefault(blocker_id, []).append(task_id)
+
+    reached: set[UUID] = set()
+    frontier = list(parked)
+    while frontier:
+        current = frontier.pop()
+        for downstream in dependents.get(current, ()):
+            if downstream not in reached and downstream not in parked:
+                reached.add(downstream)
+                frontier.append(downstream)
+    return reached
+
+
+def keeps_running(
+    candidates: Sequence[UUID],
+    *,
+    waiting_on: Sequence[UUID],
+    edges: Sequence[tuple[UUID, UUID]],
+) -> list[UUID]:
+    """The tasks that carry on while a patron decision is pending (FR-066).
+
+    Everything not standing behind the parked decision, in the order given. The project
+    parks at the question, not across the whole board.
+    """
+    parked = set(waiting_on) | blocked_behind(waiting_on, edges)
+    return [task_id for task_id in candidates if task_id not in parked]

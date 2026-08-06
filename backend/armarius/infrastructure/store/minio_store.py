@@ -76,3 +76,26 @@ class MinioArtifactStore(ArtifactStore):
 
         await asyncio.to_thread(_put)
         return StoredObject(uri=key, sha256=sha, size_bytes=len(data))
+
+    async def exists(self, uri: str) -> bool:
+        """Whether the object behind this key is still in the bucket (FR-069).
+
+        A failure to reach MinIO answers **True**, not False. The question being asked is
+        "has this deliverable been lost?", and a network blip is not evidence of loss — an
+        outage that answered False would send every task in review back for rework and
+        undo a day's signatures over something that fixed itself in a minute.
+        """
+        if not uri:
+            return False
+
+        def _stat() -> bool:
+            try:
+                self._client.stat_object(self._bucket, uri)
+                return True
+            except Exception as exc:  # noqa: BLE001 - the SDK raises S3Error for both cases
+                return "NoSuchKey" not in str(exc) and "not exist" not in str(exc).lower()
+
+        try:
+            return bool(await asyncio.to_thread(_stat))
+        except Exception:  # pragma: no cover - unreachable store is not proof of loss
+            return True
