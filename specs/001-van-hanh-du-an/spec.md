@@ -547,6 +547,13 @@ thứ tự gắn trên từng chữ ký.
   kéo nhịp về dày hơn mức đã đặt. HỆ THỐNG KHÔNG ĐƯỢC dùng bất kỳ thước đo "trơn tru" nào khác — không điểm
   số, không trung bình, không phán đoán.
 
+  **Trần chỉ được phép hoãn, không được phép nuốt.** Ba loại điểm treo *im lâu*, *mắc kẹt*, *chờ quyết định*
+  được dựng lại từ bảng việc ở mọi lượt rà nên tự chúng thoả điều này. Riêng *sắp trễ* có trí nhớ: một mốc đã
+  báo thì không báo lại. Vì vậy HỆ THỐNG chỉ được ghi một mốc hạn chót là **đã báo** khi lượt rà đó thật sự
+  gửi được tới Trưởng dự án. Lượt rà bị trần chặn — hoặc không có kênh gửi — KHÔNG ĐƯỢC tiêu mốc nào; mốc phải
+  còn nguyên cho lượt rà sau khi trần nhả. Một lần gọi đã đi nhưng Trưởng dự án đang ngoại tuyến thì **được**
+  tính là đã báo, vì lời gọi nằm lại trong sổ chờ và tới tay họ khi họ trở lại.
+
 #### I. Lưới an toàn và thang phục hồi
 
 - **FR-056**: Mỗi đầu việc chưa đóng PHẢI gắn đúng một **động cơ đẩy** trong sáu loại: đang có lượt chạy; đã

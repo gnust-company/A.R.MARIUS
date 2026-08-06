@@ -153,7 +153,7 @@ class OrchestrationLoop:
                     found_snags=bool(snags),
                 ),
             ),
-            reported_marks=_next_marks(carried, snags),
+            reported_marks=_next_marks(carried, snags, announced=woke),
         )
         async with self._uow() as uow:
             await uow.orchestration_sweeps.add(sweep)
@@ -299,21 +299,41 @@ class OrchestrationLoop:
 
 
 def _carry_marks(history: list[OrchestrationSweep]) -> dict[UUID, int]:
-    """The deadline marks already announced, from the most recent sweep that has any."""
+    """The deadline marks already announced, from the most recent sweep that has any.
+
+    Skipping past empty maps is only sound because this map never shrinks — see
+    `_next_marks`. If a later change lets an entry be dropped, taking "the most recent
+    sweep that has any" would silently read a stale picture and re-announce a mark; the
+    reader would have to become "the most recent sweep, full stop".
+    """
     for sweep in history:
         if sweep.reported_marks:
             return {UUID(k): int(v) for k, v in sweep.reported_marks.items()}
     return {}
 
 
-def _next_marks(carried: dict[UUID, int], snags: list[Snag]) -> dict[str, int]:
-    """Carried marks plus whatever this sweep just announced.
+def _next_marks(
+    carried: dict[UUID, int], snags: list[Snag], *, announced: bool
+) -> dict[str, int]:
+    """Carried marks plus whatever this sweep actually announced.
+
+    `announced` is not a refinement, it is the rule: a mark is spent only when it reached
+    the Leader. Three of the four predicaments are recomputed from the board every sweep,
+    so a sweep the hourly ceiling stopped costs them nothing. *Due soon* is the one with a
+    memory, and writing that memory on a sweep that woke nobody retires a warning nobody
+    received — the mark never comes round again, and no row anywhere says it went missing.
+
+    A wake that was spent but not delivered still counts as announced: the notifier leaves
+    a durable wake row carrying this text, queued until the Leader is back, so the warning
+    is on its way rather than lost.
 
     Nothing is ever dropped from this map while the sweep history is being read: a task
     that closes stops producing snags, so its entry simply stops mattering. Rebuilding it
     from the live board instead would re-announce every mark after any gap in sweeps.
     """
     merged = {str(k): v for k, v in carried.items()}
+    if not announced:
+        return merged
     for snag in snags:
         if snag.mark_hours is not None:
             merged[str(snag.task_id)] = snag.mark_hours

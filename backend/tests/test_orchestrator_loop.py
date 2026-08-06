@@ -456,6 +456,67 @@ async def test_the_cap_releases_once_the_hour_has_rolled_past(uow_factory) -> No
     assert len(notifier.calls) == THRESHOLDS.orchestration_wakes_per_hour + 1
 
 
+@pytest.mark.asyncio
+async def test_a_deadline_mark_crossed_under_the_cap_is_still_delivered(
+    uow_factory,
+) -> None:
+    """The ceiling delays a warning; it must not eat one.
+
+    Three of the four predicaments are recomputed from the board on every sweep, so a
+    sweep the ceiling stopped costs them nothing — the next sweep past the hour finds them
+    again. *Sắp trễ* is the one that remembers: a mark already announced is not announced
+    again, and that memory is written on **every** sweep, including the ones that woke
+    nobody. So a mark crossing while the ceiling is saturated gets filed as "already told
+    them" without anyone having been told, and it never comes round again.
+
+    The 24-hour mark is the early one — the one that exists so the Leader still has room to
+    move. Losing it and waiting for 12 hours spends half the reaction time, and on a
+    deadline sitting just under the mark it is nearly twelve hours of silence on a task
+    running at a wall.
+    """
+    project, _ = await _world(uow_factory)
+    await _task(
+        uow_factory,
+        project.id,
+        title="Việc mắc kẹt",
+        status=TaskStatus.BLOCKED,
+        status_reason="đợi bên thứ ba trả lời",
+        updated_at=T0,
+    )
+    # Crosses the 24-hour mark at minute 40 — after the ceiling is already spent.
+    due_soon = await _task(
+        uow_factory,
+        project.id,
+        title="Việc có hạn chót",
+        status=TaskStatus.IN_PROGRESS,
+        due_date=T0 + timedelta(hours=24, minutes=30),
+        updated_at=T0,
+    )
+    notifier = RecordingNotifier()
+    loop = _loop(uow_factory, notifier)
+
+    for minute in (0, 5, 10, 15):
+        await _touch(uow_factory, due_soon.id, T0 + timedelta(minutes=minute))
+        await loop.sweep_project(project.id, now=T0 + timedelta(minutes=minute))
+    assert len(notifier.calls) == THRESHOLDS.orchestration_wakes_per_hour
+
+    await _touch(uow_factory, due_soon.id, T0 + timedelta(minutes=40))
+    blocked_sweep = await loop.sweep_project(project.id, now=T0 + timedelta(minutes=40))
+    assert blocked_sweep.woke_leader is False, "cần đúng lượt rà bị trần chặn"
+    assert any(s.kind is SnagKind.DUE_SOON for s in blocked_sweep.snags)
+
+    await _touch(uow_factory, due_soon.id, T0 + timedelta(minutes=90))
+    released = await loop.sweep_project(project.id, now=T0 + timedelta(minutes=90))
+
+    assert released.woke_leader is True
+    marks = [s for s in released.snags if s.kind is SnagKind.DUE_SOON]
+    assert [s.task_id for s in marks] == [due_soon.id], (
+        "mốc hạn chót chạm đúng lúc trần đang chặn đã bị ghi là 'đã báo', "
+        "nên Trưởng dự án không bao giờ nhận được"
+    )
+    assert "hạn chót" in notifier.calls[-1]["text"]
+
+
 # ── vòng nền: chỉ quét dự án đã tới nhịp ─────────────────────────────────────────
 
 @pytest.mark.asyncio
