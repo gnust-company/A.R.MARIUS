@@ -38,7 +38,7 @@ from armarius.domain.entities.inbox_item import (
     InboxItemStatus,
 )
 from armarius.domain.entities.run import WakeSource
-from armarius.domain.entities.task import Task, TaskDrive, TaskStatus
+from armarius.domain.entities.task import Task, TaskStatus
 from armarius.domain.entities.task_log import ActorKind, TaskLogKind
 from armarius.domain.services.approval_rules import (
     REJECTION_ROUND_CEILING,
@@ -48,6 +48,7 @@ from armarius.domain.services.approval_rules import (
     missing_signatures,
     rejection_rounds,
 )
+from armarius.domain.services.push_reason_rules import provisional_drive
 from armarius.infrastructure.events.topic_bus import (
     TopicEventBus,
     patron_topic,
@@ -304,7 +305,12 @@ class ApprovalService:
         task.transition_to(TaskStatus.IN_PROGRESS, now, reason=reason)
         await retire_signatures_on_move(uow, task.id, TaskStatus.IN_PROGRESS)
         task.next_action = f"Sửa theo phản hồi: {reason}".strip()
-        task.drive = TaskDrive.WAKE_SCHEDULED
+        # Provisional (FR-056): the rework wake is booked by the caller after this
+        # transaction commits, so the verified drive cannot be known yet. It carries a
+        # short clock, which is what makes "sent back and then forgotten" visible.
+        reason_now = provisional_drive(task.status, now=now)
+        task.drive = reason_now.kind if reason_now else None
+        task.drive_expires_at = reason_now.expires_at if reason_now else None
         task.updated_at = now
         await uow.tasks.update(task)
         await self._resolve_pending_acceptance(uow, task.id)

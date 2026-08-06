@@ -154,6 +154,12 @@ class TaskModel(Base):
     # item would be worse than a dangling pointer we already treat as "out of scope".
     plan_item_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
     drive: Mapped[str | None] = mapped_column(String(20), index=True)
+    # When the drive stops being believable (FR-057). Kept on the task rather than beside
+    # the ladder state so the stall sweep is one indexed scan of *this* table and nothing
+    # else: it runs forever, over every open task, and a join there would be a join on the
+    # hot path. NULL means the drive has no clock — a patron wait or a blocked-by wait,
+    # both of which are already chased by something else (see `push_reason_rules`).
+    drive_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     stalled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     stalled_reason: Mapped[str | None] = mapped_column(Text)
     assigned_marius_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
@@ -585,3 +591,39 @@ class OrchestrationSweepModel(Base):
     skipped_reason: Mapped[str | None] = mapped_column(Text)
     next_interval_seconds: Mapped[int] = mapped_column(Integer, default=0)
     reported_marks: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+
+
+class TaskPushReasonModel(Base):
+    """The recovery ladder standing on one task (spec 001 §9, FR-059 → FR-061).
+
+    One row per task, at most — the unique key says so rather than a comment hoping so.
+
+    Deliberately *not* the drive's kind: that lives on `tasks.drive`, with its deadline
+    beside it, so the stall sweep never has to leave the task table. What is here is the
+    part the sweep does not read on every pass — which rung the task is on, how much of the
+    Level-1 budget is spent on the current cause, and when the next attempt is due. Splitting
+    it this way keeps the field that matters most (is the drive still live?) on the index the
+    hot query already uses, and keeps six rarely-read columns off the widest table in the
+    schema.
+    """
+
+    __tablename__ = "task_push_reasons"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    task_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("tasks.id"), unique=True, index=True
+    )
+    # What the drive points at, when it points at something: the blocking tasks, the inbox
+    # item, the run. Text rather than a foreign key because the six kinds reference four
+    # different tables, and an FK to "one of four things" is a worse lie than a label.
+    ref: Mapped[str | None] = mapped_column(Text)
+    # 0 = nothing wrong · 1 = the system retries · 2 = the Leader decides · 3 = the patron.
+    level: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    # What the ladder is climbing about. The Level-1 budget is counted per cause (FR-060),
+    # so a task that got unstuck and later broke differently starts from a full budget.
+    cause: Mapped[str | None] = mapped_column(Text)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

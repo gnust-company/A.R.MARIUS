@@ -24,6 +24,7 @@ from armarius.domain.entities.onboarding import OnboardingSession
 from armarius.domain.entities.orchestration_sweep import OrchestrationSweep
 from armarius.domain.entities.plan import Plan
 from armarius.domain.entities.project_context import ContextApprovalStatus, ProjectContext
+from armarius.domain.entities.push_reason import TaskPushReason
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import ACTIVE_RUN_STATUSES, Run, RunEvent
 from armarius.domain.entities.seat_grant import SeatGrant
@@ -63,11 +64,13 @@ from armarius.domain.repositories.repositories import (
     SkillRepository,
     TaskDependencyRepository,
     TaskLogRepository,
+    TaskPushReasonRepository,
     TaskRepository,
     UserRepository,
     WakeupRepository,
     WorkspaceRepository,
 )
+from armarius.domain.services.push_reason_rules import WATCHED_STATUSES
 from armarius.infrastructure.database.models import (
     ArtifactModel,
     ChecklistItemModel,
@@ -93,6 +96,7 @@ from armarius.infrastructure.database.models import (
     TaskDependencyModel,
     TaskLogModel,
     TaskModel,
+    TaskPushReasonModel,
     UserModel,
     WakeupModel,
     WorkspaceModel,
@@ -845,6 +849,12 @@ class SqlMariusRepository(MariusRepository):
         await self._s.flush()
 
 
+# The statuses the safety net watches, as stored strings. Mirrors
+# `push_reason_rules.WATCHED_STATUSES` — the rule owns the meaning, this is the shape
+# the query needs, and the parity is asserted in tests rather than hoped for.
+_WATCHED_STATUS_VALUES: list[str] = sorted(str(s) for s in WATCHED_STATUSES)
+
+
 class SqlTaskRepository(TaskRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
@@ -864,6 +874,7 @@ class SqlTaskRepository(TaskRepository):
                 definition_of_done=task.definition_of_done,
                 plan_item_id=task.plan_item_id,
                 drive=str(task.drive) if task.drive else None,
+                drive_expires_at=task.drive_expires_at,
                 stalled=task.stalled,
                 stalled_reason=task.stalled_reason,
                 assigned_marius_id=task.assigned_marius_id,
@@ -907,6 +918,7 @@ class SqlTaskRepository(TaskRepository):
         m.definition_of_done = task.definition_of_done
         m.plan_item_id = task.plan_item_id
         m.drive = str(task.drive) if task.drive else None
+        m.drive_expires_at = task.drive_expires_at
         m.stalled = task.stalled
         m.stalled_reason = task.stalled_reason
         m.assigned_marius_id = task.assigned_marius_id
@@ -916,6 +928,100 @@ class SqlTaskRepository(TaskRepository):
         m.updated_at = task.updated_at
         await self._s.flush()
         return task
+
+    async def list_stall_candidates(
+        self, now: datetime, *, limit: int = 500
+    ) -> Sequence[Task]:
+        stmt = (
+            select(TaskModel)
+            .where(TaskModel.status.in_(_WATCHED_STATUS_VALUES))
+            .where(
+                or_(
+                    TaskModel.drive.is_(None),
+                    TaskModel.drive_expires_at <= now,
+                    TaskModel.stalled.is_(True),
+                )
+            )
+            # Oldest first: on a service that comes up behind a backlog of dropped tasks,
+            # the ones that have been dropped longest are the ones nobody has been told
+            # about for longest.
+            .order_by(TaskModel.updated_at)
+            .limit(limit)
+        )
+        rows = (await self._s.execute(stmt)).scalars().all()
+        return [mappers.task_to_entity(m) for m in rows]
+
+    async def list_open(self, *, limit: int = 1000) -> Sequence[Task]:
+        stmt = (
+            select(TaskModel)
+            .where(TaskModel.status.in_(_WATCHED_STATUS_VALUES))
+            .order_by(TaskModel.updated_at)
+            .limit(limit)
+        )
+        rows = (await self._s.execute(stmt)).scalars().all()
+        return [mappers.task_to_entity(m) for m in rows]
+
+
+class SqlTaskPushReasonRepository(TaskPushReasonRepository):
+    """The recovery ladder, one row per task (spec 001 §9)."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def get_for_task(self, task_id: UUID) -> TaskPushReason | None:
+        stmt = select(TaskPushReasonModel).where(TaskPushReasonModel.task_id == task_id)
+        m = (await self._s.execute(stmt)).scalars().first()
+        return mappers.push_reason_to_entity(m) if m else None
+
+    async def upsert(self, reason: TaskPushReason) -> TaskPushReason:
+        stmt = select(TaskPushReasonModel).where(
+            TaskPushReasonModel.task_id == reason.task_id
+        )
+        m = (await self._s.execute(stmt)).scalars().first()
+        if m is None:
+            self._s.add(
+                TaskPushReasonModel(
+                    id=reason.id,
+                    task_id=reason.task_id,
+                    ref=reason.ref,
+                    level=int(reason.level),
+                    attempts=reason.attempts,
+                    cause=reason.cause,
+                    last_attempt_at=reason.last_attempt_at,
+                    next_retry_at=reason.next_retry_at,
+                    created_at=reason.created_at,
+                    updated_at=reason.updated_at,
+                )
+            )
+        else:
+            # The row's identity is the task, not the id the caller happened to carry —
+            # keep the stored id so a caller that built a fresh entity does not silently
+            # renumber a ladder that other rows may already reference.
+            reason.id = m.id
+            m.ref = reason.ref
+            m.level = int(reason.level)
+            m.attempts = reason.attempts
+            m.cause = reason.cause
+            m.last_attempt_at = reason.last_attempt_at
+            m.next_retry_at = reason.next_retry_at
+            m.updated_at = reason.updated_at
+        await self._s.flush()
+        return reason
+
+    async def clear_for_task(self, task_id: UUID) -> None:
+        await self._s.execute(
+            delete(TaskPushReasonModel).where(TaskPushReasonModel.task_id == task_id)
+        )
+        await self._s.flush()
+
+    async def list_for_tasks(self, task_ids: Sequence[UUID]) -> Sequence[TaskPushReason]:
+        if not task_ids:
+            return []
+        stmt = select(TaskPushReasonModel).where(
+            TaskPushReasonModel.task_id.in_(list(task_ids))
+        )
+        rows = (await self._s.execute(stmt)).scalars().all()
+        return [mappers.push_reason_to_entity(m) for m in rows]
 
 
 class SqlChecklistItemRepository(ChecklistItemRepository):
@@ -1277,6 +1383,24 @@ class SqlRunRepository(RunRepository):
         ).scalars().all()
         return {r for r in rows if r is not None}
 
+    async def list_silent_active(
+        self, silent_since: datetime, *, limit: int = 200
+    ) -> Sequence[Run]:
+        stmt = (
+            select(RunModel)
+            .where(RunModel.status.in_([str(s) for s in ACTIVE_RUN_STATUSES]))
+            .where(
+                func.coalesce(
+                    RunModel.last_output_at, RunModel.started_at, RunModel.created_at
+                )
+                <= silent_since
+            )
+            .order_by(RunModel.created_at)
+            .limit(limit)
+        )
+        rows = (await self._s.execute(stmt)).scalars().all()
+        return [mappers.run_to_entity(m) for m in rows]
+
     async def has_active_for_task(self, task_id: UUID) -> bool:
         found = (
             await self._s.execute(
@@ -1413,6 +1537,17 @@ class SqlWakeupRepository(WakeupRepository):
             await self._s.execute(
                 select(WakeupModel).where(
                     WakeupModel.marius_id == marius_id,
+                    WakeupModel.task_id == task_id,
+                    WakeupModel.status.in_([str(s) for s in PENDING_WAKEUP_STATUSES]),
+                )
+            )
+        ).scalars().all()
+        return [mappers.wakeup_to_entity(m) for m in rows]
+
+    async def list_pending_for_task(self, task_id: UUID) -> Sequence[WakeupRequest]:
+        rows = (
+            await self._s.execute(
+                select(WakeupModel).where(
                     WakeupModel.task_id == task_id,
                     WakeupModel.status.in_([str(s) for s in PENDING_WAKEUP_STATUSES]),
                 )
@@ -1696,6 +1831,16 @@ class SqlInboxRepository(InboxRepository):
                 .order_by(InboxItemModel.created_at)
             )
         ).scalars().all()
+        return [mappers.inbox_item_to_entity(m) for m in rows]
+
+    async def list_pending(self, *, limit: int = 500) -> Sequence[InboxItem]:
+        stmt = (
+            select(InboxItemModel)
+            .where(InboxItemModel.status == str(InboxItemStatus.PENDING))
+            .order_by(InboxItemModel.created_at)
+            .limit(limit)
+        )
+        rows = (await self._s.execute(stmt)).scalars().all()
         return [mappers.inbox_item_to_entity(m) for m in rows]
 
 

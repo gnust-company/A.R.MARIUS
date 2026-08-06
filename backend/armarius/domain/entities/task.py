@@ -231,6 +231,11 @@ class Task:
     plan_item_id: UUID | None = None
     # What is going to move this forward. None on a closed task; Story 6 keeps it honest.
     drive: TaskDrive | None = None
+    # When that drive stops being believable (FR-057). None means *this drive has no clock*
+    # — a wait on a patron or on another task, both already chased by something else — and
+    # never "expired". The stall sweep reads exactly these two fields, which is why they sit
+    # on the task rather than beside the ladder state.
+    drive_expires_at: datetime | None = None
     # Raised by the safety net when a task loses every live drive (FR-058). Not a status:
     # it is an alarm that the system dropped this task, and it seals every door into done.
     stalled: bool = False

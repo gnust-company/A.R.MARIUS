@@ -29,6 +29,7 @@ from armarius.domain.entities.project import (
     default_project_settings,
 )
 from armarius.domain.entities.project_context import ContextApprovalStatus, ProjectContext
+from armarius.domain.entities.push_reason import TaskPushReason
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import Run, RunEvent, RunStatus, WakeSource
 from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
@@ -40,6 +41,7 @@ from armarius.domain.entities.task_log import ActorKind, TaskLogEntry, TaskLogKi
 from armarius.domain.entities.user import User, UserRole
 from armarius.domain.entities.wakeup import WakeupRequest, WakeupStatus
 from armarius.domain.entities.workspace import Workspace
+from armarius.domain.services.escalation import EscalationLevel
 from armarius.domain.services.orchestration_cadence import Snag, SnagKind
 from armarius.infrastructure.database.models import (
     ArtifactModel,
@@ -66,6 +68,7 @@ from armarius.infrastructure.database.models import (
     TaskDependencyModel,
     TaskLogModel,
     TaskModel,
+    TaskPushReasonModel,
     UserModel,
     WakeupModel,
     WorkspaceModel,
@@ -191,6 +194,7 @@ def task_to_entity(m: TaskModel) -> Task:
         definition_of_done=m.definition_of_done,
         plan_item_id=m.plan_item_id,
         drive=TaskDrive(m.drive) if m.drive else None,
+        drive_expires_at=m.drive_expires_at,
         stalled=bool(m.stalled),
         stalled_reason=m.stalled_reason,
         assigned_marius_id=m.assigned_marius_id,
@@ -522,4 +526,19 @@ def orchestration_sweep_to_entity(m: OrchestrationSweepModel) -> OrchestrationSw
         skipped_reason=m.skipped_reason,
         next_interval_seconds=int(m.next_interval_seconds or 0),
         reported_marks={str(k): int(str(v)) for k, v in (m.reported_marks or {}).items()},
+    )
+
+
+def push_reason_to_entity(m: TaskPushReasonModel) -> TaskPushReason:
+    return TaskPushReason(
+        id=m.id,
+        task_id=m.task_id,
+        ref=m.ref,
+        level=EscalationLevel(int(m.level or 0)),
+        attempts=int(m.attempts or 0),
+        cause=m.cause,
+        last_attempt_at=m.last_attempt_at,
+        next_retry_at=m.next_retry_at,
+        created_at=m.created_at,
+        updated_at=m.updated_at,
     )

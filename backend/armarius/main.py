@@ -51,7 +51,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Start the orchestration loop — sweeps each project's board on its own rhythm and
     # wakes the Leader only when the sweep found something (spec 001 FR-052 → FR-055).
     app.state.container.orchestrator.start()
+    # Rebuild every open task's drive **before** the safety net starts sweeping (FR-068).
+    # A drive is a claim about the future, and the process that made the last claims is
+    # gone: a run it was streaming is now a run nobody is reading. Rebuilding first is what
+    # separates "the net survived the restart" from "the net raised an alarm on every task
+    # in the database one second after boot".
+    rebuilt = await app.state.container.stall_watchdog.rebuild_drives()
+    logger.info("rebuilt push reasons for %d open task(s)", rebuilt)
+    # Start the safety net — the loop that notices a task nobody is going to touch again
+    # (spec 001 FR-056 → FR-069).
+    app.state.container.stall_watchdog.start()
     yield
+    await app.state.container.stall_watchdog.stop()
     await app.state.container.orchestrator.stop()
     await app.state.container.liveness_watchdog.stop()
     logger.info("Armarius shutting down")

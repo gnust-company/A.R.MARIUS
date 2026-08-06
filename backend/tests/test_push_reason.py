@@ -153,7 +153,9 @@ def test_a_drive_past_its_expiry_is_not_live() -> None:
     assert is_live(reason, now=T0) is False
 
 
-@pytest.mark.parametrize("kind_setup", [{"patron_item_pending": True}, {"unmet_blockers": ("X-1",)}])
+@pytest.mark.parametrize(
+    "kind_setup", [{"patron_item_pending": True}, {"unmet_blockers": ("X-1",)}]
+)
 def test_waits_owned_by_someone_else_have_no_clock(kind_setup: dict[str, object]) -> None:
     """Two drives deliberately never expire on a clock: a patron wait is chased by the
     three-tier reminder ladder (FR-065), and a blocked-by wait ends when the blocking task
@@ -234,7 +236,7 @@ def test_every_watched_task_is_either_driven_or_stalled_and_the_verdict_is_the_r
             s, now=T0, hang_suspect_seconds=SUSPECT, hang_grace_seconds=GRACE
         )
         driven = reason is not None and is_live(reason, now=T0)
+        wanted = "còn động cơ đẩy" if expected_driven else "phải nổi cờ đình trệ"
         assert driven is expected_driven, (
-            f"'{label}': đáng lẽ {'còn động cơ đẩy' if expected_driven else 'phải nổi cờ đình trệ'}, "
-            f"nhưng luật trả về {reason}"
+            f"'{label}': đáng lẽ {wanted}, nhưng luật trả về {reason}"
         )
