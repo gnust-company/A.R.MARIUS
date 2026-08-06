@@ -45,9 +45,14 @@ from armarius.domain.services.approval_rules import (
     is_closable,
     missing_signatures,
 )
-from armarius.domain.services.push_reason_rules import provisional_drive
+from armarius.domain.services.push_reason_rules import (
+    QueueCandidate,
+    keeps_running,
+    provisional_drive,
+    queue_order,
+)
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
-from armarius.shared.clock import utcnow
+from armarius.shared.clock import as_utc, utcnow
 
 if TYPE_CHECKING:  # pragma: no cover — typing only, keeps the import graph acyclic
     from armarius.application.use_cases.inbox import InboxService
@@ -625,6 +630,74 @@ class TaskService:
             # An unblocked task changed drive too — the thing it was waiting on is gone.
             await self._settle_drive(freed.id)
         return updated
+
+    async def ready_queue(self, project_id: UUID) -> list[Task]:
+        """What to hand out next on this project, in order (FR-066, FR-067).
+
+        Two rules, both of them about fairness rather than throughput.
+
+        The **order** is priority, then deadline, then age, with the wait itself promoting a
+        task (`queue_order`). Without that promotion a *low* task on a busy project is never
+        reached: there is always another *high* one, and "we will get to it" becomes
+        something the board says forever.
+
+        The **membership** excludes only what genuinely stands behind a pending patron
+        decision — the parked tasks and their downstream chain, nothing else (FR-066). The
+        project stops at the question, not across the whole board, so a Friday afternoon
+        that goes unanswered does not cost the following week.
+
+        Ready means *todo* with every blocker done and nobody on it yet. A task already
+        being worked on is not queued for a worker; it has one.
+        """
+        async with self._uow() as uow:
+            tasks = list(await uow.tasks.list_by_project(project_id))
+            edges = [
+                (e.task_id, e.blocks_task_id)
+                for e in await uow.dependencies.list_by_project(project_id)
+                if e.task_id is not None and e.blocks_task_id is not None
+            ]
+            parked = [
+                t.id
+                for t in tasks
+                if t.id in {
+                    i.task_id
+                    for i in await uow.inbox.list_pending()
+                    if i.task_id is not None
+                }
+            ]
+            unfinished = {
+                t.id for t in tasks if t.status not in TERMINAL_STATUSES
+            }
+
+        ready = [
+            t
+            for t in tasks
+            if t.status is TaskStatus.TODO
+            and t.assigned_marius_id is None
+            and not any(
+                blocker in unfinished
+                for task_id, blocker in edges
+                if task_id == t.id
+            )
+        ]
+        running = keeps_running(
+            [t.id for t in ready], waiting_on=parked, edges=edges
+        )
+        by_id = {t.id: t for t in ready}
+        ordered = queue_order(
+            [
+                QueueCandidate(
+                    task_id=t.id,
+                    identifier=t.identifier or str(t.id),
+                    priority=str(t.priority),
+                    due_date=as_utc(t.due_date),
+                    created_at=as_utc(t.created_at),
+                )
+                for t in (by_id[tid] for tid in running)
+            ],
+            now=utcnow(),
+        )
+        return [by_id[c.task_id] for c in ordered]
 
     async def _project_has_open_tasks(self, project_id: UUID | None) -> bool:
         if project_id is None:

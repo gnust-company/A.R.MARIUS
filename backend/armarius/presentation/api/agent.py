@@ -231,6 +231,30 @@ async def agent_create_task(
     return TaskOut.model_validate(task)
 
 
+@router.get("/projects/{project_id}/queue", response_model=list[TaskOut])
+async def agent_ready_queue(
+    project_id: UUID,
+    marius: CurrentMarius,
+    container: ContainerDep,
+) -> list[TaskOut]:
+    """What to hand out next, in order (FR-066, FR-067).
+
+    The Leader still decides who does what — this answers the question underneath that
+    decision, and answers it the same way every time: priority, then deadline, then age,
+    with the wait itself promoting a task so nothing at the bottom is starved.
+
+    Anything standing behind a pending patron decision is left out, and **only** that.
+    A project parks at the question, not across the whole board (FR-066).
+    """
+    project = await container.projects.get_project(project_id)
+    if project is None or project.workspace_id != marius.workspace_id:
+        raise LookupError("project not found")  # cross-workspace → 404
+    return [
+        TaskOut.model_validate(t)
+        for t in await container.tasks.ready_queue(project_id)
+    ]
+
+
 @router.get("/tasks/{task_id}")
 async def get_task_view(
     task_id: UUID, marius: CurrentMarius, container: ContainerDep

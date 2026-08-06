@@ -28,10 +28,12 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from armarius.application.ports.artifact_store import ArtifactStore
 from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.review_reset import retire_signatures_on_move
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.approval import Approval, ApprovalResult, SignerKind
+from armarius.domain.entities.artifact import ArtifactKind
 from armarius.domain.entities.inbox_item import (
     InboxItem,
     InboxItemKind,
@@ -98,12 +100,16 @@ class ApprovalService:
         wake: WakeEngine | None = None,
         task_logs: TaskLogService | None = None,
         control_bus: TopicEventBus | None = None,
+        artifact_store: ArtifactStore | None = None,
     ) -> None:
         self._uow = uow_factory
         self._tasks = tasks
         self._wake = wake
         self._logs = task_logs
         self._bus = control_bus
+        # Only used to answer one question, at one moment: is the deliverable still
+        # there when somebody is about to sign for it (FR-069).
+        self._artifact_store = artifact_store
 
     # ── who has to sign (FR-034) ─────────────────────────────────────────────
 
@@ -215,6 +221,17 @@ class ApprovalService:
                     f"Đầu việc đang ở '{task.status}' — chỉ ký khi đang *chờ rà soát*."
                 )
             project_id = task.project_id
+            missing = await self._missing_deliverables(uow, task_id)
+
+            if approve and missing:
+                # FR-069. Signing here would close the task against a file nobody can
+                # open, and the signature is the one artefact in this system that is
+                # supposed to mean something. Back to the step that produced it, with
+                # the loss written down — and the criteria already scored left alone, so
+                # only the missing part is redone.
+                await self._report_lost_deliverable(uow, task, missing, now=now)
+                await uow.commit()
+                return task
 
             history = list(await uow.approvals.list_for_task(task_id))
             signature = Approval(
@@ -463,6 +480,52 @@ class ApprovalService:
                 "task_id": str(item.task_id) if item.task_id else None,
             },
         )
+
+
+    # ── thành phẩm mất hoặc hỏng lúc chuẩn bị công nhận (FR-069) ─────────────────
+
+    async def _missing_deliverables(self, uow: UnitOfWork, task_id: UUID) -> list[str]:
+        """Which of this task's stored outputs are no longer there.
+
+        Only *file* artifacts are checked — the ones whose bytes live in our own store.
+        A `link` points at somewhere this system does not own (a merged pull request, a
+        document), and calling it lost because a third-party site was slow would be
+        inventing a failure rather than finding one.
+        """
+        if self._artifact_store is None:
+            return []
+        missing: list[str] = []
+        for artifact in await uow.artifacts.list_by_task(task_id):
+            if artifact.kind != ArtifactKind.FILE:
+                continue
+            if not await self._artifact_store.exists(artifact.uri):
+                missing.append(artifact.name or artifact.uri)
+        return missing
+
+    async def _report_lost_deliverable(
+        self, uow: UnitOfWork, task: Task, missing: list[str], *, now: datetime
+    ) -> None:
+        """Send the task back to the step that produced the lost output, and say so."""
+        listed = ", ".join(missing)
+        reason = f"thành phẩm không còn trong kho: {listed}"
+        task.transition_to(TaskStatus.IN_PROGRESS, now, reason=reason)
+        await retire_signatures_on_move(uow, task.id, TaskStatus.IN_PROGRESS)
+        task.next_action = f"Nộp lại thành phẩm đã mất: {listed}"
+        provisional = provisional_drive(task.status, now=now)
+        task.drive = provisional.kind if provisional else None
+        task.drive_expires_at = provisional.expires_at if provisional else None
+        task.updated_at = now
+        await uow.tasks.update(task)
+        if self._logs is not None:
+            await self._logs.record_in(
+                uow,
+                task.id,
+                TaskLogKind.STATUS_CHANGED,
+                actor_kind=ActorKind.SYSTEM,
+                before=str(TaskStatus.IN_REVIEW),
+                after=str(TaskStatus.IN_PROGRESS),
+                reason=reason,
+            )
 
 
 __all__ = [
