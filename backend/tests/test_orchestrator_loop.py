@@ -262,7 +262,7 @@ async def test_a_task_the_leader_already_signed_is_not_still_waiting_on_it(
         await uow.approvals.add(
             Approval(
                 task_id=task.id,
-                round=1,
+
                 signer_kind=SignerKind.LEADER,
                 signer_marius_id=alice.id,
                 result=ApprovalResult.APPROVE,
@@ -276,6 +276,48 @@ async def test_a_task_the_leader_already_signed_is_not_still_waiting_on_it(
 
     assert sweep.snags == []
     assert notifier.calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_task_reworked_after_a_rejection_is_waiting_on_the_leader_again(
+    uow_factory,
+) -> None:
+    """Vòng làm lại thường gặp nhất của hệ, và nó từng lọt lưới hoàn toàn.
+
+    Trong sổ chỉ có đúng một dòng của Trưởng dự án, và dòng đó là một lời **trả về**. Hỏi
+    "Trưởng dự án đã đụng vào đầu việc này chưa" thì câu trả lời là rồi — nhưng câu cần
+    hỏi là "bản **đang** nằm đây đã ai duyệt chưa", và câu đó là chưa.
+
+    Đọc nhầm câu hỏi thì đầu việc đã sửa xong, nộp lại, nằm im ở *chờ rà soát* mà không
+    ai gọi Trưởng dự án tới chấm. Nó cũng không rơi vào lưới *im lâu* đúng lúc, vì vừa
+    mới có hoạt động.
+    """
+    project, alice = await _world(uow_factory)
+    task = await _task(
+        uow_factory,
+        project.id,
+        title="Việc đã sửa và nộp lại",
+        status=TaskStatus.IN_REVIEW,
+        updated_at=T0,
+    )
+    async with uow_factory() as uow:
+        await uow.approvals.add(
+            Approval(
+                task_id=task.id,
+                signer_kind=SignerKind.LEADER,
+                signer_marius_id=alice.id,
+                result=ApprovalResult.REJECT,
+                reason="Thiếu phần đối chiếu sổ cái.",
+                signed_at=T0 - timedelta(hours=2),
+            )
+        )
+        await uow.commit()
+    notifier = RecordingNotifier()
+
+    sweep = await _loop(uow_factory, notifier).sweep_project(project.id, now=T0)
+
+    assert [s.kind for s in sweep.snags] == [SnagKind.AWAITING_LEADER], sweep.snags
+    assert len(notifier.calls) == 1
 
 
 # ── bước 3: giãn khi trơn tru, dày lại khi ứ đọng ────────────────────────────────

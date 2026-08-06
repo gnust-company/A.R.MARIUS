@@ -35,11 +35,12 @@ from armarius.application.use_cases.projects import ProjectService
 # about this project". One protocol, so a second way to reach a Leader never grows here.
 from armarius.application.use_cases.tasks import LeaderNotifier
 from armarius.application.use_cases.types import UowFactory
-from armarius.domain.entities.approval import Approval
+from armarius.domain.entities.approval import Approval, SignerKind
 from armarius.domain.entities.orchestration_sweep import OrchestrationSweep
 from armarius.domain.entities.project import ProjectStatus, ProjectThresholds
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.task import TaskStatus
+from armarius.domain.services.approval_rules import missing_signatures
 from armarius.domain.services.orchestration_cadence import (
     CadenceState,
     Snag,
@@ -238,22 +239,19 @@ class OrchestrationLoop:
     ) -> set[UUID]:
         """Which tasks in review are waiting on the Leader's signature (FR-033).
 
-        A task whose current round carries no Leader signature is waiting on one. A task
-        in review with no signatures at all has not been looked at yet, so it is waiting
-        too — that is the case a rule keyed off "the newest round" would quietly miss.
+        Asked through the same door the closing gate uses, and answered by the same rule.
+        This method used to work it out for itself, and the arithmetic it invented said a
+        task the Leader had *rejected* was a task the Leader had signed — so the reworked
+        deliverable sat in review and nobody was ever woken to look at it.
         """
-        rounds: dict[UUID, int] = {}
-        signed: set[tuple[UUID, int]] = set()
+        current: dict[UUID, list[Approval]] = {task_id: [] for task_id in in_review}
         for approval in approvals:
-            if approval.task_id is None:
-                continue
-            rounds[approval.task_id] = max(rounds.get(approval.task_id, 0), approval.round)
-            if str(approval.signer_kind) == "leader":
-                signed.add((approval.task_id, approval.round))
+            if approval.task_id in current and not approval.superseded:
+                current[approval.task_id].append(approval)
         return {
             task_id
-            for task_id in in_review
-            if (task_id, rounds.get(task_id, 1)) not in signed
+            for task_id, signatures in current.items()
+            if SignerKind.LEADER in missing_signatures(signatures)
         }
 
     async def _live_projects(self) -> list[UUID]:

@@ -120,6 +120,18 @@ class ApprovalRepository(ABC):
         on a loop that never stops running.
         """
 
+    @abstractmethod
+    async def supersede_for_task(self, task_id: UUID) -> int:
+        """Retire every signature this task still carries; return how many were retired.
+
+        Called when the task goes back to being worked on. Nothing is deleted — the rows,
+        their verdicts and their reasons all stay readable; they simply stop counting
+        towards closing the deliverable that replaces the one they were given for.
+
+        The only write on this repository that is not an insert, and it is a flag flip, so
+        the "a signature you can edit is not evidence" rule still holds.
+        """
+
 
 class AutoApprovalRepository(ABC):
     """One patron's auto-approval switch per project (spec 001 §5, FR-036)."""

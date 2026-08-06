@@ -7,6 +7,7 @@ transactions). `commit`/`rollback` are no-ops: repos mutate the shared store dir
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from types import TracebackType
@@ -298,6 +299,18 @@ class _FakeApprovalRepo:
 
     async def list_for_task(self, task_id: UUID) -> list[Approval]:
         return [a for a in self._s.approvals if a.task_id == task_id]
+
+    async def list_for_tasks(self, task_ids: Sequence[UUID]) -> list[Approval]:
+        wanted = set(task_ids)
+        return [a for a in self._s.approvals if a.task_id in wanted]
+
+    async def supersede_for_task(self, task_id: UUID) -> int:
+        retired = 0
+        for a in self._s.approvals:
+            if a.task_id == task_id and not a.superseded:
+                a.superseded = True
+                retired += 1
+        return retired
 
 
 class _FakeAutoApprovalRepo:
