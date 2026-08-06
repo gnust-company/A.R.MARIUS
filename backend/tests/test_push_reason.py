@@ -128,9 +128,15 @@ def test_a_retry_outranks_a_patron_wait() -> None:
 # ── mốc hết hạn: vòng quét chỉ so mốc này với hiện tại ──────────────────────────
 
 
-def test_a_live_run_expires_after_suspicion_plus_grace() -> None:
-    """The stall sweep is the backstop *behind* the hung-run reaper, so its deadline must
-    sit past the reaper's. Any earlier and every healthy long run trips the alarm."""
+def test_a_live_run_outlives_the_reapers_own_deadline() -> None:
+    """The stall sweep is the backstop *behind* the hung-run reaper, so its deadline has to
+    sit **past** the reaper's, not on it.
+
+    Equal deadlines make it a coin toss which loop reaches a hung run first, and that is not
+    harmless: the reaper knows how to recover one — close the ghost, pull the task back,
+    resume from the saved next action — while the net only knows how to raise an alarm and
+    re-poke. Losing that race costs the good recovery.
+    """
     last = T0 - timedelta(seconds=30)
     reason = infer_drive(
         snap(run_last_output_at=last),
@@ -139,12 +145,15 @@ def test_a_live_run_expires_after_suspicion_plus_grace() -> None:
         hang_grace_seconds=GRACE,
     )
     assert reason is not None
-    assert reason.expires_at == last + timedelta(seconds=SUSPECT + GRACE)
+    assert reason.expires_at is not None
+    assert reason.expires_at > last + timedelta(seconds=SUSPECT + GRACE), (
+        "lưới an toàn hết hạn cùng lúc với bộ thu dọn, nên ai tới trước là chuyện may rủi"
+    )
 
 
 def test_a_drive_past_its_expiry_is_not_live() -> None:
     reason = infer_drive(
-        snap(run_last_output_at=T0 - timedelta(seconds=SUSPECT + GRACE + 60)),
+        snap(run_last_output_at=T0 - timedelta(hours=2)),
         now=T0,
         hang_suspect_seconds=SUSPECT,
         hang_grace_seconds=GRACE,
@@ -221,7 +230,7 @@ def test_every_watched_task_is_either_driven_or_stalled_and_the_verdict_is_the_r
         ("chờ làm mà không ai hẹn quay lại", snap(status=TaskStatus.TODO), False),
         (
             "lượt chạy đã quá cả ân hạn",
-            snap(run_last_output_at=T0 - timedelta(seconds=SUSPECT + GRACE + 60)),
+            snap(run_last_output_at=T0 - timedelta(hours=2)),
             False,
         ),
         (
