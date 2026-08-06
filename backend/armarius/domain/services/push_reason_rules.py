@@ -46,6 +46,11 @@ _WAKE_GRACE = timedelta(minutes=10)
 # How long a *provisional* drive is believed. See `provisional_drive`.
 _PROVISIONAL_GRACE = timedelta(minutes=10)
 
+# How far behind the hung-run reaper the stall net stays. Comfortably more than one
+# reaper tick, so the reaper always reaches a hung run first and the net only speaks up
+# when the reaper itself failed to — which is the only case the net is for.
+_REAPER_HEAD_START = timedelta(minutes=2)
+
 
 @dataclass(frozen=True)
 class DriveSnapshot:
@@ -116,14 +121,21 @@ def infer_drive(
     Returning a reason does not mean the task is healthy — a drive can come back already
     expired, which is how a reaped run is told apart from a run that was never there.
     """
-    # 1. Someone is literally working on it. The deadline is the hung-run reaper's own:
-    #    suspicion plus grace. The stall net sits *behind* that reaper, so its patience has
-    #    to outlast it, or every healthy long run reads as dropped.
+    # 1. Someone is literally working on it. The deadline is the hung-run reaper's own —
+    #    suspicion plus grace — **plus a margin**, because the stall net sits *behind* that
+    #    reaper and has to lose the race to it on purpose.
+    #
+    #    Without the margin the two fire on the same second and it becomes a coin toss which
+    #    one gets there first. That is not harmless: the reaper knows how to recover a hung
+    #    run — close the ghost, pull the task back, resume from the saved next action — and
+    #    the stall net only knows how to raise an alarm and re-poke. Losing that race costs
+    #    the good recovery and leaves a misleading reason on the record.
     if snap.run_last_output_at is not None:
         return PushReason(
             kind=TaskDrive.RUN_ACTIVE,
             expires_at=snap.run_last_output_at
-            + timedelta(seconds=hang_suspect_seconds + hang_grace_seconds),
+            + timedelta(seconds=hang_suspect_seconds + hang_grace_seconds)
+            + _REAPER_HEAD_START,
         )
 
     # 2. A delivery retry is in flight. FR-063 says this explicitly must not count as
