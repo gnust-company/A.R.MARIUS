@@ -259,6 +259,48 @@ async def test_the_stretch_is_capped_so_a_quiet_project_is_never_abandoned() -> 
     assert very_quiet == 2 * 60 * 60
 
 
+async def test_a_slower_cadence_still_stops_at_two_hours() -> None:
+    """The two hours are a real ceiling, not a by-product of the default cadence.
+
+    A multiple alone reads correctly at fifteen minutes and absurdly at sixty: eight times
+    an hourly cadence is eight hours, and nothing in the spec contemplates a project going
+    unlooked-at for a working day.
+    """
+    hourly = next_interval_seconds(
+        3600, state=CadenceState(quiet_streak=50, found_snags=False)
+    )
+
+    assert hourly == 2 * 60 * 60
+
+
+async def test_a_fast_cadence_is_not_stretched_to_the_absolute_ceiling() -> None:
+    """…and the ceiling must not swallow the other half of the rule.
+
+    An operator who sets one minute is saying *watch this closely*. Stretching that to two
+    hours because two hours is "the maximum" would answer them with the opposite.
+    """
+    minutely = next_interval_seconds(
+        60, state=CadenceState(quiet_streak=50, found_snags=False)
+    )
+
+    assert minutely == 60 * 8
+
+
+async def test_a_project_slower_than_the_ceiling_keeps_its_own_cadence() -> None:
+    """The ceiling caps the *stretch*; it never speeds a project up.
+
+    An operator who asked for a six-hour rhythm has to get six hours. Clamping to two
+    would turn a ceiling into a schedule and sweep three times as often as they asked.
+    """
+    slow = 6 * 60 * 60
+    assert next_interval_seconds(
+        slow, state=CadenceState(quiet_streak=50, found_snags=False)
+    ) == slow
+    assert next_interval_seconds(
+        slow, state=CadenceState(quiet_streak=0, found_snags=False)
+    ) == slow
+
+
 async def test_a_sweep_that_found_snags_tightens_the_rhythm_below_base() -> None:
     base = 900
     dense = next_interval_seconds(base, state=CadenceState(quiet_streak=9, found_snags=True))

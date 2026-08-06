@@ -190,15 +190,25 @@ def _is_silent(task: TaskSnapshot, *, now: datetime, silence_seconds: int) -> bo
 
 # ── the rhythm (FR-055) ──────────────────────────────────────────────────────────
 
-# How far the gap may stretch on a project that keeps coming up clean. Eight times the base
-# and no further, which at the default fifteen-minute cadence lands exactly on the **two
-# hours** the spec's Assumptions fix as the widest gap. Expressed as a multiple rather than
-# as an absolute so a project that tunes its own cadence keeps the same relationship — a
-# hard "two hours" would leave a project on a one-minute rhythm stretching to a hundred and
-# twenty times its own base.
+# Two ceilings on the stretch, and the gap obeys **both**. Either one alone reads the
+# spec's "widest gap: two hours" (Giả định, chốt 2026-07-30) in a way that goes wrong at one
+# end of the configuration range:
 #
-# There is a ceiling on the stretch at all because a quiet project is quiet, not finished.
+#   * eight times the base alone — right at the default fifteen minutes, but a project
+#     configured to sweep hourly would stretch to *eight hours*, far past anything the
+#     assumption contemplates;
+#   * a flat two hours alone — right for that project, but it would take one configured to
+#     one minute (an operator saying "watch this closely") and stretch it a hundred and
+#     twenty times over.
+#
+# Applying both keeps the relative promise at the fast end and the absolute one at the slow
+# end. A project whose own base is already wider than two hours keeps its base: the ceiling
+# is on the *stretch*, and it must never speed a project up past what its operator asked
+# for.
+#
+# There is a ceiling at all because a quiet project is quiet, not finished.
 _MAX_STRETCH = 8
+_MAX_INTERVAL_SECONDS = 2 * 60 * 60
 # The floor no rhythm may go below, however much is backing up. A sweep is a handful of
 # queries, but a loop that ran them every few seconds would be a busy-wait wearing the
 # costume of a heartbeat.
@@ -229,7 +239,10 @@ def next_interval_seconds(base_seconds: int, *, state: CadenceState) -> int:
     if state.found_snags:
         return max(base_seconds // 2, _MIN_INTERVAL_SECONDS)
     multiplier = int(min(2 ** max(state.quiet_streak, 0), _MAX_STRETCH))
-    return max(base_seconds * multiplier, _MIN_INTERVAL_SECONDS)
+    stretched = min(base_seconds * multiplier, _MAX_INTERVAL_SECONDS)
+    # Never below the configured cadence: the two-hour ceiling caps how far a quiet project
+    # may drift, and must not hurry along one whose operator asked for something slower.
+    return max(stretched, base_seconds, _MIN_INTERVAL_SECONDS)
 
 
 def within_hourly_cap(*, wakes_in_last_hour: int, cap: int) -> bool:
