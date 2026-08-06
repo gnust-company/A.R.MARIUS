@@ -27,6 +27,7 @@ from uuid import UUID
 from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.inbox import InboxService
 from armarius.application.use_cases.projects import ProjectService
+from armarius.application.use_cases.push_reason import PushReasonService
 from armarius.application.use_cases.task_log import TaskLogService
 from armarius.application.use_cases.tasks import LeaderNotifier
 from armarius.application.use_cases.types import UowFactory
@@ -34,13 +35,14 @@ from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.domain.entities.inbox_item import InboxItemKind
 from armarius.domain.entities.push_reason import TaskPushReason
 from armarius.domain.entities.run import WakeSource
-from armarius.domain.entities.task import Task
+from armarius.domain.entities.task import Task, TaskStatus
 from armarius.domain.entities.task_log import ActorKind, TaskLogKind
 from armarius.domain.services.escalation import (
     EscalationLevel,
     advance,
     backoff_seconds,
 )
+from armarius.domain.services.push_reason_rules import watches
 from armarius.infrastructure.events.topic_bus import TopicEventBus, patron_topic
 from armarius.shared.clock import as_utc, utcnow
 from armarius.shared.logging import get_logger
@@ -49,8 +51,13 @@ logger = get_logger(__name__)
 
 EVENT_LEVEL_3 = "leo-thang.muc-3"
 
-# The first gap between Level-1 re-wakes. Doubles from here (`backoff_seconds`).
-_BACKOFF_BASE_SECONDS = 60
+# Fallback for the first gap between Level-1 re-wakes when the composition root does not
+# supply one. Doubles from here (`backoff_seconds`); see `Settings.level1_backoff_seconds`
+# for why it is minutes and not seconds.
+_BACKOFF_BASE_SECONDS = 300
+
+# Said once, here, so the task record and the notification cannot drift apart.
+_ASSIGNEE_OFFLINE = "người phụ trách ngoại tuyến"
 
 
 class RecoveryEscalator:
@@ -66,6 +73,7 @@ class RecoveryEscalator:
         task_log: TaskLogService,
         control_bus: TopicEventBus,
         leader_notifier: LeaderNotifier | None = None,
+        backoff_base_seconds: int = _BACKOFF_BASE_SECONDS,
         clock: Callable[[], datetime] = utcnow,
     ) -> None:
         self._uow = uow_factory
@@ -75,6 +83,7 @@ class RecoveryEscalator:
         self._log = task_log
         self._bus = control_bus
         self._notifier = leader_notifier
+        self._backoff_base = backoff_base_seconds
         self._clock = clock
 
     async def climb(self, task: Task, *, cause: str, now: datetime | None = None) -> None:
@@ -108,7 +117,7 @@ class RecoveryEscalator:
             )
             ladder.apply(state, now=now)
             ladder.last_attempt_at = now
-            gap = backoff_seconds(state.attempts, base_seconds=_BACKOFF_BASE_SECONDS)
+            gap = backoff_seconds(state.attempts, base_seconds=self._backoff_base)
             ladder.next_retry_at = (
                 now + timedelta(seconds=gap)
                 if state.level is EscalationLevel.LEVEL_1
@@ -268,3 +277,130 @@ class RecoveryEscalator:
             return None
         project = await uow.projects.get(task.project_id)
         return project.workspace_id if project else None
+
+
+class OfflineFalloutService:
+    """What an agent going offline costs the board (FR-064).
+
+    Two different answers depending on who vanished, and the difference is the point:
+
+      * a **worker** gone means its tasks are not being worked on. They go to *blocked* with
+        the reason said out loud, and the Leader — who allocates work — is told, because
+        reassigning is its decision to make.
+      * the **Leader** gone means the thing that would normally decide is the thing that is
+        missing. Telling it would be talking into an empty room, so this goes straight to the
+        patron.
+
+    Both write the reason into the record rather than only into a notification. A task that
+    reads *blocked* with no stated cause is a task somebody has to go and investigate, and
+    the system already knows the answer at the moment it makes the change.
+    """
+
+    def __init__(
+        self,
+        uow_factory: UowFactory,
+        *,
+        inbox: InboxService,
+        task_log: TaskLogService,
+        push_reasons: PushReasonService | None = None,
+        leader_notifier: LeaderNotifier | None = None,
+    ) -> None:
+        self._uow = uow_factory
+        self._inbox = inbox
+        self._log = task_log
+        self._drives = push_reasons
+        self._notifier = leader_notifier
+
+    async def agent_went_offline(self, marius_id: UUID, *, now: datetime) -> None:
+        blocked: list[Task] = []
+        leader_projects: list[UUID] = []
+        async with self._uow() as uow:
+            marius = await uow.mariuses.get(marius_id)
+            if marius is None or marius.workspace_id is None:  # pragma: no cover
+                return
+            for project in await uow.projects.list_by_workspace(marius.workspace_id):
+                is_leader = await self._holds_the_leader_seat(uow, project.id, marius_id)
+                if is_leader:
+                    leader_projects.append(project.id)
+                for task in await uow.tasks.list_by_project(project.id):
+                    if task.assigned_marius_id != marius_id or not watches(task.status):
+                        continue
+                    if task.status is TaskStatus.BLOCKED:
+                        continue  # already parked; re-blocking would churn the log
+                    task.transition_to(
+                        TaskStatus.BLOCKED, now, reason=_ASSIGNEE_OFFLINE
+                    )
+                    task.updated_at = now
+                    await uow.tasks.update(task)
+                    blocked.append(task)
+            await uow.commit()
+
+        for task in blocked:
+            await self._log.record(
+                task.id,
+                TaskLogKind.STATUS_CHANGED,
+                actor_kind=ActorKind.SYSTEM,
+                after=str(TaskStatus.BLOCKED),
+                reason=_ASSIGNEE_OFFLINE,
+            )
+            if self._drives is not None:
+                await self._drives.refresh(task.id, now=now)
+            if self._notifier is not None and task.project_id is not None:
+                await self._notifier.notify(
+                    project_id=task.project_id,
+                    text=(
+                        f"{task.identifier or task.id} — {task.title}: người phụ trách "
+                        "vừa bị tuyên ngoại tuyến, đầu việc đã chuyển sang *bị chặn*. "
+                        "Giao lại cho ai, hay chờ họ quay lại?"
+                    ),
+                    source=WakeSource.NUDGE,
+                    reason=_ASSIGNEE_OFFLINE,
+                )
+
+        for project_id in leader_projects:
+            await self._tell_the_patron_the_leader_is_gone(project_id, now=now)
+
+    async def _tell_the_patron_the_leader_is_gone(
+        self, project_id: UUID, *, now: datetime
+    ) -> None:
+        async with self._uow() as uow:
+            project = await uow.projects.get(project_id)
+            if project is None:  # pragma: no cover - defensive
+                return
+            workspace_id = project.workspace_id
+            recipient = (project.created_by_user_id or "").strip()
+            if not recipient and workspace_id is not None:
+                workspace = await uow.workspaces.get(workspace_id)
+                recipient = (workspace.owner_user_id or "").strip() if workspace else ""
+            name = project.name
+        if not recipient or workspace_id is None:
+            logger.warning(
+                "project %s lost its Leader with nobody to tell", project_id
+            )
+            return
+        await self._inbox.place(
+            workspace_id=workspace_id,
+            recipient_user_id=recipient,
+            kind=InboxItemKind.ESCALATION,
+            title=f"Trưởng dự án của {name} đang ngoại tuyến",
+            body=(
+                "Trưởng dự án vừa bị tuyên ngoại tuyến, nên không còn ai điều phối dự án "
+                "này. Dự án sẽ đậu lại cho tới khi Trưởng dự án trở lại hoặc bạn chỉ định "
+                "người khác."
+            ),
+            project_id=project_id,
+        )
+
+    @staticmethod
+    async def _holds_the_leader_seat(
+        uow: UnitOfWork, project_id: UUID, marius_id: UUID
+    ) -> bool:
+        leader_keys = {
+            role.key for role in await uow.roles.list_by_project(project_id) if role.is_leader
+        }
+        return any(
+            grant.marius_id == marius_id
+            and grant.is_active
+            and grant.role_key in leader_keys
+            for grant in await uow.seat_grants.list_by_project(project_id)
+        )
