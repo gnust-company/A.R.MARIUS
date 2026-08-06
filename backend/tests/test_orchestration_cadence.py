@@ -245,12 +245,18 @@ async def test_a_smooth_project_stretches_the_gap_between_sweeps() -> None:
 
 
 async def test_the_stretch_is_capped_so_a_quiet_project_is_never_abandoned() -> None:
-    base = 900
+    """The widest gap the spec allows is two hours (Giả định, chốt 2026-07-30).
+
+    Pinned against the default fifteen-minute cadence, because that is the number the
+    assumption is written in. A cap expressed only as a multiple can drift away from the
+    figure it was chosen to hit without anything noticing.
+    """
+    base = 900  # the default cadence: fifteen minutes
     very_quiet = next_interval_seconds(
         base, state=CadenceState(quiet_streak=50, found_snags=False)
     )
 
-    assert very_quiet <= base * 4
+    assert very_quiet == 2 * 60 * 60
 
 
 async def test_a_sweep_that_found_snags_tightens_the_rhythm_below_base() -> None:

@@ -190,10 +190,15 @@ def _is_silent(task: TaskSnapshot, *, now: datetime, silence_seconds: int) -> bo
 
 # ── the rhythm (FR-055) ──────────────────────────────────────────────────────────
 
-# How far the gap may stretch on a project that keeps coming up clean. Four times the base
-# and no further: a quiet project is quiet, not finished, and a sweep that only comes round
-# once an hour is still a sweep.
-_MAX_STRETCH = 4
+# How far the gap may stretch on a project that keeps coming up clean. Eight times the base
+# and no further, which at the default fifteen-minute cadence lands exactly on the **two
+# hours** the spec's Assumptions fix as the widest gap. Expressed as a multiple rather than
+# as an absolute so a project that tunes its own cadence keeps the same relationship — a
+# hard "two hours" would leave a project on a one-minute rhythm stretching to a hundred and
+# twenty times its own base.
+#
+# There is a ceiling on the stretch at all because a quiet project is quiet, not finished.
+_MAX_STRETCH = 8
 # The floor no rhythm may go below, however much is backing up. A sweep is a handful of
 # queries, but a loop that ran them every few seconds would be a busy-wait wearing the
 # costume of a heartbeat.
