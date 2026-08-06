@@ -550,9 +550,14 @@ thứ tự gắn trên từng chữ ký.
   **Trần chỉ được phép hoãn, không được phép nuốt.** Ba loại điểm treo *im lâu*, *mắc kẹt*, *chờ quyết định*
   được dựng lại từ bảng việc ở mọi lượt rà nên tự chúng thoả điều này. Riêng *sắp trễ* có trí nhớ: một mốc đã
   báo thì không báo lại. Vì vậy HỆ THỐNG chỉ được ghi một mốc hạn chót là **đã báo** khi lượt rà đó thật sự
-  gửi được tới Trưởng dự án. Lượt rà bị trần chặn — hoặc không có kênh gửi — KHÔNG ĐƯỢC tiêu mốc nào; mốc phải
-  còn nguyên cho lượt rà sau khi trần nhả. Một lần gọi đã đi nhưng Trưởng dự án đang ngoại tuyến thì **được**
-  tính là đã báo, vì lời gọi nằm lại trong sổ chờ và tới tay họ khi họ trở lại.
+  **giao được tới tay** Trưởng dự án. *Đã tiêu một lần gọi* KHÔNG đồng nghĩa *đã báo*: lượt rà bị trần chặn,
+  lượt rà không có kênh gửi, và lượt rà gọi đi nhưng **không giao được** (Trưởng dự án ngoại tuyến hoặc đang
+  giữa một lượt chạy) — cả ba đều KHÔNG ĐƯỢC tiêu mốc nào. Mốc phải còn nguyên cho lượt rà sau.
+
+  Ca *không giao được* phải nói rõ vì dễ tưởng là an toàn: lời gọi có để lại một dòng trong sổ, nhưng **không
+  cửa nào trong hệ đọc lại được dòng đó** — mọi phép đọc sổ lệnh gọi đều đòi mã đầu việc, mà lời gọi theo nhịp
+  là lời gọi cấp dự án, không gắn đầu việc nào. Chừng nào chưa có mặt đọc cho nó thì ghi mốc là *đã báo* ở ca
+  này chính là làm mất mốc.
 
 #### I. Lưới an toàn và thang phục hồi
 

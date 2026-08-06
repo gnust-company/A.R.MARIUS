@@ -517,6 +517,54 @@ async def test_a_deadline_mark_crossed_under_the_cap_is_still_delivered(
     assert "hạn chót" in notifier.calls[-1]["text"]
 
 
+@pytest.mark.asyncio
+async def test_a_deadline_mark_is_kept_when_the_wake_could_not_be_delivered(
+    uow_factory,
+) -> None:
+    """Spent is not the same as delivered, and only delivered retires a mark.
+
+    A wake that could not be handed over does leave a durable row — but nothing in the
+    system reads it. Both queries over that table demand a task id, and a cadence wake is
+    project-level: no task, no run. No endpoint returns it and no screen shows it. So a
+    mark retired on the strength of that row is a mark nobody will ever be told about.
+
+    The case is not rare, either: the wake is refused while the Leader is mid-turn, and it
+    is this very cadence wake that puts it mid-turn. One sweep waking the Leader is enough
+    to make the next sweep undeliverable — and the cadence thickens exactly when the board
+    is busy, which is exactly when deadlines are crossing.
+    """
+    project, _ = await _world(uow_factory)
+    due_soon = await _task(
+        uow_factory,
+        project.id,
+        title="Việc có hạn chót",
+        status=TaskStatus.IN_PROGRESS,
+        due_date=T0 + timedelta(hours=23, minutes=50),
+        updated_at=T0,
+    )
+    unreachable = RecordingNotifier(deliverable=False)
+    loop = _loop(uow_factory, unreachable)
+
+    crossing = await loop.sweep_project(project.id, now=T0)
+    assert crossing.woke_leader is True, "lượt gọi vẫn được tiêu"
+    assert crossing.skipped_reason is not None, "…nhưng không giao được"
+    assert any(s.kind is SnagKind.DUE_SOON for s in crossing.snags)
+
+    # Trưởng dự án quay lại, kênh thông suốt.
+    back = RecordingNotifier(deliverable=True)
+    await _touch(uow_factory, due_soon.id, T0 + timedelta(minutes=30))
+    returned = await _loop(uow_factory, back).sweep_project(
+        project.id, now=T0 + timedelta(minutes=30)
+    )
+
+    marks = [s for s in returned.snags if s.kind is SnagKind.DUE_SOON]
+    assert [s.task_id for s in marks] == [due_soon.id], (
+        "mốc hạn chót bị tiêu trên một lượt gọi không giao được, nên khi Trưởng dự án "
+        "quay lại thì không còn gì nêu tên đầu việc đang chạy về phía hạn"
+    )
+    assert back.calls and "hạn chót" in back.calls[-1]["text"]
+
+
 # ── vòng nền: chỉ quét dự án đã tới nhịp ─────────────────────────────────────────
 
 @pytest.mark.asyncio
