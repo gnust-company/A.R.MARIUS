@@ -724,6 +724,12 @@ thứ tự gắn trên từng chữ ký.
   72 giờ rồi thưa dần. Riêng **nhịp điều phối** tài liệu gốc không cho số — lấy mặc định: rà mỗi 15 phút,
   trần 4 lần đánh thức theo nhịp trong một giờ, giãn tối đa lên 2 giờ khi dự án chạy trơn tru. Mọi ngưỡng
   PHẢI chỉnh được, không đóng cứng.
+  - **"Giãn tối đa lên 2 giờ" chịu cả hai trần cùng lúc** — làm rõ 2026-08-06, vì mỗi trần một mình đều sai
+    ở một đầu của dải cấu hình. Độ giãn KHÔNG ĐƯỢC vượt **8 lần** nhịp đã đặt, **và** KHÔNG ĐƯỢC vượt **2
+    giờ**. Chỉ có bội số thì dự án đặt nhịp 1 giờ sẽ giãn thành 8 giờ; chỉ có con số tuyệt đối thì dự án đặt
+    nhịp 1 phút — tức người vận hành đang nói "theo sát việc này" — bị kéo ra 120 lần. Ngoại lệ duy nhất:
+    dự án tự đặt nhịp **rộng hơn 2 giờ** thì giữ nguyên nhịp của nó; trần này chặn *độ giãn*, không được
+    phép rà dày hơn mức người vận hành yêu cầu.
 - **Hai ngưỡng của điểm treo** — chốt 2026-07-31, tài liệu gốc không có:
   - *im lâu* = **5 phút** không có hoạt động nào trên đầu việc **và** không có lượt chạy nào đang sống. Vế
     thứ hai để không giẫm lên ngưỡng nghi treo 10 phút — hai cơ chế lo hai kiểu im khác nhau.
