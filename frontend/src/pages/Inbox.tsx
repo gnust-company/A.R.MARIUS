@@ -41,6 +41,49 @@ const KIND_ICONS: Record<string, React.ReactNode> = {
   question: <FileQuestion size={14} />,
 };
 
+/** The record of what the system already tried, on an escalation (FR-061).
+ *
+ * A patron asked "this is stuck, what now?" has to go and reconstruct the history before
+ * they can answer. One told "re-woken three times, the Leader was asked, still stuck, here
+ * is the question" answers in one read. That gap is what decides whether an escalation is
+ * cleared today or next week.
+ *
+ * Every field is optional on purpose: the dossier is written by the escalator and read
+ * here, and a UI that threw on a missing key would take the whole inbox down over a shape
+ * change in a background loop. */
+function AttemptDossier({ item }: { item: InboxItemDTO }) {
+  const { t } = useTranslation();
+  const d = (item.attempt_dossier ?? {}) as Record<string, unknown>;
+  const cause = typeof d.cause === 'string' ? d.cause : undefined;
+  const attempts = typeof d.level1_attempts === 'number' ? d.level1_attempts : 0;
+  const leaderAsked = d.leader_asked === true;
+  const question = typeof d.question === 'string' ? d.question : undefined;
+
+  if (!cause && !attempts && !leaderAsked && !question) return null;
+
+  return (
+    <div className="mt-2 rounded-md bg-[#F6EFE1] px-3 py-2">
+      <p className="text-[10px] uppercase tracking-wide text-[#8B6A28] mb-1">
+        {t('inbox.dossier.title')}
+      </p>
+      <ul className="space-y-0.5 text-xs text-[#6B5E4E]">
+        {cause && (
+          <li>
+            <span className="text-[#8B6A28]">{t('inbox.dossier.cause')}:</span> {cause}
+          </li>
+        )}
+        {attempts > 0 && <li>{t('inbox.dossier.attempts', { count: attempts })}</li>}
+        {leaderAsked && <li>{t('inbox.dossier.leaderAsked')}</li>}
+      </ul>
+      {question && (
+        <p className="mt-1.5 text-xs font-medium text-[#2A2318]">
+          <span className="text-[#8B6A28]">{t('inbox.dossier.question')}:</span> {question}
+        </p>
+      )}
+    </div>
+  );
+}
+
 const tabClasses = (active: boolean) =>
   `px-4 py-2 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
     active
@@ -235,6 +278,11 @@ export default function Inbox() {
                                 {item.body}
                               </p>
                             )}
+                            {/* The record of what was already tried (FR-061). Without it an
+                                escalation asks the patron to go and reconstruct the history
+                                before they can answer — and that is the difference between
+                                a decision made today and one made next week. */}
+                            {item.kind === 'escalation' && <AttemptDossier item={item} />}
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             {item.task_id && (
