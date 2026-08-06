@@ -59,7 +59,15 @@ async def test_a_rejection_sends_the_task_back_to_in_progress_not_to_draft() -> 
 
 
 async def test_a_rejection_wakes_the_worker_who_did_the_work() -> None:
-    """Gọi nhầm người là phản hồi rơi vào khoảng không."""
+    """Gọi nhầm người là phản hồi rơi vào khoảng không.
+
+    Đếm số dòng trong bảng lệnh gọi **không** kiểm được điều đó, và bài này từng đếm.
+    Cơ chế gộp lời gọi trùng (FR-048) để lại hai dòng cùng nguồn *bị trả về* mỗi khi lời
+    gọi vì bị trả về rơi trúng lúc còn một lời gọi khác đang chờ cho cùng người, cùng đầu
+    việc: một dòng bị đánh dấu **đã gộp**, một dòng còn sống mang nội dung đã trộn. Hai
+    dòng đó đúng theo thiết kế, nên bài kiểm phải hỏi *ai được gọi* và *còn mấy lời gọi
+    sống*, chứ không hỏi *bảng có mấy dòng*.
+    """
     async with client() as c:
         p = await operating_project(c, "reject-b@armarius.dev")
         task_id = await task_awaiting_acceptance(c, p)
@@ -68,8 +76,12 @@ async def test_a_rejection_wakes_the_worker_who_did_the_work() -> None:
 
         wakes = await wakeups_for_task(task_id)
     rows = [w for w in wakes if w["source"] == "approval_rejected"]
-    assert len(rows) == 1, wakes
-    assert rows[0]["marius_id"] == str(p.worker_id)
+    assert rows, wakes
+    # Điều FR-040 thật sự đòi: không lời gọi nào vì bị trả về đi tới người khác.
+    assert {w["marius_id"] for w in rows} == {str(p.worker_id)}, wakes
+    # Và chỉ còn đúng một lời gọi sống — dòng bị gộp không phải một lần gọi thứ hai.
+    live = [w for w in rows if w["status"] != "coalesced"]
+    assert len(live) == 1, wakes
 
 
 async def test_the_rejection_reason_is_required() -> None:
