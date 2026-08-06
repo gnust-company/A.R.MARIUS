@@ -12,21 +12,39 @@ nothing else, and an item addressed to someone else reads as *not found*, not
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.inbox_item import InboxItem, InboxItemKind, InboxItemStatus
+from armarius.domain.services.reminders import due_reminder_tier
 from armarius.infrastructure.events.topic_bus import TopicEventBus, patron_topic
-from armarius.shared.clock import utcnow
+from armarius.shared.clock import as_utc, utcnow
+
+if TYPE_CHECKING:  # pragma: no cover — typing only, keeps the import graph acyclic
+    from armarius.application.use_cases.projects import ProjectService
 
 EVENT_ITEM_PLACED = "hop-thu.muc-moi"
 EVENT_ITEM_RESOLVED = "hop-thu.da-giai-quyet"
+EVENT_ITEM_REMINDED = "hop-thu.nhac"
+
+# The system floor, used when an item has no project or the project is gone.
+_DEFAULT_REMINDER_HOURS: tuple[int, ...] = (8, 24, 72)
 
 
 class InboxService:
-    def __init__(self, uow_factory: UowFactory, control_bus: TopicEventBus) -> None:
+    def __init__(
+        self,
+        uow_factory: UowFactory,
+        control_bus: TopicEventBus,
+        *,
+        projects: ProjectService | None = None,
+    ) -> None:
         self._uow = uow_factory
         self._bus = control_bus
+        # Only the reminder ladder needs this, and only to read per-project tiers.
+        self._projects = projects
 
     async def place(
         self,
@@ -97,6 +115,64 @@ class InboxService:
 
         await self._publish(EVENT_ITEM_RESOLVED, item)
         return item
+
+    # ── the three-tier reminder ladder (FR-065) ──────────────────────────────
+    async def send_due_reminders(self, now: datetime | None = None) -> int:
+        """Nudge every item whose wait has crossed a tier. Returns how many were nudged.
+
+        Three tiers, thinning out (8h, 24h, 72h by default). The thinning is the design:
+        a reminder every hour teaches the reader that the inbox is noise, and once they
+        believe that, the *first* reminder stops working too.
+
+        Two rules this must never break, both from FR-065. The project **parks** on the
+        decision — no reminder resolves anything, and nothing here marks work done or
+        failed on the patron's behalf. And a tier fires **once**: the stored tier is what
+        makes that true across restarts, so a service that comes back up after two days
+        does not deliver all three at once.
+        """
+        now = now or utcnow()
+        async with self._uow() as uow:
+            pending = list(await uow.inbox.list_pending())
+
+        nudged = 0
+        for item in pending:
+            thresholds = await self._thresholds_for(item)
+            tier = due_reminder_tier(
+                created_at=as_utc(item.created_at),
+                sent_tier=item.reminder_tier,
+                now=now,
+                tier_hours=thresholds,
+            )
+            if tier is None:
+                continue
+            async with self._uow() as uow:
+                fresh = await uow.inbox.get(item.id)
+                # Re-read: the patron may have answered between the scan and here, and
+                # nudging someone about something they just handled is how an inbox loses
+                # its credibility.
+                if fresh is None or fresh.status is not InboxItemStatus.PENDING:
+                    continue
+                fresh.reminder_tier = tier
+                fresh.last_reminded_at = now
+                await uow.inbox.update(fresh)
+                await uow.commit()
+            await self._publish(EVENT_ITEM_REMINDED, fresh)
+            nudged += 1
+        return nudged
+
+    async def _thresholds_for(self, item: InboxItem) -> tuple[int, ...]:
+        """The reminder tiers for this item's project, falling back to the system floor.
+
+        A project that runs on a different clock than the rest of the workspace should be
+        chased on its own clock too — nagging a two-week research project on the same
+        rhythm as a same-day fix is how the ladder becomes noise.
+        """
+        if self._projects is None or item.project_id is None:
+            return _DEFAULT_REMINDER_HOURS
+        try:
+            return (await self._projects.get_thresholds(item.project_id)).patron_reminder_hours
+        except LookupError:  # pragma: no cover - project deleted under a live item
+            return _DEFAULT_REMINDER_HOURS
 
     async def resolve_pending_for_task(self, task_id: UUID) -> int:
         """Close every item still waiting on a task. Returns how many were closed.

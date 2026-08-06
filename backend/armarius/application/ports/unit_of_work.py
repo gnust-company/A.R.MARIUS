@@ -32,6 +32,7 @@ from armarius.domain.repositories.repositories import (
     SkillRepository,
     TaskDependencyRepository,
     TaskLogRepository,
+    TaskPushReasonRepository,
     TaskRepository,
     UserRepository,
     WakeupRepository,
@@ -53,6 +54,7 @@ class UnitOfWork(ABC):
     auto_approvals: AutoApprovalRepository
     mariuses: MariusRepository
     tasks: TaskRepository
+    push_reasons: TaskPushReasonRepository
     criteria: ChecklistItemRepository
     task_logs: TaskLogRepository
     dependencies: TaskDependencyRepository

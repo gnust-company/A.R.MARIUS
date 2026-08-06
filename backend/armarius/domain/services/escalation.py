@@ -109,4 +109,4 @@ def backoff_seconds(attempt: int, *, base_seconds: int) -> int:
     """
     if attempt <= 1:
         return base_seconds
-    return min(base_seconds * 2 ** (attempt - 1), MAX_BACKOFF_SECONDS)
+    return int(min(base_seconds * 2 ** (attempt - 1), MAX_BACKOFF_SECONDS))

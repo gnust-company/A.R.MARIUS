@@ -42,6 +42,9 @@ WATCHED_STATUSES: frozenset[TaskStatus] = frozenset(
 # that sat in the queue this long is not going to fire; something ate it.
 _WAKE_GRACE = timedelta(minutes=10)
 
+# How long a *provisional* drive is believed. See `provisional_drive`.
+_PROVISIONAL_GRACE = timedelta(minutes=10)
+
 
 @dataclass(frozen=True)
 class DriveSnapshot:
@@ -156,6 +159,35 @@ def infer_drive(
         )
 
     return None
+
+
+def provisional_drive(status: TaskStatus, *, now: datetime) -> PushReason | None:
+    """The drive a status *implies*, written the instant the status changes.
+
+    A status change and the thing that will act on it do not happen together: a task enters
+    *todo*, and the wake that will carry it is booked a few lines later, after the
+    transaction commits. Between those two moments `infer_drive` would honestly answer
+    "nothing is moving this" — and a sweep landing in that window would raise an alarm on a
+    task that is perfectly fine.
+
+    So the status leaves behind a placeholder, and the placeholder **always carries a
+    clock**, even for the two kinds whose real form has none. That is the point: this is a
+    guess about a setup still in progress, not a verified wait. Ten minutes later either the
+    authoritative refresh has replaced it with something real, or nothing ever did the setup
+    — and the second case is exactly the dropped task the net is for. Leaving a provisional
+    drive un-clocked would make "moved to *blocked* and forgotten" invisible forever, which
+    is the failure mode this feature exists to close.
+    """
+    if status not in WATCHED_STATUSES:
+        return None
+    expires = now + _PROVISIONAL_GRACE
+    if status is TaskStatus.BLOCKED:
+        return PushReason(kind=TaskDrive.BLOCKED_BY_TASK, expires_at=expires)
+    if status is TaskStatus.IN_PROGRESS:
+        return PushReason(kind=TaskDrive.RUN_ACTIVE, expires_at=expires)
+    if status is TaskStatus.IN_REVIEW:
+        return PushReason(kind=TaskDrive.WAITING_PATRON, expires_at=expires)
+    return PushReason(kind=TaskDrive.WAKE_SCHEDULED, expires_at=expires)
 
 
 def stall_reason(reason: PushReason | None, *, now: datetime) -> str | None:
