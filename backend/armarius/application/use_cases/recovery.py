@@ -35,7 +35,7 @@ from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.domain.entities.inbox_item import InboxItemKind
 from armarius.domain.entities.push_reason import TaskPushReason
 from armarius.domain.entities.run import WakeSource
-from armarius.domain.entities.task import Task, TaskStatus
+from armarius.domain.entities.task import Task, TaskDrive, TaskStatus
 from armarius.domain.entities.task_log import ActorKind, TaskLogKind
 from armarius.domain.services.escalation import (
     EscalationLevel,
@@ -198,13 +198,28 @@ class RecoveryEscalator:
             )
 
         if ladder.level is EscalationLevel.LEVEL_1:
-            await self._rewake_assignee(task, cause=cause)
+            await self._rewake_assignee(task, cause=cause, retry_at=ladder.next_retry_at)
         elif ladder.level is EscalationLevel.LEVEL_2 and climbed:
             await self._ask_leader(task, ladder, cause=cause)
         elif ladder.level is EscalationLevel.LEVEL_3 and climbed:
             await self._ask_patron(task, ladder, cause=cause, now=now)
 
-    async def _rewake_assignee(self, task: Task, *, cause: str) -> None:
+    async def _mark_waiting_on_recovery(self, task_id: UUID, *, until: datetime | None) -> None:
+        """Say on the task that a delivery is being retried (FR-063)."""
+        if until is None:
+            return
+        async with self._uow() as uow:
+            task = await uow.tasks.get(task_id)
+            if task is None:  # pragma: no cover - defensive
+                return
+            task.drive = TaskDrive.WAITING_RECOVERY
+            task.drive_expires_at = until
+            await uow.tasks.update(task)
+            await uow.commit()
+
+    async def _rewake_assignee(
+        self, task: Task, *, cause: str, retry_at: datetime | None = None
+    ) -> None:
         """Mức 1 — poke the same assignee, decide nothing new.
 
         A task with nobody on it cannot be re-woken, and that is not a failure to log
@@ -219,8 +234,14 @@ class RecoveryEscalator:
                 source=WakeSource.CONTINUATION,
                 reason=f"lưới an toàn gọi lại: {cause}",
             )
-        except Exception:  # pragma: no cover - a failed wake is itself a stall cause
+        except Exception:
+            # FR-063: the wake did not reach the agent. The work is fine and the transport
+            # is not, so the task is marked *waiting on recovery* until the next attempt is
+            # due — explicitly not counted as stalled, because something is being done
+            # about it. The mark carries a clock, so a retry that never lands stops
+            # excusing the task the moment that clock runs out.
             logger.exception("level-1 re-wake failed for task %s", task.id)
+            await self._mark_waiting_on_recovery(task.id, until=retry_at)
 
     async def _ask_leader(self, task: Task, ladder: TaskPushReason, *, cause: str) -> None:
         """Mức 2 — the Leader decides an explicit recovery action."""

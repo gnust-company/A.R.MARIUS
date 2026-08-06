@@ -25,7 +25,7 @@ from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.inbox_item import InboxItemStatus
 from armarius.domain.entities.run import ACTIVE_RUN_STATUSES
-from armarius.domain.entities.task import Task
+from armarius.domain.entities.task import Task, TaskDrive
 from armarius.domain.services.push_reason_rules import (
     DriveSnapshot,
     PushReason,
@@ -59,8 +59,7 @@ class PushReasonService:
         """Gather what the pure rule needs about one task, from four other tables.
 
         The expensive half of the feature, which is why it runs at task-change time rather
-        than per sweep. ``recovery_retry_at`` comes from the ladder row: a delivery that is
-        being retried is a live drive (FR-063), and the ladder is where the retry clock is.
+        than per sweep.
         """
         runs = await uow.runs.list_by_task(task.id)
         # The newest sign of life across every live run on this task. A run with no
@@ -86,7 +85,6 @@ class PushReasonService:
 
         inbox = await uow.inbox.list_pending_for_task(task.id)
         blockers = await uow.dependencies.list_unfinished_blockers(task.id)
-        ladder = await uow.push_reasons.get_for_task(task.id)
 
         return DriveSnapshot(
             task_id=task.id,
@@ -102,7 +100,23 @@ class PushReasonService:
             # any other status would call every scheduled task "waiting on the outside
             # world" and silence the alarm on exactly the tasks that need it.
             external_due_at=as_utc(task.due_date) if task.status.value == "blocked" else None,
-            recovery_retry_at=as_utc(ladder.next_retry_at) if ladder else None,
+            # Read back off the task, **not** off the recovery ladder. Those are two
+            # different clocks, and conflating them undoes FR-058 entirely: the watchdog
+            # flags a dropped task, the ladder books its next Level-1 attempt, and the very
+            # next sweep reads that booking as a live drive and lowers the flag again. The
+            # alarm then flickers, and the board shows a dropped task as healthy most of
+            # the time. That is not a subtle regression — it is the feature not working.
+            #
+            # A task the safety net is retrying **is** stalled: the retry is the response
+            # to the stall, not evidence against it. What FR-063 calls *waiting on
+            # recovery* is narrower — a wake that could not be **delivered**, where the
+            # work is fine and the transport is not. Whoever fails to deliver says so on
+            # the task, and it is read back here.
+            recovery_retry_at=(
+                as_utc(task.drive_expires_at)
+                if task.drive is TaskDrive.WAITING_RECOVERY
+                else None
+            ),
         )
 
     # ── writing ──────────────────────────────────────────────────────────────────
