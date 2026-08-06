@@ -153,7 +153,10 @@ class OrchestrationLoop:
                     found_snags=bool(snags),
                 ),
             ),
-            reported_marks=_next_marks(carried, snags, announced=woke),
+            # Spent is not delivered: `woke` alone counts a wake the Leader never got.
+            reported_marks=_next_marks(
+                carried, snags, announced=woke and skipped_reason is None
+            ),
         )
         async with self._uow() as uow:
             await uow.orchestration_sweeps.add(sweep)
@@ -323,9 +326,16 @@ def _next_marks(
     memory, and writing that memory on a sweep that woke nobody retires a warning nobody
     received — the mark never comes round again, and no row anywhere says it went missing.
 
-    A wake that was spent but not delivered still counts as announced: the notifier leaves
-    a durable wake row carrying this text, queued until the Leader is back, so the warning
-    is on its way rather than lost.
+    A wake that was *spent* but not *delivered* does not count. It leaves a durable row,
+    but that row is write-only: both reads over the wakeup table demand a task id, and a
+    cadence wake is project-level — no task, no run. No endpoint returns it, no screen
+    shows it. Nobody will ever be told, so the mark has to survive to the next sweep. This
+    is why the question is `woke and skipped_reason is None` rather than `woke`: the
+    ceiling and an unreachable Leader are two different failures, but a mark is lost the
+    same way in both.
+
+    The unreachable case is common, not exotic: the notifier refuses while the Leader is
+    mid-turn, and it is this very wake that puts it mid-turn.
 
     Nothing is ever dropped from this map while the sweep history is being read: a task
     that closes stops producing snags, so its entry simply stops mattering. Rebuilding it
