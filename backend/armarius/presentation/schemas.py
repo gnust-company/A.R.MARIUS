@@ -9,6 +9,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from armarius.application.use_cases.plans import MajorChangeArea
 from armarius.domain.services.project_key import PROJECT_KEY_RE
 
 
@@ -614,6 +615,26 @@ class AgentCreateTaskIn(BaseModel):
     description: str | None = None
     assignee_marius_id: UUID | None = None
     plan_item_id: UUID | None = None
+
+
+class AgentMajorChangeIn(BaseModel):
+    """A change that widens what the patron agreed to (FR-075).
+
+    ``area`` is a closed list on purpose. An open text field here would let the Leader
+    describe an internal reshuffle as a "major change" and park work it was perfectly
+    entitled to do — or the reverse, which is worse.
+    """
+
+    area: MajorChangeArea
+    summary: str = Field(min_length=1, max_length=500)
+    detail: str | None = None
+
+
+class AgentRecoveryIn(BaseModel):
+    """The recovery action the Leader decided at Level 2 (FR-059)."""
+
+    action: str = Field(min_length=1, max_length=500)
+    next_action: str | None = None
 
 
 class ReopenTaskIn(BaseModel):

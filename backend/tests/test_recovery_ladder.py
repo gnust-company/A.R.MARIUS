@@ -341,3 +341,63 @@ async def test_the_leader_going_offline_goes_straight_to_the_patron(uow_factory)
         )
     assert items, "Trưởng dự án biến mất mà người chủ không hay biết"
     assert any("Trưởng dự án" in i.title for i in items)
+
+
+# ── Mức 2 phải có đường ra (FR-059) ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_leader_naming_an_action_takes_the_task_off_the_ladder(
+    uow_factory,
+) -> None:
+    """Without this door Level 2 is a rung with no way off it: the ladder waits for a
+    decision that has nowhere to be recorded, and the next sweep climbs to the patron
+    anyway — telling them nobody decided, while the Leader was deciding."""
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(),
+        bus=TopicEventBus(),
+    )
+    for hour in range(4):  # burn the budget and reach the Leader
+        await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
+    assert (await _ladder(uow_factory, task.id)).level is EscalationLevel.LEVEL_2
+
+    await escalator.leader_decided(
+        task.id, action="chẻ đôi đầu việc và giao phần hạ tầng cho người khác",
+        now=T0 + timedelta(hours=5),
+    )
+
+    settled = await _ladder(uow_factory, task.id)
+    assert settled is not None
+    assert settled.level is EscalationLevel.NONE
+    assert settled.attempts == 0, (
+        "quyết xong mà vẫn giữ nợ cũ, nên lần kẹt sau đã hết ngân sách trước khi bắt đầu"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_patron_is_never_reached_once_the_leader_has_decided(
+    uow_factory,
+) -> None:
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(),
+        bus=TopicEventBus(),
+    )
+    for hour in range(4):
+        await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
+    await escalator.leader_decided(
+        task.id, action="giao lại cho Bob", now=T0 + timedelta(hours=5)
+    )
+
+    # The task is still stuck, so the sweep keeps climbing — but from the bottom.
+    await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=6))
+
+    async with uow_factory() as uow:
+        items = list(await uow.inbox.list_for_recipient("patron-1"))
+    assert [i for i in items if i.kind is InboxItemKind.ESCALATION] == [], (
+        "Trưởng dự án vừa quyết xong mà người chủ đã bị gọi"
+    )
+    assert (await _ladder(uow_factory, task.id)).level is EscalationLevel.LEVEL_1

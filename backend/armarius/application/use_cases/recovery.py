@@ -39,6 +39,7 @@ from armarius.domain.entities.task import Task, TaskStatus
 from armarius.domain.entities.task_log import ActorKind, TaskLogKind
 from armarius.domain.services.escalation import (
     EscalationLevel,
+    EscalationState,
     advance,
     backoff_seconds,
 )
@@ -130,6 +131,50 @@ class RecoveryEscalator:
             await uow.commit()
 
         await self._act(task, ladder, cause=cause, now=now, climbed=before != state.level)
+
+    async def leader_decided(
+        self, task_id: UUID, *, action: str, now: datetime | None = None
+    ) -> None:
+        """The Leader named an explicit recovery action — Level 2 is answered (FR-059).
+
+        Without this door Level 2 is a rung with no way off it: the ladder waits for a
+        decision that has nowhere to be recorded, and the next sweep climbs to the patron
+        regardless. That would tell the patron a decision was never made while the Leader
+        was in the middle of making it.
+
+        The ladder is cleared outright rather than walked back a step, and from *any* rung
+        — including Level 3. `advance` deliberately freezes at the top, because a sweep
+        arriving there must not churn; this is not a sweep. It is somebody stating that the
+        problem has been addressed, and the ladder measures an unaddressed problem.
+
+        Clearing means the budget comes back whole. Whatever the action turns out to be, it
+        is a *new* attempt, and charging it for the tries that came before would leave the
+        next stall out of budget before it began.
+
+        Any escalation already sitting in the patron's inbox is resolved with it. An inbox
+        that keeps asking about something already handled stops being read, and then the
+        next escalation goes unread too.
+        """
+        now = now or self._clock()
+        async with self._uow() as uow:
+            ladder = await uow.push_reasons.get_for_task(task_id)
+            if ladder is None:
+                return
+            ladder.apply(
+                EscalationState(level=EscalationLevel.NONE, attempts=0, cause=""),
+                now=now,
+            )
+            ladder.next_retry_at = None
+            await uow.push_reasons.upsert(ladder)
+            await uow.commit()
+        await self._inbox.resolve_pending_for_task(task_id)
+        await self._log.record(
+            task_id,
+            TaskLogKind.ESCALATED,
+            actor_kind=ActorKind.AGENT,
+            after="mức 0",
+            reason=f"Trưởng dự án quyết hành động phục hồi: {action}",
+        )
 
     # ── the three rungs ──────────────────────────────────────────────────────────
     async def _act(

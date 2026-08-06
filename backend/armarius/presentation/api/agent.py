@@ -25,8 +25,10 @@ from armarius.presentation.schemas import (
     AgentCommentIn,
     AgentCreateTaskIn,
     AgentHandbackIn,
+    AgentMajorChangeIn,
     AgentOnboardingCompleteIn,
     AgentOnboardingQuestionIn,
+    AgentRecoveryIn,
     AgentSkillBundleOut,
     AgentSkillSummary,
     ArtifactOut,
@@ -228,6 +230,53 @@ async def agent_create_task(
         assigned_marius_id=body.assignee_marius_id,
         plan_item_id=body.plan_item_id,
     )
+    return TaskOut.model_validate(task)
+
+
+@router.post("/projects/{project_id}/change-request", status_code=202)
+async def agent_request_major_change(
+    project_id: UUID,
+    body: AgentMajorChangeIn,
+    marius: CurrentMarius,
+    container: ContainerDep,
+) -> dict[str, str]:
+    """Ask the patron before changing what they agreed to (FR-075).
+
+    Five areas only — scope, objective, cost, deadline, acceptance criteria. Everything
+    else is the Leader's to decide on its own (FR-074), and a gate that caught
+    everything would be a gate people learned to route around.
+
+    202, not 200: the change has been *asked about*, not made.
+    """
+    project = await container.projects.get_project(project_id)
+    if project is None or project.workspace_id != marius.workspace_id:
+        raise LookupError("project not found")  # cross-workspace → 404
+    item = await container.plans.request_major_change(
+        project_id,
+        area=body.area,
+        summary=body.summary,
+        detail=body.detail,
+    )
+    return {"item_id": str(item.id), "status": "chờ người chủ duyệt"}
+
+
+@router.post("/tasks/{task_id}/recovery", response_model=TaskOut)
+async def agent_declare_recovery(
+    task_id: UUID,
+    body: AgentRecoveryIn,
+    marius: CurrentMarius,
+    container: ContainerDep,
+) -> TaskOut:
+    """The Leader names the recovery action Level 2 was waiting for (FR-059).
+
+    Without this, Level 2 is a rung with no way off it: the ladder waits for a decision
+    that has nowhere to be recorded, and the next sweep climbs to the patron anyway —
+    telling them nobody decided, while the Leader was deciding.
+    """
+    task = await _task_in_caller_workspace(container, marius, task_id)
+    await container.recovery.leader_decided(task_id, action=body.action)
+    if body.next_action:
+        task = await container.tasks.set_next_action(task_id, body.next_action)
     return TaskOut.model_validate(task)
 
 

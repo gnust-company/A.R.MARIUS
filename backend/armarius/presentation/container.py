@@ -69,6 +69,7 @@ class Container:
     orchestrator: OrchestrationLoop
     push_reasons: PushReasonService
     stall_watchdog: StallWatchdog
+    recovery: RecoveryEscalator
     inbox: InboxService
     labels: LabelService
     mariuses: MariusService
@@ -177,6 +178,19 @@ def build_container() -> Container:
     # every status change settles its drive through this one object — two writers is how
     # a field comes to mean two different things.
     push_reasons = PushReasonService(uow_factory, projects)
+    # One escalator, shared: the watchdog climbs the ladder and the Leader's recovery
+    # endpoint clears it. Two instances would each hold their own idea of where a task
+    # stands, and the rung the Leader answered would not be the rung the sweep reads.
+    recovery = RecoveryEscalator(
+        uow_factory,
+        projects,
+        wakes=wake_engine,
+        inbox=inbox,
+        task_log=TaskLogService(uow_factory),
+        control_bus=control_bus,
+        leader_notifier=leader_chat,
+        backoff_base_seconds=settings.level1_backoff_seconds,
+    )
 
     # Tasks and approvals are built here rather than inline below: the approval service
     # closes a task through the task service, so it needs the same instance the API uses.
@@ -222,16 +236,7 @@ def build_container() -> Container:
         task_log=TaskLogService(uow_factory),
         control_bus=control_bus,
         inbox=inbox,
-        ladder=RecoveryEscalator(
-            uow_factory,
-            projects,
-            wakes=wake_engine,
-            inbox=inbox,
-            task_log=TaskLogService(uow_factory),
-            control_bus=control_bus,
-            leader_notifier=leader_chat,
-            backoff_base_seconds=settings.level1_backoff_seconds,
-        ),
+        ladder=recovery,
         interval_seconds=settings.stall_scan_interval_seconds,
     )
     # An agent declared offline has fallout on the board (FR-064). Attached rather than
@@ -270,6 +275,7 @@ def build_container() -> Container:
         orchestrator=orchestrator,
         push_reasons=push_reasons,
         stall_watchdog=stall_watchdog,
+        recovery=recovery,
         inbox=inbox,
         labels=LabelService(uow_factory),
         mariuses=MariusService(uow_factory),
