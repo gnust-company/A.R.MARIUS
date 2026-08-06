@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from armarius.application.ports.unit_of_work import UnitOfWork
+from armarius.application.use_cases.review_reset import retire_signatures_on_move
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.approval import Approval, ApprovalResult, SignerKind
 from armarius.domain.entities.inbox_item import (
@@ -42,6 +43,7 @@ from armarius.domain.entities.task_log import ActorKind, TaskLogKind
 from armarius.domain.services.approval_rules import (
     REJECTION_ROUND_CEILING,
     brief_needs_review,
+    current_signatures,
     is_closable,
     missing_signatures,
     rejection_rounds,
@@ -214,10 +216,8 @@ class ApprovalService:
             project_id = task.project_id
 
             history = list(await uow.approvals.list_for_task(task_id))
-            round_no = rejection_rounds(history) + 1
             signature = Approval(
                 task_id=task_id,
-                round=round_no,
                 signer_kind=signer_kind,
                 signer_marius_id=marius_id,
                 signer_user_id=user_id,
@@ -241,7 +241,6 @@ class ApprovalService:
                 if auto is not None and auto.enabled:
                     stand_in = Approval(
                         task_id=task_id,
-                        round=round_no,
                         signer_kind=SignerKind.PATRON,
                         signer_user_id=patron_id,
                         result=ApprovalResult.APPROVE,
@@ -256,7 +255,7 @@ class ApprovalService:
                         uow, task, patron_id=patron_id, now=now
                     )
 
-            current = [a for a in history if a.round == round_no] + this_round
+            current = current_signatures(history) + this_round
             if not approve:
                 rejected_worker = task.assigned_marius_id
                 pull_in_leader = brief_needs_review(history + this_round)
@@ -296,8 +295,14 @@ class ApprovalService:
     async def _send_back(
         self, uow: UnitOfWork, task: Task, *, reason: str, now: datetime
     ) -> None:
-        """Back to *in_progress* with the feedback as the next action (FR-040)."""
+        """Back to *in_progress* with the feedback as the next action (FR-040).
+
+        The rejection just recorded is retired along with everything else: it stands in
+        the record, but a rejection that kept counting would seal the reworked deliverable
+        out of *done* for good.
+        """
         task.transition_to(TaskStatus.IN_PROGRESS, now, reason=reason)
+        await retire_signatures_on_move(uow, task.id, TaskStatus.IN_PROGRESS)
         task.next_action = f"Sửa theo phản hồi: {reason}".strip()
         task.drive = TaskDrive.WAKE_SCHEDULED
         task.updated_at = now
@@ -400,7 +405,6 @@ class ApprovalService:
                 "signer_kind": str(signature.signer_kind),
                 "result": str(signature.result),
                 "is_auto": signature.is_auto,
-                "round": signature.round,
             },
         )
 

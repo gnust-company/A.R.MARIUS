@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
+from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import CursorResult, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -615,8 +616,9 @@ class SqlSeatGrantRepository(SeatGrantRepository):
 
 
 class SqlApprovalRepository(ApprovalRepository):
-    """Append-only signatures. There is no update and no delete on purpose: a signature
-    that can be edited afterwards is not evidence of anything (FR-039)."""
+    """Signatures. No delete, and the one update is a flag flip that retires a signature
+    without touching a word of it — a signature whose *content* can be edited afterwards
+    is not evidence of anything (FR-039)."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
@@ -626,7 +628,7 @@ class SqlApprovalRepository(ApprovalRepository):
             TaskApprovalModel(
                 id=approval.id,
                 task_id=approval.task_id,
-                round=approval.round,
+                superseded=approval.superseded,
                 signer_kind=str(approval.signer_kind),
                 signer_marius_id=approval.signer_marius_id,
                 signer_user_id=approval.signer_user_id,
@@ -644,7 +646,7 @@ class SqlApprovalRepository(ApprovalRepository):
             await self._s.execute(
                 select(TaskApprovalModel)
                 .where(TaskApprovalModel.task_id == task_id)
-                .order_by(TaskApprovalModel.round, TaskApprovalModel.signed_at)
+                .order_by(TaskApprovalModel.signed_at)
             )
         ).scalars().all()
         return [mappers.approval_to_entity(m) for m in rows]
@@ -656,10 +658,25 @@ class SqlApprovalRepository(ApprovalRepository):
             await self._s.execute(
                 select(TaskApprovalModel)
                 .where(TaskApprovalModel.task_id.in_(list(task_ids)))
-                .order_by(TaskApprovalModel.round, TaskApprovalModel.signed_at)
+                .order_by(TaskApprovalModel.signed_at)
             )
         ).scalars().all()
         return [mappers.approval_to_entity(m) for m in rows]
+
+    async def supersede_for_task(self, task_id: UUID) -> int:
+        result = cast(
+            CursorResult[Any],
+            await self._s.execute(
+                update(TaskApprovalModel)
+                .where(
+                    TaskApprovalModel.task_id == task_id,
+                    TaskApprovalModel.superseded.is_(False),
+                )
+                .values(superseded=True)
+            ),
+        )
+        await self._s.flush()
+        return int(result.rowcount or 0)
 
 
 class SqlAutoApprovalRepository(AutoApprovalRepository):

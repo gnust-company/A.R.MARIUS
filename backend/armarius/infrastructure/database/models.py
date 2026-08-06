@@ -189,19 +189,22 @@ class ChecklistItemModel(Base):
 class TaskApprovalModel(Base):
     """One signature on one task (spec 001 §8, FR-033).
 
-    Append-only: a rejection is never overwritten by a later approval. `round` separates
-    attempts, so a signature given for a rejected deliverable cannot close the reworked
-    one. The hot read is "every signature on this task, in order", hence the composite
-    index rather than a bare task index."""
+    Append-only: a rejection is never overwritten by a later approval. `superseded` marks
+    a signature whose deliverable has since gone back for rework, so a signature given for
+    a rejected draft cannot close the one that replaced it. The hot read is "every
+    signature on this task, in order", hence the composite index rather than a bare task
+    index."""
 
     __tablename__ = "task_approvals"
     __table_args__ = (
-        Index("ix_task_approvals_task_round", "task_id", "round", "signed_at"),
+        Index("ix_task_approvals_task_signed", "task_id", "signed_at"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     task_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tasks.id"), index=True)
-    round: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    superseded: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0"
+    )
     signer_kind: Mapped[str] = mapped_column(String(20), default="leader")
     signer_marius_id: Mapped[UUID | None] = mapped_column(Uuid)
     signer_user_id: Mapped[str | None] = mapped_column(String(200))

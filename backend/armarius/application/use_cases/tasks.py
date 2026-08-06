@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
 from armarius.application.ports.unit_of_work import UnitOfWork
+from armarius.application.use_cases.review_reset import retire_signatures_on_move
 from armarius.application.use_cases.types import UowFactory
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.domain.entities.checklist_item import ChecklistItem, assert_criteria_editable
@@ -41,9 +42,9 @@ from armarius.domain.entities.task_dependency import TaskDependency, TaskDepende
 from armarius.domain.entities.task_log import ActorKind, TaskLogKind
 from armarius.domain.services import project_rules
 from armarius.domain.services.approval_rules import (
+    current_signatures,
     is_closable,
     missing_signatures,
-    rejection_rounds,
 )
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import utcnow
@@ -510,10 +511,9 @@ class TaskService:
                 # "move it straight to done" stop working from every entry point at once
                 # — the board, the agent surface and the middle layer all land here.
                 history = await uow.approvals.list_for_task(task_id)
-                round_no = rejection_rounds(history) + 1
-                this_round = [a for a in history if a.round == round_no]
-                signed = is_closable(this_round)
-                missing = tuple(str(k) for k in missing_signatures(this_round))
+                current = current_signatures(history)
+                signed = is_closable(current)
+                missing = tuple(str(k) for k in missing_signatures(current))
             now = utcnow()
             task.transition_to(
                 target,
@@ -527,6 +527,10 @@ class TaskService:
             )
             task.drive = _drive_for(target)
             task.updated_at = now
+            # Every route out of review lands here, including the ones nobody thought to
+            # enumerate — which is why the question is asked of the move rather than of
+            # the caller (FR-033).
+            await retire_signatures_on_move(uow, task_id, target)
             updated = await uow.tasks.update(task)
             await self._log(
                 uow,
@@ -613,6 +617,10 @@ class TaskService:
             now = utcnow()
             task.reopen(now, reason=reason)
             task.drive = _drive_for(task.status)
+            # A closed task carries the two signatures that closed it. Reopening it means
+            # the work is not finished after all, so they stop speaking for it — otherwise
+            # reopen would be a way back into *done* with nobody looking again.
+            await retire_signatures_on_move(uow, task_id, task.status)
             updated = await uow.tasks.update(task)
             await self._log(
                 uow,

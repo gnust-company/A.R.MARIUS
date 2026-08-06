@@ -468,7 +468,7 @@ def approval_to_entity(m: TaskApprovalModel) -> Approval:
     return Approval(
         id=m.id,
         task_id=m.task_id,
-        round=m.round,
+        superseded=bool(m.superseded),
         signer_kind=SignerKind(m.signer_kind),
         signer_marius_id=m.signer_marius_id,
         signer_user_id=m.signer_user_id,

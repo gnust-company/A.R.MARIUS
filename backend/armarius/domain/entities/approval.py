@@ -6,9 +6,10 @@ signature is never enough, and the two cannot be the same party — that is the 
 anti-"fake done" mechanism, and it is why this is a row rather than a boolean.
 
 Rows are **append-only**. A rejection is not overwritten by a later approval: it stands in
-the record, the task goes back to *in_progress*, and the next attempt signs a **new
-round**. Carrying a signature across rounds would mean a reworked deliverable closing on a
-signature given for the old one.
+the record, and the task goes back to *in_progress*. What changes is `superseded` — every
+signature on a task that goes back to being worked on is marked as belonging to a review
+that is over. Carrying a signature across that line would mean a reworked deliverable
+closing on a signature given for the old one.
 
 `is_auto` marks a signature the auto-approval switch supplied on the patron's behalf
 (FR-036). It is still a real signature with a real row — the switch spends fewer of the
@@ -47,9 +48,14 @@ class RejectionNeedsReasonError(ApprovalError):
 class Approval:
     id: UUID = field(default_factory=uuid4)
     task_id: UUID | None = None
-    # Which attempt this signature belongs to. Starts at 1 and steps on every rejection,
-    # so signatures never leak from a rejected round into the next one.
-    round: int = 1
+    # Set when the task went back to being worked on: this signature was given for a
+    # deliverable that no longer exists, so it no longer answers "has the current one been
+    # signed?". The row itself stays — who, when, why and the verdict are all still here.
+    #
+    # A flag rather than an attempt number on purpose. A number has to be *derived* by
+    # whoever reads it, and every reader that derives it is a reader that can derive it
+    # differently; this is read, not computed.
+    superseded: bool = False
     signer_kind: SignerKind = SignerKind.LEADER
     signer_marius_id: UUID | None = None
     signer_user_id: str | None = None

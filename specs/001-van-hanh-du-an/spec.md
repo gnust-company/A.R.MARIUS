@@ -351,6 +351,21 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
 
 ## Yêu cầu *(bắt buộc)*
 
+### Từ dùng chung, để không hiểu chệch
+
+Chữ **"vòng"** trong tài liệu này gánh **ba nghĩa không liên quan gì nhau**. Đọc nhầm một chỗ là hiểu sai
+một luật, nên chúng được gọi bằng ba tên riêng và tài liệu KHÔNG dùng chữ "vòng" trần trụi khi có thể nhầm:
+
+| Gọi là | Nghĩa | Ở đâu |
+|---|---|---|
+| **vòng rà soát** | một lượt nộp – chấm của một đầu việc | FR-033 → FR-041a |
+| **lượt rà** | một lần bộ điều phối hoặc lưới an toàn quét bảng việc | FR-052 → FR-057 |
+| **phụ thuộc khép vòng** | quan hệ phụ thuộc quay lại chính nó | FR-032 |
+
+Về **vòng rà soát**: hệ thống KHÔNG đánh số nó và KHÔNG dùng số thứ tự của nó cho bất kỳ quyết định nào
+(xem FR-041a). Riêng FR-041 đếm **số lần bị trả về** — đó là một phép đếm trên sổ chữ ký, không phải một số
+thứ tự gắn trên từng chữ ký.
+
 ### Yêu cầu chức năng
 
 #### A. Dự án và vòng đời giai đoạn
@@ -467,6 +482,19 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
   tiếp thành "sửa theo phản hồi", và đánh thức lại đúng thợ đã làm.
 - **FR-041**: SAU ba vòng từ chối trên cùng một đầu việc, HỆ THỐNG PHẢI kéo Trưởng dự án vào soát lại đề bài
   và định nghĩa hoàn thành.
+- **FR-041a**: Một chữ ký chỉ có giá trị cho **bản thành phẩm đang được rà soát lúc nó được đặt xuống**. KHI
+  đầu việc rời *chờ rà soát* mà không sang *xong* hoặc *đã huỷ* — bị trả về, bị kéo tay về *đang làm*, bị
+  chặn, hay được **mở lại** sau khi đã đóng — HỆ THỐNG PHẢI đặt lại trạng thái đã-ký của đầu việc đó về
+  **chưa ai ký**. Lần nộp sau là một lần rà soát mới, bắt đầu từ số không.
+
+  Ràng buộc đi kèm, quan trọng ngang luật trên: đặt lại **KHÔNG ĐƯỢC** làm mất nội dung rà soát. Ai đã duyệt,
+  ai đã trả về, lý do gì, lúc nào — tất cả PHẢI đọc lại được nguyên vẹn (FR-039, FR-040). Thứ được đặt lại
+  chỉ là câu trả lời cho "bản *hiện tại* đã ai ký chưa".
+
+  HỆ THỐNG KHÔNG ĐƯỢC trả lời câu hỏi đó bằng cách **suy ra** từ lịch sử ở nhiều nơi. Mọi nơi cần biết PHẢI
+  hỏi qua **cùng một cửa**. *(Lý do điều khoản này tồn tại: trước đây "đang ở lần rà soát nào" được suy ra
+  bằng cách đếm số lần bị trả về, ba nơi tự đếm, một nơi đếm khác — và đường "rời rà soát không qua cửa từ
+  chối" thì không nơi nào đếm cả, nên bản đã sửa đóng lại được bằng chữ ký cho bản trước nó.)*
 - **FR-042**: HỆ THỐNG KHÔNG ĐƯỢC có cổng nghiệm thu ở cấp dự án. Việc công nhận diễn ra ở cấp đầu việc;
   chuyển giai đoạn diễn ra ở cấp dự án.
 - **FR-043**: KHI cả một đợt việc đã *xong*, HỆ THỐNG PHẢI đánh thức Trưởng dự án soạn bản tổng kết đợt, rồi
@@ -510,7 +538,14 @@ về trạng thái làm được, và người phụ trách cũ được gọi l
 - **FR-054**: NẾU có điểm treo, gói tin PHẢI nêu đích danh từng điểm cần nhìn, không nói chung chung "đến giờ
   rồi".
 - **FR-055**: HỆ THỐNG PHẢI đặt trần số lần đánh thức theo nhịp trong một khoảng thời gian, tự giãn nhịp khi
-  dự án chạy trơn tru và làm dày nhịp khi có dấu hiệu ứ đọng.
+  dự án **chạy trơn tru** và làm dày nhịp khi có **dấu hiệu ứ đọng**. Hai cụm đó không được để hiểu theo cảm
+  tính — chúng là hai mặt của **một** phép đếm duy nhất:
+  - *chạy trơn tru* = lượt rà tìm thấy **0 điểm treo** (bốn loại ở FR-052, không loại nào khác);
+  - *có dấu hiệu ứ đọng* = lượt rà tìm thấy **từ 1 điểm treo trở lên**.
+
+  Độ giãn tính theo **số lượt rà liên tiếp** tìm thấy 0 điểm treo. Một lượt có điểm treo xoá sạch chuỗi đó và
+  kéo nhịp về dày hơn mức đã đặt. HỆ THỐNG KHÔNG ĐƯỢC dùng bất kỳ thước đo "trơn tru" nào khác — không điểm
+  số, không trung bình, không phán đoán.
 
 #### I. Lưới an toàn và thang phục hồi
 
