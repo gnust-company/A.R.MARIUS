@@ -16,6 +16,7 @@ about, because they are the whole point of the feature:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from uuid import UUID
 
 from armarius.application.ports.unit_of_work import UnitOfWork
@@ -23,7 +24,7 @@ from armarius.application.use_cases.inbox import InboxService
 from armarius.application.use_cases.leader_chat import LeaderChatService
 from armarius.application.use_cases.task_log import TaskLogService
 from armarius.application.use_cases.types import UowFactory
-from armarius.domain.entities.inbox_item import InboxItemKind
+from armarius.domain.entities.inbox_item import InboxItem, InboxItemKind
 from armarius.domain.entities.plan import Plan, PlanItem, PlanStatus
 from armarius.domain.entities.project import Project, ProjectStatus
 from armarius.domain.entities.project_context import (
@@ -31,6 +32,8 @@ from armarius.domain.entities.project_context import (
     ProjectContext,
 )
 from armarius.domain.entities.run import WakeSource
+from armarius.domain.entities.task import TaskStatus
+from armarius.domain.entities.task_log import ActorKind, TaskLogKind
 from armarius.domain.services import plan_gate, project_rules
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import utcnow
@@ -40,6 +43,7 @@ EVENT_PLAN_DECIDED = "ke-hoach.quyet"
 EVENT_PHASE_CHANGED = "du-an.doi-giai-doan"
 EVENT_CONTEXT_SUBMITTED = "boi-canh.trinh"
 EVENT_CONTEXT_DECIDED = "boi-canh.quyet"
+EVENT_MAJOR_CHANGE_REQUESTED = "thay-doi-lon.trinh"
 
 
 class ProjectClosed(Exception):
@@ -59,6 +63,29 @@ class PlanItemSpec:
     order: int = 0
     definition_of_done: str = ""
     depends_on: list[UUID] | None = None
+
+
+class MajorChangeArea(StrEnum):
+    """The five things a Leader may not change on its own (FR-075).
+
+    A closed list, and short on purpose. Everything *not* here is the Leader's to
+    decide (FR-074) — a gate that catches everything is a gate that gets routed around.
+    """
+
+    SCOPE = "scope"
+    OBJECTIVE = "objective"
+    COST = "cost"
+    DEADLINE = "deadline"
+    ACCEPTANCE = "acceptance"
+
+
+MAJOR_CHANGE_LABELS: dict[MajorChangeArea, str] = {
+    MajorChangeArea.SCOPE: "phạm vi",
+    MajorChangeArea.OBJECTIVE: "mục tiêu / Bối cảnh",
+    MajorChangeArea.COST: "chi phí",
+    MajorChangeArea.DEADLINE: "thời hạn",
+    MajorChangeArea.ACCEPTANCE: "tiêu chí công nhận",
+}
 
 
 class PlanService:
@@ -365,3 +392,105 @@ class PlanService:
         self, project_id: UUID, event: str, payload: dict[str, object]
     ) -> None:
         await self._bus.publish(project_topic(project_id), event, payload)
+
+
+    # ── cổng thay đổi lớn (FR-075) ───────────────────────────────────────────────
+
+    async def request_major_change(
+        self,
+        project_id: UUID,
+        *,
+        area: MajorChangeArea,
+        summary: str,
+        detail: str | None = None,
+    ) -> InboxItem:
+        """Park a change that widens the deal on the patron, before it takes effect.
+
+        FR-074 already lets the Leader run the project: split work up, reorder it, swap
+        who does it, change *how* the same outcome is reached. Five things are not that
+        (FR-075) — scope, the objective or brief, cost, the deadline, and the acceptance
+        criteria — because each of them changes what the patron agreed to, and a system
+        that lets an agent quietly move any of them is a system nobody can hand a budget.
+
+        The change is not applied here. This asks; the patron's answer is what applies it.
+        A method that parked the question *and* made the change would make the gate a
+        formality, which is the failure mode this requirement exists to prevent.
+        """
+        async with self._uow() as uow:
+            project = await uow.projects.get(project_id)
+            if project is None:
+                raise LookupError("project not found")
+            workspace_id = project.workspace_id
+            recipient = (project.created_by_user_id or "").strip()
+            if not recipient and workspace_id is not None:
+                workspace = await uow.workspaces.get(workspace_id)
+                recipient = (workspace.owner_user_id or "").strip() if workspace else ""
+
+        if not recipient or workspace_id is None:
+            raise PlanningError(
+                "Dự án chưa có người chủ nào để hỏi, nên chưa duyệt được thay đổi lớn."
+            )
+        item = await self._inbox.place(
+            workspace_id=workspace_id,
+            recipient_user_id=recipient,
+            kind=InboxItemKind.MAJOR_CHANGE_APPROVAL,
+            title=f"Thay đổi lớn cần bạn duyệt — {MAJOR_CHANGE_LABELS[area]}",
+            body=summary if detail is None else f"{summary}\n\n{detail}",
+            project_id=project_id,
+        )
+        await self._publish(
+            project_id,
+            EVENT_MAJOR_CHANGE_REQUESTED,
+            {"item_id": str(item.id), "area": str(area)},
+        )
+        return item
+
+    # ── chuyển tiếp sạch khi tái hoạch định (FR-076) ─────────────────────────────
+
+    async def settle_orphaned_tasks(
+        self, project_id: UUID, *, reason: str | None = None
+    ) -> list[UUID]:
+        """After a replan, make sure no task is left pointing at nothing.
+
+        A replan retires plan items. A task that pointed at one of them is now attached to
+        a decision nobody made — it is neither in scope nor cancelled, and every gate that
+        asks "is this in the approved plan?" gets a *no* while the board keeps showing the
+        task as live work. That is the orphan FR-076 forbids.
+
+        The resolution is deliberately the blunt one: send it back to *draft*. A draft is a
+        proposal awaiting a decision, which is exactly what such a task has become, and it
+        cannot wake anybody in the meantime. Cancelling instead would throw away work on
+        the system's own initiative; leaving it alone is what produced the orphan.
+        """
+        settled: list[UUID] = []
+        async with self._uow() as uow:
+            plan = await uow.plans.get_current(project_id)
+            live_items = {item.id for item in (plan.items if plan else [])}
+            for task in await uow.tasks.list_by_project(project_id):
+                if task.status in (TaskStatus.DONE, TaskStatus.CANCELLED):
+                    continue  # finished work keeps its history, dead pointer and all
+                if task.status is TaskStatus.DRAFT:
+                    continue  # already a proposal awaiting a decision
+                if task.plan_item_id is None or task.plan_item_id in live_items:
+                    continue
+                task.status = TaskStatus.DRAFT
+                task.status_reason = reason or (
+                    "hạng mục kế hoạch mà đầu việc này bám vào đã bị thay khi tái hoạch định"
+                )
+                task.drive = None
+                task.drive_expires_at = None
+                task.updated_at = utcnow()
+                await uow.tasks.update(task)
+                settled.append(task.id)
+            await uow.commit()
+
+        for task_id in settled:
+            if self._task_logs is not None:
+                await self._task_logs.record(
+                    task_id,
+                    TaskLogKind.STATUS_CHANGED,
+                    actor_kind=ActorKind.SYSTEM,
+                    after=str(TaskStatus.DRAFT),
+                    reason=reason or "tái hoạch định: hạng mục cũ không còn",
+                )
+        return settled
