@@ -21,9 +21,12 @@ from armarius.domain.entities.inbox_item import InboxItem, InboxItemKind, InboxI
 from armarius.domain.services.reminders import due_reminder_tier
 from armarius.infrastructure.events.topic_bus import TopicEventBus, patron_topic
 from armarius.shared.clock import as_utc, utcnow
+from armarius.shared.logging import get_logger
 
 if TYPE_CHECKING:  # pragma: no cover — typing only, keeps the import graph acyclic
     from armarius.application.use_cases.projects import ProjectService
+
+logger = get_logger(__name__)
 
 EVENT_ITEM_PLACED = "hop-thu.muc-moi"
 EVENT_ITEM_RESOLVED = "hop-thu.da-giai-quyet"
@@ -168,7 +171,14 @@ class InboxService:
                 fresh.last_reminded_at = now
                 await uow.inbox.update(fresh)
                 await uow.commit()
-            await self._publish(EVENT_ITEM_REMINDED, fresh)
+            try:
+                await self._publish(EVENT_ITEM_REMINDED, fresh)
+            except Exception:  # pragma: no cover - a dead channel must not stop the rest
+                # The tier is already committed, so a failed push costs this item its
+                # real-time nudge and nothing more — it stays pending and still shows on
+                # the next page load. Letting the exception out would be the worse trade:
+                # every item queued behind this one would lose its nudge too.
+                logger.exception("could not push the reminder for inbox item %s", fresh.id)
             nudged += 1
         return nudged
 
