@@ -245,6 +245,52 @@ async def test_an_intact_deliverable_signs_normally(uow_factory) -> None:
     assert len(signatures) == 1
 
 
+class RecordingWakes:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    async def enqueue(self, **kwargs) -> None:  # noqa: ANN003
+        self.calls.append(kwargs)
+
+
+@pytest.mark.asyncio
+async def test_a_lost_deliverable_wakes_the_worker_right_away(uow_factory) -> None:
+    """The worker is told now, not in fifteen minutes.
+
+    Pulling the task back to *in_progress* leaves it with a provisional drive that runs out
+    in ten minutes; if nothing wakes anybody, the first thing to touch this task again is
+    the stall sweep, and the worker sits idle until it fires. That is the safety net doing
+    a job it was not built for — the net is for losses nobody saw, and this one we found
+    ourselves, with the missing file already named in the next action. The rejection branch
+    right beside this one wakes the worker immediately; there is no reason this one waits.
+    """
+    _, alice, task = await _task_in_review_with_a_stored_artifact(uow_factory)
+    wakes = RecordingWakes()
+    approvals = ApprovalService(uow_factory, wake=wakes, artifact_store=VanishedStore())
+
+    await approvals.sign_as_leader(task.id, marius_id=alice.id, approve=True)
+
+    assert wakes.calls, "thành phẩm mất mà người phụ trách không được gọi lại ngay"
+    call = wakes.calls[-1]
+    assert call["marius_id"] == alice.id, "gọi nhầm người"
+    assert call["task_id"] == task.id
+    assert "không còn trong kho" in call["reason"], (
+        "gọi dậy mà không nói vì sao, nên người phụ trách phải tự đi tìm"
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_intact_deliverable_wakes_nobody(uow_factory) -> None:
+    """The other half of the rule: a clean signature is not a call to action."""
+    _, alice, task = await _task_in_review_with_a_stored_artifact(uow_factory)
+    wakes = RecordingWakes()
+    approvals = ApprovalService(uow_factory, wake=wakes, artifact_store=IntactStore())
+
+    await approvals.sign_as_leader(task.id, marius_id=alice.id, approve=True)
+
+    assert wakes.calls == [], "ký duyệt trót lọt mà vẫn đi đánh thức người ta"
+
+
 @pytest.mark.asyncio
 async def test_a_rejection_still_goes_through_when_the_output_is_missing(
     uow_factory,
