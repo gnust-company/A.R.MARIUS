@@ -229,8 +229,20 @@ class ApprovalService:
                 # supposed to mean something. Back to the step that produced it, with
                 # the loss written down — and the criteria already scored left alone, so
                 # only the missing part is redone.
-                await self._report_lost_deliverable(uow, task, missing, now=now)
+                lost_reason = await self._report_lost_deliverable(
+                    uow, task, missing, now=now
+                )
+                lost_worker = task.assigned_marius_id
                 await uow.commit()
+                # And wake them, exactly as a rejection does. This is the same event from
+                # the worker's side — their output is being sent back — and the system
+                # already knows precisely what to redo, because the lost file is named in
+                # the next action. Leaving it to the safety net instead would cost the
+                # ten-to-fifteen minutes it takes the sweep to notice a task with nothing
+                # driving it; the net exists for losses nobody saw, not for one we just
+                # found ourselves.
+                if lost_worker is not None:
+                    await self._wake_for_rework(task_id, lost_worker, lost_reason)
                 return task
 
             history = list(await uow.approvals.list_for_task(task_id))
@@ -504,8 +516,12 @@ class ApprovalService:
 
     async def _report_lost_deliverable(
         self, uow: UnitOfWork, task: Task, missing: list[str], *, now: datetime
-    ) -> None:
-        """Send the task back to the step that produced the lost output, and say so."""
+    ) -> str:
+        """Send the task back to the step that produced the lost output, and say so.
+
+        Returns the reason, so the caller wakes the worker with the same words that went
+        into the record rather than a second copy that can drift from it.
+        """
         listed = ", ".join(missing)
         reason = f"thành phẩm không còn trong kho: {listed}"
         task.transition_to(TaskStatus.IN_PROGRESS, now, reason=reason)
@@ -526,6 +542,7 @@ class ApprovalService:
                 after=str(TaskStatus.IN_PROGRESS),
                 reason=reason,
             )
+        return reason
 
 
 __all__ = [
