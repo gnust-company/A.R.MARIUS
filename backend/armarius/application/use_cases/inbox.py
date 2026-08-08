@@ -134,9 +134,21 @@ class InboxService:
         async with self._uow() as uow:
             pending = list(await uow.inbox.list_pending())
 
+        # One threshold lookup per *project*, not per item. Each lookup opens its own
+        # transaction, and this loop runs every sweep, forever — with two hundred items
+        # waiting that was two hundred transactions a minute, and it showed: on a real
+        # service the stall sweep this ladder rides slowed from about a minute to about
+        # three, so a dropped task took three times as long to be noticed. The cost now
+        # scales with projects, which is bounded by something a person created, rather
+        # than with items, which is bounded by how far behind the patron has fallen —
+        # exactly the moment it must not get slower.
+        by_project: dict[UUID | None, tuple[int, ...]] = {}
+
         nudged = 0
         for item in pending:
-            thresholds = await self._thresholds_for(item)
+            if item.project_id not in by_project:
+                by_project[item.project_id] = await self._thresholds_for(item)
+            thresholds = by_project[item.project_id]
             tier = due_reminder_tier(
                 created_at=as_utc(item.created_at),
                 sent_tier=item.reminder_tier,
