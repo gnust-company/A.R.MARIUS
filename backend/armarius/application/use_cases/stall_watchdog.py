@@ -151,6 +151,9 @@ class StallWatchdog:
 
             verdict = stall_reason(reason, now=now) or "không rõ vì sao"
             already = was_flagged
+            # Is a run row still sitting on this task, unreaped? Then the hung-run reaper
+            # owns the recovery, and this loop must not do it instead — see below.
+            reaper_owns_it = await uow.runs.has_active_for_task(task.id)
             fresh.stalled = True
             fresh.stalled_reason = verdict
             fresh.updated_at = now
@@ -165,6 +168,27 @@ class StallWatchdog:
                 reason=verdict,
             )
             await self._publish(fresh, verdict)
+
+        # Flag raised — but the *recovery* is not always this loop's to do.
+        #
+        # While an unreaped run row still sits on the task, the hung-run reaper owns it, and
+        # the reaper knows how to do this properly: close the ghost, pull the task back to
+        # *chờ làm*, and re-wake the same assignee **pointed at the saved next action**, so
+        # the work resumes instead of restarting. All this loop can do is poke, and a poke
+        # that arrives first coalesces with the reaper's wake and wins the prompt — so the
+        # agent is woken without being told where it had got to. Watched exactly that happen.
+        #
+        # The clock head start in `push_reason_rules` handles the ordinary case, but it
+        # cannot help when *both* deadlines are already in the past — a run inserted stale,
+        # or a backlog after a restart. Then whichever loop ticks first wins, which is a coin
+        # toss. Asking whose job it is settles it regardless of timing.
+        #
+        # The bound, stated plainly: if the reaper is itself broken, this task keeps its
+        # stall flag and its reason on the board and nobody is re-woken. That is a visible,
+        # diagnosable state rather than a silent one, and it is the honest trade for not
+        # having two loops race to recover the same task in two different ways.
+        if reaper_owns_it:
+            return not already
 
         # The ladder is climbed on **every** sweep, not only the first: Level 1 is a series
         # of spaced retries, and a task that stays stuck has to keep advancing towards the

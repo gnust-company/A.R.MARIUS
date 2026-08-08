@@ -347,8 +347,21 @@ class LeaderChatService:
             session_params=result.session_params or None,
             error=result.error,
         )
-        # The gateway reached back with a terminal status (completed or failed) — fold it in as
-        # a liveness signal so a reply keeps the Leader ONLINE and clears the in-flight turn.
+        # A **completed** turn is contact: the Leader answered, so it is alive. A failed one
+        # is not, and folding it in as one used to break FR-064 outright.
+        #
+        # The adapter reports an unreachable gateway by *returning* FAILED rather than
+        # raising, so this line used to mark a Leader ONLINE precisely because the attempt
+        # to talk to it had failed. On a running service that made the state unreachable:
+        # anything that kept waking a dead Leader — a stall escalation, a cadence sweep —
+        # kept resetting it to ONLINE, so it could never decay to OFFLINE, so the patron was
+        # never told their project had lost its manager. Watched it happen.
+        #
+        # On failure liveness is left exactly as the exception path above leaves it: alone,
+        # for the FSM watchdog and the gateway probe to decide. Those two ask the gateway
+        # instead of asking our own outbound attempt, which is the only honest source.
+        if result.status is not RunStatus.COMPLETED:
+            return
         try:
             await self._liveness.record_signal(leader.id)
         except LookupError:  # pragma: no cover — leader vanished mid-turn

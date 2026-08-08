@@ -435,3 +435,48 @@ async def test_the_recovery_ladder_does_not_lower_the_flag_it_is_responding_to(
         "lịch thử lại của cái thang đã hạ mất chính tiếng chuông nó đang đáp lại"
     )
     assert stored.drive is None
+
+
+@pytest.mark.asyncio
+async def test_the_net_leaves_recovery_to_the_reaper_while_a_run_row_survives(
+    uow_factory,
+) -> None:
+    """Found on the running service.
+
+    A run inserted already-stale puts *both* deadlines in the past, so the clock head start
+    in the drive rules cannot order the two loops — whichever ticks first wins, which is a
+    coin toss. When this loop won it, it poked the assignee, that poke coalesced with the
+    reaper's wake and took the prompt, and the agent was woken **without** being told where
+    it had got to. The saved next action is exactly what Kịch bản 6 bước 1 is about.
+
+    Asking whose job it is settles the order regardless of timing: while an unreaped run
+    row survives, the reaper owns the recovery. The flag still goes up — this is about who
+    *acts*, not about staying quiet.
+    """
+    project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, status=TaskStatus.IN_PROGRESS)
+    async with uow_factory() as uow:
+        await uow.runs.add(
+            Run(
+                project_id=project.id,
+                marius_id=alice.id,
+                task_id=task.id,
+                adapter_type="echo",
+                wake_source=WakeSource.ASSIGNMENT,
+                status=RunStatus.RUNNING,
+                last_output_at=T0 - timedelta(hours=3),  # stale long before either loop woke
+                created_at=T0 - timedelta(hours=3),
+            )
+        )
+        await uow.commit()
+    ladder = RecordingLadder()
+
+    flagged = await _watchdog(uow_factory, ladder=ladder).sweep(now=T0)
+
+    assert flagged == 1, "vẫn phải nổi cờ — chuyện đang bàn là ai ra tay, không phải im lặng"
+    stored = await _get(uow_factory, task.id)
+    assert stored is not None and stored.stalled is True
+    assert ladder.climbs == [], (
+        "lưới an toàn giành mất phần phục hồi của bộ thu dọn, nên lời gọi lại không còn "
+        "trỏ vào việc kế tiếp đã lưu"
+    )
