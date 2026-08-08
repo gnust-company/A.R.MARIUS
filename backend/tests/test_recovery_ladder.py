@@ -401,3 +401,68 @@ async def test_the_patron_is_never_reached_once_the_leader_has_decided(
         "Trưởng dự án vừa quyết xong mà người chủ đã bị gọi"
     )
     assert (await _ladder(uow_factory, task.id)).level is EscalationLevel.LEVEL_1
+
+
+@pytest.mark.asyncio
+async def test_the_patron_is_told_once_per_outage_not_once_per_reprobe(
+    uow_factory,
+) -> None:
+    """Found on the running service: two identical escalations, two minutes apart.
+
+    The liveness FSM does not sit still in OFFLINE — it climbs out to CHECKING on a
+    doubling backoff, fails the probe, and drops back. Every one of those cycles is a
+    genuine *edge* into offline, so checking the edge is not enough on its own: a Leader
+    that stays down would post a fresh escalation every backoff period, forever, and the
+    patron would mute the channel long before the outage ended.
+    """
+    ws, project, alice = await _world(uow_factory)
+    async with uow_factory() as uow:
+        await uow.seat_grants.add(
+            SeatGrant(project_id=project.id, role_key="leader", marius_id=alice.id)
+        )
+        await uow.commit()
+    fallout = _fallout(uow_factory, notifier=RecordingNotifier(), bus=TopicEventBus())
+
+    for cycle in range(4):  # offline → checking → offline → …
+        await fallout.agent_went_offline(alice.id, now=T0 + timedelta(minutes=cycle * 2))
+
+    async with uow_factory() as uow:
+        items = list(
+            await uow.inbox.list_for_recipient("patron-1", status=InboxItemStatus.PENDING)
+        )
+    leader_items = [i for i in items if i.kind is InboxItemKind.ESCALATION]
+    assert len(leader_items) == 1, (
+        f"người chủ bị báo {len(leader_items)} lần về đúng một lần Trưởng dự án mất"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_resolved_outage_notice_can_be_raised_again(uow_factory) -> None:
+    """The suppression is *while they are looking at it*, not forever. Once the patron has
+    handled it and the Leader is still gone, telling them again is new information."""
+    ws, project, alice = await _world(uow_factory)
+    async with uow_factory() as uow:
+        await uow.seat_grants.add(
+            SeatGrant(project_id=project.id, role_key="leader", marius_id=alice.id)
+        )
+        await uow.commit()
+    fallout = _fallout(uow_factory, notifier=RecordingNotifier(), bus=TopicEventBus())
+
+    await fallout.agent_went_offline(alice.id, now=T0)
+    async with uow_factory() as uow:
+        first = [
+            i for i in await uow.inbox.list_for_recipient("patron-1")
+            if i.kind is InboxItemKind.ESCALATION
+        ][0]
+    await InboxService(uow_factory, TopicEventBus()).resolve(first.id)
+
+    await fallout.agent_went_offline(alice.id, now=T0 + timedelta(hours=1))
+
+    async with uow_factory() as uow:
+        pending = [
+            i for i in await uow.inbox.list_for_recipient(
+                "patron-1", status=InboxItemStatus.PENDING
+            )
+            if i.kind is InboxItemKind.ESCALATION
+        ]
+    assert len(pending) == 1, "gỡ xong rồi mà lần mất tiếp theo không được báo lại"

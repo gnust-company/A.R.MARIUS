@@ -32,7 +32,7 @@ from armarius.application.use_cases.task_log import TaskLogService
 from armarius.application.use_cases.tasks import LeaderNotifier
 from armarius.application.use_cases.types import UowFactory
 from armarius.application.use_cases.wake_engine import WakeEngine
-from armarius.domain.entities.inbox_item import InboxItemKind
+from armarius.domain.entities.inbox_item import InboxItemKind, InboxItemStatus
 from armarius.domain.entities.push_reason import TaskPushReason
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.task import Task, TaskDrive, TaskStatus
@@ -429,6 +429,19 @@ class OfflineFalloutService:
     async def _tell_the_patron_the_leader_is_gone(
         self, project_id: UUID, *, now: datetime
     ) -> None:
+        """Tell the patron once per outage, not once per re-probe.
+
+        The liveness FSM does not sit still in OFFLINE — it climbs out to CHECKING on a
+        doubling backoff, fails the probe, and drops back. Every one of those cycles is a
+        genuine *edge* into offline, so an edge check alone is not enough: a Leader that
+        stays down would post a fresh escalation every backoff period, forever. Found on
+        the running service, where it produced two identical items two minutes apart.
+
+        So the question asked here is the one that actually matters — *is this patron
+        already looking at this?* — and it is asked of the inbox, which is where the answer
+        lives. When they resolve it and the Leader is still gone, the next cycle tells them
+        again, which is correct: that is new information by then.
+        """
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)
             if project is None:  # pragma: no cover - defensive
@@ -439,6 +452,14 @@ class OfflineFalloutService:
                 workspace = await uow.workspaces.get(workspace_id)
                 recipient = (workspace.owner_user_id or "").strip() if workspace else ""
             name = project.name
+            already_asking = bool(recipient) and any(
+                item.kind is InboxItemKind.ESCALATION and item.task_id is None
+                for item in await uow.inbox.list_for_recipient(
+                    recipient, status=InboxItemStatus.PENDING, project_id=project_id
+                )
+            )
+        if already_asking:
+            return
         if not recipient or workspace_id is None:
             logger.warning(
                 "project %s lost its Leader with nobody to tell", project_id
