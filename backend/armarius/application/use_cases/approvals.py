@@ -28,17 +28,19 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from armarius.application.ports.artifact_store import ArtifactStore
 from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.review_reset import retire_signatures_on_move
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.approval import Approval, ApprovalResult, SignerKind
+from armarius.domain.entities.artifact import ArtifactKind
 from armarius.domain.entities.inbox_item import (
     InboxItem,
     InboxItemKind,
     InboxItemStatus,
 )
 from armarius.domain.entities.run import WakeSource
-from armarius.domain.entities.task import Task, TaskDrive, TaskStatus
+from armarius.domain.entities.task import Task, TaskStatus
 from armarius.domain.entities.task_log import ActorKind, TaskLogKind
 from armarius.domain.services.approval_rules import (
     REJECTION_ROUND_CEILING,
@@ -48,6 +50,7 @@ from armarius.domain.services.approval_rules import (
     missing_signatures,
     rejection_rounds,
 )
+from armarius.domain.services.push_reason_rules import provisional_drive
 from armarius.infrastructure.events.topic_bus import (
     TopicEventBus,
     patron_topic,
@@ -97,12 +100,16 @@ class ApprovalService:
         wake: WakeEngine | None = None,
         task_logs: TaskLogService | None = None,
         control_bus: TopicEventBus | None = None,
+        artifact_store: ArtifactStore | None = None,
     ) -> None:
         self._uow = uow_factory
         self._tasks = tasks
         self._wake = wake
         self._logs = task_logs
         self._bus = control_bus
+        # Only used to answer one question, at one moment: is the deliverable still
+        # there when somebody is about to sign for it (FR-069).
+        self._artifact_store = artifact_store
 
     # ── who has to sign (FR-034) ─────────────────────────────────────────────
 
@@ -214,6 +221,29 @@ class ApprovalService:
                     f"Đầu việc đang ở '{task.status}' — chỉ ký khi đang *chờ rà soát*."
                 )
             project_id = task.project_id
+            missing = await self._missing_deliverables(uow, task_id)
+
+            if approve and missing:
+                # FR-069. Signing here would close the task against a file nobody can
+                # open, and the signature is the one artefact in this system that is
+                # supposed to mean something. Back to the step that produced it, with
+                # the loss written down — and the criteria already scored left alone, so
+                # only the missing part is redone.
+                lost_reason = await self._report_lost_deliverable(
+                    uow, task, missing, now=now
+                )
+                lost_worker = task.assigned_marius_id
+                await uow.commit()
+                # And wake them, exactly as a rejection does. This is the same event from
+                # the worker's side — their output is being sent back — and the system
+                # already knows precisely what to redo, because the lost file is named in
+                # the next action. Leaving it to the safety net instead would cost the
+                # ten-to-fifteen minutes it takes the sweep to notice a task with nothing
+                # driving it; the net exists for losses nobody saw, not for one we just
+                # found ourselves.
+                if lost_worker is not None:
+                    await self._wake_for_rework(task_id, lost_worker, lost_reason)
+                return task
 
             history = list(await uow.approvals.list_for_task(task_id))
             signature = Approval(
@@ -304,7 +334,12 @@ class ApprovalService:
         task.transition_to(TaskStatus.IN_PROGRESS, now, reason=reason)
         await retire_signatures_on_move(uow, task.id, TaskStatus.IN_PROGRESS)
         task.next_action = f"Sửa theo phản hồi: {reason}".strip()
-        task.drive = TaskDrive.WAKE_SCHEDULED
+        # Provisional (FR-056): the rework wake is booked by the caller after this
+        # transaction commits, so the verified drive cannot be known yet. It carries a
+        # short clock, which is what makes "sent back and then forgotten" visible.
+        reason_now = provisional_drive(task.status, now=now)
+        task.drive = reason_now.kind if reason_now else None
+        task.drive_expires_at = reason_now.expires_at if reason_now else None
         task.updated_at = now
         await uow.tasks.update(task)
         await self._resolve_pending_acceptance(uow, task.id)
@@ -457,6 +492,57 @@ class ApprovalService:
                 "task_id": str(item.task_id) if item.task_id else None,
             },
         )
+
+
+    # ── thành phẩm mất hoặc hỏng lúc chuẩn bị công nhận (FR-069) ─────────────────
+
+    async def _missing_deliverables(self, uow: UnitOfWork, task_id: UUID) -> list[str]:
+        """Which of this task's stored outputs are no longer there.
+
+        Only *file* artifacts are checked — the ones whose bytes live in our own store.
+        A `link` points at somewhere this system does not own (a merged pull request, a
+        document), and calling it lost because a third-party site was slow would be
+        inventing a failure rather than finding one.
+        """
+        if self._artifact_store is None:
+            return []
+        missing: list[str] = []
+        for artifact in await uow.artifacts.list_by_task(task_id):
+            if artifact.kind != ArtifactKind.FILE:
+                continue
+            if not await self._artifact_store.exists(artifact.uri):
+                missing.append(artifact.name or artifact.uri)
+        return missing
+
+    async def _report_lost_deliverable(
+        self, uow: UnitOfWork, task: Task, missing: list[str], *, now: datetime
+    ) -> str:
+        """Send the task back to the step that produced the lost output, and say so.
+
+        Returns the reason, so the caller wakes the worker with the same words that went
+        into the record rather than a second copy that can drift from it.
+        """
+        listed = ", ".join(missing)
+        reason = f"thành phẩm không còn trong kho: {listed}"
+        task.transition_to(TaskStatus.IN_PROGRESS, now, reason=reason)
+        await retire_signatures_on_move(uow, task.id, TaskStatus.IN_PROGRESS)
+        task.next_action = f"Nộp lại thành phẩm đã mất: {listed}"
+        provisional = provisional_drive(task.status, now=now)
+        task.drive = provisional.kind if provisional else None
+        task.drive_expires_at = provisional.expires_at if provisional else None
+        task.updated_at = now
+        await uow.tasks.update(task)
+        if self._logs is not None:
+            await self._logs.record_in(
+                uow,
+                task.id,
+                TaskLogKind.STATUS_CHANGED,
+                actor_kind=ActorKind.SYSTEM,
+                before=str(TaskStatus.IN_REVIEW),
+                after=str(TaskStatus.IN_PROGRESS),
+                reason=reason,
+            )
+        return reason
 
 
 __all__ = [

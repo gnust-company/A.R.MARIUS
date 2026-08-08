@@ -28,14 +28,16 @@ from armarius.domain.entities.inbox_item import InboxItem, InboxItemStatus
 from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.onboarding import OnboardingSession
+from armarius.domain.entities.push_reason import TaskPushReason
 from armarius.domain.entities.role import Role
-from armarius.domain.entities.run import RunStatus
+from armarius.domain.entities.run import ACTIVE_RUN_STATUSES, Run, RunStatus
 from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.entities.skill import Skill
 from armarius.domain.entities.task import Task, TaskStatus
 from armarius.domain.entities.task_dependency import TaskDependency
 from armarius.domain.entities.task_log import TaskLogEntry
 from armarius.domain.entities.workspace import Project, Workspace
+from armarius.domain.services.push_reason_rules import watches
 
 
 @dataclass
@@ -47,6 +49,8 @@ class _Store:
     tasks: dict[UUID, Task] = field(default_factory=dict)
     criteria: dict[UUID, ChecklistItem] = field(default_factory=dict)
     task_logs: dict[UUID, TaskLogEntry] = field(default_factory=dict)
+    push_reasons: dict[UUID, TaskPushReason] = field(default_factory=dict)
+    runs: dict[UUID, Run] = field(default_factory=dict)
     inbox: dict[UUID, InboxItem] = field(default_factory=dict)
     dependencies: dict[UUID, TaskDependency] = field(default_factory=dict)
     roles: dict[UUID, Role] = field(default_factory=dict)
@@ -115,6 +119,103 @@ class _FakeTaskRepo:
     async def update(self, task: Task) -> Task:
         self._s.tasks[task.id] = task
         return task
+
+    async def list_stall_candidates(
+        self, now: datetime, *, limit: int = 500
+    ) -> list[Task]:
+        return [
+            t
+            for t in self._s.tasks.values()
+            if watches(t.status)
+            and (
+                t.drive is None
+                or (t.drive_expires_at is not None and t.drive_expires_at <= now)
+                or t.stalled
+            )
+        ][:limit]
+
+    async def list_open(self, *, limit: int = 1000) -> list[Task]:
+        return [t for t in self._s.tasks.values() if watches(t.status)][:limit]
+
+
+class _FakeRunRepo:
+    """Enough of the run repository for the loops that read it (liveness reaper, sweeps)."""
+
+    def __init__(self, store: _Store) -> None:
+        self._s = store
+
+    async def add(self, run: Run) -> Run:
+        self._s.runs[run.id] = run
+        return run
+
+    async def get(self, run_id: UUID) -> Run | None:
+        return self._s.runs.get(run_id)
+
+    async def update(self, run: Run) -> Run:
+        self._s.runs[run.id] = run
+        return run
+
+    async def list_by_task(self, task_id: UUID) -> list[Run]:
+        return [r for r in self._s.runs.values() if r.task_id == task_id]
+
+    async def list_by_marius(self, marius_id: UUID) -> list[Run]:
+        return [r for r in self._s.runs.values() if r.marius_id == marius_id]
+
+    async def get_active_for(self, marius_id: UUID, task_id: UUID) -> Run | None:
+        for r in self._s.runs.values():
+            if (
+                r.marius_id == marius_id
+                and r.task_id == task_id
+                and r.status in ACTIVE_RUN_STATUSES
+            ):
+                return r
+        return None
+
+    async def task_ids_with_active_run(self, task_ids) -> set[UUID]:  # noqa: ANN001
+        wanted = set(task_ids)
+        return {
+            r.task_id
+            for r in self._s.runs.values()
+            if r.task_id in wanted and r.status in ACTIVE_RUN_STATUSES and r.task_id
+        }
+
+    async def has_active_for_task(self, task_id: UUID) -> bool:
+        return any(
+            r.task_id == task_id and r.status in ACTIVE_RUN_STATUSES
+            for r in self._s.runs.values()
+        )
+
+    async def list_silent_active(
+        self, silent_since: datetime, *, limit: int = 200
+    ) -> list[Run]:
+        out = [
+            r
+            for r in self._s.runs.values()
+            if r.status in ACTIVE_RUN_STATUSES
+            and (stamp := (r.last_output_at or r.started_at or r.created_at)) is not None
+            and stamp <= silent_since
+        ]
+        return out[:limit]
+
+
+class _FakeTaskPushReasonRepo:
+    def __init__(self, store: _Store) -> None:
+        self._s = store
+
+    async def get_for_task(self, task_id: UUID) -> TaskPushReason | None:
+        return self._s.push_reasons.get(task_id)
+
+    async def upsert(self, reason: TaskPushReason) -> TaskPushReason:
+        assert reason.task_id is not None
+        self._s.push_reasons[reason.task_id] = reason
+        return reason
+
+    async def clear_for_task(self, task_id: UUID) -> None:
+        self._s.push_reasons.pop(task_id, None)
+
+    async def list_for_tasks(self, task_ids) -> list[TaskPushReason]:  # noqa: ANN001
+        wanted = set(task_ids)
+        return [r for tid, r in self._s.push_reasons.items() if tid in wanted]
 
 
 class _FakeChecklistItemRepo:
@@ -466,6 +567,12 @@ class _FakeInboxRepo:
         items.sort(key=lambda i: i.created_at or epoch)
         return items
 
+    async def list_pending(self, *, limit: int = 500) -> list[InboxItem]:
+        epoch = datetime.min.replace(tzinfo=UTC)
+        items = [i for i in self._s.inbox.values() if i.status == InboxItemStatus.PENDING]
+        items.sort(key=lambda i: i.created_at or epoch)
+        return items[:limit]
+
     async def list_pending_for_task(self, task_id: UUID) -> list[InboxItem]:
         epoch = datetime.min.replace(tzinfo=UTC)
         items = [
@@ -489,6 +596,8 @@ class FakeUnitOfWork(UnitOfWork):
         self.onboardings = _FakeOnboardingRepo(s)  # type: ignore[assignment]
         self.projects = _FakeProjectRepo(s)  # type: ignore[assignment]
         self.tasks = _FakeTaskRepo(s)  # type: ignore[assignment]
+        self.push_reasons = _FakeTaskPushReasonRepo(s)  # type: ignore[assignment]
+        self.runs = _FakeRunRepo(s)  # type: ignore[assignment]
         self.criteria = _FakeChecklistItemRepo(s)  # type: ignore[assignment]
         self.task_logs = _FakeTaskLogRepo(s)  # type: ignore[assignment]
         self.inbox = _FakeInboxRepo(s)  # type: ignore[assignment]

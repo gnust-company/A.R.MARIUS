@@ -95,6 +95,12 @@ class Settings(BaseSettings):
     # for the same task before escalating to the Leader (FR-059). Distinct from
     # `wake_max_continuation_attempts`, which caps continuations *within* one run.
     level1_recovery_attempts: int = 3
+    # The first gap between Level-1 re-wakes; it doubles from here (FR-060). Five minutes
+    # rather than one on purpose: the stall sweep runs every minute, so a shorter gap
+    # would let the sweeps outpace the ladder and burn the whole budget inside four
+    # minutes — three re-wakes nobody had time to answer, then straight to the Leader.
+    # A budget spent that fast is decoration.
+    level1_backoff_seconds: int = 300
     # How many review rejections on one task before the Leader is pulled in to re-examine
     # the brief and the acceptance criteria (FR-042).
     rejection_round_cap: int = 3

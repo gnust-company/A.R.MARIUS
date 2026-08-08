@@ -31,6 +31,7 @@ from armarius.infrastructure.persistence.repositories import (
     SqlSkillRepository,
     SqlTaskDependencyRepository,
     SqlTaskLogRepository,
+    SqlTaskPushReasonRepository,
     SqlTaskRepository,
     SqlUserRepository,
     SqlWakeupRepository,
@@ -59,6 +60,7 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         self.auto_approvals = SqlAutoApprovalRepository(s)
         self.mariuses = SqlMariusRepository(s)
         self.tasks = SqlTaskRepository(s)
+        self.push_reasons = SqlTaskPushReasonRepository(s)
         self.criteria = SqlChecklistItemRepository(s)
         self.task_logs = SqlTaskLogRepository(s)
         self.dependencies = SqlTaskDependencyRepository(s)

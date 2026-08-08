@@ -24,8 +24,11 @@ from armarius.application.use_cases.onboarding_session import OnboardingService
 from armarius.application.use_cases.orchestrator import OrchestrationLoop
 from armarius.application.use_cases.plans import PlanService
 from armarius.application.use_cases.projects import ProjectService
+from armarius.application.use_cases.push_reason import PushReasonService
+from armarius.application.use_cases.recovery import OfflineFalloutService, RecoveryEscalator
 from armarius.application.use_cases.runs import RunQueryService
 from armarius.application.use_cases.skills import SkillService
+from armarius.application.use_cases.stall_watchdog import StallWatchdog
 from armarius.application.use_cases.task_log import TaskLogService
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.threads import ThreadService
@@ -64,6 +67,9 @@ class Container:
     liveness: LivenessEngine
     liveness_watchdog: LivenessWatchdog
     orchestrator: OrchestrationLoop
+    push_reasons: PushReasonService
+    stall_watchdog: StallWatchdog
+    recovery: RecoveryEscalator
     inbox: InboxService
     labels: LabelService
     mariuses: MariusService
@@ -137,7 +143,13 @@ def build_container() -> Container:
     skills = SkillService(uow_factory)
     workspaces = WorkspaceService(uow_factory, skills)
 
-    inbox = InboxService(uow_factory, control_bus)
+    # The reminder ladder reads each project's own tiers (FR-065), but the full project
+    # service needs the inbox — a genuine cycle. Broken with a second, thresholds-only
+    # instance: `get_thresholds` is a pure read with no state behind it, so two objects
+    # cannot disagree. Reordering instead would mean the inbox holding a half-built
+    # project service, which is the same cycle with the failure moved to runtime.
+    thresholds_reader = ProjectService(uow_factory, system_thresholds=_system_thresholds())
+    inbox = InboxService(uow_factory, control_bus, projects=thresholds_reader)
     leader_chat = LeaderChatService(
         uow_factory,
         registry=registry,
@@ -162,6 +174,24 @@ def build_container() -> Container:
         settings.public_api_url,
     )
 
+    # The single writer of `task.drive` (FR-056). Built before the task service because
+    # every status change settles its drive through this one object — two writers is how
+    # a field comes to mean two different things.
+    push_reasons = PushReasonService(uow_factory, projects)
+    # One escalator, shared: the watchdog climbs the ladder and the Leader's recovery
+    # endpoint clears it. Two instances would each hold their own idea of where a task
+    # stands, and the rung the Leader answered would not be the rung the sweep reads.
+    recovery = RecoveryEscalator(
+        uow_factory,
+        projects,
+        wakes=wake_engine,
+        inbox=inbox,
+        task_log=TaskLogService(uow_factory),
+        control_bus=control_bus,
+        leader_notifier=leader_chat,
+        backoff_base_seconds=settings.level1_backoff_seconds,
+    )
+
     # Tasks and approvals are built here rather than inline below: the approval service
     # closes a task through the task service, so it needs the same instance the API uses.
     tasks = TaskService(
@@ -171,6 +201,7 @@ def build_container() -> Container:
         task_logs=TaskLogService(uow_factory),
         control_bus=control_bus,
         inbox=inbox,
+        push_reasons=push_reasons,
     )
 
     liveness = liveness_for_chat
@@ -178,6 +209,13 @@ def build_container() -> Container:
         uow_factory,
         liveness,
         interval_seconds=settings.liveness_watchdog_interval_seconds,
+        # The hung-run reaper rides this loop (FR-062): the same clock already asks
+        # "has this agent gone quiet?", and a hung run is that question about a run.
+        hang_suspect_seconds=settings.hang_suspect_seconds,
+        hang_grace_seconds=settings.hang_grace_seconds,
+        wakes=wake_engine,
+        task_log=TaskLogService(uow_factory),
+        push_reasons=push_reasons,
     )
     # The Leader's controlled heartbeat (spec 001 FR-052 → FR-055). Ticks often and
     # cheaply; each project is swept on its own rhythm, and only a sweep that found
@@ -187,6 +225,31 @@ def build_container() -> Container:
         projects,
         leader_notifier=leader_chat,
         interval_seconds=settings.orchestration_tick_seconds,
+    )
+    # The safety net (spec 001 FR-056 → FR-069). The watchdog only reads the clock on a
+    # drive and hands what it finds to the recovery ladder. Detection and recovery are
+    # split because detection has to keep working even when every recovery route is
+    # broken — that is the failure it exists to survive.
+    stall_watchdog = StallWatchdog(
+        uow_factory,
+        push_reasons,
+        task_log=TaskLogService(uow_factory),
+        control_bus=control_bus,
+        inbox=inbox,
+        ladder=recovery,
+        interval_seconds=settings.stall_scan_interval_seconds,
+    )
+    # An agent declared offline has fallout on the board (FR-064). Attached rather than
+    # injected: the handler needs the Leader chat, and the Leader chat needs the liveness
+    # engine — see `LivenessEngine.attach_fallout`.
+    liveness.attach_fallout(
+        OfflineFalloutService(
+            uow_factory,
+            inbox=inbox,
+            task_log=TaskLogService(uow_factory),
+            push_reasons=push_reasons,
+            leader_notifier=leader_chat,
+        )
     )
 
     return Container(
@@ -210,6 +273,9 @@ def build_container() -> Container:
         liveness=liveness,
         liveness_watchdog=liveness_watchdog,
         orchestrator=orchestrator,
+        push_reasons=push_reasons,
+        stall_watchdog=stall_watchdog,
+        recovery=recovery,
         inbox=inbox,
         labels=LabelService(uow_factory),
         mariuses=MariusService(uow_factory),
@@ -220,6 +286,9 @@ def build_container() -> Container:
             wake=wake_engine,
             task_logs=TaskLogService(uow_factory),
             control_bus=control_bus,
+            # Asked one question, at one moment: is the deliverable still there when
+            # somebody is about to sign for it (FR-069).
+            artifact_store=store,
         ),
         task_logs=TaskLogService(uow_factory),
         threads=ThreadService(uow_factory, wake_engine),

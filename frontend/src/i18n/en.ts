@@ -378,6 +378,15 @@ export const en = {
     sendBack: 'Send back',
     rejectReasonPrompt: 'Sending it back needs a reason — the worker gets this as their next action:',
     reminderTier: 'Reminded {{tier}}x',
+    // FR-061 — the record of what was already tried, attached to every escalation.
+    dossier: {
+      title: 'What the system already tried',
+      cause: 'Stuck because',
+      attempts: 'Re-woken {{count}}x with no movement',
+      leaderAsked: 'The Leader was asked and could not clear it',
+      lastAttempt: 'Last attempt: {{when}}',
+      question: 'What you need to decide',
+    },
     kind: {
       output_acceptance: 'Output acceptance',
       plan_approval: 'Plan approval',

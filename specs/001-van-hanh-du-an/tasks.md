@@ -378,50 +378,50 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
 
 ### Bài kiểm (viết trước, phải đỏ) ⚠️
 
-- [ ] T126 [P] [US6] Bài kiểm bất biến "mỗi đầu việc chưa đóng có đúng một động cơ đẩy sống hoặc mang cờ đình trệ" trong `backend/tests/test_push_reason.py`
-- [ ] T127 [P] [US6] Bài kiểm thang ba mức không nhảy cóc và trần Mức 1 kèm đặt lại bộ đếm khi có tiến triển thật — trong `backend/tests/test_escalation.py`
-- [ ] T128 [P] [US6] Bài kiểm phục hồi treo: tuyên treo, đóng lượt chạy ma, kéo về *chờ làm*, gọi lại đúng người phụ trách cũ — bổ sung vào `backend/tests/test_liveness_watchdog.py`
-- [ ] T129 [P] [US6] Bài kiểm nhắc ba bậc và không tự đánh dấu xong/thất bại trong `backend/tests/test_inbox_reminders.py`
-- [ ] T130 [P] [US6] Bài kiểm xếp hàng theo ưu tiên → hạn chót → tuổi đời kèm nâng dần chống bỏ đói trong `backend/tests/test_task_queue.py`
-- [ ] T131 [P] [US6] Bài kiểm dựng lại động cơ đẩy sau khởi động lại trong `backend/tests/test_push_reason_recovery.py`
+- [X] T126 [P] [US6] Bài kiểm bất biến "mỗi đầu việc chưa đóng có đúng một động cơ đẩy sống hoặc mang cờ đình trệ" trong `backend/tests/test_push_reason.py`
+- [X] T127 [P] [US6] Bài kiểm thang ba mức không nhảy cóc và trần Mức 1 kèm đặt lại bộ đếm khi có tiến triển thật — trong `backend/tests/test_escalation.py`
+- [X] T128 [P] [US6] Bài kiểm phục hồi treo: tuyên treo, đóng lượt chạy ma, kéo về *chờ làm*, gọi lại đúng người phụ trách cũ — bổ sung vào `backend/tests/test_liveness_watchdog.py`
+- [X] T129 [P] [US6] Bài kiểm nhắc ba bậc và không tự đánh dấu xong/thất bại trong `backend/tests/test_inbox_reminders.py`
+- [X] T130 [P] [US6] Bài kiểm xếp hàng theo ưu tiên → hạn chót → tuổi đời kèm nâng dần chống bỏ đói trong `backend/tests/test_task_queue.py`
+- [X] T131 [P] [US6] Bài kiểm dựng lại động cơ đẩy sau khởi động lại trong `backend/tests/test_push_reason_recovery.py`
 
 ### Động cơ đẩy
 
-- [ ] T132 [P] [US6] Thực thể động cơ đẩy sáu loại kèm mốc hết hạn và bộ đếm tự phục hồi trong `backend/armarius/domain/entities/push_reason.py`
-- [ ] T133 [US6] Luật tính động cơ đẩy từ trạng thái đầu việc (QĐ-4: tính lại lúc đổi trạng thái, không suy trong vòng quét) trong `backend/armarius/domain/services/push_reason_rules.py`
-- [ ] T134 [US6] Bảng `task_push_reasons` và cột cờ đình trệ kèm lý do trong `backend/armarius/infrastructure/database/models.py`
-- [ ] T135 [US6] Bản di trú Đợt 6 trong `backend/armarius/infrastructure/alembic/versions/`, kèm một lần chạy lấp động cơ cho mọi đầu việc đang mở — suy không ra thì nổi cờ đình trệ
-- [ ] T136 [US6] Bộ ánh xạ và kho chứa động cơ đẩy trong `backend/armarius/infrastructure/persistence/mappers.py` và `backend/armarius/infrastructure/persistence/repositories.py`
-- [ ] T137 [US6] Tính lại động cơ đẩy ở mọi điểm đổi trạng thái trong `backend/armarius/application/use_cases/tasks.py` và `backend/armarius/application/use_cases/approvals.py`
+- [X] T132 [P] [US6] Thực thể động cơ đẩy sáu loại kèm mốc hết hạn và bộ đếm tự phục hồi trong `backend/armarius/domain/entities/push_reason.py`
+- [X] T133 [US6] Luật tính động cơ đẩy từ trạng thái đầu việc (QĐ-4: tính lại lúc đổi trạng thái, không suy trong vòng quét) trong `backend/armarius/domain/services/push_reason_rules.py`
+- [X] T134 [US6] Bảng `task_push_reasons` và cột cờ đình trệ kèm lý do trong `backend/armarius/infrastructure/database/models.py`
+- [X] T135 [US6] Bản di trú Đợt 6 trong `backend/armarius/infrastructure/alembic/versions/`, kèm một lần chạy lấp động cơ cho mọi đầu việc đang mở — suy không ra thì nổi cờ đình trệ
+- [X] T136 [US6] Bộ ánh xạ và kho chứa động cơ đẩy trong `backend/armarius/infrastructure/persistence/mappers.py` và `backend/armarius/infrastructure/persistence/repositories.py`
+- [X] T137 [US6] Tính lại động cơ đẩy ở mọi điểm đổi trạng thái trong `backend/armarius/application/use_cases/tasks.py` và `backend/armarius/application/use_cases/approvals.py`
 
 ### Vòng quét canh gác và thang phục hồi
 
-- [ ] T138 [US6] Vòng quét canh gác theo khuôn `LivenessWatchdog` — chỉ so mốc hết hạn với hiện tại, nổi và gỡ cờ đình trệ, bắn `dau-viec.dinh-tre` lên kênh dự án — trong `backend/armarius/application/use_cases/stall_watchdog.py`
-- [ ] T139 [US6] Luật thang ba mức trong `backend/armarius/domain/services/escalation.py`: Mức 1 tự gọi lại có trần và giãn dần, Mức 2 Trưởng dự án quyết, Mức 3 lên người chủ — **không nhảy cóc**
-- [ ] T140 [US6] Đặt lại bộ đếm Mức 1 về không khi đầu việc có tiến triển thật (FR-060) trong `backend/armarius/domain/services/escalation.py`
-- [ ] T141 [US6] Hồ sơ đã thử đính vào mục leo thang Mức 3 (FR-061) trong `backend/armarius/application/use_cases/inbox.py`, bắn `leo-thang.muc-3` lên kênh người chủ
-- [ ] T142 [US6] Gắn vòng quét canh gác vào vòng đời ứng dụng trong `backend/armarius/main.py` và `backend/armarius/presentation/container.py`
+- [X] T138 [US6] Vòng quét canh gác theo khuôn `LivenessWatchdog` — chỉ so mốc hết hạn với hiện tại, nổi và gỡ cờ đình trệ, bắn `dau-viec.dinh-tre` lên kênh dự án — trong `backend/armarius/application/use_cases/stall_watchdog.py`
+- [X] T139 [US6] Luật thang ba mức trong `backend/armarius/domain/services/escalation.py`: Mức 1 tự gọi lại có trần và giãn dần, Mức 2 Trưởng dự án quyết, Mức 3 lên người chủ — **không nhảy cóc**
+- [X] T140 [US6] Đặt lại bộ đếm Mức 1 về không khi đầu việc có tiến triển thật (FR-060) trong `backend/armarius/domain/services/escalation.py`
+- [X] T141 [US6] Hồ sơ đã thử đính vào mục leo thang Mức 3 (FR-061) trong `backend/armarius/application/use_cases/inbox.py`, bắn `leo-thang.muc-3` lên kênh người chủ
+- [X] T142 [US6] Gắn vòng quét canh gác vào vòng đời ứng dụng trong `backend/armarius/main.py` và `backend/armarius/presentation/container.py`
 
 ### Phục hồi sự cố
 
-- [ ] T143 [US6] Tuyên treo đầy đủ (FR-062): đóng lượt chạy ma, kéo đầu việc về *chờ làm*, gọi lại đúng người phụ trách trỏ vào việc kế tiếp — trong `backend/armarius/application/use_cases/liveness_watchdog.py`
-- [ ] T144 [US6] Thử lại giãn dần với động cơ *chờ hành động phục hồi*, không tính đình trệ (FR-063), trong `backend/armarius/application/use_cases/wake_engine.py`
-- [ ] T145 [US6] Thợ ngoại tuyến → đầu việc về *bị chặn*, báo Trưởng dự án; Trưởng dự án ngoại tuyến → báo thẳng người chủ (FR-064) trong `backend/armarius/application/use_cases/liveness.py`
-- [ ] T146 [US6] Nhắc ba bậc thưa dần theo ngưỡng dự án (FR-065) trong `backend/armarius/application/use_cases/inbox.py`, mỗi bậc bắn `hop-thu.nhac` lên kênh người chủ
-- [ ] T147 [US6] Cho chạy tiếp mọi nhánh việc không phụ thuộc vào quyết định người chủ đang chờ (FR-066) trong `backend/armarius/application/use_cases/orchestrator.py` — dò các đầu việc mà chuỗi phụ thuộc của chúng **không** đi qua mục đang chờ, giữ chúng chạy bình thường; dự án đậu lại đúng chỗ chờ chứ không đứng cả bảng
-- [ ] T148 [US6] Xếp hàng tranh chấp thợ/tài nguyên theo ưu tiên → hạn chót → tuổi đời kèm nâng dần (FR-067) trong `backend/armarius/domain/services/push_reason_rules.py`
-- [ ] T149 [US6] Dựng lại động cơ đẩy cho mọi đầu việc chưa đóng lúc khởi động, lượt chạy hỏng xử như treo (FR-068), trong `backend/armarius/application/use_cases/stall_watchdog.py`
-- [ ] T150 [US6] Xử lý thành phẩm mất hoặc hỏng lúc chuẩn bị công nhận (FR-069) trong `backend/armarius/application/use_cases/approvals.py`
-- [ ] T151 [US6] Cổng thay đổi lớn (FR-075) và chuyển tiếp sạch khi tái hoạch định (FR-076) trong `backend/armarius/application/use_cases/plans.py`, kèm lối vào `POST /agent/projects/{id}/change-request` và `POST /agent/tasks/{id}/recovery` trong `backend/armarius/presentation/api/agent.py`
+- [X] T143 [US6] Tuyên treo đầy đủ (FR-062): đóng lượt chạy ma, kéo đầu việc về *chờ làm*, gọi lại đúng người phụ trách trỏ vào việc kế tiếp — trong `backend/armarius/application/use_cases/liveness_watchdog.py`
+- [X] T144 [US6] Thử lại giãn dần với động cơ *chờ hành động phục hồi*, không tính đình trệ (FR-063), trong `backend/armarius/application/use_cases/wake_engine.py`
+- [X] T145 [US6] Thợ ngoại tuyến → đầu việc về *bị chặn*, báo Trưởng dự án; Trưởng dự án ngoại tuyến → báo thẳng người chủ (FR-064) trong `backend/armarius/application/use_cases/liveness.py`
+- [X] T146 [US6] Nhắc ba bậc thưa dần theo ngưỡng dự án (FR-065) trong `backend/armarius/application/use_cases/inbox.py`, mỗi bậc bắn `hop-thu.nhac` lên kênh người chủ
+- [X] T147 [US6] Cho chạy tiếp mọi nhánh việc không phụ thuộc vào quyết định người chủ đang chờ (FR-066) trong `backend/armarius/application/use_cases/orchestrator.py` — dò các đầu việc mà chuỗi phụ thuộc của chúng **không** đi qua mục đang chờ, giữ chúng chạy bình thường; dự án đậu lại đúng chỗ chờ chứ không đứng cả bảng
+- [X] T148 [US6] Xếp hàng tranh chấp thợ/tài nguyên theo ưu tiên → hạn chót → tuổi đời kèm nâng dần (FR-067) trong `backend/armarius/domain/services/push_reason_rules.py`
+- [X] T149 [US6] Dựng lại động cơ đẩy cho mọi đầu việc chưa đóng lúc khởi động, lượt chạy hỏng xử như treo (FR-068), trong `backend/armarius/application/use_cases/stall_watchdog.py`
+- [X] T150 [US6] Xử lý thành phẩm mất hoặc hỏng lúc chuẩn bị công nhận (FR-069) trong `backend/armarius/application/use_cases/approvals.py`
+- [X] T151 [US6] Cổng thay đổi lớn (FR-075) và chuyển tiếp sạch khi tái hoạch định (FR-076) trong `backend/armarius/application/use_cases/plans.py`, kèm lối vào `POST /agent/projects/{id}/change-request` và `POST /agent/tasks/{id}/recovery` trong `backend/armarius/presentation/api/agent.py`
 
 ### Giao diện
 
-- [ ] T152 [US6] Cờ đình trệ kèm lý do trên thẻ đầu việc trong `frontend/src/pages/ProjectBoard.tsx`
-- [ ] T153 [P] [US6] Bậc nhắc và hồ sơ đã thử của mục leo thang trong `frontend/src/pages/Inbox.tsx` kèm chuỗi hiển thị trong `frontend/src/i18n/vi.ts` và `frontend/src/i18n/en.ts`
+- [X] T152 [US6] Cờ đình trệ kèm lý do trên thẻ đầu việc trong `frontend/src/pages/ProjectBoard.tsx`
+- [X] T153 [P] [US6] Bậc nhắc và hồ sơ đã thử của mục leo thang trong `frontend/src/pages/Inbox.tsx` kèm chuỗi hiển thị trong `frontend/src/i18n/vi.ts` và `frontend/src/i18n/en.ts`
 
 ### Kiểm chứng chạy thật
 
-- [ ] T154 [US6] Dựng lại hai vùng chứa, chạy trọn tám bước của Kịch bản 6 trong `specs/001-van-hanh-du-an/quickstart.md`, gồm giết lượt chạy giữa chừng và khởi động lại máy chủ
+- [X] T154 [US6] Dựng lại hai vùng chứa, chạy trọn tám bước của Kịch bản 6 trong `specs/001-van-hanh-du-an/quickstart.md`, gồm giết lượt chạy giữa chừng và khởi động lại máy chủ
 
 **Chốt chặn**: cả sáu câu chuyện chạy được độc lập.
 

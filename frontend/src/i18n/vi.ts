@@ -378,6 +378,16 @@ export const vi = {
     sendBack: 'Trả lại sửa',
     rejectReasonPrompt: 'Trả lại thì phải nói rõ cần sửa gì — thợ sẽ nhận đúng câu này làm việc kế tiếp:',
     reminderTier: 'Đã nhắc lần {{tier}}',
+    // FR-061 — hồ sơ đã thử, đi kèm mỗi lần leo thang lên người chủ. Không có nó thì
+    // người chủ phải tự đi dựng lại xem hệ đã làm gì rồi mới trả lời được.
+    dossier: {
+      title: 'Hệ thống đã thử những gì',
+      cause: 'Kẹt vì',
+      attempts: 'Tự gọi lại {{count}} lần mà đầu việc không nhúc nhích',
+      leaderAsked: 'Trưởng dự án đã được hỏi và vẫn chưa gỡ được',
+      lastAttempt: 'Lần thử gần nhất: {{when}}',
+      question: 'Điều cần bạn quyết',
+    },
     kind: {
       output_acceptance: 'Công nhận đầu ra',
       plan_approval: 'Duyệt kế hoạch',

@@ -32,7 +32,6 @@ from armarius.domain.entities.task import (
     SIGNATURE_REQUIRED_STATUSES,
     TERMINAL_STATUSES,
     Task,
-    TaskDrive,
     TaskPriority,
     TaskStatus,
     assert_assignable,
@@ -46,11 +45,18 @@ from armarius.domain.services.approval_rules import (
     is_closable,
     missing_signatures,
 )
+from armarius.domain.services.push_reason_rules import (
+    QueueCandidate,
+    keeps_running,
+    provisional_drive,
+    queue_order,
+)
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
-from armarius.shared.clock import utcnow
+from armarius.shared.clock import as_utc, utcnow
 
 if TYPE_CHECKING:  # pragma: no cover — typing only, keeps the import graph acyclic
     from armarius.application.use_cases.inbox import InboxService
+    from armarius.application.use_cases.push_reason import PushReasonService
     from armarius.application.use_cases.task_log import TaskLogService
 
 EVENT_TASK_STATUS = "dau-viec.doi-trang-thai"
@@ -97,6 +103,7 @@ class TaskService:
         task_logs: TaskLogService | None = None,
         control_bus: TopicEventBus | None = None,
         inbox: InboxService | None = None,
+        push_reasons: PushReasonService | None = None,
     ) -> None:
         self._uow = uow_factory
         self._wake = wake_engine
@@ -106,6 +113,11 @@ class TaskService:
         self._logs = task_logs
         self._bus = control_bus
         self._inbox = inbox
+        # The authoritative drive writer (FR-056). Every status change here leaves a
+        # *provisional* drive inside its own transaction, then asks this to settle it
+        # once the wakes and inbox items that change the answer have actually been
+        # created — see `_settle_drive`.
+        self._push_reasons = push_reasons
 
     async def create(
         self,
@@ -220,7 +232,7 @@ class TaskService:
             deps_satisfied = await uow.dependencies.all_blockers_done(task_id)
             # DRAFT → TODO (raises on illegal transition or an unfinished blocked_by).
             task.transition_to(TaskStatus.TODO, now, deps_satisfied=deps_satisfied)
-            task.drive = TaskDrive.WAKE_SCHEDULED if task.assigned_marius_id else None
+            _mark_provisional(task, now)
             task.updated_at = now
             updated = await uow.tasks.update(task)
             await self._log(
@@ -245,6 +257,7 @@ class TaskService:
                 source=WakeSource.ASSIGNMENT,
                 reason="you were assigned to this task",
             )
+        await self._settle_drive(task_id)
         return updated
 
     async def reject_proposed(self, task_id: UUID, *, reason: str | None = None) -> Task:
@@ -258,7 +271,7 @@ class TaskService:
             task.transition_to(
                 TaskStatus.CANCELLED, now, reason=reason or "người chủ không duyệt đề xuất"
             )
-            task.drive = None
+            _mark_provisional(task, now)
             task.updated_at = now
             updated = await uow.tasks.update(task)
             await self._log(
@@ -275,7 +288,19 @@ class TaskService:
 
         await self._resolve_scope_question(task_id)
         await self._publish_status(project_id, task_id, TaskStatus.CANCELLED)
+        await self._settle_drive(task_id)
         return updated
+
+    async def _settle_drive(self, task_id: UUID) -> None:
+        """Replace the provisional drive with the verified one (FR-056, QĐ-4).
+
+        Called **after** the transaction commits and after any wake has been enqueued,
+        because those are the rows that decide the answer. Doing it inside the status
+        transaction would ask the question a few lines too early and get a truthful
+        'nothing is moving this' about a task whose wake was one statement away.
+        """
+        if self._push_reasons is not None:
+            await self._push_reasons.refresh(task_id)
 
     async def get(self, task_id: UUID) -> Task | None:
         async with self._uow() as uow:
@@ -347,7 +372,7 @@ class TaskService:
             ):
                 promoted_from = str(task.status)
                 task.transition_to(TaskStatus.TODO, now, deps_satisfied=True)
-            task.drive = TaskDrive.WAKE_SCHEDULED
+            _mark_provisional(task, now)
             task.updated_at = now
             await uow.tasks.update(task)
             actor_kind = ActorKind.USER if user_id else ActorKind.SYSTEM
@@ -383,6 +408,7 @@ class TaskService:
             source=WakeSource.ASSIGNMENT,
             reason="you were assigned to this task",
         )
+        await self._settle_drive(task_id)
         return task
 
     # ── the worker's two ways of speaking about its own workload (FR-071, FR-072) ──
@@ -450,8 +476,9 @@ class TaskService:
                     body=reason,
                 )
             )
-            task.drive = TaskDrive.WAKE_SCHEDULED
-            task.updated_at = utcnow()
+            now = utcnow()
+            _mark_provisional(task, now)
+            task.updated_at = now
             updated = await uow.tasks.update(task)
             await self._log(
                 uow,
@@ -525,7 +552,7 @@ class TaskService:
                 signatures_complete=signed,
                 missing_signatures=missing,
             )
-            task.drive = _drive_for(target)
+            _mark_provisional(task, now)
             task.updated_at = now
             # Every route out of review lands here, including the ones nobody thought to
             # enumerate — which is why the question is asked of the move rather than of
@@ -596,7 +623,81 @@ class TaskService:
                     reason="cả đợt việc đã xong",
                     source=WakeSource.TASK_DONE,
                 )
+        # Last, on purpose: the drive depends on the wakes and inbox items the block
+        # above just created, and asking before them would settle on a stale answer.
+        await self._settle_drive(task_id)
+        for freed in unlocked:
+            # An unblocked task changed drive too — the thing it was waiting on is gone.
+            await self._settle_drive(freed.id)
         return updated
+
+    async def ready_queue(self, project_id: UUID) -> list[Task]:
+        """What to hand out next on this project, in order (FR-066, FR-067).
+
+        Two rules, both of them about fairness rather than throughput.
+
+        The **order** is priority, then deadline, then age, with the wait itself promoting a
+        task (`queue_order`). Without that promotion a *low* task on a busy project is never
+        reached: there is always another *high* one, and "we will get to it" becomes
+        something the board says forever.
+
+        The **membership** excludes only what genuinely stands behind a pending patron
+        decision — the parked tasks and their downstream chain, nothing else (FR-066). The
+        project stops at the question, not across the whole board, so a Friday afternoon
+        that goes unanswered does not cost the following week.
+
+        Ready means *todo* with every blocker done and nobody on it yet. A task already
+        being worked on is not queued for a worker; it has one.
+        """
+        async with self._uow() as uow:
+            tasks = list(await uow.tasks.list_by_project(project_id))
+            edges = [
+                (e.task_id, e.blocks_task_id)
+                for e in await uow.dependencies.list_by_project(project_id)
+                if e.task_id is not None and e.blocks_task_id is not None
+            ]
+            parked = [
+                t.id
+                for t in tasks
+                if t.id in {
+                    i.task_id
+                    for i in await uow.inbox.list_pending()
+                    if i.task_id is not None
+                }
+            ]
+            unfinished = {
+                t.id for t in tasks if t.status not in TERMINAL_STATUSES
+            }
+
+        ready = [
+            t
+            for t in tasks
+            if t.status is TaskStatus.TODO
+            and t.assigned_marius_id is None
+            and not any(
+                blocker in unfinished
+                for task_id, blocker in edges
+                if task_id == t.id
+            )
+        ]
+        running = keeps_running(
+            [t.id for t in ready], waiting_on=parked, edges=edges
+        )
+        by_id = {t.id: t for t in ready}
+        ordered = queue_order(
+            [
+                QueueCandidate(
+                    task_id=t.id,
+                    identifier=t.identifier or str(t.id),
+                    priority=str(t.priority),
+                    due_date=as_utc(t.due_date),
+                    created_at=as_utc(t.created_at),
+                )
+                for t in (by_id[tid] for tid in running)
+            ],
+            now=utcnow(),
+        )
+        return [by_id[c.task_id] for c in ordered]
 
     async def _project_has_open_tasks(self, project_id: UUID | None) -> bool:
         if project_id is None:
@@ -616,7 +717,7 @@ class TaskService:
             before = str(task.status)
             now = utcnow()
             task.reopen(now, reason=reason)
-            task.drive = _drive_for(task.status)
+            _mark_provisional(task, now)
             # A closed task carries the two signatures that closed it. Reopening it means
             # the work is not finished after all, so they stop speaking for it — otherwise
             # reopen would be a way back into *done* with nobody looking again.
@@ -636,6 +737,7 @@ class TaskService:
             project_id = updated.project_id
 
         await self._publish_status(project_id, task_id, updated.status)
+        await self._settle_drive(task_id)
         return updated
 
     async def set_next_action(self, task_id: UUID, next_action: str | None) -> Task:
@@ -714,7 +816,7 @@ class TaskService:
                 TaskStatus.DONE,
                 TaskStatus.CANCELLED,
             ):
-                task.drive = TaskDrive.BLOCKED_BY_TASK
+                _mark_provisional(task, utcnow())
                 await uow.tasks.update(task)
             await uow.commit()
             return created
@@ -757,15 +859,20 @@ class TaskService:
             if edge.task_id is None:
                 continue
             dependent = await uow.tasks.get(edge.task_id)
-            if dependent is None or dependent.drive is not TaskDrive.BLOCKED_BY_TASK:
+            if dependent is None or dependent.status in TERMINAL_STATUSES:
                 continue
+            # Asked of the dependency edges, never of the drive. This used to read
+            # `drive is BLOCKED_BY_TASK` as shorthand for "was blocked", which made a
+            # cached, derived field the gatekeeper of a real question — so a task whose
+            # drive said anything else stayed locked forever with every blocker finished.
+            # The edges are the fact; the drive is a summary of it.
             if not await uow.dependencies.all_blockers_done(dependent.id):
                 continue
             now = utcnow()
             before = str(dependent.status)
             if dependent.status in (TaskStatus.BACKLOG, TaskStatus.BLOCKED):
                 dependent.transition_to(TaskStatus.TODO, now, deps_satisfied=True)
-            dependent.drive = TaskDrive.WAKE_SCHEDULED if dependent.assigned_marius_id else None
+            _mark_provisional(dependent, now)
             dependent.updated_at = now
             await uow.tasks.update(dependent)
             await self._log(
@@ -909,15 +1016,14 @@ def _actor_kind(user_id: str | None, marius_id: UUID | None) -> ActorKind:
     return ActorKind.SYSTEM
 
 
-def _drive_for(status: TaskStatus) -> TaskDrive | None:
-    """The drive a status implies on its own. Story 6 refines this with live run state;
-    what matters here is that a task never silently ends up with no drive at all."""
-    if status in (TaskStatus.DONE, TaskStatus.CANCELLED):
-        return None
-    if status is TaskStatus.BLOCKED:
-        return TaskDrive.BLOCKED_BY_TASK
-    if status is TaskStatus.DRAFT:
-        return TaskDrive.WAITING_PATRON
-    if status is TaskStatus.IN_PROGRESS:
-        return TaskDrive.RUN_ACTIVE
-    return TaskDrive.WAKE_SCHEDULED
+def _mark_provisional(task: Task, now: datetime) -> None:
+    """Stamp the drive a status implies, pending the authoritative refresh (FR-056).
+
+    Always inside the transaction that changed the status, so a task is never committed
+    with a drive left over from the status it used to be in. The value is deliberately
+    short-lived: `provisional_drive` gives every placeholder a clock precisely because it
+    is a guess, and a guess that never expires is how a forgotten task stays invisible.
+    """
+    reason = provisional_drive(task.status, now=now)
+    task.drive = reason.kind if reason else None
+    task.drive_expires_at = reason.expires_at if reason else None

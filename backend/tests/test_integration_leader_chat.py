@@ -15,6 +15,11 @@ import asyncio
 
 import pytest
 
+from armarius.application.ports.adapter import (
+    AdapterCapabilities,
+    Diagnostics,
+    ExecResult,
+)
 from armarius.application.use_cases.leader_chat import LeaderChatService
 from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.mariuses import MariusService
@@ -24,7 +29,8 @@ from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.domain.entities.leader_chat import ChatState, LeaderChatError
-from armarius.domain.entities.run import RunStatus
+from armarius.domain.entities.marius import Liveness
+from armarius.domain.entities.run import RunStatus, WakeSource
 from armarius.domain.entities.task import TaskStatus
 from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
@@ -205,3 +211,84 @@ async def test_proposed_task_reject_cancels(uow_factory) -> None:
     )
     rejected = await tasks.reject_proposed(draft.id)
     assert rejected.status == TaskStatus.CANCELLED
+
+
+# ── một lượt gọi hụt không phải bằng chứng agent còn sống (FR-064) ──────────────
+
+
+class UnreachableAdapter:
+    """Một bộ nối mà cổng không tới được.
+
+    Điểm quan trọng: nó **trả về** FAILED chứ không ném lỗi — đúng như bộ nối thật làm khi
+    gặp lỗi mạng. Chính hình thù đó là chỗ lỗi từng nấp: nhánh ném lỗi để nguyên trạng
+    thái sống, còn nhánh trả về FAILED thì lại ghi nhận một tín hiệu sống.
+    """
+
+    type = "unreachable"
+    capabilities = AdapterCapabilities(resumable=True, streaming=True, transport="process")
+
+    async def execute(self, ctx):  # noqa: ANN001
+        return ExecResult(status=RunStatus.FAILED, error="could not reach the gateway")
+
+    async def test_environment(self, config: dict):  # noqa: ANN001, ARG002
+        return Diagnostics(ok=False, detail="gateway unreachable")
+
+
+@pytest.mark.asyncio
+async def test_a_wake_that_could_not_be_delivered_does_not_mark_the_leader_alive(
+    uow_factory,
+) -> None:
+    """Quan sát được trên dịch vụ thật, không phải suy ra.
+
+    Bộ nối báo cổng không tới được bằng cách **trả về** FAILED, nên dòng ghi tín hiệu sống
+    lại đánh dấu Trưởng dự án *trực tuyến* đúng vì lần gọi tới nó đã hụt. Hệ quả là FR-064
+    không bao giờ chạm tới được: bất cứ thứ gì cứ gọi một Trưởng dự án đã chết — một lần
+    leo thang, một lượt rà theo nhịp — đều kéo nó về trực tuyến, nên nó không bao giờ suy
+    xuống ngoại tuyến, nên người chủ không bao giờ được báo là dự án mất người điều phối.
+    """
+    bus = TopicEventBus()
+    registry = InMemoryAdapterRegistry()
+    registry.register(UnreachableAdapter())  # type: ignore[arg-type]
+    liveness = LivenessEngine(uow_factory, FakeLivenessProbe())
+    chat = LeaderChatService(
+        uow_factory,
+        registry=registry,
+        control_bus=bus,
+        liveness=liveness,
+        base_url="http://api",
+        run_timeout_seconds=30,
+    )
+    workspaces = WorkspaceService(uow_factory)
+    projects = ProjectService(uow_factory)
+    mariuses = MariusService(uow_factory)
+    ws = await workspaces.create_workspace("WS")
+    project = await projects.create_project(ws.id, "Apollo", roles=_roster())
+    leader = await mariuses.register(
+        workspace_id=ws.id, name="Lead", role="Leader",
+        skills=[], adapter_type="unreachable", adapter_config={},
+    )
+    await projects.grant_seat(project.id, "leader", leader.id, system=True)
+
+    # Kéo về sát ranh giới rồi gọi một lượt hụt.
+    async with uow_factory() as uow:
+        stored = await uow.mariuses.get(leader.id)
+        stored.liveness = Liveness.CHECKING
+        stored.probe_attempts = 2
+        await uow.mariuses.update(stored)
+        await uow.commit()
+
+    await chat.notify(
+        project_id=project.id,
+        text="Đầu việc đang đình trệ, cần bạn quyết.",
+        source=WakeSource.NUDGE,
+        reason="leo thang Mức 2",
+    )
+    await _settle_chat(chat, project.id)
+
+    async with uow_factory() as uow:
+        after = await uow.mariuses.get(leader.id)
+    assert after is not None
+    assert after.liveness is not Liveness.ONLINE, (
+        "một lần gọi hụt được ghi nhận là tín hiệu sống, nên Trưởng dự án đã chết vẫn "
+        "mãi mãi trực tuyến và người chủ không bao giờ được báo (FR-064)"
+    )

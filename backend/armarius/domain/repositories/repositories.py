@@ -21,6 +21,7 @@ from armarius.domain.entities.onboarding import OnboardingSession
 from armarius.domain.entities.orchestration_sweep import OrchestrationSweep
 from armarius.domain.entities.plan import Plan
 from armarius.domain.entities.project_context import ProjectContext
+from armarius.domain.entities.push_reason import TaskPushReason
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import Run, RunEvent
 from armarius.domain.entities.seat_grant import SeatGrant
@@ -223,6 +224,56 @@ class TaskRepository(ABC):
     @abstractmethod
     async def update(self, task: Task) -> Task: ...
 
+    @abstractmethod
+    async def list_stall_candidates(
+        self, now: datetime, *, limit: int = 500
+    ) -> Sequence[Task]:
+        """Every watched task the safety net has an opinion about (FR-057): its drive is
+        missing, its drive is past its deadline, **or** it is currently flagged.
+
+        That third clause is not padding. Without it the sweep can only ever raise alarms,
+        never lower them: a flagged task that gets picked back up gains a live drive, drops
+        out of the first two clauses, and keeps a red flag on the board forever. An alarm
+        with no route back down is an alarm people learn to ignore.
+
+        The one query the stall sweep runs, across every workspace, forever. It reads three
+        indexed columns on `tasks` and joins nothing — which is the whole reason the drive's
+        deadline lives on the task row rather than beside the ladder state.
+
+        ``limit`` bounds one pass, not the problem: a service that comes up to ten thousand
+        dropped tasks should raise the first few hundred alarms now and the rest next tick,
+        rather than hold a transaction open over the entire table.
+        """
+
+    @abstractmethod
+    async def list_open(self, *, limit: int = 1000) -> Sequence[Task]:
+        """Every watched task, drive or no drive. Used once at startup to rebuild drives
+        from the last durable state (FR-068), never on the hot path."""
+
+
+class TaskPushReasonRepository(ABC):
+    """The recovery ladder standing on a task (spec 001 §9, FR-059 → FR-061).
+
+    Keyed by task, one row at most — ``upsert`` rather than add/update because the caller
+    never cares whether a ladder already existed, only where it stands now.
+    """
+
+    @abstractmethod
+    async def get_for_task(self, task_id: UUID) -> TaskPushReason | None: ...
+
+    @abstractmethod
+    async def upsert(self, reason: TaskPushReason) -> TaskPushReason: ...
+
+    @abstractmethod
+    async def clear_for_task(self, task_id: UUID) -> None:
+        """Drop the ladder — the task recovered, or closed. Silent when there is none."""
+
+    @abstractmethod
+    async def list_for_tasks(self, task_ids: Sequence[UUID]) -> Sequence[TaskPushReason]:
+        """One query for a whole batch. The stall sweep reads ladders for the handful of
+        tasks its cheap scan flagged, and doing that one round trip per task would put a
+        fan-out on a loop that never stops."""
+
 
 class ChecklistItemRepository(ABC):
     """Acceptance criteria — the yardstick a task is measured against (FR-019).
@@ -321,6 +372,17 @@ class RunRepository(ABC):
         ``has_active_for_task``, asked once for a whole board."""
 
     @abstractmethod
+    async def list_silent_active(
+        self, silent_since: datetime, *, limit: int = 200
+    ) -> Sequence[Run]:
+        """Runs still marked live that have emitted nothing since ``silent_since`` (FR-062).
+
+        Asked across every workspace at once, because a hung run is a property of the run
+        and not of any project: walking projects to find them would make the reaper's cost
+        scale with the number of projects rather than with the number of sick runs.
+        """
+
+    @abstractmethod
     async def has_active_for_task(self, task_id: UUID) -> bool:
         """Whether *anyone* is mid-run on this task.
 
@@ -356,6 +418,16 @@ class WakeupRepository(ABC):
     async def list_active_for(
         self, marius_id: UUID, task_id: UUID
     ) -> Sequence[WakeupRequest]: ...
+
+    @abstractmethod
+    async def list_pending_for_task(self, task_id: UUID) -> Sequence[WakeupRequest]:
+        """Every wake still owed on this task, whoever it is addressed to.
+
+        The safety net's question is whether *anything* is booked to touch this task,
+        not whether one particular agent has a wake pending — a task can be reassigned
+        between the booking and the sweep, and asking about the current assignee would
+        call it dropped while the old assignee's wake was still queued.
+        """
 
     @abstractmethod
     async def list_coalesced_into(self, run_id: UUID) -> Sequence[WakeupRequest]:
@@ -480,6 +552,16 @@ class InboxRepository(ABC):
 
     @abstractmethod
     async def list_pending_for_task(self, task_id: UUID) -> Sequence[InboxItem]: ...
+
+    @abstractmethod
+    async def list_pending(self, *, limit: int = 500) -> Sequence[InboxItem]:
+        """Every item still waiting, across every workspace, oldest first (FR-065).
+
+        The reminder ladder's one query. Not scoped to a recipient on purpose: the
+        question is 'what has been waiting too long', and asking it per patron would
+        make the loop's cost scale with the number of patrons rather than with the
+        number of things actually overdue.
+        """
 
 
 class ProjectContextRepository(ABC):
