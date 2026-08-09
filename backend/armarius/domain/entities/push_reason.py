@@ -48,7 +48,22 @@ class TaskPushReason:
         )
 
     def apply(self, state: EscalationState, *, now: datetime) -> None:
-        """Write a rung the rules decided back onto the row."""
+        """Write a rung the rules decided back onto the row.
+
+        The handover budget lives and dies with the Level-1 budget, and it has to, because
+        the patron's dossier prints the two side by side. `advance` already owns that
+        lifetime — it hands back a fresh budget when the task made real progress, when the
+        Leader decided, and when the cause changed — so the handover count is cleared off
+        the same decision rather than from a second place that could disagree with it.
+
+        Miss this and the count stops measuring *this problem* and starts measuring the
+        task's whole history: one unreachable Leader, months ago, and every later stall
+        arrives at the patron labelled "the Leader was never reached" — while the Leader is
+        sitting there answering. That is the exact lie the counter was added to prevent,
+        told along the time axis instead of the column axis.
+        """
+        if state.level is EscalationLevel.NONE or (state.cause or "") != (self.cause or ""):
+            self.handover_attempts = 0
         self.level = state.level
         self.attempts = state.attempts
         self.cause = state.cause or None

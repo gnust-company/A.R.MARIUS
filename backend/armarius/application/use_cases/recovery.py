@@ -57,6 +57,14 @@ EVENT_LEVEL_3 = "leo-thang.muc-3"
 # for why it is minutes and not seconds.
 _BACKOFF_BASE_SECONDS = 300
 
+# How many times an undelivered Mức 2 handover is retried before the patron is told the
+# Leader could not be reached. Deliberately *not* the Level-1 budget, even though three is
+# the same number today: that budget answers "how long do we let an agent keep trying",
+# which a project may reasonably raise to ten for agents that sleep a lot, and raising it
+# must not silently make a patron wait through ten failed calls to a Leader before hearing
+# that their Leader is gone. Different question, different knob.
+_HANDOVER_ATTEMPTS = 3
+
 # Said once, here, so the task record and the notification cannot drift apart.
 _ASSIGNEE_OFFLINE = "người phụ trách ngoại tuyến"
 
@@ -130,9 +138,7 @@ class RecoveryEscalator:
             await uow.push_reasons.upsert(ladder)
             await uow.commit()
 
-        await self._act(
-            task, ladder, cause=cause, now=now, climbed=before != state.level, cap=cap
-        )
+        await self._act(task, ladder, cause=cause, now=now, climbed=before != state.level)
 
     async def leader_decided(
         self, task_id: UUID, *, action: str, now: datetime | None = None
@@ -187,7 +193,6 @@ class RecoveryEscalator:
         cause: str,
         now: datetime,
         climbed: bool,
-        cap: int,
     ) -> None:
         if climbed:
             await self._log.record(
@@ -204,7 +209,7 @@ class RecoveryEscalator:
             await self._rewake_assignee(task, cause=cause, retry_at=ladder.next_retry_at)
         elif ladder.level is EscalationLevel.LEVEL_2 and climbed:
             delivered = await self._ask_leader(task, ladder, cause=cause)
-            await self._record_handover(task, ladder, delivered=delivered, cap=cap, now=now)
+            await self._record_handover(task, ladder, delivered=delivered, now=now)
         elif ladder.level is EscalationLevel.LEVEL_3 and climbed:
             await self._ask_patron(task, ladder, cause=cause, now=now)
 
@@ -277,7 +282,6 @@ class RecoveryEscalator:
         ladder: TaskPushReason,
         *,
         delivered: bool,
-        cap: int,
         now: datetime,
     ) -> None:
         """Write down whether the Mức 2 question actually reached the Leader.
@@ -311,7 +315,7 @@ class RecoveryEscalator:
         # Out of handover budget: leave the rung standing so the next sweep climbs to the
         # patron. The dossier reads `handover_attempts` and will say the Leader was never
         # reached.
-        exhausted = not delivered and spent >= cap
+        exhausted = not delivered and spent >= _HANDOVER_ATTEMPTS
 
         async with self._uow() as uow:
             fresh = await uow.push_reasons.get_for_task(task.id)
@@ -339,7 +343,7 @@ class RecoveryEscalator:
             "task %s %s",
             task.project_id,
             spent,
-            cap,
+            _HANDOVER_ATTEMPTS,
             task.id,
             "goes to the patron next sweep" if exhausted else "will ask again",
         )

@@ -356,6 +356,81 @@ async def test_a_handover_that_lands_on_a_retry_still_counts_as_asked(
     assert escalations and escalations[0].attempt_dossier.get("leader_asked") is True
 
 
+@pytest.mark.asyncio
+async def test_a_new_cause_gets_a_fresh_handover_budget(uow_factory) -> None:
+    """FR-060 counts a budget **per cause**, and the handover budget is no exception.
+
+    The two numbers sit beside each other in the patron's dossier, so a handover count that
+    outlives its cause makes the dossier charge the new problem for calls that belong to the
+    old one — and gets the patron to the "your Leader is gone" screen on the first hiccup of
+    a problem the system has barely started on.
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=UnreachableNotifier(),
+        bus=TopicEventBus(),
+    )
+
+    for hour in range(5):  # burn the Level-1 budget, then miss two handovers
+        await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
+    spent = await _ladder(uow_factory, task.id)
+    assert spent is not None and spent.handover_attempts == 2, spent
+
+    await escalator.climb(
+        task, cause="thành phẩm không còn trong kho", now=T0 + timedelta(hours=5)
+    )
+
+    ladder = await _ladder(uow_factory, task.id)
+    assert ladder is not None and ladder.handover_attempts == 0, (
+        "nguyên nhân mới bị tính tiền cho những lần gọi hụt của nguyên nhân cũ"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_leader_deciding_gives_the_handover_budget_back(uow_factory) -> None:
+    """A Leader who just decided is the strongest possible proof they can be reached.
+
+    Leaving the failed calls on the record after that means the next stall reaches the
+    patron on one more miss — and `notify` answers False for a Leader that is merely
+    mid-turn, which happens constantly — carrying a dossier that tells them to go restart a
+    Leader that is sitting there working.
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    stuck = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=UnreachableNotifier(),
+        bus=TopicEventBus(),
+    )
+    for hour in range(5):
+        await stuck.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
+
+    await stuck.leader_decided(
+        task.id, action="giao lại cho Bob", now=T0 + timedelta(hours=5)
+    )
+
+    ladder = await _ladder(uow_factory, task.id)
+    assert ladder is not None and ladder.handover_attempts == 0, (
+        "Trưởng dự án vừa quyết xong mà hệ vẫn nhớ là không gọi được"
+    )
+
+    # And the dossier of a *later* stall must not inherit the old verdict.
+    reachable = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(),
+        bus=TopicEventBus(),
+    )
+    for hour in range(6, 18):
+        await reachable.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
+
+    async with uow_factory() as uow:
+        items = list(await uow.inbox.list_for_recipient("patron-1"))
+    escalations = [i for i in items if i.kind is InboxItemKind.ESCALATION]
+    assert escalations, "leo hết thang mà người chủ không nhận được gì"
+    assert escalations[0].attempt_dossier.get("leader_asked") is True, (
+        "người chủ bị bảo đi dựng lại một Trưởng dự án vừa trả lời xong"
+    )
+
+
 # ── Mức 3: hồ sơ đã thử (FR-061) ────────────────────────────────────────────────
 
 
