@@ -200,7 +200,8 @@ class RecoveryEscalator:
         if ladder.level is EscalationLevel.LEVEL_1:
             await self._rewake_assignee(task, cause=cause, retry_at=ladder.next_retry_at)
         elif ladder.level is EscalationLevel.LEVEL_2 and climbed:
-            await self._ask_leader(task, ladder, cause=cause)
+            if not await self._ask_leader(task, ladder, cause=cause):
+                await self._hold_below_level_2(task, ladder, cause=cause, now=now)
         elif ladder.level is EscalationLevel.LEVEL_3 and climbed:
             await self._ask_patron(task, ladder, cause=cause, now=now)
 
@@ -243,11 +244,17 @@ class RecoveryEscalator:
             logger.exception("level-1 re-wake failed for task %s", task.id)
             await self._mark_waiting_on_recovery(task.id, until=retry_at)
 
-    async def _ask_leader(self, task: Task, ladder: TaskPushReason, *, cause: str) -> None:
-        """Mức 2 — the Leader decides an explicit recovery action."""
+    async def _ask_leader(self, task: Task, ladder: TaskPushReason, *, cause: str) -> bool:
+        """Mức 2 — the Leader decides an explicit recovery action.
+
+        Returns whether the question actually reached them. The notifier answers False for
+        a Leader that is offline or mid-turn; it does not raise, so a caller that ignores
+        the answer cannot tell "asked" from "tried to ask" — and this rung is climbed
+        **once**, so that difference is the whole rung.
+        """
         if self._notifier is None or task.project_id is None:  # pragma: no cover
-            return
-        await self._notifier.notify(
+            return False
+        return await self._notifier.notify(
             project_id=task.project_id,
             text=(
                 f"Đầu việc {task.identifier or task.id} — {task.title} đang đình trệ: "
@@ -259,6 +266,55 @@ class RecoveryEscalator:
             ),
             source=WakeSource.NUDGE,
             reason=f"leo thang Mức 2: {cause}",
+        )
+
+    async def _hold_below_level_2(
+        self, task: Task, ladder: TaskPushReason, *, cause: str, now: datetime
+    ) -> None:
+        """The Mức 2 question did not reach the Leader — so Mức 2 has not happened yet.
+
+        The rung was already written and committed before anyone tried to deliver it, and
+        `_ask_leader` only runs on the sweep that *climbs* — so leaving the rung standing on
+        an undelivered question spends the whole of Level 2 on one failed call. Every later
+        sweep finds the ladder already at Level 2, climbs it straight to Level 3, and the
+        patron is handed a dossier saying the Leader was asked and could not fix it. The
+        Leader was never asked. That is the one thing an escalation record must not do:
+        report a step that did not happen, to the person whose attention it is spending.
+
+        So the rung is put back down — to Level 1 with its budget still spent, which is not
+        a retreat but the truthful position: the system has run out of its own attempts and
+        has not yet handed over. The next sweep past the backoff climbs to Level 2 again and
+        asks again, because `advance` sends a spent Level 1 straight up.
+
+        The bound this accepts, stated plainly: while the Leader stays unreachable, the task
+        never reaches the patron *through this ladder*. It is not silence — the task keeps
+        its stall flag and its reason on the board, and a Leader that is genuinely gone is
+        reported to the patron by FR-064 on its own path. The alternative is climbing on a
+        lie, and a dossier that lies once is a dossier nobody trusts afterwards.
+        """
+        gap = backoff_seconds(ladder.attempts, base_seconds=self._backoff_base)
+        async with self._uow() as uow:
+            fresh = await uow.push_reasons.get_for_task(task.id)
+            if fresh is None:  # pragma: no cover - defensive
+                return
+            fresh.level = EscalationLevel.LEVEL_1
+            fresh.next_retry_at = now + timedelta(seconds=gap)
+            fresh.updated_at = now
+            await uow.push_reasons.upsert(fresh)
+            await uow.commit()
+        logger.warning(
+            "level-2 handover to the Leader of project %s was not delivered; "
+            "task %s stays below the rung and will ask again",
+            task.project_id,
+            task.id,
+        )
+        await self._log.record(
+            task.id,
+            TaskLogKind.ESCALATED,
+            actor_kind=ActorKind.SYSTEM,
+            before=f"mức {int(EscalationLevel.LEVEL_2)}",
+            after=f"mức {int(EscalationLevel.LEVEL_1)}",
+            reason="không gọi được Trưởng dự án — sẽ hỏi lại, chưa tính là đã hỏi",
         )
 
     async def _ask_patron(
@@ -280,6 +336,9 @@ class RecoveryEscalator:
             "last_attempt_at": ladder.last_attempt_at.isoformat()
             if ladder.last_attempt_at
             else None,
+            # True by construction, not by assumption: an undelivered Level-2 question puts
+            # the rung back down (`_hold_below_level_2`), so Level 3 is only reachable once
+            # the Leader has actually been asked and has not resolved it.
             "leader_asked": True,
             "question": (
                 "Đầu việc này đã qua cả hai mức phục hồi mà vẫn không đi tiếp. "

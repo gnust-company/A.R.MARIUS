@@ -203,6 +203,108 @@ async def test_the_budget_runs_out_and_the_leader_is_asked(uow_factory) -> None:
     assert ladder is not None and ladder.level >= EscalationLevel.LEVEL_2
 
 
+class UnreachableNotifier:
+    """A Leader that cannot be reached — offline, or already mid-turn.
+
+    The real notifier answers this with a return value, not an exception: it still writes a
+    durable wake request, then reports False. Every fake in this suite answered True
+    unconditionally, so the whole not-delivered branch had no coverage at all.
+    """
+
+    def __init__(self) -> None:
+        self.attempts: list[dict] = []
+
+    async def notify(
+        self, *, project_id: UUID, text: str, source: WakeSource, reason: str
+    ) -> bool:
+        self.attempts.append({"project_id": project_id, "text": text, "reason": reason})
+        return False
+
+
+@pytest.mark.asyncio
+async def test_a_question_that_never_reached_the_leader_is_asked_again(
+    uow_factory,
+) -> None:
+    """Mức 2 is climbed **once**, so a single undelivered call spends the whole rung.
+
+    The rung is written and committed before anyone tries to deliver it, and `_ask_leader`
+    only runs on the sweep that climbs. Leave the rung standing on a call that failed and
+    every later sweep finds the ladder already at Level 2 and walks it straight past.
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    notifier = UnreachableNotifier()
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=notifier, bus=TopicEventBus()
+    )
+
+    for hour in range(7):
+        await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
+
+    assert len(notifier.attempts) > 1, (
+        f"chỉ thử gọi Trưởng dự án {len(notifier.attempts)} lần rồi thôi — một lượt gọi "
+        "hụt nuốt trọn Mức 2"
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_leader_does_not_get_the_patron_told_they_were_asked(
+    uow_factory,
+) -> None:
+    """The rule this rung exists for: never report a step that did not happen.
+
+    A dossier that says the Leader was asked, about a project whose Leader was never
+    reached, spends the patron's attention on a false premise — and once a dossier has
+    lied, the next one is read as decoration.
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=UnreachableNotifier(),
+        bus=TopicEventBus(),
+    )
+
+    for hour in range(12):
+        await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
+
+    async with uow_factory() as uow:
+        items = list(await uow.inbox.list_for_recipient("patron-1"))
+    escalations = [i for i in items if i.kind is InboxItemKind.ESCALATION]
+    assert escalations == [], (
+        "người chủ bị báo là Trưởng dự án đã được hỏi, trong khi lời hỏi chưa từng tới nơi"
+    )
+    ladder = await _ladder(uow_factory, task.id)
+    assert ladder is not None and ladder.level < EscalationLevel.LEVEL_3, (
+        "cái thang trèo lên Mức 3 trên một Mức 2 chưa hề xảy ra"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_budget_is_not_spent_again_while_the_leader_is_unreachable(
+    uow_factory,
+) -> None:
+    """Putting the rung back down is not a retreat to Level 1's behaviour.
+
+    The budget stays spent, so the assignee is not re-woken all over again for a problem the
+    system has already admitted it cannot fix on its own; the ladder simply has not handed
+    over yet. Without this, an unreachable Leader would turn the ladder into an infinite
+    Level-1 loop and the whole point of the budget would be gone.
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    wakes = RecordingWakes()
+    escalator = _escalator(
+        uow_factory, wakes=wakes, notifier=UnreachableNotifier(), bus=TopicEventBus()
+    )
+
+    for hour in range(12):
+        await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
+
+    assert len(wakes.calls) == CAP, (
+        f"tự gọi lại {len(wakes.calls)} lần, trần là {CAP} — ngân sách bị tiêu lại"
+    )
+
+
 # ── Mức 3: hồ sơ đã thử (FR-061) ────────────────────────────────────────────────
 
 
