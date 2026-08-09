@@ -429,7 +429,9 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
 
 ## Giai đoạn 9: Hoàn thiện và ràng buộc xuyên suốt
 
-**Mục đích**: các yêu cầu nền không thuộc đợt nào nhưng mọi đợt phải giữ (FR-070 → FR-084).
+**Mục đích**: các yêu cầu nền không thuộc đợt nào nhưng mọi đợt phải giữ (FR-070 → FR-084), cộng một lỗ do Đợt 6 lộ ra (FR-061a).
+
+**T163 → T166 là đầu cuối của cái lưới Đợt 6.** Thang phục hồi bắt được đầu việc rơi, dựng hồ sơ, đưa tới tay người chủ — rồi người chủ không bấm được gì. Lưới mà đầu cuối không hành động được thì vẫn là lưới hụt, chỉ hụt muộn hơn. Đây cũng là chỗ FR-070 hụt trên thực tế: trên máy chủ người chủ ngang Trưởng dự án, trên giao diện thì kém hơn.
 
 - [ ] T155 [P] Rà toàn bộ chuỗi hiển thị mới trong `frontend/src/i18n/vi.ts` — tiếng Việt **đủ dấu**, không chuỗi cứng nào lọt ngoài cơ chế đa ngôn ngữ (FR-084, Hiến pháp VI)
 - [ ] T156 [P] Kiểm cách ly workspace cho mọi lối vào mới — truy cập chéo trả *không tìm thấy*, không phải *không có quyền* (FR-081, Hiến pháp I) — trong `backend/tests/test_agent_ws_guard.py`
@@ -439,6 +441,10 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
 - [ ] T160 Chạy bảng "Kiểm chứng ràng buộc Hiến pháp" trong `specs/001-van-hanh-du-an/quickstart.md` — sáu nguyên tắc, sáu cách kiểm
 - [ ] T161 [P] Bài kiểm hồi quy cho **14 yêu cầu đã có sẵn trong mã** mà không đợt nào chạm tới (FR-016, 017, 020, 023, 025, 026, 028, 032, 046, 051, 070, 073, 078, 082) trong `backend/tests/` — khảo sát kết luận chúng đang đúng, nhưng không bài kiểm nào canh để biết một đợt sau có làm hỏng không
 - [ ] T162 Cập nhật trạng thái đặc tả từ *Nháp* sang *đã triển khai* trong `specs/001-van-hanh-du-an/spec.md` và ghi lại các điểm lệch còn tồn nếu có
+- [ ] T163 [P] Thêm `assignTask`, `cancelTask`, `setNextAction` vào `frontend/src/lib/api.ts` — máy chủ đã có đủ lối vào (`/v1/tasks/{id}/assign`, `/status`, `/next-action`), bộ gọi của giao diện hiện chỉ có `reopenTask` (FR-061a, FR-070)
+- [ ] T164 Ba hành động ngay trên mục *leo thang* ở `frontend/src/pages/Inbox.tsx`, khớp đúng ba lựa chọn hồ sơ nêu ra: **giao lại cho…** (chọn trong danh sách agent có ghế ở dự án), **đổi việc kế tiếp**, **huỷ việc** (kèm ô lý do — FR-030). Hiện mục này chỉ có nút *Mở*, nên hệ hỏi người chủ ba điều mà không cho họ làm điều nào (FR-061a)
+- [ ] T165 Kiểm đường đóng mục sau khi bấm: giao lại **tự gọi người mới dậy** → đầu việc có động cơ đẩy → vòng quét hạ thang và hệ tự đóng mục (FR-061b, đã dựng ở Đợt 6). Huỷ đầu việc cũng phải làm mục thôi là câu hỏi — đường này chưa ai đi thử
+- [ ] T166 [P] Chuỗi hiển thị của T164 vào `frontend/src/i18n/vi.ts` + `en.ts`, tiếng Việt đủ dấu (FR-084)
 
 ---
 
