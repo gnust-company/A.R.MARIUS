@@ -221,6 +221,20 @@ class UnreachableNotifier:
         return False
 
 
+class FlakyNotifier:
+    """Unreachable for the first `fail_first` calls, then fine — a Leader that was busy."""
+
+    def __init__(self, *, fail_first: int) -> None:
+        self.attempts: list[dict] = []
+        self._fail_first = fail_first
+
+    async def notify(
+        self, *, project_id: UUID, text: str, source: WakeSource, reason: str
+    ) -> bool:
+        self.attempts.append({"project_id": project_id, "reason": reason})
+        return len(self.attempts) > self._fail_first
+
+
 @pytest.mark.asyncio
 async def test_a_question_that_never_reached_the_leader_is_asked_again(
     uow_factory,
@@ -248,14 +262,15 @@ async def test_a_question_that_never_reached_the_leader_is_asked_again(
 
 
 @pytest.mark.asyncio
-async def test_an_unreachable_leader_does_not_get_the_patron_told_they_were_asked(
+async def test_an_unreachable_leader_still_reaches_the_patron_but_truthfully(
     uow_factory,
 ) -> None:
-    """The rule this rung exists for: never report a step that did not happen.
+    """The rung must not be skipped **and** must not be lied about.
 
-    A dossier that says the Leader was asked, about a project whose Leader was never
-    reached, spends the patron's attention on a false premise — and once a dossier has
-    lied, the next one is read as decoration.
+    A Leader nobody can reach is exactly the problem only the patron can fix — restart it,
+    replace it — so keeping the task off their desk hides the one thing they could act on.
+    But the dossier must say what actually happened: the Leader was never reached, not that
+    they were asked and shrugged. For the patron that is the more urgent sentence anyway.
     """
     _, project, alice = await _world(uow_factory)
     task = await _task(uow_factory, project.id, assignee=alice.id)
@@ -270,39 +285,75 @@ async def test_an_unreachable_leader_does_not_get_the_patron_told_they_were_aske
     async with uow_factory() as uow:
         items = list(await uow.inbox.list_for_recipient("patron-1"))
     escalations = [i for i in items if i.kind is InboxItemKind.ESCALATION]
-    assert escalations == [], (
-        "người chủ bị báo là Trưởng dự án đã được hỏi, trong khi lời hỏi chưa từng tới nơi"
+    assert len(escalations) == 1, (
+        f"người chủ nhận {len(escalations)} mục — Trưởng dự án mất liên lạc mà việc kẹt "
+        "không tới được người duy nhất dựng lại được nó"
     )
-    ladder = await _ladder(uow_factory, task.id)
-    assert ladder is not None and ladder.level < EscalationLevel.LEVEL_3, (
-        "cái thang trèo lên Mức 3 trên một Mức 2 chưa hề xảy ra"
+    dossier = escalations[0].attempt_dossier
+    assert dossier.get("leader_asked") is False, (
+        "hồ sơ khai Trưởng dự án đã được hỏi, trong khi lời hỏi chưa từng tới nơi"
+    )
+    assert dossier.get("leader_unreachable_attempts") == CAP, (
+        "hồ sơ không nói đã thử chuyển cho Trưởng dự án mấy lần"
+    )
+    assert "không gọi được" in (escalations[0].body or ""), (
+        "thân thư không nói ra điều đáng nói nhất: không ai liên lạc được với Trưởng dự án"
     )
 
 
 @pytest.mark.asyncio
-async def test_the_budget_is_not_spent_again_while_the_leader_is_unreachable(
-    uow_factory,
-) -> None:
-    """Putting the rung back down is not a retreat to Level 1's behaviour.
+async def test_the_patron_is_not_told_on_the_first_failed_handover(uow_factory) -> None:
+    """A Leader mid-turn is busy this minute and free the next.
 
-    The budget stays spent, so the assignee is not re-woken all over again for a problem the
-    system has already admitted it cannot fix on its own; the ladder simply has not handed
-    over yet. Without this, an unreachable Leader would turn the ladder into an infinite
-    Level-1 loop and the whole point of the budget would be gone.
+    Handing that to the patron spends a person's attention on something that fixes itself,
+    which is the exact failure mode the whole ladder is ordered to avoid.
     """
     _, project, alice = await _world(uow_factory)
     task = await _task(uow_factory, project.id, assignee=alice.id)
-    wakes = RecordingWakes()
+    notifier = UnreachableNotifier()
     escalator = _escalator(
-        uow_factory, wakes=wakes, notifier=UnreachableNotifier(), bus=TopicEventBus()
+        uow_factory, wakes=RecordingWakes(), notifier=notifier, bus=TopicEventBus()
+    )
+
+    # Far enough to spend the Level-1 budget and make the first handover attempt, no more.
+    for hour in range(4):
+        await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
+
+    assert len(notifier.attempts) == 1, f"đã thử {len(notifier.attempts)} lần chuyển giao"
+    async with uow_factory() as uow:
+        items = list(await uow.inbox.list_for_recipient("patron-1"))
+    assert [i for i in items if i.kind is InboxItemKind.ESCALATION] == [], (
+        "gọi hụt Trưởng dự án đúng một lần đã làm phiền người chủ"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_handover_that_lands_on_a_retry_still_counts_as_asked(
+    uow_factory,
+) -> None:
+    """The counter measures *failed* handovers, so a second try that lands clears it.
+
+    Without this the dossier would call a Leader who was reached — late, but reached —
+    unreachable, and the patron would be sent to restart something that is running.
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    notifier = FlakyNotifier(fail_first=1)
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=notifier, bus=TopicEventBus()
     )
 
     for hour in range(12):
         await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
 
-    assert len(wakes.calls) == CAP, (
-        f"tự gọi lại {len(wakes.calls)} lần, trần là {CAP} — ngân sách bị tiêu lại"
+    ladder = await _ladder(uow_factory, task.id)
+    assert ladder is not None and ladder.handover_attempts == 0, (
+        "lời hỏi tới nơi ở lần thử thứ hai mà vẫn bị ghi là không gọi được"
     )
+    async with uow_factory() as uow:
+        items = list(await uow.inbox.list_for_recipient("patron-1"))
+    escalations = [i for i in items if i.kind is InboxItemKind.ESCALATION]
+    assert escalations and escalations[0].attempt_dossier.get("leader_asked") is True
 
 
 # ── Mức 3: hồ sơ đã thử (FR-061) ────────────────────────────────────────────────
