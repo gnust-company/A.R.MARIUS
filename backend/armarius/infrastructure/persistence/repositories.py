@@ -987,6 +987,7 @@ class SqlTaskPushReasonRepository(TaskPushReasonRepository):
                     level=int(reason.level),
                     attempts=reason.attempts,
                     handover_attempts=reason.handover_attempts,
+                    leader_reached_at=reason.leader_reached_at,
                     cause=reason.cause,
                     last_attempt_at=reason.last_attempt_at,
                     next_retry_at=reason.next_retry_at,
@@ -1003,6 +1004,7 @@ class SqlTaskPushReasonRepository(TaskPushReasonRepository):
             m.level = int(reason.level)
             m.attempts = reason.attempts
             m.handover_attempts = reason.handover_attempts
+            m.leader_reached_at = reason.leader_reached_at
             m.cause = reason.cause
             m.last_attempt_at = reason.last_attempt_at
             m.next_retry_at = reason.next_retry_at

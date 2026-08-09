@@ -22,6 +22,7 @@ from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.push_reason import PushReasonService
 from armarius.application.use_cases.recovery import (
+    NotOnTheLeadersRung,
     OfflineFalloutService,
     RecoveryEscalator,
 )
@@ -44,6 +45,7 @@ from tests.support.projects import force_phase
 
 T0 = datetime(2026, 8, 6, 10, 0, 0, tzinfo=UTC)
 CAP = 3
+HANDOVER_CAP = 3
 CAUSE = "không có gì được hẹn để đẩy đầu việc này đi tiếp"
 
 THRESHOLDS = ProjectThresholds(
@@ -293,8 +295,8 @@ async def test_an_unreachable_leader_still_reaches_the_patron_but_truthfully(
     assert dossier.get("leader_asked") is False, (
         "hồ sơ khai Trưởng dự án đã được hỏi, trong khi lời hỏi chưa từng tới nơi"
     )
-    assert dossier.get("leader_unreachable_attempts") == CAP, (
-        "hồ sơ không nói đã thử chuyển cho Trưởng dự án mấy lần"
+    assert dossier.get("leader_asks") == HANDOVER_CAP, (
+        "hồ sơ không nói đã hỏi Trưởng dự án mấy lần"
     )
     assert "không gọi được" in (escalations[0].body or ""), (
         "thân thư không nói ra điều đáng nói nhất: không ai liên lạc được với Trưởng dự án"
@@ -347,7 +349,7 @@ async def test_a_handover_that_lands_on_a_retry_still_counts_as_asked(
         await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
 
     ladder = await _ladder(uow_factory, task.id)
-    assert ladder is not None and ladder.handover_attempts == 0, (
+    assert ladder is not None and ladder.leader_reached_at is not None, (
         "lời hỏi tới nơi ở lần thử thứ hai mà vẫn bị ghi là không gọi được"
     )
     async with uow_factory() as uow:
@@ -384,50 +386,6 @@ async def test_a_new_cause_gets_a_fresh_handover_budget(uow_factory) -> None:
     ladder = await _ladder(uow_factory, task.id)
     assert ladder is not None and ladder.handover_attempts == 0, (
         "nguyên nhân mới bị tính tiền cho những lần gọi hụt của nguyên nhân cũ"
-    )
-
-
-@pytest.mark.asyncio
-async def test_the_leader_deciding_gives_the_handover_budget_back(uow_factory) -> None:
-    """A Leader who just decided is the strongest possible proof they can be reached.
-
-    Leaving the failed calls on the record after that means the next stall reaches the
-    patron on one more miss — and `notify` answers False for a Leader that is merely
-    mid-turn, which happens constantly — carrying a dossier that tells them to go restart a
-    Leader that is sitting there working.
-    """
-    _, project, alice = await _world(uow_factory)
-    task = await _task(uow_factory, project.id, assignee=alice.id)
-    stuck = _escalator(
-        uow_factory, wakes=RecordingWakes(), notifier=UnreachableNotifier(),
-        bus=TopicEventBus(),
-    )
-    for hour in range(5):
-        await stuck.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
-
-    await stuck.leader_decided(
-        task.id, action="giao lại cho Bob", now=T0 + timedelta(hours=5)
-    )
-
-    ladder = await _ladder(uow_factory, task.id)
-    assert ladder is not None and ladder.handover_attempts == 0, (
-        "Trưởng dự án vừa quyết xong mà hệ vẫn nhớ là không gọi được"
-    )
-
-    # And the dossier of a *later* stall must not inherit the old verdict.
-    reachable = _escalator(
-        uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(),
-        bus=TopicEventBus(),
-    )
-    for hour in range(6, 18):
-        await reachable.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
-
-    async with uow_factory() as uow:
-        items = list(await uow.inbox.list_for_recipient("patron-1"))
-    escalations = [i for i in items if i.kind is InboxItemKind.ESCALATION]
-    assert escalations, "leo hết thang mà người chủ không nhận được gì"
-    assert escalations[0].attempt_dossier.get("leader_asked") is True, (
-        "người chủ bị bảo đi dựng lại một Trưởng dự án vừa trả lời xong"
     )
 
 
@@ -575,39 +533,54 @@ async def test_the_leader_going_offline_goes_straight_to_the_patron(uow_factory)
 
 
 @pytest.mark.asyncio
-async def test_the_leader_naming_an_action_takes_the_task_off_the_ladder(
+async def test_a_decision_that_changed_nothing_still_reaches_the_patron(
     uow_factory,
 ) -> None:
-    """Without this door Level 2 is a rung with no way off it: the ladder waits for a
-    decision that has nowhere to be recorded, and the next sweep climbs to the patron
-    anyway — telling them nobody decided, while the Leader was deciding."""
+    """The Leader saying it handled something is not the same as it being handled.
+
+    This ladder used to stand down on the sentence alone, which let a Leader answer
+    *reassigned it to Bob* — reassigning nothing — and the rung would clear on a task that
+    still had nobody scheduled to touch it. A minute later the sweep re-flagged it and the
+    whole ladder started again from the bottom: round and round, and because the reset was
+    total, the patron was never reached at all.
+    """
     _, project, alice = await _world(uow_factory)
     task = await _task(uow_factory, project.id, assignee=alice.id)
     escalator = _escalator(
         uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(),
         bus=TopicEventBus(),
     )
-    for hour in range(4):  # burn the budget and reach the Leader
+    for hour in range(4):  # burn the Level-1 budget and reach the Leader
         await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
     assert (await _ladder(uow_factory, task.id)).level is EscalationLevel.LEVEL_2
 
     await escalator.leader_decided(
-        task.id, action="chẻ đôi đầu việc và giao phần hạ tầng cho người khác",
-        now=T0 + timedelta(hours=5),
+        task.id, action="giao lại cho Bob", now=T0 + timedelta(hours=5)
+    )
+    still = await _ladder(uow_factory, task.id)
+    assert still is not None and still.level is EscalationLevel.LEVEL_2, (
+        "cái thang hạ xuống chỉ vì Trưởng dự án nói là đã xử lý"
     )
 
-    settled = await _ladder(uow_factory, task.id)
-    assert settled is not None
-    assert settled.level is EscalationLevel.NONE
-    assert settled.attempts == 0, (
-        "quyết xong mà vẫn giữ nợ cũ, nên lần kẹt sau đã hết ngân sách trước khi bắt đầu"
+    for hour in range(6, 18):  # the task never moves
+        await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
+
+    async with uow_factory() as uow:
+        items = list(await uow.inbox.list_for_recipient("patron-1"))
+    assert [i for i in items if i.kind is InboxItemKind.ESCALATION], (
+        "Trưởng dự án quyết mãi mà đầu việc đứng im, người chủ không bao giờ được báo"
     )
 
 
 @pytest.mark.asyncio
-async def test_the_patron_is_never_reached_once_the_leader_has_decided(
-    uow_factory,
-) -> None:
+async def test_the_task_moving_again_takes_it_off_the_ladder(uow_factory) -> None:
+    """The one door back to a clean slate, and it is a fact rather than a claim.
+
+    The sweep calls this the moment a flagged task turns out to have a drive again — by the
+    Leader's action, by a retry landing, by anything at all. Both budgets come back whole,
+    because whatever goes wrong next is a new problem and charging it for this one would
+    leave it out of tries before it started.
+    """
     _, project, alice = await _world(uow_factory)
     task = await _task(uow_factory, project.id, assignee=alice.id)
     escalator = _escalator(
@@ -616,19 +589,114 @@ async def test_the_patron_is_never_reached_once_the_leader_has_decided(
     )
     for hour in range(4):
         await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
-    await escalator.leader_decided(
-        task.id, action="giao lại cho Bob", now=T0 + timedelta(hours=5)
+    assert (await _ladder(uow_factory, task.id)).level is EscalationLevel.LEVEL_2
+
+    await escalator.stand_down(task.id, now=T0 + timedelta(hours=5))
+
+    settled = await _ladder(uow_factory, task.id)
+    assert settled is not None
+    assert settled.level is EscalationLevel.NONE
+    assert settled.attempts == 0 and settled.handover_attempts == 0, (
+        "việc chạy lại rồi mà vẫn giữ nợ cũ, nên lần kẹt sau hết ngân sách trước khi bắt đầu"
     )
 
-    # The task is still stuck, so the sweep keeps climbing — but from the bottom.
-    await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=6))
+
+@pytest.mark.asyncio
+async def test_the_leader_can_hand_a_task_straight_to_the_patron(uow_factory) -> None:
+    """The second door out of Mức 2, and the reason the first one is bearable.
+
+    A Leader that knows in seconds it cannot help would otherwise have to sit out three
+    spaced asks and half an hour, or invent an action so as to look busy. Both cost more
+    than letting it say so.
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(),
+        bus=TopicEventBus(),
+    )
+    for hour in range(4):
+        await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
+
+    await escalator.leader_gave_up(
+        task.id, reason="kho thành phẩm hỏng, ngoài tầm dự án",
+        now=T0 + timedelta(hours=4, minutes=1),
+    )
+
+    async with uow_factory() as uow:
+        items = list(await uow.inbox.list_for_recipient("patron-1"))
+    escalations = [i for i in items if i.kind is InboxItemKind.ESCALATION]
+    assert len(escalations) == 1, "Trưởng dự án báo chịu mà người chủ không nhận được gì"
+    assert (await _ladder(uow_factory, task.id)).level is EscalationLevel.LEVEL_3
+
+
+@pytest.mark.asyncio
+async def test_the_give_up_door_cannot_be_used_to_skip_a_rung(uow_factory) -> None:
+    """The door means *I was asked and it is beyond me*, so it only opens from Mức 2.
+
+    From lower down it would mean something else: the patron handed a task the system has
+    not finished trying. FR-059 forbids exactly that, and the rule has to hold against a
+    Leader in a hurry the same as against a sweep — a ladder that can be talked into
+    skipping is not a ladder.
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(),
+        bus=TopicEventBus(),
+    )
+    await escalator.climb(task, cause=CAUSE, now=T0)  # Mức 1, còn ngân sách
+
+    with pytest.raises(NotOnTheLeadersRung):
+        await escalator.leader_gave_up(
+            task.id, reason="lười", now=T0 + timedelta(minutes=1)
+        )
 
     async with uow_factory() as uow:
         items = list(await uow.inbox.list_for_recipient("patron-1"))
     assert [i for i in items if i.kind is InboxItemKind.ESCALATION] == [], (
-        "Trưởng dự án vừa quyết xong mà người chủ đã bị gọi"
+        "người chủ bị gọi về một đầu việc hệ thống còn chưa thử xong"
     )
-    assert (await _ladder(uow_factory, task.id)).level is EscalationLevel.LEVEL_1
+
+
+@pytest.mark.asyncio
+async def test_a_silent_leader_is_asked_three_times_before_the_patron(
+    uow_factory,
+) -> None:
+    """Online and silent is treated exactly like offline, and that is the whole point.
+
+    Mức 2 used to have no clock at all, so the sweep sixty seconds later found nothing to
+    respect and walked straight past to the patron — less time than an agent needs to read
+    the question. An *unreachable* Leader, meanwhile, got three tries over half an hour. The
+    rung that could still work was the one given no time.
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    notifier = RecordingNotifier()  # delivers every time; the Leader simply never acts
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=notifier, bus=TopicEventBus()
+    )
+
+    for minute in range(4):  # four sweeps a minute apart, right after the handover
+        await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=3, minutes=minute))
+
+    async with uow_factory() as uow:
+        items = list(await uow.inbox.list_for_recipient("patron-1"))
+    assert [i for i in items if i.kind is InboxItemKind.ESCALATION] == [], (
+        "người chủ bị gọi vào trong vòng vài phút, trước khi Trưởng dự án kịp đọc xong"
+    )
+
+    for hour in range(4, 16):
+        await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
+
+    assert len(notifier.calls) == HANDOVER_CAP, (
+        f"hỏi Trưởng dự án {len(notifier.calls)} lần, ngân sách là {HANDOVER_CAP}"
+    )
+    async with uow_factory() as uow:
+        items = list(await uow.inbox.list_for_recipient("patron-1"))
+    assert [i for i in items if i.kind is InboxItemKind.ESCALATION], (
+        "hỏi hết lượt mà đầu việc vẫn đứng im, người chủ vẫn không được báo"
+    )
 
 
 @pytest.mark.asyncio

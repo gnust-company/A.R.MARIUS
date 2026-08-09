@@ -46,10 +46,15 @@ class EscalationState:
     offline assignee, got fixed, and later hit a missing artifact is at the start of a new
     problem — charging it for the old one would leave it out of tries the first time the
     new problem appeared.
+
+    ``handovers`` is the same idea one rung up: how many times the Leader has been asked
+    about this cause. Two budgets, one law, one place — a second counter kept outside this
+    state was free to disagree with the first, and did.
     """
 
     level: EscalationLevel = EscalationLevel.NONE
     attempts: int = 0
+    handovers: int = 0
     cause: str = ""
 
 
@@ -57,23 +62,29 @@ def advance(
     state: EscalationState,
     *,
     cap: int,
+    handover_cap: int,
     progressed: bool,
-    leader_acted: bool,
     cause: str | None = None,
 ) -> EscalationState:
     """Where the ladder stands after one more sweep found this task still stuck.
 
-    ``progressed`` — the task genuinely moved since the last look. ``leader_acted`` — the
-    Leader decided the recovery action Level 2 was waiting for. ``cause`` — what the task
-    is stuck on now; a different cause than the one on record starts a fresh budget.
+    ``progressed`` — the task genuinely moved since the last look. ``cause`` — what the
+    task is stuck on now; a different cause than the one on record starts a fresh budget.
+
+    There is deliberately no "the Leader answered" input. Answering is not the thing this
+    ladder measures — a Leader can say *I reassigned it to Bob* and leave a task exactly as
+    dead as it was. What ends Level 2 is the same fact that ends Level 1 and the same fact
+    that started the whole thing: **something is scheduled to touch the task again**. The
+    caller reports that as ``progressed``, and it is checked against the task row rather
+    than taken on anybody's word.
     """
     # Real progress clears the whole ladder, budget included (FR-060). Giving back one
     # attempt instead would let a task that recovers four times still hit the ceiling on
     # its fifth stall, having never once exhausted a budget.
     if progressed:
-        return EscalationState(level=EscalationLevel.NONE, attempts=0, cause=cause or "")
+        return EscalationState(level=EscalationLevel.NONE, cause=cause or "")
 
-    # A new cause is a new problem. Same task, same ladder, fresh budget.
+    # A new cause is a new problem. Same task, same ladder, fresh budget — both budgets.
     if cause is not None and cause != state.cause:
         return EscalationState(level=EscalationLevel.LEVEL_1, attempts=1, cause=cause)
 
@@ -84,17 +95,18 @@ def advance(
         if state.attempts < cap:
             return replace(state, attempts=state.attempts + 1)
         # Budget spent. Hand over — and leave the counter where it is, because that number
-        # is what the dossier reports as "tried this many times" (FR-061).
-        return replace(state, level=EscalationLevel.LEVEL_2)
+        # is what the dossier reports as "tried this many times" (FR-061). The handover
+        # itself is the first ask, so it is counted here rather than on the sweep after.
+        return replace(state, level=EscalationLevel.LEVEL_2, handovers=1)
 
     if state.level is EscalationLevel.LEVEL_2:
-        # The Leader deciding is what this rung was waiting for; the task is unstuck by
-        # decision even if it has not moved yet. Climbing anyway would tell the patron a
-        # decision was never made.
-        if leader_acted:
-            return EscalationState(level=EscalationLevel.NONE, attempts=0, cause=state.cause)
-        # Note the attempt counter is *not* touched here: Level 2 is a decision, not an
-        # attempt, and inflating it would make the dossier claim tries that never happened.
+        # Same shape as Level 1, one rung up: a budget of spaced asks, then hand on. The
+        # symmetry is the point. Before this, an unanswered Leader was walked past on the
+        # very next sweep — sixty seconds, less time than it takes an agent to read the
+        # question — while an *unreachable* Leader got three tries over half an hour. The
+        # rung that could still work was the one given no time at all.
+        if state.handovers < handover_cap:
+            return replace(state, handovers=state.handovers + 1)
         return replace(state, level=EscalationLevel.LEVEL_3)
 
     # Level 3. There is nothing above the patron, and the inbox item is already waiting on

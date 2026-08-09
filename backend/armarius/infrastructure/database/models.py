@@ -627,6 +627,9 @@ class TaskPushReasonModel(Base):
     # What the ladder is climbing about. The Level-1 budget is counted per cause (FR-060),
     # so a task that got unstuck and later broke differently starts from a full budget.
     cause: Mapped[str | None] = mapped_column(Text)
+    # When the Leader was first actually *reached* about this cause. Distinct from
+    # having been asked: the dossier the patron reads turns on exactly that difference.
+    leader_reached_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

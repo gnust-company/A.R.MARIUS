@@ -537,6 +537,7 @@ def push_reason_to_entity(m: TaskPushReasonModel) -> TaskPushReason:
         level=EscalationLevel(int(m.level or 0)),
         attempts=int(m.attempts or 0),
         handover_attempts=int(m.handover_attempts or 0),
+        leader_reached_at=m.leader_reached_at,
         cause=m.cause,
         last_attempt_at=m.last_attempt_at,
         next_retry_at=m.next_retry_at,

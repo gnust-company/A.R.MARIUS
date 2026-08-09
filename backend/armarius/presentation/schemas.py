@@ -637,6 +637,16 @@ class AgentRecoveryIn(BaseModel):
     next_action: str | None = None
 
 
+class AgentGiveUpIn(BaseModel):
+    """The Leader saying a stalled task is beyond it (FR-059).
+
+    Costs a reason, like every other piece of bad news in this system: the patron is about
+    to be asked, and *why the Leader could not* is half of what they need to answer.
+    """
+
+    reason: str = Field(min_length=1, max_length=2000)
+
+
 class ReopenTaskIn(BaseModel):
     """Bringing a closed task back always costs a reason (FR-022)."""
 

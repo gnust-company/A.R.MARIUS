@@ -23,6 +23,7 @@ from armarius.domain.services.escalation import (
 )
 
 CAP = 3  # trần số lần tự gọi lại ở Mức 1
+HANDOVER_CAP = 3  # trần số lần hỏi Trưởng dự án ở Mức 2
 
 
 def fresh(cause: str = "mất động cơ đẩy") -> EscalationState:
@@ -31,7 +32,7 @@ def fresh(cause: str = "mất động cơ đẩy") -> EscalationState:
 
 def climb(state: EscalationState, times: int, *, cap: int = CAP) -> EscalationState:
     for _ in range(times):
-        state = advance(state, cap=cap, progressed=False, leader_acted=False)
+        state = advance(state, cap=cap, handover_cap=HANDOVER_CAP, progressed=False)
     return state
 
 
@@ -39,7 +40,7 @@ def climb(state: EscalationState, times: int, *, cap: int = CAP) -> EscalationSt
 
 
 def test_the_first_rung_is_always_level_one() -> None:
-    step = advance(fresh(), cap=CAP, progressed=False, leader_acted=False)
+    step = advance(fresh(), cap=CAP, handover_cap=HANDOVER_CAP, progressed=False)
     assert step.level is EscalationLevel.LEVEL_1
     assert step.attempts == 1
 
@@ -50,8 +51,8 @@ def test_the_ladder_never_skips_a_rung() -> None:
     to prevent."""
     seen = []
     state = fresh()
-    for _ in range(CAP + 4):
-        state = advance(state, cap=CAP, progressed=False, leader_acted=False)
+    for _ in range(CAP + HANDOVER_CAP + 4):
+        state = advance(state, cap=CAP, handover_cap=HANDOVER_CAP, progressed=False)
         seen.append(state.level)
 
     assert seen[0] is EscalationLevel.LEVEL_1
@@ -72,39 +73,58 @@ def test_level_one_spends_exactly_the_budget_then_hands_over() -> None:
     assert state.level is EscalationLevel.LEVEL_1
     assert state.attempts == CAP, "chưa tiêu hết ngân sách đã bỏ cuộc"
 
-    state = advance(state, cap=CAP, progressed=False, leader_acted=False)
+    state = advance(state, cap=CAP, handover_cap=HANDOVER_CAP, progressed=False)
     assert state.level is EscalationLevel.LEVEL_2, "hết ngân sách rồi vẫn tự thử tiếp"
 
 
-def test_level_two_waits_for_the_leader_rather_than_retrying() -> None:
-    """Mức 2 is a decision, not an attempt. The attempt counter must stop moving, or the
-    dossier handed to the patron would claim the system tried things it never tried."""
+def test_level_two_gets_a_budget_of_its_own_before_the_patron() -> None:
+    """Mức 2 has the same shape as Mức 1: a budget of spaced asks, then hand on.
+
+    Before this it had none — the sweep after the handover walked straight past the Leader
+    to the patron, giving the one rung that could still solve the problem less time than it
+    takes an agent to read the question. Meanwhile an *unreachable* Leader was given three
+    tries over half an hour. The rung that could work got no time at all.
+
+    The Level-1 counter must also stop moving here, or the dossier handed to the patron
+    would claim the system tried things it never tried.
+    """
     state = climb(fresh(), CAP + 1)
     assert state.level is EscalationLevel.LEVEL_2
+    assert state.handovers == 1, "lần bàn giao đầu tiên không được tính là một lần hỏi"
     spent = state.attempts
 
-    state = advance(state, cap=CAP, progressed=False, leader_acted=False)
-    assert state.level is EscalationLevel.LEVEL_3
+    for expected in range(2, HANDOVER_CAP + 1):
+        state = advance(state, cap=CAP, handover_cap=HANDOVER_CAP, progressed=False)
+        assert state.level is EscalationLevel.LEVEL_2, "bỏ qua Trưởng dự án quá sớm"
+        assert state.handovers == expected
+
+    state = advance(state, cap=CAP, handover_cap=HANDOVER_CAP, progressed=False)
+    assert state.level is EscalationLevel.LEVEL_3, "hỏi hết lượt rồi mà không lên người chủ"
     assert state.attempts == spent, "số lần tự thử bị đội lên trong lúc chờ Trưởng dự án"
 
 
 def test_the_top_of_the_ladder_stays_put() -> None:
     """There is nothing above the patron. Further sweeps must not churn the state — the
     inbox item is already waiting on them."""
-    state = climb(fresh(), CAP + 5)
+    state = climb(fresh(), CAP + HANDOVER_CAP + 5)
     assert state.level is EscalationLevel.LEVEL_3
-    assert advance(state, cap=CAP, progressed=False, leader_acted=False) == state
+    assert advance(state, cap=CAP, handover_cap=HANDOVER_CAP, progressed=False) == state
 
 
-def test_the_leader_acting_at_level_two_settles_it() -> None:
-    """A recovery action the Leader decided is what Mức 2 was waiting for. Climbing to the
-    patron anyway would tell them a decision was never made."""
+def test_only_the_task_moving_settles_level_two() -> None:
+    """What ends Mức 2 is the task getting a drive again — not the Leader saying so.
+
+    There is deliberately no "the Leader answered" input to these rules. A Leader can reply
+    *reassigned it to Bob* and leave the task exactly as dead as it was, and a ladder that
+    stood down on that sentence went round in a circle the patron never heard about.
+    """
     state = climb(fresh(), CAP + 1)
     assert state.level is EscalationLevel.LEVEL_2
 
-    settled = advance(state, cap=CAP, progressed=False, leader_acted=True)
+    settled = advance(state, cap=CAP, handover_cap=HANDOVER_CAP, progressed=True)
     assert settled.level is EscalationLevel.NONE
     assert settled.attempts == 0
+    assert settled.handovers == 0, "ngân sách hỏi Trưởng dự án không được trả lại"
 
 
 # ── đặt lại bộ đếm khi có tiến triển thật (FR-060) ──────────────────────────────
@@ -114,7 +134,7 @@ def test_real_progress_resets_the_counter_to_zero() -> None:
     state = climb(fresh(), 2)
     assert state.attempts == 2
 
-    moved = advance(state, cap=CAP, progressed=True, leader_acted=False)
+    moved = advance(state, cap=CAP, handover_cap=HANDOVER_CAP, progressed=True)
     assert moved.level is EscalationLevel.NONE
     assert moved.attempts == 0, "đầu việc đã tiến mà bộ đếm vẫn giữ nợ cũ"
 
@@ -124,7 +144,7 @@ def test_progress_gives_back_the_whole_budget_not_one_attempt() -> None:
     task that recovers four times still hit the ceiling on its fifth stall, having never
     exhausted a single budget."""
     state = climb(fresh(), CAP)
-    state = advance(state, cap=CAP, progressed=True, leader_acted=False)
+    state = advance(state, cap=CAP, handover_cap=HANDOVER_CAP, progressed=True)
 
     state = climb(state, CAP)
     assert state.level is EscalationLevel.LEVEL_1, "chưa gì đã leo lên Trưởng dự án"
@@ -135,7 +155,7 @@ def test_progress_at_level_three_brings_it_all_the_way_down() -> None:
     state = climb(fresh(), CAP + 5)
     assert state.level is EscalationLevel.LEVEL_3
 
-    moved = advance(state, cap=CAP, progressed=True, leader_acted=False)
+    moved = advance(state, cap=CAP, handover_cap=HANDOVER_CAP, progressed=True)
     assert moved.level is EscalationLevel.NONE
 
 
@@ -147,7 +167,7 @@ def test_a_new_cause_starts_its_own_budget() -> None:
     assert state.attempts == CAP
 
     state = advance(
-        state, cap=CAP, progressed=False, leader_acted=False, cause="thành phẩm đã mất"
+        state, cap=CAP, handover_cap=HANDOVER_CAP, progressed=False, cause="thành phẩm đã mất"
     )
     assert state.attempts == 1
     assert state.level is EscalationLevel.LEVEL_1

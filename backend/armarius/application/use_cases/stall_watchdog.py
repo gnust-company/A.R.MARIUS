@@ -39,6 +39,7 @@ import contextlib
 from collections.abc import Callable
 from datetime import datetime
 from typing import Protocol
+from uuid import UUID
 
 from armarius.application.use_cases.inbox import InboxService
 from armarius.application.use_cases.push_reason import PushReasonService
@@ -66,6 +67,8 @@ class RecoveryLadder(Protocol):
     """
 
     async def climb(self, task: Task, *, cause: str, now: datetime) -> None: ...
+
+    async def stand_down(self, task_id: UUID, *, now: datetime) -> None: ...
 
 
 class StallWatchdog:
@@ -145,8 +148,14 @@ class StallWatchdog:
                         task.id,
                         TaskLogKind.STALL_CLEARED,
                         actor_kind=ActorKind.SYSTEM,
-                        reason="động cơ đẩy đã sống trở lại",
+                        reason="đã có người hoặc lịch chạm vào đầu việc này trở lại",
                     )
+                # The ladder measures an unsolved problem, and this one is solved — by the
+                # Leader's action, by a retry landing, by anything. Leaving the rung standing
+                # would have the next stall start halfway up, on attempts that belong to a
+                # problem already over.
+                if self._ladder is not None:
+                    await self._ladder.stand_down(task.id, now=now)
                 return False
 
             verdict = stall_reason(reason, now=now) or "không rõ vì sao"
