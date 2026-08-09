@@ -24,6 +24,7 @@ from armarius.presentation.schemas import (
     AgentAssignmentRequestIn,
     AgentCommentIn,
     AgentCreateTaskIn,
+    AgentGiveUpIn,
     AgentHandbackIn,
     AgentMajorChangeIn,
     AgentOnboardingCompleteIn,
@@ -278,6 +279,24 @@ async def agent_declare_recovery(
     if body.next_action:
         task = await container.tasks.set_next_action(task_id, body.next_action)
     return TaskOut.model_validate(task)
+
+
+@router.post("/tasks/{task_id}/escalate", status_code=202)
+async def agent_escalate_task(
+    task_id: UUID,
+    body: AgentGiveUpIn,
+    marius: CurrentMarius,
+    container: ContainerDep,
+) -> dict[str, str]:
+    """The Leader hands a stalled task straight to the patron (FR-059).
+
+    The other door out of Level 2 is to fix it. Without this one, a Leader that knows in
+    seconds it cannot help has only two moves: sit out the whole budget of asks, or invent
+    an action so as to look busy. Both waste more than saying so.
+    """
+    await _task_in_caller_workspace(container, marius, task_id)
+    await container.recovery.leader_gave_up(task_id, reason=body.reason)
+    return {"status": "đã chuyển lên người chủ"}
 
 
 @router.get("/projects/{project_id}/queue", response_model=list[TaskOut])

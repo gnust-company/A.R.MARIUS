@@ -76,6 +76,10 @@ def upgrade() -> None:
             'handover_attempts', sa.Integer(), nullable=False, server_default=sa.text('0')
         ),
         sa.Column('cause', sa.Text(), nullable=True),
+        # When the Leader was first actually reached about this cause — not asked,
+        # reached. What the Level-3 dossier reads before it tells the patron the Leader
+        # was asked.
+        sa.Column('leader_reached_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('last_attempt_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('next_retry_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),

@@ -21,6 +21,7 @@ from armarius.application.use_cases.projects import (
     SystemOnlyOperation,
 )
 from armarius.application.use_cases.projects import ProjectClosed as ProjectClosedService
+from armarius.application.use_cases.recovery import NotOnTheLeadersRung
 from armarius.application.use_cases.tasks import (
     AlreadyAssignedError,
     ProjectNotReadyForTasks,
@@ -144,6 +145,10 @@ def install_error_handlers(app: FastAPI) -> None:
     async def _signatures_required(
         _: Request, exc: SignaturesRequiredError
     ) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(NotOnTheLeadersRung)
+    async def _not_the_leaders_rung(_: Request, exc: NotOnTheLeadersRung) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(NotReadyForSignatureError)

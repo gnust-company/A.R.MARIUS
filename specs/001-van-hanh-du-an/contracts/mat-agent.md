@@ -21,7 +21,8 @@ Trưởng dự án và thợ gọi, bằng thẻ định danh theo workspace. K�
 | `POST /agent/tasks/{id}/approval` | **[mới]** | Chữ ký của Trưởng dự án: tán thành hay từ chối kèm lý do. Tán thành mà công tắc tự động của người chủ đang tắt → đầu việc **chưa** đóng, mục chờ công nhận vào hộp thư |
 | `POST /agent/projects/{id}/phase-proposal` | **[mới]** | Đề xuất chuyển *vận hành ↔ bảo trì* → mục chờ quyết vào hộp thư. Agent **không** tự chuyển (FR-004) |
 | `POST /agent/projects/{id}/change-request` | **[mới]** | Xin duyệt một thay đổi lớn: chạm phạm vi, mục tiêu, chi phí, thời hạn, hoặc tiêu chí công nhận (FR-075). Thay đổi nội bộ **không** đi qua đây |
-| `POST /agent/tasks/{id}/recovery` | **[mới]** | Hành động phục hồi Mức 2: đổi người, chẻ lại, làm rõ đề, gia hạn, đổi ưu tiên. Bắt buộc nêu hành động chọn và lý do |
+| `POST /agent/tasks/{id}/recovery` | **[mới]** | Hành động phục hồi Mức 2: đổi người, chẻ lại, làm rõ đề, gia hạn, đổi ưu tiên. Bắt buộc nêu hành động chọn và lý do. **Ghi lại quyết định, không kết thúc Mức 2** — cái kết thúc Mức 2 là đầu việc có động cơ đẩy trở lại, nên hành động phải được *làm thật* chứ không chỉ khai |
+| `POST /agent/tasks/{id}/escalate` | **[mới]** | Cửa thứ hai của Mức 2: đầu việc này ngoài tầm Trưởng dự án → đưa thẳng người chủ, không chờ hết lượt hỏi. Bắt buộc nêu lý do. Không có cửa này thì một Trưởng dự án biết ngay là mình bó tay chỉ còn hai nước: ngồi hết ngân sách, hoặc bịa một hành động cho có |
 
 ## 3. Thợ
 

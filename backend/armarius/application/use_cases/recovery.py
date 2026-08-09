@@ -52,6 +52,16 @@ logger = get_logger(__name__)
 
 EVENT_LEVEL_3 = "leo-thang.muc-3"
 
+
+class NotOnTheLeadersRung(Exception):
+    """Raised when the give-up door is used from anywhere but Mức 2 (FR-059).
+
+    The door means *I have been asked about this and it is beyond me*. From lower down it
+    would mean something else entirely — handing the patron a task the system has not
+    finished trying, which is the one thing FR-059 forbids outright. No skipping, and that
+    holds for a Leader in a hurry as much as for a sweep.
+    """
+
 # Fallback for the first gap between Level-1 re-wakes when the composition root does not
 # supply one. Doubles from here (`backoff_seconds`); see `Settings.level1_backoff_seconds`
 # for why it is minutes and not seconds.
@@ -122,17 +132,27 @@ class RecoveryEscalator:
 
             before = ladder.level
             state = advance(
-                ladder.state(), cap=cap, progressed=False, leader_acted=False, cause=cause
+                ladder.state(),
+                cap=cap,
+                handover_cap=_HANDOVER_ATTEMPTS,
+                progressed=False,
+                cause=cause,
             )
             ladder.apply(state, now=now)
             ladder.last_attempt_at = now
-            gap = backoff_seconds(state.attempts, base_seconds=self._backoff_base)
+            # Both budgets are paced, so both get a clock. Level 2 used to get none, on the
+            # reasoning that a rung waiting for a decision should not nag — which quietly
+            # meant *no wait at all*: the next sweep, sixty seconds later, found no clock to
+            # respect and walked straight past the Leader to the patron. Only Level 3 has
+            # nothing left to pace, because there is nothing above the patron.
+            paced = (
+                state.handovers
+                if state.level is EscalationLevel.LEVEL_2
+                else state.attempts
+            )
             ladder.next_retry_at = (
-                now + timedelta(seconds=gap)
-                if state.level is EscalationLevel.LEVEL_1
-                # Above Level 1 nothing is on a timer: the ladder is waiting on a decision,
-                # and a clock there would keep re-asking someone who already has the
-                # question in front of them.
+                now + timedelta(seconds=backoff_seconds(paced, base_seconds=self._backoff_base))
+                if state.level in (EscalationLevel.LEVEL_1, EscalationLevel.LEVEL_2)
                 else None
             )
             await uow.push_reasons.upsert(ladder)
@@ -143,46 +163,96 @@ class RecoveryEscalator:
     async def leader_decided(
         self, task_id: UUID, *, action: str, now: datetime | None = None
     ) -> None:
-        """The Leader named an explicit recovery action — Level 2 is answered (FR-059).
+        """The Leader says what it is doing about a Level-2 task (FR-059).
 
-        Without this door Level 2 is a rung with no way off it: the ladder waits for a
-        decision that has nowhere to be recorded, and the next sweep climbs to the patron
-        regardless. That would tell the patron a decision was never made while the Leader
-        was in the middle of making it.
+        This **records** a decision; it does not end the rung. What ends the rung is the
+        task getting a drive again, and that is checked against the task row on the next
+        sweep. The difference is not pedantry: the ladder used to clear itself here, on the
+        strength of the sentence alone, so a Leader could answer *reassigned it to Bob*
+        without reassigning anything and the ladder would stand down on a task that nobody
+        was going to touch. Then the sweep re-flagged it a minute later and the whole thing
+        started again at Level 1 — round and round, and the patron never heard a word.
 
-        The ladder is cleared outright rather than walked back a step, and from *any* rung
-        — including Level 3. `advance` deliberately freezes at the top, because a sweep
-        arriving there must not churn; this is not a sweep. It is somebody stating that the
-        problem has been addressed, and the ladder measures an unaddressed problem.
+        So the decision goes into the record, where it belongs, and the clock keeps
+        running. A real action gives the task a real drive within the window and the ladder
+        stands down on its own; an empty one does not, and the patron is told.
 
-        Clearing means the budget comes back whole. Whatever the action turns out to be, it
-        is a *new* attempt, and charging it for the tries that came before would leave the
-        next stall out of budget before it began.
-
-        Any escalation already sitting in the patron's inbox is resolved with it. An inbox
-        that keeps asking about something already handled stops being read, and then the
-        next escalation goes unread too.
+        Any escalation already sitting in the patron's inbox is resolved, because the
+        Leader is now on it and an inbox that keeps asking about something being handled
+        stops being read.
         """
         now = now or self._clock()
-        async with self._uow() as uow:
-            ladder = await uow.push_reasons.get_for_task(task_id)
-            if ladder is None:
-                return
-            ladder.apply(
-                EscalationState(level=EscalationLevel.NONE, attempts=0, cause=""),
-                now=now,
-            )
-            ladder.next_retry_at = None
-            await uow.push_reasons.upsert(ladder)
-            await uow.commit()
         await self._inbox.resolve_pending_for_task(task_id)
         await self._log.record(
             task_id,
             TaskLogKind.ESCALATED,
             actor_kind=ActorKind.AGENT,
-            after="mức 0",
+            after=f"mức {int(EscalationLevel.LEVEL_2)}",
             reason=f"Trưởng dự án quyết hành động phục hồi: {action}",
         )
+
+    async def leader_gave_up(
+        self, task_id: UUID, *, reason: str, now: datetime | None = None
+    ) -> None:
+        """The Leader says this one is beyond it — go to the patron now (FR-059).
+
+        Without this door, a Leader that knows within seconds it cannot help has only two
+        moves: sit out the full three asks and half an hour of the project's time, or
+        invent an action to look busy. Both are worse than letting it say so.
+
+        Straight to Level 3, no waiting out the clock — the budget exists to find out
+        whether the Leader can fix it, and that question has just been answered.
+        """
+        now = now or self._clock()
+        async with self._uow() as uow:
+            ladder = await uow.push_reasons.get_for_task(task_id)
+            task = await uow.tasks.get(task_id)
+            if task is None:
+                raise LookupError("task not found")
+            if ladder is not None and ladder.level >= EscalationLevel.LEVEL_3:
+                return  # already with the patron; asking twice is how an inbox dies
+            if ladder is None or ladder.level is not EscalationLevel.LEVEL_2:
+                raise NotOnTheLeadersRung(
+                    "Đầu việc này chưa tới lượt Trưởng dự án quyết, nên chưa chuyển lên "
+                    "người chủ được. Hệ thống vẫn đang tự thử."
+                )
+            ladder.level = EscalationLevel.LEVEL_3
+            ladder.next_retry_at = None
+            ladder.updated_at = now
+            await uow.push_reasons.upsert(ladder)
+            await uow.commit()
+
+        await self._log.record(
+            task_id,
+            TaskLogKind.ESCALATED,
+            actor_kind=ActorKind.AGENT,
+            before=f"mức {int(EscalationLevel.LEVEL_2)}",
+            after=f"mức {int(EscalationLevel.LEVEL_3)}",
+            reason=f"Trưởng dự án báo ngoài tầm xử lý: {reason}",
+        )
+        await self._ask_patron(task, ladder, cause=ladder.cause or reason, now=now)
+
+    async def stand_down(self, task_id: UUID, *, now: datetime | None = None) -> None:
+        """The task has a drive again — clear the ladder, budgets and all (FR-060).
+
+        Called by the sweep the moment a flagged task turns out to be moving. This is the
+        only door back to a clean slate, and it is deliberately not a declaration anybody
+        can make: it fires on the fact the whole ladder measures.
+
+        Without it the ladder outlives the problem. A task that recovered on its own would
+        keep last month's rung, and the next stall — even one with the same cause months
+        later — would start halfway up, handing the patron a dossier about attempts that
+        belong to a problem already solved.
+        """
+        now = now or self._clock()
+        async with self._uow() as uow:
+            ladder = await uow.push_reasons.get_for_task(task_id)
+            if ladder is None or ladder.level is EscalationLevel.NONE:
+                return
+            ladder.apply(EscalationState(level=EscalationLevel.NONE, cause=""), now=now)
+            ladder.next_retry_at = None
+            await uow.push_reasons.upsert(ladder)
+            await uow.commit()
 
     # ── the three rungs ──────────────────────────────────────────────────────────
     async def _act(
@@ -207,9 +277,11 @@ class RecoveryEscalator:
 
         if ladder.level is EscalationLevel.LEVEL_1:
             await self._rewake_assignee(task, cause=cause, retry_at=ladder.next_retry_at)
-        elif ladder.level is EscalationLevel.LEVEL_2 and climbed:
-            delivered = await self._ask_leader(task, ladder, cause=cause)
-            await self._record_handover(task, ladder, delivered=delivered, now=now)
+        elif ladder.level is EscalationLevel.LEVEL_2:
+            # Asked on *every* sweep that gets past the clock, not only the one that
+            # climbed. Level 2 is a series of spaced asks, exactly like Level 1 — the ask is
+            # the attempt, and one attempt is not a rung.
+            await self._ask_leader(task, ladder, cause=cause, now=now)
         elif ladder.level is EscalationLevel.LEVEL_3 and climbed:
             await self._ask_patron(task, ladder, cause=cause, now=now)
 
@@ -252,114 +324,63 @@ class RecoveryEscalator:
             logger.exception("level-1 re-wake failed for task %s", task.id)
             await self._mark_waiting_on_recovery(task.id, until=retry_at)
 
-    async def _ask_leader(self, task: Task, ladder: TaskPushReason, *, cause: str) -> bool:
-        """Mức 2 — the Leader decides an explicit recovery action.
+    async def _ask_leader(
+        self, task: Task, ladder: TaskPushReason, *, cause: str, now: datetime
+    ) -> None:
+        """Mức 2 — tell the Leader exactly what is wrong and let it act.
 
-        Returns whether the question actually reached them. The notifier answers False for
-        a Leader that is offline or mid-turn; it does not raise, so a caller that ignores
-        the answer cannot tell "asked" from "tried to ask" — and this rung is climbed
-        **once**, so that difference is the whole rung.
+        This rung sends a question and then waits for **the task**, not for an answer. A
+        Leader can reply *reassigned it to Bob* and leave the task as dead as it was; what
+        ends this rung is the drive coming back — somebody scheduled to touch the task —
+        and the sweep checks that against the row rather than taking anyone's word.
+
+        Which means an unreachable Leader and a silent one need no separate handling, and
+        get none. Both are *asked, and the task did not move*, so both spend one of the
+        three spaced asks and then hand on to the patron. Whether the question was
+        **delivered** is still worth knowing, but only for the record: it decides whether
+        the patron is told the Leader was asked or told nobody could reach them, and those
+        two send the patron to do different things.
         """
         if self._notifier is None or task.project_id is None:  # pragma: no cover
-            return False
-        return await self._notifier.notify(
+            return
+        delivered = await self._notifier.notify(
             project_id=task.project_id,
             text=(
-                f"Đầu việc {task.identifier or task.id} — {task.title} đang đình trệ: "
-                f"{cause}.\n\n"
+                f"Đầu việc {task.identifier or task.id} — {task.title} đang đình trệ.\n\n"
+                f"Vì sao: {cause}.\n\n"
                 f"Hệ thống đã tự gọi lại {ladder.attempts} lần mà đầu việc không nhúc "
-                "nhích, nên giờ cần bạn quyết một hành động phục hồi tường minh: giao lại "
-                "cho người khác, tách nhỏ, đổi yêu cầu, hay dừng hẳn.\n\n"
-                "Đây là quyết định của bạn — hệ thống sẽ không tự thử thêm nữa."
+                "nhích, nên giờ cần bạn. Hai đường:\n"
+                "  1. Bạn xử lý — giao lại cho người khác, tách nhỏ, đổi yêu cầu, hay dừng "
+                "hẳn — rồi làm thật, vì hệ đợi đầu việc có người chạm vào chứ không đợi "
+                "lời hứa.\n"
+                "  2. Ngoài tầm bạn — báo lại để hệ đưa thẳng người chủ, đừng ngồi thử "
+                "cho có.\n\n"
+                f"Đây là lần hỏi thứ {ladder.handover_attempts}/{_HANDOVER_ATTEMPTS}. "
+                "Hết lượt mà đầu việc vẫn đứng im thì người chủ được hỏi."
             ),
             source=WakeSource.NUDGE,
             reason=f"leo thang Mức 2: {cause}",
         )
-
-    async def _record_handover(
-        self,
-        task: Task,
-        ladder: TaskPushReason,
-        *,
-        delivered: bool,
-        now: datetime,
-    ) -> None:
-        """Write down whether the Mức 2 question actually reached the Leader.
-
-        The rung is written and committed *before* anyone tries to deliver it, and the
-        delivery is attempted only on the sweep that climbs — so without this, one failed
-        call spends the whole of Level 2. Every later sweep finds the ladder already at
-        Level 2, walks it straight to Level 3, and the patron is handed a dossier saying the
-        Leader was asked and could not fix it. The Leader was never asked.
-
-        Two different things hide behind "not delivered", and they want opposite answers:
-
-          * the Leader is **mid-turn** — busy this minute, done the next. Handing that to the
-            patron spends a person's attention on something that fixes itself.
-          * the Leader is **gone**. Retrying forever hides from the patron the one problem
-            only they can fix — restart it, replace it — while work piles up behind it.
-
-        Nothing in the delivery answer tells the two apart, so the ladder settles it with
-        time instead: retry the handover on the same growing gap, and once the budget for
-        *handovers* is spent, climb to the patron anyway — telling them plainly that the
-        Leader could not be reached. That is not a downgraded escalation. For the patron it
-        is the more urgent message of the two.
-
-        A delivered question clears the counter, so a handover that succeeded on the second
-        try still reads as *the Leader was asked* — which it was.
-        """
-        if delivered and ladder.handover_attempts == 0:
+        if not delivered:
+            logger.warning(
+                "level-2 question for task %s did not reach the Leader of project %s "
+                "(ask %s/%s)",
+                task.id,
+                task.project_id,
+                ladder.handover_attempts,
+                _HANDOVER_ATTEMPTS,
+            )
             return
-
-        spent = 0 if delivered else ladder.handover_attempts + 1
-        # Out of handover budget: leave the rung standing so the next sweep climbs to the
-        # patron. The dossier reads `handover_attempts` and will say the Leader was never
-        # reached.
-        exhausted = not delivered and spent >= _HANDOVER_ATTEMPTS
-
+        if ladder.leader_reached_at is not None:
+            return
         async with self._uow() as uow:
             fresh = await uow.push_reasons.get_for_task(task.id)
             if fresh is None:  # pragma: no cover - defensive
                 return
-            fresh.handover_attempts = spent
-            if not delivered and not exhausted:
-                # Put the rung back down — to Level 1 with its budget still spent, which is
-                # the truthful position: the system has run out of its own attempts and has
-                # not yet handed over. `advance` sends a spent Level 1 straight back up, so
-                # the next sweep past the gap asks again.
-                fresh.level = EscalationLevel.LEVEL_1
-                fresh.next_retry_at = now + timedelta(
-                    seconds=backoff_seconds(fresh.attempts, base_seconds=self._backoff_base)
-                )
+            fresh.leader_reached_at = now
             fresh.updated_at = now
             await uow.push_reasons.upsert(fresh)
             await uow.commit()
-
-        if delivered:
-            return
-
-        logger.warning(
-            "level-2 handover to the Leader of project %s was not delivered (%s/%s); "
-            "task %s %s",
-            task.project_id,
-            spent,
-            _HANDOVER_ATTEMPTS,
-            task.id,
-            "goes to the patron next sweep" if exhausted else "will ask again",
-        )
-        await self._log.record(
-            task.id,
-            TaskLogKind.ESCALATED,
-            actor_kind=ActorKind.SYSTEM,
-            before=f"mức {int(EscalationLevel.LEVEL_2)}",
-            after=f"mức {int(EscalationLevel.LEVEL_2 if exhausted else EscalationLevel.LEVEL_1)}",
-            reason=(
-                "không gọi được Trưởng dự án sau "
-                f"{spent} lần — chuyển thẳng lên người chủ"
-                if exhausted
-                else "không gọi được Trưởng dự án — sẽ hỏi lại, chưa tính là đã hỏi"
-            ),
-        )
 
     async def _ask_patron(
         self, task: Task, ladder: TaskPushReason, *, cause: str, now: datetime
@@ -374,11 +395,10 @@ class RecoveryEscalator:
             )
             return
 
-        # Read, not assumed. A Level-2 question that never reached the Leader leaves the
-        # counter above zero, and the patron is told *that* instead — which is the more
-        # useful sentence of the two, because a Leader nobody can reach is a problem only
-        # the patron can fix.
-        leader_asked = ladder.handover_attempts == 0
+        # Read, not assumed. If no Level-2 question ever landed, the patron is told *that*
+        # instead — the more useful sentence of the two, because a Leader nobody can reach
+        # is a problem only the patron can fix, and it wants a different action from them.
+        leader_asked = ladder.leader_reached_at is not None
         dossier: dict[str, object] = {
             "cause": cause,
             "level1_attempts": ladder.attempts,
@@ -386,7 +406,7 @@ class RecoveryEscalator:
             if ladder.last_attempt_at
             else None,
             "leader_asked": leader_asked,
-            "leader_unreachable_attempts": ladder.handover_attempts,
+            "leader_asks": ladder.handover_attempts,
             "question": (
                 "Đầu việc này đã qua cả hai mức phục hồi mà vẫn không đi tiếp. "
                 "Bạn muốn giao lại cho ai khác, thu hẹp yêu cầu, hay huỷ nó?"
@@ -403,11 +423,12 @@ class RecoveryEscalator:
             body=(
                 f"{task.title}\n\nVì sao: {cause}\n"
                 + (
-                    f"Hệ thống đã tự gọi lại {ladder.attempts} lần, Trưởng dự án đã được "
-                    "hỏi và vẫn chưa gỡ được."
+                    f"Hệ thống đã tự gọi lại {ladder.attempts} lần, rồi hỏi Trưởng dự "
+                    f"án {ladder.handover_attempts} lần. Trưởng dự án đã đọc nhưng đầu "
+                    "việc vẫn không có ai chạm vào."
                     if leader_asked
-                    else f"Hệ thống đã tự gọi lại {ladder.attempts} lần, rồi thử chuyển "
-                    f"cho Trưởng dự án {ladder.handover_attempts} lần mà không gọi được "
+                    else f"Hệ thống đã tự gọi lại {ladder.attempts} lần, rồi thử hỏi "
+                    f"Trưởng dự án {ladder.handover_attempts} lần mà không gọi được "
                     "— nên việc này chưa từng có ai quyết."
                 )
             ),

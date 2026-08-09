@@ -211,17 +211,20 @@ def stall_reason(reason: PushReason | None, *, now: datetime) -> str | None:
     them at the thing to fix.
     """
     if reason is None:
-        return "không có gì được hẹn để đẩy đầu việc này đi tiếp"
+        return "việc bị bỏ quên: không ai đang làm, cũng không có lịch gọi ai vào làm"
     if is_live(reason, now=now):
         return None
     return _EXPIRED_WORDING.get(reason.kind, f"động cơ đẩy '{reason.kind}' đã quá hạn")
 
 
+# These strings are not log lines. They land in the task's own stalled-reason field, on the
+# board the patron reads and in the question the Leader is woken with — so they have to read
+# like a person wrote them, and they have to name the thing to go and look at.
 _EXPIRED_WORDING: dict[TaskDrive, str] = {
-    TaskDrive.RUN_ACTIVE: "lượt chạy trên đầu việc này đã im quá cả cửa sổ ân hạn",
-    TaskDrive.WAKE_SCHEDULED: "lệnh đánh thức đã hẹn nhưng không mở được lượt chạy nào",
-    TaskDrive.WAITING_RECOVERY: "đã hết hạn chờ lần thử lại mà không có lần nào tới nơi",
-    TaskDrive.WAITING_EXTERNAL: "mốc bên ngoài đã trôi qua mà không có gì xảy ra",
+    TaskDrive.RUN_ACTIVE: "người làm nhận việc rồi tắt tiếng giữa chừng",
+    TaskDrive.WAKE_SCHEDULED: "đã gọi người làm nhưng nó chưa từng bắt đầu",
+    TaskDrive.WAITING_RECOVERY: "gọi lại mấy lần đều không tới được người làm",
+    TaskDrive.WAITING_EXTERNAL: "đang chờ một thứ bên ngoài, quá hạn rồi vẫn chưa thấy",
 }
 
 
