@@ -211,6 +211,7 @@ class ApprovalService:
         pull_in_leader = False
         project_id: UUID | None = None
         placed: InboxItem | None = None
+        lost: tuple[UUID | None, str] | None = None
 
         async with self._uow() as uow:
             task = await uow.tasks.get(task_id)
@@ -228,74 +229,79 @@ class ApprovalService:
                 # open, and the signature is the one artefact in this system that is
                 # supposed to mean something. Back to the step that produced it, with
                 # the loss written down — and the criteria already scored left alone, so
-                # only the missing part is redone.
-                lost_reason = await self._report_lost_deliverable(
-                    uow, task, missing, now=now
+                # only the missing part is redone. Nothing is signed on this path, so the
+                # whole signing block below is skipped.
+                lost = (
+                    task.assigned_marius_id,
+                    await self._report_lost_deliverable(uow, task, missing, now=now),
                 )
-                lost_worker = task.assigned_marius_id
-                await uow.commit()
-                # And wake them, exactly as a rejection does. This is the same event from
-                # the worker's side — their output is being sent back — and the system
-                # already knows precisely what to redo, because the lost file is named in
-                # the next action. Leaving it to the safety net instead would cost the
-                # ten-to-fifteen minutes it takes the sweep to notice a task with nothing
-                # driving it; the net exists for losses nobody saw, not for one we just
-                # found ourselves.
-                if lost_worker is not None:
-                    await self._wake_for_rework(task_id, lost_worker, lost_reason)
-                return task
-
-            history = list(await uow.approvals.list_for_task(task_id))
-            signature = Approval(
-                task_id=task_id,
-                signer_kind=signer_kind,
-                signer_marius_id=marius_id,
-                signer_user_id=user_id,
-                result=ApprovalResult.APPROVE if approve else ApprovalResult.REJECT,
-                reason=reason,
-                signed_at=now,
-            )
-            await uow.approvals.add(signature)
-            await self._log_signature(uow, signature, task_id)
-            this_round = [signature]
-
-            if signer_kind is SignerKind.PATRON:
-                # The patron just answered the question their inbox was holding. Leaving
-                # the item pending would keep asking for a decision already made — and an
-                # inbox that lies about what is outstanding stops being read.
-                await self._resolve_pending_acceptance(uow, task_id)
-
-            if approve and signer_kind is SignerKind.LEADER and project_id is not None:
-                patron_id = await self._responsible_patron_in(uow, task)
-                auto = await uow.auto_approvals.get(project_id, patron_id)
-                if auto is not None and auto.enabled:
-                    stand_in = Approval(
-                        task_id=task_id,
-                        signer_kind=SignerKind.PATRON,
-                        signer_user_id=patron_id,
-                        result=ApprovalResult.APPROVE,
-                        is_auto=True,
-                        signed_at=now,
-                    )
-                    await uow.approvals.add(stand_in)
-                    await self._log_signature(uow, stand_in, task_id)
-                    this_round.append(stand_in)
-                else:
-                    placed = await self._ask_patron_to_accept(
-                        uow, task, patron_id=patron_id, now=now
-                    )
-
-            current = current_signatures(history) + this_round
-            if not approve:
-                rejected_worker = task.assigned_marius_id
-                pull_in_leader = brief_needs_review(history + this_round)
-                await self._send_back(uow, task, reason=reason or "", now=now)
-                if pull_in_leader:
-                    await self._log_brief_escalation(uow, task_id, history + this_round)
             else:
-                close_it = is_closable(current)
+                history = list(await uow.approvals.list_for_task(task_id))
+                signature = Approval(
+                    task_id=task_id,
+                    signer_kind=signer_kind,
+                    signer_marius_id=marius_id,
+                    signer_user_id=user_id,
+                    result=ApprovalResult.APPROVE if approve else ApprovalResult.REJECT,
+                    reason=reason,
+                    signed_at=now,
+                )
+                await uow.approvals.add(signature)
+                await self._log_signature(uow, signature, task_id)
+                this_round = [signature]
+
+                if signer_kind is SignerKind.PATRON:
+                    # The patron just answered the question their inbox was holding. Leaving
+                    # the item pending would keep asking for a decision already made — and an
+                    # inbox that lies about what is outstanding stops being read.
+                    await self._resolve_pending_acceptance(uow, task_id)
+
+                if approve and signer_kind is SignerKind.LEADER and project_id is not None:
+                    patron_id = await self._responsible_patron_in(uow, task)
+                    auto = await uow.auto_approvals.get(project_id, patron_id)
+                    if auto is not None and auto.enabled:
+                        stand_in = Approval(
+                            task_id=task_id,
+                            signer_kind=SignerKind.PATRON,
+                            signer_user_id=patron_id,
+                            result=ApprovalResult.APPROVE,
+                            is_auto=True,
+                            signed_at=now,
+                        )
+                        await uow.approvals.add(stand_in)
+                        await self._log_signature(uow, stand_in, task_id)
+                        this_round.append(stand_in)
+                    else:
+                        placed = await self._ask_patron_to_accept(
+                            uow, task, patron_id=patron_id, now=now
+                        )
+
+                current = current_signatures(history) + this_round
+                if not approve:
+                    rejected_worker = task.assigned_marius_id
+                    pull_in_leader = brief_needs_review(history + this_round)
+                    await self._send_back(uow, task, reason=reason or "", now=now)
+                    if pull_in_leader:
+                        await self._log_brief_escalation(uow, task_id, history + this_round)
+                else:
+                    close_it = is_closable(current)
 
             await uow.commit()
+
+        # Everything past here reaches outside the transaction. The wake opens its own unit
+        # of work, so booking it inside this one would hold two connections for one caller
+        # and let a second session read the row before this one committed it.
+        if lost is not None:
+            lost_worker, lost_reason = lost
+            # Wake them exactly as a rejection does. This is the same event from the
+            # worker's side — their output is being sent back — and the system already
+            # knows precisely what to redo, because the lost file is named in the next
+            # action. Leaving it to the safety net instead would cost the ten-to-fifteen
+            # minutes it takes the sweep to notice a task with nothing driving it; the net
+            # exists for losses nobody saw, not for one we just found ourselves.
+            if lost_worker is not None:
+                await self._wake_for_rework(task_id, lost_worker, lost_reason)
+            return task
 
         if placed is not None:
             await self._publish_inbox(placed)
