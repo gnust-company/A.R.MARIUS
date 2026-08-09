@@ -68,6 +68,13 @@ def upgrade() -> None:
         sa.Column('ref', sa.Text(), nullable=True),
         sa.Column('level', sa.Integer(), nullable=False, server_default=sa.text('0')),
         sa.Column('attempts', sa.Integer(), nullable=False, server_default=sa.text('0')),
+        # How many times the Level-2 handover was attempted and did not reach the
+        # Leader. Separate from `attempts`, which counts Level-1 tries and is what the
+        # patron's dossier reports as "tried this many times" — folding the two together
+        # would make that number claim work that never happened.
+        sa.Column(
+            'handover_attempts', sa.Integer(), nullable=False, server_default=sa.text('0')
+        ),
         sa.Column('cause', sa.Text(), nullable=True),
         sa.Column('last_attempt_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('next_retry_at', sa.DateTime(timezone=True), nullable=True),

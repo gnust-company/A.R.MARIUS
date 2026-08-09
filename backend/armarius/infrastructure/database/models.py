@@ -603,7 +603,7 @@ class TaskPushReasonModel(Base):
     part the sweep does not read on every pass — which rung the task is on, how much of the
     Level-1 budget is spent on the current cause, and when the next attempt is due. Splitting
     it this way keeps the field that matters most (is the drive still live?) on the index the
-    hot query already uses, and keeps six rarely-read columns off the widest table in the
+    hot query already uses, and keeps seven rarely-read columns off the widest table in the
     schema.
     """
 
@@ -620,6 +620,10 @@ class TaskPushReasonModel(Base):
     # 0 = nothing wrong · 1 = the system retries · 2 = the Leader decides · 3 = the patron.
     level: Mapped[int] = mapped_column(Integer, default=0, index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
+    # Failed Level-2 handovers. Kept apart from `attempts` because that number is what
+    # the patron's dossier reports as Level-1 tries; merging them would inflate a count
+    # the patron reads as work already done.
+    handover_attempts: Mapped[int] = mapped_column(Integer, default=0)
     # What the ladder is climbing about. The Level-1 budget is counted per cause (FR-060),
     # so a task that got unstuck and later broke differently starts from a full budget.
     cause: Mapped[str | None] = mapped_column(Text)

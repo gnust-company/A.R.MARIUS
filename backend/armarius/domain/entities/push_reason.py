@@ -31,6 +31,10 @@ class TaskPushReason:
     ref: str | None = None
     level: EscalationLevel = EscalationLevel.NONE
     attempts: int = 0
+    # How many times the Level-2 handover was tried and did not reach the Leader.
+    # Zero also means "the Leader was actually reached", which is what the Level-3
+    # dossier reads to decide whether it may say the Leader was asked.
+    handover_attempts: int = 0
     cause: str | None = None
     last_attempt_at: datetime | None = None
     next_retry_at: datetime | None = None
