@@ -45,7 +45,7 @@ from armarius.application.use_cases.inbox import InboxService
 from armarius.application.use_cases.push_reason import PushReasonService
 from armarius.application.use_cases.task_log import TaskLogService
 from armarius.application.use_cases.types import UowFactory
-from armarius.domain.entities.task import Task, TaskDrive
+from armarius.domain.entities.task import Task
 from armarius.domain.entities.task_log import ActorKind, TaskLogKind
 from armarius.domain.services.push_reason_rules import is_live, stall_reason
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
@@ -151,19 +151,19 @@ class StallWatchdog:
                         reason="đã có người hoặc lịch chạm vào đầu việc này trở lại",
                     )
                 # The ladder measures an unsolved problem, and this one is solved — by the
-                # Leader's action, by a retry landing, by anything. Leaving the rung standing
-                # would have the next stall start halfway up, on attempts that belong to a
-                # problem already over.
+                # Leader's action, by a retry landing, by the patron picking it up, by
+                # anything at all. One rule, no exceptions: **the task stopped being stalled,
+                # so the rung goes**. Leaving it standing would have the next stall start
+                # halfway up, on a budget spent for a problem already over.
                 #
-                # Except when the drive *is* the ladder's own top rung. Asking the patron
-                # parks the task on a human, and parking on a human is a clockless drive, so
-                # a minute later this branch would read the question as the answer: stand the
-                # ladder down and resolve the letter, sixty seconds after it was written and
-                # before anyone could read it. Measured on the real sweep — and the task came
-                # out worse than dropped, holding a clockless drive with no flag, matching no
-                # stall-candidate clause ever again. What ends Mức 3 is the patron replying,
-                # not the sweep noticing that they were asked.
-                if self._ladder is not None and reason.kind is not TaskDrive.WAITING_PATRON:
+                # It resets the rung and *nothing else*. An earlier version also closed the
+                # patron's escalation letter here, and that was circular: a pending letter is
+                # itself one of the six answers to "is anything going to touch this task", so
+                # writing the letter made the task un-stalled, which closed the letter, which
+                # made it stalled again — except the stored answer said otherwise and carried
+                # no deadline, so no sweep ever looked at the task again. The letter is closed
+                # by the patron, in `RecoveryEscalator.patron_answered`.
+                if self._ladder is not None:
                     await self._ladder.stand_down(task.id, now=now)
                 return False
 
