@@ -273,8 +273,18 @@ async def agent_declare_recovery(
     Without this, Level 2 is a rung with no way off it: the ladder waits for a decision
     that has nowhere to be recorded, and the next sweep climbs to the patron anyway —
     telling them nobody decided, while the Leader was deciding.
+
+    Leader seat required, same as the other door out of Level 2 (FR-060b). The pair is
+    described as one window with two exits, so a check on one and not the other is a hole
+    at the shape of the missing check: what this door writes is a *decision in the Leader's
+    name*, and the dossier the patron eventually reads is built out of exactly those
+    records. A worker filing "Leader decided: reassign to Bob" dirties the one thing
+    FR-061 exists to keep clean.
     """
     task = await _task_in_caller_workspace(container, marius, task_id)
+    if task.project_id is None:
+        raise LookupError("task not found")
+    await _leader_seat(container, marius, task.project_id)
     await container.recovery.leader_decided(task_id, action=body.action)
     if body.next_action:
         task = await container.tasks.set_next_action(task_id, body.next_action)

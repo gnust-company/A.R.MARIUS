@@ -32,7 +32,7 @@ from armarius.application.use_cases.task_log import TaskLogService
 from armarius.application.use_cases.tasks import LeaderNotifier
 from armarius.application.use_cases.types import UowFactory
 from armarius.application.use_cases.wake_engine import WakeEngine
-from armarius.domain.entities.inbox_item import InboxItemKind, InboxItemStatus
+from armarius.domain.entities.inbox_item import InboxItem, InboxItemKind, InboxItemStatus
 from armarius.domain.entities.push_reason import TaskPushReason
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.task import Task, TaskDrive, TaskStatus
@@ -92,6 +92,7 @@ class RecoveryEscalator:
         task_log: TaskLogService,
         control_bus: TopicEventBus,
         leader_notifier: LeaderNotifier | None = None,
+        push_reasons: PushReasonService | None = None,
         backoff_base_seconds: int = _BACKOFF_BASE_SECONDS,
         clock: Callable[[], datetime] = utcnow,
     ) -> None:
@@ -102,6 +103,8 @@ class RecoveryEscalator:
         self._log = task_log
         self._bus = control_bus
         self._notifier = leader_notifier
+        # Only `patron_answered` needs this, and only to put the task back under the net.
+        self._drives = push_reasons
         self._backoff_base = backoff_base_seconds
         self._clock = clock
 
@@ -247,41 +250,80 @@ class RecoveryEscalator:
     async def stand_down(self, task_id: UUID, *, now: datetime | None = None) -> None:
         """The task has a drive again — clear the ladder, budgets and all (FR-060).
 
-        Called by the sweep the moment a flagged task turns out to be moving. This is the
-        only door back to a clean slate, and it is deliberately not a declaration anybody
-        can make: it fires on the fact the whole ladder measures.
+        The only door back to a clean slate, and deliberately not a declaration anybody can
+        make: it fires on the fact the whole ladder measures. Two callers, both of them
+        facts — the sweep, when a flagged task turns out to be moving, and the patron
+        answering a Mức 3 letter.
 
-        Without it the ladder outlives the problem. A task that recovered on its own would
-        keep last month's rung, and the next stall — even one with the same cause months
-        later — would start halfway up, handing the patron a dossier about attempts that
-        belong to a problem already solved.
+        The sweep skips it for a task parked on a *patron*, which at Mức 3 is the ladder's
+        own doing: reading that back as movement would have the net close its own alarm a
+        minute after raising it. See the branch in `stall_watchdog._examine`.
+
+        Without this door the ladder outlives the problem. A task that recovered on its own
+        would keep last month's rung, and the next stall — even one with the same cause
+        months later — would start halfway up, handing the patron a dossier about attempts
+        that belong to a problem already solved.
         """
         now = now or self._clock()
         async with self._uow() as uow:
             ladder = await uow.push_reasons.get_for_task(task_id)
-            if ladder is None or ladder.level is EscalationLevel.NONE:
-                return
-            was_at_the_patron = ladder.level >= EscalationLevel.LEVEL_3
-            ladder.apply(
-                EscalationState(
-                    level=EscalationLevel.NONE, attempts=0, handovers=0, cause=""
-                ),
-                now=now,
-            )
-            ladder.next_retry_at = None
-            await uow.push_reasons.upsert(ladder)
-            await uow.commit()
+            if ladder is not None and ladder.level is not EscalationLevel.NONE:
+                ladder.apply(
+                    EscalationState(
+                        level=EscalationLevel.NONE, attempts=0, handovers=0, cause=""
+                    ),
+                    now=now,
+                )
+                ladder.next_retry_at = None
+                await uow.push_reasons.upsert(ladder)
+                await uow.commit()
 
         # The patron was asked "this is stuck, what now?" and it is not stuck any more, so
         # the question has stopped being one. Left standing it would ask forever about a
         # task that is running, and an inbox that lies about what is outstanding stops
-        # being read — which costs the *next* escalation, not this one. Escalations only:
-        # a task can be holding a waiting-for-acceptance item at the same time, and that
-        # one is nobody's business here.
-        if was_at_the_patron:
-            await self._inbox.resolve_pending_for_task(
-                task_id, kind=InboxItemKind.ESCALATION
-            )
+        # being read — which costs the *next* escalation, not this one.
+        #
+        # Asked unconditionally, of the inbox. Inferring "was this ever escalated?" from the
+        # rung read here answers a different question — *is it at the patron right now* —
+        # and the two part company on an ordinary path: a changed cause resets the rung to
+        # Level 1 while the letter stays in the inbox, and from then on nothing could ever
+        # close it. The `kind` filter is what the rung check was really protecting: a task
+        # can be holding a waiting-for-acceptance item at the same time, and that one is
+        # nobody's business here. A task with no escalation closes nothing and costs a read.
+        await self._inbox.resolve_pending_for_task(
+            task_id, kind=InboxItemKind.ESCALATION
+        )
+
+    async def patron_answered(
+        self,
+        item_id: UUID,
+        *,
+        recipient_user_id: str | None = None,
+        now: datetime | None = None,
+    ) -> InboxItem:
+        """The patron handled a Mức 3 letter — take the ladder down and re-derive the drive.
+
+        This is the *only* way down from Mức 3, and it exists because the sweep deliberately
+        lets go there. Once the letter is written, the system and the agents are both out of
+        moves; the task is parked on a named human exactly like any other task waiting on a
+        patron, and sweeping it every minute buys nothing but load.
+
+        Letting go is only safe if handing the letter back picks the task up again. The
+        answer either gave it a real drive or it did not, and the second case has to become a
+        fresh stall rather than silence — so the drive is recomputed here, which drops the
+        stale *waiting on the patron* claim and puts the task back in front of the sweep.
+
+        Every kind of item comes through here — this is the patron's own resolve door — and
+        anything that is not a task escalation simply resolves and returns.
+        """
+        now = now or self._clock()
+        item = await self._inbox.resolve(item_id, recipient_user_id=recipient_user_id)
+        if item.kind is not InboxItemKind.ESCALATION or item.task_id is None:
+            return item
+        await self.stand_down(item.task_id, now=now)
+        if self._drives is not None:
+            await self._drives.refresh(item.task_id, now=now)
+        return item
 
     # ── the three rungs ──────────────────────────────────────────────────────────
     async def _act(
@@ -418,6 +460,22 @@ class RecoveryEscalator:
         async with self._uow() as uow:
             recipient = await self._route_to_patron(uow, task)
             workspace_id = await self._workspace_of(uow, task)
+            # Are they already looking at this task? Asked of the inbox, because that is
+            # where the answer lives — the rung cannot be trusted for it, since a changed
+            # cause sends the ladder back to Level 1 and it climbs up here a second time
+            # under the new wording. Two letters, same task, same title, and the reminder
+            # ladder chasing both is how an inbox teaches its reader to skip it. The
+            # Leader-is-gone path asks this same question before it writes.
+            already_asking = any(
+                i.kind is InboxItemKind.ESCALATION
+                for i in await uow.inbox.list_pending_for_task(task.id)
+            )
+        if already_asking:
+            logger.info(
+                "task %s reached level 3 again; the patron already has that question",
+                task.id,
+            )
+            return
         if not recipient or workspace_id is None:
             logger.warning(
                 "task %s reached level 3 with nobody to ask; the flag stands", task.id

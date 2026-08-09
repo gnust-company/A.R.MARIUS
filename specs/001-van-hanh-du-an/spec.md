@@ -600,6 +600,21 @@ thứ tự gắn trên từng chữ ký.
   và CHỈ mục leo thang, không đụng những mục chờ khác cùng đầu việc. Câu hỏi *"việc này kẹt, quyết đi"* hết là
   câu hỏi ngay khi việc hết kẹt; để nó nằm lại là hộp thư nói dối về những gì còn tồn, và cái giá rơi vào lần
   leo thang **sau**, không phải lần này.
+
+  Phép kiểm PHẢI hỏi hộp thư *"đã từng hỏi người chủ chưa"*, KHÔNG ĐƯỢC suy ra từ nấc thang hiện tại. Nấc là
+  chỗ đầu việc đang đứng và nó di chuyển — đổi nguyên nhân là đưa thang về Mức 1 trong khi lá thư vẫn nằm ở
+  hộp thư — còn *đã từng hỏi* là chuyện đã rồi, chỉ có thể đúng thêm chứ không sai lại.
+- **FR-061c**: Mục leo thang đang chờ **là** một động cơ đẩy hợp lệ của đầu việc: nó đang đỗ trên một con người
+  có tên, được bậc nhắc của FR-065 giục. Nhưng nó KHÔNG ĐƯỢC đọc ngược lại thành *đầu việc đã chạy lại*, vì
+  chính cái thang vừa tạo ra nó. Đọc ngược là để lưới lấy tiếng chuông báo động của mình làm bằng chứng hết
+  báo động: hỏi người chủ → thấy có động cơ → hạ thang → đóng luôn lá thư, trước khi ai kịp đọc.
+- **FR-061d**: Từ Mức 3, HỆ THỐNG KHÔNG canh đầu việc nữa — cả hệ lẫn agent đều đã hết cách, nên quét tiếp
+  không mua được gì. Đầu việc rời khỏi vòng quét đúng như mọi đầu việc đang đỗ trên một con người.
+
+  Đổi lại, KHI người chủ xử lý xong mục leo thang, HỆ THỐNG PHẢI hạ thang về không **và** tính lại động cơ đẩy
+  của đầu việc đó. Đây là đường về duy nhất từ Mức 3, và không có nó thì buông tay là buông hẳn: câu trả lời
+  của người chủ hoặc đã cho đầu việc một động cơ thật, hoặc chưa — và trường hợp thứ hai PHẢI thành một lần
+  đình trệ mới, không được thành im lặng.
 - **FR-062**: Mỗi lượt chạy còn hoạt động PHẢI phát tín hiệu báo sống định kỳ. KHI tín hiệu tắt quá ngưỡng
   nghi treo, HỆ THỐNG PHẢI mở một cửa sổ ân hạn và thử gọi nhẹ; nếu vẫn im thì tuyên treo, đóng lượt chạy đó,
   kéo đầu việc về *chờ làm*, và gọi lại đúng người phụ trách trỏ vào việc kế tiếp đã lưu.

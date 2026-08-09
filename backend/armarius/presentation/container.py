@@ -189,6 +189,7 @@ def build_container() -> Container:
         task_log=TaskLogService(uow_factory),
         control_bus=control_bus,
         leader_notifier=leader_chat,
+        push_reasons=push_reasons,
         backoff_base_seconds=settings.level1_backoff_seconds,
     )
 
