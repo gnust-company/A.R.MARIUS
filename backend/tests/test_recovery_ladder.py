@@ -573,6 +573,106 @@ async def test_a_decision_that_changed_nothing_still_reaches_the_patron(
 
 
 @pytest.mark.asyncio
+async def test_the_decision_door_is_shut_once_the_question_is_the_patrons(
+    uow_factory,
+) -> None:
+    """Mức 2 is the Leader's window, and both its doors close with it.
+
+    Above it the question belongs to the patron and the Leader is out of it. Leaving this
+    door open cost something real: the call closed the patron's escalation on its way
+    through, and because the ladder freezes at the top, nothing ever placed that item
+    again — the patron was asked, then had the question quietly taken back while the task
+    stayed dead. It also *paid* the Leader for talking: one sentence with no action behind
+    it removed the last person watching.
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(),
+        bus=TopicEventBus(),
+    )
+    for hour in range(12):  # all the way to the patron
+        await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
+    assert (await _ladder(uow_factory, task.id)).level is EscalationLevel.LEVEL_3
+
+    with pytest.raises(NotOnTheLeadersRung):
+        await escalator.leader_decided(
+            task.id, action="giao lại cho Bob", now=T0 + timedelta(hours=13)
+        )
+
+    async with uow_factory() as uow:
+        pending = [
+            i for i in await uow.inbox.list_for_recipient(
+                "patron-1", status=InboxItemStatus.PENDING
+            )
+            if i.kind is InboxItemKind.ESCALATION
+        ]
+    assert pending, "câu hỏi của người chủ bị rút về trong khi đầu việc vẫn chết"
+
+
+@pytest.mark.asyncio
+async def test_the_decision_door_is_shut_while_the_system_is_still_trying(
+    uow_factory,
+) -> None:
+    """The mirror of the rule above, and the reason it is a rule and not a special case.
+
+    At Mức 1 nobody has asked the Leader anything yet. A decision recorded there would
+    claim a handover that never happened, and the dossier the patron eventually reads is
+    built from exactly these records.
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(),
+        bus=TopicEventBus(),
+    )
+    await escalator.climb(task, cause=CAUSE, now=T0)
+
+    with pytest.raises(NotOnTheLeadersRung):
+        await escalator.leader_decided(
+            task.id, action="giao lại cho Bob", now=T0 + timedelta(minutes=1)
+        )
+
+
+@pytest.mark.asyncio
+async def test_the_task_moving_again_closes_the_patrons_question(uow_factory) -> None:
+    """The patron was asked *this is stuck, what now?* — and it is not stuck any more.
+
+    Left standing, that item asks forever about a task that is running, and an inbox that
+    lies about what is outstanding stops being read. The cost lands on the *next*
+    escalation, not this one, which is what makes it easy to leave undone.
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(),
+        bus=TopicEventBus(),
+    )
+    for hour in range(12):
+        await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
+    async with uow_factory() as uow:
+        assert [
+            i for i in await uow.inbox.list_for_recipient(
+                "patron-1", status=InboxItemStatus.PENDING
+            )
+            if i.kind is InboxItemKind.ESCALATION
+        ]
+
+    await escalator.stand_down(task.id, now=T0 + timedelta(hours=13))
+
+    async with uow_factory() as uow:
+        pending = [
+            i for i in await uow.inbox.list_for_recipient(
+                "patron-1", status=InboxItemStatus.PENDING
+            )
+            if i.kind is InboxItemKind.ESCALATION
+        ]
+    assert pending == [], (
+        "đầu việc chạy lại rồi mà người chủ vẫn bị hỏi về chuyện nó đang kẹt"
+    )
+
+
+@pytest.mark.asyncio
 async def test_the_task_moving_again_takes_it_off_the_ladder(uow_factory) -> None:
     """The one door back to a clean slate, and it is a fact rather than a claim.
 

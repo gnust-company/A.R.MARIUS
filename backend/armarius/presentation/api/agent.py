@@ -293,8 +293,17 @@ async def agent_escalate_task(
     The other door out of Level 2 is to fix it. Without this one, a Leader that knows in
     seconds it cannot help has only two moves: sit out the whole budget of asks, or invent
     an action so as to look busy. Both waste more than saying so.
+
+    Leader seat required, unlike the sibling doors on this router. They route work between
+    agents; this one reaches a person, and the whole ladder is ordered so that a human is
+    the last resort — a worker that could hand its own stuck task straight to the patron
+    would walk around every rung in one call, which is what `NotOnTheLeadersRung` guards
+    against from the other direction.
     """
-    await _task_in_caller_workspace(container, marius, task_id)
+    task = await _task_in_caller_workspace(container, marius, task_id)
+    if task.project_id is None:
+        raise LookupError("task not found")
+    await _leader_seat(container, marius, task.project_id)
     await container.recovery.leader_gave_up(task_id, reason=body.reason)
     return {"status": "đã chuyển lên người chủ"}
 

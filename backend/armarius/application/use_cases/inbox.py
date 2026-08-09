@@ -196,14 +196,25 @@ class InboxService:
         except LookupError:  # pragma: no cover - project deleted under a live item
             return _DEFAULT_REMINDER_HOURS
 
-    async def resolve_pending_for_task(self, task_id: UUID) -> int:
-        """Close every item still waiting on a task. Returns how many were closed.
+    async def resolve_pending_for_task(
+        self, task_id: UUID, *, kind: InboxItemKind | None = None
+    ) -> int:
+        """Close items still waiting on a task. Returns how many were closed.
 
         Used when the thing the patron was asked about stops being a question — the task
         was cancelled, or someone else answered it first.
+
+        ``kind`` narrows it to one sort of question. Pass it whenever the caller only knows
+        that *its own* question is answered: a task can be holding a stalled-escalation and
+        a waiting-for-acceptance item at the same time, and closing both because one of them
+        was settled tells the patron a decision was made that nobody made.
         """
         async with self._uow() as uow:
-            pending = list(await uow.inbox.list_pending_for_task(task_id))
+            pending = [
+                item
+                for item in await uow.inbox.list_pending_for_task(task_id)
+                if kind is None or item.kind is kind
+            ]
         for item in pending:
             await self.resolve(item.id)
         return len(pending)

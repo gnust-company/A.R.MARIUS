@@ -54,7 +54,7 @@ EVENT_LEVEL_3 = "leo-thang.muc-3"
 
 
 class NotOnTheLeadersRung(Exception):
-    """Raised when the give-up door is used from anywhere but Mức 2 (FR-059).
+    """Raised when either Leader door is used from anywhere but Mức 2 (FR-059).
 
     The door means *I have been asked about this and it is beyond me*. From lower down it
     would mean something else entirely — handing the patron a task the system has not
@@ -163,26 +163,34 @@ class RecoveryEscalator:
     async def leader_decided(
         self, task_id: UUID, *, action: str, now: datetime | None = None
     ) -> None:
-        """The Leader says what it is doing about a Level-2 task (FR-059).
+        """The Leader says what it is doing about a Mức 2 task (FR-059).
 
-        This **records** a decision; it does not end the rung. What ends the rung is the
-        task getting a drive again, and that is checked against the task row on the next
-        sweep. The difference is not pedantry: the ladder used to clear itself here, on the
-        strength of the sentence alone, so a Leader could answer *reassigned it to Bob*
-        without reassigning anything and the ladder would stand down on a task that nobody
-        was going to touch. Then the sweep re-flagged it a minute later and the whole thing
-        started again at Level 1 — round and round, and the patron never heard a word.
+        **Only open at Mức 2**, the same window as the give-up door beside it. Below that
+        the system is still spending its own attempts and the Leader has not been asked
+        anything; above it the question belongs to the patron and the Leader is out of it.
+        One rung, two doors, one window — a door that answers a question nobody asked is a
+        door somebody walks through by accident.
 
-        So the decision goes into the record, where it belongs, and the clock keeps
-        running. A real action gives the task a real drive within the window and the ladder
-        stands down on its own; an empty one does not, and the patron is told.
+        The Level-3 case is the one that cost something. This used to be open there, and
+        the call closed the patron's escalation on its way through. The ladder freezes at
+        the top on purpose, so nothing ever climbed again and nothing ever placed that item
+        a second time: the patron was asked, then had the question quietly taken back while
+        the task stayed dead — and it *paid* the Leader for talking, since one sentence with
+        no action behind it removed the last person watching.
 
-        Any escalation already sitting in the patron's inbox is resolved, because the
-        Leader is now on it and an inbox that keeps asking about something being handled
-        stops being read.
+        What this records is a decision, not an outcome. It does not end the rung and it
+        does not touch the inbox at all: the rung ends when the task has a drive again,
+        which the sweep checks against the row, and `stand_down` closes the patron's
+        question then — on the fact, not on the claim.
         """
         now = now or self._clock()
-        await self._inbox.resolve_pending_for_task(task_id)
+        async with self._uow() as uow:
+            ladder = await uow.push_reasons.get_for_task(task_id)
+        if ladder is None or ladder.level is not EscalationLevel.LEVEL_2:
+            raise NotOnTheLeadersRung(
+                "Đầu việc này không đang chờ Trưởng dự án quyết, nên chưa ghi nhận được "
+                "hành động phục hồi."
+            )
         await self._log.record(
             task_id,
             TaskLogKind.ESCALATED,
@@ -210,7 +218,10 @@ class RecoveryEscalator:
             if task is None:
                 raise LookupError("task not found")
             if ladder is not None and ladder.level >= EscalationLevel.LEVEL_3:
-                return  # already with the patron; asking twice is how an inbox dies
+                # Already with the patron. Not an error — a Leader asking twice is asking
+                # for the right thing — but the second call must not place a second item,
+                # because an inbox that repeats itself stops being read.
+                return
             if ladder is None or ladder.level is not EscalationLevel.LEVEL_2:
                 raise NotOnTheLeadersRung(
                     "Đầu việc này chưa tới lượt Trưởng dự án quyết, nên chưa chuyển lên "
@@ -219,6 +230,7 @@ class RecoveryEscalator:
             ladder.level = EscalationLevel.LEVEL_3
             ladder.next_retry_at = None
             ladder.updated_at = now
+            cause = ladder.cause or reason
             await uow.push_reasons.upsert(ladder)
             await uow.commit()
 
@@ -230,7 +242,7 @@ class RecoveryEscalator:
             after=f"mức {int(EscalationLevel.LEVEL_3)}",
             reason=f"Trưởng dự án báo ngoài tầm xử lý: {reason}",
         )
-        await self._ask_patron(task, ladder, cause=ladder.cause or reason, now=now)
+        await self._ask_patron(task, ladder, cause=cause, now=now)
 
     async def stand_down(self, task_id: UUID, *, now: datetime | None = None) -> None:
         """The task has a drive again — clear the ladder, budgets and all (FR-060).
@@ -249,10 +261,27 @@ class RecoveryEscalator:
             ladder = await uow.push_reasons.get_for_task(task_id)
             if ladder is None or ladder.level is EscalationLevel.NONE:
                 return
-            ladder.apply(EscalationState(level=EscalationLevel.NONE, cause=""), now=now)
+            was_at_the_patron = ladder.level >= EscalationLevel.LEVEL_3
+            ladder.apply(
+                EscalationState(
+                    level=EscalationLevel.NONE, attempts=0, handovers=0, cause=""
+                ),
+                now=now,
+            )
             ladder.next_retry_at = None
             await uow.push_reasons.upsert(ladder)
             await uow.commit()
+
+        # The patron was asked "this is stuck, what now?" and it is not stuck any more, so
+        # the question has stopped being one. Left standing it would ask forever about a
+        # task that is running, and an inbox that lies about what is outstanding stops
+        # being read — which costs the *next* escalation, not this one. Escalations only:
+        # a task can be holding a waiting-for-acceptance item at the same time, and that
+        # one is nobody's business here.
+        if was_at_the_patron:
+            await self._inbox.resolve_pending_for_task(
+                task_id, kind=InboxItemKind.ESCALATION
+            )
 
     # ── the three rungs ──────────────────────────────────────────────────────────
     async def _act(

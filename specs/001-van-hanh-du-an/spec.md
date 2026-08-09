@@ -578,8 +578,28 @@ thứ tự gắn trên từng chữ ký.
   hồi tường minh; Mức 3 — đẩy lên người chủ, chỉ với những quyết định duy nhất người chủ mới quyết được.
 - **FR-060**: Mức 1 PHẢI có trần số lần tự gọi lại cho mỗi nguyên nhân trên mỗi đầu việc, khoảng cách giãn
   dần; bộ đếm PHẢI đặt lại về không khi đầu việc có tiến triển thật.
-- **FR-061**: Mỗi lần leo lên Mức 3, HỆ THỐNG PHẢI kèm hồ sơ đã thử (Mức 1 làm gì mấy lần, Mức 2 quyết gì) và
-  nêu chính xác điều cần người chủ quyết.
+- **FR-060a**: Mức 2 PHẢI có trần số lần hỏi Trưởng dự án cho mỗi nguyên nhân, khoảng cách giãn dần như Mức 1.
+  Trưởng dự án **ngoại tuyến** và Trưởng dự án **trực tuyến mà không phản hồi** PHẢI xử như nhau: cả hai đều là
+  *đã hỏi, đầu việc vẫn đứng im*. Hết trần thì leo Mức 3, và hồ sơ PHẢI phân biệt được *đã hỏi tới nơi* với
+  *không gọi được*, vì hai điều đó cần người chủ làm hai việc khác nhau.
+
+  Thứ **kết thúc** Mức 2 là đầu việc có động cơ đẩy trở lại, KHÔNG phải lời khai của Trưởng dự án. Một lời khai
+  không kèm hành động để lại đúng một đầu việc chết như trước, nên hệ chỉ được ghi nhận điều đối chiếu được
+  với bản ghi.
+- **FR-060b**: Hai lối vào của Trưởng dự án — *đã quyết hành động phục hồi* và *ngoài tầm xử lý, chuyển người
+  chủ* — CHỈ được mở khi đầu việc đang ở Mức 2. Dưới Mức 2 hệ còn đang tự thử và chưa hỏi Trưởng dự án điều gì;
+  từ Mức 3 trở lên câu hỏi đã thuộc về người chủ. Mở ngoài cửa sổ đó là phá luật không-nhảy-cóc của FR-059 từ
+  phía người trả lời.
+- **FR-061**: Mỗi lần leo lên Mức 3, HỆ THỐNG PHẢI kèm hồ sơ đã thử (Mức 1 làm gì mấy lần, Mức 2 hỏi mấy lần và
+  có tới nơi không) và nêu chính xác điều cần người chủ quyết.
+- **FR-061a**: Mục leo thang Mức 3 PHẢI cho người chủ **hành động ngay tại chỗ** đúng những lựa chọn mà nó nêu
+  ra — tối thiểu: giao lại cho người khác, thu hẹp hoặc đổi yêu cầu, và huỷ đầu việc. Hỏi một câu rồi bắt người
+  đọc tự đi tìm chỗ trả lời là đẩy phần khó nhất sang cho người mà cả cái thang này sinh ra để tiết kiệm thời
+  gian; và đó cũng là chỗ FR-070 bị hụt trên thực tế nếu chỉ có API mà không có lối bấm.
+- **FR-061b**: KHI đầu việc có động cơ đẩy trở lại, HỆ THỐNG PHẢI đóng mục leo thang đang chờ của đầu việc đó —
+  và CHỈ mục leo thang, không đụng những mục chờ khác cùng đầu việc. Câu hỏi *"việc này kẹt, quyết đi"* hết là
+  câu hỏi ngay khi việc hết kẹt; để nó nằm lại là hộp thư nói dối về những gì còn tồn, và cái giá rơi vào lần
+  leo thang **sau**, không phải lần này.
 - **FR-062**: Mỗi lượt chạy còn hoạt động PHẢI phát tín hiệu báo sống định kỳ. KHI tín hiệu tắt quá ngưỡng
   nghi treo, HỆ THỐNG PHẢI mở một cửa sổ ân hạn và thử gọi nhẹ; nếu vẫn im thì tuyên treo, đóng lượt chạy đó,
   kéo đầu việc về *chờ làm*, và gọi lại đúng người phụ trách trỏ vào việc kế tiếp đã lưu.
