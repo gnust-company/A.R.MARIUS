@@ -43,8 +43,16 @@ async def resolve_inbox_item(
     item_id: UUID, container: ContainerDep, user: CurrentUser
 ) -> InboxItemOut:
     """Mark an item handled. Usually called implicitly by the decision itself; exposed so
-    a patron can clear an item that stopped mattering."""
-    item = await container.inbox.resolve(item_id, recipient_user_id=str(user.id))
+    a patron can clear an item that stopped mattering.
+
+    Routed through the recovery ladder rather than straight at the inbox, because for a
+    stalled-task escalation this *is* the way down from Mức 3: the sweep lets go of a task
+    once the letter is written, so handing the letter back is what puts it under the net
+    again. Every other kind of item just resolves.
+    """
+    item = await container.recovery.patron_answered(
+        item_id, recipient_user_id=str(user.id)
+    )
     return InboxItemOut.model_validate(item)
 
 

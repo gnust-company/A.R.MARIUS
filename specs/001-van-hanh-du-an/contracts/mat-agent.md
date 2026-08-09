@@ -24,6 +24,11 @@ Trưởng dự án và thợ gọi, bằng thẻ định danh theo workspace. K�
 | `POST /agent/tasks/{id}/recovery` | **[mới]** | Hành động phục hồi Mức 2: đổi người, chẻ lại, làm rõ đề, gia hạn, đổi ưu tiên. Bắt buộc nêu hành động chọn và lý do. **Ghi lại quyết định, không kết thúc Mức 2** — cái kết thúc Mức 2 là đầu việc có động cơ đẩy trở lại, nên hành động phải được *làm thật* chứ không chỉ khai |
 | `POST /agent/tasks/{id}/escalate` | **[mới]** | Cửa thứ hai của Mức 2: đầu việc này ngoài tầm Trưởng dự án → đưa thẳng người chủ, không chờ hết lượt hỏi. Bắt buộc nêu lý do. Không có cửa này thì một Trưởng dự án biết ngay là mình bó tay chỉ còn hai nước: ngồi hết ngân sách, hoặc bịa một hành động cho có |
 
+Hai cửa trên là **một cửa sổ, hai lối** (FR-060b), nên chúng dùng chung đúng một luật gọi:
+
+- **Đòi ghế Trưởng dự án.** Thợ gọi → `404` (không phải `403`: sự tồn tại của đầu việc không được lộ, Hiến pháp I). Cả hai cửa đều chạm tới thứ chỉ Trưởng dự án được chạm — một cửa ghi một quyết định **mang danh Trưởng dự án** vào đúng cái sổ dựng nên hồ sơ gửi người chủ, cửa kia gọi thẳng tới một con người.
+- **Chỉ mở ở Mức 2.** Ngoài cửa sổ đó → `409`. Dưới Mức 2 hệ còn đang tự thử; từ Mức 3 câu hỏi đã thuộc về người chủ.
+
 ## 3. Thợ
 
 | Lối vào | Trạng thái | Ý nghĩa |

@@ -26,6 +26,7 @@ from armarius.application.use_cases.recovery import (
     OfflineFalloutService,
     RecoveryEscalator,
 )
+from armarius.application.use_cases.stall_watchdog import StallWatchdog
 from armarius.application.use_cases.task_log import TaskLogService
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.wake_engine import WakeEngine
@@ -37,6 +38,7 @@ from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.entities.task import TaskStatus
+from armarius.domain.entities.wakeup import WakeupRequest
 from armarius.domain.services.escalation import EscalationLevel
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
@@ -137,6 +139,7 @@ def _escalator(uow_factory, *, wakes, notifier, bus) -> RecoveryEscalator:
         task_log=TaskLogService(uow_factory),
         control_bus=bus,
         leader_notifier=notifier,
+        push_reasons=PushReasonService(uow_factory, ProjectService(uow_factory, THRESHOLDS)),
     )
 
 
@@ -862,3 +865,194 @@ async def test_a_resolved_outage_notice_can_be_raised_again(uow_factory) -> None
             if i.kind is InboxItemKind.ESCALATION
         ]
     assert len(pending) == 1, "gỡ xong rồi mà lần mất tiếp theo không được báo lại"
+
+
+# ── Mức 3: giao cho người chủ rồi thì buông tay, và đường về ────────────────────
+#
+# Every test above drives the ladder by hand. That is exactly how two rounds of bugs got
+# through: the ladder is only ever called by the stall sweep, and the sweep re-derives the
+# drive *first* — so a rung that behaves correctly under a direct call can still be undone a
+# minute later by the loop that owns it. These run the real loop.
+
+
+def _watchdog(uow_factory, *, ladder, bus, at):
+    return StallWatchdog(
+        uow_factory,
+        PushReasonService(uow_factory, ProjectService(uow_factory, THRESHOLDS)),
+        task_log=TaskLogService(uow_factory),
+        control_bus=bus,
+        ladder=ladder,
+        interval_seconds=0.01,
+        clock=lambda: at,
+    )
+
+
+async def _climb_to_the_patron(uow_factory, task, *, escalator, cause=CAUSE):
+    """Both budgets, an hour apart so every attempt is due, then flag it as the sweep would."""
+    for hour in range(12):
+        await escalator.climb(task, cause=cause, now=T0 + timedelta(hours=hour))
+    async with uow_factory() as uow:
+        stored = await uow.tasks.get(task.id)
+        assert stored is not None
+        stored.stalled = True
+        await uow.tasks.update(stored)
+        await uow.commit()
+
+
+async def _pending_escalations(uow_factory, task_id):
+    async with uow_factory() as uow:
+        return [
+            i
+            for i in await uow.inbox.list_pending_for_task(task_id)
+            if i.kind is InboxItemKind.ESCALATION
+        ]
+
+
+@pytest.mark.asyncio
+async def test_asking_the_patron_does_not_read_as_the_task_moving(uow_factory) -> None:
+    """The question must not be mistaken for the answer.
+
+    A pending patron item **is** a drive — the task is parked on a named human, chased by
+    the reminder ladder — and that is right. But the Level-3 item is one the ladder itself
+    just created, so reading it back as *something is moving this task again* closes the
+    loop on itself: ask the patron, see a live drive, stand the ladder down, resolve the
+    question. Measured on the real sweep: the patron's letter was gone sixty seconds after
+    it was written, and the task, now holding a clockless drive and no flag, matched no
+    stall-candidate clause ever again — dropped for good, on a board calling it healthy.
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    bus = TopicEventBus()
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(), bus=bus
+    )
+    await _climb_to_the_patron(uow_factory, task, escalator=escalator)
+    assert await _pending_escalations(uow_factory, task.id)
+
+    at = T0 + timedelta(hours=13)
+    await _watchdog(uow_factory, ladder=escalator, bus=bus, at=at).sweep(at)
+
+    assert await _pending_escalations(uow_factory, task.id), (
+        "một lượt quét sau khi hỏi, câu hỏi của người chủ đã bị dọn đi"
+    )
+    ladder = await _ladder(uow_factory, task.id)
+    assert ladder is not None and ladder.level is EscalationLevel.LEVEL_3, (
+        "thang tụt khỏi Mức 3 dù chưa ai chạm vào đầu việc"
+    )
+
+
+@pytest.mark.asyncio
+async def test_real_movement_still_takes_it_off_the_patrons_desk(uow_factory) -> None:
+    """The mirror, and the reason the rule above is about *which* drive rather than none.
+
+    A booked wake outranks the wait on the patron, so the task is moving again by the only
+    measure this ladder has — and the question stops being one without anybody saying so.
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    bus = TopicEventBus()
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(), bus=bus
+    )
+    await _climb_to_the_patron(uow_factory, task, escalator=escalator)
+
+    at = T0 + timedelta(hours=13)
+    async with uow_factory() as uow:
+        await uow.wakeups.add(
+            WakeupRequest(
+                project_id=project.id,
+                marius_id=alice.id,
+                task_id=task.id,
+                source=WakeSource.ON_DEMAND,
+                reason="người chủ giao lại",
+                created_at=at,
+            )
+        )
+        await uow.commit()
+    await _watchdog(uow_factory, ladder=escalator, bus=bus, at=at).sweep(at)
+
+    assert await _pending_escalations(uow_factory, task.id) == [], (
+        "đầu việc đã có người gọi vào làm mà người chủ vẫn bị hỏi nó đang kẹt"
+    )
+    ladder = await _ladder(uow_factory, task.id)
+    assert ladder is not None and ladder.level is EscalationLevel.NONE
+
+
+@pytest.mark.asyncio
+async def test_the_patron_answering_puts_the_task_back_under_the_net(uow_factory) -> None:
+    """The one way back down from Mức 3, and the price of the system letting go.
+
+    Once the letter is written both the system and the agents are out of moves, so nothing
+    is gained by sweeping the task every minute — it leaves the net, exactly like any other
+    task parked on a human. That is only safe if handing the letter back picks it up again:
+    the patron's answer either gave the task a real drive, or it did not, and the second
+    case has to become a fresh stall rather than silence.
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(),
+        bus=TopicEventBus(),
+    )
+    await _climb_to_the_patron(uow_factory, task, escalator=escalator)
+    item = (await _pending_escalations(uow_factory, task.id))[0]
+
+    await escalator.patron_answered(item.id, now=T0 + timedelta(hours=13))
+
+    settled = await _ladder(uow_factory, task.id)
+    assert settled is not None and settled.level is EscalationLevel.NONE, (
+        "người chủ đã trả lời mà thang vẫn treo ở Mức 3 — lần kẹt sau không ai được hỏi"
+    )
+    async with uow_factory() as uow:
+        candidates = await uow.tasks.list_stall_candidates(T0 + timedelta(hours=14))
+    assert any(c.id == task.id for c in candidates), (
+        "trả lời xong mà đầu việc vẫn nằm ngoài tầm lưới — không ai canh nữa"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_changed_cause_does_not_strand_the_patrons_question(uow_factory) -> None:
+    """A different stall reason restarts the budget — it must not lose the letter already
+    sent. The rung is where the task stands *now*; *did we ever ask* can only become true."""
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(),
+        bus=TopicEventBus(),
+    )
+    await _climb_to_the_patron(uow_factory, task, escalator=escalator)
+    assert await _pending_escalations(uow_factory, task.id)
+
+    await escalator.climb(
+        task,
+        cause="đã gọi người làm nhưng nó chưa từng bắt đầu",
+        now=T0 + timedelta(hours=13),
+    )
+    assert (await _ladder(uow_factory, task.id)).level is EscalationLevel.LEVEL_1
+
+    await escalator.stand_down(task.id, now=T0 + timedelta(hours=14))
+
+    assert await _pending_escalations(uow_factory, task.id) == [], (
+        "đổi lý do treo rồi thì câu hỏi cũ nằm lại vĩnh viễn, không cửa nào đóng được"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_patron_is_never_handed_the_same_task_twice(uow_factory) -> None:
+    """Two letters, same task, same title, different reason — and the reminder ladder
+    chasing both. The Leader-is-gone path already asks the inbox before it writes."""
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(),
+        bus=TopicEventBus(),
+    )
+    await _climb_to_the_patron(uow_factory, task, escalator=escalator)
+
+    other = "đã gọi người làm nhưng nó chưa từng bắt đầu"
+    for hour in range(13, 25):
+        await escalator.climb(task, cause=other, now=T0 + timedelta(hours=hour))
+
+    assert (await _ladder(uow_factory, task.id)).level is EscalationLevel.LEVEL_3
+    waiting = await _pending_escalations(uow_factory, task.id)
+    assert len(waiting) == 1, f"người chủ ôm {len(waiting)} lá thư cho cùng một đầu việc"

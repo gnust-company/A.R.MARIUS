@@ -45,7 +45,7 @@ from armarius.application.use_cases.inbox import InboxService
 from armarius.application.use_cases.push_reason import PushReasonService
 from armarius.application.use_cases.task_log import TaskLogService
 from armarius.application.use_cases.types import UowFactory
-from armarius.domain.entities.task import Task
+from armarius.domain.entities.task import Task, TaskDrive
 from armarius.domain.entities.task_log import ActorKind, TaskLogKind
 from armarius.domain.services.push_reason_rules import is_live, stall_reason
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
@@ -154,7 +154,16 @@ class StallWatchdog:
                 # Leader's action, by a retry landing, by anything. Leaving the rung standing
                 # would have the next stall start halfway up, on attempts that belong to a
                 # problem already over.
-                if self._ladder is not None:
+                #
+                # Except when the drive *is* the ladder's own top rung. Asking the patron
+                # parks the task on a human, and parking on a human is a clockless drive, so
+                # a minute later this branch would read the question as the answer: stand the
+                # ladder down and resolve the letter, sixty seconds after it was written and
+                # before anyone could read it. Measured on the real sweep — and the task came
+                # out worse than dropped, holding a clockless drive with no flag, matching no
+                # stall-candidate clause ever again. What ends Mức 3 is the patron replying,
+                # not the sweep noticing that they were asked.
+                if self._ladder is not None and reason.kind is not TaskDrive.WAITING_PATRON:
                     await self._ladder.stand_down(task.id, now=now)
                 return False
 
