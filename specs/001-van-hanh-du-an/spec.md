@@ -596,25 +596,26 @@ thứ tự gắn trên từng chữ ký.
   ra — tối thiểu: giao lại cho người khác, thu hẹp hoặc đổi yêu cầu, và huỷ đầu việc. Hỏi một câu rồi bắt người
   đọc tự đi tìm chỗ trả lời là đẩy phần khó nhất sang cho người mà cả cái thang này sinh ra để tiết kiệm thời
   gian; và đó cũng là chỗ FR-070 bị hụt trên thực tế nếu chỉ có API mà không có lối bấm.
-- **FR-061b**: KHI đầu việc có động cơ đẩy trở lại, HỆ THỐNG PHẢI đóng mục leo thang đang chờ của đầu việc đó —
-  và CHỈ mục leo thang, không đụng những mục chờ khác cùng đầu việc. Câu hỏi *"việc này kẹt, quyết đi"* hết là
-  câu hỏi ngay khi việc hết kẹt; để nó nằm lại là hộp thư nói dối về những gì còn tồn, và cái giá rơi vào lần
-  leo thang **sau**, không phải lần này.
+- **FR-061b**: Việc hết đình trệ PHẢI xoá nấc thang, ngân sách và tất cả — **và KHÔNG ĐƯỢC đụng gì khác**.
+  *Vì sao* nó hết đình trệ là chuyện không liên quan: một lần gọi lại ăn, Trưởng dự án ra tay, người chủ nhặt
+  lên, bất cứ thứ gì. Cái thang chỉ đo đúng một điều, và điều đó đã xong.
 
-  Phép kiểm PHẢI hỏi hộp thư *"đã từng hỏi người chủ chưa"*, KHÔNG ĐƯỢC suy ra từ nấc thang hiện tại. Nấc là
-  chỗ đầu việc đang đứng và nó di chuyển — đổi nguyên nhân là đưa thang về Mức 1 trong khi lá thư vẫn nằm ở
-  hộp thư — còn *đã từng hỏi* là chuyện đã rồi, chỉ có thể đúng thêm chứ không sai lại.
-- **FR-061c**: Mục leo thang đang chờ **là** một động cơ đẩy hợp lệ của đầu việc: nó đang đỗ trên một con người
-  có tên, được bậc nhắc của FR-065 giục. Nhưng nó KHÔNG ĐƯỢC đọc ngược lại thành *đầu việc đã chạy lại*, vì
-  chính cái thang vừa tạo ra nó. Đọc ngược là để lưới lấy tiếng chuông báo động của mình làm bằng chứng hết
-  báo động: hỏi người chủ → thấy có động cơ → hạ thang → đóng luôn lá thư, trước khi ai kịp đọc.
-- **FR-061d**: Từ Mức 3, HỆ THỐNG KHÔNG canh đầu việc nữa — cả hệ lẫn agent đều đã hết cách, nên quét tiếp
-  không mua được gì. Đầu việc rời khỏi vòng quét đúng như mọi đầu việc đang đỗ trên một con người.
-
-  Đổi lại, KHI người chủ xử lý xong mục leo thang, HỆ THỐNG PHẢI hạ thang về không **và** tính lại động cơ đẩy
-  của đầu việc đó. Đây là đường về duy nhất từ Mức 3, và không có nó thì buông tay là buông hẳn: câu trả lời
-  của người chủ hoặc đã cho đầu việc một động cơ thật, hoặc chưa — và trường hợp thứ hai PHẢI thành một lần
-  đình trệ mới, không được thành im lặng.
+  Đặc biệt, việc hết đình trệ KHÔNG ĐƯỢC đóng mục leo thang. Ràng buộc đó vòng tròn: một mục đang chờ **chính
+  nó** là một trong các câu trả lời cho *có gì sắp chạm vào đầu việc này không*, nên đặt thư xong là việc hết
+  đình trệ, hết đình trệ thì đóng thư, đóng thư xong lại đình trệ — trong khi ô đã lưu ghi ngược lại và không
+  mang mốc hết hạn nào, nên không lượt quét nào ngó tới đầu việc đó nữa. Mục leo thang là của người chủ; chỉ
+  người chủ đóng nó.
+- **FR-061c**: KHI người chủ xử lý xong mục leo thang, HỆ THỐNG PHẢI **tính lại** xem đầu việc có còn ai sắp
+  chạm vào không. Trong lúc mục còn chờ, đầu việc **không** bị coi là đình trệ (một con người có tên đang giữ
+  nó) và vì thế nằm ngoài vòng quét — đúng. Ngay khi mục được xử lý, điều đó thôi đúng, mà **không có gì khác
+  nhận ra**: ô đã lưu vẫn ghi *đang chờ người chủ* và vẫn không có mốc hết hạn, nên đầu việc không khớp mệnh
+  đề nhặt việc nào và không lượt quét nào nhìn lại — đúng cái lỗ mà cả tính năng này sinh ra để bịt, tới bằng
+  đường người chủ làm điều hợp lý nhất. Tính lại rồi thì hoặc hành động của họ đã cho đầu việc thứ gì đó thật,
+  hoặc chưa và nó thành một lần đình trệ mới **từ Mức 1**.
+- **FR-061d**: Mỗi lời gọi đóng mục hộp thư PHẢI nêu rõ **loại** mục mình đóng. Một lời gọi chỉ biết rằng câu
+  hỏi *của riêng nó* đã được trả lời; một đầu việc có thể đồng thời giữ mục *chờ công nhận*, mục *hỏi phạm vi*
+  và mục *leo thang*, và đóng cả ba vì một cái được giải quyết là nói với người chủ rằng có một quyết định mà
+  không ai ra.
 - **FR-062**: Mỗi lượt chạy còn hoạt động PHẢI phát tín hiệu báo sống định kỳ. KHI tín hiệu tắt quá ngưỡng
   nghi treo, HỆ THỐNG PHẢI mở một cửa sổ ân hạn và thử gọi nhẹ; nếu vẫn im thì tuyên treo, đóng lượt chạy đó,
   kéo đầu việc về *chờ làm*, và gọi lại đúng người phụ trách trỏ vào việc kế tiếp đã lưu.

@@ -927,9 +927,18 @@ class TaskService:
         )
 
     async def _resolve_scope_question(self, task_id: UUID) -> None:
-        """Close the waiting item once the draft has been decided, either way."""
+        """Close the scope question once the draft has been decided, either way.
+
+        Filtered by kind, because this call only knows that *its own* question is settled.
+        A task can be holding a stalled-task escalation at the same time, and closing that
+        one here would be worse than noise: it is the patron's only copy of a question the
+        system cannot re-ask, and the task would keep the stale *waiting on the patron*
+        answer with no deadline — outside the sweep, with nobody left to notice.
+        """
         if self._inbox is not None:
-            await self._inbox.resolve_pending_for_task(task_id)
+            await self._inbox.resolve_pending_for_task(
+                task_id, kind=InboxItemKind.MAJOR_CHANGE_APPROVAL
+            )
 
     async def _notify_leader(
         self, project_id: UUID | None, *, text: str, reason: str, source: WakeSource

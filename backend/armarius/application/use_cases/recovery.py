@@ -248,21 +248,24 @@ class RecoveryEscalator:
         await self._ask_patron(task, ladder, cause=cause, now=now)
 
     async def stand_down(self, task_id: UUID, *, now: datetime | None = None) -> None:
-        """The task has a drive again — clear the ladder, budgets and all (FR-060).
+        """The task stopped being stalled — clear the rung, budgets and all (FR-060).
 
-        The only door back to a clean slate, and deliberately not a declaration anybody can
-        make: it fires on the fact the whole ladder measures. Two callers, both of them
-        facts — the sweep, when a flagged task turns out to be moving, and the patron
-        answering a Mức 3 letter.
+        One rule, no exceptions and no conditions: not stalled any more, so the rung goes.
+        *Why* it stopped is none of this method's business — a retry landed, the Leader
+        moved it, the patron picked it up, someone renamed a file. The ladder only ever
+        measured the one thing, and that thing is over.
 
-        The sweep skips it for a task parked on a *patron*, which at Mức 3 is the ladder's
-        own doing: reading that back as movement would have the net close its own alarm a
-        minute after raising it. See the branch in `stall_watchdog._examine`.
+        Without it the ladder outlives the problem. A task that recovered on its own would
+        keep last month's rung, and the next stall — even one with the same cause months
+        later — would start halfway up, handing the patron a dossier about attempts that
+        belong to a problem already solved.
 
-        Without this door the ladder outlives the problem. A task that recovered on its own
-        would keep last month's rung, and the next stall — even one with the same cause
-        months later — would start halfway up, handing the patron a dossier about attempts
-        that belong to a problem already solved.
+        **It touches the rung and nothing else.** In particular it does not close the
+        patron's escalation letter. That was tried and it is circular: a pending letter is
+        itself one of the answers to *is anything going to touch this task*, so writing the
+        letter un-stalls the task, which closed the letter, which stalled it again — while
+        the stored answer said otherwise and carried no deadline, so no sweep ever looked at
+        the task again. The letter belongs to the patron; only `patron_answered` closes it.
         """
         now = now or self._clock()
         async with self._uow() as uow:
@@ -278,22 +281,6 @@ class RecoveryEscalator:
                 await uow.push_reasons.upsert(ladder)
                 await uow.commit()
 
-        # The patron was asked "this is stuck, what now?" and it is not stuck any more, so
-        # the question has stopped being one. Left standing it would ask forever about a
-        # task that is running, and an inbox that lies about what is outstanding stops
-        # being read — which costs the *next* escalation, not this one.
-        #
-        # Asked unconditionally, of the inbox. Inferring "was this ever escalated?" from the
-        # rung read here answers a different question — *is it at the patron right now* —
-        # and the two part company on an ordinary path: a changed cause resets the rung to
-        # Level 1 while the letter stays in the inbox, and from then on nothing could ever
-        # close it. The `kind` filter is what the rung check was really protecting: a task
-        # can be holding a waiting-for-acceptance item at the same time, and that one is
-        # nobody's business here. A task with no escalation closes nothing and costs a read.
-        await self._inbox.resolve_pending_for_task(
-            task_id, kind=InboxItemKind.ESCALATION
-        )
-
     async def patron_answered(
         self,
         item_id: UUID,
@@ -301,17 +288,18 @@ class RecoveryEscalator:
         recipient_user_id: str | None = None,
         now: datetime | None = None,
     ) -> InboxItem:
-        """The patron handled a Mức 3 letter — take the ladder down and re-derive the drive.
+        """The patron handled a Mức 3 letter — recompute, and put the task back in view.
 
-        This is the *only* way down from Mức 3, and it exists because the sweep deliberately
-        lets go there. Once the letter is written, the system and the agents are both out of
-        moves; the task is parked on a named human exactly like any other task waiting on a
-        patron, and sweeping it every minute buys nothing but load.
+        A pending letter is one of the answers to *is anything going to touch this task*, and
+        an answer with no deadline: while it stands the task counts as not stalled and drops
+        out of the sweep entirely, which is right — a named human has it.
 
-        Letting go is only safe if handing the letter back picks the task up again. The
-        answer either gave it a real drive or it did not, and the second case has to become a
-        fresh stall rather than silence — so the drive is recomputed here, which drops the
-        stale *waiting on the patron* claim and puts the task back in front of the sweep.
+        The moment they hand it back, that stops being true, and nothing else would ever
+        notice. The stored answer still says *waiting on the patron* and still carries no
+        deadline, so the task matches no stall-candidate clause and no sweep looks at it
+        again — the exact hole this whole feature exists to close, reached by the patron
+        doing the reasonable thing. So the answer is recomputed here: either their action
+        gave the task something real, or it did not and it becomes a fresh stall from Mức 1.
 
         Every kind of item comes through here — this is the patron's own resolve door — and
         anything that is not a task escalation simply resolves and returns.
@@ -321,8 +309,16 @@ class RecoveryEscalator:
         if item.kind is not InboxItemKind.ESCALATION or item.task_id is None:
             return item
         await self.stand_down(item.task_id, now=now)
-        if self._drives is not None:
-            await self._drives.refresh(item.task_id, now=now)
+        if self._drives is None:  # pragma: no cover - composition root always wires it
+            # Half the job: the rung is down but the task keeps the stale *waiting on the
+            # patron* answer and stays outside the sweep. Say so loudly rather than let it
+            # look like it worked.
+            logger.warning(
+                "task %s left the ladder without a drive refresh; nothing is watching it",
+                item.task_id,
+            )
+            return item
+        await self._drives.refresh(item.task_id, now=now)
         return item
 
     # ── the three rungs ──────────────────────────────────────────────────────────
