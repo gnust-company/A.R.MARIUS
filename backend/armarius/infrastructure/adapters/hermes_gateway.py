@@ -38,6 +38,13 @@ _TERMINAL_EVENTS = {"run.completed", "run.failed"}
 class HermesGatewayAdapter(MariusAdapter):
     type = "hermes_gateway"
     capabilities = AdapterCapabilities(resumable=True, streaming=True, transport="http")
+    skill_install_steps = (
+        "You are running on HERMES AGENT. Install skills using the skill_manage tool:",
+        "  • Use skill_manage with action='create' to install each skill",
+        "  • Provide name, content (full SKILL.md), and optional category",
+        "  • Alternative: use /learn slash command to create skills from sources",
+        "  • Skills install to $HERMES_HOME/skills/<slug>/ and become slash commands",
+    )
 
     def _conn(self, config: dict) -> tuple[str, dict[str, str]]:
         base_url = str(config.get("base_url") or _DEFAULT_BASE_URL).rstrip("/")

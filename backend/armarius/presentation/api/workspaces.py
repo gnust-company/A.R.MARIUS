@@ -123,6 +123,7 @@ async def invite_marius(
         settings.public_api_url,
         workspace_name=ws.name if ws else "the workspace",
         skills=await effective_skills(container, marius),
+        adapters=container.registry,
     )
     send_status = await container.invite.push_setup(marius.id, prompt=prompt)
     await container.control_bus.publish(
@@ -278,6 +279,7 @@ async def install_skills(
         settings.public_api_url,
         workspace_name=ws.name if ws else "the workspace",
         skills=requested_skills,
+        adapters=container.registry,
     )
     send_status = await container.invite.push_setup(marius_id, prompt=prompt)
 

@@ -14,6 +14,9 @@ from armarius.application.use_cases.onboarding import (
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.skill import Skill
 from armarius.domain.services.agent_prompt import agent_prompt_footer
+from armarius.infrastructure.adapters.echo import EchoAdapter
+from armarius.infrastructure.adapters.hermes_gateway import HermesGatewayAdapter
+from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 
 _SECRET = "arm_secret_should_never_appear_in_a_footer"
 
@@ -72,3 +75,51 @@ def test_invite_prompt_carries_token_location_footer():
     assert "your token from STEP 0" not in prompt
     assert "STEP 0" not in prompt
     assert "/agent/enroll" not in prompt
+
+
+# ── the install steps come from the adapter, not from a branch (T157, FR-083) ────
+
+
+def test_the_install_steps_come_from_the_adapter_that_will_run_the_agent():
+    """Two runtimes, two sets of instructions, and the use case knows about neither.
+
+    ``_skill_block`` used to answer *how do I install a skill here* with a chain of
+    ``if adapter_type == ...``. The text is the same; where it comes from is the point —
+    a new runtime now ships its own steps and the business layer is untouched
+    (Hiến pháp III).
+    """
+    registry = InMemoryAdapterRegistry()
+    registry.register(HermesGatewayAdapter())
+    registry.register(EchoAdapter())
+    skills = [_skill()]
+
+    on_hermes = build_invite_prompt(
+        Marius(name="Marin", role="Backend", adapter_type="hermes_gateway"),
+        "https://api.test",
+        skills=skills,
+        adapters=registry,
+    )
+    assert "skill_manage" in on_hermes
+
+    on_echo = build_invite_prompt(
+        Marius(name="Echo-2", role="Backend", adapter_type="echo"),
+        "https://api.test",
+        skills=skills,
+        adapters=registry,
+    )
+    assert "~/.echo/skills/" in on_echo
+    assert "skill_manage" not in on_echo
+
+
+def test_a_runtime_nothing_is_registered_for_gets_the_neutral_wording():
+    """An agent can only be invited on a registered adapter (``InviteService.invite``
+    raises otherwise), so this is the safety net rather than a path anyone walks. It
+    still has to say something usable instead of naming a runtime at random."""
+    prompt = build_skill_install_prompt(
+        Marius(name="Nobody", role="Backend", adapter_type="a_runtime_we_never_heard_of"),
+        "https://api.test",
+        skills=[_skill()],
+        adapters=InMemoryAdapterRegistry(),
+    )
+    assert "your runtime's mechanism" in prompt
+    assert "skill_manage" not in prompt

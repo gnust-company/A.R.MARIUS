@@ -22,6 +22,12 @@ from armarius.domain.entities.run import RunStatus
 class EchoAdapter(MariusAdapter):
     type = "echo"
     capabilities = AdapterCapabilities(resumable=True, streaming=True, transport="process")
+    skill_install_steps = (
+        "You are running on ECHO (test adapter). Write skill files to ~/.echo/skills/:",
+        "  • Fetch each skill's file tree via the authenticated GET call below",
+        "  • Write each file verbatim to ~/.echo/skills/<slug>/<path>",
+        "  • Create the skill directory structure before writing files",
+    )
 
     def __init__(self, *, step_delay: float = 0.4) -> None:
         self._delay = step_delay
