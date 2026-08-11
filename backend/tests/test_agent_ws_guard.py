@@ -46,7 +46,7 @@ async def _provision_agent(c: AsyncClient, h: dict, ws_id: str, name: str) -> st
     return await agent_token_for(created["id"])
 
 
-async def _make_task(c: AsyncClient, h: dict, ws_id: str) -> str:
+async def _make_project(c: AsyncClient, h: dict, ws_id: str) -> str:
     project = await c.post(
         f"/v1/workspaces/{ws_id}/projects",
         headers=h,
@@ -60,8 +60,14 @@ async def _make_task(c: AsyncClient, h: dict, ws_id: str) -> str:
     assert project.status_code == 201, project.text
     # FR-003 — this file tests the agent-token workspace guard, not the plan gate.
     await force_operating(project.json()["id"])
+    return project.json()["id"]
+
+
+async def _make_task(c: AsyncClient, h: dict, ws_id: str) -> tuple[str, str]:
+    """A live task in a fresh project. Returns (project_id, task_id)."""
+    project_id = await _make_project(c, h, ws_id)
     task = await c.post(
-        f"/v1/projects/{project.json()['id']}/tasks", headers=h, json={"title": "T"}
+        f"/v1/projects/{project_id}/tasks", headers=h, json={"title": "T"}
     )
     assert task.status_code == 201, task.text
     task_id = task.json()["id"]
@@ -70,7 +76,7 @@ async def _make_task(c: AsyncClient, h: dict, ws_id: str) -> str:
         f"/v1/tasks/{task_id}/status", headers=h, json={"status": "todo"}
     )
     assert moved.status_code == 200, moved.text
-    return task_id
+    return project_id, task_id
 
 
 async def test_agent_token_is_confined_to_its_workspace():
@@ -78,7 +84,7 @@ async def test_agent_token_is_confined_to_its_workspace():
         # Workspace A holds the task; workspace B holds the intruding agent.
         token_a, ws_a = await _register(c, "guard-a@armarius.dev")
         ha = {"Authorization": f"Bearer {token_a}"}
-        task_id = await _make_task(c, ha, ws_a)
+        _, task_id = await _make_task(c, ha, ws_a)
 
         token_b, ws_b = await _register(c, "guard-b@armarius.dev")
         hb = {"Authorization": f"Bearer {token_b}"}
@@ -122,3 +128,89 @@ async def test_agent_token_is_confined_to_its_workspace():
         assert asked.status_code == 200, asked.text
         # Asking changes nothing about who owns the work — that is the Leader's call.
         assert asked.json()["assigned_marius_id"] is None
+
+
+async def test_every_door_opened_for_autonomous_operation_is_confined_too():
+    """T156 — the same guarantee, checked against the doors spec 001 added.
+
+    The original test covered the seven `/agent/tasks/*` routes that existed when the
+    guard was written. Autonomous operation opened eleven more, several of them
+    project-scoped rather than task-scoped, and a guard is only worth what its least
+    covered door is worth: one route resolving by id alone re-opens everything the other
+    twenty close.
+
+    Every probe below is a *stranger's* agent token pointed at workspace A's rows. All
+    must read *not found* — never *forbidden*, which would confirm the row exists
+    (FR-081, Hiến pháp I).
+    """
+    async with await _client() as c:
+        token_a, ws_a = await _register(c, "doors-a@armarius.dev")
+        ha = {"Authorization": f"Bearer {token_a}"}
+        project_id, task_id = await _make_task(c, ha, ws_a)
+
+        token_b, ws_b = await _register(c, "doors-b@armarius.dev")
+        hb = {"Authorization": f"Bearer {token_b}"}
+        intruder = await _provision_agent(c, hb, ws_b, "Mallory")
+        ih = {"Authorization": f"Bearer {intruder}"}
+
+        probes = [
+            # task-scoped (Đợt 5–6: the ladder's two doors out of Mức 2)
+            c.post(
+                f"/agent/tasks/{task_id}/recovery",
+                headers=ih,
+                json={"action": "reassign to me"},
+            ),
+            c.post(
+                f"/agent/tasks/{task_id}/escalate",
+                headers=ih,
+                json={"reason": "beyond me"},
+            ),
+            c.post(
+                f"/agent/tasks/{task_id}/approval",
+                headers=ih,
+                json={"approve": True},
+            ),
+            # project-scoped (Đợt 1–4: brief, plan, phase, batch wrap-up, scope change)
+            c.get(f"/agent/projects/{project_id}/queue", headers=ih),
+            c.post(
+                f"/agent/projects/{project_id}/tasks",
+                headers=ih,
+                json={"title": "smuggled"},
+            ),
+            c.post(
+                f"/agent/projects/{project_id}/change-request",
+                headers=ih,
+                json={"area": "scope", "summary": "widen it"},
+            ),
+            c.post(
+                f"/agent/projects/{project_id}/context",
+                headers=ih,
+                json={"objective": "o", "background": "b"},
+            ),
+            c.post(
+                f"/agent/projects/{project_id}/plan",
+                headers=ih,
+                json={"summary": "s", "items": []},
+            ),
+            c.post(
+                f"/agent/projects/{project_id}/phase-proposal",
+                headers=ih,
+                json={"target_phase": "maintaining", "reason": "r"},
+            ),
+            c.post(
+                f"/agent/projects/{project_id}/sprint-summary",
+                headers=ih,
+                json={"summary": "done"},
+            ),
+        ]
+        for coro in probes:
+            r = await coro
+            assert r.status_code == 404, f"{r.request.url} → {r.status_code}: {r.text}"
+
+        # Positive control: A's own agent reaches the project-scoped read. It holds no
+        # leader seat, so the leader-only doors stay shut for it too — but as *not found*,
+        # which is the same answer the stranger got and deliberately so (Constitution V).
+        insider = await _provision_agent(c, ha, ws_a, "Alice")
+        aih = {"Authorization": f"Bearer {insider}"}
+        own = await c.get(f"/agent/projects/{project_id}/queue", headers=aih)
+        assert own.status_code == 200, own.text

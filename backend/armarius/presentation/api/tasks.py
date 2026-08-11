@@ -1,4 +1,10 @@
-"""Task, thread and artifact endpoints (human/operator surface)."""
+"""Task, thread and artifact endpoints (human/operator surface).
+
+Every route here is scoped to the caller's own workspace. A task in someone else's
+workspace reads as *not found*, never *forbidden*, so a caller cannot use the error to
+learn that it exists (Constitution I, FR-081). ``/agent/*`` gets the same guarantee
+through the agent token's own workspace; this is its half for patron tokens.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +16,7 @@ from armarius.domain.entities.comment import AuthorKind
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.task import TaskStatus
 from armarius.presentation.api.auth import CurrentUser
+from armarius.presentation.api.scoping import own_project, own_task
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
     AddDependencyIn,
@@ -47,8 +54,9 @@ def _parse_status(value: str) -> TaskStatus:
 
 @router.post("/projects/{project_id}/tasks", response_model=TaskOut, status_code=201)
 async def create_task(
-    project_id: UUID, body: CreateTaskIn, container: ContainerDep
+    project_id: UUID, body: CreateTaskIn, container: ContainerDep, user: CurrentUser
 ) -> TaskOut:
+    await own_project(container, user, project_id)
     task = await container.tasks.create(
         project_id=project_id,
         title=body.title,
@@ -66,25 +74,29 @@ async def create_task(
 
 @router.get("/projects/{project_id}/tasks", response_model=list[TaskOut])
 async def list_tasks(
-    project_id: UUID, container: ContainerDep, status: str | None = None
+    project_id: UUID,
+    container: ContainerDep,
+    user: CurrentUser,
+    status: str | None = None,
 ) -> list[TaskOut]:
+    await own_project(container, user, project_id)
     statuses = [s.strip() for s in status.split(",")] if status else None
     items = await container.tasks.list_by_project(project_id, statuses=statuses)
     return [TaskOut.model_validate(t) for t in items]
 
 
 @router.get("/tasks/{task_id}", response_model=TaskOut)
-async def get_task(task_id: UUID, container: ContainerDep) -> TaskOut:
-    task = await container.tasks.get(task_id)
-    if task is None:
-        raise LookupError("task not found")
-    return TaskOut.model_validate(task)
+async def get_task(
+    task_id: UUID, container: ContainerDep, user: CurrentUser
+) -> TaskOut:
+    return TaskOut.model_validate(await own_task(container, user, task_id))
 
 
 @router.post("/tasks/{task_id}/assign", response_model=TaskOut)
 async def assign_task(
     task_id: UUID, body: AssignIn, container: ContainerDep, user: CurrentUser
 ) -> TaskOut:
+    await own_task(container, user, task_id)
     task = await container.tasks.assign(
         task_id,
         body.marius_id,
@@ -98,6 +110,7 @@ async def assign_task(
 async def transition_task(
     task_id: UUID, body: TransitionIn, container: ContainerDep, user: CurrentUser
 ) -> TaskOut:
+    await own_task(container, user, task_id)
     task = await container.tasks.transition(
         task_id, _parse_status(body.status), reason=body.reason, user_id=str(user.id)
     )
@@ -109,6 +122,7 @@ async def reopen_task(
     task_id: UUID, body: ReopenTaskIn, container: ContainerDep, user: CurrentUser
 ) -> TaskOut:
     """The only way out of *done*/*cancelled* (FR-022). Reason mandatory, trace kept."""
+    await own_task(container, user, task_id)
     task = await container.tasks.reopen(task_id, reason=body.reason, user_id=str(user.id))
     return TaskOut.model_validate(task)
 
@@ -122,6 +136,7 @@ async def sign_approval(
     Only the patron **responsible for the agent that did the work** may sign — the one who
     granted its seat (FR-034). Anyone else gets a 403; the task is not theirs to close.
     """
+    await own_task(container, user, task_id)
     responsible = await container.approvals.responsible_patron(task_id)
     if responsible != str(user.id):
         raise PermissionError(
@@ -134,14 +149,20 @@ async def sign_approval(
 
 
 @router.get("/tasks/{task_id}/approvals", response_model=list[ApprovalOut])
-async def list_approvals(task_id: UUID, container: ContainerDep) -> list[ApprovalOut]:
+async def list_approvals(
+    task_id: UUID, container: ContainerDep, user: CurrentUser
+) -> list[ApprovalOut]:
     """Every signature on the task, oldest first — including the automatic ones (FR-039)."""
+    await own_task(container, user, task_id)
     rows = await container.approvals.list_for_task(task_id)
     return [ApprovalOut.model_validate(a) for a in rows]
 
 
 @router.get("/tasks/{task_id}/criteria", response_model=list[CriterionOut])
-async def list_criteria(task_id: UUID, container: ContainerDep) -> list[CriterionOut]:
+async def list_criteria(
+    task_id: UUID, container: ContainerDep, user: CurrentUser
+) -> list[CriterionOut]:
+    await own_task(container, user, task_id)
     items = await container.tasks.list_criteria(task_id)
     return [CriterionOut.model_validate(i) for i in items]
 
@@ -151,6 +172,7 @@ async def set_criteria(
     task_id: UUID, body: SetCriteriaIn, container: ContainerDep, user: CurrentUser
 ) -> list[CriterionOut]:
     """Replace the yardstick — refused (409) once the worker has started (FR-019)."""
+    await own_task(container, user, task_id)
     items = await container.tasks.set_criteria(
         task_id, [i.text for i in body.items], user_id=str(user.id)
     )
@@ -159,17 +181,19 @@ async def set_criteria(
 
 @router.post("/tasks/{task_id}/next-action", response_model=TaskOut)
 async def set_next_action(
-    task_id: UUID, body: NextActionIn, container: ContainerDep
+    task_id: UUID, body: NextActionIn, container: ContainerDep, user: CurrentUser
 ) -> TaskOut:
+    await own_task(container, user, task_id)
     task = await container.tasks.set_next_action(task_id, body.next_action)
     return TaskOut.model_validate(task)
 
 
 @router.get("/tasks/{task_id}/dependencies", response_model=list[BlockerOut])
 async def list_dependencies(
-    task_id: UUID, container: ContainerDep
+    task_id: UUID, container: ContainerDep, user: CurrentUser
 ) -> list[BlockerOut]:
     """Tasks this task is blocked_by (feeds the dependency-gate, §1.3)."""
+    await own_task(container, user, task_id)
     blockers = await container.tasks.list_blockers(task_id)
     return [BlockerOut.model_validate(t) for t in blockers]
 
@@ -180,9 +204,15 @@ async def list_dependencies(
     status_code=201,
 )
 async def add_dependency(
-    task_id: UUID, body: AddDependencyIn, container: ContainerDep
+    task_id: UUID, body: AddDependencyIn, container: ContainerDep, user: CurrentUser
 ) -> list[BlockerOut]:
-    """Add a `blocked_by` edge, then return the refreshed blocker list."""
+    """Add a `blocked_by` edge, then return the refreshed blocker list.
+
+    Both ends are checked: an edge names a second task, and letting a caller point one of
+    their own tasks at a stranger's would leak that it exists through the blocker list.
+    """
+    await own_task(container, user, task_id)
+    await own_task(container, user, body.blocks_task_id)
     await container.tasks.add_dependency(task_id, body.blocks_task_id)
     blockers = await container.tasks.list_blockers(task_id)
     return [BlockerOut.model_validate(t) for t in blockers]
@@ -190,8 +220,9 @@ async def add_dependency(
 
 @router.delete("/tasks/{task_id}/dependencies/{blocks_task_id}", status_code=204)
 async def remove_dependency(
-    task_id: UUID, blocks_task_id: UUID, container: ContainerDep
+    task_id: UUID, blocks_task_id: UUID, container: ContainerDep, user: CurrentUser
 ) -> None:
+    await own_task(container, user, task_id)
     await container.tasks.remove_dependency(task_id, blocks_task_id)
 
 
@@ -200,24 +231,29 @@ async def remove_dependency(
     response_model=list[TaskDependencyEdgeOut],
 )
 async def list_project_dependencies(
-    project_id: UUID, container: ContainerDep
+    project_id: UUID, container: ContainerDep, user: CurrentUser
 ) -> list[TaskDependencyEdgeOut]:
     """All `blocked_by` edges in the project — the board flags cards with an
     unfinished blocker from these plus the tasks it already loaded."""
+    await own_project(container, user, project_id)
     edges = await container.tasks.list_project_dependencies(project_id)
     return [TaskDependencyEdgeOut.model_validate(e) for e in edges]
 
 
 @router.get("/tasks/{task_id}/comments", response_model=list[CommentOut])
-async def list_comments(task_id: UUID, container: ContainerDep) -> list[CommentOut]:
+async def list_comments(
+    task_id: UUID, container: ContainerDep, user: CurrentUser
+) -> list[CommentOut]:
+    await own_task(container, user, task_id)
     items = await container.threads.list_comments(task_id)
     return [CommentOut.model_validate(c) for c in items]
 
 
 @router.post("/tasks/{task_id}/comments", response_model=CommentOut, status_code=201)
 async def post_comment(
-    task_id: UUID, body: PostCommentIn, container: ContainerDep
+    task_id: UUID, body: PostCommentIn, container: ContainerDep, user: CurrentUser
 ) -> CommentOut:
+    await own_task(container, user, task_id)
     comment = await container.threads.post_comment(
         task_id=task_id,
         body=body.body,
@@ -229,15 +265,19 @@ async def post_comment(
 
 
 @router.get("/tasks/{task_id}/artifacts", response_model=list[ArtifactOut])
-async def list_artifacts(task_id: UUID, container: ContainerDep) -> list[ArtifactOut]:
+async def list_artifacts(
+    task_id: UUID, container: ContainerDep, user: CurrentUser
+) -> list[ArtifactOut]:
+    await own_task(container, user, task_id)
     items = await container.artifacts.list_by_task(task_id)
     return [ArtifactOut.model_validate(a) for a in items]
 
 
 @router.post("/tasks/{task_id}/artifacts", response_model=ArtifactOut, status_code=201)
 async def publish_artifact(
-    task_id: UUID, body: PublishArtifactIn, container: ContainerDep
+    task_id: UUID, body: PublishArtifactIn, container: ContainerDep, user: CurrentUser
 ) -> ArtifactOut:
+    await own_task(container, user, task_id)
     artifact = await container.artifacts.publish(
         task_id=task_id,
         name=body.name,
@@ -253,7 +293,10 @@ async def publish_artifact(
 
 
 @router.post("/tasks/{task_id}/wake", response_model=RunStartedOut, status_code=202)
-async def wake_task(task_id: UUID, body: WakeIn, container: ContainerDep) -> RunStartedOut:
+async def wake_task(
+    task_id: UUID, body: WakeIn, container: ContainerDep, user: CurrentUser
+) -> RunStartedOut:
+    await own_task(container, user, task_id)
     run_id = await container.wake_engine.enqueue(
         marius_id=body.marius_id,
         task_id=task_id,
@@ -264,13 +307,14 @@ async def wake_task(task_id: UUID, body: WakeIn, container: ContainerDep) -> Run
 
 
 @router.get("/tasks/{task_id}/log", response_model=list[TaskLogEntryOut])
-async def task_log(task_id: UUID, container: ContainerDep) -> list[TaskLogEntryOut]:
+async def task_log(
+    task_id: UUID, container: ContainerDep, user: CurrentUser
+) -> list[TaskLogEntryOut]:
     """The task's whole history, oldest first (spec 001 §10, FR-079).
 
     Distinct from ``/tasks/{id}/stream``, which follows one agent run — this follows the
     task across every run, assignee and signature it ever had.
     """
-    if await container.tasks.get(task_id) is None:
-        raise LookupError("task not found")
+    await own_task(container, user, task_id)
     entries = await container.task_logs.list_for_task(task_id)
     return [TaskLogEntryOut.model_validate(e) for e in entries]
