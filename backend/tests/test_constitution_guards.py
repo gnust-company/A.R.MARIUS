@@ -116,12 +116,11 @@ def test_the_business_layers_never_branch_on_which_runtime_it_is() -> None:
 # this repo has looked like.
 _TIMER = re.compile(r"\b(?:window\.)?setInterval\s*\(")
 
-# One known offender, recorded rather than hidden. AgentDetail refetches an agent's run
-# list every 15s because runs have no workspace-level event to ride: the wake engine
-# publishes per-run and per-task, and this screen watches neither. Fixing it means adding
-# a run-lifecycle event to the workspace channel — a change to the push contract, not to
-# this page — so it is tracked as its own task rather than smuggled into a review.
-_POLLING_ALLOWED = {"pages/AgentDetail.tsx"}
+# Empty, and meant to stay that way. It held one name (AgentDetail, refetching an agent's
+# run list every 15s) for exactly as long as it took T167 to give runs a workspace-level
+# event to ride. An entry here is a hole in FR-080, so adding one is a decision to justify
+# in review, not a way to make this test pass.
+_POLLING_ALLOWED: set[str] = set()
 
 
 def test_no_screen_asks_the_server_again_on_a_timer() -> None:

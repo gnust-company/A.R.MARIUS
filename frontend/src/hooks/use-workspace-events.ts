@@ -16,6 +16,31 @@ function statusToAgent(status: string): AgentStatus {
   return livenessToAgentStatus(status) // liveness values (online/working/idle/...)
 }
 
+export interface WorkspaceEvent {
+  type: string
+  payload: Record<string, unknown>
+}
+
+/**
+ * Listen to the workspace channel from anywhere, over the ONE connection `Layout` already
+ * holds open.
+ *
+ * A page could call `subscribeWorkspaceEvents` itself, but that opens a second stream to
+ * the same endpoint for the same data. Routing through the store's `events` array is the
+ * other tempting shortcut and is worse: that array is never trimmed, so a page that reacts
+ * to run traffic would make it grow for as long as the tab stays open.
+ *
+ * Returns its own unsubscribe.
+ */
+const listeners = new Set<(event: WorkspaceEvent) => void>()
+
+export function onWorkspaceEvent(listener: (event: WorkspaceEvent) => void): () => void {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
 export function useWorkspaceEvents(workspaceId: string | null | undefined): void {
   const setSseConnected = useAppStore((s) => s.setSseConnected)
 
@@ -28,7 +53,11 @@ export function useWorkspaceEvents(workspaceId: string | null | undefined): void
         const payload = event.payload ?? {}
         const mariusId = (payload.marius_id ?? payload.mariusId) as string | undefined
         const status = payload.status as string | undefined
-        if (mariusId && status) {
+        // Scoped to `marius.*` on purpose. The channel also carries events that name an
+        // agent and carry an unrelated `status` — a run's lifecycle says
+        // `{marius_id, status: 'running'}` — and reading those as a liveness value would
+        // set every agent that starts a run to whatever `statusToAgent` makes of it.
+        if (mariusId && status && event.type.startsWith('marius.')) {
           const next = statusToAgent(status)
           useAppStore.setState((s) => ({
             mariuses: s.mariuses.map((m) =>
@@ -67,6 +96,7 @@ export function useWorkspaceEvents(workspaceId: string | null | undefined): void
         }
         // Surface every workspace event so any subscriber (e.g. a future toast/log) sees it.
         useAppStore.getState().emitEvent({ type: event.type, payload })
+        for (const listener of listeners) listener({ type: event.type, payload })
       },
       (err) => {
         setSseConnected(false)
