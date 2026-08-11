@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.inbox_item import InboxItem, InboxItemKind, InboxItemStatus
 from armarius.domain.services.reminders import due_reminder_tier
@@ -104,20 +105,42 @@ class InboxService:
         missing item, so a patron cannot probe for other people's items.
         """
         async with self._uow() as uow:
-            item = await uow.inbox.get(item_id)
-            if item is None:
-                raise LookupError("inbox item not found")
-            if recipient_user_id is not None and item.recipient_user_id != recipient_user_id:
-                raise LookupError("inbox item not found")
-            if item.status is InboxItemStatus.RESOLVED:
+            item, changed = await self.resolve_within(
+                uow, item_id, recipient_user_id=recipient_user_id
+            )
+            if not changed:
                 return item
-            item.status = InboxItemStatus.RESOLVED
-            item.resolved_at = utcnow()
-            await uow.inbox.update(item)
             await uow.commit()
 
         await self._publish(EVENT_ITEM_RESOLVED, item)
         return item
+
+    async def resolve_within(
+        self, uow: UnitOfWork, item_id: UUID, *, recipient_user_id: str | None = None
+    ) -> tuple[InboxItem, bool]:
+        """The write half of `resolve`. **The caller owns the transaction.**
+
+        Returns the item and whether this call is what closed it. A caller that has to
+        change something else in the same breath — the patron answering an escalation
+        both acts on the task and closes the letter — needs both writes behind one commit,
+        and needs to know whether the answer had already been recorded so a retry does not
+        act twice. `False` means somebody got here first.
+        """
+        item = await uow.inbox.get(item_id)
+        if item is None:
+            raise LookupError("inbox item not found")
+        if recipient_user_id is not None and item.recipient_user_id != recipient_user_id:
+            raise LookupError("inbox item not found")
+        if item.status is InboxItemStatus.RESOLVED:
+            return item, False
+        item.status = InboxItemStatus.RESOLVED
+        item.resolved_at = utcnow()
+        await uow.inbox.update(item)
+        return item, True
+
+    async def publish_resolved(self, item: InboxItem) -> None:
+        """Announce a resolution whose write landed under somebody else's transaction."""
+        await self._publish(EVENT_ITEM_RESOLVED, item)
 
     # ── the three-tier reminder ladder (FR-065) ──────────────────────────────
     async def send_due_reminders(self, now: datetime | None = None) -> int:

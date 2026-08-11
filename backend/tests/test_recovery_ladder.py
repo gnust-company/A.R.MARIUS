@@ -22,6 +22,7 @@ from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.push_reason import PushReasonService
 from armarius.application.use_cases.recovery import (
+    EscalationAnswer,
     NotOnTheLeadersRung,
     OfflineFalloutService,
     RecoveryEscalator,
@@ -1117,3 +1118,217 @@ async def test_a_task_that_recovers_onto_a_different_question_still_leaves_the_l
         "đầu việc hồi phục rồi mà nấc thang nằm lại — lần kẹt sau sẽ nhảy cóc qua Mức 1"
     )
     assert settled.attempts == 0 and settled.handover_attempts == 0
+
+
+# ── Câu trả lời của người chủ: một quyết định, một lần chốt ──────────────────────
+
+
+def _tasks_for(uow_factory, wakes):
+    """A task service whose wakes are counted, wired like the composition root wires it."""
+    return TaskService(
+        uow_factory,
+        wakes,
+        task_logs=TaskLogService(uow_factory),
+        push_reasons=PushReasonService(
+            uow_factory, ProjectService(uow_factory, THRESHOLDS)
+        ),
+    )
+
+
+def _answering_escalator(uow_factory, *, wakes, bus, tasks):
+    return RecoveryEscalator(
+        uow_factory,
+        ProjectService(uow_factory, THRESHOLDS),
+        wakes=wakes,
+        inbox=InboxService(uow_factory, bus),
+        task_log=TaskLogService(uow_factory),
+        control_bus=bus,
+        leader_notifier=RecordingNotifier(),
+        push_reasons=PushReasonService(
+            uow_factory, ProjectService(uow_factory, THRESHOLDS)
+        ),
+        tasks=tasks,
+    )
+
+
+async def _letter_for(uow_factory, task_id):
+    letters = await _pending_escalations(uow_factory, task_id)
+    assert letters, "chưa có lá thư nào để trả lời"
+    return letters[0]
+
+
+async def _reload(uow_factory, task_id):
+    async with uow_factory() as uow:
+        return await uow.tasks.get(task_id)
+
+
+async def _letter_status(uow_factory, item_id):
+    async with uow_factory() as uow:
+        item = await uow.inbox.get(item_id)
+        assert item is not None
+        return item.status
+
+
+@pytest.mark.asyncio
+async def test_the_answer_moves_the_task_and_closes_the_letter_together(
+    uow_factory,
+) -> None:
+    ws, project, alice = await _world(uow_factory)
+    bob = await MariusService(uow_factory).register(
+        workspace_id=ws.id, name="Bob", role="Backend", skills=[],
+        adapter_type="echo", adapter_config={},
+    )
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    bus = TopicEventBus()
+    task_wakes = RecordingWakes()
+    escalator = _answering_escalator(
+        uow_factory, wakes=RecordingWakes(), bus=bus,
+        tasks=_tasks_for(uow_factory, task_wakes),
+    )
+    await _climb_to_the_patron(uow_factory, task, escalator=escalator)
+    letter = await _letter_for(uow_factory, task.id)
+
+    await escalator.answer_escalation(
+        letter.id,
+        answer=EscalationAnswer.REASSIGN,
+        marius_id=bob.id,
+        text="Alice treo, chuyển sang Bob.",
+        recipient_user_id="patron-1",
+        now=T0 + timedelta(hours=13),
+    )
+
+    assert (await _reload(uow_factory, task.id)).assigned_marius_id == bob.id
+    assert await _letter_status(uow_factory, letter.id) is InboxItemStatus.RESOLVED
+    assert (await _ladder(uow_factory, task.id)).level is EscalationLevel.NONE
+    assert [c["marius_id"] for c in task_wakes.calls] == [bob.id], (
+        "người mới phải được gọi đúng một lần cho một sự cố"
+    )
+
+
+@pytest.mark.asyncio
+async def test_answering_the_same_letter_twice_does_nothing_the_second_time(
+    uow_factory,
+) -> None:
+    """The reflex that used to cost a second wake.
+
+    A patron who sees an error presses again — the most natural thing there is. Before the
+    answer landed as one fact, that second press ran the assignment a second time and woke
+    the new owner twice for one incident. The letter is the record of the decision, so the
+    letter is what makes a repeat a no-op.
+    """
+    ws, project, alice = await _world(uow_factory)
+    bob = await MariusService(uow_factory).register(
+        workspace_id=ws.id, name="Bob", role="Backend", skills=[],
+        adapter_type="echo", adapter_config={},
+    )
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    bus = TopicEventBus()
+    task_wakes = RecordingWakes()
+    escalator = _answering_escalator(
+        uow_factory, wakes=RecordingWakes(), bus=bus,
+        tasks=_tasks_for(uow_factory, task_wakes),
+    )
+    await _climb_to_the_patron(uow_factory, task, escalator=escalator)
+    letter = await _letter_for(uow_factory, task.id)
+
+    for _ in range(3):
+        await escalator.answer_escalation(
+            letter.id,
+            answer=EscalationAnswer.REASSIGN,
+            marius_id=bob.id,
+            text="Alice treo, chuyển sang Bob.",
+            recipient_user_id="patron-1",
+            now=T0 + timedelta(hours=13),
+        )
+
+    assert len(task_wakes.calls) == 1, (
+        f"bấm lại làm người mới bị gọi dậy {len(task_wakes.calls)} lần cho một sự cố"
+    )
+
+
+@pytest.mark.asyncio
+async def test_cancelling_from_the_letter_survives_being_pressed_again(
+    uow_factory,
+) -> None:
+    """A cancelled task has nowhere left to go, so a second cancel used to throw — and the
+    letter could then never be closed from that button at all."""
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    bus = TopicEventBus()
+    escalator = _answering_escalator(
+        uow_factory, wakes=RecordingWakes(), bus=bus,
+        tasks=_tasks_for(uow_factory, RecordingWakes()),
+    )
+    await _climb_to_the_patron(uow_factory, task, escalator=escalator)
+    letter = await _letter_for(uow_factory, task.id)
+
+    for _ in range(2):
+        await escalator.answer_escalation(
+            letter.id,
+            answer=EscalationAnswer.CANCEL,
+            text="Khách đổi ý, bỏ hạng mục này.",
+            recipient_user_id="patron-1",
+            now=T0 + timedelta(hours=13),
+        )
+
+    assert (await _reload(uow_factory, task.id)).status is TaskStatus.CANCELLED
+    assert await _letter_status(uow_factory, letter.id) is InboxItemStatus.RESOLVED
+
+
+@pytest.mark.asyncio
+async def test_an_answer_that_fails_leaves_the_question_standing(uow_factory) -> None:
+    """The whole reason the answer is one transaction (FR-061e).
+
+    If the action fails after the letter has been closed, the patron loses the question and
+    the task stays stuck — the one direction this must never break in. Under a single
+    commit there is no such half: the failure takes the close down with it, and the screen
+    still shows what it showed before.
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    bus = TopicEventBus()
+    escalator = _answering_escalator(
+        uow_factory, wakes=RecordingWakes(), bus=bus,
+        tasks=_tasks_for(uow_factory, RecordingWakes()),
+    )
+    await _climb_to_the_patron(uow_factory, task, escalator=escalator)
+    letter = await _letter_for(uow_factory, task.id)
+    rung_before = (await _ladder(uow_factory, task.id)).level
+
+    with pytest.raises(LookupError):
+        await escalator.answer_escalation(
+            letter.id,
+            answer=EscalationAnswer.REASSIGN,
+            marius_id=UUID("00000000-0000-0000-0000-0000000000ff"),  # nobody
+            text="Chuyển cho người không tồn tại.",
+            recipient_user_id="patron-1",
+            now=T0 + timedelta(hours=13),
+        )
+
+    assert await _letter_status(uow_factory, letter.id) is InboxItemStatus.PENDING, (
+        "hành động hỏng mà lá thư đã đóng — người chủ mất câu hỏi và đầu việc vẫn kẹt"
+    )
+    assert (await _reload(uow_factory, task.id)).assigned_marius_id == alice.id
+    assert (await _ladder(uow_factory, task.id)).level is rung_before
+
+
+@pytest.mark.asyncio
+async def test_someone_elses_letter_is_not_found(uow_factory) -> None:
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    bus = TopicEventBus()
+    escalator = _answering_escalator(
+        uow_factory, wakes=RecordingWakes(), bus=bus,
+        tasks=_tasks_for(uow_factory, RecordingWakes()),
+    )
+    await _climb_to_the_patron(uow_factory, task, escalator=escalator)
+    letter = await _letter_for(uow_factory, task.id)
+
+    with pytest.raises(LookupError):
+        await escalator.answer_escalation(
+            letter.id,
+            answer=EscalationAnswer.HANDLED,
+            recipient_user_id="patron-2",
+            now=T0 + timedelta(hours=13),
+        )
+    assert await _letter_status(uow_factory, letter.id) is InboxItemStatus.PENDING

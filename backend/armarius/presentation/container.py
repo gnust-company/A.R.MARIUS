@@ -178,21 +178,6 @@ def build_container() -> Container:
     # every status change settles its drive through this one object — two writers is how
     # a field comes to mean two different things.
     push_reasons = PushReasonService(uow_factory, projects)
-    # One escalator, shared: the watchdog climbs the ladder and the Leader's recovery
-    # endpoint clears it. Two instances would each hold their own idea of where a task
-    # stands, and the rung the Leader answered would not be the rung the sweep reads.
-    recovery = RecoveryEscalator(
-        uow_factory,
-        projects,
-        wakes=wake_engine,
-        inbox=inbox,
-        task_log=TaskLogService(uow_factory),
-        control_bus=control_bus,
-        leader_notifier=leader_chat,
-        push_reasons=push_reasons,
-        backoff_base_seconds=settings.level1_backoff_seconds,
-    )
-
     # Tasks and approvals are built here rather than inline below: the approval service
     # closes a task through the task service, so it needs the same instance the API uses.
     tasks = TaskService(
@@ -203,6 +188,24 @@ def build_container() -> Container:
         control_bus=control_bus,
         inbox=inbox,
         push_reasons=push_reasons,
+    )
+    # One escalator, shared: the watchdog climbs the ladder and the Leader's recovery
+    # endpoint clears it. Two instances would each hold their own idea of where a task
+    # stands, and the rung the Leader answered would not be the rung the sweep reads.
+    #
+    # Built after the task service because the patron's answer to a Mức 3 letter changes
+    # the task and closes the letter under one transaction, so it needs that same instance.
+    recovery = RecoveryEscalator(
+        uow_factory,
+        projects,
+        wakes=wake_engine,
+        inbox=inbox,
+        task_log=TaskLogService(uow_factory),
+        control_bus=control_bus,
+        leader_notifier=leader_chat,
+        push_reasons=push_reasons,
+        tasks=tasks,
+        backoff_base_seconds=settings.level1_backoff_seconds,
     )
 
     liveness = liveness_for_chat

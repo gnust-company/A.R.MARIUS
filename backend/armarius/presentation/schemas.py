@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -409,6 +410,19 @@ class TransitionIn(BaseModel):
 
 class NextActionIn(BaseModel):
     next_action: str | None = None
+
+
+class AnswerEscalationIn(BaseModel):
+    """The patron's answer to a Mức 3 letter (FR-061a).
+
+    `text` carries whichever words the chosen answer needs — the transfer reason, the new
+    next action, or why the task is being dropped. One field rather than three because
+    exactly one of them applies per answer, and three would invite sending two.
+    """
+
+    answer: Literal["reassign", "next_action", "cancel", "handled"]
+    marius_id: UUID | None = None
+    text: str | None = Field(default=None, max_length=2000)
 
 
 class TaskOut(_Out):

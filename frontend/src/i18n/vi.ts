@@ -388,8 +388,8 @@ export const vi = {
       lastAttempt: 'Lần thử gần nhất: {{when}}',
       question: 'Điều cần bạn quyết',
     },
-    // FR-061a — bốn lối trả lời ngay tại chỗ. Ba lối đầu là "hệ ơi làm hộ tôi việc này";
-    // lối thứ tư là "tôi tự lo xong bên ngoài rồi, chạy tiếp đi".
+    // FR-061a — the four ways to answer in place. The first three say "system, do this
+    // for me"; the fourth says "I sorted it outside, carry on".
     escalation: {
       reassign: 'Giao lại cho…',
       changeNext: 'Đổi việc kế tiếp',

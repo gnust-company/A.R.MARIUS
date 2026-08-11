@@ -15,10 +15,11 @@ from uuid import UUID
 
 from fastapi import APIRouter
 
+from armarius.application.use_cases.recovery import EscalationAnswer
 from armarius.domain.entities.inbox_item import InboxItemStatus
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
-from armarius.presentation.schemas import InboxItemOut
+from armarius.presentation.schemas import AnswerEscalationIn, InboxItemOut
 
 router = APIRouter(prefix="/v1", tags=["inbox"])
 
@@ -52,6 +53,28 @@ async def resolve_inbox_item(
     """
     item = await container.recovery.patron_answered(
         item_id, recipient_user_id=str(user.id)
+    )
+    return InboxItemOut.model_validate(item)
+
+
+@router.post("/inbox/{item_id}/answer", response_model=InboxItemOut)
+async def answer_inbox_item(
+    item_id: UUID, body: AnswerEscalationIn, container: ContainerDep, user: CurrentUser
+) -> InboxItemOut:
+    """Answer a Mức 3 escalation: act on the task and close the letter, together (FR-061a).
+
+    One route rather than *act, then resolve* from the browser, because the patron made a
+    single decision and it has to land as a single fact. Two calls leave a window where the
+    task moved and the question still stands, and pressing again from there runs the action
+    twice — a second assign wakes the new owner again for one incident. Here a repeat is a
+    no-op: the letter is already closed, so nothing happens (FR-061e).
+    """
+    item = await container.recovery.answer_escalation(
+        item_id,
+        answer=EscalationAnswer(body.answer),
+        marius_id=body.marius_id,
+        text=body.text,
+        recipient_user_id=str(user.id),
     )
     return InboxItemOut.model_validate(item)
 
