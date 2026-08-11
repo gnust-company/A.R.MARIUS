@@ -2,7 +2,8 @@
 // Single-agent detail view (#72). Opened by clicking an agent card in the Directory. The
 // right column is the system↔agent interaction log the owner tracks: every Run the system
 // dispatched to this agent (assignment, mention, comment, …), each expandable to its
-// durable per-run trace (RunEvent). Data is read-only and polls so a live run updates in place.
+// durable per-run trace (RunEvent). Data is read-only, and a live run advances in place off
+// the workspace event channel — no timer (T167, FR-080).
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -33,6 +34,7 @@ import { listMariusRuns, listRunEvents, type RunDTO, type RunEventDTO } from '@/
 import Modal from '@/components/Modal';
 import VellumPanel from '@/components/VellumPanel';
 import { cn, wsHref } from '@/lib/utils';
+import { onWorkspaceEvent } from '@/hooks/use-workspace-events';
 
 // ─── Status palette (mirrors Directory's Scriptorium tones) ───────────────────
 
@@ -230,20 +232,32 @@ export default function AgentDetail() {
   const [installing, setInstalling] = useState(false);
   const [installStatus, setInstallStatus] = useState<'sent' | 'send_failed' | null>(null);
 
-  // Poll the agent's run log so a live run advances in place (the openclaw detail view
-  // refetches on an interval too). Read-only — no mutations from this screen.
+  // Push, not poll (Constitution IV, FR-080). This screen watches an *agent*, and until
+  // T167 no channel spoke about agents — so it re-asked the server every fifteen seconds,
+  // forever, whether or not the agent had done anything. The server now announces each run
+  // lifecycle change on the workspace channel, which is the connection `Layout` already
+  // holds open, so listening costs nothing extra.
+  //
+  // The event is a **signal**, not the data: on receipt this re-reads the run list rather
+  // than trying to patch a row out of the payload (contracts/su-kien-day.md, principle 1).
+  const loadRuns = useCallback(() => {
+    if (!workspaceId || !id) return;
+    listMariusRuns(workspaceId, id)
+      .then((rows) => { setRuns(rows); setError(null); })
+      .catch((e) => setError(e?.message || 'Failed to load runs'));
+  }, [workspaceId, id]);
+
+  useEffect(() => { loadRuns(); }, [loadRuns]);
+
   useEffect(() => {
     if (!workspaceId || !id) return;
-    let alive = true;
-    const load = () => {
-      listMariusRuns(workspaceId, id)
-        .then((rows) => { if (alive) { setRuns(rows); setError(null); } })
-        .catch((e) => { if (alive) setError(e?.message || 'Failed to load runs'); });
-    };
-    load();
-    const timer = setInterval(load, 15000);
-    return () => { alive = false; clearInterval(timer); };
-  }, [workspaceId, id]);
+    return onWorkspaceEvent((event) => {
+      if (event.type !== 'luot-chay.doi-trang-thai') return;
+      // The channel carries every agent in the workspace; only this one's runs are on screen.
+      if (event.payload.marius_id !== id) return;
+      loadRuns();
+    });
+  }, [workspaceId, id, loadRuns]);
 
   const status: AgentStatus = agent?.status || 'offline';
   const statusColor = STATUS_COLORS[status] || STATUS_COLORS.offline;
