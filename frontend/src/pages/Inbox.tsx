@@ -15,19 +15,33 @@ import { useNavigate, useParams } from 'react-router';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertTriangle,
+  CheckCheck,
   CheckCircle2,
   ExternalLink,
   FileQuestion,
   GitBranch,
   Inbox as InboxIcon,
+  PencilLine,
   ScrollText,
   ThumbsDown,
+  UserPlus,
+  XCircle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import PageTitle from '@/components/PageTitle';
 import VellumPanel from '@/components/VellumPanel';
-import { getInbox, signTaskApproval, type InboxItemDTO } from '@/lib/api';
+import {
+  assignTask,
+  getInbox,
+  listProjectAgents,
+  resolveInboxItem,
+  setNextAction,
+  signTaskApproval,
+  updateTaskStatus,
+  type InboxItemDTO,
+  type ProjectAgentDTO,
+} from '@/lib/api';
 import { wsHref } from '@/lib/utils';
 import { useAppStore } from '@/store/appStore';
 
@@ -80,6 +94,212 @@ function AttemptDossier({ item }: { item: InboxItemDTO }) {
           <span className="text-[#8B6A28]">{t('inbox.dossier.question')}:</span> {question}
         </p>
       )}
+    </div>
+  );
+}
+
+const actionButton =
+  'flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-[#6B5E4E] bg-[#EDE4CE] hover:bg-[#E3D7BC] rounded-md transition-colors disabled:opacity-50 cursor-pointer';
+const primaryButton =
+  'flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-[#D4A843] hover:bg-[#E8C96A] rounded-md transition-colors disabled:opacity-50 cursor-pointer';
+const fieldClasses =
+  'w-full rounded-md border border-[#E3D7BC] bg-white px-2.5 py-1.5 text-xs text-[#2A2318] focus:border-[#D4A843] focus:outline-none';
+
+/** Những nút trả lời một mục *leo thang*, ngay tại chỗ (FR-061a).
+ *
+ * Cái thang đưa đầu việc tới tay người chủ rồi dừng — từ đây hệ không còn cách nào tự gỡ.
+ * Mà trước đây mục này chỉ có nút *Mở*: hệ hỏi ba điều và không cho làm điều nào, nên
+ * người đọc phải tự đi tìm chỗ trả lời. Đó đúng là phần khó nhất, và đẩy nó sang cho
+ * người mà cả cái thang này sinh ra để tiết kiệm thời gian thì cái thang chỉ hụt muộn hơn.
+ *
+ * Bốn lối, và lối thứ tư khác hẳn ba lối kia: ba lối đầu là *"hệ ơi làm hộ tôi việc này"*,
+ * lối thứ tư là *"tôi tự lo xong bên ngoài rồi, chạy tiếp đi"* — bật lại một agent treo,
+ * sửa một thứ hỏng ở máy mình. Không có nó thì người chủ phải giả vờ chọn một trong ba.
+ *
+ * Chỗ cần nhớ ở đây: **lá thư đóng vì người chủ vừa trả lời nó**. Vòng quét không bao giờ
+ * đụng vào hộp thư (FR-061b), nên mọi lối dưới đây đều phải tự gọi đường đóng mục — và
+ * chính đường đó tính lại xem còn ai sắp chạm vào đầu việc không (FR-061c). Bỏ sót một
+ * lối là thả đầu việc ra ngoài tầm quét vĩnh viễn.
+ */
+function EscalationActions({
+  item,
+  taskId,
+  busy,
+  setBusy,
+  onError,
+  onDone,
+}: {
+  item: InboxItemDTO;
+  taskId: string;
+  busy: boolean;
+  setBusy: (id: string | null) => void;
+  onError: (message: string | null) => void;
+  onDone: () => void;
+}) {
+  const { t } = useTranslation();
+  const [mode, setMode] = useState<'assign' | 'next' | 'cancel' | null>(null);
+  const [agents, setAgents] = useState<ProjectAgentDTO[] | null>(null);
+  const [agentId, setAgentId] = useState('');
+  const [text, setText] = useState('');
+
+  // Danh sách agent chỉ nạp khi người chủ thật sự mở ô *giao lại*. Nạp sẵn cho mọi mục
+  // lúc mở trang là một lượt gọi máy chủ cho mỗi mục, phần lớn không ai dùng tới.
+  useEffect(() => {
+    if (mode !== 'assign' || agents !== null || !item.project_id) return;
+    let alive = true;
+    listProjectAgents(item.project_id)
+      .then((rows) => {
+        if (alive) setAgents(rows);
+      })
+      .catch((e: unknown) => {
+        if (alive) onError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      alive = false;
+    };
+  }, [mode, agents, item.project_id, onError]);
+
+  const close = () => {
+    setMode(null);
+    setAgentId('');
+    setText('');
+  };
+
+  /** Chạy hành động người chủ chọn, rồi đóng lá thư — theo đúng thứ tự đó.
+   *
+   * Nếu đóng thư trước mà hành động hỏng thì người chủ mất câu hỏi và đầu việc vẫn kẹt.
+   * Ngược lại, hành động xong mà đóng thư hỏng thì lá thư còn nguyên và bậc nhắc vẫn giục
+   * — hướng hỏng an toàn hơn hẳn. */
+  const run = async (act?: () => Promise<unknown>) => {
+    setBusy(item.id);
+    onError(null);
+    try {
+      if (act) await act();
+      await resolveInboxItem(item.id);
+      close();
+      onDone();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const said = text.trim();
+
+  if (mode === null) {
+    return (
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#E3D7BC] pt-3">
+        <button
+          className={actionButton}
+          disabled={busy}
+          data-testid="escalation-reassign"
+          onClick={() => setMode('assign')}
+        >
+          <UserPlus size={12} /> {t('inbox.escalation.reassign')}
+        </button>
+        <button
+          className={actionButton}
+          disabled={busy}
+          data-testid="escalation-next-action"
+          onClick={() => setMode('next')}
+        >
+          <PencilLine size={12} /> {t('inbox.escalation.changeNext')}
+        </button>
+        <button
+          className={actionButton}
+          disabled={busy}
+          data-testid="escalation-cancel-task"
+          onClick={() => setMode('cancel')}
+        >
+          <XCircle size={12} /> {t('inbox.escalation.cancelTask')}
+        </button>
+        <button
+          className={primaryButton}
+          disabled={busy}
+          title={t('inbox.escalation.handledHint')}
+          data-testid="escalation-handled"
+          onClick={() => void run()}
+        >
+          <CheckCheck size={12} /> {t('inbox.escalation.handled')}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 space-y-2 border-t border-[#E3D7BC] pt-3">
+      {mode === 'assign' && (
+        <>
+          <label className="block text-[10px] uppercase tracking-wide text-[#8B6A28]">
+            {t('inbox.escalation.pickAgent')}
+          </label>
+          {agents !== null && agents.length === 0 ? (
+            <p className="text-xs text-[#6B5E4E]">{t('inbox.escalation.noAgents')}</p>
+          ) : (
+            <select
+              className={fieldClasses}
+              value={agentId}
+              data-testid="escalation-agent-select"
+              onChange={(e) => setAgentId(e.target.value)}
+            >
+              <option value="">
+                {agents === null ? t('common.loading') : t('inbox.escalation.pickAgent')}
+              </option>
+              {(agents ?? []).map((a) => (
+                <option key={a.marius_id} value={a.marius_id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </>
+      )}
+
+      <label className="block text-[10px] uppercase tracking-wide text-[#8B6A28]">
+        {mode === 'assign'
+          ? t('inbox.escalation.transferReason')
+          : mode === 'next'
+            ? t('inbox.escalation.nextAction')
+            : t('inbox.escalation.cancelReason')}
+      </label>
+      <textarea
+        className={fieldClasses}
+        rows={2}
+        value={text}
+        data-testid="escalation-text"
+        placeholder={
+          mode === 'assign'
+            ? t('inbox.escalation.transferReasonPlaceholder')
+            : mode === 'next'
+              ? t('inbox.escalation.nextActionPlaceholder')
+              : t('inbox.escalation.cancelReasonPlaceholder')
+        }
+        onChange={(e) => setText(e.target.value)}
+      />
+
+      <div className="flex items-center gap-2">
+        <button
+          className={primaryButton}
+          data-testid="escalation-confirm"
+          // Cả ba lối đều đòi một câu chữ, và không phải để làm khó: người phụ trách mới
+          // đọc lý do chuyển giao, đầu việc bị huỷ phải nói vì sao (FR-030), và "việc kế
+          // tiếp" rỗng thì đúng bằng không đổi gì.
+          disabled={busy || !said || (mode === 'assign' && !agentId)}
+          onClick={() =>
+            void run(() => {
+              if (mode === 'assign') return assignTask(taskId, agentId, said);
+              if (mode === 'next') return setNextAction(taskId, said);
+              return updateTaskStatus(taskId, 'cancelled', said);
+            })
+          }
+        >
+          {t('common.confirm')}
+        </button>
+        <button className={actionButton} disabled={busy} onClick={close}>
+          {t('common.cancel')}
+        </button>
+      </div>
     </div>
   );
 }
@@ -315,6 +535,16 @@ export default function Inbox() {
                             )}
                           </div>
                         </div>
+                        {tab === 'pending' && item.kind === 'escalation' && item.task_id && (
+                          <EscalationActions
+                            item={item}
+                            taskId={item.task_id}
+                            busy={busyId === item.id}
+                            setBusy={setBusyId}
+                            onError={setError}
+                            onDone={reload}
+                          />
+                        )}
                       </VellumPanel>
                     </motion.div>
                   ))}

@@ -388,6 +388,24 @@ export const vi = {
       lastAttempt: 'Lần thử gần nhất: {{when}}',
       question: 'Điều cần bạn quyết',
     },
+    // FR-061a — bốn lối trả lời ngay tại chỗ. Ba lối đầu là "hệ ơi làm hộ tôi việc này";
+    // lối thứ tư là "tôi tự lo xong bên ngoài rồi, chạy tiếp đi".
+    escalation: {
+      reassign: 'Giao lại cho…',
+      changeNext: 'Đổi việc kế tiếp',
+      cancelTask: 'Huỷ đầu việc',
+      handled: 'Tôi đã xử lý xong',
+      handledHint:
+        'Bạn đã tự gỡ bên ngoài hệ. Hệ xoá nấc thang và chạy tiếp như bình thường — nếu đầu việc vẫn kẹt, nó sẽ tự gọi lại từ đầu trong ít phút nữa.',
+      pickAgent: 'Giao cho ai',
+      noAgents: 'Dự án này chưa có ai được cấp ghế.',
+      transferReason: 'Lý do chuyển giao',
+      transferReasonPlaceholder: 'Vì sao đổi người — người mới sẽ đọc đúng câu này',
+      nextAction: 'Việc kế tiếp',
+      nextActionPlaceholder: 'Điều bạn muốn người phụ trách bắt tay làm ngay',
+      cancelReason: 'Lý do huỷ',
+      cancelReasonPlaceholder: 'Vì sao bỏ đầu việc này',
+    },
     kind: {
       output_acceptance: 'Công nhận đầu ra',
       plan_approval: 'Duyệt kế hoạch',

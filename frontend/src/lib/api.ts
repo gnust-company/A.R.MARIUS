@@ -601,6 +601,27 @@ export async function updateTaskStatus(taskId: string, status: string, reason?: 
   return post<TaskDTO>(`/v1/tasks/${taskId}/status`, { status, reason })
 }
 
+/** Put one worker on a task; the server wakes them as part of the same move.
+ *
+ * A task has exactly one owner (FR-028), so moving it off somebody is a **transfer** and
+ * the server refuses one without a reason. That is the ordinary case here: the patron
+ * reassigns precisely because the current owner has gone quiet. */
+export async function assignTask(
+  taskId: string,
+  mariusId: string,
+  transferReason?: string,
+): Promise<TaskDTO> {
+  return post<TaskDTO>(`/v1/tasks/${taskId}/assign`, {
+    marius_id: mariusId,
+    transfer_reason: transferReason,
+  })
+}
+
+/** Rewrite the one line the task's owner is woken pointing at. */
+export async function setNextAction(taskId: string, nextAction: string | null): Promise<TaskDTO> {
+  return post<TaskDTO>(`/v1/tasks/${taskId}/next-action`, { next_action: nextAction })
+}
+
 /** Bring a closed task back. The reason is mandatory — the server refuses without it. */
 export async function reopenTask(taskId: string, reason: string): Promise<TaskDTO> {
   return post<TaskDTO>(`/v1/tasks/${taskId}/reopen`, { reason })
