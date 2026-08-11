@@ -8,6 +8,7 @@ Hai kênh đã chạy: theo **lượt chạy** và theo **đầu việc**. Cần
 |---|---|---|
 | Theo lượt chạy | **[có]** | Màn hình theo dõi một lượt agent chạy |
 | Theo đầu việc | **[có]** | Phòng cộng tác của một đầu việc |
+| Theo workspace | **[có]** | Thanh trên cùng, danh bạ agent, trang chi tiết một agent |
 | **Theo dự án** | **[mới]** | Bảng dự án — đổi giai đoạn, đổi trạng thái đầu việc, cờ đình trệ |
 | **Theo người chủ** | **[mới]** | Hộp thư — mục mới, mục được giải quyết, lời nhắc |
 
@@ -30,6 +31,22 @@ Lượt rà không thấy gì **vẫn phải bắn**. Khối "lượt rà gần 
 đang yên* với *vòng điều phối đã chết*, mà hai thứ đó nhìn giống hệt nhau nếu chỉ có lượt rà thấy-việc mới
 lên tiếng. Thiếu sự kiện này thì bảng chỉ còn một cách giữ khối đó đúng: hỏi lại theo đồng hồ — đúng thứ
 Hiến pháp IV cấm, và đúng thứ nó đã làm trước Đợt 9.
+
+### Kênh workspace
+
+| Sự kiện | Khi nào | Mang theo |
+|---|---|---|
+| `luot-chay.doi-trang-thai` | Một lượt chạy đổi trạng thái: mở, bắt đầu, kết thúc, bị dừng giữa chừng, bị tuyên treo | Mã lượt chạy, mã agent, mã đầu việc, mã dự án, trạng thái mới |
+
+Đây là kênh duy nhất trả lời được câu **"agent này có gì mới không?"**. Hai kênh cũ đều đòi
+người nghe biết trước mình cần nghe cái gì: kênh lượt chạy phải có mã lượt chạy, kênh đầu việc
+phải có mã đầu việc. Trang chi tiết một agent không có cả hai — nó nhìn theo *agent* — nên trước
+Đợt 9 nó hỏi lại máy chủ mỗi 15 giây, đúng thứ Hiến pháp IV cấm.
+
+Phải bắn ở **cả năm** chỗ đổi trạng thái, không phải chỉ chỗ dễ thấy. Hai chỗ không có ai bấm gì
+mà trạng thái vẫn đổi — máy chủ dừng giữa lượt chạy, và người canh gác tuyên một lượt chạy là
+treo — chính là hai chỗ mà thiếu tin báo thì màn hình quay mãi. Bốn trên năm cũng bằng không:
+người dùng không biết mình đang nhìn một ô đã chết.
 
 ### Kênh người chủ
 
