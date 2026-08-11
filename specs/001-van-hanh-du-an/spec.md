@@ -596,6 +596,17 @@ thứ tự gắn trên từng chữ ký.
   ra — tối thiểu: giao lại cho người khác, thu hẹp hoặc đổi yêu cầu, và huỷ đầu việc. Hỏi một câu rồi bắt người
   đọc tự đi tìm chỗ trả lời là đẩy phần khó nhất sang cho người mà cả cái thang này sinh ra để tiết kiệm thời
   gian; và đó cũng là chỗ FR-070 bị hụt trên thực tế nếu chỉ có API mà không có lối bấm.
+
+  Kèm theo ba lựa chọn đó PHẢI có lựa chọn thứ tư: **"tôi đã xử lý xong"** — người chủ gỡ kẹt *bên ngoài hệ*
+  (bật lại một agent treo, sửa một thứ hỏng ở máy họ) và chỉ cần hệ chạy tiếp như bình thường. Ba lựa chọn kia
+  đều là *"hệ ơi làm hộ tôi việc này"*; lựa chọn thứ tư là *"tôi lo xong rồi, tiếp tục đi"*, và đó là một ý
+  khác hẳn. Không có nó thì người chủ phải giả vờ chọn một trong ba, hoặc để lá thư mở vô hạn.
+
+  Lựa chọn thứ tư KHÔNG ĐƯỢC tự gọi ai dậy. Nó chỉ làm đúng điều FR-061b và FR-061c đã quy định — xoá nấc
+  thang, rồi tính lại — và nếu quả thật chưa có ai sắp chạm vào đầu việc thì vòng quét nhặt lại trong nhịp kế
+  tiếp và bắt đầu **từ Mức 1**, tức là gọi đúng người phụ trách một lần. Cho nút tự gọi là dựng bản sao thứ
+  hai của Mức 1, và hai bản sao có thể cùng bắn: một cú bấm dựng người phụ trách dậy hai lần cho một sự cố.
+  Cái giá phải trả là một khoảng lặng bằng đúng một nhịp quét sau khi bấm, và đó là cái giá đúng.
 - **FR-061b**: Việc hết đình trệ PHẢI xoá nấc thang, ngân sách và tất cả — **và KHÔNG ĐƯỢC đụng gì khác**.
   *Vì sao* nó hết đình trệ là chuyện không liên quan: một lần gọi lại ăn, Trưởng dự án ra tay, người chủ nhặt
   lên, bất cứ thứ gì. Cái thang chỉ đo đúng một điều, và điều đó đã xong.

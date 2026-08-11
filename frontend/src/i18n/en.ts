@@ -387,6 +387,24 @@ export const en = {
       lastAttempt: 'Last attempt: {{when}}',
       question: 'What you need to decide',
     },
+    // FR-061a — the four ways to answer in place. The first three say "system, do this
+    // for me"; the fourth says "I sorted it outside, carry on".
+    escalation: {
+      reassign: 'Reassign to…',
+      changeNext: 'Change next action',
+      cancelTask: 'Cancel task',
+      handled: "I've handled it",
+      handledHint:
+        'You fixed it outside the system. The ladder is cleared and normal service resumes — if the task is still stuck, it will be picked up again from the start within minutes.',
+      pickAgent: 'Hand it to',
+      noAgents: 'Nobody holds a seat on this project yet.',
+      transferReason: 'Reason for the transfer',
+      transferReasonPlaceholder: 'Why the change — the new owner reads exactly this',
+      nextAction: 'Next action',
+      nextActionPlaceholder: 'What you want the owner to pick up right now',
+      cancelReason: 'Reason for cancelling',
+      cancelReasonPlaceholder: 'Why this task is being dropped',
+    },
     kind: {
       output_acceptance: 'Output acceptance',
       plan_approval: 'Plan approval',
