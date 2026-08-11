@@ -64,6 +64,19 @@ class MariusAdapter(ABC):
     type: str
     capabilities: AdapterCapabilities
 
+    # How skills get installed is the one instruction that genuinely differs per runtime —
+    # a tool call on one, a directory write on another. It lives here, on the contract,
+    # rather than as a chain of `if adapter_type == ...` inside a use case: the business
+    # layer must not know which runtimes exist (Constitution III, FR-083). An adapter that
+    # says nothing gets this neutral wording, which asks the agent to use whatever
+    # mechanism its own runtime provides.
+    skill_install_steps: tuple[str, ...] = (
+        "Install each skill using your runtime's mechanism:",
+        "  • Fetch the skill files via the authenticated GET call below",
+        "  • Write each file verbatim to your runtime's skills directory",
+        "  • Consult your runtime's documentation for the exact skills path",
+    )
+
     @abstractmethod
     async def execute(self, ctx: ExecContext) -> ExecResult:
         """Run exactly one bounded turn against the runtime."""

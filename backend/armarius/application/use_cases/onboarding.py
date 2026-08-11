@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 
+from armarius.application.ports.adapter import AdapterRegistry, MariusAdapter
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.skill import Skill
 from armarius.domain.services.agent_prompt import agent_prompt_footer
@@ -36,13 +37,30 @@ def credential_file_for(marius: Marius, workspace_name: str) -> str:
     return f"$HOME/.armarius/{_slugify(workspace_name)}_{marius.name.lower()}.json"
 
 
-def _skill_block(skills: list[Skill], base: str, adapter_type: str = "hermes_gateway") -> str:
-    """Render the per-skill installation section with runtime-specific instructions.
+def install_steps_for(adapters: AdapterRegistry | None, adapter_type: str) -> tuple[str, ...]:
+    """Ask the runtime itself how a skill gets installed on it (FR-083, Constitution III).
+
+    This module used to answer that question with a chain of ``if adapter_type == ...``,
+    which put a list of known runtimes inside the business layer — exactly what the
+    adapter contract exists to prevent. Now the steps travel with the adapter, and a type
+    nothing is registered for falls back to the contract's neutral wording. An agent can
+    only be invited on a registered type in the first place (``InviteService.invite``
+    raises ``UnknownAdapter`` otherwise), so the fallback is a safety net, not a path.
+    """
+    if adapters is not None:
+        try:
+            return adapters.get(adapter_type).skill_install_steps
+        except LookupError:
+            pass
+    return MariusAdapter.skill_install_steps
+
+
+def _skill_block(skills: list[Skill], base: str, install_steps: tuple[str, ...]) -> str:
+    """Render the per-skill installation section.
 
     Each skill is a small file tree (SKILL.md plus any sibling files/folders). The agent
-    fetches the whole tree in ONE authenticated JSON call. Installation method varies by
-    runtime (adapter_type): Hermes Agent uses skill_manage tool or /learn, Echo writes files,
-    Claude Code uses MCP or ~/.claude/skills/, OpenClaw uses /skill-creator.
+    fetches the whole tree in ONE authenticated JSON call; ``install_steps`` is the only
+    runtime-specific part and comes from the adapter (see ``install_steps_for``).
     """
     if not skills:
         return (
@@ -50,50 +68,12 @@ def _skill_block(skills: list[Skill], base: str, adapter_type: str = "hermes_gat
             'API" skill (at least) so you can drive the workspace.'
         )
 
-    # Runtime-specific installation instructions
-    if adapter_type == "hermes_gateway":
-        install_intro = [
-            "You have been granted the skills below. Install EVERY one before you start work.",
-            "",
-            "You are running on HERMES AGENT. Install skills using the skill_manage tool:",
-            "  • Use skill_manage with action='create' to install each skill",
-            "  • Provide name, content (full SKILL.md), and optional category",
-            "  • Alternative: use /learn slash command to create skills from sources",
-            "  • Skills install to $HERMES_HOME/skills/<slug>/ and become slash commands",
-            "",
-        ]
-    elif adapter_type == "echo":
-        install_intro = [
-            "You have been granted the skills below. Install EVERY one before you start work.",
-            "",
-            "You are running on ECHO (test adapter). Write skill files to ~/.echo/skills/:",
-            "  • Fetch each skill's file tree via the authenticated GET call below",
-            "  • Write each file verbatim to ~/.echo/skills/<slug>/<path>",
-            "  • Create the skill directory structure before writing files",
-            "",
-        ]
-    elif adapter_type in ("claude_mcp", "claude_local"):
-        install_intro = [
-            "You have been granted the skills below. Install EVERY one before you start work.",
-            "",
-            "You are running on CLAUDE CODE. Install skills via MCP or ~/.claude/skills/:",
-            "  • If armarius-mcp MCP server is configured, skills are available as tools",
-            "  • Otherwise: fetch skill files and write to ~/.claude/skills/<slug>/<path>",
-            "  • Claude Code loads skills from ~/.claude/skills/ on startup",
-            "",
-        ]
-    else:
-        install_intro = [
-            "You have been granted the skills below. Install EVERY one before you start work.",
-            "",
-            "Install each skill using your runtime's mechanism:",
-            "  • Fetch the skill files via the authenticated GET call below",
-            "  • Write each file verbatim to your runtime's skills directory",
-            "  • Consult your runtime's documentation for the exact skills path",
-            "",
-        ]
-
-    lines = install_intro.copy()
+    lines = [
+        "You have been granted the skills below. Install EVERY one before you start work.",
+        "",
+        *install_steps,
+        "",
+    ]
     for i, sk in enumerate(skills, start=1):
         lines.append(f"  {i}. {sk.name}  (slug: {sk.slug})")
         if sk.description:
@@ -120,6 +100,7 @@ def build_invite_prompt(
     *,
     workspace_name: str = "the workspace",
     skills: list[Skill] | None = None,
+    adapters: AdapterRegistry | None = None,
 ) -> str:
     """Build the invitation prompt: connect to the workspace, then install skills.
 
@@ -140,7 +121,7 @@ def build_invite_prompt(
 
     safe_name = marius.name.replace('"', '\\"')
     safe_role = marius.role.replace('"', '\\"')
-    skill_block = _skill_block(skills, base, marius.adapter_type)
+    skill_block = _skill_block(skills, base, install_steps_for(adapters, marius.adapter_type))
 
     # Build the banner programmatically so the box stays aligned regardless of title.
     _w = 76
@@ -219,6 +200,7 @@ def build_skill_install_prompt(
     *,
     workspace_name: str = "the workspace",
     skills: list[Skill],
+    adapters: AdapterRegistry | None = None,
 ) -> str:
     """Build a one-time skill-install prompt for an already-onboarded agent (issue #74).
 
@@ -230,7 +212,7 @@ def build_skill_install_prompt(
     base = public_base_url.rstrip("/")
     cred_path = credential_file_for(marius, workspace_name)
     safe_name = marius.name.replace('"', '\\"')
-    skill_block = _skill_block(skills, base, marius.adapter_type)
+    skill_block = _skill_block(skills, base, install_steps_for(adapters, marius.adapter_type))
     return f"""╔══════════════════════════════════════════════════════════════════════════════╗
 ║  ARMARIUS · NEW SKILLS LINKED TO YOU                                          ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
