@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -22,6 +22,7 @@ import {
 import { useAppStore, type TaskStatus, type Task } from '@/store/appStore';
 import { CREATABLE_PHASES, type TaskPhase } from '@/lib/taskRules';
 import * as api from '@/lib/api';
+import { subscribeProjectEvents } from '@/lib/sse';
 import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
 import Modal from '@/components/Modal';
@@ -397,22 +398,15 @@ export default function ProjectBoard() {
   // vẫn ổn ngay cả khi vòng điều phối đã chết — đúng thứ mà bản ghi này sinh ra để lộ.
   const [cadence, setCadence] = useState<api.OrchestrationDTO | null>(null);
 
-  useEffect(() => {
+  const loadCadence = useCallback(() => {
     if (!projectId) return;
-    let alive = true;
-    const load = () => {
-      api
-        .getProjectOrchestration(projectId)
-        .then((row) => { if (alive) setCadence(row); })
-        .catch(() => { if (alive) setCadence(null); });
-    };
-    load();
-    // Khối này nói "lượt kế tiếp lúc mấy giờ"; nếu chỉ nạp một lần lúc mở trang thì một tab
-    // để lâu sẽ chỉ vào một mốc đã trôi qua — ngược hẳn với điều nó định cho thấy, là vòng
-    // điều phối còn sống. Nạp lại theo nhịp thưa: đây là nền, không phải dữ liệu nóng.
-    const timer = window.setInterval(load, 60_000);
-    return () => { alive = false; window.clearInterval(timer); };
+    api
+      .getProjectOrchestration(projectId)
+      .then((row) => setCadence(row))
+      .catch(() => setCadence(null));
   }, [projectId]);
+
+  useEffect(() => { loadCadence(); }, [loadCadence]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -454,6 +448,27 @@ export default function ProjectBoard() {
     if (!projectId) return;
     hydrateProject(projectId);
   }, [projectId, hydrateProject]);
+
+  // Push, not poll (Constitution IV, FR-080). Almost nothing on this board is changed by
+  // the person looking at it: workers move tasks, the stall flag rises, the orchestration
+  // loop finishes a pass. It used to load once on mount and then ask for the sweep row
+  // again every minute — so the cards sat frozen for the life of the tab while the cadence
+  // block spent a request a minute to usually learn nothing.
+  //
+  // An event is only a **signal**: on receipt re-read the slice that changed, never build
+  // state out of the event stream itself (contracts/su-kien-day, principle 1).
+  useEffect(() => {
+    if (!projectId) return;
+    return subscribeProjectEvents(projectId, (event) => {
+      if (event.type.startsWith('nhip-dieu-phoi.')) {
+        loadCadence();
+        return;
+      }
+      // Everything else on this channel moves something drawn on a card or in the header:
+      // status changes, unlocks, stall flags, signatures, phase changes, plan decisions.
+      hydrateProject(projectId);
+    });
+  }, [projectId, hydrateProject, loadCadence]);
 
   const projectTasks = useMemo(
     () => tasks.filter((t) => t.projectId === projectId),
