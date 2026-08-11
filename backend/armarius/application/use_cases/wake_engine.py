@@ -22,6 +22,10 @@ from uuid import UUID
 from armarius.application.ports.adapter import AdapterRegistry, ExecContext, ExecResult
 from armarius.application.ports.event_bus import EventBus
 from armarius.application.ports.task_trace import TaskTracePublisher
+from armarius.application.ports.workspace_trace import (
+    WorkspaceTracePublisher,
+    announce_run_state,
+)
 from armarius.application.use_cases.onboarding import credential_file_for
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.comment import Comment
@@ -71,12 +75,16 @@ class WakeEngine:
         run_timeout_seconds: int = 900,
         max_continuation_attempts: int = 3,
         task_trace: TaskTracePublisher | None = None,
+        workspace_trace: WorkspaceTracePublisher | None = None,
     ) -> None:
         self._uow = uow_factory
         self._registry = registry
         self._bus = event_bus
         # Optional per-task tee: mirrors run events onto the `task:{id}` SSE channel (§8.1).
         self._task_trace = task_trace
+        # Optional workspace-wide tee: announces the run's *lifecycle* (not its content) so a
+        # screen that watches an agent rather than a run has something to listen to (FR-080).
+        self._workspace_trace = workspace_trace
         self._timeout = run_timeout_seconds
         self._max_attempts = max_continuation_attempts
         # Coalescing is decided in the database (FR-050). This lock only keeps the
@@ -236,6 +244,7 @@ class WakeEngine:
             )
             await uow.runs.add(run)
             await uow.commit()
+            await self.announce_run(run, marius)
             return run.id
 
     def _spawn(self, run_id: UUID, marius_id: UUID, task_id: UUID) -> None:
@@ -299,12 +308,20 @@ class WakeEngine:
                 w.status = WakeupStatus.DONE
                 w.updated_at = utcnow()
                 await uow.wakeups.update(w)
-            if run.status in ACTIVE_RUN_STATUSES:
+            stopped = run.status in ACTIVE_RUN_STATUSES
+            if stopped:
                 run.status = RunStatus.STOPPED
                 run.error = run.error or "máy chủ dừng giữa lượt chạy"
                 run.finished_at = utcnow()
                 await uow.runs.update(run)
             await uow.commit()
+            # Only when this call is what ended the run. The ordinary path already announced
+            # its own terminal status in `_finalise`, and repeating it here would put a second
+            # identical event on the channel for every single run.
+            if stopped:
+                marius = await uow.mariuses.get(run.marius_id)
+                if marius is not None:
+                    await self.announce_run(run, marius)
 
     async def _rewake_for_absorbed_causes(
         self, run_id: UUID, marius_id: UUID, task_id: UUID
@@ -404,6 +421,7 @@ class WakeEngine:
                 run_id, {"type": "run.queued", "payload": {"prompt_preview": prompt[:400]}}
             )
             await self._tee_task(task.id, "run.queued", {"prompt_preview": prompt[:400]})
+            await self.announce_run(run, marius)
 
             seq = 0
             assistant_parts: list[str] = []
@@ -551,11 +569,16 @@ class WakeEngine:
             {"type": "run.finished", "payload": {"status": str(result.status)}},
         )
         await self._tee_task(task.id, "run.finished", {"status": str(result.status)})
+        await self.announce_run(run, marius)
 
     async def _tee_task(self, task_id: UUID, event_type: str, payload: dict) -> None:
         """Mirror a run event onto the per-task SSE channel (no-op if not wired)."""
         if self._task_trace is not None:
             await self._task_trace.publish(task_id, event_type, payload)
+
+    async def announce_run(self, run: Run, marius: Marius) -> None:
+        """Announce a run's state on the workspace channel — see ``announce_run_state``."""
+        await announce_run_state(self._workspace_trace, run, marius)
 
     async def _maybe_self_wake(self, run_id: UUID) -> None:
         async with self._uow() as uow:

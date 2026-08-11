@@ -23,6 +23,10 @@ import contextlib
 from datetime import datetime, timedelta
 from uuid import UUID
 
+from armarius.application.ports.workspace_trace import (
+    WorkspaceTracePublisher,
+    announce_run_state,
+)
 from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.push_reason import PushReasonService
 from armarius.application.use_cases.task_log import TaskLogService
@@ -49,6 +53,7 @@ class LivenessWatchdog:
         wakes: WakeEngine | None = None,
         task_log: TaskLogService | None = None,
         push_reasons: PushReasonService | None = None,
+        workspace_trace: WorkspaceTracePublisher | None = None,
         clock=utcnow,
     ) -> None:
         self._uow = uow_factory
@@ -59,6 +64,9 @@ class LivenessWatchdog:
         self._wakes = wakes
         self._log = task_log
         self._drives = push_reasons
+        # Its own channel, not the wake engine's: reaping a hung run must not depend on
+        # whatever else that object can do.
+        self._workspace_trace = workspace_trace
         self._clock = clock
         self._task: asyncio.Task[None] | None = None
 
@@ -136,6 +144,11 @@ class LivenessWatchdog:
                     await uow.tasks.update(task)
                     assignee = task.assigned_marius_id
                     next_action = task.next_action
+            marius = (
+                await uow.mariuses.get(run.marius_id)
+                if run.marius_id is not None
+                else None
+            )
             await uow.commit()
 
         if task_id is not None and self._log is not None:
@@ -159,6 +172,14 @@ class LivenessWatchdog:
             )
         if task_id is not None and self._drives is not None:
             await self._drives.refresh(task_id, now=now)
+
+        # Last, and deliberately so. This is the one run transition nobody asked for — the
+        # server is up, the browser is connected, and the run went from *running* to *timed
+        # out* with no request behind it, so a screen with no event here shows it spinning
+        # until reload (FR-080). But telling a screen matters less than saving the task, and
+        # anything raised in here would otherwise skip the recovery above.
+        if marius is not None:
+            await announce_run_state(self._workspace_trace, run, marius)
         return True
 
     # ── background lifecycle ─────────────────────────────────────────────────────
