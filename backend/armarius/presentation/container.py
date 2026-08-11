@@ -228,6 +228,9 @@ def build_container() -> Container:
         uow_factory,
         projects,
         leader_notifier=leader_chat,
+        # Every pass is announced on the project channel so the board's cadence block
+        # stays current without asking again on a timer (FR-080, Constitution IV).
+        control_bus=control_bus,
         interval_seconds=settings.orchestration_tick_seconds,
     )
     # The safety net (spec 001 FR-056 → FR-069). The watchdog only reads the clock on a

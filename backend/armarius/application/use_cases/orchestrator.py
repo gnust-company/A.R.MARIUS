@@ -51,6 +51,7 @@ from armarius.domain.services.orchestration_cadence import (
     within_hourly_cap,
 )
 from armarius.domain.services.wake_prompt import build_cadence_prompt
+from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import as_utc, utcnow
 from armarius.shared.logging import get_logger
 
@@ -72,6 +73,13 @@ _HISTORY_WINDOW = 32
 _CAP_REACHED = "chạm trần số lần đánh thức trong một giờ"
 _LEADER_UNREACHABLE = "không gửi được tới Trưởng dự án (ngoại tuyến hoặc đang bận lượt)"
 
+# Announced on the project channel after every pass, including the quiet ones. The board
+# shows "last swept / next sweep / snags found", and without this event the only way to
+# keep that block current is for the browser to ask again on a timer — which Constitution
+# IV forbids and FR-080 spells out. A quiet pass has to be announced too: silence is
+# exactly what the block exists to distinguish from a dead loop.
+EVENT_CADENCE_SWEPT = "nhip-dieu-phoi.quet"
+
 
 class OrchestrationLoop:
     def __init__(
@@ -80,12 +88,14 @@ class OrchestrationLoop:
         projects: ProjectService,
         *,
         leader_notifier: LeaderNotifier | None = None,
+        control_bus: TopicEventBus | None = None,
         interval_seconds: float = 60.0,
         clock: Callable[[], datetime] = utcnow,
     ) -> None:
         self._uow = uow_factory
         self._projects = projects
         self._notifier = leader_notifier
+        self._bus = control_bus
         self._interval = interval_seconds
         self._clock = clock
         self._task: asyncio.Task[None] | None = None
@@ -161,7 +171,27 @@ class OrchestrationLoop:
         async with self._uow() as uow:
             await uow.orchestration_sweeps.add(sweep)
             await uow.commit()
+        # After the row is durable, never before: an event is a signal to go re-read, and
+        # a board that re-read on a pass that then rolled back would show a sweep that
+        # never happened (contracts/su-kien-day §Nguyên tắc 1).
+        await self._announce(sweep)
         return sweep
+
+    async def _announce(self, sweep: OrchestrationSweep) -> None:
+        """Tell the project channel a pass just finished. Counts only — the board reads
+        the row itself, so nothing here needs to carry the snags."""
+        if self._bus is None:
+            return
+        await self._bus.publish(
+            project_topic(sweep.project_id),
+            EVENT_CADENCE_SWEPT,
+            {
+                "project_id": str(sweep.project_id),
+                "swept_at": sweep.swept_at.isoformat(),
+                "snag_count": len(sweep.snags),
+                "woke_leader": sweep.woke_leader,
+            },
+        )
 
     # ── deciding whether to spend a wake ─────────────────────────────────────────
     async def _maybe_wake(

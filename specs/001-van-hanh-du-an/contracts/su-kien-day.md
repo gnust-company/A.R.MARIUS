@@ -24,6 +24,12 @@ Hai kênh đã chạy: theo **lượt chạy** và theo **đầu việc**. Cần
 | `dau-viec.dinh-tre` | Nổi hoặc gỡ cờ đình trệ | Mã đầu việc, lý do mất động cơ |
 | `dau-viec.mo-khoa` | Một đầu việc xong, mở khoá việc phụ thuộc | Danh sách mã vừa mở khoá |
 | `cong-nhan.ky` | Một chữ ký được ghi | Loại người ký, kết quả, có phải ký tự động không |
+| `nhip-dieu-phoi.quet` | Xong **mỗi** lượt rà của nhịp điều phối, kể cả lượt không thấy gì | Mốc rà, số điểm treo, có gọi Trưởng dự án không |
+
+Lượt rà không thấy gì **vẫn phải bắn**. Khối "lượt rà gần nhất" trên bảng dự án sinh ra để phân biệt *dự án
+đang yên* với *vòng điều phối đã chết*, mà hai thứ đó nhìn giống hệt nhau nếu chỉ có lượt rà thấy-việc mới
+lên tiếng. Thiếu sự kiện này thì bảng chỉ còn một cách giữ khối đó đúng: hỏi lại theo đồng hồ — đúng thứ
+Hiến pháp IV cấm, và đúng thứ nó đã làm trước Đợt 9.
 
 ### Kênh người chủ
 
