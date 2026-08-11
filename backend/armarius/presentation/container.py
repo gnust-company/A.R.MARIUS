@@ -43,6 +43,7 @@ from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.events.task_trace import ControlBusTaskTrace
 from armarius.infrastructure.events.topic_bus import TopicEventBus
+from armarius.infrastructure.events.workspace_trace import ControlBusWorkspaceTrace
 from armarius.infrastructure.persistence.unit_of_work import make_uow
 from armarius.infrastructure.security.jwt import JWTService
 from armarius.infrastructure.security.password import PasswordService
@@ -138,6 +139,7 @@ def build_container() -> Container:
         run_timeout_seconds=settings.run_timeout_seconds,
         max_continuation_attempts=settings.wake_max_continuation_attempts,
         task_trace=ControlBusTaskTrace(control_bus),
+        workspace_trace=ControlBusWorkspaceTrace(control_bus),
     )
 
     skills = SkillService(uow_factory)
@@ -220,6 +222,7 @@ def build_container() -> Container:
         wakes=wake_engine,
         task_log=TaskLogService(uow_factory),
         push_reasons=push_reasons,
+        workspace_trace=ControlBusWorkspaceTrace(control_bus),
     )
     # The Leader's controlled heartbeat (spec 001 FR-052 → FR-055). Ticks often and
     # cheaply; each project is swept on its own rhythm, and only a sweep that found
