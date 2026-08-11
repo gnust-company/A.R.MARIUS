@@ -623,6 +623,21 @@ thứ tự gắn trên từng chữ ký.
   đề nhặt việc nào và không lượt quét nào nhìn lại — đúng cái lỗ mà cả tính năng này sinh ra để bịt, tới bằng
   đường người chủ làm điều hợp lý nhất. Tính lại rồi thì hoặc hành động của họ đã cho đầu việc thứ gì đó thật,
   hoặc chưa và nó thành một lần đình trệ mới **từ Mức 1**.
+- **FR-061e**: Câu trả lời của người chủ cho một mục leo thang PHẢI hạ cánh **trọn vẹn hoặc không gì cả**:
+  hành động lên đầu việc và việc đóng mục nằm trong **cùng một lần chốt giao dịch**. Và lời gọi ấy PHẢI **lặp
+  lại được vô hại** — mục đã xử lý rồi thì lần gọi sau không làm gì.
+
+  Người chủ bấm một lần và ra **một** quyết định, nên nó phải thành **một** sự thật. Chẻ làm hai — làm rồi
+  đóng — sinh một quãng có thật, dài bằng cả lượt gửi–nhận thứ hai: mạng chớp, máy chủ đang dựng lại, phiên
+  hết hạn. Trong quãng đó đầu việc đã đổi mà câu hỏi vẫn còn, và người chủ thấy báo lỗi thì bấm lại — phản xạ
+  đúng đắn nhất — khiến hành động chạy lần thứ hai. Giao lại lần hai gọi người phụ trách dậy thêm một lần cho
+  cùng một sự cố, đúng thứ FR-060 sinh ra để tiết kiệm. Huỷ lần hai thì ném lỗi vì *đã huỷ* không đi tiếp đâu
+  được, và mục kẹt lại vĩnh viễn ở lối đó.
+
+  Chốt chặn đặt ở **chính mục hộp thư**, và đóng mục đi **trước** trong giao dịch: mục đã đóng nghĩa là quyết
+  định đã ghi nhận, nên lần gọi sau dừng ngay chứ không hành động lại. Hỏng ở bất kỳ đâu thì giao dịch cuộn
+  lại cả hai nửa và màn hình vẫn giữ nguyên câu hỏi — hướng hỏng duy nhất chấp nhận được, vì hướng còn lại là
+  người chủ mất câu hỏi trong khi đầu việc vẫn kẹt.
 - **FR-061d**: Mỗi lời gọi đóng mục hộp thư PHẢI nêu rõ **loại** mục mình đóng. Một lời gọi chỉ biết rằng câu
   hỏi *của riêng nó* đã được trả lời; một đầu việc có thể đồng thời giữ mục *chờ công nhận*, mục *hỏi phạm vi*
   và mục *leo thang*, và đóng cả ba vì một cái được giải quyết là nói với người chủ rằng có một quyết định mà

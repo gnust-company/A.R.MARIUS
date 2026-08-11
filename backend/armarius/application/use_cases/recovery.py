@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime, timedelta
+from enum import StrEnum
 from uuid import UUID
 
 from armarius.application.ports.unit_of_work import UnitOfWork
@@ -29,7 +30,12 @@ from armarius.application.use_cases.inbox import InboxService
 from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.push_reason import PushReasonService
 from armarius.application.use_cases.task_log import TaskLogService
-from armarius.application.use_cases.tasks import LeaderNotifier
+from armarius.application.use_cases.tasks import (
+    AssignEffects,
+    LeaderNotifier,
+    TaskService,
+    TransitionEffects,
+)
 from armarius.application.use_cases.types import UowFactory
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.domain.entities.inbox_item import InboxItem, InboxItemKind, InboxItemStatus
@@ -51,6 +57,24 @@ from armarius.shared.logging import get_logger
 logger = get_logger(__name__)
 
 EVENT_LEVEL_3 = "leo-thang.muc-3"
+
+
+class EscalationAnswer(StrEnum):
+    """The ways a patron can answer a Mức 3 letter (FR-061a).
+
+    The first three ask the system to do something. `HANDLED` is a different kind of
+    statement — *I sorted it outside, carry on* — and asks for nothing but the recompute
+    every answer gets.
+    """
+
+    REASSIGN = "reassign"
+    NEXT_ACTION = "next_action"
+    CANCEL = "cancel"
+    HANDLED = "handled"
+
+
+class EscalationAnswerInvalid(Exception):
+    """Raised when an answer is missing what it needs, or asks for the impossible."""
 
 
 class NotOnTheLeadersRung(Exception):
@@ -93,6 +117,7 @@ class RecoveryEscalator:
         control_bus: TopicEventBus,
         leader_notifier: LeaderNotifier | None = None,
         push_reasons: PushReasonService | None = None,
+        tasks: TaskService | None = None,
         backoff_base_seconds: int = _BACKOFF_BASE_SECONDS,
         clock: Callable[[], datetime] = utcnow,
     ) -> None:
@@ -103,8 +128,11 @@ class RecoveryEscalator:
         self._log = task_log
         self._bus = control_bus
         self._notifier = leader_notifier
-        # Only `patron_answered` needs this, and only to put the task back under the net.
+        # Only `answer_escalation` needs this, and only to put the task back under the net.
         self._drives = push_reasons
+        # Also only `answer_escalation`: the patron's answer changes the task itself, and
+        # it has to change under the same transaction that closes the letter.
+        self._tasks = tasks
         self._backoff_base = backoff_base_seconds
         self._clock = clock
 
@@ -269,17 +297,27 @@ class RecoveryEscalator:
         """
         now = now or self._clock()
         async with self._uow() as uow:
-            ladder = await uow.push_reasons.get_for_task(task_id)
-            if ladder is not None and ladder.level is not EscalationLevel.NONE:
-                ladder.apply(
-                    EscalationState(
-                        level=EscalationLevel.NONE, attempts=0, handovers=0, cause=""
-                    ),
-                    now=now,
-                )
-                ladder.next_retry_at = None
-                await uow.push_reasons.upsert(ladder)
+            if await self.stand_down_within(uow, task_id, now=now):
                 await uow.commit()
+
+    async def stand_down_within(
+        self, uow: UnitOfWork, task_id: UUID, *, now: datetime
+    ) -> bool:
+        """The write half of `stand_down`. **The caller owns the transaction.**
+
+        Returns whether anything was actually cleared, so a caller that owns the commit
+        knows whether it has writes to land.
+        """
+        ladder = await uow.push_reasons.get_for_task(task_id)
+        if ladder is None or ladder.level is EscalationLevel.NONE:
+            return False
+        ladder.apply(
+            EscalationState(level=EscalationLevel.NONE, attempts=0, handovers=0, cause=""),
+            now=now,
+        )
+        ladder.next_retry_at = None
+        await uow.push_reasons.upsert(ladder)
+        return True
 
     async def patron_answered(
         self,
@@ -304,11 +342,100 @@ class RecoveryEscalator:
         Every kind of item comes through here — this is the patron's own resolve door — and
         anything that is not a task escalation simply resolves and returns.
         """
+        return await self.answer_escalation(
+            item_id,
+            answer=EscalationAnswer.HANDLED,
+            recipient_user_id=recipient_user_id,
+            now=now,
+        )
+
+    async def answer_escalation(
+        self,
+        item_id: UUID,
+        *,
+        answer: EscalationAnswer,
+        marius_id: UUID | None = None,
+        text: str | None = None,
+        recipient_user_id: str | None = None,
+        now: datetime | None = None,
+    ) -> InboxItem:
+        """The patron answers a Mức 3 letter: act on the task **and** close the letter.
+
+        One transaction, on purpose. The answer is a single decision the patron made, so it
+        has to land as a single fact. Doing it in two — act, then close — leaves a moment
+        where the task moved and the letter still stands, and a patron who sees the failure
+        and presses again quite reasonably runs the action a second time: a second assign
+        wakes the new owner twice for one incident, and a second cancel throws, because
+        *cancelled* has nowhere left to go. Under one commit there is no such moment; a
+        failure anywhere rolls back both halves and the screen still shows the question.
+
+        Closing the letter comes **first**, and that is what makes a repeat harmless: the
+        already-resolved answer means somebody got here first, so this call does nothing at
+        all rather than acting again. The letter is the record of the decision, so the
+        letter is the thing worth checking.
+
+        Afterwards, outside the transaction, come the parts that talk to the world — waking
+        the new owner, publishing to the board — and the recompute FR-061c demands: while
+        the letter stood the task counted as not stalled and left the sweep entirely, and
+        the moment it is answered nothing else would ever notice. Either their action gave
+        the task something real, or it did not and it becomes a fresh stall from Mức 1.
+        """
         now = now or self._clock()
-        item = await self._inbox.resolve(item_id, recipient_user_id=recipient_user_id)
+        assigned: AssignEffects | None = None
+        moved: TransitionEffects | None = None
+
+        async with self._uow() as uow:
+            item, ours = await self._inbox.resolve_within(
+                uow, item_id, recipient_user_id=recipient_user_id
+            )
+            if not ours:
+                return item
+            task_id = item.task_id
+            acts_on_task = (
+                answer is not EscalationAnswer.HANDLED
+                and item.kind is InboxItemKind.ESCALATION
+                and task_id is not None
+            )
+            if answer is not EscalationAnswer.HANDLED and not acts_on_task:
+                raise EscalationAnswerInvalid(
+                    "Chỉ mục leo thang gắn với một đầu việc mới nhận được hành động này."
+                )
+            if acts_on_task and self._tasks is None:  # pragma: no cover - always wired
+                raise EscalationAnswerInvalid("không có dịch vụ đầu việc để thi hành")
+            if acts_on_task:
+                assert task_id is not None and self._tasks is not None
+                if answer is EscalationAnswer.REASSIGN:
+                    if marius_id is None:
+                        raise EscalationAnswerInvalid("giao lại thì phải nói giao cho ai")
+                    assigned = await self._tasks.assign_within(
+                        uow,
+                        task_id,
+                        marius_id,
+                        transfer_reason=text,
+                        user_id=recipient_user_id,
+                    )
+                elif answer is EscalationAnswer.NEXT_ACTION:
+                    await self._tasks.set_next_action_within(uow, task_id, text)
+                elif answer is EscalationAnswer.CANCEL:
+                    moved = await self._tasks.transition_within(
+                        uow,
+                        task_id,
+                        TaskStatus.CANCELLED,
+                        reason=text,
+                        user_id=recipient_user_id,
+                    )
+            if item.kind is InboxItemKind.ESCALATION and task_id is not None:
+                await self.stand_down_within(uow, task_id, now=now)
+            await uow.commit()
+
+        await self._inbox.publish_resolved(item)
+        if assigned is not None and self._tasks is not None:
+            await self._tasks.after_assign(assigned)
+        if moved is not None and self._tasks is not None:
+            await self._tasks.after_transition(moved)
+
         if item.kind is not InboxItemKind.ESCALATION or item.task_id is None:
             return item
-        await self.stand_down(item.task_id, now=now)
         if self._drives is None:  # pragma: no cover - composition root always wires it
             # Half the job: the rung is down but the task keeps the stale *waiting on the
             # patron* answer and stays outside the sweep. Say so loudly rather than let it
@@ -318,6 +445,10 @@ class RecoveryEscalator:
                 item.task_id,
             )
             return item
+        # Runs even when the action above already settled a drive: that settle answered
+        # "what did the assignment leave behind", this one answers FR-061c's question about
+        # the letter. Recomputing twice costs a read and lands on the same answer; skipping
+        # it on the paths that look settled is how the task leaves the net for good.
         await self._drives.refresh(item.task_id, now=now)
         return item
 

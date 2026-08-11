@@ -15,6 +15,7 @@ actually applied and the place a finished task sets off everything it should:
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
@@ -91,6 +92,28 @@ class AlreadyAssignedError(Exception):
 
 class SelfClaimForbidden(Exception):
     """Raised if anything still tries to let a worker take work for itself (FR-072)."""
+
+
+@dataclass(frozen=True)
+class AssignEffects:
+    """What an assignment still owes the outside world once its writes have landed."""
+
+    task: Task
+    task_id: UUID
+    marius_id: UUID
+    project_id: UUID | None
+    promoted_from: str | None
+
+
+@dataclass(frozen=True)
+class TransitionEffects:
+    """What a status change still owes the outside world once its writes have landed."""
+
+    task: Task
+    task_id: UUID
+    project_id: UUID | None
+    target: TaskStatus
+    unlocked: tuple[Task, ...]
 
 
 class TaskService:
@@ -335,81 +358,119 @@ class TaskService:
         transfer_reason: str | None = None,
         user_id: str | None = None,
     ) -> Task:
-        """Put one worker on a task and fire an assignment event-wake (§4.3 family 1).
+        """Put one worker on a task and fire an assignment event-wake (§4.3 family 1)."""
+        async with self._uow() as uow:
+            effects = await self.assign_within(
+                uow,
+                task_id,
+                marius_id,
+                transfer_reason=transfer_reason,
+                user_id=user_id,
+            )
+            await uow.commit()
+        await self.after_assign(effects)
+        return effects.task
+
+    async def assign_within(
+        self,
+        uow: UnitOfWork,
+        task_id: UUID,
+        marius_id: UUID,
+        *,
+        transfer_reason: str | None = None,
+        user_id: str | None = None,
+    ) -> AssignEffects:
+        """The write half of `assign`. **The caller owns the transaction.**
+
+        Split out so an entry point that has to change two things at once — the patron
+        answering an escalation changes the task *and* closes the letter — can put both
+        writes behind a single commit. Two commits mean a moment where one landed and the
+        other did not, and a retry from there runs the assignment a second time, waking
+        the new owner twice for one incident.
 
         Two gates apply. The description-gate (FR-029): nobody is handed a title and left
         to guess. The one-assignee gate (FR-028): a task has exactly one owner at a time,
         so putting a second person on it is refused — say it is a **transfer** and give a
         reason, or split the task in two.
         """
-        async with self._uow() as uow:
-            task = await uow.tasks.get(task_id)
-            if task is None:
-                raise LookupError("task not found")
-            if await uow.mariuses.get(marius_id) is None:
-                raise LookupError("marius not found")
-            previous = task.assigned_marius_id
-            if (
-                previous is not None
-                and previous != marius_id
-                and not (transfer_reason or "").strip()
-            ):
-                raise AlreadyAssignedError(
-                    "Đầu việc đã có người phụ trách. Một đầu việc chỉ có đúng một người: "
-                    "chuyển giao kèm lý do, hoặc chẻ thành hai đầu việc."
-                )
-            assert_assignable(task)
-            now = utcnow()
-            task.assigned_marius_id = marius_id
-            # Convenience promotion backlog→todo, but honour the dependency-gate: a task
-            # with an unfinished blocked_by stays in backlog rather than being forced up.
-            # It goes through the transition table like every other move, and leaves its
-            # own log line — a status that changed without a line in the log is a hole in
-            # the audit trail (FR-079), even when the change was a side effect.
-            promoted_from: str | None = None
-            if task.status == TaskStatus.BACKLOG and await uow.dependencies.all_blockers_done(
-                task_id
-            ):
-                promoted_from = str(task.status)
-                task.transition_to(TaskStatus.TODO, now, deps_satisfied=True)
-            _mark_provisional(task, now)
-            task.updated_at = now
-            await uow.tasks.update(task)
-            actor_kind = ActorKind.USER if user_id else ActorKind.SYSTEM
+        task = await uow.tasks.get(task_id)
+        if task is None:
+            raise LookupError("task not found")
+        if await uow.mariuses.get(marius_id) is None:
+            raise LookupError("marius not found")
+        previous = task.assigned_marius_id
+        if (
+            previous is not None
+            and previous != marius_id
+            and not (transfer_reason or "").strip()
+        ):
+            raise AlreadyAssignedError(
+                "Đầu việc đã có người phụ trách. Một đầu việc chỉ có đúng một người: "
+                "chuyển giao kèm lý do, hoặc chẻ thành hai đầu việc."
+            )
+        assert_assignable(task)
+        now = utcnow()
+        task.assigned_marius_id = marius_id
+        # Convenience promotion backlog→todo, but honour the dependency-gate: a task
+        # with an unfinished blocked_by stays in backlog rather than being forced up.
+        # It goes through the transition table like every other move, and leaves its
+        # own log line — a status that changed without a line in the log is a hole in
+        # the audit trail (FR-079), even when the change was a side effect.
+        promoted_from: str | None = None
+        if task.status == TaskStatus.BACKLOG and await uow.dependencies.all_blockers_done(
+            task_id
+        ):
+            promoted_from = str(task.status)
+            task.transition_to(TaskStatus.TODO, now, deps_satisfied=True)
+        _mark_provisional(task, now)
+        task.updated_at = now
+        await uow.tasks.update(task)
+        actor_kind = ActorKind.USER if user_id else ActorKind.SYSTEM
+        await self._log(
+            uow,
+            task_id,
+            TaskLogKind.ASSIGNED,
+            actor_kind=actor_kind,
+            actor_user_id=user_id,
+            before=str(previous) if previous else None,
+            after=str(marius_id),
+            reason=transfer_reason,
+        )
+        if promoted_from is not None:
             await self._log(
                 uow,
                 task_id,
-                TaskLogKind.ASSIGNED,
+                TaskLogKind.STATUS_CHANGED,
                 actor_kind=actor_kind,
                 actor_user_id=user_id,
-                before=str(previous) if previous else None,
-                after=str(marius_id),
-                reason=transfer_reason,
+                before=promoted_from,
+                after=str(TaskStatus.TODO),
+                reason="giao người phụ trách",
             )
-            if promoted_from is not None:
-                await self._log(
-                    uow,
-                    task_id,
-                    TaskLogKind.STATUS_CHANGED,
-                    actor_kind=actor_kind,
-                    actor_user_id=user_id,
-                    before=promoted_from,
-                    after=str(TaskStatus.TODO),
-                    reason="giao người phụ trách",
-                )
-            await uow.commit()
-            project_id = task.project_id
-
-        if promoted_from is not None:
-            await self._publish_status(project_id, task_id, TaskStatus.TODO)
-        await self._wake.enqueue(
-            marius_id=marius_id,
+        return AssignEffects(
+            task=task,
             task_id=task_id,
+            marius_id=marius_id,
+            project_id=task.project_id,
+            promoted_from=promoted_from,
+        )
+
+    async def after_assign(self, effects: AssignEffects) -> None:
+        """Everything an assignment sets off once its writes have landed.
+
+        Deliberately outside the transaction: waking an agent and publishing to the board
+        are the outside world, and doing them while the write could still roll back would
+        announce something that never happened.
+        """
+        if effects.promoted_from is not None:
+            await self._publish_status(effects.project_id, effects.task_id, TaskStatus.TODO)
+        await self._wake.enqueue(
+            marius_id=effects.marius_id,
+            task_id=effects.task_id,
             source=WakeSource.ASSIGNMENT,
             reason="you were assigned to this task",
         )
-        await self._settle_drive(task_id)
-        return task
+        await self._settle_drive(effects.task_id)
 
     # ── the worker's two ways of speaking about its own workload (FR-071, FR-072) ──
     #
@@ -511,70 +572,102 @@ class TaskService:
         user_id: str | None = None,
         marius_id: UUID | None = None,
     ) -> Task:
-        """Apply a gated status transition, then do what the new status implies.
+        """Apply a gated status transition, then do what the new status implies."""
+        async with self._uow() as uow:
+            effects = await self.transition_within(
+                uow, task_id, target, reason=reason, user_id=user_id, marius_id=marius_id
+            )
+            await uow.commit()
+        await self.after_transition(effects)
+        return effects.task
+
+    async def transition_within(
+        self,
+        uow: UnitOfWork,
+        task_id: UUID,
+        target: TaskStatus,
+        *,
+        reason: str | None = None,
+        user_id: str | None = None,
+        marius_id: UUID | None = None,
+    ) -> TransitionEffects:
+        """The write half of `transition`. **The caller owns the transaction.**
 
         Reaching *done* is the one that carries weight (FR-031): the completion mark is
         written, every task that was only waiting on this one is let through, and the
         Leader is woken so somebody is actually told.
+
+        Split out for the same reason as `assign_within` — see the note there.
         """
         unlocked: list[Task] = []
-        async with self._uow() as uow:
-            task = await uow.tasks.get(task_id)
-            if task is None:
-                raise LookupError("task not found")
-            before = str(task.status)
-            artifact_count = await uow.artifacts.count_by_task(task_id)
-            deps_satisfied = True
-            unmet: tuple[str, ...] = ()
-            if target in DEPENDENCY_GATED_STATUSES:
-                # Name what is missing, don't just say something is (FR-025).
-                open_blockers = await uow.dependencies.list_unfinished_blockers(task_id)
-                deps_satisfied = not open_blockers
-                unmet = tuple(b.identifier or str(b.id) for b in open_blockers)
-            signed = True
-            missing: tuple[str, ...] = ()
-            if target in SIGNATURE_REQUIRED_STATUSES:
-                # The two-signature gate (FR-033). Reading it here is what makes
-                # "move it straight to done" stop working from every entry point at once
-                # — the board, the agent surface and the middle layer all land here.
-                history = await uow.approvals.list_for_task(task_id)
-                current = current_signatures(history)
-                signed = is_closable(current)
-                missing = tuple(str(k) for k in missing_signatures(current))
-            now = utcnow()
-            task.transition_to(
-                target,
-                now,
-                has_artifact=artifact_count > 0,
-                deps_satisfied=deps_satisfied,
-                reason=reason,
-                unmet_blockers=unmet,
-                signatures_complete=signed,
-                missing_signatures=missing,
-            )
-            _mark_provisional(task, now)
-            task.updated_at = now
-            # Every route out of review lands here, including the ones nobody thought to
-            # enumerate — which is why the question is asked of the move rather than of
-            # the caller (FR-033).
-            await retire_signatures_on_move(uow, task_id, target)
-            updated = await uow.tasks.update(task)
-            await self._log(
-                uow,
-                task_id,
-                TaskLogKind.STATUS_CHANGED,
-                actor_kind=_actor_kind(user_id, marius_id),
-                actor_user_id=user_id,
-                actor_marius_id=marius_id,
-                before=before,
-                after=str(target),
-                reason=reason,
-            )
-            if target is TaskStatus.DONE:
-                unlocked = await self._unlock_dependents(uow, task_id)
-            await uow.commit()
-            project_id = updated.project_id
+        task = await uow.tasks.get(task_id)
+        if task is None:
+            raise LookupError("task not found")
+        before = str(task.status)
+        artifact_count = await uow.artifacts.count_by_task(task_id)
+        deps_satisfied = True
+        unmet: tuple[str, ...] = ()
+        if target in DEPENDENCY_GATED_STATUSES:
+            # Name what is missing, don't just say something is (FR-025).
+            open_blockers = await uow.dependencies.list_unfinished_blockers(task_id)
+            deps_satisfied = not open_blockers
+            unmet = tuple(b.identifier or str(b.id) for b in open_blockers)
+        signed = True
+        missing: tuple[str, ...] = ()
+        if target in SIGNATURE_REQUIRED_STATUSES:
+            # The two-signature gate (FR-033). Reading it here is what makes
+            # "move it straight to done" stop working from every entry point at once
+            # — the board, the agent surface and the middle layer all land here.
+            history = await uow.approvals.list_for_task(task_id)
+            current = current_signatures(history)
+            signed = is_closable(current)
+            missing = tuple(str(k) for k in missing_signatures(current))
+        now = utcnow()
+        task.transition_to(
+            target,
+            now,
+            has_artifact=artifact_count > 0,
+            deps_satisfied=deps_satisfied,
+            reason=reason,
+            unmet_blockers=unmet,
+            signatures_complete=signed,
+            missing_signatures=missing,
+        )
+        _mark_provisional(task, now)
+        task.updated_at = now
+        # Every route out of review lands here, including the ones nobody thought to
+        # enumerate — which is why the question is asked of the move rather than of
+        # the caller (FR-033).
+        await retire_signatures_on_move(uow, task_id, target)
+        updated = await uow.tasks.update(task)
+        await self._log(
+            uow,
+            task_id,
+            TaskLogKind.STATUS_CHANGED,
+            actor_kind=_actor_kind(user_id, marius_id),
+            actor_user_id=user_id,
+            actor_marius_id=marius_id,
+            before=before,
+            after=str(target),
+            reason=reason,
+        )
+        if target is TaskStatus.DONE:
+            unlocked = await self._unlock_dependents(uow, task_id)
+        return TransitionEffects(
+            task=updated,
+            task_id=task_id,
+            project_id=updated.project_id,
+            target=target,
+            unlocked=tuple(unlocked),
+        )
 
+    async def after_transition(self, effects: TransitionEffects) -> None:
+        """Everything a status change sets off once its writes have landed."""
+        task_id = effects.task_id
+        project_id = effects.project_id
+        target = effects.target
+        updated = effects.task
+        unlocked = list(effects.unlocked)
         await self._publish_status(project_id, task_id, target)
         for freed in unlocked:
             await self._publish(
@@ -629,7 +722,6 @@ class TaskService:
         for freed in unlocked:
             # An unblocked task changed drive too — the thing it was waiting on is gone.
             await self._settle_drive(freed.id)
-        return updated
 
     async def ready_queue(self, project_id: UUID) -> list[Task]:
         """What to hand out next on this project, in order (FR-066, FR-067).
@@ -742,14 +834,20 @@ class TaskService:
 
     async def set_next_action(self, task_id: UUID, next_action: str | None) -> Task:
         async with self._uow() as uow:
-            task = await uow.tasks.get(task_id)
-            if task is None:
-                raise LookupError("task not found")
-            task.next_action = next_action
-            task.updated_at = utcnow()
-            updated = await uow.tasks.update(task)
+            updated = await self.set_next_action_within(uow, task_id, next_action)
             await uow.commit()
             return updated
+
+    async def set_next_action_within(
+        self, uow: UnitOfWork, task_id: UUID, next_action: str | None
+    ) -> Task:
+        """The write half of `set_next_action`. **The caller owns the transaction.**"""
+        task = await uow.tasks.get(task_id)
+        if task is None:
+            raise LookupError("task not found")
+        task.next_action = next_action
+        task.updated_at = utcnow()
+        return await uow.tasks.update(task)
 
     # ── acceptance criteria (FR-019) ──────────────────────────────────────────
     async def list_criteria(self, task_id: UUID) -> Sequence[ChecklistItem]:

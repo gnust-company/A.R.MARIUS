@@ -32,13 +32,10 @@ import { useTranslation } from 'react-i18next';
 import PageTitle from '@/components/PageTitle';
 import VellumPanel from '@/components/VellumPanel';
 import {
-  assignTask,
+  answerInboxItem,
   getInbox,
   listProjectAgents,
-  resolveInboxItem,
-  setNextAction,
   signTaskApproval,
-  updateTaskStatus,
   type InboxItemDTO,
   type ProjectAgentDTO,
 } from '@/lib/api';
@@ -105,32 +102,38 @@ const primaryButton =
 const fieldClasses =
   'w-full rounded-md border border-[#E3D7BC] bg-white px-2.5 py-1.5 text-xs text-[#2A2318] focus:border-[#D4A843] focus:outline-none';
 
-/** Những nút trả lời một mục *leo thang*, ngay tại chỗ (FR-061a).
+/** Answering an *escalation* in place, where it is asked (FR-061a).
  *
- * Cái thang đưa đầu việc tới tay người chủ rồi dừng — từ đây hệ không còn cách nào tự gỡ.
- * Mà trước đây mục này chỉ có nút *Mở*: hệ hỏi ba điều và không cho làm điều nào, nên
- * người đọc phải tự đi tìm chỗ trả lời. Đó đúng là phần khó nhất, và đẩy nó sang cho
- * người mà cả cái thang này sinh ra để tiết kiệm thời gian thì cái thang chỉ hụt muộn hơn.
+ * The ladder carries a dropped task up to the patron and then stops — past that point the
+ * system has no move left. Yet the item used to carry a single *Open* button: it asked
+ * three questions and offered none of the answers, so the reader had to go and find the
+ * place to reply. That is the hard part, and handing it to the very person the ladder
+ * exists to save time for only makes the net fall short later rather than never.
  *
- * Bốn lối, và lối thứ tư khác hẳn ba lối kia: ba lối đầu là *"hệ ơi làm hộ tôi việc này"*,
- * lối thứ tư là *"tôi tự lo xong bên ngoài rồi, chạy tiếp đi"* — bật lại một agent treo,
- * sửa một thứ hỏng ở máy mình. Không có nó thì người chủ phải giả vờ chọn một trong ba.
+ * Four ways out, and the fourth is a different kind of thing from the first three. Those
+ * say *"system, do this for me"*; the fourth says *"I sorted it outside, carry on"* —
+ * the patron restarted a hung agent, fixed something on their own machine. Without it
+ * they must pretend to pick one of the other three.
  *
- * Chỗ cần nhớ ở đây: **lá thư đóng vì người chủ vừa trả lời nó**. Vòng quét không bao giờ
- * đụng vào hộp thư (FR-061b), nên mọi lối dưới đây đều phải tự gọi đường đóng mục — và
- * chính đường đó tính lại xem còn ai sắp chạm vào đầu việc không (FR-061c). Bỏ sót một
- * lối là thả đầu việc ra ngoài tầm quét vĩnh viễn.
+ * The thing to hold on to: **the letter closes because the patron answered it**. The
+ * stall sweep never touches the inbox (FR-061b), and closing the letter is where the
+ * system recomputes whether anything is still about to touch the task (FR-061c). Miss
+ * that and the task leaves the net for good.
+ *
+ * All of which is one server call, not two (FR-061e). The patron made one decision, so it
+ * lands as one fact: the server changes the task and closes the letter under a single
+ * commit. Acting from here and closing separately would leave a window where the task
+ * moved and the question still stood, and a patron who saw that failure and pressed again
+ * would run the action twice — waking a new owner a second time for one incident.
  */
 function EscalationActions({
   item,
-  taskId,
   busy,
   setBusy,
   onError,
   onDone,
 }: {
   item: InboxItemDTO;
-  taskId: string;
   busy: boolean;
   setBusy: (id: string | null) => void;
   onError: (message: string | null) => void;
@@ -141,9 +144,8 @@ function EscalationActions({
   const [agents, setAgents] = useState<ProjectAgentDTO[] | null>(null);
   const [agentId, setAgentId] = useState('');
   const [text, setText] = useState('');
-
-  // Danh sách agent chỉ nạp khi người chủ thật sự mở ô *giao lại*. Nạp sẵn cho mọi mục
-  // lúc mở trang là một lượt gọi máy chủ cho mỗi mục, phần lớn không ai dùng tới.
+  // The agent list is fetched only once the patron actually opens the *reassign* form.
+  // Prefetching it for every item on mount is one request per item, most of them unused.
   useEffect(() => {
     if (mode !== 'assign' || agents !== null || !item.project_id) return;
     let alive = true;
@@ -165,17 +167,18 @@ function EscalationActions({
     setText('');
   };
 
-  /** Chạy hành động người chủ chọn, rồi đóng lá thư — theo đúng thứ tự đó.
+  /** Send the patron's answer. One call: see the note on this component.
    *
-   * Nếu đóng thư trước mà hành động hỏng thì người chủ mất câu hỏi và đầu việc vẫn kẹt.
-   * Ngược lại, hành động xong mà đóng thư hỏng thì lá thư còn nguyên và bậc nhắc vẫn giục
-   * — hướng hỏng an toàn hơn hẳn. */
-  const run = async (act?: () => Promise<unknown>) => {
+   * `answerInboxItem` is also safe to repeat — an already-answered letter means the server
+   * does nothing — so a patron who presses again after a network blip cannot act twice. */
+  const run = async (
+    answer: 'reassign' | 'next_action' | 'cancel' | 'handled',
+    extra: { marius_id?: string; text?: string } = {},
+  ) => {
     setBusy(item.id);
     onError(null);
     try {
-      if (act) await act();
-      await resolveInboxItem(item.id);
+      await answerInboxItem(item.id, { answer, ...extra });
       close();
       onDone();
     } catch (e) {
@@ -219,7 +222,7 @@ function EscalationActions({
           disabled={busy}
           title={t('inbox.escalation.handledHint')}
           data-testid="escalation-handled"
-          onClick={() => void run()}
+          onClick={() => void run('handled')}
         >
           <CheckCheck size={12} /> {t('inbox.escalation.handled')}
         </button>
@@ -267,6 +270,9 @@ function EscalationActions({
         className={fieldClasses}
         rows={2}
         value={text}
+        // The server caps this at 2000 characters. Stopping it here means the writer
+        // finds out while typing, rather than after a long paragraph and a bare 422.
+        maxLength={2000}
         data-testid="escalation-text"
         placeholder={
           mode === 'assign'
@@ -282,17 +288,15 @@ function EscalationActions({
         <button
           className={primaryButton}
           data-testid="escalation-confirm"
-          // Cả ba lối đều đòi một câu chữ, và không phải để làm khó: người phụ trách mới
-          // đọc lý do chuyển giao, đầu việc bị huỷ phải nói vì sao (FR-030), và "việc kế
-          // tiếp" rỗng thì đúng bằng không đổi gì.
+          // All three paths want words, and not to be awkward: the new owner reads the
+          // transfer reason, a cancelled task has to say why (FR-030), and an empty next
+          // action is the same as changing nothing.
           disabled={busy || !said || (mode === 'assign' && !agentId)}
-          onClick={() =>
-            void run(() => {
-              if (mode === 'assign') return assignTask(taskId, agentId, said);
-              if (mode === 'next') return setNextAction(taskId, said);
-              return updateTaskStatus(taskId, 'cancelled', said);
-            })
-          }
+          onClick={() => {
+            if (mode === 'assign') void run('reassign', { marius_id: agentId, text: said });
+            else if (mode === 'next') void run('next_action', { text: said });
+            else void run('cancel', { text: said });
+          }}
         >
           {t('common.confirm')}
         </button>
@@ -538,7 +542,6 @@ export default function Inbox() {
                         {tab === 'pending' && item.kind === 'escalation' && item.task_id && (
                           <EscalationActions
                             item={item}
-                            taskId={item.task_id}
                             busy={busyId === item.id}
                             setBusy={setBusyId}
                             onError={setError}
