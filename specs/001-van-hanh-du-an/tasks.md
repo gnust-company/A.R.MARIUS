@@ -42,6 +42,12 @@ Bước `/speckit-analyze` tìm ra mười lăm chỗ hở giữa ba tài liệu
 - Sáu chỗ hở nhỏ hơn vá tại chỗ: T036, T040, T057, T058, T062, T069, T070, T138.
 - **Mười bốn yêu cầu đã có sẵn trong mã nhưng không bài kiểm nào canh** — thêm T161.
 
+Chạy T160 trên dịch vụ thật tìm thêm hai chỗ nữa, cả hai đều là **mã không khớp nguyên tắc đã có**, không
+phải yêu cầu mới:
+
+- **Bảy lối đi cho tenant khác đọc và ghi được dữ liệu của nhau** (Hiến pháp I) — thêm T174.
+- **Tạo đầu việc không bắn sự kiện, bảng dự án đang mở không thấy** (Hiến pháp IV) — thêm T175.
+
 ---
 
 ## Giai đoạn 1: Chuẩn bị (không đổi hành vi)
@@ -542,9 +548,93 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   Xong thì mốc nền rà mã giao diện đổi từ *"không được tăng 50"* sang **"phải bằng 0"**, và mốc đó ghi lại vào
   bảng T002 ở `khao-sat-du-lieu.md`. **Nghiệm thu**: dựng lại vùng chứa giao diện, đi hết sáu kịch bản trong
   `quickstart.md` — bộ biên dịch vẽ lại sai thì không lộ ra ở lint hay ở bản dựng, chỉ lộ khi bấm.
-- [ ] T160 Chạy bảng "Kiểm chứng ràng buộc Hiến pháp" trong `specs/001-van-hanh-du-an/quickstart.md` — sáu nguyên tắc, sáu cách kiểm
+- [ ] T174 **Bảy lối đi không canh chủ sở hữu workspace** trong
+  `backend/armarius/presentation/api/workspaces.py` (FR-081, Hiến pháp I). Tìm ra ở T160 bằng cách gọi thật
+  bằng thẻ của tenant khác. **Làm trước T173** — đây là lỗ bảo mật đang sống, T173 là việc dọn.
+
+  Cả bảy đều nhận `user: CurrentUser` — thứ đó chỉ chứng minh *có người đã đăng nhập*, không chứng minh
+  **người đó sở hữu workspace ghi trong đường dẫn**. Hàm canh `_require_owned_workspace` đã có sẵn ngay
+  trong tệp và mười lối khác đều gọi nó; bảy lối này quên gọi.
+
+  | Lối đi | Hàm | Đã dựng lại được trên dịch vụ thật |
+  |---|---|---|
+  | `GET /workspaces/{ws}/mariuses` | `list_directory:140` | tenant B **đọc được danh sách agent của A**, đúng tên |
+  | `PATCH /workspaces/{ws}/mariuses/{id}` | `update_marius:197` | tenant B **đổi tên agent của A**, A đọc lại thấy tên mới |
+  | `GET /workspaces/{ws}/skills` | `list_skills:333` | tenant B **đọc được kỹ năng riêng của A** |
+  | `GET /workspaces/{ws}/skills/{id}` | `get_skill:343` | B đọc kỹ năng của A **qua chính mã workspace của B** — mã workspace trong đường dẫn bị bỏ qua hoàn toàn |
+  | `POST /workspaces/{ws}/skills/manual` | `create_manual_skill:357` | B **tạo kỹ năng nằm trong workspace của A** |
+  | `POST /workspaces/{ws}/skills/import` | `import_skill:371` | cùng dạng, chưa dựng riêng |
+  | `PUT /workspaces/{ws}/skills/{id}` | `update_skill:386` | B **ghi đè nội dung kỹ năng của A** — tệp thành chữ của B, phần mô tả bị xoá trắng |
+
+  Nặng nhất là hai lối ghi. Kỹ năng là thứ được cài vào agent, nên ghi đè được kỹ năng của tenant khác là
+  ghi đè được **thứ agent của họ sẽ chạy**.
+
+  **Nghiệm thu**: sửa bảy chỗ rồi chạy lại đúng phép rà của T160 — mọi lối phải trả *không tìm thấy*, không
+  bao giờ *không có quyền* (nói *không có quyền* là xác nhận dữ liệu có tồn tại, mà đó là chuyện của tenant
+  kia). Kèm **một bài kiểm đi theo tài liệu mô tả giao diện dịch vụ**, không phải một bài kiểm liệt kê tay
+  bảy lối: liệt kê tay thì lối thứ tám thêm vào tháng sau lại lọt đúng như bảy lối này đã lọt.
+- [ ] T175 **Tạo đầu việc không bắn sự kiện nào** (FR-080, Hiến pháp IV). Tìm ra ở T160: mở bảng dự án bằng
+  trình duyệt thật, tạo một đầu việc **từ ngoài trình duyệt**, bảng không nhúc nhích; tải lại trang thì đầu
+  việc hiện ra. `TaskService.create` trong `backend/armarius/application/use_cases/tasks.py:145` ghi dòng dữ
+  liệu, chốt, rồi trả về — không gọi `_publish` lần nào. Kênh dự án hiện chỉ chở **đổi trạng thái**.
+
+  Nửa còn lại của nguyên tắc thì đang đúng và đã đo được: đứng yên 30 giây trên bảng, **0 lượt gọi**; đổi
+  trạng thái từ ngoài thì thẻ việc tự nhảy cột. Nên đây không phải hỏng cả cơ chế đẩy, mà là **một sự kiện
+  bị thiếu**.
+
+  **Nghiệm thu**: lặp lại đúng phép đo — mở bảng, tạo đầu việc từ ngoài, thẻ phải tự hiện **mà không tải lại
+  trang**. Nhớ lọc lưu lượng **theo đường dẫn chứ không theo cổng**: trình duyệt gọi qua cổng phục vụ giao
+  diện, lọc theo cổng máy chủ sẽ đếm ra 0 và trông y hệt một kết quả đạt.
+- [X] T160 Chạy bảng "Kiểm chứng ràng buộc Hiến pháp" trong `specs/001-van-hanh-du-an/quickstart.md` — sáu nguyên tắc, sáu cách kiểm.
+
+  Chạy trên **dịch vụ thật** (vùng chứa đang sống, thẻ định danh thật, trình duyệt thật), không chỉ bằng bộ
+  kiểm. Bốn trong sáu cách kiểm mà bảng nêu ra vốn không thể làm bằng bộ kiểm: chúng nói *"rà toàn bộ dữ
+  liệu"*, *"xem lưu lượng mạng"*, *"rà giao diện"*.
+
+  | Nguyên tắc | Kết quả | Bằng chứng |
+  |---|---|---|
+  | I. Đa tenant | **HỎNG** | 7/17 lối có tham số workspace **không gọi hàm canh chủ sở hữu**; bốn lỗ đã dựng lại được trên dịch vụ thật → **T174** |
+  | II. Cổng Done | đạt | 8 đầu việc *xong* trong cơ sở dữ liệu, **cả 8 đều có thành phẩm**; cổng chặn thật khi thử vượt |
+  | III. Trung lập adapter | đạt | `test_constitution_guards.py` xanh; hai loại agent khác nhau đi chung một đường mã |
+  | IV. Đẩy, không hỏi vòng | **thiếu một nửa** | **0 lượt gọi trong 30 giây đứng yên**, đổi trạng thái tự chuyển cột; nhưng **tạo đầu việc không bắn sự kiện nào** → **T175** |
+  | V. Góc nhìn dự án | đạt | một agent, hai dự án, hai vai — hai gói tin đánh thức thật nêu đúng vai của từng dự án |
+  | VI. Tiếng Việt | đạt | 475 dòng chữ trên 12 màn ở tiếng Việt, **không dòng nào thiếu dấu** |
+
+  **Cách đã kiểm từng nguyên tắc, để lần sau chạy lại được:**
+
+  1. **Đa tenant** — dựng hai tenant thật, rồi lấy **tài liệu mô tả giao diện của dịch vụ đang chạy** làm
+     danh sách lối đi, gọi từng lối bằng thẻ của tenant kia. Kiểm bằng tay chỉ tìm ra đúng lối mình nghĩ ra;
+     đi theo tài liệu mô tả thì phủ được thứ đang thật sự chạy. 20 lối trả *không tìm thấy* đúng luật, 2 lối
+     đọc trả *200*, và sang phần ghi thì có lối **sửa được dữ liệu của tenant kia**. Chi tiết ở T174.
+  2. **Cổng Done** — hai vế. Vế dữ liệu: đếm theo trạng thái trên toàn bộ bảng đầu việc, đối chiếu với bảng
+     thành phẩm. Vế hành vi: đẩy một đầu việc thật đi hết đường — *chờ rà soát* khi chưa có thành phẩm bị
+     chặn (*"A published artifact must be linked before review/done."*), gắn thành phẩm vào thì qua, rồi
+     *xong* bị chặn tiếp vì thiếu chữ ký (*"còn thiếu: leader, patron"*). Chặn rồi mở được mới là cổng; chặn
+     mãi thì chỉ là bức tường.
+  3. **Trung lập adapter** — bộ canh tĩnh đã có sẵn, chạy cùng bộ kiểm.
+  4. **Đẩy, không hỏi vòng** — mở bảng dự án bằng trình duyệt thật rồi **đứng yên 30 giây**, đếm lượt gọi.
+     Rồi đổi dữ liệu **từ ngoài trình duyệt** và xem trang có tự đổi không. Đo được vị trí ngang của thẻ
+     việc nhảy từ 611 sang 927 điểm ảnh mà không tải lại trang — đó là bằng chứng đẩy thật, không phải suy đoán.
+  5. **Góc nhìn dự án** — một agent, hai dự án, hai vai; đưa cả hai dự án lên giai đoạn vận hành qua đúng
+     các cổng thật (duyệt bối cảnh rồi duyệt kế hoạch), đánh thức ở mỗi bên, rồi đọc lại **gói tin đã gửi**
+     lưu trong bảng yêu cầu đánh thức. Dòng đầu hai gói: *"…the Backend on this project"* / *"…the Frontend
+     on this project"*.
+  6. **Tiếng Việt** — quét chữ **đã vẽ ra màn hình**, không quét mã nguồn.
+
+  **Hai lần suýt ghi nhầm kết quả, ghi lại để không lặp:**
+  - Lần đo lưu lượng đầu tiên lọc theo cổng `8080`, trong khi trình duyệt gọi qua chính cổng `3000` nó được
+    phục vụ. Nó đếm ra **0 lượt** và trông y hệt một kết quả đạt, nhưng thật ra **không đo gì cả**. Phải lọc
+    theo đường dẫn, không theo máy chủ.
+  - Lần quét chữ đầu tiên quét **giao diện tiếng Anh**: ứng dụng mặc định là tiếng Anh, nên bản quét đi tìm
+    lỗi thiếu dấu tiếng Việt ở nơi không có tiếng Việt. Phải đổi ngôn ngữ trước rồi mới quét.
+
+  **Một điểm không quy được trách nhiệm**: trong cơ sở dữ liệu có **5 đầu việc ở *chờ rà soát* mà không có
+  thành phẩm**, tức là vi phạm cổng mà mã đang dựng. Nhưng sổ trạng thái của chúng không có dòng nào ghi
+  bước chuyển sang *chờ rà soát*, và rà cả mã thì chỉ đúng một chỗ ghi thẳng trạng thái mà không qua cổng —
+  chỗ đó ghi *bản nháp*, không phải *chờ rà soát*. Kết luận: rác dữ liệu do một lượt ghi thẳng từ bên ngoài
+  ở đợt trước, **không phải lối mã nào đang chạy**. Cổng đã kiểm lại và chặn đúng.
 - [X] T161 [P] Bài kiểm hồi quy cho **14 yêu cầu đã có sẵn trong mã** mà không đợt nào chạm tới (FR-016, 017, 020, 023, 025, 026, 028, 032, 046, 051, 070, 073, 078, 082) trong `backend/tests/` — khảo sát kết luận chúng đang đúng, nhưng không bài kiểm nào canh để biết một đợt sau có làm hỏng không. **Sửa lại con số**: tra từng cái thì **bốn** trong mười bốn đã có bài kiểm ở chỗ khác — FR-025 và FR-032 ở `test_task_dependencies`, FR-026 ở `test_task_rules`, FR-046 ở `test_wake_prompt`. Mười cái còn lại nằm ở `backend/tests/test_spec_regressions.py`, mỗi bài mang tên đúng một yêu cầu
-- [ ] T162 Cập nhật trạng thái đặc tả từ *Nháp* sang *đã triển khai* trong `specs/001-van-hanh-du-an/spec.md` và ghi lại các điểm lệch còn tồn nếu có. **Làm sau cùng, và sau cả T172 với T173** — đóng đợt bằng một cổng sạch, không đóng bằng một dòng ghi nợ
+- [ ] T162 Cập nhật trạng thái đặc tả từ *Nháp* sang *đã triển khai* trong `specs/001-van-hanh-du-an/spec.md` và ghi lại các điểm lệch còn tồn nếu có. **Làm sau cùng, và sau cả T172, T173, T174, T175** — đóng đợt bằng một cổng sạch, không đóng bằng một dòng ghi nợ. Riêng T174 là lỗ Hiến pháp I: đóng đợt mà còn nó thì dòng "đã triển khai" là một câu nói sai
 - [X] T163 [P] Một lối gọi duy nhất `answerInboxItem` trong `frontend/src/lib/api.ts`, trỏ vào `POST /v1/inbox/{id}/answer`. **Không** thêm lời gọi riêng cho giao người / đổi việc kế tiếp / huỷ: câu trả lời của người chủ phải là một lượt gửi–nhận, vì hai lượt để lại quãng nửa vời mà bấm lại là hành động chạy hai lần (FR-061a, FR-061e, FR-070)
 - [X] T164 Bốn hành động ngay trên mục *leo thang* ở `frontend/src/pages/Inbox.tsx`, khớp đúng những lựa chọn hồ sơ nêu ra: **giao lại cho…** (chọn trong danh sách agent có ghế ở dự án, kèm lý do chuyển giao — máy chủ từ chối chuyển người mà không nói vì sao, FR-028), **đổi việc kế tiếp**, **huỷ việc** (kèm ô lý do — FR-030), và **"tôi đã xử lý xong"** (người chủ tự gỡ bên ngoài hệ). Hiện mục này chỉ có nút *Mở*, nên hệ hỏi người chủ mấy đifgều mà không cho họ làm điều nào (FR-061a)
 - [X] T165 Nghiệm thu đường trả lời. **Lá thư đóng vì người chủ bấm, KHÔNG phải vì vòng quét** (FR-061b), và máy chủ đóng mục cùng lần chốt với hành động (FR-061e). Bốn lối phải đi thử đủ: giao lại → người mới được gọi dậy **đúng một lần**, kể cả khi bấm lại; đổi việc kế tiếp và **"tôi đã xử lý xong"** → không ai được gọi lúc bấm, vòng quét nhặt lại và bắt đầu **từ Mức 1**; huỷ việc → đầu việc rời khỏi tầm quét và bấm lại không ném lỗi. Cộng một bài kiểm chứng minh hành động hỏng thì **mục vẫn còn nguyên** — đó là bằng chứng của một-lần-chốt
