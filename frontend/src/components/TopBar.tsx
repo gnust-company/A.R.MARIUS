@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useLocation, Link } from 'react-router';
 import { motion } from 'framer-motion';
 import { Search, Wifi, WifiOff } from 'lucide-react';

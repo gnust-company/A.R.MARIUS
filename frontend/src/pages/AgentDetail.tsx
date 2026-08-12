@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Single-agent detail view (#72). Opened by clicking an agent card in the Directory. The
 // right column is the system↔agent interaction log the owner tracks: every Run the system
 // dispatched to this agent (assignment, mention, comment, …), each expandable to its
@@ -43,8 +42,6 @@ const STATUS_COLORS: Record<AgentStatus, { color: string; label: string }> = {
   working: { color: '#D4A843', label: 'working' },
   idle: { color: '#A89880', label: 'idle' },
   offline: { color: '#8B7A6A', label: 'offline' },
-  hung: { color: '#C25E3A', label: 'hung' },
-  checking: { color: '#D97B5A', label: 'checking' },
   pending: { color: '#D4A843', label: 'pending' },
   invited: { color: '#A89880', label: 'invited' },
   revoked: { color: '#8B7A6A', label: 'revoked' },

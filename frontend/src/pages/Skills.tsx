@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { motion } from 'framer-motion';
@@ -54,7 +53,8 @@ function SourceBadge({ type }: { type: Skill['type'] }) {
     github: { label: t('skills.imported'), icon: Github, color: 'bg-[#D4E8F0] text-[#2A5A6E]' },
     custom: { label: t('skills.type.manual'), icon: FileText, color: 'bg-[#EAE0CC] text-[#7A6A2A]' },
   };
-  const { label, icon: Icon, color } = config[type] || config.custom;
+  // A skill with no recorded source reads as manual — same as `skillToVM`'s fallback.
+  const { label, icon: Icon, color } = (type && config[type]) || config.custom;
   return (
     <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium', color)}>
       <Icon className="w-3 h-3" />

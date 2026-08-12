@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -65,8 +64,6 @@ const STATUS_CONFIG: Record<
   working: { color: '#D4A843', pulse: true, label: 'Working', icon: Activity },
   idle: { color: '#A89880', pulse: false, label: 'Idle', icon: Clock },
   offline: { color: '#8B7A6A', pulse: false, label: 'Offline', icon: WifiOff },
-  hung: { color: '#C25E3A', pulse: false, label: 'Hung', icon: AlertTriangle },
-  checking: { color: '#D97B5A', pulse: true, label: 'Checking', icon: Loader2 },
   pending: { color: '#D4A843', pulse: false, label: 'Pending Review', icon: Clock },
   invited: { color: '#A89880', pulse: false, label: 'Invited', icon: Bot },
   revoked: { color: '#8B7A6A', pulse: false, label: 'Revoked', icon: WifiOff },

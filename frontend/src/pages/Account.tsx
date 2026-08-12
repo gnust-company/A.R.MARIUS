@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useAppStore } from '@/store/appStore';
 import { useNavigate } from 'react-router';
 import { motion } from 'framer-motion';
