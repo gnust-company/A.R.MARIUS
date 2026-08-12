@@ -167,6 +167,18 @@ Một dự án, **một người chủ** (phạm vi hiện tại — xem Làm r�
 | Góc nhìn dự án | Cùng một agent giữ hai vai ở hai dự án → gói tin đánh thức mỗi bên nêu đúng vai của dự án đó |
 | Tiếng Việt | Rà giao diện: không chuỗi cứng ngoài cơ chế đa ngôn ngữ, không chuỗi thiếu dấu |
 
+**Ba lưu ý khi chạy bảng này** — đều là chỗ đã làm sai một lần ở T160, và cái sai đọc lên y hệt cái đúng:
+
+1. **Đa tenant**: đừng liệt kê lối đi bằng tay. Lấy tài liệu mô tả giao diện của dịch vụ **đang chạy** làm
+   danh sách rồi gọi từng lối bằng thẻ của tenant kia. Kiểm bằng tay chỉ tìm ra lối mình nghĩ ra được; T160
+   liệt kê tay ra bốn lối và bỏ sót ba.
+2. **Đẩy không hỏi vòng**: lọc lưu lượng theo **đường dẫn**, không theo cổng. Trình duyệt gọi máy chủ qua
+   chính cổng đã phục vụ giao diện, nên lọc theo cổng máy chủ sẽ đếm ra **0 lượt** — trông hệt một kết quả
+   đạt, trong khi thật ra không đo gì. Và đo đủ hai vế: không hỏi vòng là một vế, **đổi dữ liệu từ ngoài
+   trình duyệt rồi xem trang có tự đổi không** là vế kia.
+3. **Tiếng Việt**: đổi ngôn ngữ sang tiếng Việt **trước khi** quét. Ứng dụng mặc định tiếng Anh, quét thẳng
+   là đi tìm lỗi thiếu dấu ở nơi không có tiếng Việt.
+
 ## Kiểm chứng bằng giao diện thật
 
 Sau khi phần máy chủ xanh, **dựng lại vùng chứa giao diện** và lái trình duyệt bằng Playwright qua các mặt:
