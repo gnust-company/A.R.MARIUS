@@ -17,6 +17,7 @@ zeroes the probe/backoff bookkeeping (`on_signal`). A WORKING turn that overruns
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -64,12 +65,24 @@ class LivenessDecision:
 def retry_interval(backoff_step: int, cfg: LivenessConfig | None = None) -> timedelta:
     """OFFLINE re-probe wait: step 0 ⇒ R, 1 ⇒ 2R, 2 ⇒ 4R … capped at retry_max.
 
-    Computed in seconds and capped BEFORE building the timedelta so a large
-    backoff_step can't overflow `timedelta * float`.
+    The **exponent** is clamped, not just the result. Capping the seconds afterwards was
+    not enough: ``retry_factor ** backoff_step`` overflows a float on its own once the step
+    passes ~1024, and an agent nobody ever cleaned up gets there — real rows sat at exactly
+    1024. The raise came out of the middle of the workspace sweep, so one abandoned agent
+    stopped *every* agent in *every* workspace from being measured at all, and the only
+    trace was a log line inside a loop that keeps going. Silence that looks like health.
+
+    Past the point where the wait already exceeds the cap, every larger step has the same
+    answer, so clamping there costs nothing.
     """
     cfg = cfg or LivenessConfig()
-    raw_seconds = cfg.retry_base.total_seconds() * (cfg.retry_factor**backoff_step)
-    return timedelta(seconds=min(raw_seconds, cfg.retry_max.total_seconds()))
+    base = cfg.retry_base.total_seconds()
+    cap = cfg.retry_max.total_seconds()
+    if backoff_step <= 0 or base <= 0 or cfg.retry_factor <= 1.0:
+        return timedelta(seconds=min(base, cap) if base > 0 else 0)
+    ceiling_step = math.ceil(math.log(cap / base, cfg.retry_factor)) if cap > base else 0
+    step = min(backoff_step, ceiling_step)
+    return timedelta(seconds=min(base * (cfg.retry_factor**step), cap))
 
 
 def on_signal(now: datetime) -> LivenessState:

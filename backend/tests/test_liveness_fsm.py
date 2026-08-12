@@ -111,6 +111,19 @@ def test_retry_interval_doubles_then_caps() -> None:
     assert retry_interval(99, CFG) == CFG.retry_max  # capped
 
 
+def test_a_forgotten_agents_backoff_does_not_overflow() -> None:
+    """`retry_factor ** backoff_step` used to be computed before the cap was applied.
+
+    Above ~1024 that overflows a float and raises, and the raise came out of the middle of
+    the workspace sweep — so one abandoned agent stopped the liveness clock for every agent
+    in every workspace. Found on a real database with three rows sitting at exactly 1024.
+    The step is a stored column, so nothing stops it growing; the cap has to hold for any
+    value the column can hold.
+    """
+    assert retry_interval(1024, CFG) == CFG.retry_max
+    assert retry_interval(10**6, CFG) == CFG.retry_max
+
+
 def test_go_offline_uses_current_step_then_increments() -> None:
     step1 = go_offline(LivenessState(liveness=Liveness.CHECKING, backoff_step=1), T0, CFG)
     assert step1.next_probe_at == T0 + CFG.retry_base * 2  # 2R for step 1
