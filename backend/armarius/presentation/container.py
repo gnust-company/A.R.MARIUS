@@ -130,7 +130,11 @@ def build_container() -> Container:
 
     # Built before the services that need it — the Leader chat is also the project-level
     # wake path (spec 001), so ProjectService and PlanService both take it.
-    liveness_for_chat = LivenessEngine(uow_factory, GatewayHealthLivenessProbe(registry))
+    liveness_for_chat = LivenessEngine(
+        uow_factory,
+        GatewayHealthLivenessProbe(registry),
+        workspace_trace=ControlBusWorkspaceTrace(control_bus),
+    )
 
     wake_engine = WakeEngine(
         uow_factory,
