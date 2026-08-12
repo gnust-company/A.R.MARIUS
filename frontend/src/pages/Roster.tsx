@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -62,8 +62,11 @@ function AgentAvatar({ agent, size = 32 }: { agent: Marius; size?: number }) {
 // ─── Confetti Particles ──────────────────────────────────────────────────────
 
 function ConfettiBurst() {
-  const particles = useMemo(() => {
-    return Array.from({ length: 30 }, (_, i) => ({
+  // Scattered once, in a lazy state initialiser rather than during render: the
+  // burst must look the same for as long as it is on screen, and drawing random
+  // numbers while rendering means a re-render reshuffles them mid-animation.
+  const [particles] = useState(() =>
+    Array.from({ length: 30 }, (_, i) => ({
       id: i,
       x: (Math.random() - 0.5) * 300,
       y: -(Math.random() * 200 + 50),
@@ -72,8 +75,8 @@ function ConfettiBurst() {
       color: ['#C25E3A', '#D4A843', '#4A9E6B', '#E8C96A', '#D97B5A', '#A8D8B8'][
         Math.floor(Math.random() * 6)
       ],
-    }));
-  }, []);
+    }))
+  );
 
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">

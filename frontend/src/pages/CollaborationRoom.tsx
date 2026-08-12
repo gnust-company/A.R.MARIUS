@@ -234,11 +234,16 @@ export default function CollaborationRoom() {
   // Subscribe to the per-task wake trace SSE.
   useTaskStream(taskId);
 
-  // Load the task + its comment thread + artifacts on mount.
+  // Load the task + its comment thread + artifacts on mount. Depends on the one
+  // action, not on `store`: `useAppStore()` above hands back a new object on every
+  // store change, so listing `store` here would re-hydrate on the very state this
+  // effect writes — a loop. A selected action keeps its identity for the life of
+  // the store, so this stays "once per task".
+  const hydrateTask = useAppStore((s) => s.hydrateTask);
   useEffect(() => {
     if (!taskId) return;
-    store.hydrateTask(taskId);
-  }, [taskId]);
+    hydrateTask(taskId);
+  }, [taskId, hydrateTask]);
 
   const [commentInput, setCommentInput] = useState('');
   // Read straight off the task, never mirrored into local state. A copy went stale the
@@ -314,7 +319,7 @@ export default function CollaborationRoom() {
       content: commentInput.trim(),
     });
     setCommentInput('');
-  }, [commentInput, task, store, currentUser]);
+  }, [commentInput, task, store, currentUser, t]);
 
   const [criteriaDraft, setCriteriaDraft] = useState<string | null>(null);
   const [criteriaError, setCriteriaError] = useState<string | null>(null);

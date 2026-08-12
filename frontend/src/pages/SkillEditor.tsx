@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -35,6 +35,18 @@ interface TreeNode {
 }
 
 // ─── Build File Tree ─────────────────────────────────────────────────────────
+
+// Stamp the open/closed flag onto every folder node. Kept at module scope and
+// given the open set as an argument so it is the same function on every render —
+// a copy rebuilt inside the component would be a dependency the memo below can
+// never hold still.
+function applyExpanded(nodes: TreeNode[], expanded: Set<string>): TreeNode[] {
+  return nodes.map((n) => ({
+    ...n,
+    expanded: n.type === 'folder' ? expanded.has(n.path) : undefined,
+    children: n.children ? applyExpanded(n.children, expanded) : undefined,
+  }));
+}
 
 function buildTree(files: SkillFile[]): TreeNode[] {
   const root: TreeNode[] = [];
@@ -228,25 +240,24 @@ export default function SkillEditor() {
   const [newItemType, setNewItemType] = useState<'file' | 'folder' | null>(null);
 
   // Re-seed the working copy when the skill identity changes (navigation / late
-  // hydration). Keyed on id only, so it never clobbers unsaved edits mid-session.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (skill) {
-      setDraftFiles(skill.files);
-      setHasChanges(false);
-      setSelectedIsFolder(false);
-    }
-  }, [skill?.id]);
+  // hydration), and open its first file. Compared against the last id we seeded
+  // from, so unsaved edits within one skill are never clobbered.
+  //
+  // Adjusted during render rather than in an effect: React re-runs the component
+  // immediately, before anything is painted, so there is no frame showing the
+  // previous skill's draft. An effect would paint that frame first, then correct
+  // it — which is the cascading render the lint rule is about.
+  const [seededSkillId, setSeededSkillId] = useState<string | null>(null);
+  if (skill && skill.id !== seededSkillId) {
+    setSeededSkillId(skill.id);
+    setDraftFiles(skill.files);
+    setSelectedPath(skill.files[0]?.path ?? '');
+    setSelectedIsFolder(false);
+    setHasChanges(false);
+  }
 
   // ── Build Tree ─────────────────────────────────────────────────────────────
   const tree = useMemo(() => buildTree(draftFiles), [draftFiles]);
-
-  // ── Auto-select first file on load ─────────────────────────────────────────
-  useEffect(() => {
-    if (draftFiles.length > 0 && !selectedPath) {
-      setSelectedPath(draftFiles[0].path);
-    }
-  }, [draftFiles, selectedPath]);
 
   // ── Find selected file (from the draft) ────────────────────────────────────
   const selectedFile = useMemo(
@@ -356,15 +367,7 @@ export default function SkillEditor() {
   };
 
   // ── Apply expanded state to tree ───────────────────────────────────────────
-  const applyExpanded = (nodes: TreeNode[]): TreeNode[] => {
-    return nodes.map((n) => ({
-      ...n,
-      expanded: n.type === 'folder' ? expandedFolders.has(n.path) : undefined,
-      children: n.children ? applyExpanded(n.children) : undefined,
-    }));
-  };
-
-  const displayTree = useMemo(() => applyExpanded(tree), [tree, expandedFolders]);
+  const displayTree = useMemo(() => applyExpanded(tree, expandedFolders), [tree, expandedFolders]);
 
   // ── Loading / Not Found ────────────────────────────────────────────────────
   if (!skill) {
