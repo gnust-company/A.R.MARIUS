@@ -447,7 +447,8 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   | `pytest tests/test_migration_schema_parity.py` | 1 xanh | — |
   | `cd mcp && uv run pytest` | **37 xanh** (9 giây) | — |
   | `npm run lint` | **50** vấn đề (45 lỗi, 5 cảnh báo) | 50 — đúng bằng, không tăng |
-  | `npx tsc --noEmit` | sạch | — |
+  | `npx tsc --noEmit` | ~~sạch~~ **lệnh rỗng, xem dưới** | — |
+  | `npx tsc -b --force` | sạch (lệnh kiểm kiểu thật) | — |
   | `npm run build` | dựng xong (2 phút 13 giây) | — |
 
   **Chạy mới lộ ra một lỗi trong chính quickstart, đã sửa cùng việc này**: hai chuỗi lệnh ở đó nối bằng `&&`,
@@ -456,9 +457,37 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   giờ chạy tới**, mà người chạy lại tưởng mình vừa kiểm đủ và đang nhìn một cái đỏ. Tách thành từng lệnh và
   ghi rõ hai lệnh kia là cổng *không được tăng* chứ không phải cổng đỏ/xanh.
 
+  **Lỗi thứ hai, nặng hơn: một trong tám lệnh không kiểm gì cả.** `npx tsc --noEmit` **luôn thoát 0** bất kể
+  mã hỏng thế nào, vì `frontend/tsconfig.json` khai `"files": []` rồi chỉ trỏ sang hai tệp con, mà chế độ
+  `--noEmit` không đi theo các nhánh trỏ đó. Suốt chín đợt, dòng "kiểm kiểu giao diện sạch" là một dòng
+  rỗng. Lệnh thật là `tsc -b` — chạy `npx tsc -b --force` thì sạch, nên **kết luận không đổi**, nhưng bằng
+  chứng thì trước đó không có. Đã đổi lệnh trong quickstart và ghi rõ vì sao.
+
   Gói lớp trung gian là chỗ tôi dự sẽ đỏ — nó có môi trường riêng, bộ kiểm riêng, dựng máy chủ thật rồi gửi
   kế hoạch vào, và không đợt nào từ Đợt 1 đến Đợt 9 chạm tới nó trong khi lược đồ với mặt giao tiếp đổi rất
   nhiều. **Dự sai**: 37 bài xanh hết.
+
+  **Mốc nền 50 của lint giao diện không đồng hạng — tách ra thì có một phần là lỗ thật**, ghi lại ở đây vì
+  chạy T159 mới lộ, và mở thành T172:
+
+  | Loại | Số | Là gì |
+  |---|---|---|
+  | `@typescript-eslint/ban-ts-comment` | **11** | Mười một tệp tắt kiểm kiểu **toàn tệp** — lỗ thật |
+  | `react-hooks/*` (bốn luật) | 27 | Luật của bộ biên dịch React: mất tối ưu ghi nhớ, gọi hàm không thuần lúc vẽ, đặt trạng thái trong hiệu ứng, thiếu phụ thuộc. Một phần nằm trong mã thư viện giao diện dựng sẵn |
+  | `react-refresh/only-export-components` | 7 | Chỉ ảnh hưởng nạp nóng lúc phát triển, bản chạy thật không dính |
+  | biến thừa · kiểu bất kỳ | 4 | Vặt |
+
+- [ ] T172 Gỡ **11 dòng tắt kiểm kiểu toàn tệp** trong `frontend/src/` và sửa **21 lỗi kiểu** nằm sau chúng.
+  Đo được lúc chạy T159 bằng cách xoá 11 dòng đó rồi chạy `npx tsc -b --force`: `pages/SkillEditor.tsx` **11**,
+  `pages/AgentDetail.tsx` **3**, `pages/Skills.tsx` **2**, và mỗi tệp một lỗi ở `pages/Workspaces.tsx`,
+  `pages/Roster.tsx`, `pages/Projects.tsx`, `pages/Directory.tsx`, `pages/CreateProject.tsx`. Đây **không phải
+  cảnh báo phong cách**: `skill.files` có thể là *undefined* rồi vẫn bị đọc thẳng, một hình thù thiếu trường
+  `id` bắt buộc vẫn được nhét vào danh sách, `undefined` dùng làm chỉ số mảng. Ba lỗi đầu đều là lỗi chạy thật
+  ở màn soạn kỹ năng. Xong việc này thì mốc nền lint hạ từ 50 xuống **39** và mốc mới là 39.
+
+  **Không gộp 27 cái luật bộ biên dịch React và 7 cái nạp nóng vào đây.** Chúng không giấu lỗi chạy thật, một
+  phần lại nằm trong mã thư viện giao diện dựng sẵn mà mình không viết; gộp vào chỉ làm một việc rõ ràng thành
+  một đợt dọn dẹp mơ hồ.
 - [ ] T160 Chạy bảng "Kiểm chứng ràng buộc Hiến pháp" trong `specs/001-van-hanh-du-an/quickstart.md` — sáu nguyên tắc, sáu cách kiểm
 - [X] T161 [P] Bài kiểm hồi quy cho **14 yêu cầu đã có sẵn trong mã** mà không đợt nào chạm tới (FR-016, 017, 020, 023, 025, 026, 028, 032, 046, 051, 070, 073, 078, 082) trong `backend/tests/` — khảo sát kết luận chúng đang đúng, nhưng không bài kiểm nào canh để biết một đợt sau có làm hỏng không. **Sửa lại con số**: tra từng cái thì **bốn** trong mười bốn đã có bài kiểm ở chỗ khác — FR-025 và FR-032 ở `test_task_dependencies`, FR-026 ở `test_task_rules`, FR-046 ở `test_wake_prompt`. Mười cái còn lại nằm ở `backend/tests/test_spec_regressions.py`, mỗi bài mang tên đúng một yêu cầu
 - [ ] T162 Cập nhật trạng thái đặc tả từ *Nháp* sang *đã triển khai* trong `specs/001-van-hanh-du-an/spec.md` và ghi lại các điểm lệch còn tồn nếu có
