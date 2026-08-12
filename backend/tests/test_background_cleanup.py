@@ -22,13 +22,14 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.exc import OperationalError
 
 from armarius.application.ports.task_trace import TaskTracePublisher
+from armarius.application.ports.workspace_trace import WorkspaceTracePublisher
 from armarius.application.use_cases.leader_chat import LeaderChatService
 from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.liveness_watchdog import LivenessWatchdog
 from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.projects import ProjectService, RoleSpec
 from armarius.application.use_cases.tasks import TaskService
-from armarius.application.use_cases.wake_engine import WakeEngine
+from armarius.application.use_cases.wake_engine import WakeEngine, _describe
 from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.domain.entities.leader_chat import ChatState
 from armarius.domain.entities.run import Run, RunStatus, WakeSource
@@ -283,6 +284,58 @@ async def test_a_turn_killed_by_infrastructure_is_recorded_as_failed_with_its_ca
     assert run is not None
     assert run.status == RunStatus.FAILED
     assert run.error and "kênh sự kiện của đầu việc hỏng" in run.error
+    assert not await _pending(uow_factory, alice.id, task.id)
+
+
+async def test_what_killed_a_turn_is_named_without_the_driver_s_paperwork() -> None:
+    """This field is read on a screen the patron sees. A database error stringifies into the
+    message, then the statement that failed, then a documentation link — only the first says
+    anything a reader needs, and the rest puts query text and column names in front of them."""
+    described = _describe(
+        OperationalError(
+            "UPDATE runs SET status=? WHERE id=?", {}, Exception("database is locked")
+        )
+    )
+    assert "database is locked" in described
+    assert "UPDATE runs" not in described
+    assert "\n" not in described
+
+
+# ── nothing may throw after the commit it reports ────────────────────────────────────
+class _BrokenWorkspaceTrace(WorkspaceTracePublisher):
+    """The channel a run announces itself on, broken."""
+
+    async def publish(self, workspace_id, type, data) -> None:  # noqa: A002, ANN001
+        raise RuntimeError("kênh workspace hỏng")
+
+
+async def test_a_broken_channel_does_not_strand_the_run_it_was_announcing(
+    uow_factory,
+) -> None:
+    """``_open_run`` writes its rows, commits, announces — and only *then* does the caller
+    spawn the task that drives the run. An announcement that threw used to escape between
+    those two, leaving a run committed as *queued* that nobody would ever execute.
+
+    It also broke the property retrying stands on: calling ``enqueue`` again cannot repair
+    that, because the second call folds into the run the first one stranded and returns
+    before spawning anything either. Telling a screen must not be able to stop work."""
+    _ws, _project, alice, task = await _world(uow_factory)
+    registry = InMemoryAdapterRegistry()
+    registry.register(EchoAdapter(step_delay=0.0))
+    engine = WakeEngine(
+        uow_factory, registry, InMemoryEventBus(),
+        run_timeout_seconds=30, workspace_trace=_BrokenWorkspaceTrace(),
+    )
+
+    run_id = await engine.enqueue(
+        marius_id=alice.id, task_id=task.id, source=WakeSource.ASSIGNMENT, reason=None,
+    )
+    await engine.drain()
+
+    async with uow_factory() as uow:
+        run = await uow.runs.get(run_id)
+    assert run is not None
+    assert run.status == RunStatus.COMPLETED, "lượt chạy đã ghi vào kho mà không ai chạy"
     assert not await _pending(uow_factory, alice.id, task.id)
 
 
