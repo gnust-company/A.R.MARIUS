@@ -384,6 +384,12 @@ export interface StoreEvent {
   timestamp: string
 }
 
+/** How many recent workspace events to keep. See `emitEvent`. */
+const EVENT_LOG_CAP = 200
+
+/** Distinguishes events emitted within the same millisecond — `Date.now()` alone repeats. */
+let eventSeq = 0
+
 // ── Store interface ─────────────────────────────────
 
 interface AppStoreState {
@@ -584,10 +590,14 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     const state = get()
     const newEvent: StoreEvent = {
       ...event,
-      id: `evt_${Date.now()}`,
+      id: `evt_${Date.now()}_${(eventSeq += 1)}`,
       timestamp: new Date().toISOString(),
     }
-    set({ events: [...state.events, newEvent] })
+    // Bounded. Nothing reads this array today, so an unbounded one grows for as long as the
+    // tab is open and costs a full copy per push. The cap is a floor under any future
+    // channel that turns out to be chattier than the one it replaced — the caller that
+    // needs every event should subscribe, not mine a log.
+    set({ events: [...state.events, newEvent].slice(-EVENT_LOG_CAP) })
   },
 
   setCurrentUser: (user) => set({ currentUser: user }),
