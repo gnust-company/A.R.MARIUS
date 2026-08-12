@@ -21,6 +21,10 @@ from typing import Protocol
 from uuid import UUID
 
 from armarius.application.ports.liveness_probe import LivenessProbe
+from armarius.application.ports.workspace_trace import (
+    WorkspaceTracePublisher,
+    announce_agent_offline,
+)
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.marius import Liveness, Marius
 from armarius.domain.services.liveness_fsm import (
@@ -61,12 +65,14 @@ class LivenessEngine:
         clock: Callable[[], datetime] = utcnow,
         cfg: LivenessConfig | None = None,
         fallout: OfflineFallout | None = None,
+        workspace_trace: WorkspaceTracePublisher | None = None,
     ) -> None:
         self._uow = uow_factory
         self._probe = probe
         self._clock = clock
         self._cfg = cfg or LivenessConfig()
         self._fallout = fallout
+        self._workspace_trace = workspace_trace
 
     def attach_fallout(self, fallout: OfflineFallout) -> None:
         """Wire the fallout handler after construction (composition root only).
@@ -166,18 +172,32 @@ class LivenessEngine:
         return result.state
 
     async def _announce_offline(self, marius_id: UUID, now: datetime) -> None:
-        """Hand the crossing to the fallout handler, and never let it break the clock.
+        """Hand the crossing to the fallout handler and tell the workspace channel.
 
-        A failure here is logged and swallowed on purpose: this loop advances every agent in
-        every workspace, and one project's recovery going wrong must not stop the rest of
-        them from being measured at all.
+        Neither may break the clock: this loop advances every agent in every workspace, and
+        one project's recovery going wrong must not stop the rest from being measured at
+        all — so both failures are logged and swallowed.
+
+        Rescue first, announce second, in separate guards. Rescuing the tasks the vanished
+        agent was holding is the part that cannot be recovered later; a lost notification
+        costs one stale dot until the next event. Announcing first would let a publish
+        failure swallow the rescue, which is the ordering bug T167 had to undo in the
+        hung-run reaper.
         """
-        if self._fallout is None:
+        if self._fallout is not None:
+            try:
+                await self._fallout.agent_went_offline(marius_id, now=now)
+            except Exception:  # pragma: no cover - the clock must keep ticking
+                logger.exception("offline fallout failed for marius %s", marius_id)
+        if self._workspace_trace is None:
             return
         try:
-            await self._fallout.agent_went_offline(marius_id, now=now)
+            async with self._uow() as uow:
+                marius = await uow.mariuses.get(marius_id)
+            if marius is not None:
+                await announce_agent_offline(self._workspace_trace, marius)
         except Exception:  # pragma: no cover - the clock must keep ticking
-            logger.exception("offline fallout failed for marius %s", marius_id)
+            logger.exception("offline announce failed for marius %s", marius_id)
 
 
 def _crossed_into_offline(before: Liveness, after: Liveness) -> bool:

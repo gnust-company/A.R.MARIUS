@@ -22,10 +22,16 @@ from uuid import UUID
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.run import Run
 
-# The event a screen keyed by agent listens for. Named here, beside the port, because the
+# The events a screen keyed by agent listens for. Named here, beside the port, because the
 # name is part of the push contract rather than an implementation detail of whoever emits
 # it — and two separate callers emit it (the wake engine and the hung-run reaper).
 EVENT_RUN_STATE_CHANGED = "luot-chay.doi-trang-thai"
+
+# The missing half of the pair. `marius.online` (published by /agent/me on first contact
+# after silence) said an agent came back; nothing said one had gone. The directory's status
+# dot could therefore only ever move one way, and the direction it could not move is the one
+# a patron needs to see. Emitted on the *edge* into offline, never on every idle tick.
+EVENT_MARIUS_OFFLINE = "marius.offline"
 
 
 class WorkspaceTracePublisher(ABC):
@@ -67,4 +73,27 @@ async def announce_run_state(
             "project_id": str(run.project_id) if run.project_id is not None else None,
             "status": str(run.status),
         },
+    )
+
+
+async def announce_agent_offline(
+    trace: WorkspaceTracePublisher | None, marius: Marius
+) -> None:
+    """Announce that an agent crossed into offline (no-op if not wired).
+
+    Deliberately carries an id and nothing else — no liveness value. This is a *signal*
+    under principle 1 of ``contracts/su-kien-day.md``: the listener re-reads the agent
+    rather than believing the event. Putting the new state in the payload is the tempting
+    shortcut and it is the one that rots — the moment an event is the source of truth, a
+    listener that misses it (replay window overflow, a reconnect gap) shows a wrong value
+    with no way to notice, and every later event on this channel inherits the pattern.
+
+    Matches ``marius.online``, which is emitted the same way on the opposite edge.
+    """
+    if trace is None or marius.workspace_id is None:
+        return
+    await trace.publish(
+        marius.workspace_id,
+        EVENT_MARIUS_OFFLINE,
+        {"marius_id": str(marius.id)},
     )
