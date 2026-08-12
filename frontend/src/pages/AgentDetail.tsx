@@ -249,14 +249,25 @@ export default function AgentDetail() {
 
   useEffect(() => { loadRuns(); }, [loadRuns]);
 
+  // One re-read per burst, not one per event. A single run announces itself three times
+  // (opened, started, finished) and several runs can land together, so reacting to each
+  // event separately would fire more requests in a busy moment than the 15s timer this
+  // replaced. Coalescing keeps the screen honest — the last event in a burst still wins,
+  // because the re-read happens after it.
   useEffect(() => {
     if (!workspaceId || !id) return;
-    return onWorkspaceEvent((event) => {
+    let pending: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribe = onWorkspaceEvent((event) => {
       if (event.type !== 'luot-chay.doi-trang-thai') return;
       // The channel carries every agent in the workspace; only this one's runs are on screen.
       if (event.payload.marius_id !== id) return;
-      loadRuns();
+      if (pending) return;
+      pending = setTimeout(() => { pending = null; loadRuns(); }, 300);
     });
+    return () => {
+      if (pending) clearTimeout(pending);
+      unsubscribe();
+    };
   }, [workspaceId, id, loadRuns]);
 
   const status: AgentStatus = agent?.status || 'offline';
