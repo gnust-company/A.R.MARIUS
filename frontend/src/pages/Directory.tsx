@@ -353,7 +353,6 @@ export default function Directory() {
   const updateMarius = useAppStore((s) => s.updateMarius);
   const deleteMarius = useAppStore((s) => s.deleteMarius);
   const designateWorkspaceAgent = useAppStore((s) => s.designateWorkspaceAgent);
-  const emitEvent = useAppStore((s) => s.emitEvent);
   const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId);
 
   // The sitting host — designating anyone else is a swap and asks for confirmation (#32).
@@ -461,7 +460,6 @@ export default function Directory() {
         isWorkspaceAgent: makeWorkspaceAgent,
       });
       setSendStatus(status);
-      emitEvent({ type: 'marius.status_changed', payload: { status: 'approved' } });
       if (status === 'sent') {
         // The setup prompt landed \u2014 close after a beat so the success state reads.
         setTimeout(() => setInviteModalOpen(false), 900);
