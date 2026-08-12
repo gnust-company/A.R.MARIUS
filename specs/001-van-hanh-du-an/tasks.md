@@ -467,30 +467,62 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   kế hoạch vào, và không đợt nào từ Đợt 1 đến Đợt 9 chạm tới nó trong khi lược đồ với mặt giao tiếp đổi rất
   nhiều. **Dự sai**: 37 bài xanh hết.
 
-  **Mốc nền 50 của lint giao diện không đồng hạng — tách ra thì có một phần là lỗ thật**, ghi lại ở đây vì
-  chạy T159 mới lộ, và mở thành T172:
+  **Mốc nền 50 của lint giao diện là nợ thật, không phải nhiễu** — chạy T159 mới lộ, mở thành T172 và T173.
+  Người chủ chốt: **về 0**, không giữ mốc "không được tăng". Tách hai việc vì hai loại rủi ro khác nhau, chứ
+  không phải vì có cái được bỏ qua:
 
-  | Loại | Số | Là gì |
-  |---|---|---|
-  | `@typescript-eslint/ban-ts-comment` | **11** | Mười một tệp tắt kiểm kiểu **toàn tệp** — lỗ thật |
-  | `react-hooks/*` (bốn luật) | 27 | Luật của bộ biên dịch React: mất tối ưu ghi nhớ, gọi hàm không thuần lúc vẽ, đặt trạng thái trong hiệu ứng, thiếu phụ thuộc. Một phần nằm trong mã thư viện giao diện dựng sẵn |
-  | `react-refresh/only-export-components` | 7 | Chỉ ảnh hưởng nạp nóng lúc phát triển, bản chạy thật không dính |
-  | biến thừa · kiểu bất kỳ | 4 | Vặt |
+  | Nhóm | Số | Sửa có đổi logic không | Việc |
+  |---|---|---|---|
+  | Biến thừa · kiểu bất kỳ · dòng tắt luật thừa | 5 | Không | T172 |
+  | `react-refresh/only-export-components` | 7 | Không — chỉ chuyển hằng số sang tệp bên cạnh | T172 |
+  | `ban-ts-comment` (tắt kiểm kiểu toàn tệp) | 11 | **Có** — che 21 lỗi kiểu thật | T172 |
+  | `react-hooks/purity` | 6 | **Có** — đưa số ngẫu nhiên ra khỏi lúc vẽ | T172 |
+  | `react-hooks/set-state-in-effect` | 4 | **Có** — bỏ vòng vẽ dây chuyền | T172 |
+  | `react-hooks/exhaustive-deps` | 4 | **Có, và dễ làm hỏng nhất** | T172 |
+  | `react-hooks/preserve-manual-memoization` | 13 | Sửa chiều lint = **mất tối ưu thật** | T173 |
 
-- [ ] T172 Gỡ **11 dòng tắt kiểm kiểu toàn tệp** trong `frontend/src/` và sửa **21 lỗi kiểu** nằm sau chúng.
-  Đo được lúc chạy T159 bằng cách xoá 11 dòng đó rồi chạy `npx tsc -b --force`: `pages/SkillEditor.tsx` **11**,
-  `pages/AgentDetail.tsx` **3**, `pages/Skills.tsx` **2**, và mỗi tệp một lỗi ở `pages/Workspaces.tsx`,
-  `pages/Roster.tsx`, `pages/Projects.tsx`, `pages/Directory.tsx`, `pages/CreateProject.tsx`. Đây **không phải
-  cảnh báo phong cách**: `skill.files` có thể là *undefined* rồi vẫn bị đọc thẳng, một hình thù thiếu trường
-  `id` bắt buộc vẫn được nhét vào danh sách, `undefined` dùng làm chỉ số mảng. Ba lỗi đầu đều là lỗi chạy thật
-  ở màn soạn kỹ năng. Xong việc này thì mốc nền lint hạ từ 50 xuống **39** và mốc mới là 39.
+  **Vì sao 13 cái cuối tách riêng, và không phải vì bỏ qua**: chúng là luật của **bộ biên dịch React**, mà bộ
+  biên dịch đó **không có trong bản dựng** — không nằm ở `frontend/vite.config.ts`, không nằm ở
+  `frontend/package.json`. Cách sửa nhanh là gỡ lớp ghi nhớ thủ công cho bộ biên dịch lo; gỡ trong khi nó
+  không chạy là mất trắng phần ghi nhớ ở màn phòng cộng tác để đổi lấy một con số đẹp. Cách sửa đúng là bật
+  bộ biên dịch lên — đó là T173, và nó đổi bản dựng nên phải có lượt nghiệm thu riêng.
 
-  **Không gộp 27 cái luật bộ biên dịch React và 7 cái nạp nóng vào đây.** Chúng không giấu lỗi chạy thật, một
-  phần lại nằm trong mã thư viện giao diện dựng sẵn mà mình không viết; gộp vào chỉ làm một việc rõ ràng thành
-  một đợt dọn dẹp mơ hồ.
+- [ ] T172 Đưa **37 trong 50** vấn đề rà mã giao diện về 0. Ba phần, xếp theo rủi ro tăng dần:
+
+  **(1) Không đụng logic — 12 cái.** Ba biến thừa (`pages/ProjectBoard.tsx`, `pages/Roster.tsx`,
+  `pages/Workspaces.tsx`), một kiểu bất kỳ (`pages/Landing.tsx:909`), một dòng tắt luật đã thừa
+  (`pages/SkillEditor.tsx:233`). Cộng bảy cái xuất khẩu lẫn lộn — cả bảy nằm trong `components/ui/`
+  (`badge`, `button`, `button-group`, `form`, `navigation-menu`, `sidebar`, `toggle`): chuyển hằng số biến thể
+  sang tệp bên cạnh, không đổi một dòng chạy nào.
+
+  **(2) Gỡ 11 dòng tắt kiểm kiểu toàn tệp và sửa 21 lỗi kiểu nằm sau chúng.** Đo được lúc chạy T159 bằng cách
+  xoá 11 dòng đó rồi chạy `npx tsc -b --force`: `pages/SkillEditor.tsx` **11**, `pages/AgentDetail.tsx` **3**,
+  `pages/Skills.tsx` **2**, và mỗi tệp một lỗi ở `pages/Workspaces.tsx`, `pages/Roster.tsx`,
+  `pages/Projects.tsx`, `pages/Directory.tsx`, `pages/CreateProject.tsx`. **Không phải cảnh báo phong cách**:
+  `skill.files` có thể là *undefined* rồi vẫn bị đọc thẳng, một hình thù thiếu trường `id` bắt buộc vẫn được
+  nhét vào danh sách, `undefined` dùng làm chỉ số mảng. Ba cái đầu đều là lỗi chạy thật ở màn soạn kỹ năng.
+
+  **(3) Mười bốn cái luật móc React — sửa là đổi hành vi vẽ, phải đọc ý định từng cái.** Sáu cái hàm không
+  thuần (`pages/Roster.tsx` 5 chỗ: số ngẫu nhiên của hiệu ứng giấy màu gọi ngay lúc vẽ; `components/ui/sidebar.tsx`
+  1 chỗ) — đưa ra khỏi lúc vẽ, nhìn y hệt nhưng đúng dưới chế độ vẽ hai lần. Bốn cái đặt trạng thái trong hiệu
+  ứng (`pages/SkillEditor.tsx` 2, `components/ui/carousel.tsx`, `hooks/use-mobile.ts`). Bốn cái thiếu phụ thuộc
+  (`pages/CollaborationRoom.tsx:241` thiếu `store`, `:317` thiếu `t`; `pages/SkillEditor.tsx:240` thiếu `skill`,
+  `:368` thiếu `applyExpanded`) — **đây là chỗ sửa chiều lint thì hỏng nặng hơn để nguyên**: nhét `store` vào
+  cho xanh thì hiệu ứng chạy lại mỗi lần kho đổi, mà chính nó ghi vào kho, thành vòng gọi lặp.
+
+  **Nghiệm thu**: `npm run lint` còn **13** (đúng phần T173), `npx tsc -b --force` sạch, `npm run build` xong,
+  và **dựng lại vùng chứa giao diện rồi bấm thật** năm màn bị đụng nhiều nhất — soạn kỹ năng, chi tiết agent,
+  danh sách kỹ năng, phòng cộng tác, bảng ghế. "Lint xanh" không tính là xong.
+
+- [ ] T173 Bật **bộ biên dịch React** trong `frontend/vite.config.ts` + `package.json`, rồi sửa **13 cái**
+  `react-hooks/preserve-manual-memoization` còn lại ở `pages/CollaborationRoom.tsx` (dòng 291→439) cho tử tế.
+  Tách khỏi T172 vì nó **đổi bản dựng** và đổi cách vẽ lại của toàn giao diện, không phải một việc dọn lint.
+  Xong thì mốc nền rà mã giao diện đổi từ *"không được tăng 50"* sang **"phải bằng 0"**, và mốc đó ghi lại vào
+  bảng T002 ở `khao-sat-du-lieu.md`. **Nghiệm thu**: dựng lại vùng chứa giao diện, đi hết sáu kịch bản trong
+  `quickstart.md` — bộ biên dịch vẽ lại sai thì không lộ ra ở lint hay ở bản dựng, chỉ lộ khi bấm.
 - [ ] T160 Chạy bảng "Kiểm chứng ràng buộc Hiến pháp" trong `specs/001-van-hanh-du-an/quickstart.md` — sáu nguyên tắc, sáu cách kiểm
 - [X] T161 [P] Bài kiểm hồi quy cho **14 yêu cầu đã có sẵn trong mã** mà không đợt nào chạm tới (FR-016, 017, 020, 023, 025, 026, 028, 032, 046, 051, 070, 073, 078, 082) trong `backend/tests/` — khảo sát kết luận chúng đang đúng, nhưng không bài kiểm nào canh để biết một đợt sau có làm hỏng không. **Sửa lại con số**: tra từng cái thì **bốn** trong mười bốn đã có bài kiểm ở chỗ khác — FR-025 và FR-032 ở `test_task_dependencies`, FR-026 ở `test_task_rules`, FR-046 ở `test_wake_prompt`. Mười cái còn lại nằm ở `backend/tests/test_spec_regressions.py`, mỗi bài mang tên đúng một yêu cầu
-- [ ] T162 Cập nhật trạng thái đặc tả từ *Nháp* sang *đã triển khai* trong `specs/001-van-hanh-du-an/spec.md` và ghi lại các điểm lệch còn tồn nếu có
+- [ ] T162 Cập nhật trạng thái đặc tả từ *Nháp* sang *đã triển khai* trong `specs/001-van-hanh-du-an/spec.md` và ghi lại các điểm lệch còn tồn nếu có. **Làm sau cùng, và sau cả T172 với T173** — đóng đợt bằng một cổng sạch, không đóng bằng một dòng ghi nợ
 - [X] T163 [P] Một lối gọi duy nhất `answerInboxItem` trong `frontend/src/lib/api.ts`, trỏ vào `POST /v1/inbox/{id}/answer`. **Không** thêm lời gọi riêng cho giao người / đổi việc kế tiếp / huỷ: câu trả lời của người chủ phải là một lượt gửi–nhận, vì hai lượt để lại quãng nửa vời mà bấm lại là hành động chạy hai lần (FR-061a, FR-061e, FR-070)
 - [X] T164 Bốn hành động ngay trên mục *leo thang* ở `frontend/src/pages/Inbox.tsx`, khớp đúng những lựa chọn hồ sơ nêu ra: **giao lại cho…** (chọn trong danh sách agent có ghế ở dự án, kèm lý do chuyển giao — máy chủ từ chối chuyển người mà không nói vì sao, FR-028), **đổi việc kế tiếp**, **huỷ việc** (kèm ô lý do — FR-030), và **"tôi đã xử lý xong"** (người chủ tự gỡ bên ngoài hệ). Hiện mục này chỉ có nút *Mở*, nên hệ hỏi người chủ mấy đifgều mà không cho họ làm điều nào (FR-061a)
 - [X] T165 Nghiệm thu đường trả lời. **Lá thư đóng vì người chủ bấm, KHÔNG phải vì vòng quét** (FR-061b), và máy chủ đóng mục cùng lần chốt với hành động (FR-061e). Bốn lối phải đi thử đủ: giao lại → người mới được gọi dậy **đúng một lần**, kể cả khi bấm lại; đổi việc kế tiếp và **"tôi đã xử lý xong"** → không ai được gọi lúc bấm, vòng quét nhặt lại và bắt đầu **từ Mức 1**; huỷ việc → đầu việc rời khỏi tầm quét và bấm lại không ném lỗi. Cộng một bài kiểm chứng minh hành động hỏng thì **mục vẫn còn nguyên** — đó là bằng chứng của một-lần-chốt
