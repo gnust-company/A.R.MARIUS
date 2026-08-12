@@ -1,20 +1,18 @@
-// Workspace control-plane SSE (Sprint 6): opens `/v1/workspaces/{ws}/events` and
-// reconciles `marius.status_changed` events into the store.
+// Workspace control-plane SSE: opens `/v1/workspaces/{ws}/events` and turns every
+// `marius.*` event into a re-read of that workspace's agents.
+//
+// It used to patch the store from each event's payload instead, which is what principle 1
+// of `contracts/su-kien-day.md` forbids — an event is a signal to re-read, never the state
+// itself. That inversion cost the status dot outright (T169): the server publishes
+// `marius.online` as a bare id, this hook demanded a `status` field before it would touch
+// anything, and so the one event that says an agent came back was dropped on the floor. A
+// dot that only changes on page reload is the same failure as polling, arrived at from the
+// other side.
 
 import { useEffect } from 'react'
 
-import { livenessToAgentStatus } from '@/lib/mappers'
 import { subscribeWorkspaceEvents } from '@/lib/sse'
-import { useAppStore, type AgentStatus } from '@/store/appStore'
-
-/** Map a backend workspace-event `status` to the FE AgentStatus union. */
-function statusToAgent(status: string): AgentStatus {
-  if (status === 'approved') return 'online'
-  if (status === 'invited') return 'invited'
-  if (status === 'pending_review' || status === 'pending') return 'pending' // enrolled, awaiting approval (#51)
-  if (status === 'revoked') return 'revoked'
-  return livenessToAgentStatus(status) // liveness values (online/working/idle/...)
-}
+import { useAppStore } from '@/store/appStore'
 
 export interface WorkspaceEvent {
   type: string
@@ -26,9 +24,7 @@ export interface WorkspaceEvent {
  * holds open.
  *
  * A page could call `subscribeWorkspaceEvents` itself, but that opens a second stream to
- * the same endpoint for the same data. Routing through the store's `events` array is the
- * other tempting shortcut and is worse: that array is never trimmed, so a page that reacts
- * to run traffic would make it grow for as long as the tab stays open.
+ * the same endpoint for the same data.
  *
  * Returns its own unsubscribe.
  */
@@ -41,58 +37,38 @@ export function onWorkspaceEvent(listener: (event: WorkspaceEvent) => void): () 
   }
 }
 
+/** Coalescing window for agent re-reads, in ms. */
+const REFRESH_DEBOUNCE_MS = 300
+
 export function useWorkspaceEvents(workspaceId: string | null | undefined): void {
   const setSseConnected = useAppStore((s) => s.setSseConnected)
 
   useEffect(() => {
     if (!workspaceId) return
     setSseConnected(true) // subscription initiated — the TopBar indicator reflects it
+    // Installing skills on an agent lands several events back to back (one push, then one
+    // confirmation per slug); a burst of runs does the same. Coalesce them into one read.
+    let pending: ReturnType<typeof setTimeout> | null = null
+    const scheduleRefresh = () => {
+      if (pending) return
+      pending = setTimeout(() => {
+        pending = null
+        void useAppStore.getState().refreshMariuses(workspaceId).catch(() => {})
+      }, REFRESH_DEBOUNCE_MS)
+    }
+
     const disconnect = subscribeWorkspaceEvents(
       workspaceId,
       (event) => {
         const payload = event.payload ?? {}
-        const mariusId = (payload.marius_id ?? payload.mariusId) as string | undefined
-        const status = payload.status as string | undefined
-        // Scoped to `marius.*` on purpose. The channel also carries events that name an
-        // agent and carry an unrelated `status` — a run's lifecycle says
-        // `{marius_id, status: 'running'}` — and reading those as a liveness value would
-        // set every agent that starts a run to whatever `statusToAgent` makes of it.
-        if (mariusId && status && event.type.startsWith('marius.')) {
-          const next = statusToAgent(status)
-          useAppStore.setState((s) => ({
-            mariuses: s.mariuses.map((m) =>
-              m.id === mariusId ? { ...m, status: next } : m,
-            ),
-          }))
-        }
-        // Post-invite skill install (#74): patch per-skill install state in place so the
-        // AgentDetail badges flip live — pushed → pending/failed, agent-confirmed → installed.
-        if (mariusId && event.type === 'marius.skill_installed' && payload.slug) {
-          const slug = payload.slug as string
-          useAppStore.setState((s) => ({
-            mariuses: s.mariuses.map((m) =>
-              m.id === mariusId
-                ? { ...m, skillInstalls: { ...(m.skillInstalls ?? {}), [slug]: 'installed' } }
-                : m,
-            ),
-          }))
-        }
-        if (mariusId && event.type === 'marius.skills_updated' && Array.isArray(payload.installed)) {
-          const state = payload.send_status === 'sent' ? 'pending' : 'failed'
-          const slugs = payload.installed as string[]
-          useAppStore.setState((s) => ({
-            mariuses: s.mariuses.map((m) =>
-              m.id === mariusId
-                ? {
-                    ...m,
-                    skillInstalls: {
-                      ...(m.skillInstalls ?? {}),
-                      ...Object.fromEntries(slugs.map((sl) => [sl, state])),
-                    },
-                  }
-                : m,
-            ),
-          }))
+        // Every `marius.*` event means the same thing to this hook — something about an
+        // agent changed, go look. Deliberately NOT a list of known event names: the last
+        // time this was a list, a new event type shipped and nothing updated for it.
+        // Liveness (`marius.online` / `marius.offline`), invite and delete
+        // (`marius.status_changed`), and skill install state (`marius.skills_updated`,
+        // `marius.skill_installed`) all ride this one read.
+        if (event.type.startsWith('marius.')) {
+          scheduleRefresh()
         }
         for (const listener of listeners) listener({ type: event.type, payload })
       },
@@ -102,6 +78,7 @@ export function useWorkspaceEvents(workspaceId: string | null | undefined): void
       },
     )
     return () => {
+      if (pending) clearTimeout(pending)
       disconnect()
       setSseConnected(false)
     }

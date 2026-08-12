@@ -472,6 +472,7 @@ interface AppStoreState {
   hydrateMe: () => Promise<void>
   hydrateWorkspaces: () => Promise<void>
   hydrateWorkspace: (workspaceId: string) => Promise<void>
+  refreshMariuses: (workspaceId: string) => Promise<void>
   hydrateProject: (projectId: string) => Promise<void>
   hydrateTask: (taskId: string) => Promise<void>
   setTaskCriteria: (taskId: string, texts: string[]) => Promise<void>
@@ -974,6 +975,26 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       skills: [
         ...s.skills.filter((sk) => sk.workspaceId !== workspaceId),
         ...skills.map(skillToVM),
+      ],
+    }))
+  },
+
+  // Re-read just this workspace's agents. What a `marius.*` push event triggers: the event
+  // is a signal, and this is the read (contracts/su-kien-day.md, principle 1).
+  //
+  // Narrower than `hydrateWorkspace` on purpose — that one also fetches projects and skills,
+  // and an agent coming back online is no reason to refetch a board. Shares the host-stamping
+  // step with it because an agent's WA badge lives on its workspace, not on the agent row.
+  refreshMariuses: async (workspaceId: string) => {
+    const mariuses = await api.listMariuses(workspaceId)
+    const hostId = get().workspaces.find((w) => w.id === workspaceId)?.workspaceAgentId
+    set((s) => ({
+      mariuses: [
+        ...s.mariuses.filter((m) => m.workspaceId !== workspaceId),
+        ...mariuses.map(mariusToVM).map((m) => ({
+          ...m,
+          isWorkspaceAgent: hostId != null && m.id === hostId,
+        })),
       ],
     }))
   },
