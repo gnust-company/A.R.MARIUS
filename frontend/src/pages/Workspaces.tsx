@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { motion } from 'framer-motion';
 import {
-  Diamond,
   FolderOpen,
   Bot,
   Plus,

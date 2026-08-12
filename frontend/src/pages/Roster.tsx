@@ -477,11 +477,7 @@ export default function Roster() {
                       >
                         <AnimatePresence mode="wait">
                           {seat.mariusId ? (
-                            <GrantedSeatCard
-                              key="granted"
-                              seat={seat}
-                              seatNumber={seatIndex + 1}
-                            />
+                            <GrantedSeatCard key="granted" seat={seat} />
                           ) : (
                             <EmptySeatCard
                               key="empty"
@@ -553,13 +549,13 @@ export default function Roster() {
 
 // ─── Granted Seat Card ───────────────────────────────────────────────────────
 
+// A granted seat is identified by who sits in it, not by its index — only the
+// empty card needs a number to refer to.
 function GrantedSeatCard({
   seat,
-  seatNumber: _seatNumber,
   showBadge = false,
 }: {
   seat: ProjectSeat;
-  seatNumber?: number;
   showBadge?: boolean;
 }) {
   const { t } = useTranslation();

@@ -906,7 +906,7 @@ export default function Landing() {
   // Cleanup all ScrollTriggers on unmount
   useEffect(() => {
     return () => {
-      ScrollTrigger.getAll().forEach((st: any) => st.kill())
+      ScrollTrigger.getAll().forEach((st) => st.kill())
     }
   }, [])
 

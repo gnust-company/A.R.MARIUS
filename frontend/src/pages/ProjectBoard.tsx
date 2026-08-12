@@ -647,7 +647,7 @@ export default function ProjectBoard() {
         transition={{ delay: 0.1, duration: 0.3 }}
         className="flex items-center gap-1 mb-4 border-b border-vellum-dark"
       >
-        <TabLink active>{t('board.title')}</TabLink>
+        <TabLink>{t('board.title')}</TabLink>
         <TabLink to={wsHref(workspaceId, `/projects/${projectId}/roster`)}>{t('board.roster')}</TabLink>
 
         {/* Right-side actions: Add Task. (Leader chat moved to the floating bubble — LeaderChatWidget.) */}
@@ -877,15 +877,16 @@ export default function ProjectBoard() {
 
 // ─── Tab Link Component ─────────────────────────────────────────────────────
 
+// The active tab is the one without a `to` — there is nowhere to navigate to
+// from the page you are already on. An `active` prop would be a second source
+// of truth for the same fact, so there isn't one.
 function TabLink({
   children,
   to,
-  active: _active,
   disabled,
 }: {
   children: React.ReactNode;
   to?: string;
-  active?: boolean;
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
