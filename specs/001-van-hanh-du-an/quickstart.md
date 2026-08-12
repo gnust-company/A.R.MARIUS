@@ -30,9 +30,15 @@ cd mcp && uv run pytest
 # Giao diện — cũng chạy từng lệnh
 cd frontend
 npm run lint                                           # thoát 1 — đối chiếu số vấn đề với mốc nền
-npx tsc --noEmit
+npx tsc -b --force                                     # KHÔNG dùng `tsc --noEmit`, xem lưu ý bên dưới
 npm run build
 ```
+
+**Lưu ý về lệnh kiểm kiểu giao diện**: `npx tsc --noEmit` ở đây **không kiểm gì cả** và luôn thoát 0.
+`tsconfig.json` khai `"files": []` rồi chỉ trỏ sang `tsconfig.app.json` với `tsconfig.node.json`, mà chế độ
+`--noEmit` không đi theo các nhánh trỏ đó. Phải dùng chế độ dựng theo nhánh trỏ — `tsc -b` — thì mới thật
+sự kiểm; `--force` để không bỏ qua nhờ bộ nhớ đệm của lần dựng trước. Lệnh `npm run build` bên dưới cũng
+chạy `tsc -b`, nên nó mới là chỗ kiểm kiểu thật sự đang diễn ra.
 
 **Lưu ý về mốc nền**: hai lệnh `mypy armarius` và `npm run lint` **luôn thoát mã 1** vì dự án mang sẵn một
 lượng lỗi có từ trước, ghi ở bảng T002 trong [khao-sat-du-lieu.md](./khao-sat-du-lieu.md). Chúng **không phải
