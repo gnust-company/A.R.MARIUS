@@ -41,6 +41,7 @@ from armarius.domain.services.leader_chat_prompt import (
     build_leader_chat_prompt,
 )
 from armarius.infrastructure.events.topic_bus import TopicEventBus
+from armarius.shared.background import settle
 from armarius.shared.clock import utcnow
 from armarius.shared.logging import get_logger
 
@@ -244,7 +245,17 @@ class LeaderChatService:
             await self._do_run_turn(conversation_id)
         except Exception:  # pragma: no cover - defensive; must not strand THINKING
             logger.exception("leader-chat turn %s crashed", conversation_id)
-            await self._finish(conversation_id, text="", ok=False, session_params=None)
+            # Closing the turn is itself a write, and a write can be refused. Attempted once
+            # and lost, the exception would leave this background task for nobody, and the
+            # conversation would sit in *thinking* with nothing behind it — the API rejects
+            # every new message with 409, so the patron is locked out of their own chat with
+            # no error anywhere to explain it.
+            await settle(
+                f"close the stranded leader-chat turn {conversation_id}",
+                lambda: self._finish(
+                    conversation_id, text="", ok=False, session_params=None
+                ),
+            )
         finally:
             self._active.discard(conversation_id)
 

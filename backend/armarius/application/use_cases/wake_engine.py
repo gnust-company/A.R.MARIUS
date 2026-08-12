@@ -57,12 +57,16 @@ from armarius.domain.services.wake_prompt import (
     WakeContext,
     build_wake_prompt,
 )
+from armarius.shared.background import settle
 from armarius.shared.clock import utcnow
 from armarius.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
 _BLOCK_REASON_STATUSES = {TaskStatus.BLOCKED, TaskStatus.BACKLOG}
+#: How much of a crash's description is kept on the run. Enough to name what happened
+#: without letting one runaway message dominate the row.
+_MAX_ERROR_CHARS = 500
 
 
 class WakeEngine:
@@ -272,20 +276,56 @@ class WakeEngine:
     # -------------------------------------------------------------- run executor
 
     async def _execute_run(self, run_id: UUID, marius_id: UUID, task_id: UUID) -> None:
+        """Drive one run to its end, and hand the pair back whatever happens.
+
+        Nothing may leave this method. It is the body of a bare background task, so an
+        exception raised anywhere in here reaches no caller: the run stays open, the pair
+        stays held, every later cause folds into a turn nobody is driving, and the only
+        trace is a warning at interpreter shutdown. The cleanup below is itself a write,
+        and a write is exactly the thing that can be refused — so it is retried and its
+        failure is spoken, rather than left to become silence (see ``settle``).
+        """
+        cause: str | None = None
         try:
             await self._do_execute_run(run_id)
-        except Exception:  # pragma: no cover - defensive
+        except Exception as exc:
             logger.exception("run %s crashed", run_id)
+            cause = f"{type(exc).__name__}: {exc}"[:_MAX_ERROR_CHARS]
         finally:
             # Release the pair whatever happened — including a cancellation, which is what
             # a container being told to stop looks like from in here. Leaving either half
             # behind wedges this agent out of this task permanently.
-            await self._release_pair(run_id)
-        # Both of these may enqueue, so they run only after the pair is free.
-        await self._rewake_for_absorbed_causes(run_id, marius_id, task_id)
-        await self._maybe_self_wake(run_id)
+            await self._release_pair(run_id, cause=cause)
+        # Both of these may enqueue, so they run only after the pair is free. Losing either
+        # loses work with nobody the wiser: a cause that arrived mid-turn is never shown to
+        # anyone, or a turn that owed a continuation never gets one.
+        await settle(
+            f"re-wake run {run_id} for the causes it absorbed",
+            lambda: self._rewake_for_absorbed_causes(run_id, marius_id, task_id),
+        )
+        await settle(
+            f"decide the follow-up wake after run {run_id}",
+            lambda: self._maybe_self_wake(run_id),
+        )
 
-    async def _release_pair(self, run_id: UUID) -> None:
+    async def _release_pair(self, run_id: UUID, *, cause: str | None = None) -> None:
+        """Hand the (agent, task) pair back, retrying a lost write race.
+
+        Retried rather than attempted once because this write contends like any other:
+        wakes are fire-and-forget, so two runs ending at the same instant is ordinary, and
+        the loser is refused a lock it could have taken a moment later. Unretried, that
+        refusal used to escape into a background task nobody awaits — the pair stayed held
+        and no error surfaced anywhere. Reclaiming a pair whose release never landed at all
+        is the hung-run watchdog's job (FR-062), on its own much slower clock.
+
+        ``cause`` is what killed the turn, when something did.
+        """
+        await settle(
+            f"hand back the pair held by run {run_id}",
+            lambda: self._release_pair_once(run_id, cause),
+        )
+
+    async def _release_pair_once(self, run_id: UUID, cause: str | None) -> None:
         """Give the (agent, task) pair back: settle the wake, and the run if it never was.
 
         A run that is still *running* here never reached ``_finalise`` — the turn was
@@ -297,6 +337,9 @@ class WakeEngine:
         A process killed outright gets no chance to run this at all, and its run does stay
         *running*. Reclaiming those needs a watchdog that can tell "crashed" from "slow" —
         that is Story 6 (FR-068), not something to guess at here.
+
+        Safe to run twice: everything it decides it re-reads first, so a second pass over a
+        pair already handed back finds nothing left to do and announces nothing again.
         """
         async with self._uow() as uow:
             run = await uow.runs.get(run_id)
@@ -308,17 +351,22 @@ class WakeEngine:
                 w.status = WakeupStatus.DONE
                 w.updated_at = utcnow()
                 await uow.wakeups.update(w)
-            stopped = run.status in ACTIVE_RUN_STATUSES
-            if stopped:
-                run.status = RunStatus.STOPPED
-                run.error = run.error or "máy chủ dừng giữa lượt chạy"
+            unsettled = run.status in ACTIVE_RUN_STATUSES
+            if unsettled:
+                # *Failed* when the turn blew up, *stopped* when it was cut short. Both free
+                # the pair and both lead to the same continuation, but only one of them is
+                # true — and this row is the only place anyone can read afterwards which it
+                # was. Recording a crash as "the server stopped" is how a real fault ends up
+                # looking like an ordinary restart.
+                run.status = RunStatus.FAILED if cause else RunStatus.STOPPED
+                run.error = run.error or cause or "máy chủ dừng giữa lượt chạy"
                 run.finished_at = utcnow()
                 await uow.runs.update(run)
             await uow.commit()
             # Only when this call is what ended the run. The ordinary path already announced
             # its own terminal status in `_finalise`, and repeating it here would put a second
             # identical event on the channel for every single run.
-            if stopped:
+            if unsettled:
                 marius = await uow.mariuses.get(run.marius_id)
                 if marius is not None:
                     await self.announce_run(run, marius)
