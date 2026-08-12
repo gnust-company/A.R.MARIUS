@@ -437,7 +437,28 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
 - [X] T156 [P] Kiểm cách ly workspace cho mọi lối vào mới — truy cập chéo trả *không tìm thấy*, không phải *không có quyền* (FR-081, Hiến pháp I) — trong `backend/tests/test_agent_ws_guard.py`. **Rà ra lỗ thật**: toàn bộ `/v1/tasks/*` và `/v1/runs/*` tra theo mã đầu việc mà không hỏi workspace, nên một người chủ đọc và **sửa** được đầu việc của người khác, phần lớn lối đọc còn không đòi thẻ định danh. Vá bằng `backend/armarius/presentation/api/scoping.py` áp cho cả hai bộ định tuyến; kiểm ở `test_agent_ws_guard.py` (mười một lối `/agent/*` mới) và `backend/tests/test_patron_ws_guard.py` (mặt người chủ)
 - [X] T157 [P] Tra tầng nghiệp vụ xác nhận không có nhánh mã theo loại agent (FR-083, Hiến pháp III) trong `backend/armarius/domain/` và `backend/armarius/application/`. **Rà ra lỗ thật**: `use_cases/onboarding.py` chẻ nhánh theo bốn loại runtime để soạn phần hướng dẫn cài kỹ năng. Chuyển xuống sau hợp đồng — `MariusAdapter.skill_install_steps`, mỗi adapter tự khai; bài kiểm tĩnh canh không cho nhánh mọc lại
 - [X] T158 [P] Kiểm không có vòng hỏi lại nào ở giao diện — mọi cập nhật đến từ kênh sự kiện (FR-080, Hiến pháp IV) — trong `frontend/src/lib/sse.ts` và các trang liên quan. **Rà ra lỗ thật**: bảng dự án không hề nghe kênh dự án (nạp một lần lúc mở, thẻ việc đứng im cả phiên) mà lại hỏi lại bản ghi lượt rà mỗi 60 giây. Nối bảng vào `subscribeProjectEvents`, bỏ đồng hồ, và thêm sự kiện `nhip-dieu-phoi.quet` để khối nhịp có cái mà nghe
-- [ ] T159 Chạy toàn bộ lệnh kiểm tự động trong `specs/001-van-hanh-du-an/quickstart.md` mục "Lệnh kiểm tự động", gồm cả bộ kiểm của gói lớp trung gian
+- [X] T159 Chạy toàn bộ lệnh kiểm tự động trong `specs/001-van-hanh-du-an/quickstart.md` mục "Lệnh kiểm tự động", gồm cả bộ kiểm của gói lớp trung gian. **Tám lệnh, tất cả đạt** — đối chiếu với bảng mốc nền T002:
+
+  | Lệnh | Kết quả | Mốc nền T002 |
+  |---|---|---|
+  | `ruff check` | sạch | sạch |
+  | `mypy armarius` | **158** lỗi / 45 tệp | 165 — giảm 7, không tăng |
+  | `pytest -q` | **666 xanh**, 0 đỏ (6 phút 21 giây) | 274 xanh — thêm 392 bài |
+  | `pytest tests/test_migration_schema_parity.py` | 1 xanh | — |
+  | `cd mcp && uv run pytest` | **37 xanh** (9 giây) | — |
+  | `npm run lint` | **50** vấn đề (45 lỗi, 5 cảnh báo) | 50 — đúng bằng, không tăng |
+  | `npx tsc --noEmit` | sạch | — |
+  | `npm run build` | dựng xong (2 phút 13 giây) | — |
+
+  **Chạy mới lộ ra một lỗi trong chính quickstart, đã sửa cùng việc này**: hai chuỗi lệnh ở đó nối bằng `&&`,
+  mà `mypy armarius` và `npm run lint` **luôn thoát mã 1** do mốc nền có sẵn. Nghĩa là ai làm theo đúng chữ
+  thì chuỗi cắt ngang ở lệnh thứ hai: **bộ kiểm máy chủ, kiểm kiểu giao diện và dựng bản phát hành không bao
+  giờ chạy tới**, mà người chạy lại tưởng mình vừa kiểm đủ và đang nhìn một cái đỏ. Tách thành từng lệnh và
+  ghi rõ hai lệnh kia là cổng *không được tăng* chứ không phải cổng đỏ/xanh.
+
+  Gói lớp trung gian là chỗ tôi dự sẽ đỏ — nó có môi trường riêng, bộ kiểm riêng, dựng máy chủ thật rồi gửi
+  kế hoạch vào, và không đợt nào từ Đợt 1 đến Đợt 9 chạm tới nó trong khi lược đồ với mặt giao tiếp đổi rất
+  nhiều. **Dự sai**: 37 bài xanh hết.
 - [ ] T160 Chạy bảng "Kiểm chứng ràng buộc Hiến pháp" trong `specs/001-van-hanh-du-an/quickstart.md` — sáu nguyên tắc, sáu cách kiểm
 - [X] T161 [P] Bài kiểm hồi quy cho **14 yêu cầu đã có sẵn trong mã** mà không đợt nào chạm tới (FR-016, 017, 020, 023, 025, 026, 028, 032, 046, 051, 070, 073, 078, 082) trong `backend/tests/` — khảo sát kết luận chúng đang đúng, nhưng không bài kiểm nào canh để biết một đợt sau có làm hỏng không. **Sửa lại con số**: tra từng cái thì **bốn** trong mười bốn đã có bài kiểm ở chỗ khác — FR-025 và FR-032 ở `test_task_dependencies`, FR-026 ở `test_task_rules`, FR-046 ở `test_wake_prompt`. Mười cái còn lại nằm ở `backend/tests/test_spec_regressions.py`, mỗi bài mang tên đúng một yêu cầu
 - [ ] T162 Cập nhật trạng thái đặc tả từ *Nháp* sang *đã triển khai* trong `specs/001-van-hanh-du-an/spec.md` và ghi lại các điểm lệch còn tồn nếu có

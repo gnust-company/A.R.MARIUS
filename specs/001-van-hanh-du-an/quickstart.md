@@ -17,16 +17,28 @@ vào mọi ghế.
 ## Lệnh kiểm tự động
 
 ```bash
-# Phần máy chủ
-cd backend && uv run ruff check && uv run mypy armarius && uv run pytest -q
+# Phần máy chủ — chạy từng lệnh, KHÔNG nối bằng && (xem lưu ý về mốc nền bên dưới)
+cd backend
+uv run ruff check                                      # phải sạch
+uv run mypy armarius                                   # thoát 1 — đối chiếu số lỗi với mốc nền
+uv run pytest -q
 uv run pytest tests/test_migration_schema_parity.py    # lược đồ khớp bản di trú
 
 # Gói riêng của lớp trung gian — BẮT BUỘC khi đổi lược đồ đầu việc hoặc mặt giao tiếp
 cd mcp && uv run pytest
 
-# Giao diện
-cd frontend && npm run lint && npx tsc --noEmit && npm run build
+# Giao diện — cũng chạy từng lệnh
+cd frontend
+npm run lint                                           # thoát 1 — đối chiếu số vấn đề với mốc nền
+npx tsc --noEmit
+npm run build
 ```
+
+**Lưu ý về mốc nền**: hai lệnh `mypy armarius` và `npm run lint` **luôn thoát mã 1** vì dự án mang sẵn một
+lượng lỗi có từ trước, ghi ở bảng T002 trong [khao-sat-du-lieu.md](./khao-sat-du-lieu.md). Chúng **không phải
+cổng đỏ/xanh** mà là cổng *không được tăng*: so số đo với mốc nền, tăng thì mới là hỏng. Vì vậy đừng nối các
+lệnh bằng `&&` — nối thì hai lệnh này cắt ngang, và bộ kiểm máy chủ, kiểm kiểu giao diện, dựng bản phát hành
+sẽ **không bao giờ chạy tới** trong khi người chạy tưởng đã kiểm đủ.
 
 **Lưu ý về kiểm thử hiện có**: siết bảng chuyển trạng thái sẽ làm đỏ vài bài kiểm đang dựa vào đường
 *đang làm → xong*. Đó là **đỏ đúng** — sửa bài kiểm theo luật mới, không nới luật cho bài kiểm xanh.
