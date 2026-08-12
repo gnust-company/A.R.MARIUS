@@ -307,12 +307,21 @@ export interface OnboardingSessionVM {
 }
 
 export interface SkillFile {
-  id: string
-  name: string
-  path?: string
-  language?: string
-  description?: string
+  /**
+   * Path inside the skill bundle — the file's identity. The API keys files by it
+   * (`files: Record<path, content>`), and the editor adds, selects and deletes by
+   * it, so it is the one field that is always present.
+   */
+  path: string
   content?: string
+  language?: string
+  /**
+   * Set when the file came from the API; a file the editor has just added has
+   * neither until it is saved and mapped back. Nothing reads them today.
+   */
+  id?: string
+  name?: string
+  description?: string
   code?: string
   workspaceId?: string
 }
@@ -328,7 +337,8 @@ export interface Skill {
   type?: 'builtin' | 'github' | 'custom'
   /** Present for GitHub-imported skills; absent for manual/built-in ones. */
   sourceUrl?: string
-  files?: SkillFile[]
+  /** Never absent — `skillToVM` always builds it, empty at worst. */
+  files: SkillFile[]
 }
 
 export interface Workspace {
@@ -353,8 +363,12 @@ export interface Project {
   // array is loaded. Detail hydration (`seats`) is authoritative when present.
   seatsTotal?: number
   seatsFilled?: number
-  /** Five project phases (spec 001): setup → planning → operating ⇄ maintaining → closed. */
-  status?: ProjectPhase
+  /**
+   * Five project phases (spec 001): setup → planning → operating ⇄ maintaining → closed.
+   * Never absent — `projectPhaseFromDTO` falls back to `setup` for anything it
+   * cannot recognise, so every mapped project carries a phase.
+   */
+  status: ProjectPhase
   definitionOfDone?: string
   objective?: string
   githubUrl?: string

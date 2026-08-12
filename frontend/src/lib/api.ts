@@ -353,6 +353,8 @@ export interface RunDTO {
   marius_id?: string | null
   adapter_type: string
   wake_source: string
+  /** Why the run was woken — rendered under the wake label on the agent screen. */
+  trigger_detail?: string | null
   status: string
   external_run_id?: string | null
   error?: string | null

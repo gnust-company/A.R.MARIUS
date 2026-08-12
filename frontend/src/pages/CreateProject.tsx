@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { wsHref, suggestProjectKey } from '@/lib/utils';
@@ -231,24 +230,18 @@ export default function CreateProject() {
     setIsSubmitting(true);
 
     // Build seats from form data
-    const seats = [];
+    const seats: NonNullable<Parameters<typeof createProject>[0]['seats']> = [];
 
-    // Leader seat
-    if (formData.leaderId) {
-      seats.push({
-        roleKey: 'leader',
-        roleLabel: 'Project Leader',
-        mariusId: formData.leaderId,
-        skillsRequired: [] as string[],
-      });
-    } else {
-      seats.push({
-        roleKey: 'leader',
-        roleLabel: 'Project Leader',
-        mariusId: null,
-        skillsRequired: [] as string[],
-      });
-    }
+    // Leader seat. Its description stays empty on purpose: the leader's brief
+    // travels as `leaderDescription`, and this seat is filtered out before the
+    // worker roles — the ones the API requires a description for — are built.
+    seats.push({
+      roleKey: 'leader',
+      roleLabel: 'Project Leader',
+      mariusId: formData.leaderId || null,
+      skillsRequired: [],
+      description: '',
+    });
 
     // Worker role seats
     formData.workerRoles.forEach((role) => {

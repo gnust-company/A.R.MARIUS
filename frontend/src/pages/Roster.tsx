@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';

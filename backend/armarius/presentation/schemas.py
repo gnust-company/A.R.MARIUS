@@ -565,6 +565,9 @@ class RunOut(_Out):
     marius_id: UUID | None = None
     adapter_type: str
     wake_source: str
+    # Why this run was woken. The agent screen renders it under the wake label;
+    # leaving it off the response is what made that line permanently blank.
+    trigger_detail: str | None = None
     status: str
     external_run_id: str | None = None
     error: str | None = None
