@@ -61,5 +61,11 @@ plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
+# One event loop for the whole run, not one per test. The app keeps a single engine for
+# the process; a per-test loop means the connections that engine hands out outlive the
+# loop that opened them, and a connection released after its loop is gone can no longer
+# finish its rollback — it sits there holding SQLite's write lock while looking idle, and
+# the next test is told the database is locked. Sharing the loop removes the mismatch.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
