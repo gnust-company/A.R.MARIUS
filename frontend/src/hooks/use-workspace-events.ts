@@ -94,16 +94,6 @@ export function useWorkspaceEvents(workspaceId: string | null | undefined): void
             ),
           }))
         }
-        // Surface workspace events so any subscriber (e.g. a future toast/log) sees them —
-        // but NOT the run lifecycle. Everything else on this channel moves at human pace:
-        // an agent was invited, a skill installed, a workspace agent designated. Run traffic
-        // moves at machine pace — three events per run, every agent in the workspace, with
-        // no click behind it — and `events` is an append-only array nothing reads. Feeding
-        // it from here is the exact shortcut the doc comment above warns against; the
-        // listeners below are the path built for this traffic.
-        if (!event.type.startsWith('luot-chay.')) {
-          useAppStore.getState().emitEvent({ type: event.type, payload })
-        }
         for (const listener of listeners) listener({ type: event.type, payload })
       },
       (err) => {

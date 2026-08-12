@@ -377,18 +377,6 @@ export interface ChatMessage {
   timestamp: string
 }
 
-export interface StoreEvent {
-  id: string
-  type: string
-  payload: Record<string, unknown>
-  timestamp: string
-}
-
-/** How many recent workspace events to keep. See `emitEvent`. */
-const EVENT_LOG_CAP = 200
-
-/** Distinguishes events emitted within the same millisecond — `Date.now()` alone repeats. */
-let eventSeq = 0
 
 // ── Store interface ─────────────────────────────────
 
@@ -402,7 +390,6 @@ interface AppStoreState {
   skills: Skill[]
   messages: ChatMessage[]
   comments: TaskComment[]
-  events: StoreEvent[]
   traceEvents: TraceEvent[]
   activeWorkspaceId: string | null
   activeOnboarding: OnboardingSessionVM | null
@@ -432,7 +419,6 @@ interface AppStoreState {
   designateWorkspaceAgent: (mariusId: string) => Promise<void>
   /** Internal: stamp WA flags + the workspace pointer after a designation (#32). */
   applyDesignation: (workspaceId: string, mariusId: string) => void
-  emitEvent: (event: Omit<StoreEvent, 'id' | 'timestamp'>) => void
   setCurrentUser: (user: User | null) => void
   logout: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
@@ -503,7 +489,6 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   skills: [],
   messages: [],
   comments: [],
-  events: [],
   traceEvents: [],
   activeWorkspaceId: loadActiveWorkspace(),
   activeOnboarding: null,
@@ -583,21 +568,6 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       ''
     await api.designateWorkspaceAgent(workspaceId, mariusId)
     get().applyDesignation(workspaceId, mariusId)
-    get().emitEvent({ type: 'workspace_agent.designated', payload: { mariusId } })
-  },
-
-  emitEvent: (event) => {
-    const state = get()
-    const newEvent: StoreEvent = {
-      ...event,
-      id: `evt_${Date.now()}_${(eventSeq += 1)}`,
-      timestamp: new Date().toISOString(),
-    }
-    // Bounded. Nothing reads this array today, so an unbounded one grows for as long as the
-    // tab is open and costs a full copy per push. The cap is a floor under any future
-    // channel that turns out to be chattier than the one it replaced — the caller that
-    // needs every event should subscribe, not mine a log.
-    set({ events: [...state.events, newEvent].slice(-EVENT_LOG_CAP) })
   },
 
   setCurrentUser: (user) => set({ currentUser: user }),
@@ -841,9 +811,6 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     // The backend grants the seat (system-only) and recomputes setup→active.
     await api.grantSeat(projectId, { marius_id: mariusId, role_key: role })
     await get().hydrateProject(projectId)
-    if (get().projects.find((p) => p.id === projectId)?.status === 'operating') {
-      get().emitEvent({ type: 'project.active', payload: { projectId } })
-    }
   },
 
   createTask: async (task) => {

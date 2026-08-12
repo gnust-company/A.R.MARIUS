@@ -417,8 +417,8 @@ export function traceEventFromVM(
 /**
  * Parse a workspace SSE `data:` JSON into a synthetic store event the UI can react to.
  *
- * The backend publishes `marius.status_changed` with `{marius_id, status}`. We surface
- * this as a `StoreEvent` the workspace-events hook reconciles into the store.
+ * The backend publishes `marius.status_changed` with `{marius_id, status}`; the
+ * workspace-events hook reconciles it into the store and hands it to any listener.
  */
 export function workspaceEventFromVM(eventData: unknown): { type: string; payload: Record<string, unknown> } | null {
   if (!eventData || typeof eventData !== 'object') return null
