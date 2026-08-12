@@ -31,9 +31,14 @@ async def settle(
     the same instant both go to write, and the loser is refused a lock it could have had a
     moment later. Each attempt opens its own transaction, which is what makes the retry
     sound rather than hopeful: it reads a fresh snapshot instead of trying to finish one
-    that has already been overtaken. The action must therefore be safe to run twice —
-    every caller re-reads and re-decides inside the attempt, so a second pass over
-    already-settled state does nothing.
+    that has already been overtaken.
+
+    The action must therefore be safe to run twice, and that is a real constraint on what
+    may be passed here, not a hope about it. Two things make it true: the action re-reads
+    and re-decides inside each attempt, so a second pass over already-settled state does
+    nothing; and nothing it does *after* its commit is allowed to throw. An action that
+    writes, commits, and then fails on the way out has half-happened — running it again
+    cannot undo or complete that half, and the retry only piles more on top.
 
     **Reporting**, because giving up quietly is the very failure this guards against.
     What could not be settled is said once, at ERROR, naming the thing left undone.

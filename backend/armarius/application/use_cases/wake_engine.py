@@ -69,6 +69,17 @@ _BLOCK_REASON_STATUSES = {TaskStatus.BLOCKED, TaskStatus.BACKLOG}
 _MAX_ERROR_CHARS = 500
 
 
+def _describe(exc: BaseException) -> str:
+    """Name what killed a turn in one line, without the driver's own paperwork.
+
+    A database error stringifies into several lines: the message, then the statement that
+    failed, then a documentation link. Only the first says anything a reader of the run
+    needs — and the rest would put query text and column names on a screen the patron sees.
+    """
+    lines = str(exc).strip().splitlines()
+    return f"{type(exc).__name__}: {lines[0].strip() if lines else ''}"[:_MAX_ERROR_CHARS]
+
+
 class WakeEngine:
     def __init__(
         self,
@@ -290,7 +301,7 @@ class WakeEngine:
             await self._do_execute_run(run_id)
         except Exception as exc:
             logger.exception("run %s crashed", run_id)
-            cause = f"{type(exc).__name__}: {exc}"[:_MAX_ERROR_CHARS]
+            cause = _describe(exc)
         finally:
             # Release the pair whatever happened — including a cancellation, which is what
             # a container being told to stop looks like from in here. Leaving either half
@@ -298,7 +309,9 @@ class WakeEngine:
             await self._release_pair(run_id, cause=cause)
         # Both of these may enqueue, so they run only after the pair is free. Losing either
         # loses work with nobody the wiser: a cause that arrived mid-turn is never shown to
-        # anyone, or a turn that owed a continuation never gets one.
+        # anyone, or a turn that owed a continuation never gets one. Repeating an `enqueue`
+        # is safe because nothing it does after its commit can throw — see `announce_run`,
+        # which is what makes that true rather than merely hoped for.
         await settle(
             f"re-wake run {run_id} for the causes it absorbed",
             lambda: self._rewake_for_absorbed_causes(run_id, marius_id, task_id),
@@ -625,8 +638,25 @@ class WakeEngine:
             await self._task_trace.publish(task_id, event_type, payload)
 
     async def announce_run(self, run: Run, marius: Marius) -> None:
-        """Announce a run's state on the workspace channel — see ``announce_run_state``."""
-        await announce_run_state(self._workspace_trace, run, marius)
+        """Announce a run's state on the workspace channel — see ``announce_run_state``.
+
+        Best effort, deliberately: telling a screen must never break the thing it is
+        telling about. Every one of these calls sits *after* the commit it reports, and in
+        ``_open_run`` it sits before the background task that will actually drive the run —
+        so a channel that threw used to leave a run committed as *queued* with nobody
+        executing it, the pair held until the hung-run watchdog reclaimed it twelve minutes
+        later. It also broke the one property retrying depends on: an ``enqueue`` that
+        wrote its rows and then raised cannot be made right by calling it again, because
+        the second call folds into the run the first one stranded.
+
+        The hung-run reaper already works to this rule ("telling a screen matters less
+        than saving the task"). What it costs is one run showing its previous status until
+        the page is reloaded; what raising costs is work that stops.
+        """
+        try:
+            await announce_run_state(self._workspace_trace, run, marius)
+        except Exception:
+            logger.exception("could not announce run %s on the workspace channel", run.id)
 
     async def _maybe_self_wake(self, run_id: UUID) -> None:
         async with self._uow() as uow:
