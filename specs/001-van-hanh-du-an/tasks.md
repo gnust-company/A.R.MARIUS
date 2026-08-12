@@ -459,6 +459,25 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
 
   **Hướng còn lại chưa thử**: đừng gộp bể chứa nữa (mỗi thao tác một mối nối, đóng ngay), hoặc buộc cả bộ kiểm dùng **chung một vòng lặp sự kiện** thay vì mỗi bài một cái. Cách hai đánh thẳng vào gốc rễ nhưng động tới cấu hình của cả bộ kiểm. **Nên làm trước T159**, vì T159 chạy toàn bộ bộ kiểm và sẽ vấp đúng chỗ này
 
+- [ ] T169 **Chấm sống/chết của agent trên màn hình không bao giờ tự đổi** (FR-080a, Hiến pháp IV). Giá trị đang hiện là ảnh chụp lúc người chủ *bước vào* workspace: danh sách agent chỉ được đọc lại khi vào workspace, khi mở trang ghế của một dự án, hoặc khi chọn workspace từ trang danh sách. Ngồi trong một workspace đi qua lại giữa các trang thì **không đọc lại lần nào**. Agent chết lúc 9 giờ, màn mở từ 8 giờ, thì 11 giờ chấm vẫn xanh. **Có từ trước T167**, không phải lỗi mới.
+
+  **Hai chiều hỏng vì hai lý do khác nhau, phải vá cả hai** — vá một chiều thì chấm vẫn sai một nửa số lần:
+
+  1. **Agent sống lại**: máy chủ *có* đẩy tin (`marius.online`), nhưng tin chỉ mang mã agent, không mang trạng thái — đúng nguyên tắc 1 của `contracts/su-kien-day.md` (*sự kiện là tín hiệu, không phải nguồn sự thật*). Bên hỏng là trình duyệt: `use-workspace-events.ts` moi trạng thái ra khỏi tin rồi vá tại chỗ, tức là **dựng trạng thái từ dòng sự kiện** — đúng thứ nguyên tắc đó cấm. Tin không mang trạng thái nên bị điều kiện chặn bỏ qua, bắn ra rồi rơi vào hư không.
+  2. **Agent im hẳn**: không có tin nào cả. `LivenessEngine._announce_offline` chỉ gọi phần cứu đầu việc đang rơi dở; **không ai nối nó với màn hình**. Đây là thiếu hẳn, không phải sai thiết kế.
+
+  **Cách vá phải theo hợp đồng, không phải theo đường dễ**: KHÔNG nhét trạng thái vào tin (đó là hợp thức hoá đúng cái sai, và mở đường cho mọi tin sau). Trình duyệt **nghe tin rồi đọc lại** agent — y hệt cách T167 làm với danh sách lượt chạy. Kéo theo: gỡ luôn **cả ba** khối vá-tại-chỗ trong `use-workspace-events.ts` (trạng thái mời/xoá, huy hiệu đẩy kỹ năng, huy hiệu agent xác nhận cài xong) chứ không chừa khối nào — chừa lại là lặp đúng lỗi cũ: viết đúng trên đường đang nhìn rồi bỏ các đường khác. Phía máy chủ thêm tin lúc agent tắt, đi qua cổng chung `ports/workspace_trace.py` mà T167 đã dựng.
+
+  **Được thêm**: đọc lại thì mất tin cũ cũng không sao, miễn còn nhận được **một** tin bất kỳ — nên mối lo 256 chỗ giữ tin để gửi bù sau khi đứt mạng (người review PR #187 nêu, không chặn) tự tan, không cần nới rộng cũng không cần tách riêng
+
+- [X] T170 **Một agent bị bỏ quên làm chết đồng hồ sống/chết của toàn hệ.** Tìm ra lúc kiểm chứng T169 trên dịch vụ thật: agent để im hơn bảy phút mà `liveness`, `probe_attempts`, `updated_at` **không nhúc nhích một lần nào**. Gọi tay vòng quét thì nó ném `OverflowError` ở `retry_interval` trong `backend/armarius/domain/services/liveness_fsm.py`.
+
+  **Gốc rễ**: quãng chờ dò lại nhân đôi mỗi vòng (`retry_factor ** backoff_step`) rồi mới bị chặn trần. Phép nhân đôi tự nó tràn số thực khi bậc vượt khoảng 1024 — chú thích của chính hàm đó nói *"chặn trần TRƯỚC khi dựng khoảng thời gian nên bậc lớn không thể tràn"*, nhưng nó chỉ dời chỗ tràn chứ không bỏ được. Cơ sở dữ liệu thật có **ba dòng đúng bậc 1024**. `backoff_step` là một cột lưu trong cơ sở dữ liệu, không có gì chặn nó lớn lên.
+
+  **Vì sao im lặng**: vòng quét chạy tuần tự qua từng workspace, nên **một** agent hỏng chặn **mọi** agent ở **mọi** workspace. Ngoại lệ bị vòng lặp nuốt và chỉ ghi một dòng nhật ký, mà nhật ký của vùng chứa lại đang bị giữ trong bộ đệm — nhìn từ ngoài giống hệt một hệ đang yên ổn. Chấm sống/chết của cả hệ đứng im, không ai biết.
+
+  **Đã vá**: chặn trần chính **số mũ**, không phải chỉ chặn kết quả — quá điểm mà quãng chờ đã vượt trần thì mọi bậc lớn hơn đều cho cùng một đáp số. Đường cong giữ nguyên (1, 2, 4, 8, 16 phút rồi trần 30 phút). Bài kiểm hồi quy ở `backend/tests/test_liveness_fsm.py` bắn thẳng bậc 1024 và 10⁶. Kiểm trên dịch vụ thật: trước khi vá vòng quét ném lỗi, sau khi vá nó quét sạch **130 workspace** không ném
+
 ---
 
 ## Phụ thuộc và thứ tự thực thi

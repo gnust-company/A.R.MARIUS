@@ -37,6 +37,16 @@ Hiến pháp IV cấm, và đúng thứ nó đã làm trước Đợt 9.
 | Sự kiện | Khi nào | Mang theo |
 |---|---|---|
 | `luot-chay.doi-trang-thai` | Một lượt chạy đổi trạng thái: mở, bắt đầu, kết thúc, bị dừng giữa chừng, bị tuyên treo | Mã lượt chạy, mã agent, mã đầu việc, mã dự án, trạng thái mới |
+| `marius.offline` | Một agent tụt qua ngưỡng im lặng thành đã tắt | Mã agent |
+
+`marius.offline` là cặp còn thiếu của `marius.online` đã có sẵn. Chiều sống lại vẫn báo, chiều
+tắt hẳn thì không — nên chấm sống/chết trên màn hình chỉ đi được một chiều, và chiều nó không đi
+được lại đúng là chiều người dùng cần biết. Phần xử lý agent tắt vốn được viết để **cứu đầu việc
+đang rơi dở**; báo cho người đang ngồi nhìn chưa bao giờ nằm trong phạm vi của nó.
+
+Cả hai tin đều **cố tình không mang trạng thái** — chúng là tín hiệu, theo nguyên tắc 1 dưới đây.
+Người nghe đọc lại agent chứ không đọc nội dung tin. Nhét trạng thái vào cho tiện là biến dòng sự
+kiện thành nguồn sự thật, và khi tin rơi khỏi cửa sổ gửi bù thì màn hình sai mà không ai biết.
 
 Đây là kênh duy nhất trả lời được câu **"agent này có gì mới không?"**. Hai kênh cũ đều đòi
 người nghe biết trước mình cần nghe cái gì: kênh lượt chạy phải có mã lượt chạy, kênh đầu việc

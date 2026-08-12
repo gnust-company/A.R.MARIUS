@@ -691,6 +691,11 @@ thứ tự gắn trên từng chữ ký.
   mọi lần giao việc và mọi lần đánh thức, theo dòng thời gian tra cứu được.
 - **FR-080**: Trạng thái và sự kiện PHẢI được đẩy về giao diện; giao diện KHÔNG ĐƯỢC hỏi vòng để biết trạng
   thái *(Hiến pháp IV)*.
+- **FR-080a**: Mọi thay đổi trạng thái mà giao diện đang hiển thị PHẢI có một tin đẩy tương ứng, và giao
+  diện nhận tin rồi **đọc lại** dữ liệu chứ KHÔNG dựng trạng thái từ nội dung tin. Không được để một giá
+  trị trên màn hình chỉ đúng lại sau khi tải lại trang. FR-080 mới cấm *hỏi vòng*; chỗ hụt thứ ba là
+  **không hỏi mà cũng không được báo** — nhìn giống "đang yên" y hệt như hỏi vòng bị treo
+  *(Hiến pháp IV, hợp đồng `contracts/su-kien-day.md` nguyên tắc 1)*.
 - **FR-081**: Mọi truy vấn dữ liệu của tính năng này PHẢI giới hạn trong workspace của người gọi; truy cập
   chéo workspace PHẢI trả về "không tìm thấy" *(Hiến pháp I)*.
 - **FR-082**: Ngữ cảnh của agent (vai, đồng đội, đánh thức, lời nhắc vai) PHẢI lấy theo vai trong **dự án**
