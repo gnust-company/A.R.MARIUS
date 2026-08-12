@@ -487,7 +487,7 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   không chạy là mất trắng phần ghi nhớ ở màn phòng cộng tác để đổi lấy một con số đẹp. Cách sửa đúng là bật
   bộ biên dịch lên — đó là T173, và nó đổi bản dựng nên phải có lượt nghiệm thu riêng.
 
-- [ ] T172 Đưa **37 trong 50** vấn đề rà mã giao diện về 0. Ba phần, xếp theo rủi ro tăng dần:
+- [X] T172 Đưa **37 trong 50** vấn đề rà mã giao diện về 0. Ba phần, xếp theo rủi ro tăng dần:
 
   **(1) Không đụng logic — 12 cái.** Ba biến thừa (`pages/ProjectBoard.tsx`, `pages/Roster.tsx`,
   `pages/Workspaces.tsx`), một kiểu bất kỳ (`pages/Landing.tsx:909`), một dòng tắt luật đã thừa
@@ -510,12 +510,34 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   `:368` thiếu `applyExpanded`) — **đây là chỗ sửa chiều lint thì hỏng nặng hơn để nguyên**: nhét `store` vào
   cho xanh thì hiệu ứng chạy lại mỗi lần kho đổi, mà chính nó ghi vào kho, thành vòng gọi lặp.
 
-  **Nghiệm thu**: `npm run lint` còn **13** (đúng phần T173), `npx tsc -b --force` sạch, `npm run build` xong,
-  và **dựng lại vùng chứa giao diện rồi bấm thật** năm màn bị đụng nhiều nhất — soạn kỹ năng, chi tiết agent,
-  danh sách kỹ năng, phòng cộng tác, bảng ghế. "Lint xanh" không tính là xong.
+  **Kết quả đo được**: rà mã **50 → 15**, `tsc -b --force` **sạch**, `npm run build` xong, bộ kiểm máy chủ
+  **666 xanh** (phần (2) có đụng lược đồ trả về). Số còn lại là **15 chứ không phải 13**: sửa đúng danh sách
+  phụ thuộc ở phòng cộng tác làm bộ biên dịch React có thêm hai chỗ không giữ được tối ưu. Không phải hồi
+  quy — bộ biên dịch đó không nằm trong bản dựng — nhưng T173 nay là **15 cái**, ghi ra để không ai tưởng số
+  tự tăng.
 
-- [ ] T173 Bật **bộ biên dịch React** trong `frontend/vite.config.ts` + `package.json`, rồi sửa **13 cái**
-  `react-hooks/preserve-manual-memoization` còn lại ở `pages/CollaborationRoom.tsx` (dòng 291→439) cho tử tế.
+  **Nghiệm thu trên dịch vụ thật** (dựng lại vùng chứa giao diện và máy chủ, lái trình duyệt thật): đăng
+  nhập → tạo workspace → tạo kỹ năng → trình soạn **tự mở sẵn tệp ngay khung đầu** (đúng thứ phần (3) đổi)
+  → sửa nội dung, nút lưu bật → danh bạ và chi tiết agent → **tạo dự án thật qua đủ ba bước** (khối ghế ở
+  phần (2)) → bảng dự án → màn ghế hiện thẻ ghế trưởng dự án đã cấp → hộp thư, tài khoản → duyệt bối cảnh và
+  kế hoạch, tạo đầu việc → **phòng cộng tác**: đầu việc chỉ được gọi **một lần**, thêm **0 lần** trong 8 giây
+  đứng yên (đây là bằng chứng cho chỗ dễ hỏng nhất — nhét `store` vào sẽ thành vòng gọi lặp) → gửi bình luận
+  thật, lên luồng → trang giới thiệu cuộn hết rồi rời trang để chạy phần dọn hiệu ứng cuộn.
+  **Không một lỗi nào ở bảng điều khiển trình duyệt** trên toàn bộ đường đi.
+
+  **Ba lỗ khác lộ ra dọc đường, KHÔNG sửa trong việc này** vì chúng là hành vi chứ không phải kiểu:
+  1. `updateSkill` trong `frontend/src/store/appStore.ts` **chỉ ghi vào bộ nhớ tạm**, không gọi máy chủ —
+     bấm *Lưu* trong trình soạn kỹ năng rồi tải lại trang là mất sạch.
+  2. `createSkill` **bỏ qua hoàn toàn** danh sách tệp truyền vào; `frontend/src/pages/Skills.tsx` vẫn dựng
+     sẵn một `SKILL.md` rồi truyền đi vô ích.
+  3. Bộ ánh xạ gộp *treo* → *ngoại tuyến* và *đang dò* → *rảnh*, nên hai trạng thái này **không bao giờ hiện
+     lên giao diện** dù bảng màu và biểu tượng đã có sẵn cho chúng.
+
+- [ ] T173 Bật **bộ biên dịch React** trong `frontend/vite.config.ts` + `package.json`, rồi sửa **15 cái**
+  `react-hooks/preserve-manual-memoization` còn lại ở `pages/CollaborationRoom.tsx` cho tử tế. (13 lúc mở
+  việc, thành 15 sau T172 — sửa danh sách phụ thuộc cho đúng thì bộ biên dịch có thêm hai chỗ phải bỏ cuộc.)
+  Gốc rễ nằm ở dòng `const store = useAppStore()`: nó đăng ký **cả kho** nên đối tượng đổi danh tính sau mọi
+  thay đổi, và đó là thứ làm bộ biên dịch không giữ nổi lớp ghi nhớ nào trong màn này.
   Tách khỏi T172 vì nó **đổi bản dựng** và đổi cách vẽ lại của toàn giao diện, không phải một việc dọn lint.
   Xong thì mốc nền rà mã giao diện đổi từ *"không được tăng 50"* sang **"phải bằng 0"**, và mốc đó ghi lại vào
   bảng T002 ở `khao-sat-du-lieu.md`. **Nghiệm thu**: dựng lại vùng chứa giao diện, đi hết sáu kịch bản trong
