@@ -4,7 +4,7 @@
 
 **Ngày tạo**: 2026-07-30
 
-**Trạng thái**: Nháp
+**Trạng thái**: Đã triển khai (đóng 2026-08-13, T162)
 
 **Đầu vào**: Yêu cầu của người chủ: "tôi muốn align toàn bộ prj với feature dự án theo như trong
 `THIET-KE-VAN-HANH-DU-AN.md`"
@@ -831,3 +831,17 @@ thứ tự gắn trên từng chữ ký.
 - Một thợ có thể giữ nhiều đầu việc nhưng chỉ chạy **một lượt** tại một thời điểm.
 - "Trực tuyến" của một agent do nền tảng tự xác định, không dựa vào agent tự khai.
 - Lịch sử của dự án đã đóng giữ vĩnh viễn ở dạng chỉ đọc, không tự dọn.
+
+---
+
+## Đóng đợt (2026-08-13, T162)
+
+Đặc tả chuyển từ *Nháp* sang *Đã triển khai*. Mọi yêu cầu trong tài liệu này đã có mã chạy và có bài kiểm
+canh. Cổng cuối đóng sạch: máy chủ 702 bài kiểm xanh, rà mã giao diện thoát 0, kiểm kiểu sạch — đo ở T173,
+và không một dòng mã nào đổi kể từ lần đo đó tới lúc đóng.
+
+**Điểm lệch còn tồn**: không có. Hai phần sau là **quyết định phạm vi** đã ghi trong thân đặc tả, không
+phải nợ:
+
+- Phần nhiều người chủ cho một dự án hoãn sang tính năng sau (mục Làm rõ phiên 2026-08-03).
+- Cơ chế mời người vào vùng làm việc là tính năng sau, không nằm trong đặc tả này.
