@@ -25,6 +25,10 @@ Hai kênh đã chạy: theo **lượt chạy** và theo **đầu việc**. Cần
 | `task.status_changed` | Mọi lần đổi trạng thái | Mã đầu việc, trước, sau, lý do |
 | `task.stalled` | Nổi hoặc gỡ cờ đình trệ | Mã đầu việc, lý do mất động cơ |
 | `task.unblocked` | Một đầu việc xong, mở khoá việc phụ thuộc | Danh sách mã vừa mở khoá |
+| `task.checklist_changed` | Bộ tiêu chí công nhận được đặt lại | Mã đầu việc, số mục |
+| `task.comment_added` | Một lời bình được ghi vào đầu việc | Mã đầu việc |
+| `task.artifact_added` | Một thành phẩm được nộp | Mã đầu việc, mã thành phẩm |
+| `task.dependencies_changed` | Thêm hoặc gỡ một ràng buộc phụ thuộc | Mã đầu việc |
 | `signature.recorded` | Một chữ ký được ghi | Loại người ký, kết quả, có phải ký tự động không |
 | `orchestration.swept` | Xong **mỗi** lượt rà của nhịp điều phối, kể cả lượt không thấy gì | Mốc rà, số điểm treo, có gọi Trưởng dự án không |
 
@@ -33,6 +37,14 @@ trạng thái** — nó xuất hiện. Nên bảng dự án đang mở đứng i
 thì nhìn giống hệt một dự án đang yên. Cái mà người xem cần biết là **thứ được vẽ trên màn hình vừa đổi**,
 không phải *"trạng thái vừa đổi"* — hai câu đó chỉ trùng nhau cho tới lần đầu có thứ được vẽ mà không đi
 qua một lần đổi trạng thái nào.
+
+Bốn tin cuối bảng thêm ở T177, và chúng đi kèm một điều bảng này chưa từng nói: **có tin đẩy
+chưa đủ để một con số trên màn hình đúng**. Ba trong bốn thứ đó — bộ tiêu chí, lời bình, thành phẩm —
+không nằm trên dòng dữ liệu của đầu việc, mà bảng dự án thì chỉ đọc dòng dữ liệu đầu việc. Nghĩa là chúng
+không hề được nạp lên bảng, nên **chưa bao giờ hiện**, tải lại trang cũng không. Nguyên tắc 1 dưới đây nói
+người nghe *đọc lại* — nhưng đọc lại chỉ cứu được một giá trị mà màn hình vốn có một đường để lấy. Không có
+đường ấy thì tin đẩy bắn vào chỗ trống. Vậy nên T177 phải làm hai nửa: một lối đọc chở các con số cho cả
+bảng, rồi mới đến bốn tin này.
 
 Lượt rà không thấy gì **vẫn phải bắn**. Khối "lượt rà gần nhất" trên bảng dự án sinh ra để phân biệt *dự án
 đang yên* với *vòng điều phối đã chết*, mà hai thứ đó nhìn giống hệt nhau nếu chỉ có lượt rà thấy-việc mới
