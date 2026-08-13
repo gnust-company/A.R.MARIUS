@@ -91,7 +91,15 @@ Trưởng dự án được gọi dậy để giao tiếp.
 
 Một dự án, **một người chủ** (phạm vi hiện tại — xem Làm rõ phiên 2026-08-03), một thợ do người đó cấp ghế.
 
-1. Thợ nộp bài; Trưởng dự án tán thành.
+0. Trước khi thợ bắt tay, đặt cho đầu việc một bộ tiêu chí công nhận hai dòng. Thợ nộp bài, rồi cho Trưởng dự
+   án **ký ngay khi chưa chấm dòng nào** (FR-019a).
+   → Bị từ chối, và lời từ chối **gọi tên** hai tiêu chí còn thiếu. Đọc lại danh sách chữ ký: phải **rỗng** —
+   từ chối trước khi ghi, không phải ghi rồi rút.
+   → Chấm *đạt* mà không chỉ ra thành phẩm → từ chối. Chỉ sang thành phẩm của đầu việc khác → *không tìm thấy*.
+   → Cho **thợ** tự chấm việc mình làm → *không tìm thấy*; chấm là việc của ghế Trưởng dự án.
+1. Chấm đạt hết tiêu chí, rồi Trưởng dự án tán thành.
+   → Số `đạt/tổng` trên thẻ ở bảng dự án và trên thanh trong phòng cộng tác tự đổi sau mỗi lần chấm, **không
+   tải lại trang** (FR-080a).
    → Đầu việc **chưa** đóng. Mục chờ công nhận rơi vào hộp thư người chủ.
    → Kiểm ngay tại đây: mục đó được định tuyến bằng quan hệ **ai đã cấp thợ vào ghế** đọc từ dữ liệu — ghế
    phải có ghi người cấp, và người cấp đó là người nhận mục. Không được suy thẳng từ "ai là chủ vùng".

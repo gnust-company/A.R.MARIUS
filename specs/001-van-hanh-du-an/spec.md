@@ -422,6 +422,16 @@ thứ tự gắn trên từng chữ ký.
 - **FR-019**: *Định nghĩa hoàn thành* PHẢI là một danh sách tiêu chí đúng/sai kiểm được, do Trưởng dự án đặt
   **trước khi** thợ bắt tay, và PHẢI tách bạch khỏi trường *thành phẩm*. HỆ THỐNG KHÔNG ĐƯỢC gộp hai trường
   này.
+- **FR-019a** *(cổng thước đo)*: Trưởng dự án PHẢI **chấm** từng tiêu chí thành *đạt* hoặc *không đạt* khi
+  đầu việc đang *chờ rà soát*; mỗi lần chấm *đạt* PHẢI chỉ ra một thành phẩm **của chính đầu việc đó** làm
+  bằng chứng. HỆ THỐNG PHẢI từ chối mọi chữ ký tán thành — của Trưởng dự án lẫn của người chủ — khi còn tiêu
+  chí *chưa chấm* hoặc *không đạt*, và PHẢI nêu tên những tiêu chí ấy. Từ chối này PHẢI xảy ra **trước khi**
+  ghi chữ ký, chứ không phải lúc đóng: chặn ở lúc đóng thì chữ ký đã nằm trong sổ và đầu việc kẹt lại ở *chờ
+  rà soát* với đủ hai chữ ký. Bộ tiêu chí **rỗng** đi qua cổng này — bắt buộc phải có tiêu chí là một luật
+  khác, đặt ở lúc giao việc.
+  *(Không có bước chấm thì FR-019 chỉ tạo ra một bản ghi chú: một danh sách "kiểm được" mà không ai kiểm
+  không khác gì ô chữ tự do nó thay thế. Trước T178, hàm chấm điểm có sẵn trong mã nhưng **không lời gọi
+  nào**, nên Trưởng dự án ký tán thành mà chưa từng đi qua bộ tiêu chí lấy một dòng.)*
 - **FR-020**: *Việc kế tiếp* PHẢI được lưu bền và trả lại kèm trong gói tin mỗi lần agent được đánh thức lại
   trên đầu việc đó.
 - **FR-021**: HỆ THỐNG PHẢI tự ghi các trường mã định danh, người tạo, ba mốc thời gian, dự án chứa và nhật
