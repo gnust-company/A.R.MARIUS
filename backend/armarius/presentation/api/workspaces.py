@@ -140,6 +140,7 @@ async def invite_marius(
 async def list_directory(
     workspace_id: UUID, container: ContainerDep, user: CurrentUser
 ) -> list[MariusOut]:
+    await _require_owned_workspace(container, user, workspace_id)
     items = await container.mariuses.list_directory(workspace_id)
     return [MariusOut.model_validate(m) for m in items]
 
@@ -201,6 +202,10 @@ async def update_marius(
     container: ContainerDep,
     user: CurrentUser,
 ) -> MariusOut:
+    await _require_owned_workspace(container, user, workspace_id)
+    existing = await container.mariuses.get(marius_id)
+    if existing is None or existing.workspace_id != workspace_id:
+        raise LookupError("marius not found")
     marius = await container.mariuses.update(
         marius_id,
         name=body.name,
@@ -333,6 +338,7 @@ async def delete_marius(
 async def list_skills(
     workspace_id: UUID, container: ContainerDep, user: CurrentUser
 ) -> list[SkillOut]:
+    await _require_owned_workspace(container, user, workspace_id)
     items = await container.skills.list_skills(workspace_id)
     return [SkillOut.model_validate(s) for s in items]
 
@@ -343,8 +349,9 @@ async def list_skills(
 async def get_skill(
     workspace_id: UUID, skill_id: UUID, container: ContainerDep, user: CurrentUser
 ) -> SkillOut:
+    await _require_owned_workspace(container, user, workspace_id)
     skill = await container.skills.get_skill(skill_id)
-    if skill is None:
+    if skill is None or skill.workspace_id != workspace_id:
         raise LookupError("skill not found")
     return SkillOut.model_validate(skill)
 
@@ -357,6 +364,7 @@ async def get_skill(
 async def create_manual_skill(
     workspace_id: UUID, body: ManualSkillIn, container: ContainerDep, user: CurrentUser
 ) -> SkillOut:
+    await _require_owned_workspace(container, user, workspace_id)
     skill = await container.skills.create_manual(
         workspace_id=workspace_id, name=body.name, description=body.description
     )
@@ -371,6 +379,7 @@ async def create_manual_skill(
 async def import_skill(
     workspace_id: UUID, body: ImportSkillIn, container: ContainerDep, user: CurrentUser
 ) -> SkillOut:
+    await _require_owned_workspace(container, user, workspace_id)
     try:
         skill = await container.skills.import_from_url(
             workspace_id=workspace_id, url=body.source_url
@@ -390,10 +399,11 @@ async def update_skill(
     container: ContainerDep,
     user: CurrentUser,
 ) -> SkillOut:
-    try:
-        skill = await container.skills.update_files(skill_id, body.files)
-    except LookupError:
-        raise
+    await _require_owned_workspace(container, user, workspace_id)
+    existing = await container.skills.get_skill(skill_id)
+    if existing is None or existing.workspace_id != workspace_id:
+        raise LookupError("skill not found")
+    skill = await container.skills.update_files(skill_id, body.files)
     return SkillOut.model_validate(skill)
 
 
