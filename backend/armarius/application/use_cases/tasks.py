@@ -22,9 +22,14 @@ from uuid import UUID
 
 from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.review_reset import retire_signatures_on_move
+from armarius.application.use_cases.threads import announce_comment
 from armarius.application.use_cases.types import UowFactory
 from armarius.application.use_cases.wake_engine import WakeEngine
-from armarius.domain.entities.checklist_item import ChecklistItem, assert_criteria_editable
+from armarius.domain.entities.checklist_item import (
+    ChecklistItem,
+    ChecklistTally,
+    assert_criteria_editable,
+)
 from armarius.domain.entities.comment import AuthorKind, Comment
 from armarius.domain.entities.inbox_item import InboxItemKind
 from armarius.domain.entities.run import WakeSource
@@ -63,6 +68,22 @@ if TYPE_CHECKING:  # pragma: no cover — typing only, keeps the import graph ac
 EVENT_TASK_STATUS = "task.status_changed"
 EVENT_TASK_UNLOCKED = "task.unblocked"
 EVENT_TASK_CREATED = "task.created"
+# The board card draws more than a status: a criteria tally and a blocker count sit on it
+# too, and both used to change in silence (T177). FR-080a is about everything the screen
+# shows, not about the status field.
+EVENT_TASK_CHECKLIST = "task.checklist_changed"
+EVENT_TASK_DEPENDENCIES = "task.dependencies_changed"
+
+
+@dataclass(frozen=True)
+class TaskCardCounts:
+    """What a board card needs to know about a task beyond the task row itself."""
+
+    task_id: UUID
+    comments: int = 0
+    artifacts: int = 0
+    criteria_total: int = 0
+    criteria_passed: int = 0
 
 
 class LeaderNotifier(Protocol):
@@ -522,6 +543,7 @@ class TaskService:
             await uow.commit()
             project_id = task.project_id
 
+        await announce_comment(self._bus, project_id, task_id)
         await self._notify_leader(
             project_id,
             text=(
@@ -569,6 +591,7 @@ class TaskService:
             await uow.commit()
             project_id = updated.project_id
 
+        await announce_comment(self._bus, project_id, task_id)
         await self._notify_leader(
             project_id,
             text=(
@@ -877,10 +900,12 @@ class TaskService:
     ) -> Sequence[ChecklistItem]:
         """Replace the yardstick. Only before the worker starts — after that it is a
         scope-level change and goes to the patron (FR-075), not into this method."""
+        project_id: UUID | None = None
         async with self._uow() as uow:
             task = await uow.tasks.get(task_id)
             if task is None:
                 raise LookupError("task not found")
+            project_id = task.project_id
             assert_criteria_editable(task)
             before = len(await uow.criteria.list_by_task(task_id))
             await uow.criteria.replace_for_task(
@@ -901,7 +926,16 @@ class TaskService:
                 after=str(len(texts)),
             )
             await uow.commit()
-            return await uow.criteria.list_by_task(task_id)
+            items = list(await uow.criteria.list_by_task(task_id))
+
+        # The card draws "passed/total" off this list, so rewriting it changes the board
+        # (FR-080a) — not only the task's own screen.
+        await self._publish(
+            project_id,
+            EVENT_TASK_CHECKLIST,
+            {"task_id": str(task_id), "total": len(items)},
+        )
+        return items
 
     # ── Dependency edges (feed the dependency-gate, §1.3) ──────────────────────
     async def add_dependency(
@@ -933,13 +967,28 @@ class TaskService:
                 _mark_provisional(task, utcnow())
                 await uow.tasks.update(task)
             await uow.commit()
-            return created
+            project_id = task.project_id
+
+        # The board draws a lock and a blocker count from these edges, so adding one
+        # changes the card (FR-080a).
+        await self._publish_dependencies(project_id, task_id)
+        return created
 
     async def remove_dependency(self, task_id: UUID, blocks_task_id: UUID) -> None:
         """Remove a `blocked_by` edge (idempotent — a missing edge is a no-op)."""
+        project_id: UUID | None = None
         async with self._uow() as uow:
+            # Read before the delete: after it there is nothing left tying the edge to a
+            # project, and an event with no channel to go to is the same as no event.
+            task = await uow.tasks.get(task_id)
+            project_id = task.project_id if task is not None else None
             await uow.dependencies.remove(task_id, blocks_task_id)
             await uow.commit()
+
+        # Announced even when the edge was not there. Whether the row existed is this
+        # method's business; whether the board is up to date is not, and a listener that
+        # re-reads finds the same numbers and draws the same card at the cost of one query.
+        await self._publish_dependencies(project_id, task_id)
 
     async def list_blockers(self, task_id: UUID) -> list[Task]:
         """The tasks ``task_id`` is blocked_by, as full tasks (for rendering)."""
@@ -960,6 +1009,36 @@ class TaskService:
         cards are blocked (a blocker not yet done)."""
         async with self._uow() as uow:
             return await uow.dependencies.list_by_project(project_id)
+
+    async def card_counts(self, project_id: UUID) -> Sequence[TaskCardCounts]:
+        """The tallies a board card draws, for every task in one project (T177).
+
+        A card shows a criteria tally, a comment count and a clip for artifacts. None of
+        those ride on the task row, and the board only ever fetched task rows — so the
+        three badges could not be drawn at all, on any board, ever. That is a step worse
+        than the stale value FR-080a describes: the number was not late, it was absent.
+
+        Deliberately counts rather than returning the rows. The board renders `3` and a
+        clip; shipping three comment bodies per card to produce that would put a task's
+        whole conversation on a screen that never shows a word of it.
+
+        Tasks with nothing to report are omitted — the caller reads a missing task as all
+        zeroes, which is what it is, instead of paying for a row per empty card.
+        """
+        async with self._uow() as uow:
+            comments = await uow.comments.count_by_project(project_id)
+            artifacts = await uow.artifacts.count_by_project(project_id)
+            criteria = await uow.criteria.count_by_project(project_id)
+        return [
+            TaskCardCounts(
+                task_id=task_id,
+                comments=comments.get(task_id, 0),
+                artifacts=artifacts.get(task_id, 0),
+                criteria_total=criteria.get(task_id, ChecklistTally()).total,
+                criteria_passed=criteria.get(task_id, ChecklistTally()).passed,
+            )
+            for task_id in {*comments, *artifacts, *criteria}
+        ]
 
     # ── internals ─────────────────────────────────────────────────────────────
     async def _unlock_dependents(self, uow: UnitOfWork, task_id: UUID) -> list[Task]:
@@ -1070,6 +1149,13 @@ class TaskService:
             project_id,
             EVENT_TASK_STATUS,
             {"task_id": str(task_id), "status": str(status)},
+        )
+
+    async def _publish_dependencies(
+        self, project_id: UUID | None, task_id: UUID
+    ) -> None:
+        await self._publish(
+            project_id, EVENT_TASK_DEPENDENCIES, {"task_id": str(task_id)}
         )
 
     async def _publish(

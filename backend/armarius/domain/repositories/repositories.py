@@ -4,14 +4,14 @@ layer depends only on these abstractions."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from uuid import UUID
 
 from armarius.domain.entities.approval import Approval
 from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.auto_approval import AutoApproval
-from armarius.domain.entities.checklist_item import ChecklistItem
+from armarius.domain.entities.checklist_item import ChecklistItem, ChecklistTally
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.inbox_item import InboxItem, InboxItemStatus
 from armarius.domain.entities.label import Label
@@ -285,6 +285,10 @@ class ChecklistItemRepository(ABC):
     @abstractmethod
     async def list_by_task(self, task_id: UUID) -> Sequence[ChecklistItem]: ...
     @abstractmethod
+    async def count_by_project(
+        self, project_id: UUID
+    ) -> Mapping[UUID, ChecklistTally]: ...
+    @abstractmethod
     async def replace_for_task(
         self, task_id: UUID, items: Sequence[ChecklistItem]
     ) -> Sequence[ChecklistItem]: ...
@@ -329,6 +333,8 @@ class CommentRepository(ABC):
     async def add(self, comment: Comment) -> Comment: ...
     @abstractmethod
     async def list_by_task(self, task_id: UUID) -> Sequence[Comment]: ...
+    @abstractmethod
+    async def count_by_project(self, project_id: UUID) -> Mapping[UUID, int]: ...
     @abstractmethod
     async def list_since(self, task_id: UUID, after_seq: int) -> Sequence[Comment]: ...
 
@@ -407,6 +413,8 @@ class ArtifactRepository(ABC):
     async def list_by_task(self, task_id: UUID) -> Sequence[Artifact]: ...
     @abstractmethod
     async def count_by_task(self, task_id: UUID) -> int: ...
+    @abstractmethod
+    async def count_by_project(self, project_id: UUID) -> Mapping[UUID, int]: ...
 
 
 class WakeupRepository(ABC):

@@ -34,6 +34,7 @@ from armarius.presentation.schemas import (
     RunStartedOut,
     SetCriteriaIn,
     SignApprovalIn,
+    TaskCardCountsOut,
     TaskDependencyEdgeOut,
     TaskLogEntryOut,
     TaskOut,
@@ -238,6 +239,25 @@ async def list_project_dependencies(
     await own_project(container, user, project_id)
     edges = await container.tasks.list_project_dependencies(project_id)
     return [TaskDependencyEdgeOut.model_validate(e) for e in edges]
+
+
+@router.get(
+    "/projects/{project_id}/task-counts",
+    response_model=list[TaskCardCountsOut],
+)
+async def list_task_card_counts(
+    project_id: UUID, container: ContainerDep, user: CurrentUser
+) -> list[TaskCardCountsOut]:
+    """Criteria tally, comment count and artifact count for every card on the board.
+
+    The board drew all three from arrays only the single-task screen ever fills, so on the
+    board they were always empty (T177). One grouped read here rather than three reads per
+    card: the board re-runs this on every push, and a fan-out over cards would make each
+    signal cost more the busier the project got.
+    """
+    await own_project(container, user, project_id)
+    counts = await container.tasks.card_counts(project_id)
+    return [TaskCardCountsOut.model_validate(c) for c in counts]
 
 
 @router.get("/tasks/{task_id}/comments", response_model=list[CommentOut])

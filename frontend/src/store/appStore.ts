@@ -5,6 +5,7 @@ import * as api from '@/lib/api'
 import type { OnboardingCollected, OnboardingDraft, OnboardingQuestion } from '@/lib/api'
 import {
   artifactToVM,
+  cardCountsToVM,
   commentToVM,
   criterionToVM,
   mariusToVM,
@@ -26,12 +27,20 @@ function upsertById<T extends { id: string }>(list: T[], item: T): T[] {
   return copy
 }
 
-/** Load a project's tasks and attach each task's `blocked_by` edges (#91) so the board can
- * flag blocked cards and the detail panel can list blockers — one place, two consumers. */
+/** Load a project's tasks and attach everything a board card draws that is not a field on
+ * the task row: the `blocked_by` edges (#91), and the criteria/comment/artifact tallies
+ * (T177).
+ *
+ * The tallies used to be missing outright. A card reads them off `comments`/`artifacts`/
+ * `checklist`, which only `hydrateTask` ever fills — and `hydrateTask` is the single-task
+ * screen. So on the board those arrays were empty for every card, on every load, and three
+ * of the four badges could not appear at all. Three project-wide reads, not three per
+ * card: the board re-runs this on every push. */
 async function loadProjectTasksWithDeps(projectId: string): Promise<Task[]> {
-  const [taskDtos, edges] = await Promise.all([
+  const [taskDtos, edges, counts] = await Promise.all([
     api.listTasks(projectId),
     api.listProjectDependencies(projectId),
+    api.listTaskCardCounts(projectId),
   ])
   const byTask = new Map<string, string[]>()
   for (const e of edges) {
@@ -39,7 +48,13 @@ async function loadProjectTasksWithDeps(projectId: string): Promise<Task[]> {
     arr.push(e.blocks_task_id)
     byTask.set(e.task_id, arr)
   }
-  return taskDtos.map((dto) => ({ ...taskToVM(dto), dependencies: byTask.get(dto.id) ?? [] }))
+  const countsByTask = new Map(counts.map((c) => [c.task_id, cardCountsToVM(c)]))
+  return taskDtos.map((dto) => ({
+    ...taskToVM(dto),
+    dependencies: byTask.get(dto.id) ?? [],
+    // A task the server left out has none of anything, which is what EMPTY_CARD_COUNTS says.
+    cardCounts: countsByTask.get(dto.id) ?? EMPTY_CARD_COUNTS,
+  }))
 }
 
 /** Merge incoming list-level projects into the store without clobbering richer
@@ -116,6 +131,26 @@ export interface Marius {
   roleKey?: string
 }
 
+/** What a board card draws besides the task's own fields.
+ *
+ * A separate count rather than `task.comments.length` because the two loaders disagree by
+ * design: the board loads task rows only, the single-task screen loads the full arrays. The
+ * card reading the arrays meant it drew nothing on the board, ever (T177). Both loaders fill
+ * this, so there is one number and one place it comes from. */
+export interface TaskCardCounts {
+  comments: number
+  artifacts: number
+  criteriaTotal: number
+  criteriaPassed: number
+}
+
+export const EMPTY_CARD_COUNTS: TaskCardCounts = {
+  comments: 0,
+  artifacts: 0,
+  criteriaTotal: 0,
+  criteriaPassed: 0,
+}
+
 export interface Task {
   id: string
   title: string
@@ -132,6 +167,7 @@ export interface Task {
   trace?: TraceEvent[]
   comments?: TaskComment[]
   checklist?: ChecklistItem[]
+  cardCounts?: TaskCardCounts
   definitionOfDone?: string
   /** Why the task sits where it does — mandatory on blocked/cancelled/send-back (FR-030). */
   statusReason?: string
@@ -1043,6 +1079,15 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       dependencies: blockers.map((b) => b.id),
       checklist: criteria.map(criterionToVM),
       trace,
+      // Derived from the arrays just loaded rather than fetched again. The card reads only
+      // this field, so leaving it stale here would make opening a task *shrink* its own
+      // badges back to whatever the board last saw.
+      cardCounts: {
+        comments: comments.length,
+        artifacts: artifacts.length,
+        criteriaTotal: criteria.length,
+        criteriaPassed: criteria.filter((c) => c.result === 'passed').length,
+      },
     }
     // Ensure the project's sibling tasks are present (so the blocked-by list can resolve
     // titles + the add-dependency picker has candidates) without blanking loaded detail.

@@ -8,13 +8,27 @@ from uuid import UUID
 from armarius.application.ports.artifact_store import ArtifactStore
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.artifact import Artifact
+from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import utcnow
+
+EVENT_TASK_ARTIFACT = "task.artifact_added"
 
 
 class ArtifactService:
-    def __init__(self, uow_factory: UowFactory, store: ArtifactStore) -> None:
+    def __init__(
+        self,
+        uow_factory: UowFactory,
+        store: ArtifactStore,
+        *,
+        control_bus: TopicEventBus | None = None,
+    ) -> None:
         self._uow = uow_factory
         self._store = store
+        # The board card draws a clip when a task has any artifact, and this service had
+        # no way to say one arrived (T177). It matters most on the path where nobody is
+        # looking at the screen: a worker publishes through the agent API, so the patron
+        # watching the board never touched anything that could have triggered a re-read.
+        self._bus = control_bus
 
     async def publish(
         self,
@@ -62,7 +76,16 @@ class ArtifactService:
                 )
             created = await uow.artifacts.add(artifact)
             await uow.commit()
-            return created
+
+        # Identifiers only — the artifact's name is content, and content stays off the
+        # channel (contract `su-kien-day` principle 4).
+        if self._bus is not None:
+            await self._bus.publish(
+                project_topic(project_id),
+                EVENT_TASK_ARTIFACT,
+                {"task_id": str(task_id), "artifact_id": str(created.id)},
+            )
+        return created
 
     async def list_by_task(self, task_id: UUID) -> Sequence[Artifact]:
         async with self._uow() as uow:

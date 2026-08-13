@@ -702,6 +702,20 @@ export async function listProjectDependencies(projectId: string): Promise<TaskDe
   return get<TaskDependencyEdgeDTO[]>(`/v1/projects/${projectId}/task-dependencies`)
 }
 
+/** The tallies a board card draws that are not fields on the task row. Tasks with nothing
+ * to report are absent from the list — read a missing task as all zeroes. */
+export interface TaskCardCountsDTO {
+  task_id: string
+  comments: number
+  artifacts: number
+  criteria_total: number
+  criteria_passed: number
+}
+
+export async function listTaskCardCounts(projectId: string): Promise<TaskCardCountsDTO[]> {
+  return get<TaskCardCountsDTO[]>(`/v1/projects/${projectId}/task-counts`)
+}
+
 // ── Comments ───────────────────────────────────────────────────────────────────────────
 
 export async function listComments(taskId: string): Promise<CommentDTO[]> {

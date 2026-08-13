@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import CursorResult, delete, func, or_, select, update
+from sqlalchemy import CursorResult, case, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from armarius.domain.entities.approval import Approval
 from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.auto_approval import AutoApproval
-from armarius.domain.entities.checklist_item import ChecklistItem
+from armarius.domain.entities.checklist_item import ChecklistItem, ChecklistTally
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.inbox_item import InboxItem, InboxItemStatus
 from armarius.domain.entities.label import Label
@@ -1044,6 +1044,28 @@ class SqlChecklistItemRepository(ChecklistItemRepository):
         ).scalars().all()
         return [mappers.checklist_item_to_entity(m) for m in rows]
 
+    async def count_by_project(
+        self, project_id: UUID
+    ) -> Mapping[UUID, ChecklistTally]:
+        """One grouped query for the whole board. Per-task counting would put a fan-out
+        on the one call a board makes on every push, which is the shape that turns a fix
+        for a frozen screen into a load problem."""
+        passed = case((ChecklistItemModel.result == "passed", 1), else_=0)
+        rows = await self._s.execute(
+            select(
+                ChecklistItemModel.task_id,
+                func.count(),
+                func.coalesce(func.sum(passed), 0),
+            )
+            .join(TaskModel, TaskModel.id == ChecklistItemModel.task_id)
+            .where(TaskModel.project_id == project_id)
+            .group_by(ChecklistItemModel.task_id)
+        )
+        return {
+            task_id: ChecklistTally(total=int(total), passed=int(scored))
+            for task_id, total, scored in rows.all()
+        }
+
     async def replace_for_task(
         self, task_id: UUID, items: Sequence[ChecklistItem]
     ) -> Sequence[ChecklistItem]:
@@ -1209,6 +1231,17 @@ class SqlCommentRepository(CommentRepository):
             )
         ).scalars().all()
         return [mappers.comment_to_entity(m) for m in rows]
+
+    async def count_by_project(self, project_id: UUID) -> Mapping[UUID, int]:
+        """Comments per task across one project — the count a board card draws, without
+        shipping the comment bodies to a screen that only renders a number."""
+        rows = await self._s.execute(
+            select(CommentModel.task_id, func.count())
+            .join(TaskModel, TaskModel.id == CommentModel.task_id)
+            .where(TaskModel.project_id == project_id)
+            .group_by(CommentModel.task_id)
+        )
+        return {task_id: int(n) for task_id, n in rows.all()}
 
     async def list_since(self, task_id: UUID, after_seq: int) -> Sequence[Comment]:
         return await self.list_by_task(task_id)
@@ -1487,6 +1520,18 @@ class SqlArtifactRepository(ArtifactRepository):
             )
         )
         return int(result.scalar_one())
+
+    async def count_by_project(self, project_id: UUID) -> Mapping[UUID, int]:
+        """Artifacts per task across one project. Joined through the task rather than read
+        off ``ArtifactModel.project_id``: that column is nullable, so a row written without
+        it would silently drop out of the count and the card would lose its clip."""
+        rows = await self._s.execute(
+            select(ArtifactModel.task_id, func.count())
+            .join(TaskModel, TaskModel.id == ArtifactModel.task_id)
+            .where(TaskModel.project_id == project_id)
+            .group_by(ArtifactModel.task_id)
+        )
+        return {task_id: int(n) for task_id, n in rows.all()}
 
 
 class SqlWakeupRepository(WakeupRepository):
