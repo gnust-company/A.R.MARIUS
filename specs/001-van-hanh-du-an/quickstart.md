@@ -29,7 +29,7 @@ cd mcp && uv run pytest
 
 # Giao diện — cũng chạy từng lệnh
 cd frontend
-npm run lint                                           # thoát 1 — đối chiếu số vấn đề với mốc nền
+npm run lint                                           # từ T173 là cổng đỏ/xanh: phải thoát 0
 npx tsc -b --force                                     # KHÔNG dùng `tsc --noEmit`, xem lưu ý bên dưới
 npm run build
 ```
@@ -40,11 +40,19 @@ npm run build
 sự kiểm; `--force` để không bỏ qua nhờ bộ nhớ đệm của lần dựng trước. Lệnh `npm run build` bên dưới cũng
 chạy `tsc -b`, nên nó mới là chỗ kiểm kiểu thật sự đang diễn ra.
 
-**Lưu ý về mốc nền**: hai lệnh `mypy armarius` và `npm run lint` **luôn thoát mã 1** vì dự án mang sẵn một
-lượng lỗi có từ trước, ghi ở bảng T002 trong [khao-sat-du-lieu.md](./khao-sat-du-lieu.md). Chúng **không phải
-cổng đỏ/xanh** mà là cổng *không được tăng*: so số đo với mốc nền, tăng thì mới là hỏng. Vì vậy đừng nối các
-lệnh bằng `&&` — nối thì hai lệnh này cắt ngang, và bộ kiểm máy chủ, kiểm kiểu giao diện, dựng bản phát hành
-sẽ **không bao giờ chạy tới** trong khi người chạy tưởng đã kiểm đủ.
+**Lưu ý về mốc nền**: `mypy armarius` **luôn thoát mã 1** vì dự án mang sẵn một lượng lỗi có từ trước, ghi ở
+bảng T002 trong [khao-sat-du-lieu.md](./khao-sat-du-lieu.md). Nó **không phải cổng đỏ/xanh** mà là cổng
+*không được tăng*: so số đo với mốc nền, tăng thì mới là hỏng. (`npm run lint` từng cùng loại với nó, mốc
+nền 50; **từ T173 nó về 0 và thành cổng đỏ/xanh thật**.) Vì vậy đừng nối các lệnh bằng `&&` — nối thì
+`mypy` cắt ngang, và bộ kiểm máy chủ, kiểm kiểu giao diện, dựng bản phát hành sẽ **không bao giờ chạy tới**
+trong khi người chạy tưởng đã kiểm đủ.
+
+**Rà mã sạch không có nghĩa là bộ biên dịch React chạy.** Ba điều luật `react-hooks` chỉ bắt được trường
+hợp lớp ghi nhớ *viết tay* không giữ được; những cú pháp bộ biên dịch chưa hạ được thì chúng im lặng đi qua,
+và thành phần đó lặng lẽ không được tối ưu. Muốn biết thật thì chạy bộ biên dịch lên toàn bộ `frontend/src`
+và đếm sự kiện biên dịch hỏng — mốc sau T173 ghi ở bảng T002 trong
+[khao-sat-du-lieu.md](./khao-sat-du-lieu.md): **357 hàm được tối ưu, 2 lần bỏ cuộc, cả hai trong một thành
+phần dựng sẵn không màn nào dùng**.
 
 **Lưu ý về kiểm thử hiện có**: siết bảng chuyển trạng thái sẽ làm đỏ vài bài kiểm đang dựa vào đường
 *đang làm → xong*. Đó là **đỏ đúng** — sửa bài kiểm theo luật mới, không nới luật cho bài kiểm xanh.
