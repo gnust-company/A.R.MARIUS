@@ -548,7 +548,7 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   Xong thì mốc nền rà mã giao diện đổi từ *"không được tăng 50"* sang **"phải bằng 0"**, và mốc đó ghi lại vào
   bảng T002 ở `khao-sat-du-lieu.md`. **Nghiệm thu**: dựng lại vùng chứa giao diện, đi hết sáu kịch bản trong
   `quickstart.md` — bộ biên dịch vẽ lại sai thì không lộ ra ở lint hay ở bản dựng, chỉ lộ khi bấm.
-- [ ] T174 **Bảy lối đi không canh chủ sở hữu workspace** trong
+- [X] T174 **Bảy lối đi không canh chủ sở hữu workspace** trong
   `backend/armarius/presentation/api/workspaces.py` (FR-081, Hiến pháp I). Tìm ra ở T160 bằng cách gọi thật
   bằng thẻ của tenant khác. **Làm trước T173** — đây là lỗ bảo mật đang sống, T173 là việc dọn.
 
@@ -573,6 +573,28 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   bao giờ *không có quyền* (nói *không có quyền* là xác nhận dữ liệu có tồn tại, mà đó là chuyện của tenant
   kia). Kèm **một bài kiểm đi theo tài liệu mô tả giao diện dịch vụ**, không phải một bài kiểm liệt kê tay
   bảy lối: liệt kê tay thì lối thứ tám thêm vào tháng sau lại lọt đúng như bảy lối này đã lọt.
+
+  **Đã làm.** Bảy lối gọi hàm canh; ba lối nhận thêm mã con (`marius_id`, `skill_id`) còn phải kiểm **con
+  có thuộc workspace ấy không** — thiếu vế này thì `get_skill` vẫn đọc được kỹ năng của tenant khác qua
+  chính mã workspace hợp lệ của mình. Bài kiểm mới: `backend/tests/test_workspace_scope_sweep.py`, lấy
+  danh sách lối từ `app.openapi()` nên **22 lối** vào tầm, không phải 17 của một tệp.
+
+  Trên dịch vụ thật sau khi dựng lại vùng chứa: **22/22 lối** trả *không tìm thấy*; sáu lỗ T160 khai thác
+  được đều bị chặn; chủ sở hữu vẫn đọc/ghi đủ năm việc của mình. Bộ kiểm máy chủ **669 xanh**, rà kiểu
+  **158 = 158** không đổi. Gỡ phần sửa ra thì bài kiểm mới báo đúng **7 trên 22**.
+
+  Hai điều bài kiểm này phải làm, mà làm thiếu thì nó xanh trong lúc lỗ vẫn mở:
+
+  1. **Gieo dữ liệu thật của tenant kia.** Nhắm vào một mã bịa thì lối nào cũng trả *không tìm thấy* dù có
+     canh hay không — một kết quả đạt không chứng minh gì. Nhắm vào một dòng có thật thì hàm canh là thứ
+     duy nhất có thể tạo ra câu trả lời đó.
+  2. **Đọc lý do, không chỉ đọc con số.** Bản đầu chỉ đòi con số *không tìm thấy* và bắt được **6**, sót
+     lối nhập kỹ năng: nó vốn đã trả *không tìm thấy* vì địa chỉ nguồn không tải được, tức là một câu trả
+     lời đúng vì lý do sai. Đòi đúng câu của hàm canh thì ra đủ **7**.
+
+  Ghi lại một chỗ T160 nói chưa chính xác: phần mô tả kỹ năng bị xoá trắng **không phải** do tenant kia ghi
+  đè. Nội dung kỹ năng vốn suy ra tên và mô tả từ đầu tệp `SKILL.md`; ghi một tệp không có dòng mô tả thì
+  mô tả thành rỗng, chủ sở hữu tự ghi cũng vậy. Đây là cách vốn có, không phải hỏng, và không mở việc mới.
 - [ ] T175 **Tạo đầu việc không bắn sự kiện nào** (FR-080, Hiến pháp IV). Tìm ra ở T160: mở bảng dự án bằng
   trình duyệt thật, tạo một đầu việc **từ ngoài trình duyệt**, bảng không nhúc nhích; tải lại trang thì đầu
   việc hiện ra. `TaskService.create` trong `backend/armarius/application/use_cases/tasks.py:145` ghi dòng dữ
