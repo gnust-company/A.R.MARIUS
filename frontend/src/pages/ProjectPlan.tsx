@@ -101,7 +101,7 @@ export default function ProjectPlan() {
   useEffect(() => {
     if (!projectId) return;
     return subscribeProjectEvents(projectId, (event) => {
-      if (event.type.startsWith('ke-hoach.') || event.type.startsWith('boi-canh.')) {
+      if (event.type.startsWith('plan.') || event.type.startsWith('context.')) {
         void load();
       }
     });

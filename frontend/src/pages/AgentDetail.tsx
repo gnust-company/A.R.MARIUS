@@ -255,7 +255,7 @@ export default function AgentDetail() {
     if (!workspaceId || !id) return;
     let pending: ReturnType<typeof setTimeout> | null = null;
     const unsubscribe = onWorkspaceEvent((event) => {
-      if (event.type !== 'luot-chay.doi-trang-thai') return;
+      if (event.type !== 'run.status_changed') return;
       // The channel carries every agent in the workspace; only this one's runs are on screen.
       if (event.payload.marius_id !== id) return;
       if (pending) return;

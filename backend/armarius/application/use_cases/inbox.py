@@ -29,9 +29,9 @@ if TYPE_CHECKING:  # pragma: no cover — typing only, keeps the import graph ac
 
 logger = get_logger(__name__)
 
-EVENT_ITEM_PLACED = "hop-thu.muc-moi"
-EVENT_ITEM_RESOLVED = "hop-thu.da-giai-quyet"
-EVENT_ITEM_REMINDED = "hop-thu.nhac"
+EVENT_ITEM_PLACED = "inbox.item_added"
+EVENT_ITEM_RESOLVED = "inbox.item_resolved"
+EVENT_ITEM_REMINDED = "inbox.reminded"
 
 # The system floor, used when an item has no project or the project is gone.
 _DEFAULT_REMINDER_HOURS: tuple[int, ...] = (8, 24, 72)

@@ -54,7 +54,7 @@ from armarius.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
-EVENT_TASK_STALLED = "dau-viec.dinh-tre"
+EVENT_TASK_STALLED = "task.stalled"
 
 
 class RecoveryLadder(Protocol):

@@ -460,7 +460,7 @@ export default function ProjectBoard() {
   useEffect(() => {
     if (!projectId) return;
     return subscribeProjectEvents(projectId, (event) => {
-      if (event.type.startsWith('nhip-dieu-phoi.')) {
+      if (event.type.startsWith('orchestration.')) {
         loadCadence();
         return;
       }

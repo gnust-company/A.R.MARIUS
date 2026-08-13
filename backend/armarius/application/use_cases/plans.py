@@ -38,11 +38,11 @@ from armarius.domain.services import plan_gate, project_rules
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import utcnow
 
-EVENT_PLAN_SUBMITTED = "ke-hoach.trinh"
-EVENT_PLAN_DECIDED = "ke-hoach.quyet"
-EVENT_PHASE_CHANGED = "du-an.doi-giai-doan"
-EVENT_CONTEXT_SUBMITTED = "boi-canh.trinh"
-EVENT_CONTEXT_DECIDED = "boi-canh.quyet"
+EVENT_PLAN_SUBMITTED = "plan.submitted"
+EVENT_PLAN_DECIDED = "plan.decided"
+EVENT_PHASE_CHANGED = "project.phase_changed"
+EVENT_CONTEXT_SUBMITTED = "context.submitted"
+EVENT_CONTEXT_DECIDED = "context.decided"
 EVENT_MAJOR_CHANGE_REQUESTED = "thay-doi-lon.trinh"
 
 

@@ -63,8 +63,8 @@ if TYPE_CHECKING:  # pragma: no cover — typing only, keeps the import graph ac
     from armarius.application.use_cases.tasks import TaskService
     from armarius.application.use_cases.wake_engine import WakeEngine
 
-EVENT_APPROVAL_SIGNED = "cong-nhan.ky"
-EVENT_INBOX_ITEM_PLACED = "hop-thu.muc-moi"
+EVENT_APPROVAL_SIGNED = "signature.recorded"
+EVENT_INBOX_ITEM_PLACED = "inbox.item_added"
 
 
 class ApprovalError(Exception):

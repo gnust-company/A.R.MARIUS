@@ -661,7 +661,7 @@ class ProjectService:
 
         await self._publish(
             project_id,
-            "du-an.doi-giai-doan",
+            "project.phase_changed",
             {
                 "before": str(before),
                 "after": str(target_phase),
@@ -680,7 +680,7 @@ class ProjectService:
         """
         await self._publish(
             project_id,
-            "du-an.doi-giai-doan",
+            "project.phase_changed",
             {
                 "before": str(ProjectStatus.SETUP),
                 "after": str(ProjectStatus.PLANNING),

@@ -109,7 +109,7 @@ async def test_a_waiting_item_is_nudged_and_the_tier_is_remembered(uow_factory) 
     assert stored is not None and stored.reminder_tier == 1
     assert stored.last_reminded_at is not None
     types = [e.type for e in bus.backlog(patron_topic("patron-1"))]
-    assert types[-1] == "hop-thu.nhac", "nhắc mà hộp thư của người chủ không hay biết"
+    assert types[-1] == "inbox.reminded", "nhắc mà hộp thư của người chủ không hay biết"
 
 
 @pytest.mark.asyncio
