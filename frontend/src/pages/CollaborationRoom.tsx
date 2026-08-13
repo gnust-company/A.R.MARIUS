@@ -27,6 +27,7 @@ import {
 import { ApiError, listTaskApprovals, signTaskApproval, type ApprovalDTO } from '@/lib/api';
 import { useAppStore, type TraceEvent, type Task } from '@/store/appStore';
 import { useTaskStream } from '@/hooks/use-task-stream';
+import { subscribeProjectEvents } from '@/lib/sse';
 import { cn, wsHref } from '@/lib/utils';
 import { blockedReasonKey, needsReason, type TaskPhase } from '@/lib/taskRules';
 
@@ -244,6 +245,23 @@ export default function CollaborationRoom() {
     if (!taskId) return;
     hydrateTask(taskId);
   }, [taskId, hydrateTask]);
+
+  // Push, not poll (Constitution IV, FR-080a). The trace stream above carries one task's
+  // run events and nothing else; everything a person changes about the task — the Leader
+  // scoring a criterion, a comment, an artifact, a blocker — travels on the project
+  // channel. Without this the criteria panel sat on whatever was true at mount: a screen
+  // that only becomes right again on a reload is the exact shape FR-080a forbids.
+  //
+  // Filtered to this task on the way in. The board can afford to re-read a project on any
+  // event because that is the one call it makes; a room re-reading a task, its thread, its
+  // artifacts, its blockers and its trace on somebody else's card would spend five.
+  const roomProjectId = task?.projectId;
+  useEffect(() => {
+    if (!taskId || !roomProjectId) return;
+    return subscribeProjectEvents(roomProjectId, (event) => {
+      if (event.data?.task_id === taskId) hydrateTask(taskId);
+    });
+  }, [taskId, roomProjectId, hydrateTask]);
 
   const [commentInput, setCommentInput] = useState('');
   // Read straight off the task, never mirrored into local state. A copy went stale the
