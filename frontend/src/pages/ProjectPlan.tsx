@@ -115,35 +115,39 @@ export default function ProjectPlan() {
     }
     setBusy(true);
     setError(null);
+    // Everything conditional is worked out before the block. The React Compiler has no
+    // lowering for a conditional *expression* inside try/catch and drops the whole
+    // component when it meets one; none of these depend on the call anyway.
+    const decided =
+      decision === 'duyet'
+        ? t('projectPlan.decidedApproved')
+        : decision === 'yeu_cau_chinh'
+          ? t('projectPlan.decidedChanges')
+          : t('projectPlan.decidedAsked');
+    const noteOrNone = note.trim() || undefined;
+    const failed = t('projectPlan.loadFailed');
     try {
-      const updated = await decideProjectPlan(projectId, decision, note.trim() || undefined);
+      const updated = await decideProjectPlan(projectId, decision, noteOrNone);
       setPlan(updated);
       setNote('');
-      setMessage(
-        decision === 'duyet'
-          ? t('projectPlan.decidedApproved')
-          : decision === 'yeu_cau_chinh'
-            ? t('projectPlan.decidedChanges')
-            : t('projectPlan.decidedAsked'),
-      );
+      setMessage(decided);
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('projectPlan.loadFailed'));
-    } finally {
-      setBusy(false);
+      setError(e instanceof Error ? e.message : failed);
     }
+    setBusy(false);
   };
 
   const approveContext = async () => {
     if (!projectId) return;
     setBusy(true);
+    const failed = t('projectPlan.loadFailed');
     try {
       await approveProjectContext(projectId, true);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('projectPlan.loadFailed'));
-    } finally {
-      setBusy(false);
+      setError(e instanceof Error ? e.message : failed);
     }
+    setBusy(false);
   };
 
   const awaitingDecision = plan?.status === 'submitted';

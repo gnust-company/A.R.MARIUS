@@ -127,11 +127,16 @@ export default function Skills() {
   const handleCreateManual = async () => {
     if (!skillName.trim()) return;
     setCreating(true);
+    // Built before the block: the React Compiler has no lowering for a conditional
+    // expression (here the `||` fallback) inside try/catch, and drops the whole
+    // component when it meets one.
+    const described = skillDesc.trim() || 'No description';
+    const frontmatter = `---\nname: ${skillName.trim()}\ndescription: ${described}\nversion: 1.0.0\n---\n`;
+    let newSkill;
     try {
-      const frontmatter = `---\nname: ${skillName.trim()}\ndescription: ${skillDesc.trim() || 'No description'}\nversion: 1.0.0\n---\n`;
       // Manual skills are `type: 'custom'` (mirrors skillToVM's mapping of source='manual'),
       // never 'github' — that badge belongs to imported skills only.
-      const newSkill = await createSkill({
+      newSkill = await createSkill({
         name: skillName.trim().toLowerCase().replace(/\s+/g, '-'),
         description: skillDesc.trim(),
         type: 'custom',
@@ -140,11 +145,17 @@ export default function Skills() {
         ],
       });
       setCreateModalOpen(false);
-      // Only navigate once we have a real id — never /skills/undefined.
-      if (newSkill?.id) navigate(wsHref(workspaceId, `/skills/${newSkill.id}`));
-    } finally {
+    } catch (e) {
+      // Same cleanup on both paths, spelled out rather than in a `finally`: the React
+      // Compiler cannot lower `finally` and gives up on the whole component when it
+      // meets one. Rethrowing keeps the failure exactly as loud as it was.
       setCreating(false);
+      throw e;
     }
+    setCreating(false);
+    // Only navigate once we have a real id — never /skills/undefined. Outside the block
+    // for the same reason: optional chaining is a conditional expression too.
+    if (newSkill?.id) navigate(wsHref(workspaceId, `/skills/${newSkill.id}`));
   };
 
   // Import = the backend really clones the GitHub folder and persists the skill. A bad
@@ -154,15 +165,15 @@ export default function Skills() {
     if (!githubUrl.trim()) return;
     setCreating(true);
     setImportError(null);
+    let newSkill;
     try {
-      const newSkill = await importSkill(githubUrl.trim(), workspaceId);
+      newSkill = await importSkill(githubUrl.trim(), workspaceId);
       setCreateModalOpen(false);
-      if (newSkill?.id) navigate(wsHref(workspaceId, `/skills/${newSkill.id}`));
     } catch (e) {
       setImportError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setCreating(false);
     }
+    setCreating(false);
+    if (newSkill?.id) navigate(wsHref(workspaceId, `/skills/${newSkill.id}`));
   };
 
   const handleSkillClick = (skillId: string) => {

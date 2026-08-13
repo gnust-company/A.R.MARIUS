@@ -97,6 +97,83 @@ const initialFormData: FormData = {
 /** JIRA-style project KEY: 2–10 uppercase chars, starts with a letter. Mirrors backend. */
 const PROJECT_KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/;
 
+/** The three-step rail above the wizard. A module-level component, not one declared
+ *  inside the page: a component created during render is a *different* component on
+ *  every render, so React unmounts and remounts it — the rail's motion restarts from
+ *  scratch each keystroke, and any state it ever gains would be wiped. */
+function StepIndicator({ step }: { step: number }) {
+  const { t } = useTranslation();
+
+  const steps = [
+    { key: 'project', label: t('createProject.steps.project') },
+    { key: 'roster', label: t('createProject.steps.roster') },
+    { key: 'review', label: t('createProject.steps.review') },
+  ];
+
+  return (
+    <div className="flex items-center justify-center gap-0 mb-8">
+      {steps.map((s, i) => {
+        const stepNum = i + 1;
+        const isCompleted = step > stepNum;
+        const isCurrent = step === stepNum;
+        
+        return (
+          <div key={s.key} className="flex items-center">
+            <div className="flex flex-col items-center gap-1.5">
+              {/* Circle */}
+              <motion.div
+                className={`w-4 h-4 rounded-full flex items-center justify-center border-2 ${
+                  isCompleted
+                    ? 'bg-[#C25E3A] border-[#C25E3A]'
+                    : isCurrent
+                    ? 'bg-[#C25E3A] border-[#C25E3A] ring-2 ring-white ring-offset-1 ring-offset-[#C25E3A]'
+                    : 'bg-transparent border-[#A89880]'
+                }`}
+                animate={{
+                  scale: isCurrent ? [0.8, 1] : 1,
+                }}
+                transition={{ duration: 0.3, ease: [0.34, 1.56, 0.64, 1] as [number, number, number, number] }}
+              >
+                {isCompleted && (
+                  <CheckCircle2 className="w-3 h-3 text-white" />
+                )}
+                {isCurrent && (
+                  <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                )}
+              </motion.div>
+              {/* Label */}
+              <span
+                className={`font-body text-body-xs ${
+                  isCompleted
+                    ? 'text-[#C25E3A] font-medium'
+                    : isCurrent
+                    ? 'text-ink font-semibold'
+                    : 'text-ink-muted'
+                }`}
+              >
+                {s.label}
+              </span>
+            </div>
+
+            {/* Connecting line */}
+            {i < steps.length - 1 && (
+              <div className="w-16 h-0.5 mx-2 -mt-4 relative">
+                <div className="absolute inset-0 bg-[#E3D7BC]" />
+                <motion.div
+                  className="absolute inset-0 bg-[#C25E3A] origin-left"
+                  initial={{ scaleX: 0 }}
+                  animate={{ scaleX: isCompleted ? 1 : 0 }}
+                  transition={{ duration: 0.3 }}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function CreateProject() {
@@ -256,30 +333,33 @@ export default function CreateProject() {
       }
     });
 
+    // Assembled before the block: every `||` fallback in it is a conditional expression,
+    // and the React Compiler has no lowering for those inside try/catch.
+    const payload = {
+      name: formData.name.trim(),
+      key: formData.key.trim() || undefined,
+      description: formData.objective.trim(),
+      objective: formData.objective.trim(),
+      workspaceId: activeWorkspaceId || undefined,
+      leaderId: formData.leaderId || '',
+      leaderDescription: formData.leaderDescription,
+      seats,
+    };
     try {
-      const project = await createProject({
-        name: formData.name.trim(),
-        key: formData.key.trim() || undefined,
-        description: formData.objective.trim(),
-        objective: formData.objective.trim(),
-        workspaceId: activeWorkspaceId || undefined,
-        leaderId: formData.leaderId || '',
-        leaderDescription: formData.leaderDescription,
-        seats,
-      });
-
+      const project = await createProject(payload);
       navigate(wsHref(workspaceId, `/projects/${project.id}`));
     } catch (err) {
       setIsSubmitting(false);
       // Key collision (409) or malformed key (422) — bounce to step 1 and flag the field.
       if (err instanceof ApiError && (err.status === 409 || err.status === 422)) {
-        setErrors((p) => ({
-          ...p,
-          key:
-            err.status === 409
-              ? t('createProject.fields.keyTaken')
-              : t('createProject.fields.keyInvalid'),
-        }));
+        // Read out here, not inside the updater below: the caught `err` referenced from a
+        // closure is both a local and a captured variable, and the React Compiler refuses
+        // that shape — it gave up on this whole 960-line component over this one line.
+        const keyMessage =
+          err.status === 409
+            ? t('createProject.fields.keyTaken')
+            : t('createProject.fields.keyInvalid');
+        setErrors((p) => ({ ...p, key: keyMessage }));
         setDirection(-1);
         setStep(1);
         return;
@@ -337,79 +417,6 @@ export default function CreateProject() {
         };
       }),
     }));
-  };
-
-  // ─── Step Indicator ────────────────────────────────────────────────────────
-
-  const StepIndicator = () => {
-    const steps = [
-      { key: 'project', label: t('createProject.steps.project') },
-      { key: 'roster', label: t('createProject.steps.roster') },
-      { key: 'review', label: t('createProject.steps.review') },
-    ];
-
-    return (
-      <div className="flex items-center justify-center gap-0 mb-8">
-        {steps.map((s, i) => {
-          const stepNum = i + 1;
-          const isCompleted = step > stepNum;
-          const isCurrent = step === stepNum;
-          
-          return (
-            <div key={s.key} className="flex items-center">
-              <div className="flex flex-col items-center gap-1.5">
-                {/* Circle */}
-                <motion.div
-                  className={`w-4 h-4 rounded-full flex items-center justify-center border-2 ${
-                    isCompleted
-                      ? 'bg-[#C25E3A] border-[#C25E3A]'
-                      : isCurrent
-                      ? 'bg-[#C25E3A] border-[#C25E3A] ring-2 ring-white ring-offset-1 ring-offset-[#C25E3A]'
-                      : 'bg-transparent border-[#A89880]'
-                  }`}
-                  animate={{
-                    scale: isCurrent ? [0.8, 1] : 1,
-                  }}
-                  transition={{ duration: 0.3, ease: [0.34, 1.56, 0.64, 1] as [number, number, number, number] }}
-                >
-                  {isCompleted && (
-                    <CheckCircle2 className="w-3 h-3 text-white" />
-                  )}
-                  {isCurrent && (
-                    <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                  )}
-                </motion.div>
-                {/* Label */}
-                <span
-                  className={`font-body text-body-xs ${
-                    isCompleted
-                      ? 'text-[#C25E3A] font-medium'
-                      : isCurrent
-                      ? 'text-ink font-semibold'
-                      : 'text-ink-muted'
-                  }`}
-                >
-                  {s.label}
-                </span>
-              </div>
-
-              {/* Connecting line */}
-              {i < steps.length - 1 && (
-                <div className="w-16 h-0.5 mx-2 -mt-4 relative">
-                  <div className="absolute inset-0 bg-[#E3D7BC]" />
-                  <motion.div
-                    className="absolute inset-0 bg-[#C25E3A] origin-left"
-                    initial={{ scaleX: 0 }}
-                    animate={{ scaleX: isCompleted ? 1 : 0 }}
-                    transition={{ duration: 0.3 }}
-                  />
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    );
   };
 
   // ─── Render Step 1: Project Info ───────────────────────────────────────────
@@ -988,7 +995,7 @@ export default function CreateProject() {
       </p>
 
       {/* Step Indicator */}
-      <StepIndicator />
+      <StepIndicator step={step} />
 
       {/* Step Content */}
       <div className="min-h-[400px]">

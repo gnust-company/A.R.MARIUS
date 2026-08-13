@@ -461,9 +461,14 @@ export default function Directory() {
         // The setup prompt landed \u2014 close after a beat so the success state reads.
         setTimeout(() => setInviteModalOpen(false), 900);
       }
-    } finally {
+    } catch (e) {
+      // Same cleanup on both paths instead of a `finally`: the React Compiler cannot
+      // lower `finally` and gives up on the whole component when it meets one. The
+      // rethrow keeps a failed invite exactly as loud as it was.
       setSending(false);
+      throw e;
     }
+    setSending(false);
   };
 
   const handleInvite = () => {

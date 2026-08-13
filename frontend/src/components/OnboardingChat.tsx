@@ -49,9 +49,8 @@ export default function OnboardingChat({ onCreated }: OnboardingChatProps) {
       // panel rather than rendering an empty/stuck chat. Other errors are transient (network).
       if (e instanceof ApiError && e.status === 409) setWaOffline(true);
       else setError(t('onboarding.errorStart'));
-    } finally {
-      setPhase('ready');
     }
+    setPhase('ready');
   }, [startOnboarding, t]);
 
   const restart = useCallback(async () => {
@@ -197,8 +196,11 @@ function QuestionPanel({
   const submit = async () => {
     if (!canSubmit) return;
     setBusy(true);
+    // The free-text branch is resolved before the block: a conditional expression inside
+    // try/catch is one the React Compiler cannot lower, and it drops the whole component.
+    const other = freeSelected ? otherText.trim() : undefined;
     try {
-      await onSubmit(selected.join(', '), freeSelected ? otherText.trim() : undefined);
+      await onSubmit(selected.join(', '), other);
     } catch {
       setBusy(false); // submit failed — let them retry
     }
