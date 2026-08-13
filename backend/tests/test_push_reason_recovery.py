@@ -273,7 +273,7 @@ async def test_the_project_channel_hears_about_it(uow_factory) -> None:
     await _watchdog(uow_factory, bus=bus).sweep(now=T0)
 
     published = list(bus.backlog(project_topic(project.id)))
-    assert [e.type for e in published] == ["dau-viec.dinh-tre"]
+    assert [e.type for e in published] == ["task.stalled"]
     assert published[0].data["task_id"] == str(task.id)
     assert published[0].data["reason"], "báo lên kênh mà không nói vì sao"
 

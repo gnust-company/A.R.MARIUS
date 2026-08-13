@@ -78,7 +78,7 @@ _LEADER_UNREACHABLE = "không gửi được tới Trưởng dự án (ngoại t
 # keep that block current is for the browser to ask again on a timer — which Constitution
 # IV forbids and FR-080 spells out. A quiet pass has to be announced too: silence is
 # exactly what the block exists to distinguish from a dead loop.
-EVENT_CADENCE_SWEPT = "nhip-dieu-phoi.quet"
+EVENT_CADENCE_SWEPT = "orchestration.swept"
 
 
 class OrchestrationLoop:

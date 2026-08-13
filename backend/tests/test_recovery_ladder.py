@@ -425,7 +425,7 @@ async def test_reaching_the_patron_carries_the_record_of_what_was_tried(
     assert dossier.get("question"), "hồ sơ không nêu chính xác điều cần quyết"
 
     types = [e.type for e in bus.backlog(patron_topic("patron-1"))]
-    assert "leo-thang.muc-3" in types
+    assert "escalation.level_3" in types
 
 
 @pytest.mark.asyncio

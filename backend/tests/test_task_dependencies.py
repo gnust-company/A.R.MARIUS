@@ -358,8 +358,8 @@ async def test_the_project_channel_hears_the_unlock(uow_factory) -> None:
     from armarius.infrastructure.events.topic_bus import project_topic
 
     types = [e.type for e in bus.backlog(project_topic(project.id))]
-    assert "dau-viec.mo-khoa" in types
-    assert "dau-viec.doi-trang-thai" in types
+    assert "task.unblocked" in types
+    assert "task.status_changed" in types
 
 
 async def test_a_refused_move_names_the_blockers_that_are_missing(uow_factory) -> None:

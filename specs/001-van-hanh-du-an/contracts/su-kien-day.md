@@ -18,14 +18,21 @@ Hai kênh đã chạy: theo **lượt chạy** và theo **đầu việc**. Cần
 
 | Sự kiện | Khi nào | Mang theo |
 |---|---|---|
-| `du-an.doi-giai-doan` | Dự án đổi giai đoạn | Giai đoạn trước, sau, ai quyết |
-| `ke-hoach.trinh` | Trưởng dự án trình kế hoạch | Phiên bản kế hoạch |
-| `ke-hoach.quyet` | Người chủ quyết ở cổng duyệt | Duyệt, yêu cầu chỉnh, hay hỏi lại |
-| `dau-viec.doi-trang-thai` | Mọi lần đổi trạng thái | Mã đầu việc, trước, sau, lý do |
-| `dau-viec.dinh-tre` | Nổi hoặc gỡ cờ đình trệ | Mã đầu việc, lý do mất động cơ |
-| `dau-viec.mo-khoa` | Một đầu việc xong, mở khoá việc phụ thuộc | Danh sách mã vừa mở khoá |
-| `cong-nhan.ky` | Một chữ ký được ghi | Loại người ký, kết quả, có phải ký tự động không |
-| `nhip-dieu-phoi.quet` | Xong **mỗi** lượt rà của nhịp điều phối, kể cả lượt không thấy gì | Mốc rà, số điểm treo, có gọi Trưởng dự án không |
+| `project.phase_changed` | Dự án đổi giai đoạn | Giai đoạn trước, sau, ai quyết |
+| `plan.submitted` | Trưởng dự án trình kế hoạch | Phiên bản kế hoạch |
+| `plan.decided` | Người chủ quyết ở cổng duyệt | Duyệt, yêu cầu chỉnh, hay hỏi lại |
+| `task.created` | Một đầu việc vừa được tạo | Mã đầu việc, trạng thái ban đầu |
+| `task.status_changed` | Mọi lần đổi trạng thái | Mã đầu việc, trước, sau, lý do |
+| `task.stalled` | Nổi hoặc gỡ cờ đình trệ | Mã đầu việc, lý do mất động cơ |
+| `task.unblocked` | Một đầu việc xong, mở khoá việc phụ thuộc | Danh sách mã vừa mở khoá |
+| `signature.recorded` | Một chữ ký được ghi | Loại người ký, kết quả, có phải ký tự động không |
+| `orchestration.swept` | Xong **mỗi** lượt rà của nhịp điều phối, kể cả lượt không thấy gì | Mốc rà, số điểm treo, có gọi Trưởng dự án không |
+
+`task.created` thêm ở T175. Bảng cũ chỉ có *"mọi lần đổi trạng thái"*, mà một đầu việc mới **không đổi
+trạng thái** — nó xuất hiện. Nên bảng dự án đang mở đứng im cho tới khi có người tải lại trang, và đứng im
+thì nhìn giống hệt một dự án đang yên. Cái mà người xem cần biết là **thứ được vẽ trên màn hình vừa đổi**,
+không phải *"trạng thái vừa đổi"* — hai câu đó chỉ trùng nhau cho tới lần đầu có thứ được vẽ mà không đi
+qua một lần đổi trạng thái nào.
 
 Lượt rà không thấy gì **vẫn phải bắn**. Khối "lượt rà gần nhất" trên bảng dự án sinh ra để phân biệt *dự án
 đang yên* với *vòng điều phối đã chết*, mà hai thứ đó nhìn giống hệt nhau nếu chỉ có lượt rà thấy-việc mới
@@ -36,7 +43,7 @@ Hiến pháp IV cấm, và đúng thứ nó đã làm trước Đợt 9.
 
 | Sự kiện | Khi nào | Mang theo |
 |---|---|---|
-| `luot-chay.doi-trang-thai` | Một lượt chạy đổi trạng thái: mở, bắt đầu, kết thúc, bị dừng giữa chừng, bị tuyên treo | Mã lượt chạy, mã agent, mã đầu việc, mã dự án, trạng thái mới |
+| `run.status_changed` | Một lượt chạy đổi trạng thái: mở, bắt đầu, kết thúc, bị dừng giữa chừng, bị tuyên treo | Mã lượt chạy, mã agent, mã đầu việc, mã dự án, trạng thái mới |
 | `marius.offline` | Một agent tụt qua ngưỡng im lặng thành đã tắt | Mã agent |
 
 `marius.offline` là cặp còn thiếu của `marius.online` đã có sẵn. Chiều sống lại vẫn báo, chiều
@@ -62,10 +69,10 @@ người dùng không biết mình đang nhìn một ô đã chết.
 
 | Sự kiện | Khi nào | Mang theo |
 |---|---|---|
-| `hop-thu.muc-moi` | Một mục chờ xuất hiện | Loại, dự án, đầu việc liên quan |
-| `hop-thu.da-giai-quyet` | Mục được xử lý | Định danh mục |
-| `hop-thu.nhac` | Một bậc nhắc được gửi | Định danh mục, bậc thứ mấy |
-| `leo-thang.muc-3` | Một việc leo lên người chủ | Hồ sơ đã thử, điều cần quyết |
+| `inbox.item_added` | Một mục chờ xuất hiện | Loại, dự án, đầu việc liên quan |
+| `inbox.item_resolved` | Mục được xử lý | Định danh mục |
+| `inbox.reminded` | Một bậc nhắc được gửi | Định danh mục, bậc thứ mấy |
+| `escalation.level_3` | Một việc leo lên người chủ | Hồ sơ đã thử, điều cần quyết |
 
 ## Nguyên tắc
 
@@ -76,3 +83,33 @@ người dùng không biết mình đang nhìn một ô đã chết.
 3. **Giới hạn theo workspace.** Người nghe chỉ nhận sự kiện của workspace mình; không rò rỉ sự tồn tại của
    dự án thuộc workspace khác.
 4. **Không đẩy nội dung nhạy cảm.** Sự kiện mang định danh và nhãn, không mang toàn văn thành phẩm.
+
+## Đổi tên sự kiện (2026-08-13)
+
+Mười sáu tên sự kiện vốn viết bằng tiếng Việt không dấu. Chúng nằm giữa hai lối: không phải tiếng Anh như
+mọi định danh khác trong mã, mà cũng không phải tiếng Việt thật vì mất dấu — thành ra kho có ba lối đặt tên
+thay vì hai. Nay theo đúng lối các sự kiện tiếng Anh đã có sẵn (`marius.online`, `workspace_agent.designated`).
+
+Kênh sự kiện chạy hoàn toàn trong bộ nhớ nên **không phải chuyển dữ liệu**; khởi động lại là xong.
+
+| Tên cũ | Tên mới |
+|---|---|
+| `boi-canh.trinh` | `context.submitted` |
+| `boi-canh.quyet` | `context.decided` |
+| `cong-nhan.ky` | `signature.recorded` |
+| `dau-viec.tao-moi` | `task.created` |
+| `dau-viec.doi-trang-thai` | `task.status_changed` |
+| `dau-viec.dinh-tre` | `task.stalled` |
+| `dau-viec.mo-khoa` | `task.unblocked` |
+| `du-an.doi-giai-doan` | `project.phase_changed` |
+| `hop-thu.muc-moi` | `inbox.item_added` |
+| `hop-thu.da-giai-quyet` | `inbox.item_resolved` |
+| `hop-thu.nhac` | `inbox.reminded` |
+| `ke-hoach.trinh` | `plan.submitted` |
+| `ke-hoach.quyet` | `plan.decided` |
+| `leo-thang.muc-3` | `escalation.level_3` |
+| `luot-chay.doi-trang-thai` | `run.status_changed` |
+| `nhip-dieu-phoi.quet` | `orchestration.swept` |
+
+Giao diện so **tiền tố** ở ba chỗ, không so tên đầy đủ — `plan.`, `context.`, `orchestration.`. Đây là chỗ
+dễ sót nhất khi đổi tên: tìm theo tên đầy đủ sẽ không thấy chúng.

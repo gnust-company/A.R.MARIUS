@@ -56,7 +56,7 @@ from armarius.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
-EVENT_LEVEL_3 = "leo-thang.muc-3"
+EVENT_LEVEL_3 = "escalation.level_3"
 
 
 class EscalationAnswer(StrEnum):

@@ -25,7 +25,7 @@ from armarius.domain.entities.run import Run
 # The events a screen keyed by agent listens for. Named here, beside the port, because the
 # name is part of the push contract rather than an implementation detail of whoever emits
 # it — and two separate callers emit it (the wake engine and the hung-run reaper).
-EVENT_RUN_STATE_CHANGED = "luot-chay.doi-trang-thai"
+EVENT_RUN_STATE_CHANGED = "run.status_changed"
 
 # The missing half of the pair. `marius.online` (published by /agent/me on first contact
 # after silence) said an agent came back; nothing said one had gone. The directory's status
