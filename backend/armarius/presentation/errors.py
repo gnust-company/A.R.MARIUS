@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from armarius.application.use_cases.approvals import (
+    CriteriaNotScoredError,
     NotReadyForSignatureError,
     ResponsiblePatronUnknown,
 )
@@ -27,13 +28,18 @@ from armarius.application.use_cases.tasks import (
     ProjectNotReadyForTasks,
 )
 from armarius.domain.entities.approval import RejectionNeedsReasonError
-from armarius.domain.entities.checklist_item import CriteriaLockedError
+from armarius.domain.entities.checklist_item import (
+    CriteriaLockedError,
+    CriterionNotRatableError,
+    EvidenceRequiredError,
+)
 from armarius.domain.entities.leader_chat import LeaderChatError
 from armarius.domain.entities.marius import InviteError
 from armarius.domain.entities.onboarding import OnboardingError
 from armarius.domain.entities.seat_grant import SeatGrantError
 from armarius.domain.entities.task import (
     ArtifactRequiredError,
+    CriteriaNotMetError,
     DependencyNotMetError,
     DescriptionLockedError,
     DescriptionRequiredError,
@@ -125,6 +131,29 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(CriteriaLockedError)
     async def _criteria_locked(_: Request, exc: CriteriaLockedError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    # The three refusals around scoring a criterion (FR-019, T178). All 409 for the same
+    # reason as the gates above: the request is well-formed and it is the task's own state
+    # — not yet in review, nothing to cite, criteria still unrated — that says no.
+    @app.exception_handler(CriterionNotRatableError)
+    async def _criterion_not_ratable(
+        _: Request, exc: CriterionNotRatableError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(EvidenceRequiredError)
+    async def _evidence_required(_: Request, exc: EvidenceRequiredError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(CriteriaNotMetError)
+    async def _criteria_not_met(_: Request, exc: CriteriaNotMetError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(CriteriaNotScoredError)
+    async def _criteria_not_scored(
+        _: Request, exc: CriteriaNotScoredError
+    ) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(TaskDependencyError)

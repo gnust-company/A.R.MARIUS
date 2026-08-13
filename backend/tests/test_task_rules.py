@@ -5,6 +5,7 @@ import pytest
 from armarius.domain.entities.task import (
     VALID_TRANSITIONS,
     ArtifactRequiredError,
+    CriteriaNotMetError,
     DependencyNotMetError,
     SignaturesRequiredError,
     StalledTaskError,
@@ -35,7 +36,11 @@ def test_done_requires_artifact() -> None:
     task = Task(status=TaskStatus.IN_REVIEW)
     with pytest.raises(ArtifactRequiredError):
         task.transition_to(
-            TaskStatus.DONE, utcnow(), has_artifact=False, signatures_complete=True
+            TaskStatus.DONE,
+            utcnow(),
+            has_artifact=False,
+            signatures_complete=True,
+            criteria_met=True,
         )
 
 
@@ -64,10 +69,43 @@ def test_the_signature_gate_fails_shut_when_nobody_looked() -> None:
 def test_done_with_artifact_sets_completed_at() -> None:
     task = Task(status=TaskStatus.IN_REVIEW)
     task.transition_to(
-        TaskStatus.DONE, utcnow(), has_artifact=True, signatures_complete=True
+        TaskStatus.DONE,
+        utcnow(),
+        has_artifact=True,
+        signatures_complete=True,
+        criteria_met=True,
     )
     assert task.status == TaskStatus.DONE
     assert task.completed_at is not None
+
+
+def test_done_names_the_criteria_that_are_not_passed_yet() -> None:
+    """FR-019: chữ ký đủ, thành phẩm đủ — vẫn không đóng khi bộ tiêu chí chưa chấm đạt."""
+    task = Task(status=TaskStatus.IN_REVIEW)
+    with pytest.raises(CriteriaNotMetError) as refused:
+        task.transition_to(
+            TaskStatus.DONE,
+            utcnow(),
+            has_artifact=True,
+            signatures_complete=True,
+            unmet_criteria=("Có tệp kết xuất",),
+        )
+    assert refused.value.unmet == ("Có tệp kết xuất",)
+    assert "Có tệp kết xuất" in str(refused.value)
+    assert task.status == TaskStatus.IN_REVIEW
+
+
+def test_the_criteria_gate_fails_shut_when_nobody_looked() -> None:
+    """Cùng luật với cổng chữ ký: người gọi quên tra bộ tiêu chí thì bị từ chối.
+
+    Đây là nửa mà một cổng mặc-định-mở sẽ bỏ lọt — lối đóng nào quên hỏi cũng đóng được,
+    và lối quên hỏi thì không ai đi tìm vì nó không báo gì cả.
+    """
+    task = Task(status=TaskStatus.IN_REVIEW)
+    with pytest.raises(CriteriaNotMetError):
+        task.transition_to(
+            TaskStatus.DONE, utcnow(), has_artifact=True, signatures_complete=True
+        )
 
 
 def test_review_requires_artifact() -> None:

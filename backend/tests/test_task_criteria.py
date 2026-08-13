@@ -10,13 +10,19 @@ thay đổi lớn (FR-075) nên phải treo chờ người chủ chứ không s�
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 
 from armarius.domain.entities.checklist_item import (
     AcceptanceResult,
     ChecklistItem,
     CriteriaLockedError,
+    CriterionNotRatableError,
+    EvidenceRequiredError,
     assert_criteria_editable,
+    assert_criteria_ratable,
+    criteria_not_passed,
 )
 from armarius.domain.entities.task import Task, TaskStatus
 from tests.support.approvals import task_awaiting_acceptance
@@ -32,8 +38,6 @@ def test_a_fresh_criterion_is_unrated() -> None:
 
 
 def test_a_criterion_can_be_marked_passed_with_evidence() -> None:
-    from uuid import uuid4
-
     artifact_id = uuid4()
     item = ChecklistItem(text="Có tệp kết xuất")
     item.rate(AcceptanceResult.PASSED, evidence_artifact_id=artifact_id)
@@ -44,10 +48,51 @@ def test_a_criterion_can_be_marked_passed_with_evidence() -> None:
 def test_the_legacy_done_flag_follows_the_rating() -> None:
     """Ô tích cũ vẫn còn để giao diện cũ không vỡ, nhưng nó chỉ là bóng của kết quả chấm."""
     item = ChecklistItem(text="Có tệp kết xuất")
-    item.rate(AcceptanceResult.PASSED)
+    item.rate(AcceptanceResult.PASSED, evidence_artifact_id=uuid4())
     assert item.done is True
     item.rate(AcceptanceResult.FAILED)
     assert item.done is False
+
+
+def test_a_pass_must_name_the_output_that_proves_it() -> None:
+    """Chấm đạt mà không chỉ ra thành phẩm nào thì chính là *xong giả* ở cấp một dòng."""
+    item = ChecklistItem(text="Có tệp kết xuất")
+    with pytest.raises(EvidenceRequiredError):
+        item.rate(AcceptanceResult.PASSED)
+    assert item.result is AcceptanceResult.UNRATED
+
+
+def test_a_fail_needs_no_evidence() -> None:
+    """Không đạt thì không có gì để trỏ tới — đòi bằng chứng ở đây là đòi một thứ không có."""
+    item = ChecklistItem(text="Có tệp kết xuất")
+    item.rate(AcceptanceResult.FAILED)
+    assert item.result is AcceptanceResult.FAILED
+    assert item.evidence_artifact_id is None
+
+
+def test_rerating_a_pass_drops_the_old_evidence() -> None:
+    """Chấm lại là chấm với thành phẩm đang có trên bàn, không phải giữ lại cái cũ.
+
+    Nếu mã bằng chứng cũ được mang sang, một lần chấm đạt sẽ trỏ mãi vào bản nháp đã bị
+    thay — vẫn có bằng chứng trên giấy, nhưng bằng chứng cho một thứ khác.
+    """
+    first, second = uuid4(), uuid4()
+    item = ChecklistItem(text="Có tệp kết xuất")
+    item.rate(AcceptanceResult.PASSED, evidence_artifact_id=first)
+    item.rate(AcceptanceResult.FAILED)
+    assert item.evidence_artifact_id is None
+    item.rate(AcceptanceResult.PASSED, evidence_artifact_id=second)
+    assert item.evidence_artifact_id == second
+
+
+def test_criteria_not_passed_names_both_the_unrated_and_the_failed() -> None:
+    """Từ phía đóng việc, *chưa chấm* và *chấm không đạt* nói cùng một điều."""
+    items = [
+        ChecklistItem(text="đã chấm đạt", result=AcceptanceResult.PASSED),
+        ChecklistItem(text="chưa chấm"),
+        ChecklistItem(text="chấm không đạt", result=AcceptanceResult.FAILED),
+    ]
+    assert criteria_not_passed(items) == ("chưa chấm", "chấm không đạt")
 
 
 # ── luật: đặt trước khi thợ bắt tay ───────────────────────────────────────────────
@@ -67,6 +112,30 @@ def test_criteria_may_be_written_before_work_starts(status: TaskStatus) -> None:
 def test_criteria_freeze_once_the_worker_has_started(status: TaskStatus) -> None:
     with pytest.raises(CriteriaLockedError):
         assert_criteria_editable(Task(status=status))
+
+
+# ── luật: chấm khi đang rà soát ───────────────────────────────────────────────────
+
+
+def test_criteria_are_scored_while_the_task_is_in_review() -> None:
+    assert_criteria_ratable(Task(status=TaskStatus.IN_REVIEW))  # không ném là đạt
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        TaskStatus.DRAFT,
+        TaskStatus.BACKLOG,
+        TaskStatus.TODO,
+        TaskStatus.IN_PROGRESS,
+        TaskStatus.BLOCKED,
+        TaskStatus.DONE,
+    ],
+)
+def test_criteria_cannot_be_scored_outside_review(status: TaskStatus) -> None:
+    """Hai đầu đều chặn: chấm trước khi có đầu ra, và chấm lại sau khi việc đã đóng."""
+    with pytest.raises(CriterionNotRatableError):
+        assert_criteria_ratable(Task(status=status))
 
 
 # ── mặt giao tiếp ─────────────────────────────────────────────────────────────────
