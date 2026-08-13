@@ -85,7 +85,7 @@ phải yêu cầu mới:
 ### Dịch vụ và mặt giao tiếp
 
 - [X] T014 Dịch vụ ghi nhật ký đầu việc trong `backend/armarius/application/use_cases/task_log.py` — một điểm vào duy nhất cho mọi loại việc xảy ra
-- [X] T015 Dịch vụ hộp thư (đặt mục, đọc theo người, giải quyết) trong `backend/armarius/application/use_cases/inbox.py`, **bắn `hop-thu.muc-moi` và `hop-thu.da-giai-quyet` lên kênh người chủ ở mọi lối vào ra** — không có bước này thì hộp thư ở giao diện buộc phải hỏi vòng, trái Hiến pháp IV
+- [X] T015 Dịch vụ hộp thư (đặt mục, đọc theo người, giải quyết) trong `backend/armarius/application/use_cases/inbox.py`, **bắn `inbox.item_added` và `inbox.item_resolved` lên kênh người chủ ở mọi lối vào ra** — không có bước này thì hộp thư ở giao diện buộc phải hỏi vòng, trái Hiến pháp IV
 - [X] T016 Bộ ngưỡng thời gian theo dự án trong `backend/armarius/domain/entities/project.py` — mở rộng `default_project_settings()`, thiếu trường nào thì lấy mặc định hệ thống ở T004
 - [X] T017 Hai kênh sự kiện mới (theo dự án, theo người chủ) trong `backend/armarius/infrastructure/events/topic_bus.py`, giữ số thứ tự để nối lại sau khi đứt
 - [X] T018 Lối vào dòng sự kiện cho hai kênh mới trong `backend/armarius/presentation/api/events.py`, giới hạn theo workspace người nghe
@@ -137,11 +137,11 @@ Trưởng dự án tự duyệt kế hoạch của mình → bị chặn. Ngư�
 
 ### Ứng dụng
 
-- [X] T039 [US1] Ca sử dụng trình Bối cảnh, trình kế hoạch, ghi quyết định của người chủ trong `backend/armarius/application/use_cases/plans.py` — kèm đặt mục *chờ duyệt kế hoạch* vào hộp thư qua dịch vụ ở T015 và bắn `ke-hoach.trinh` lên kênh dự án
+- [X] T039 [US1] Ca sử dụng trình Bối cảnh, trình kế hoạch, ghi quyết định của người chủ trong `backend/armarius/application/use_cases/plans.py` — kèm đặt mục *chờ duyệt kế hoạch* vào hộp thư qua dịch vụ ở T015 và bắn `plan.submitted` lên kênh dự án
 - [X] T040 [US1] Chuyển giai đoạn (Trưởng dự án đề xuất, người chủ quyết), dừng nhịp khi vào *đóng*, và **khoá toàn bộ lịch sử dự án đã đóng ở dạng chỉ đọc** — mọi lối vào ghi trả `409` (FR-005) — trong `backend/armarius/application/use_cases/projects.py`
 - [X] T041 [US1] Cổng FR-003 chặn tạo và giao đầu việc thật khi dự án chưa *vận hành*/*bảo trì* trong `backend/armarius/application/use_cases/tasks.py`
 - [X] T042 [US1] Cớ đánh thức "dự án vừa đủ đội" và "người chủ quyết kế hoạch" trong `backend/armarius/domain/entities/wakeup.py`, bắn từ `backend/armarius/application/use_cases/wake_engine.py`
-- [X] T043 [US1] Ghi nhật ký mốc duyệt và mốc chuyển giai đoạn qua dịch vụ T014, phát sự kiện `du-an.doi-giai-doan` và `ke-hoach.quyet` lên kênh dự án
+- [X] T043 [US1] Ghi nhật ký mốc duyệt và mốc chuyển giai đoạn qua dịch vụ T014, phát sự kiện `project.phase_changed` và `plan.decided` lên kênh dự án
 
 ### Mặt giao tiếp
 
@@ -196,7 +196,7 @@ tạo và giao ngay; ngoài khuôn → ở lại *nháp*, mục chờ duyệt v�
 - [X] T062 [US2] **Gỡ hẳn** `yolo_mode`, thay bằng điều kiện "trong khuôn hạng mục đã duyệt" ở `approve_proposed` trong `backend/armarius/application/use_cases/tasks.py` — rà sạch mọi chỗ đọc nó ở `backend/armarius/domain/services/leader_chat_prompt.py`, `backend/armarius/presentation/` và `frontend/src/`, không để lại cờ chết thứ hai
 - [X] T063 [US2] Xử lý hệ quả khi đầu việc *xong* (FR-031): ghi mốc hoàn tất, rà và mở khoá việc phụ thuộc, đánh thức Trưởng dự án — trong `backend/armarius/application/use_cases/tasks.py`
 - [X] T064 [US2] Thao tác mở lại đầu việc đã đóng, bắt buộc lý do và ghi vết, trong `backend/armarius/application/use_cases/tasks.py`
-- [X] T065 [US2] Ghi nhật ký mọi lần đổi trạng thái, gán người, đổi tiêu chí qua dịch vụ T014 và phát `dau-viec.doi-trang-thai`, `dau-viec.mo-khoa` lên kênh dự án
+- [X] T065 [US2] Ghi nhật ký mọi lần đổi trạng thái, gán người, đổi tiêu chí qua dịch vụ T014 và phát `task.status_changed`, `task.unblocked` lên kênh dự án
 
 ### Lưu trữ và mặt giao tiếp
 
@@ -269,7 +269,7 @@ vẫn ghi rõ họ được coi là đã ký.
 - [X] T091 [US3] Xử lý từ chối (FR-040): kéo về *đang làm*, đặt việc kế tiếp "sửa theo phản hồi", đánh thức đúng thợ cũ — trong `backend/armarius/application/use_cases/approvals.py`
 - [X] T092 [US3] Đếm vòng từ chối và kéo Trưởng dự án vào soát lại đề bài sau vòng thứ ba (FR-041) trong `backend/armarius/application/use_cases/approvals.py`
 - [X] T093 [US3] Bản tổng kết đợt khi cả đợt việc đã *xong* kèm ba lựa chọn chuyển giai đoạn (FR-043) trong `backend/armarius/application/use_cases/projects.py`
-- [X] T094 [US3] Ghi vết đầy đủ mọi chữ ký kể cả ký tự động và mọi lần bật/tắt công tắc (FR-039) qua dịch vụ T014, phát `cong-nhan.ky` lên kênh dự án
+- [X] T094 [US3] Ghi vết đầy đủ mọi chữ ký kể cả ký tự động và mọi lần bật/tắt công tắc (FR-039) qua dịch vụ T014, phát `signature.recorded` lên kênh dự án
 
 ### Mặt giao tiếp
 
@@ -402,10 +402,10 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
 
 ### Vòng quét canh gác và thang phục hồi
 
-- [X] T138 [US6] Vòng quét canh gác theo khuôn `LivenessWatchdog` — chỉ so mốc hết hạn với hiện tại, nổi và gỡ cờ đình trệ, bắn `dau-viec.dinh-tre` lên kênh dự án — trong `backend/armarius/application/use_cases/stall_watchdog.py`
+- [X] T138 [US6] Vòng quét canh gác theo khuôn `LivenessWatchdog` — chỉ so mốc hết hạn với hiện tại, nổi và gỡ cờ đình trệ, bắn `task.stalled` lên kênh dự án — trong `backend/armarius/application/use_cases/stall_watchdog.py`
 - [X] T139 [US6] Luật thang ba mức trong `backend/armarius/domain/services/escalation.py`: Mức 1 tự gọi lại có trần và giãn dần, Mức 2 Trưởng dự án quyết, Mức 3 lên người chủ — **không nhảy cóc**
 - [X] T140 [US6] Đặt lại bộ đếm Mức 1 về không khi đầu việc có tiến triển thật (FR-060) trong `backend/armarius/domain/services/escalation.py`
-- [X] T141 [US6] Hồ sơ đã thử đính vào mục leo thang Mức 3 (FR-061) trong `backend/armarius/application/use_cases/inbox.py`, bắn `leo-thang.muc-3` lên kênh người chủ
+- [X] T141 [US6] Hồ sơ đã thử đính vào mục leo thang Mức 3 (FR-061) trong `backend/armarius/application/use_cases/inbox.py`, bắn `escalation.level_3` lên kênh người chủ
 - [X] T142 [US6] Gắn vòng quét canh gác vào vòng đời ứng dụng trong `backend/armarius/main.py` và `backend/armarius/presentation/container.py`
 
 ### Phục hồi sự cố
@@ -413,7 +413,7 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
 - [X] T143 [US6] Tuyên treo đầy đủ (FR-062): đóng lượt chạy ma, kéo đầu việc về *chờ làm*, gọi lại đúng người phụ trách trỏ vào việc kế tiếp — trong `backend/armarius/application/use_cases/liveness_watchdog.py`
 - [X] T144 [US6] Thử lại giãn dần với động cơ *chờ hành động phục hồi*, không tính đình trệ (FR-063), trong `backend/armarius/application/use_cases/wake_engine.py`
 - [X] T145 [US6] Thợ ngoại tuyến → đầu việc về *bị chặn*, báo Trưởng dự án; Trưởng dự án ngoại tuyến → báo thẳng người chủ (FR-064) trong `backend/armarius/application/use_cases/liveness.py`
-- [X] T146 [US6] Nhắc ba bậc thưa dần theo ngưỡng dự án (FR-065) trong `backend/armarius/application/use_cases/inbox.py`, mỗi bậc bắn `hop-thu.nhac` lên kênh người chủ
+- [X] T146 [US6] Nhắc ba bậc thưa dần theo ngưỡng dự án (FR-065) trong `backend/armarius/application/use_cases/inbox.py`, mỗi bậc bắn `inbox.reminded` lên kênh người chủ
 - [X] T147 [US6] Cho chạy tiếp mọi nhánh việc không phụ thuộc vào quyết định người chủ đang chờ (FR-066) trong `backend/armarius/application/use_cases/orchestrator.py` — dò các đầu việc mà chuỗi phụ thuộc của chúng **không** đi qua mục đang chờ, giữ chúng chạy bình thường; dự án đậu lại đúng chỗ chờ chứ không đứng cả bảng
 - [X] T148 [US6] Xếp hàng tranh chấp thợ/tài nguyên theo ưu tiên → hạn chót → tuổi đời kèm nâng dần (FR-067) trong `backend/armarius/domain/services/push_reason_rules.py`
 - [X] T149 [US6] Dựng lại động cơ đẩy cho mọi đầu việc chưa đóng lúc khởi động, lượt chạy hỏng xử như treo (FR-068), trong `backend/armarius/application/use_cases/stall_watchdog.py`
@@ -442,7 +442,7 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
 - [X] T155 [P] Rà toàn bộ chuỗi hiển thị mới trong `frontend/src/i18n/vi.ts` — tiếng Việt **đủ dấu**, không chuỗi cứng nào lọt ngoài cơ chế đa ngôn ngữ (FR-084, Hiến pháp VI). Rà xong **không thấy lỗi**; đóng lại thành ba bài kiểm tĩnh trong `backend/tests/test_constitution_guards.py` (giữ dấu · khoá Việt–Anh khớp nhau · mười mặt của đặc tả 001 không có chuỗi cứng), vì một lần rà chỉ bắt được dòng hôm nay
 - [X] T156 [P] Kiểm cách ly workspace cho mọi lối vào mới — truy cập chéo trả *không tìm thấy*, không phải *không có quyền* (FR-081, Hiến pháp I) — trong `backend/tests/test_agent_ws_guard.py`. **Rà ra lỗ thật**: toàn bộ `/v1/tasks/*` và `/v1/runs/*` tra theo mã đầu việc mà không hỏi workspace, nên một người chủ đọc và **sửa** được đầu việc của người khác, phần lớn lối đọc còn không đòi thẻ định danh. Vá bằng `backend/armarius/presentation/api/scoping.py` áp cho cả hai bộ định tuyến; kiểm ở `test_agent_ws_guard.py` (mười một lối `/agent/*` mới) và `backend/tests/test_patron_ws_guard.py` (mặt người chủ)
 - [X] T157 [P] Tra tầng nghiệp vụ xác nhận không có nhánh mã theo loại agent (FR-083, Hiến pháp III) trong `backend/armarius/domain/` và `backend/armarius/application/`. **Rà ra lỗ thật**: `use_cases/onboarding.py` chẻ nhánh theo bốn loại runtime để soạn phần hướng dẫn cài kỹ năng. Chuyển xuống sau hợp đồng — `MariusAdapter.skill_install_steps`, mỗi adapter tự khai; bài kiểm tĩnh canh không cho nhánh mọc lại
-- [X] T158 [P] Kiểm không có vòng hỏi lại nào ở giao diện — mọi cập nhật đến từ kênh sự kiện (FR-080, Hiến pháp IV) — trong `frontend/src/lib/sse.ts` và các trang liên quan. **Rà ra lỗ thật**: bảng dự án không hề nghe kênh dự án (nạp một lần lúc mở, thẻ việc đứng im cả phiên) mà lại hỏi lại bản ghi lượt rà mỗi 60 giây. Nối bảng vào `subscribeProjectEvents`, bỏ đồng hồ, và thêm sự kiện `nhip-dieu-phoi.quet` để khối nhịp có cái mà nghe
+- [X] T158 [P] Kiểm không có vòng hỏi lại nào ở giao diện — mọi cập nhật đến từ kênh sự kiện (FR-080, Hiến pháp IV) — trong `frontend/src/lib/sse.ts` và các trang liên quan. **Rà ra lỗ thật**: bảng dự án không hề nghe kênh dự án (nạp một lần lúc mở, thẻ việc đứng im cả phiên) mà lại hỏi lại bản ghi lượt rà mỗi 60 giây. Nối bảng vào `subscribeProjectEvents`, bỏ đồng hồ, và thêm sự kiện `orchestration.swept` để khối nhịp có cái mà nghe
 - [X] T159 Chạy toàn bộ lệnh kiểm tự động trong `specs/001-van-hanh-du-an/quickstart.md` mục "Lệnh kiểm tự động", gồm cả bộ kiểm của gói lớp trung gian. **Tám lệnh, tất cả đạt** — đối chiếu với bảng mốc nền T002:
 
   | Lệnh | Kết quả | Mốc nền T002 |
@@ -595,7 +595,7 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   Ghi lại một chỗ T160 nói chưa chính xác: phần mô tả kỹ năng bị xoá trắng **không phải** do tenant kia ghi
   đè. Nội dung kỹ năng vốn suy ra tên và mô tả từ đầu tệp `SKILL.md`; ghi một tệp không có dòng mô tả thì
   mô tả thành rỗng, chủ sở hữu tự ghi cũng vậy. Đây là cách vốn có, không phải hỏng, và không mở việc mới.
-- [ ] T175 **Tạo đầu việc không bắn sự kiện nào** (FR-080, Hiến pháp IV). Tìm ra ở T160: mở bảng dự án bằng
+- [X] T175 **Tạo đầu việc không bắn sự kiện nào** (FR-080, Hiến pháp IV). Tìm ra ở T160: mở bảng dự án bằng
   trình duyệt thật, tạo một đầu việc **từ ngoài trình duyệt**, bảng không nhúc nhích; tải lại trang thì đầu
   việc hiện ra. `TaskService.create` trong `backend/armarius/application/use_cases/tasks.py:145` ghi dòng dữ
   liệu, chốt, rồi trả về — không gọi `_publish` lần nào. Kênh dự án hiện chỉ chở **đổi trạng thái**.
@@ -607,6 +607,64 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   **Nghiệm thu**: lặp lại đúng phép đo — mở bảng, tạo đầu việc từ ngoài, thẻ phải tự hiện **mà không tải lại
   trang**. Nhớ lọc lưu lượng **theo đường dẫn chứ không theo cổng**: trình duyệt gọi qua cổng phục vụ giao
   diện, lọc theo cổng máy chủ sẽ đếm ra 0 và trông y hệt một kết quả đạt.
+
+  **Đã làm.** Thêm sự kiện `task.created` vào kênh dự án, và ghi nó vào bảng hợp đồng
+  `contracts/su-kien-day.md` — bảng cũ chỉ có *"mọi lần đổi trạng thái"*, mà một đầu việc mới **không đổi
+  trạng thái**, nó xuất hiện. Giao diện không phải sửa gì: bảng vốn đọc lại toàn bộ khi có bất kỳ tin nào
+  trên kênh dự án. Bắn cả cho đầu việc *bản nháp* — bản nháp không được vẽ nên lượt đọc lại không thấy gì
+  và tốn một truy vấn; đổi lại là **không có điều kiện theo trạng thái** phải giữ cho đúng mỗi lần tập
+  trạng thái được vẽ thay đổi. Bắn thừa không bao giờ sai; im lặng mới sai.
+
+  Trên dịch vụ thật, dựng lại cả hai vùng chứa:
+
+  | Phép đo | Kết quả |
+  |---|---|
+  | Tạo đầu việc từ ngoài trình duyệt | thẻ tự hiện sau **500 mili giây**, tên việc đúng |
+  | Số lần trang tự tải lại | **0** |
+  | Đứng yên 30 giây trên bảng | **0 lượt gọi** |
+  | Sau khi nhận tin | **3 lượt đọc lại** thật — tín hiệu rồi đọc lại, không dựng trạng thái từ nội dung tin |
+  | Kênh dự án chở | `task.created`, `task.status_changed` |
+  | Đổi trạng thái từ ngoài | thẻ nhảy từ (295, 619) sang (611, 790), không tải lại trang |
+
+  Bài kiểm mới `backend/tests/test_project_channel_task_created.py` đi hết đường thật — lối gọi thật, kênh
+  thật, dòng sự kiện thật — vì đó đúng là quãng đường chỗ hỏng đi qua: hàm ghi xong dòng dữ liệu rồi trả về,
+  nên mọi đơn vị quanh nó đều đúng mà bảng vẫn đứng im. Bộ kiểm máy chủ **672 xanh**, rà kiểu **158 = 158**.
+
+  Một chỗ bản đo của tôi sai, ghi ra để lần sau không mất thì giờ: lần đo đổi trạng thái đầu tiên tìm thẻ
+  bằng cách so chuỗi, nó bắt trúng một phần tử khác trên trang và phần tử đó không dịch chuyển — báo ra
+  *"thẻ không nhảy cột"* trong khi thẻ có nhảy. Hỏi đúng phần tử theo nội dung khớp trọn thì ra đúng. Sai ở
+  bản đo, không phải ở mã.
+- [X] T176 **Đổi 16 tên sự kiện từ tiếng Việt không dấu sang tiếng Anh** (owner yêu cầu, 2026-08-13). Chúng
+  nằm giữa hai lối: không phải tiếng Anh như mọi định danh khác trong mã, mà cũng không phải tiếng Việt
+  thật vì mất dấu — kho thành ra có ba lối đặt tên thay vì hai. Nay theo đúng lối các sự kiện tiếng Anh đã
+  có sẵn (`marius.online`, `workspace_agent.designated`). Bảng đối chiếu cũ → mới nằm ở cuối
+  `contracts/su-kien-day.md`.
+
+  **Không phải chuyển dữ liệu** — kênh sự kiện chạy hoàn toàn trong bộ nhớ, khởi động lại là xong.
+
+  Chỗ suýt sót, đáng nhớ: giao diện so **tiền tố** ở ba màn (`plan.`, `context.`, `orchestration.`), không
+  so tên đầy đủ. Lần quét đầu tìm theo tên đầy đủ nên **không thấy** chúng — tìm sót thì ba màn đó im lặng
+  mà bộ kiểm vẫn xanh, vì không bài kiểm nào chạm tới chuỗi tiền tố. Phải quét cả tên đầy đủ lẫn tiền tố.
+- [ ] T177 **Bốn thứ bảng dự án vẽ ra mà không có tin đẩy nào** (FR-080a, Hiến pháp IV). Tìm ra khi làm
+  T175: sửa xong việc tạo đầu việc rồi rà tiếp thì thấy thẻ việc còn vẽ bốn thứ nữa, cả bốn đều đổi được
+  mà kênh dự án không hề lên tiếng.
+
+  | Thứ được vẽ trên thẻ | Đổi bằng | Có bắn tin không |
+  |---|---|---|
+  | Số mục việc con đã xong | đặt lại danh sách việc con | không |
+  | Số lời bình | thêm lời bình | không |
+  | Kẹp giấy báo có thành phẩm | thêm thành phẩm | không |
+  | Số việc đang chặn | thêm/gỡ ràng buộc phụ thuộc | không |
+
+  Cùng một chỗ hụt với T175, chỉ khác thứ được vẽ. FR-080a nói **mọi thay đổi mà giao diện đang hiển thị**,
+  không nói riêng trạng thái — nên đóng đợt mà còn bốn thứ này thì câu "đã triển khai" vẫn chưa đúng.
+
+  Hai chỗ cuối bảng nằm ở tầng khác và **chưa có đường dẫn kênh sự kiện** — phần lời bình và phần thành
+  phẩm hiện không cầm kênh nào, nên phải nối thêm chứ không chỉ gọi thêm một dòng. Đó là lý do tách khỏi
+  T175 thay vì gộp vào.
+
+  **Nghiệm thu**: mở bảng bằng trình duyệt thật, đổi lần lượt cả bốn thứ **từ ngoài trình duyệt**, cả bốn
+  phải tự đổi trên thẻ mà không tải lại trang.
 - [X] T160 Chạy bảng "Kiểm chứng ràng buộc Hiến pháp" trong `specs/001-van-hanh-du-an/quickstart.md` — sáu nguyên tắc, sáu cách kiểm.
 
   Chạy trên **dịch vụ thật** (vùng chứa đang sống, thẻ định danh thật, trình duyệt thật), không chỉ bằng bộ
@@ -656,12 +714,12 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   chỗ đó ghi *bản nháp*, không phải *chờ rà soát*. Kết luận: rác dữ liệu do một lượt ghi thẳng từ bên ngoài
   ở đợt trước, **không phải lối mã nào đang chạy**. Cổng đã kiểm lại và chặn đúng.
 - [X] T161 [P] Bài kiểm hồi quy cho **14 yêu cầu đã có sẵn trong mã** mà không đợt nào chạm tới (FR-016, 017, 020, 023, 025, 026, 028, 032, 046, 051, 070, 073, 078, 082) trong `backend/tests/` — khảo sát kết luận chúng đang đúng, nhưng không bài kiểm nào canh để biết một đợt sau có làm hỏng không. **Sửa lại con số**: tra từng cái thì **bốn** trong mười bốn đã có bài kiểm ở chỗ khác — FR-025 và FR-032 ở `test_task_dependencies`, FR-026 ở `test_task_rules`, FR-046 ở `test_wake_prompt`. Mười cái còn lại nằm ở `backend/tests/test_spec_regressions.py`, mỗi bài mang tên đúng một yêu cầu
-- [ ] T162 Cập nhật trạng thái đặc tả từ *Nháp* sang *đã triển khai* trong `specs/001-van-hanh-du-an/spec.md` và ghi lại các điểm lệch còn tồn nếu có. **Làm sau cùng, và sau cả T172, T173, T174, T175** — đóng đợt bằng một cổng sạch, không đóng bằng một dòng ghi nợ. Riêng T174 là lỗ Hiến pháp I: đóng đợt mà còn nó thì dòng "đã triển khai" là một câu nói sai
+- [ ] T162 Cập nhật trạng thái đặc tả từ *Nháp* sang *đã triển khai* trong `specs/001-van-hanh-du-an/spec.md` và ghi lại các điểm lệch còn tồn nếu có. **Làm sau cùng, và sau cả T172, T173, T174, T175, T177** — đóng đợt bằng một cổng sạch, không đóng bằng một dòng ghi nợ. Riêng T174 là lỗ Hiến pháp I: đóng đợt mà còn nó thì dòng "đã triển khai" là một câu nói sai
 - [X] T163 [P] Một lối gọi duy nhất `answerInboxItem` trong `frontend/src/lib/api.ts`, trỏ vào `POST /v1/inbox/{id}/answer`. **Không** thêm lời gọi riêng cho giao người / đổi việc kế tiếp / huỷ: câu trả lời của người chủ phải là một lượt gửi–nhận, vì hai lượt để lại quãng nửa vời mà bấm lại là hành động chạy hai lần (FR-061a, FR-061e, FR-070)
 - [X] T164 Bốn hành động ngay trên mục *leo thang* ở `frontend/src/pages/Inbox.tsx`, khớp đúng những lựa chọn hồ sơ nêu ra: **giao lại cho…** (chọn trong danh sách agent có ghế ở dự án, kèm lý do chuyển giao — máy chủ từ chối chuyển người mà không nói vì sao, FR-028), **đổi việc kế tiếp**, **huỷ việc** (kèm ô lý do — FR-030), và **"tôi đã xử lý xong"** (người chủ tự gỡ bên ngoài hệ). Hiện mục này chỉ có nút *Mở*, nên hệ hỏi người chủ mấy đifgều mà không cho họ làm điều nào (FR-061a)
 - [X] T165 Nghiệm thu đường trả lời. **Lá thư đóng vì người chủ bấm, KHÔNG phải vì vòng quét** (FR-061b), và máy chủ đóng mục cùng lần chốt với hành động (FR-061e). Bốn lối phải đi thử đủ: giao lại → người mới được gọi dậy **đúng một lần**, kể cả khi bấm lại; đổi việc kế tiếp và **"tôi đã xử lý xong"** → không ai được gọi lúc bấm, vòng quét nhặt lại và bắt đầu **từ Mức 1**; huỷ việc → đầu việc rời khỏi tầm quét và bấm lại không ném lỗi. Cộng một bài kiểm chứng minh hành động hỏng thì **mục vẫn còn nguyên** — đó là bằng chứng của một-lần-chốt
 - [X] T166 [P] Chuỗi hiển thị của T164 vào `frontend/src/i18n/vi.ts` + `en.ts`, tiếng Việt đủ dấu (FR-084)
-- [X] T167 Gỡ vòng hỏi lại cuối cùng ở giao diện: `frontend/src/pages/AgentDetail.tsx` nạp lại danh sách lượt chạy của một agent mỗi 15 giây (FR-080, Hiến pháp IV). Khác ba chỗ kia ở chỗ nó **không có kênh nào để nghe** — động cơ đánh thức bắn theo *lượt chạy* và theo *đầu việc*, màn này theo *agent*. Nên việc thật là thêm một sự kiện vòng đời lượt chạy lên kênh workspace (`contracts/su-kien-day.md`) rồi mới nối màn vào. Tách ra vì nó sửa **hợp đồng đẩy**, không phải sửa một trang; tạm thời ghi vào danh sách miễn trừ có tên trong `backend/tests/test_constitution_guards.py`. **Đếm lại thì trạng thái lượt chạy bị đổi ở *năm* chỗ, không phải hai**: mở lượt chạy, bắt đầu, kết thúc, máy chủ dừng giữa chừng (`_release_pair`), và người canh gác tuyên treo (`liveness_watchdog`). Hai chỗ cuối không có ai bấm gì mà trạng thái vẫn đổi — bỏ sót thì màn quay mãi, tức là đúng lỗi cũ. Cả năm bắn `luot-chay.doi-trang-thai` qua một cổng chung `ports/workspace_trace.py`; danh sách miễn trừ nay **rỗng**. Hai điều sửa thêm dọc đường: trang nghe ké kết nối `Layout` đã mở sẵn (không mở kết nối thứ hai, cũng không đi qua mảng `events` không bao giờ được dọn), và `use-workspace-events.ts` trước đó vá trạng thái sống-chết của agent theo **bất kỳ** sự kiện nào có `marius_id` + `status` — sự kiện mới có đủ hai trường đó nên sẽ làm mọi agent bắt đầu chạy bị đổi trạng thái sai
+- [X] T167 Gỡ vòng hỏi lại cuối cùng ở giao diện: `frontend/src/pages/AgentDetail.tsx` nạp lại danh sách lượt chạy của một agent mỗi 15 giây (FR-080, Hiến pháp IV). Khác ba chỗ kia ở chỗ nó **không có kênh nào để nghe** — động cơ đánh thức bắn theo *lượt chạy* và theo *đầu việc*, màn này theo *agent*. Nên việc thật là thêm một sự kiện vòng đời lượt chạy lên kênh workspace (`contracts/su-kien-day.md`) rồi mới nối màn vào. Tách ra vì nó sửa **hợp đồng đẩy**, không phải sửa một trang; tạm thời ghi vào danh sách miễn trừ có tên trong `backend/tests/test_constitution_guards.py`. **Đếm lại thì trạng thái lượt chạy bị đổi ở *năm* chỗ, không phải hai**: mở lượt chạy, bắt đầu, kết thúc, máy chủ dừng giữa chừng (`_release_pair`), và người canh gác tuyên treo (`liveness_watchdog`). Hai chỗ cuối không có ai bấm gì mà trạng thái vẫn đổi — bỏ sót thì màn quay mãi, tức là đúng lỗi cũ. Cả năm bắn `run.status_changed` qua một cổng chung `ports/workspace_trace.py`; danh sách miễn trừ nay **rỗng**. Hai điều sửa thêm dọc đường: trang nghe ké kết nối `Layout` đã mở sẵn (không mở kết nối thứ hai, cũng không đi qua mảng `events` không bao giờ được dọn), và `use-workspace-events.ts` trước đó vá trạng thái sống-chết của agent theo **bất kỳ** sự kiện nào có `marius_id` + `status` — sự kiện mới có đủ hai trường đó nên sẽ làm mọi agent bắt đầu chạy bị đổi trạng thái sai
 - [X] T168 Bộ kiểm máy chủ **hỏng chập chờn lúc dựng** với *database is locked*, đọc lên như thể bài bên cạnh hỏng chứ không phải bài trước chưa xong. Đo được: chạy riêng `backend/tests/test_spec_regressions.py` thì hỏng 2–3 trên 10 lượt; chạy toàn bộ thì hỏng khoảng 1 trên 3 lượt. **Có trên nhánh chính từ trước T167**, không phải lỗi mới.
 
   **Bằng chứng đã lấy được** (in trạng thái ngay lúc kẹt, đừng đoán lại từ đầu): không một việc chạy nền nào đang chờ, không mối nối nào đang được dùng, nhưng bể chứa vẫn giữ ba mối nối cũ và một luồng thợ của chúng vẫn sống. Nghĩa là mối nối được trả về bể **từ một vòng lặp sự kiện đã đóng** — nó không còn đường nào gỡ giao dịch của mình, nên nằm im trông như rảnh mà vẫn giữ khoá ghi. Gốc rễ: máy chủ giữ **một** bể chứa mối nối chung cho cả tiến trình, còn mỗi bài kiểm chạy trên một vòng lặp riêng.
