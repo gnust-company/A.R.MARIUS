@@ -60,8 +60,9 @@ if TYPE_CHECKING:  # pragma: no cover — typing only, keeps the import graph ac
     from armarius.application.use_cases.push_reason import PushReasonService
     from armarius.application.use_cases.task_log import TaskLogService
 
-EVENT_TASK_STATUS = "dau-viec.doi-trang-thai"
-EVENT_TASK_UNLOCKED = "dau-viec.mo-khoa"
+EVENT_TASK_STATUS = "task.status_changed"
+EVENT_TASK_UNLOCKED = "task.unblocked"
+EVENT_TASK_CREATED = "task.created"
 
 
 class LeaderNotifier(Protocol):
@@ -197,7 +198,22 @@ class TaskService:
             )
             created = await uow.tasks.add(task)
             await uow.commit()
-            return created
+
+        # A card appearing is a change to what the board draws, so it owes the board a
+        # signal exactly like a card moving does (FR-080a). Without this the board sat
+        # still until someone reloaded the page — and a board that never moves reads the
+        # same as a project where nothing is happening.
+        #
+        # Fired for drafts too. A draft is not drawn on the board, so the re-read finds
+        # nothing new and costs one query; the alternative is a status condition here that
+        # has to stay right every time the set of drawn statuses changes. Publishing is
+        # never wrong; staying quiet is what is wrong.
+        await self._publish(
+            created.project_id,
+            EVENT_TASK_CREATED,
+            {"task_id": str(created.id), "status": str(created.status)},
+        )
+        return created
 
     async def propose(
         self,
