@@ -479,6 +479,25 @@ class TaskDependencyEdgeOut(_Out):
     blocks_task_id: UUID
 
 
+class TaskCardCountsOut(_Out):
+    """The tallies a board card draws that are not fields on the task row (T177).
+
+    Its own route rather than four fields on ``TaskOut``: this is what a *board* needs,
+    and ``TaskOut`` is also what a single-task read and the whole agent API return. Putting
+    three grouped counts behind every one of those reads is a cost paid by callers that
+    never draw a card.
+
+    Only tasks with something to report appear. A task missing from the list has none of
+    anything, which is the same thing the row would have said at the price of a row.
+    """
+
+    task_id: UUID
+    comments: int = 0
+    artifacts: int = 0
+    criteria_total: int = 0
+    criteria_passed: int = 0
+
+
 # ---------------------------------------------------------------------- comment
 class PostCommentIn(BaseModel):
     body: str = Field(min_length=1)

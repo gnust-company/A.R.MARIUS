@@ -19,7 +19,7 @@ import {
   Trash2,
   Radar,
 } from 'lucide-react';
-import { useAppStore, type TaskStatus, type Task } from '@/store/appStore';
+import { EMPTY_CARD_COUNTS, useAppStore, type TaskStatus, type Task } from '@/store/appStore';
 import { CREATABLE_PHASES, type TaskPhase } from '@/lib/taskRules';
 import * as api from '@/lib/api';
 import { subscribeProjectEvents } from '@/lib/sse';
@@ -86,9 +86,11 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
   const priorityKey: BoardPriority = (['P0', 'P1', 'P2'] as const).includes(task.priority as BoardPriority)
     ? (task.priority as BoardPriority)
     : 'P2';
-  const checklistTotal = (task.checklist || []).length;
-  const checklistDone = (task.checklist || []).filter((c) => c.done).length;
-  const hasArtifacts = (task.artifacts || []).length > 0;
+  // Read the counts, never `task.comments.length` and friends. Those arrays are filled by
+  // the single-task screen and left empty by the board's own loader — so counting them here
+  // drew nothing on any card, on any board, and no push event could have fixed that because
+  // there was no loaded value to refresh (T177). Both loaders now fill `cardCounts`.
+  const counts = task.cardCounts ?? EMPTY_CARD_COUNTS;
   const assigneeAgent = task.assigneeId ? mariuses.find((m) => m.id === task.assigneeId) : undefined;
 
   return (
@@ -128,19 +130,19 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
 
       {/* Checklist + Comments + Artifacts */}
       <div className="flex items-center gap-3 mb-3 text-ink-light">
-        {checklistTotal > 0 && (
+        {counts.criteriaTotal > 0 && (
           <span className="flex items-center gap-1 text-body-xs">
             <Check className="w-3.5 h-3.5" />
-            {checklistDone}/{checklistTotal}
+            {counts.criteriaPassed}/{counts.criteriaTotal}
           </span>
         )}
-        {(task.comments || []).length > 0 && (
+        {counts.comments > 0 && (
           <span className="flex items-center gap-1 text-body-xs">
             <MessageSquare className="w-3.5 h-3.5" />
-            {(task.comments || []).length}
+            {counts.comments}
           </span>
         )}
-        {hasArtifacts && (
+        {counts.artifacts > 0 && (
           <span className="flex items-center gap-1 text-body-xs">
             <Paperclip className="w-3.5 h-3.5" />
           </span>

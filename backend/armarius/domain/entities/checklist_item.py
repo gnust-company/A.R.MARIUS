@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import NamedTuple
 from uuid import UUID, uuid4
 
 
@@ -26,6 +27,14 @@ class AcceptanceResult(StrEnum):
     UNRATED = "unrated"
     PASSED = "passed"
     FAILED = "failed"
+
+
+class ChecklistTally(NamedTuple):
+    """How many criteria a task has and how many are passed — the ``n/m`` a board card
+    draws, without loading the criteria themselves for every card on the board."""
+
+    total: int = 0
+    passed: int = 0
 
 
 class CriteriaLockedError(Exception):

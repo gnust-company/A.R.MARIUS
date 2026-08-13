@@ -20,6 +20,7 @@ import type {
   ProjectDTO,
   ProjectDetailDTO,
   SkillDTO,
+  TaskCardCountsDTO,
   TaskDTO,
   TaskLogEntryDTO,
   WorkspaceDTO,
@@ -37,6 +38,7 @@ import type {
   ProjectSeat,
   Skill,
   Task,
+  TaskCardCounts,
   TaskComment,
   TaskLogEntryVM,
   TaskStatus,
@@ -226,6 +228,16 @@ export function taskToVM(dto: TaskDTO): Task {
     artifacts: [],
     checklist: [],
     dependencies: [],
+  }
+}
+
+/** The board card's tallies, as the counts route reports them. */
+export function cardCountsToVM(dto: TaskCardCountsDTO): TaskCardCounts {
+  return {
+    comments: dto.comments,
+    artifacts: dto.artifacts,
+    criteriaTotal: dto.criteria_total,
+    criteriaPassed: dto.criteria_passed,
   }
 }
 

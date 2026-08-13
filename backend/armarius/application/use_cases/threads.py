@@ -10,15 +10,49 @@ from armarius.application.use_cases.types import UowFactory
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.domain.entities.comment import AuthorKind, Comment
 from armarius.domain.entities.run import WakeSource
+from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import utcnow
 
 _MENTION_RE = re.compile(r"@([A-Za-z0-9_\-\.]+)")
 
+# Named here, next to the service that owns comments, because two other callers emit it:
+# `TaskService.request_assignment` and `TaskService.hand_back` both write a comment row
+# without going through this service. A board card counts those rows the same either way,
+# so all three have to say the same word.
+EVENT_TASK_COMMENT = "task.comment_added"
+
+
+async def announce_comment(
+    bus: TopicEventBus | None, project_id: UUID | None, task_id: UUID
+) -> None:
+    """Tell the project channel a comment landed (no-op if the bus is not wired).
+
+    An identifier and nothing else — the comment body stays off the wire (contract
+    `su-kien-day` principle 4). The listener re-reads through the API, where the workspace
+    guard still applies; a body on the channel would be a second way to read the row with
+    no guard in front of it.
+    """
+    if bus is None or project_id is None:
+        return
+    await bus.publish(
+        project_topic(project_id), EVENT_TASK_COMMENT, {"task_id": str(task_id)}
+    )
+
 
 class ThreadService:
-    def __init__(self, uow_factory: UowFactory, wake_engine: WakeEngine) -> None:
+    def __init__(
+        self,
+        uow_factory: UowFactory,
+        wake_engine: WakeEngine,
+        *,
+        control_bus: TopicEventBus | None = None,
+    ) -> None:
         self._uow = uow_factory
         self._wake = wake_engine
+        # A comment used to wake the people it concerned and tell nobody else. That is
+        # right for a wake and wrong for a screen: the board draws a comment count, and it
+        # sat frozen because this service had no channel to announce anything on (T177).
+        self._bus = control_bus
 
     async def post_comment(
         self,
@@ -61,6 +95,9 @@ class ThreadService:
             )
             created = await uow.comments.add(comment)
             await uow.commit()
+            project_id = task.project_id
+
+        await announce_comment(self._bus, project_id, task_id)
 
         # Mention is a first-class event-wake: it actually wakes the right agent.
         for marius_id in mention_ids:
