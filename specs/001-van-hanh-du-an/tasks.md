@@ -645,26 +645,91 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   Chỗ suýt sót, đáng nhớ: giao diện so **tiền tố** ở ba màn (`plan.`, `context.`, `orchestration.`), không
   so tên đầy đủ. Lần quét đầu tìm theo tên đầy đủ nên **không thấy** chúng — tìm sót thì ba màn đó im lặng
   mà bộ kiểm vẫn xanh, vì không bài kiểm nào chạm tới chuỗi tiền tố. Phải quét cả tên đầy đủ lẫn tiền tố.
-- [ ] T177 **Bốn thứ bảng dự án vẽ ra mà không có tin đẩy nào** (FR-080a, Hiến pháp IV). Tìm ra khi làm
+- [X] T177 **Bốn thứ bảng dự án vẽ ra mà không có tin đẩy nào** (FR-080a, Hiến pháp IV). Tìm ra khi làm
   T175: sửa xong việc tạo đầu việc rồi rà tiếp thì thấy thẻ việc còn vẽ bốn thứ nữa, cả bốn đều đổi được
   mà kênh dự án không hề lên tiếng.
 
-  | Thứ được vẽ trên thẻ | Đổi bằng | Có bắn tin không |
-  |---|---|---|
-  | Số mục việc con đã xong | đặt lại danh sách việc con | không |
-  | Số lời bình | thêm lời bình | không |
-  | Kẹp giấy báo có thành phẩm | thêm thành phẩm | không |
-  | Số việc đang chặn | thêm/gỡ ràng buộc phụ thuộc | không |
+  **Ghi sai một nửa lúc mở việc.** Ba trong bốn thứ đó không phải "đổi mà không báo" — mà là **chưa bao
+  giờ hiện**. Thẻ đếm chúng từ ba mảng `comments` / `artifacts` / `checklist` trên đầu việc, mà bảng dự án
+  chỉ nạp *dòng dữ liệu đầu việc*; ba mảng ấy chỉ được đổ đầy bởi màn hình một-đầu-việc. Nên trên bảng
+  chúng rỗng với **mọi thẻ, mọi lần mở**, tải lại trang cũng không cứu được. Đo trên dịch vụ thật trước khi
+  sửa: TKIE-1 có thật 1 lời bình và 1 thành phẩm, lối đọc danh sách đầu việc **không chở con số nào**, và
+  thẻ trên màn hình trống trơn. Nặng hơn điều FR-080a mô tả: giá trị không phải *chậm*, mà là *không có*.
 
-  Cùng một chỗ hụt với T175, chỉ khác thứ được vẽ. FR-080a nói **mọi thay đổi mà giao diện đang hiển thị**,
-  không nói riêng trạng thái — nên đóng đợt mà còn bốn thứ này thì câu "đã triển khai" vẫn chưa đúng.
+  Hệ quả: **bắn thêm tin không sửa được gì** — người nghe đọc lại theo nguyên tắc 1, nhưng đọc lại chỉ cứu
+  nổi giá trị mà màn hình vốn có đường để lấy. Nên việc này phải làm hai nửa.
 
-  Hai chỗ cuối bảng nằm ở tầng khác và **chưa có đường dẫn kênh sự kiện** — phần lời bình và phần thành
-  phẩm hiện không cầm kênh nào, nên phải nối thêm chứ không chỉ gọi thêm một dòng. Đó là lý do tách khỏi
-  T175 thay vì gộp vào.
+  | Thứ được vẽ trên thẻ | Đổi bằng | Lỗi thật | Đã làm |
+  |---|---|---|---|
+  | Số tiêu chí đã đạt / tổng | đặt lại bộ tiêu chí | không nạp **và** không báo | lối đọc + `task.checklist_changed` |
+  | Số lời bình | thêm lời bình | không nạp **và** không báo | lối đọc + `task.comment_added` |
+  | Kẹp giấy báo có thành phẩm | nộp thành phẩm | không nạp **và** không báo | lối đọc + `task.artifact_added` |
+  | Số việc đang chặn | thêm/gỡ ràng buộc | có nạp, **không báo** | `task.dependencies_changed` |
 
-  **Nghiệm thu**: mở bảng bằng trình duyệt thật, đổi lần lượt cả bốn thứ **từ ngoài trình duyệt**, cả bốn
-  phải tự đổi trên thẻ mà không tải lại trang.
+  **Nửa thứ nhất — một lối đọc cho cả bảng**: `GET /v1/projects/{id}/task-counts` trả số tiêu chí (tổng và
+  đã đạt), số lời bình, số thành phẩm cho từng đầu việc. Đếm gộp một lượt cho cả dự án, **không** phải ba
+  lượt đọc mỗi thẻ: bảng chạy lại lối này mỗi lần nhận tin, nên đọc theo thẻ sẽ khiến mỗi tín hiệu càng
+  đắt khi dự án càng đông. Đếm chứ không trả nội dung — thẻ vẽ số `3` và một cái kẹp giấy, chở ba lời bình
+  đầy đủ về để in ra một con số là đưa cả cuộc trò chuyện lên một màn hình không hiện lấy một chữ. Không
+  gắn bốn trường này vào `TaskOut`: đó cũng là thứ mà lối đọc một đầu việc và **toàn bộ lối agent** trả về,
+  nên mọi lượt đọc ấy sẽ phải trả tiền cho ba phép đếm gộp mà chúng không bao giờ vẽ.
+
+  **Nửa thứ hai — bốn tin đẩy**, ghi trong `contracts/su-kien-day.md`. Hai chỗ phải nối kênh mới có chỗ
+  bắn: phần lời bình và phần thành phẩm trước đó không cầm kênh nào. Lời bình được ghi ở **ba** nơi, không
+  phải một — ngoài phần lời bình còn hai đường trong phần đầu việc (thợ xin nhận việc, thợ trả việc) tự ghi
+  thẳng dòng dữ liệu. Thẻ đếm cả ba như nhau, nên cả ba phải bắn cùng một tin. Tin gỡ ràng buộc **bắn cả
+  khi không có gì để gỡ**: cạnh ấy có tồn tại hay không là việc của hàm gỡ, còn bảng có đúng hay không thì
+  không — người nghe đọc lại, thấy y nguyên, vẽ y nguyên, mất một truy vấn.
+
+  Giao diện: thẻ nay đọc **duy nhất** từ trường số đếm, không đọc `comments.length` nữa. Cả hai đường nạp
+  đều đổ đầy trường đó (màn một-đầu-việc suy ra từ mảng nó vừa nạp), nên không có hai nguồn sự thật, và mở
+  một đầu việc không làm chính huy hiệu của nó co lại.
+
+  **Bắt được một lỗi trong bài kiểm đã gộp ở T175.** Hàm đọc khung tin của bài kiểm cắt theo `\n\n`, nhưng
+  máy chủ viết `\r\n` — nên nó **gộp cả dòng tin thành một khung** và chỉ soi được tin **cuối cùng**. Bài
+  kiểm T175 xanh chỉ vì tin nó tìm tình cờ là tin cuối. Một hàm đọc trả về đúng một khung cho bao nhiêu tin
+  cũng vậy thì đọc lên giống hệt một kênh chỉ bắn một lần — đúng thứ mấy bài kiểm này sinh ra để bắt. Đã vá
+  ở cả hai tệp; sau khi vá thì bài kiểm mới báo đỏ đúng câu *"thêm lời bình chỉ bắn []"* khi tháo phần sửa.
+
+  **Nghiệm thu trên dịch vụ thật** (dựng lại cả hai vùng chứa, trình duyệt thật, đổi từ ngoài trình duyệt):
+
+  | Phép đo | Kết quả |
+  |---|---|
+  | Đặt bộ tiêu chí 3 mục | thẻ hiện `0/3` sau **250 mili giây** |
+  | Thêm 2 lời bình | thẻ hiện `2` sau **250 mili giây** |
+  | Nộp thành phẩm | kẹp giấy 0 → 1 sau **250 mili giây** |
+  | Thêm ràng buộc | ổ khoá 0 → 1 sau **250 mili giây** |
+  | Gỡ ràng buộc | ổ khoá 1 → 0 sau **250 mili giây** |
+  | Số lần trang tự tải lại | **0** |
+  | Kênh dự án chở | `task.created`, `task.checklist_changed`, `task.comment_added`, `task.artifact_added`, `task.dependencies_changed` |
+
+  **Một bản đo của tôi sai, ghi ra để không tin nhầm lần sau**: phép đo *gỡ ràng buộc* đầu tiên hỏi "trong
+  chữ trên thẻ có còn `| 1 |` không". Chuỗi lúc đó kết thúc bằng `| 1`, không có dấu ngăn cuối, nên điều
+  kiện **đã đúng ngay trước khi gỡ** — nó báo đạt sau 0 mili giây mà không quan sát gì hết. Đo lại bằng
+  cách **đếm biểu tượng ổ khoá** thì mới thấy 1 → 0 thật. Bốn phép đo kia đều bắt được thay đổi thật.
+
+  Bộ kiểm máy chủ **677 xanh** (thêm 5), rà mã sạch, rà kiểu 158 = 158. Giao diện rà kiểu sạch, rà mã 15 —
+  nguyên mốc nền T173.
+
+  **Còn hở, không sửa ở đây → T178**: `criteria_passed` luôn bằng 0 vì **không chỗ nào trong máy chủ chấm
+  điểm một tiêu chí** — hàm chấm điểm của thực thể không có ai gọi. Nên thẻ vẽ `0/3` là đúng sự thật hiện
+  tại nhưng vô nghĩa. Đó là lỗ ở đường công nhận (FR-019, Story 3), không phải lỗ đẩy tin, nên tách ra.
+- [ ] T178 **Không ai chấm được một tiêu chí công nhận** (FR-019, Câu chuyện 3 kịch bản 1). Đo lúc làm T177:
+  thực thể tiêu chí có sẵn hàm chấm điểm và trường kết quả *chưa chấm / đạt / không đạt*, kèm chỗ trỏ sang
+  thành phẩm làm bằng chứng — nhưng **quét cả máy chủ không có một lời gọi nào**. Kho tiêu chí cũng chỉ có
+  hai đường dùng: đọc cả danh sách và thay cả danh sách; đường sửa một mục có khai mà không ai gọi.
+
+  Hệ quả: Trưởng dự án ký tán thành mà **không đi qua bộ tiêu chí** lấy một dòng. Kịch bản 1 của Câu chuyện 3
+  viết thẳng *"khi Trưởng dự án **chấm đạt hết tiêu chí**"* — bước ấy hiện không tồn tại. Bộ tiêu chí đặt ra
+  trước khi thợ bắt tay rồi nằm im tới hết đời đầu việc, nên nó đang là một bản ghi chú chứ chưa phải cái
+  thước. FR-019 đòi *"đúng/sai kiểm được"*, mà chấm được mới là kiểm được.
+
+  Tách khỏi T177 vì khác loại: T177 là lỗ **đẩy tin và nạp dữ liệu**, cái này là lỗ ở **đường công nhận**.
+  T177 làm xong thì con số `đạt/tổng` đã có đường lên tới thẻ và tự đổi — ngày có ai chấm, thẻ chạy ngay.
+
+  **Nghiệm thu**: Trưởng dự án chấm từng tiêu chí đạt/không đạt kèm thành phẩm làm bằng chứng; đầu việc
+  không vào được *xong* khi còn tiêu chí chưa đạt; và trên bảng, số `đạt/tổng` tự đổi sau mỗi lần chấm mà
+  không tải lại trang.
 - [X] T160 Chạy bảng "Kiểm chứng ràng buộc Hiến pháp" trong `specs/001-van-hanh-du-an/quickstart.md` — sáu nguyên tắc, sáu cách kiểm.
 
   Chạy trên **dịch vụ thật** (vùng chứa đang sống, thẻ định danh thật, trình duyệt thật), không chỉ bằng bộ
@@ -714,7 +779,7 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   chỗ đó ghi *bản nháp*, không phải *chờ rà soát*. Kết luận: rác dữ liệu do một lượt ghi thẳng từ bên ngoài
   ở đợt trước, **không phải lối mã nào đang chạy**. Cổng đã kiểm lại và chặn đúng.
 - [X] T161 [P] Bài kiểm hồi quy cho **14 yêu cầu đã có sẵn trong mã** mà không đợt nào chạm tới (FR-016, 017, 020, 023, 025, 026, 028, 032, 046, 051, 070, 073, 078, 082) trong `backend/tests/` — khảo sát kết luận chúng đang đúng, nhưng không bài kiểm nào canh để biết một đợt sau có làm hỏng không. **Sửa lại con số**: tra từng cái thì **bốn** trong mười bốn đã có bài kiểm ở chỗ khác — FR-025 và FR-032 ở `test_task_dependencies`, FR-026 ở `test_task_rules`, FR-046 ở `test_wake_prompt`. Mười cái còn lại nằm ở `backend/tests/test_spec_regressions.py`, mỗi bài mang tên đúng một yêu cầu
-- [ ] T162 Cập nhật trạng thái đặc tả từ *Nháp* sang *đã triển khai* trong `specs/001-van-hanh-du-an/spec.md` và ghi lại các điểm lệch còn tồn nếu có. **Làm sau cùng, và sau cả T172, T173, T174, T175, T177** — đóng đợt bằng một cổng sạch, không đóng bằng một dòng ghi nợ. Riêng T174 là lỗ Hiến pháp I: đóng đợt mà còn nó thì dòng "đã triển khai" là một câu nói sai
+- [ ] T162 Cập nhật trạng thái đặc tả từ *Nháp* sang *đã triển khai* trong `specs/001-van-hanh-du-an/spec.md` và ghi lại các điểm lệch còn tồn nếu có. **Làm sau cùng, và sau cả T172, T173, T174, T175, T177, T178** — đóng đợt bằng một cổng sạch, không đóng bằng một dòng ghi nợ. Riêng T174 là lỗ Hiến pháp I: đóng đợt mà còn nó thì dòng "đã triển khai" là một câu nói sai. T178 là lỗ FR-019: bộ tiêu chí chưa chấm được thì Câu chuyện 3 chưa chạy đủ như đặc tả viết
 - [X] T163 [P] Một lối gọi duy nhất `answerInboxItem` trong `frontend/src/lib/api.ts`, trỏ vào `POST /v1/inbox/{id}/answer`. **Không** thêm lời gọi riêng cho giao người / đổi việc kế tiếp / huỷ: câu trả lời của người chủ phải là một lượt gửi–nhận, vì hai lượt để lại quãng nửa vời mà bấm lại là hành động chạy hai lần (FR-061a, FR-061e, FR-070)
 - [X] T164 Bốn hành động ngay trên mục *leo thang* ở `frontend/src/pages/Inbox.tsx`, khớp đúng những lựa chọn hồ sơ nêu ra: **giao lại cho…** (chọn trong danh sách agent có ghế ở dự án, kèm lý do chuyển giao — máy chủ từ chối chuyển người mà không nói vì sao, FR-028), **đổi việc kế tiếp**, **huỷ việc** (kèm ô lý do — FR-030), và **"tôi đã xử lý xong"** (người chủ tự gỡ bên ngoài hệ). Hiện mục này chỉ có nút *Mở*, nên hệ hỏi người chủ mấy đifgều mà không cho họ làm điều nào (FR-061a)
 - [X] T165 Nghiệm thu đường trả lời. **Lá thư đóng vì người chủ bấm, KHÔNG phải vì vòng quét** (FR-061b), và máy chủ đóng mục cùng lần chốt với hành động (FR-061e). Bốn lối phải đi thử đủ: giao lại → người mới được gọi dậy **đúng một lần**, kể cả khi bấm lại; đổi việc kế tiếp và **"tôi đã xử lý xong"** → không ai được gọi lúc bấm, vòng quét nhặt lại và bắt đầu **từ Mức 1**; huỷ việc → đầu việc rời khỏi tầm quét và bấm lại không ném lỗi. Cộng một bài kiểm chứng minh hành động hỏng thì **mục vẫn còn nguyên** — đó là bằng chứng của một-lần-chốt
