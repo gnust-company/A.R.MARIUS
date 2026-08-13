@@ -26,14 +26,18 @@ from armarius.application.use_cases.threads import announce_comment
 from armarius.application.use_cases.types import UowFactory
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.domain.entities.checklist_item import (
+    AcceptanceResult,
     ChecklistItem,
     ChecklistTally,
     assert_criteria_editable,
+    assert_criteria_ratable,
+    criteria_not_passed,
 )
 from armarius.domain.entities.comment import AuthorKind, Comment
 from armarius.domain.entities.inbox_item import InboxItemKind
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.task import (
+    CRITERIA_REQUIRED_STATUSES,
     DEPENDENCY_GATED_STATUSES,
     SIGNATURE_REQUIRED_STATUSES,
     TERMINAL_STATUSES,
@@ -661,6 +665,16 @@ class TaskService:
             current = current_signatures(history)
             signed = is_closable(current)
             missing = tuple(str(k) for k in missing_signatures(current))
+        criteria_met = True
+        unmet_criteria: tuple[str, ...] = ()
+        if target in CRITERIA_REQUIRED_STATUSES:
+            # The yardstick gate (FR-019). Read here for the same reason the signatures
+            # are: this is the one place every route into *done* passes through, so a
+            # route nobody remembered still meets it. A task with no criteria passes
+            # vacuously — writing the list at all is a different gate, and inventing one
+            # here would refuse every task in the system that predates the criteria.
+            unmet_criteria = criteria_not_passed(await uow.criteria.list_by_task(task_id))
+            criteria_met = not unmet_criteria
         now = utcnow()
         task.transition_to(
             target,
@@ -671,6 +685,8 @@ class TaskService:
             unmet_blockers=unmet,
             signatures_complete=signed,
             missing_signatures=missing,
+            criteria_met=criteria_met,
+            unmet_criteria=unmet_criteria,
         )
         _mark_provisional(task, now)
         task.updated_at = now
@@ -936,6 +952,74 @@ class TaskService:
             {"task_id": str(task_id), "total": len(items)},
         )
         return items
+
+    async def rate_criterion(
+        self,
+        task_id: UUID,
+        criterion_id: UUID,
+        *,
+        result: AcceptanceResult,
+        evidence_artifact_id: UUID | None = None,
+        marius_id: UUID | None = None,
+    ) -> ChecklistItem:
+        """Score one criterion against the output on the table (Story 3 scenario 1).
+
+        The step the yardstick was written for. Without it the criteria are a note the
+        Leader signs *beside* rather than a measure it signs *from* — which is how a list
+        of true/false statements (FR-019) ends up gating nothing at all.
+
+        The evidence must be an artifact of **this** task. Anything else would let a pass
+        cite a file the reader cannot reach from the task, and a citation nobody can follow
+        is worth no more than no citation.
+        """
+        project_id: UUID | None = None
+        async with self._uow() as uow:
+            task = await uow.tasks.get(task_id)
+            if task is None:
+                raise LookupError("task not found")
+            project_id = task.project_id
+            assert_criteria_ratable(task)
+
+            items = list(await uow.criteria.list_by_task(task_id))
+            item = next((i for i in items if i.id == criterion_id), None)
+            if item is None:
+                raise LookupError("criterion not found")
+
+            if evidence_artifact_id is not None:
+                own = await uow.artifacts.list_by_task(task_id)
+                if not any(a.id == evidence_artifact_id for a in own):
+                    raise LookupError("artifact not found")
+
+            before = str(item.result)
+            item.rate(result, evidence_artifact_id=evidence_artifact_id)
+            await uow.criteria.update(item)
+            await self._log(
+                uow,
+                task_id,
+                TaskLogKind.CRITERIA_CHANGED,
+                actor_kind=_actor_kind(None, marius_id),
+                actor_marius_id=marius_id,
+                before=before,
+                after=str(item.result),
+                reason=item.text,
+                detail={
+                    "criterion_id": str(criterion_id),
+                    "evidence_artifact_id": (
+                        str(evidence_artifact_id) if evidence_artifact_id else None
+                    ),
+                },
+            )
+            await uow.commit()
+
+        # Same event as rewriting the list: what changed on screen is the same number.
+        # A second name for it would mean every listener has to learn both to draw one
+        # badge, and the one that only learned the first draws a stale number.
+        await self._publish(
+            project_id,
+            EVENT_TASK_CHECKLIST,
+            {"task_id": str(task_id), "criterion_id": str(criterion_id)},
+        )
+        return item
 
     # ── Dependency edges (feed the dependency-gate, §1.3) ──────────────────────
     async def add_dependency(

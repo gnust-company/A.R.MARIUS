@@ -699,6 +699,21 @@ class SetCriteriaIn(BaseModel):
     items: list[CriterionIn] = Field(default_factory=list)
 
 
+class RateCriterionIn(BaseModel):
+    """One criterion, scored against the output in review (Story 3 scenario 1).
+
+    Only *passed* / *failed*: putting a criterion back to *unrated* is not a step in any
+    scenario, and every extra state a caller can ask for is another path through the gate
+    that has to be right.
+    """
+
+    result: Literal["passed", "failed"]
+    # Required for a pass, refused for anything outside this task — enforced in the
+    # domain and the use case respectively, not here, because both are rules about the
+    # task rather than about the shape of the request.
+    evidence_artifact_id: UUID | None = None
+
+
 class CriterionOut(_Out):
     id: UUID
     task_id: UUID | None = None

@@ -17,6 +17,7 @@ legacy `done` tick is now a shadow of `result`.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import NamedTuple
@@ -41,9 +42,28 @@ class CriteriaLockedError(Exception):
     """Raised when the yardstick is rewritten after the work has begun (FR-019/FR-075)."""
 
 
+class CriterionNotRatableError(Exception):
+    """Raised when a criterion is scored outside review (Story 3 scenario 1)."""
+
+
+class EvidenceRequiredError(Exception):
+    """Raised when a criterion is marked *passed* with nothing that proves it.
+
+    A pass nobody can trace back to an output is the "fake done" this whole story exists
+    to stop — the same hole as a signature on a deliverable that is not there (FR-069),
+    one level down.
+    """
+
+
 # Statuses in which the criteria may still be written or reworded. Once a worker has
 # picked the task up, the bar it is being judged against stops moving.
 CRITERIA_EDITABLE_STATUSES: frozenset[str] = frozenset({"draft", "backlog", "todo"})
+
+# The status in which criteria may be scored. Story 3 scenario 1 places the scoring at
+# review — *"cho một đầu việc chờ rà soát, khi Trưởng dự án chấm đạt hết tiêu chí"* — and
+# it could not be anywhere else: a pass awarded before there is an output to judge says
+# nothing about the output, and it would still be sitting there when the output arrives.
+CRITERIA_RATABLE_STATUSES: frozenset[str] = frozenset({"in_review"})
 
 
 def assert_criteria_editable(task: object) -> None:
@@ -58,6 +78,19 @@ def assert_criteria_editable(task: object) -> None:
             "Bộ tiêu chí công nhận phải đặt trước khi người phụ trách bắt tay; "
             f"đầu việc đang ở '{status}'. Sửa lúc này là một thay đổi lớn, "
             "phải treo chờ người chủ duyệt."
+        )
+
+
+def assert_criteria_ratable(task: object) -> None:
+    """Guard the "score it while judging it" rule (Story 3 scenario 1).
+
+    Takes the task loosely for the same reason `assert_criteria_editable` does.
+    """
+    status = str(getattr(task, "status", ""))
+    if status not in CRITERIA_RATABLE_STATUSES:
+        raise CriterionNotRatableError(
+            "Chỉ chấm tiêu chí khi đầu việc đang *chờ rà soát*; "
+            f"đầu việc đang ở '{status}'."
         )
 
 
@@ -78,8 +111,32 @@ class ChecklistItem:
         *,
         evidence_artifact_id: UUID | None = None,
     ) -> None:
-        """Score one criterion, optionally pointing at the evidence."""
+        """Score one criterion, pointing at the output that proves it.
+
+        A pass must name its evidence; a fail need not, because there is nothing to point
+        at. The evidence is demanded on **every** pass rather than only the first: the
+        criterion is being re-scored against whatever is on the table now, and carrying
+        the old artifact id forward would quietly let a pass keep pointing at a draft that
+        has since been replaced.
+        """
+        if result is AcceptanceResult.PASSED and evidence_artifact_id is None:
+            raise EvidenceRequiredError(
+                f"Chấm đạt tiêu chí '{self.text}' phải chỉ ra thành phẩm làm bằng chứng."
+            )
         self.result = result
         self.done = result is AcceptanceResult.PASSED
-        if evidence_artifact_id is not None:
-            self.evidence_artifact_id = evidence_artifact_id
+        self.evidence_artifact_id = evidence_artifact_id
+
+
+def criteria_not_passed(items: Iterable[ChecklistItem]) -> tuple[str, ...]:
+    """The criteria standing between this task and a signature, named.
+
+    Both the unrated and the failed ones, because from the closing side they mean the same
+    thing — this yardstick does not yet say the work is done. Names rather than a count:
+    *"còn 2 tiêu chí"* leaves the reader hunting for which two.
+    """
+    return tuple(
+        item.text or str(item.id)
+        for item in items
+        if item.result is not AcceptanceResult.PASSED
+    )

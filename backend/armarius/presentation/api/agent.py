@@ -13,6 +13,7 @@ from fastapi import APIRouter
 
 from armarius.application.use_cases.onboarding_brain import _slug
 from armarius.application.use_cases.plans import PlanItemSpec
+from armarius.domain.entities.checklist_item import AcceptanceResult
 from armarius.domain.entities.comment import AuthorKind
 from armarius.domain.entities.marius import Liveness, Marius
 from armarius.domain.entities.project import ProjectStatus
@@ -34,6 +35,7 @@ from armarius.presentation.schemas import (
     AgentSkillSummary,
     ArtifactOut,
     CommentOut,
+    CriterionOut,
     MariusOut,
     NextActionIn,
     OnboardingOut,
@@ -42,6 +44,7 @@ from armarius.presentation.schemas import (
     PlanOut,
     ProjectContextIn,
     ProjectContextOut,
+    RateCriterionIn,
     SignApprovalIn,
     SprintSummaryIn,
     TaskOut,
@@ -447,6 +450,49 @@ async def sign_approval(
         task_id, marius_id=marius.id, approve=body.approve, reason=body.reason
     )
     return TaskOut.model_validate(signed)
+
+
+@router.get("/tasks/{task_id}/criteria", response_model=list[CriterionOut])
+async def agent_list_criteria(
+    task_id: UUID, marius: CurrentMarius, container: ContainerDep
+) -> list[CriterionOut]:
+    """The yardstick this task is measured against, and how it stands so far.
+
+    Readable by any agent on the task, not only the Leader: the worker is entitled to know
+    what it is being judged on, and a criteria list it cannot read is a brief it was never
+    given (FR-019).
+    """
+    await _task_in_caller_workspace(container, marius, task_id)
+    items = await container.tasks.list_criteria(task_id)
+    return [CriterionOut.model_validate(i) for i in items]
+
+
+@router.post("/tasks/{task_id}/criteria/{criterion_id}", response_model=CriterionOut)
+async def rate_criterion(
+    task_id: UUID,
+    criterion_id: UUID,
+    body: RateCriterionIn,
+    marius: CurrentMarius,
+    container: ContainerDep,
+) -> CriterionOut:
+    """Score one criterion (Story 3 scenario 1) — the Leader's seat only.
+
+    Same rule as the signature next door, for the same reason: scoring *is* the judgement,
+    and a worker that could mark its own work passed would walk straight through the gate
+    the criteria exist to be. A non-leader reads as *not found*, not *forbidden*.
+    """
+    task = await _task_in_caller_workspace(container, marius, task_id)
+    if task.project_id is None:
+        raise LookupError("task not found")
+    await _leader_seat(container, marius, task.project_id)
+    item = await container.tasks.rate_criterion(
+        task_id,
+        criterion_id,
+        result=AcceptanceResult(body.result),
+        evidence_artifact_id=body.evidence_artifact_id,
+        marius_id=marius.id,
+    )
+    return CriterionOut.model_validate(item)
 
 
 @router.post("/tasks/{task_id}/next-action", response_model=TaskOut)

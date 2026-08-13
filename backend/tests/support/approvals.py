@@ -18,9 +18,15 @@ async def task_awaiting_acceptance(
     *,
     title: str = "Kết xuất báo cáo tháng",
     plan_item_index: int = 0,
+    criteria: list[str] | None = None,
 ) -> str:
     """Tạo đầu việc trong khuôn kế hoạch, giao cho thợ, làm tới nơi, nộp thành phẩm và
-    đẩy sang *chờ rà soát*. Trả về mã đầu việc."""
+    đẩy sang *chờ rà soát*. Trả về mã đầu việc.
+
+    `criteria` đặt bộ tiêu chí công nhận ngay sau khi tạo — phải là ở đó, vì máy chủ khoá
+    bộ tiêu chí lại từ lúc thợ bắt tay (FR-019). Bỏ trống thì đầu việc đi tới cửa *xong*
+    mà không có thước nào, đúng như phần lớn bài kiểm cũ vẫn làm.
+    """
     created = await c.post(
         f"/agent/projects/{p.project_id}/tasks",
         headers=p.leader_headers,
@@ -33,6 +39,14 @@ async def task_awaiting_acceptance(
     )
     assert created.status_code == 201, created.text
     task_id = created.json()["id"]
+
+    if criteria:
+        written = await c.put(
+            f"/v1/tasks/{task_id}/criteria",
+            headers=p.headers,
+            json={"items": [{"text": text} for text in criteria]},
+        )
+        assert written.status_code == 200, written.text
 
     moved = await c.post(
         f"/v1/tasks/{task_id}/status", headers=p.headers, json={"status": "in_progress"}

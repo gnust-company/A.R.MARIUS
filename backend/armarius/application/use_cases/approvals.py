@@ -5,6 +5,11 @@ the patron responsible for the agent that did the work has accepted it (FR-033).
 signature is never enough: the Leader chose the criteria and the worker met them, so both
 sit on the same side of the work. The patron is the only party outside it.
 
+"Checked the work against the acceptance criteria" is a step, not a figure of speech: no
+approval is accepted here until every criterion has been scored *passed* (FR-019). Until
+T178 that sentence was only in this docstring — the criteria could sit unrated for the
+whole life of a task and both signatures would still close it.
+
 Who that patron is comes from **who put the agent in its seat** (FR-034), read from the
 seat grant. It is deliberately not derived from "who owns the workspace": today the two
 always agree, and the day they stop agreeing, code that guessed would keep answering
@@ -34,6 +39,7 @@ from armarius.application.use_cases.review_reset import retire_signatures_on_mov
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.approval import Approval, ApprovalResult, SignerKind
 from armarius.domain.entities.artifact import ArtifactKind
+from armarius.domain.entities.checklist_item import criteria_not_passed
 from armarius.domain.entities.inbox_item import (
     InboxItem,
     InboxItemKind,
@@ -81,6 +87,21 @@ class ResponsiblePatronUnknown(ApprovalError):
 
 class NotReadyForSignatureError(ApprovalError):
     """Raised when a task is signed before it is up for review."""
+
+
+class CriteriaNotScoredError(ApprovalError):
+    """Raised when an output is approved before the yardstick says it is good (FR-019).
+
+    Refused **before** anything is written, and refused for the patron as well as the
+    Leader. Only gating the close would let both signatures land and then blow up on the
+    transition that follows them — a task stuck in review holding two approvals, which
+    reads to everyone involved as the system losing the close rather than as a step
+    somebody skipped.
+    """
+
+    def __init__(self, message: str, *, unmet: tuple[str, ...] = ()) -> None:
+        super().__init__(message)
+        self.unmet = unmet
 
 
 class ApprovalService:
@@ -236,6 +257,19 @@ class ApprovalService:
                     await self._report_lost_deliverable(uow, task, missing, now=now),
                 )
             else:
+                if approve:
+                    # Story 3 scenario 1 puts the scoring *before* the signature: the
+                    # Leader lays the output beside the criteria, marks each line, and
+                    # only then says yes. Checked here rather than only on the Leader's
+                    # own signature so a task that collected one before this rule existed
+                    # still cannot slip out through the patron's.
+                    unmet = criteria_not_passed(await uow.criteria.list_by_task(task_id))
+                    if unmet:
+                        raise CriteriaNotScoredError(
+                            "Chưa chấm đạt hết bộ tiêu chí công nhận nên chưa ký được"
+                            f" — còn: {', '.join(unmet)}.",
+                            unmet=unmet,
+                        )
                 history = list(await uow.approvals.list_for_task(task_id))
                 signature = Approval(
                     task_id=task_id,

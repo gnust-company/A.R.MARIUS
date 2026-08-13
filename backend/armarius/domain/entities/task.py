@@ -80,6 +80,11 @@ ARTIFACT_REQUIRED_STATUSES: frozenset[TaskStatus] = frozenset(
 # takes the Leader **and** the patron responsible for the agent that did it.
 SIGNATURE_REQUIRED_STATUSES: frozenset[TaskStatus] = frozenset({TaskStatus.DONE})
 
+# Statuses you may only enter with every acceptance criterion scored *passed* (FR-019).
+# The signature gate above asks whether the right people said yes; this one asks whether
+# anybody measured the work against the yardstick they were handed before saying it.
+CRITERIA_REQUIRED_STATUSES: frozenset[TaskStatus] = frozenset({TaskStatus.DONE})
+
 # Statuses you may only enter once every `blocked_by` dependency is done (LLD §3.2).
 DEPENDENCY_GATED_STATUSES: frozenset[TaskStatus] = frozenset(
     {TaskStatus.TODO, TaskStatus.IN_PROGRESS}
@@ -177,6 +182,17 @@ class SignaturesRequiredError(Exception):
         self.missing = missing
 
 
+class CriteriaNotMetError(Exception):
+    """Raised when a task is closed with a criterion still unrated or failed (FR-019).
+
+    Names them, for the same reason `SignaturesRequiredError` names who is missing.
+    """
+
+    def __init__(self, message: str, *, unmet: tuple[str, ...] = ()) -> None:
+        super().__init__(message)
+        self.unmet = unmet
+
+
 class DescriptionLockedError(Exception):
     """Raised when a worker tries to rewrite the requirement it was given (FR-018)."""
 
@@ -265,17 +281,19 @@ class Task:
         unmet_blockers: tuple[str, ...] = (),
         signatures_complete: bool = False,
         missing_signatures: tuple[str, ...] = (),
+        criteria_met: bool = False,
+        unmet_criteria: tuple[str, ...] = (),
     ) -> None:
         """Validate and apply a status transition.
 
         Enforces, in order: the transition table, the stall seal, the signature gate, the
-        evidence gate, the dependency gate and the reason gate. The order matters — the
-        message a caller gets should name the *first* thing wrong with the move, not a
-        downstream consequence.
+        criteria gate, the evidence gate, the dependency gate and the reason gate. The
+        order matters — the message a caller gets should name the *first* thing wrong with
+        the move, not a downstream consequence.
 
-        ``signatures_complete`` defaults to **False**: closing a task is the one move that
-        must fail shut. A caller that forgets to look up the signatures gets a refusal, not
-        a silent close.
+        ``signatures_complete`` and ``criteria_met`` both default to **False**: closing a
+        task is the one move that must fail shut. A caller that forgets to look either of
+        them up gets a refusal, not a silent close.
         """
         if target == self.status:
             if reason is not None:
@@ -296,6 +314,13 @@ class Task:
                 "Đầu việc chỉ đóng khi đủ hai chữ ký"
                 + (f" — còn thiếu: {listed}." if listed else "."),
                 missing=missing_signatures,
+            )
+        if target in CRITERIA_REQUIRED_STATUSES and not criteria_met:
+            listed = ", ".join(unmet_criteria)
+            raise CriteriaNotMetError(
+                "Đầu việc chỉ đóng khi mọi tiêu chí công nhận đã chấm đạt"
+                + (f" — còn: {listed}." if listed else "."),
+                unmet=unmet_criteria,
             )
         if target in ARTIFACT_REQUIRED_STATUSES and not has_artifact:
             raise ArtifactRequiredError(
