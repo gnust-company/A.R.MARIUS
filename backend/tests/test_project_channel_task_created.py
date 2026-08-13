@@ -68,9 +68,16 @@ async def _project(c: AsyncClient, h: dict, ws_id: str) -> str:
 
 
 def _frames(body: str) -> list[tuple[str, dict]]:
-    """Parse an SSE catch-up response into (event type, data) pairs."""
+    """Parse an SSE catch-up response into (event type, data) pairs.
+
+    Normalize the line endings first. SSE frames are separated by a blank line, and this
+    server writes CRLF — so splitting on ``\\n\\n`` finds no separator at all, folds the
+    whole response into one block, and the loop below then reports only the *last* event
+    in it. A parser that silently returns one frame for any number of events reads like a
+    channel that published once, which is the exact failure these tests exist to catch.
+    """
     out: list[tuple[str, dict]] = []
-    for block in body.split("\n\n"):
+    for block in body.replace("\r\n", "\n").split("\n\n"):
         kind, data = None, None
         for line in block.splitlines():
             if line.startswith("event:"):
