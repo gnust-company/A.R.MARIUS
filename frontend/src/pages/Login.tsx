@@ -33,19 +33,24 @@ export default function Login() {
       return
     }
     setBusy(true)
+    // The branch is a statement, not a `?:` expression, and the failure message is built
+    // outside the block: the React Compiler has no lowering for a conditional *expression*
+    // inside try/catch and drops the whole component when it meets one.
+    const failed = 'Authentication failed'
     try {
-      const user =
-        mode === 'login'
-          ? await login(email.trim(), password)
-          : await register(email.trim(), fullName.trim(), password)
+      let user
+      if (mode === 'login') {
+        user = await login(email.trim(), password)
+      } else {
+        user = await register(email.trim(), fullName.trim(), password)
+      }
       setCurrentUser({ id: user.id, name: user.full_name, email: user.email })
       await hydrateWorkspaces()
       navigate('/workspaces')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Authentication failed')
-    } finally {
-      setBusy(false)
+      setError(err instanceof Error ? err.message : failed)
     }
+    setBusy(false)
   }
 
   return (

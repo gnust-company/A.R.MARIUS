@@ -37,9 +37,15 @@ function useBootSession() {
         if (useAppStore.getState().currentUser) {
           await hydrateWorkspaces().catch(() => {})
         }
-      } finally {
+      } catch (e) {
+        // A failed hydrate still has to release the boot gate, or the app never renders
+        // at all — this is the `finally` that used to sit here, spelled out on both paths
+        // because the React Compiler cannot lower a `finally` and bails on the whole
+        // component when it meets one. The rethrow keeps the failure just as loud.
         if (active) setBooted(true)
+        throw e
       }
+      if (active) setBooted(true)
     })()
     return () => {
       active = false

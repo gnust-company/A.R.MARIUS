@@ -38,6 +38,16 @@ interface ChatMessage {
   streaming?: boolean;
 }
 
+type ChatState = 'idle' | 'thinking' | 'failed';
+
+/** The panel knows three states; a missing one reads as idle. A module-level function
+ *  rather than an inline `??`, because both call sites sit inside a try block and the
+ *  React Compiler has no lowering for a conditional expression there — meeting one costs
+ *  the optimization of the entire component. */
+function chatStateOf(raw: unknown): ChatState {
+  return (raw as ChatState | null | undefined) ?? 'idle';
+}
+
 function toMessages(
   transcript: Array<{ role: string; text: string }> | undefined,
 ): ChatMessage[] {
@@ -95,13 +105,12 @@ export default function LeaderChatPanel({
         if (!alive) return;
         setChat(dto);
         setMessages(toMessages(dto.transcript));
-        setState((dto.state as 'idle' | 'thinking' | 'failed') ?? 'idle');
+        setState(chatStateOf(dto.state));
         await refreshProposed();
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        if (alive) setLoading(false);
       }
+      if (alive) setLoading(false);
     })();
     return () => {
       alive = false;
@@ -170,7 +179,7 @@ export default function LeaderChatPanel({
           const dto = await api.getLeaderChat(projectId);
           setChat(dto);
           setMessages(toMessages(dto.transcript));
-          setState((dto.state as 'idle' | 'thinking' | 'failed') ?? 'idle');
+          setState(chatStateOf(dto.state));
         } catch {
           setState('idle');
         }

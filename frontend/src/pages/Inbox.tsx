@@ -183,9 +183,8 @@ function EscalationActions({
       onDone();
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(null);
     }
+    setBusy(null);
   };
 
   const said = text.trim();
@@ -382,7 +381,10 @@ export default function Inbox() {
     const acc: Record<string, InboxItemDTO[]> = {};
     for (const item of items) {
       const key = projectName(item.project_id);
-      (acc[key] ??= []).push(item);
+      // Spelled out rather than `??=`: the compiler has no lowering for that operator yet
+      // and drops the whole component when it meets one.
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(item);
     }
     return acc;
   }, [items, projectName]);
@@ -403,9 +405,8 @@ export default function Inbox() {
       reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusyId(null);
     }
+    setBusyId(null);
   };
 
   const pendingCount = tab === 'pending' ? items.length : 0;

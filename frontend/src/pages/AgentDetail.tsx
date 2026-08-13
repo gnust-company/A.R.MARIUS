@@ -313,9 +313,8 @@ export default function AgentDetail() {
       }
     } catch {
       setInstallStatus('send_failed');
-    } finally {
-      setInstalling(false);
     }
+    setInstalling(false);
   };
 
   return (

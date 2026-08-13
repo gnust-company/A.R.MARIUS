@@ -230,24 +230,27 @@ function AddTaskFormModal({
     if (!form.title.trim() || busy) return;
     setBusy(true);
     setErr(null);
+    // The payload is worked out before the block: every `||`/`?:` in it is a conditional
+    // expression, and the React Compiler has no lowering for those inside try/catch — it
+    // drops the whole component when it meets one.
+    const payload = {
+      title: form.title.trim(),
+      description: form.description.trim() || undefined,
+      status: form.status,
+      priority: form.priority || undefined,
+      due_date: form.dueDate ? new Date(form.dueDate).toISOString() : undefined,
+      definition_of_done: form.dod.trim() || undefined,
+      assigned_marius_id: form.assigneeId || undefined,
+    };
     try {
-      await api.createTask(projectId, {
-        title: form.title.trim(),
-        description: form.description.trim() || undefined,
-        status: form.status,
-        priority: form.priority || undefined,
-        due_date: form.dueDate ? new Date(form.dueDate).toISOString() : undefined,
-        definition_of_done: form.dod.trim() || undefined,
-        assigned_marius_id: form.assigneeId || undefined,
-      });
+      await api.createTask(projectId, payload);
       await hydrateProject(projectId);
       setForm({ title: '', description: '', status: defaultStatus, assigneeId: '', priority: 'medium', dueDate: '', dod: '' });
       onClose();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
     }
+    setBusy(false);
   };
 
   const inputCls = cn(
@@ -426,9 +429,8 @@ export default function ProjectBoard() {
       setAutoApproval(row.enabled);
     } catch {
       // Giữ nguyên trạng thái đang hiện: thà không đổi còn hơn hiện sai điều người chủ đã chọn.
-    } finally {
-      setSwitching(false);
     }
+    setSwitching(false);
   };
 
   const handleDeleteProject = async () => {
