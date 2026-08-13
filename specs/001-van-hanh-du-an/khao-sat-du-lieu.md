@@ -72,6 +72,31 @@ có thể có dữ liệu khác.
 274 cái cũ chuyển sang đỏ trừ khi đó là bài dựa vào luật vừa bị siết — trường hợp đó phải sửa bài kiểm theo
 luật mới và ghi rõ trong PR. Lỗi `mypy` và cảnh báo lint giao diện phải **không tăng** so với 165 và 50.
 
+### Mốc nền rà mã giao diện đổi ở T173 (2026-08-13)
+
+| Thước | Mốc cũ | **Mốc mới** |
+|---|---|---|
+| Rà mã giao diện | không được vượt **50** | **phải bằng 0** |
+
+Từ T173, `npm run lint` **thoát 0** và cổng này là cổng đỏ/xanh thật, không còn là cổng "không được tăng".
+Con số 50 cũ rơi dần qua T171 và T172; T173 dọn nốt mười lăm cái cuối, tất cả cùng một điều luật
+`react-hooks/preserve-manual-memoization`.
+
+Kèm theo đó là một thước **mới**, và nó quan trọng hơn con số rà mã: **bộ biên dịch React bỏ cuộc ở bao
+nhiêu chỗ**. Rà mã không báo thước này — nó chỉ báo khi lớp ghi nhớ *viết tay* không giữ được, còn những
+cú pháp bộ biên dịch chưa hạ được thì nó im lặng đi qua. Đo bằng cách chạy bộ biên dịch trên toàn bộ
+`frontend/src` và đếm sự kiện biên dịch hỏng:
+
+| Thước | Trên `main` trước T173 | Sau T173 |
+|---|---|---|
+| Hàm được bộ biên dịch tối ưu | 341 | **357** |
+| Lần bỏ cuộc | 20 | **2** |
+| Tệp có ít nhất một lần bỏ cuộc | 13 | **1** |
+
+Hai lần bỏ cuộc còn lại đều nằm trong `components/ui/calendar.tsx` — một thành phần dựng sẵn **không màn
+hình nào nhập vào**, nên nó không bao giờ được vẽ. Sửa nó là sửa một tệp sẽ bị sinh lại, để đổi lấy con số 0
+trên một thứ không chạy.
+
 ---
 
 ## T003 — Ai đang gọi đường tự nhận việc

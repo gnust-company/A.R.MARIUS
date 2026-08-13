@@ -539,7 +539,7 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   3. Bộ ánh xạ gộp *treo* → *ngoại tuyến* và *đang dò* → *rảnh*, nên hai trạng thái này **không bao giờ hiện
      lên giao diện** dù bảng màu và biểu tượng đã có sẵn cho chúng.
 
-- [ ] T173 Bật **bộ biên dịch React** trong `frontend/vite.config.ts` + `package.json`, rồi sửa **15 cái**
+- [X] T173 Bật **bộ biên dịch React** trong `frontend/vite.config.ts` + `package.json`, rồi sửa **15 cái**
   `react-hooks/preserve-manual-memoization` còn lại ở `pages/CollaborationRoom.tsx` cho tử tế. (13 lúc mở
   việc, thành 15 sau T172 — sửa danh sách phụ thuộc cho đúng thì bộ biên dịch có thêm hai chỗ phải bỏ cuộc.)
   Gốc rễ nằm ở dòng `const store = useAppStore()`: nó đăng ký **cả kho** nên đối tượng đổi danh tính sau mọi
@@ -548,6 +548,74 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   Xong thì mốc nền rà mã giao diện đổi từ *"không được tăng 50"* sang **"phải bằng 0"**, và mốc đó ghi lại vào
   bảng T002 ở `khao-sat-du-lieu.md`. **Nghiệm thu**: dựng lại vùng chứa giao diện, đi hết sáu kịch bản trong
   `quickstart.md` — bộ biên dịch vẽ lại sai thì không lộ ra ở lint hay ở bản dựng, chỉ lộ khi bấm.
+
+  **Xong 2026-08-13.** Rà mã giao diện **0**, kiểm kiểu sạch, bản phát hành dựng được.
+
+  **Điều luật rà mã đó chưa từng đo cái gì.** Ba luật `react-hooks` đã bật sẵn trong cấu hình rà mã, nhưng
+  gói biên dịch thì **chưa hề cài**. Nghĩa là suốt thời gian qua chúng báo lỗi về một phép biến đổi **không
+  chạy**: vi phạm thì đỏ một dòng, mà bản dựng ra vẫn y nguyên. Việc này cài gói và cắm vào cấu hình dựng —
+  đó mới là chỗ biến mười lăm dòng đỏ thành mười lăm đồng ghi nhớ thật.
+
+  **Mười lăm dòng đỏ, và cách sửa đúng là bỏ lớp ghi nhớ tay.** Bản ghi lúc mở việc chỉ tay vào
+  `const store = useAppStore()`, và dòng đó **đúng là một lỗi** — nó đăng ký cả kho nên màn này vẽ lại theo
+  mọi thay đổi ở bất kỳ đâu. Đã tách thành mười một lối chọn riêng, đúng lối mọi trang khác đang dùng.
+  Nhưng sửa xong dòng đó thì **vẫn còn nguyên mười lăm dòng đỏ**: cái bộ biên dịch phàn nàn là bảy
+  `useCallback` viết tay mà nó không giữ nổi. Và một `useCallback` nó không giữ nổi thì nó **bỏ luôn cả thành
+  phần** — bảy lớp ghi nhớ tay đang mua lại bằng cách vứt đi toàn bộ phần tối ưu của tệp. Nên bỏ cả bảy.
+
+  **Chỗ đắt nhất của việc này lại không nằm trong bản ghi nghiệm thu.** Rà mã sạch **không** có nghĩa là bộ
+  biên dịch chạy. Chạy bộ biên dịch lên toàn bộ `frontend/src` rồi đếm sự kiện hỏng: **20 lần bỏ cuộc ở 13
+  tệp**, và rà mã **không báo một cái nào**. Điều luật kia chỉ bắt được trường hợp "lớp ghi nhớ tay không giữ
+  được" — nguy cơ sai; những cú pháp bộ biên dịch chưa hạ được thì nó im lặng đi qua. Mười ba tệp đó là
+  `App`, bảng dự án, phòng cộng tác, hộp thư, đăng nhập, danh bạ, kỹ năng, kế hoạch, trang agent, trình tạo
+  dự án, khung chat Trưởng dự án, khung phỏng vấn — tức là **hầu hết những màn người dùng thật sự bấm vào**.
+  Bật bộ biên dịch rồi để nguyên chỗ đó là bật hờ.
+
+  Ba nguyên nhân, và đều sửa được mà không đổi hành vi:
+
+  | Cú pháp bộ biên dịch chưa hạ được | Số chỗ | Cách viết lại |
+  |---|---|---|
+  | `finally` | 13 | Dọn dẹp viết ra ở **cả hai đường**; nhánh không có `catch` thì thêm `catch` rồi **ném lại**, để lỗi vẫn to đúng như cũ |
+  | Biểu thức điều kiện (`?:`, `\|\|`, `??`, `?.`) **bên trong** `try` | 8 | Tính trước khối, hoặc rút thành hàm ở mức tệp |
+  | `??=` | 1 | Viết thành `if` |
+  | Biến `err` bắt được vừa là biến cục bộ vừa bị một hàm con bắt giữ | 1 | Đọc ra ngoài trước khi vào hàm con |
+
+  Kết quả: **341 → 357** hàm được tối ưu, **20 → 2** lần bỏ cuộc, **13 → 1** tệp. Hai lần còn lại nằm trong
+  `components/ui/calendar.tsx`, một thành phần dựng sẵn **không màn nào nhập vào** — không bao giờ được vẽ,
+  nên sửa nó là sửa một tệp sẽ bị sinh lại để đổi lấy con số 0 trên thứ không chạy. Cố ý để nguyên.
+
+  **Một lỗi thật lộ ra khi trình tạo dự án bắt đầu được biên dịch**: `StepIndicator` được khai **bên trong**
+  thân vẽ rồi dùng như một thành phần. Mỗi lần vẽ lại là một thành phần *khác*, nên React tháo ra lắp lại —
+  hiệu ứng của thanh ba bước chạy lại từ đầu sau mỗi phím gõ, và mọi trạng thái nó có sẽ bị xoá. Đã đưa ra
+  mức tệp, nhận `step` qua tham số. Điều luật `react-hooks/static-components` chỉ bắt được sau khi tệp đó
+  qua được cửa biên dịch — trước đó nó cũng nằm im.
+
+  **Nghiệm thu trên dịch vụ thật** — dựng lại vùng chứa giao diện (bản phát hành mà vùng chứa đang phục vụ
+  đúng bản vừa dựng), rồi lái trình duyệt thật qua mọi màn mà nhánh này chạm vào. **16/16 phép đo đạt**:
+
+  | Màn | Phép đo | Kết quả |
+  |---|---|---|
+  | Đăng nhập | Sai mật khẩu → hiện lỗi, nút mở lại | đạt |
+  | Đăng nhập | Đúng mật khẩu → vào ứng dụng | đạt |
+  | Trình tạo dự án | Thanh ba bước tự đổi 1 → 2 → 3 | đạt (đọc lớp đánh dấu của nhãn đang hiện, không so chuỗi) |
+  | Trình tạo dự án | Bấm tạo → dự án có thật trên máy chủ | đạt |
+  | Dự án | Cấp đủ ghế → tự sang *lập kế hoạch* | đạt |
+  | Trang kế hoạch | Duyệt bối cảnh từ giao diện | đạt (đọc lại máy chủ: đã duyệt, không còn bản chờ) |
+  | Trang kế hoạch | Quyết kế hoạch → dự án sang *vận hành* | đạt |
+  | Bảng dự án | Tạo đầu việc từ hộp thoại → bảng vẽ thêm thẻ | đạt |
+  | Bảng dự án | Bật công tắc tự công nhận → máy chủ đổi thật | đạt (`false → true`) |
+  | Phòng cộng tác | Gửi lời bình → luồng vẽ thêm | đạt |
+  | Phòng cộng tác | Đổi trạng thái → máy chủ nhận, ô chọn theo kịp | đạt (`backlog → todo`) |
+  | Kỹ năng | Tạo kỹ năng soạn tay | đạt |
+  | Danh bạ | Vẽ đủ hai agent | đạt |
+  | Hộp thư | Vẽ mục chờ, **nhóm theo tên dự án** | đạt |
+  | Toàn tuyến | Lỗi bảng điều khiển | **2**, cả hai do chính phép đo: một lần dò phiên trước khi đăng nhập, một lần đăng nhập sai cố ý |
+
+  **Phép đo hộp thư lúc đầu là một cái đạt rỗng.** Nó chỉ kiểm "trang vẽ ra được", mà hộp thư lúc ấy **không
+  có mục nào** — đoạn nhóm-theo-dự-án (chính là chỗ viết lại `??=`) chưa hề chạy một dòng. Đã sửa thành: đẩy
+  một đầu việc đi trọn đường tới lúc Trưởng dự án ký, rồi đòi hộp thư hiện đúng **tên dự án làm tiêu đề
+  nhóm**. Lần chạy đầu sau khi sửa vẫn ra 0 mục — vì bước trước đó đã bật công tắc tự công nhận, mà công tắc
+  bật thì chữ ký người chủ tự động và **không gì rơi vào hộp thư**. Tắt lại rồi mới có mục để nhóm.
 - [X] T174 **Bảy lối đi không canh chủ sở hữu workspace** trong
   `backend/armarius/presentation/api/workspaces.py` (FR-081, Hiến pháp I). Tìm ra ở T160 bằng cách gọi thật
   bằng thẻ của tenant khác. **Làm trước T173** — đây là lỗ bảo mật đang sống, T173 là việc dọn.
@@ -836,7 +904,7 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   chỗ đó ghi *bản nháp*, không phải *chờ rà soát*. Kết luận: rác dữ liệu do một lượt ghi thẳng từ bên ngoài
   ở đợt trước, **không phải lối mã nào đang chạy**. Cổng đã kiểm lại và chặn đúng.
 - [X] T161 [P] Bài kiểm hồi quy cho **14 yêu cầu đã có sẵn trong mã** mà không đợt nào chạm tới (FR-016, 017, 020, 023, 025, 026, 028, 032, 046, 051, 070, 073, 078, 082) trong `backend/tests/` — khảo sát kết luận chúng đang đúng, nhưng không bài kiểm nào canh để biết một đợt sau có làm hỏng không. **Sửa lại con số**: tra từng cái thì **bốn** trong mười bốn đã có bài kiểm ở chỗ khác — FR-025 và FR-032 ở `test_task_dependencies`, FR-026 ở `test_task_rules`, FR-046 ở `test_wake_prompt`. Mười cái còn lại nằm ở `backend/tests/test_spec_regressions.py`, mỗi bài mang tên đúng một yêu cầu
-- [ ] T162 Cập nhật trạng thái đặc tả từ *Nháp* sang *đã triển khai* trong `specs/001-van-hanh-du-an/spec.md` và ghi lại các điểm lệch còn tồn nếu có. **Làm sau cùng, và sau cả T172, T173, T174, T175, T177, T178** — đóng đợt bằng một cổng sạch, không đóng bằng một dòng ghi nợ. Riêng T174 là lỗ Hiến pháp I: đóng đợt mà còn nó thì dòng "đã triển khai" là một câu nói sai. ~~T178 là lỗ FR-019~~ — xong 2026-08-13, và mở thêm FR-019a cho bước chấm. Còn lại: **T173, T174**
+- [ ] T162 Cập nhật trạng thái đặc tả từ *Nháp* sang *đã triển khai* trong `specs/001-van-hanh-du-an/spec.md` và ghi lại các điểm lệch còn tồn nếu có. **Làm sau cùng, và sau cả T172, T173, T174, T175, T177, T178** — đóng đợt bằng một cổng sạch, không đóng bằng một dòng ghi nợ. ~~Riêng T174 là lỗ Hiến pháp I~~ — vá 2026-08-13. ~~T178 là lỗ FR-019~~ — xong 2026-08-13, và mở thêm FR-019a cho bước chấm. ~~T173 bật bộ biên dịch~~ — xong 2026-08-13. **Mọi việc chặn trước T162 đã xong; T162 là việc cuối cùng của đợt.**
 - [X] T163 [P] Một lối gọi duy nhất `answerInboxItem` trong `frontend/src/lib/api.ts`, trỏ vào `POST /v1/inbox/{id}/answer`. **Không** thêm lời gọi riêng cho giao người / đổi việc kế tiếp / huỷ: câu trả lời của người chủ phải là một lượt gửi–nhận, vì hai lượt để lại quãng nửa vời mà bấm lại là hành động chạy hai lần (FR-061a, FR-061e, FR-070)
 - [X] T164 Bốn hành động ngay trên mục *leo thang* ở `frontend/src/pages/Inbox.tsx`, khớp đúng những lựa chọn hồ sơ nêu ra: **giao lại cho…** (chọn trong danh sách agent có ghế ở dự án, kèm lý do chuyển giao — máy chủ từ chối chuyển người mà không nói vì sao, FR-028), **đổi việc kế tiếp**, **huỷ việc** (kèm ô lý do — FR-030), và **"tôi đã xử lý xong"** (người chủ tự gỡ bên ngoài hệ). Hiện mục này chỉ có nút *Mở*, nên hệ hỏi người chủ mấy đifgều mà không cho họ làm điều nào (FR-061a)
 - [X] T165 Nghiệm thu đường trả lời. **Lá thư đóng vì người chủ bấm, KHÔNG phải vì vòng quét** (FR-061b), và máy chủ đóng mục cùng lần chốt với hành động (FR-061e). Bốn lối phải đi thử đủ: giao lại → người mới được gọi dậy **đúng một lần**, kể cả khi bấm lại; đổi việc kế tiếp và **"tôi đã xử lý xong"** → không ai được gọi lúc bấm, vòng quét nhặt lại và bắt đầu **từ Mức 1**; huỷ việc → đầu việc rời khỏi tầm quét và bấm lại không ném lỗi. Cộng một bài kiểm chứng minh hành động hỏng thì **mục vẫn còn nguyên** — đó là bằng chứng của một-lần-chốt
