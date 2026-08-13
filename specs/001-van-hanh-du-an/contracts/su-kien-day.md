@@ -25,7 +25,7 @@ Hai kênh đã chạy: theo **lượt chạy** và theo **đầu việc**. Cần
 | `task.status_changed` | Mọi lần đổi trạng thái | Mã đầu việc, trước, sau, lý do |
 | `task.stalled` | Nổi hoặc gỡ cờ đình trệ | Mã đầu việc, lý do mất động cơ |
 | `task.unblocked` | Một đầu việc xong, mở khoá việc phụ thuộc | Danh sách mã vừa mở khoá |
-| `task.checklist_changed` | Bộ tiêu chí công nhận được đặt lại | Mã đầu việc, số mục |
+| `task.checklist_changed` | Bộ tiêu chí công nhận được đặt lại **hoặc một tiêu chí được chấm** | Mã đầu việc |
 | `task.comment_added` | Một lời bình được ghi vào đầu việc | Mã đầu việc |
 | `task.artifact_added` | Một thành phẩm được nộp | Mã đầu việc, mã thành phẩm |
 | `task.dependencies_changed` | Thêm hoặc gỡ một ràng buộc phụ thuộc | Mã đầu việc |
@@ -45,6 +45,15 @@ không hề được nạp lên bảng, nên **chưa bao giờ hiện**, tải l
 người nghe *đọc lại* — nhưng đọc lại chỉ cứu được một giá trị mà màn hình vốn có một đường để lấy. Không có
 đường ấy thì tin đẩy bắn vào chỗ trống. Vậy nên T177 phải làm hai nửa: một lối đọc chở các con số cho cả
 bảng, rồi mới đến bốn tin này.
+
+`task.checklist_changed` nay mang **hai** việc, và cố ý không tách làm hai tên. Đặt lại cả bộ và chấm một
+dòng đổi đúng một thứ trên màn hình — con số `đạt/tổng`. Một cái tên thứ hai bắt mọi người nghe phải học cả
+hai để vẽ đúng một huy hiệu, và người nghe nào chỉ học cái thứ nhất thì vẽ ra một con số cũ mà không báo lỗi.
+
+Cũng ở T178, **phòng cộng tác** mới được nối vào kênh này. Trước đó nó chỉ nghe kênh theo *lượt chạy* — thứ
+chở vết chạy của agent — nên ô bộ tiêu chí trong phòng đứng nguyên ở giá trị lúc mở trang. Phòng lọc theo mã
+đầu việc trước khi đọc lại: bảng đọc lại cả dự án được vì đó là **một** lượt gọi, còn phòng đọc lại một đầu
+việc là năm lượt, và trả năm lượt cho một thẻ người xem không mở là một cái giá không ai nhìn thấy.
 
 Lượt rà không thấy gì **vẫn phải bắn**. Khối "lượt rà gần nhất" trên bảng dự án sinh ra để phân biệt *dự án
 đang yên* với *vòng điều phối đã chết*, mà hai thứ đó nhìn giống hệt nhau nếu chỉ có lượt rà thấy-việc mới

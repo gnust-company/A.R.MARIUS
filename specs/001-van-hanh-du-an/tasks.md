@@ -714,7 +714,7 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   **Còn hở, không sửa ở đây → T178**: `criteria_passed` luôn bằng 0 vì **không chỗ nào trong máy chủ chấm
   điểm một tiêu chí** — hàm chấm điểm của thực thể không có ai gọi. Nên thẻ vẽ `0/3` là đúng sự thật hiện
   tại nhưng vô nghĩa. Đó là lỗ ở đường công nhận (FR-019, Story 3), không phải lỗ đẩy tin, nên tách ra.
-- [ ] T178 **Không ai chấm được một tiêu chí công nhận** (FR-019, Câu chuyện 3 kịch bản 1). Đo lúc làm T177:
+- [X] T178 **Không ai chấm được một tiêu chí công nhận** (FR-019, FR-019a, Câu chuyện 3 kịch bản 1). Đo lúc làm T177:
   thực thể tiêu chí có sẵn hàm chấm điểm và trường kết quả *chưa chấm / đạt / không đạt*, kèm chỗ trỏ sang
   thành phẩm làm bằng chứng — nhưng **quét cả máy chủ không có một lời gọi nào**. Kho tiêu chí cũng chỉ có
   hai đường dùng: đọc cả danh sách và thay cả danh sách; đường sửa một mục có khai mà không ai gọi.
@@ -730,6 +730,63 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   **Nghiệm thu**: Trưởng dự án chấm từng tiêu chí đạt/không đạt kèm thành phẩm làm bằng chứng; đầu việc
   không vào được *xong* khi còn tiêu chí chưa đạt; và trên bảng, số `đạt/tổng` tự đổi sau mỗi lần chấm mà
   không tải lại trang.
+
+  **Đã làm.** Ba phần: một lối chấm, hai cổng, và một màn hình bị bỏ quên.
+
+  **Cổng đặt ở lúc ký, không phải lúc đóng.** Đây là chỗ dễ làm sai nhất, và bản ghi nghiệm thu ở trên viết
+  chưa đủ. Nếu chỉ chặn ở cửa *xong* — đúng câu chữ đã ghi — thì luồng thật chạy thế này: Trưởng dự án ký,
+  người chủ ký, chữ ký thứ hai **ghi vào sổ**, rồi bước chuyển sang *xong* mới vỡ. Kết quả là một đầu việc
+  mang đủ hai chữ ký mà kẹt lại ở *chờ rà soát*, và người dùng đọc ra "hệ thống đánh mất lượt đóng" chứ không
+  đọc ra "có một bước bị bỏ". Nên cổng đặt ở **lúc ký**, chặn trước khi ghi bất cứ dòng nào; cổng ở cửa *xong*
+  vẫn dựng, nhưng làm lớp chặn cuối cho dữ liệu cũ, và **mặc định là chặn** đúng như cổng chữ ký.
+
+  Và cổng ở lúc ký chặn **cả hai người ký**, không riêng Trưởng dự án. Đi đường thật thì tới lượt người chủ
+  chuyện đã xong rồi; nhưng một đầu việc đã ký từ trước khi có luật này thì vẫn tới được, và đó đúng là dữ
+  liệu đang nằm trong cơ sở dữ liệu hôm nay.
+
+  **Bằng chứng đòi ở mỗi lần chấm đạt**, không phải chỉ lần đầu. Giữ lại mã thành phẩm cũ nghe thì tiện, mà
+  hệ quả là một lần chấm đạt trỏ mãi vào bản nháp đã bị thay — vẫn có bằng chứng trên giấy, nhưng là bằng
+  chứng cho một thứ khác. Bằng chứng cũng phải là thành phẩm **của chính đầu việc đó**; trỏ sang việc khác
+  là một trích dẫn không lần ngược được, và trỏ sang vùng làm việc khác là một lỗ Hiến pháp I.
+
+  **Chấm chỉ khi đang *chờ rà soát*.** Chấm đạt trước khi có đầu ra để soi thì không nói gì về đầu ra ấy, mà
+  điểm đó vẫn nằm nguyên đó lúc đầu ra tới. Chấm là việc của **ghế Trưởng dự án**: thợ tự chấm việc mình làm
+  là đi thẳng qua đúng cái cổng bộ tiêu chí sinh ra để dựng. Thợ vẫn **đọc** được bộ tiêu chí — một cái thước
+  không cho người bị đo nhìn thì là một đề bài chưa giao.
+
+  **Một màn hình nữa đứng im, phát hiện dọc đường.** Phòng cộng tác cũng vẽ `đạt/tổng` và vẽ từng dòng tiêu
+  chí, nhưng nó chỉ nghe kênh theo *lượt chạy* — thứ chở vết chạy của agent. Trước T178 điều đó không lộ ra
+  vì các con số ấy **không bao giờ đổi**; T178 làm chúng đổi, nên nó thành đúng lỗi FR-080a mà T177 vừa sửa
+  ở bảng. Đã nối phòng vào kênh dự án, lọc theo mã đầu việc: bảng đọc lại cả dự án được vì đó là một lượt
+  gọi, phòng đọc lại một đầu việc là năm lượt.
+
+  **Cố ý để hở, ghi ra thành bài kiểm**: bộ tiêu chí **rỗng** đi qua cổng này. Bắt buộc *phải có* tiêu chí là
+  một luật khác, đặt ở lúc giao việc chứ không phải lúc đóng — dựng nó ở đây sẽ chặn mọi đầu việc có từ trước
+  bộ tiêu chí. Có một bài kiểm mang đúng tên đó để lần sau ai đọc mã không tưởng là quên.
+
+  **Nghiệm thu trên dịch vụ thật** (dựng lại cả hai vùng chứa; dự án thật đi qua đủ cổng bối cảnh và kế hoạch;
+  agent Trưởng dự án thật với thẻ thật; chấm điểm **từ ngoài trình duyệt**):
+
+  | Phép đo | Kết quả |
+  |---|---|
+  | Bảng: chấm đạt tiêu chí 1 | thẻ `0/2` → `1/2` sau **250 mili giây** |
+  | Bảng: chấm đạt tiêu chí 2 | thẻ `1/2` → `2/2` sau **250 mili giây** |
+  | Phòng: chấm *không đạt* | dòng tiêu chí *chưa chấm* → *không đạt* sau **250 mili giây** |
+  | Phòng: chấm lại thành *đạt* | dòng tiêu chí *không đạt* → *đạt* sau **250 mili giây**, thanh đọc `2/2` |
+  | Số lần trang tự tải lại | **0** ở cả hai màn |
+  | Ký khi chưa chấm | **409** *"…còn: Tệp kết xuất mở được, Số liệu khớp sổ cái."* |
+  | Chấm đạt không kèm bằng chứng | **409** *"…phải chỉ ra thành phẩm làm bằng chứng."* |
+  | Bằng chứng của đầu việc khác | **404** |
+  | Ký sau khi chấm đủ → người chủ ký | **200** → đầu việc *xong* |
+
+  **Bản đo hỏng lần này ngược chiều hai lần trước.** Phép đo trong phòng đếm biểu tượng theo tên lớp
+  `lucide-circle-check-big` — không biểu tượng nào ở đây mang tên đó (tên thật là `lucide-circle-check`). Nó
+  báo **HỎNG** trong khi màn hình đã đổi đúng. Hai lần trước phép đo so chuỗi cho tôi một kết quả **đạt giả**;
+  lần này cho một kết quả **hỏng giả**. Cùng một gốc: đo bằng một dấu hiệu chưa hề nhìn tận mắt. Cách sửa là
+  cách duy nhất đúng — dò xem màn hình **thật sự** vẽ ra cái gì rồi mới viết điều kiện.
+
+  Bộ kiểm máy chủ **702 xanh** (thêm 25), rà mã sạch, rà kiểu 158 = 158. Bộ kiểm `mcp` 37 xanh. Giao diện rà
+  kiểu sạch, rà mã 15 — nguyên mốc nền T173.
 - [X] T160 Chạy bảng "Kiểm chứng ràng buộc Hiến pháp" trong `specs/001-van-hanh-du-an/quickstart.md` — sáu nguyên tắc, sáu cách kiểm.
 
   Chạy trên **dịch vụ thật** (vùng chứa đang sống, thẻ định danh thật, trình duyệt thật), không chỉ bằng bộ
@@ -779,7 +836,7 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   chỗ đó ghi *bản nháp*, không phải *chờ rà soát*. Kết luận: rác dữ liệu do một lượt ghi thẳng từ bên ngoài
   ở đợt trước, **không phải lối mã nào đang chạy**. Cổng đã kiểm lại và chặn đúng.
 - [X] T161 [P] Bài kiểm hồi quy cho **14 yêu cầu đã có sẵn trong mã** mà không đợt nào chạm tới (FR-016, 017, 020, 023, 025, 026, 028, 032, 046, 051, 070, 073, 078, 082) trong `backend/tests/` — khảo sát kết luận chúng đang đúng, nhưng không bài kiểm nào canh để biết một đợt sau có làm hỏng không. **Sửa lại con số**: tra từng cái thì **bốn** trong mười bốn đã có bài kiểm ở chỗ khác — FR-025 và FR-032 ở `test_task_dependencies`, FR-026 ở `test_task_rules`, FR-046 ở `test_wake_prompt`. Mười cái còn lại nằm ở `backend/tests/test_spec_regressions.py`, mỗi bài mang tên đúng một yêu cầu
-- [ ] T162 Cập nhật trạng thái đặc tả từ *Nháp* sang *đã triển khai* trong `specs/001-van-hanh-du-an/spec.md` và ghi lại các điểm lệch còn tồn nếu có. **Làm sau cùng, và sau cả T172, T173, T174, T175, T177, T178** — đóng đợt bằng một cổng sạch, không đóng bằng một dòng ghi nợ. Riêng T174 là lỗ Hiến pháp I: đóng đợt mà còn nó thì dòng "đã triển khai" là một câu nói sai. T178 là lỗ FR-019: bộ tiêu chí chưa chấm được thì Câu chuyện 3 chưa chạy đủ như đặc tả viết
+- [ ] T162 Cập nhật trạng thái đặc tả từ *Nháp* sang *đã triển khai* trong `specs/001-van-hanh-du-an/spec.md` và ghi lại các điểm lệch còn tồn nếu có. **Làm sau cùng, và sau cả T172, T173, T174, T175, T177, T178** — đóng đợt bằng một cổng sạch, không đóng bằng một dòng ghi nợ. Riêng T174 là lỗ Hiến pháp I: đóng đợt mà còn nó thì dòng "đã triển khai" là một câu nói sai. ~~T178 là lỗ FR-019~~ — xong 2026-08-13, và mở thêm FR-019a cho bước chấm. Còn lại: **T173, T174**
 - [X] T163 [P] Một lối gọi duy nhất `answerInboxItem` trong `frontend/src/lib/api.ts`, trỏ vào `POST /v1/inbox/{id}/answer`. **Không** thêm lời gọi riêng cho giao người / đổi việc kế tiếp / huỷ: câu trả lời của người chủ phải là một lượt gửi–nhận, vì hai lượt để lại quãng nửa vời mà bấm lại là hành động chạy hai lần (FR-061a, FR-061e, FR-070)
 - [X] T164 Bốn hành động ngay trên mục *leo thang* ở `frontend/src/pages/Inbox.tsx`, khớp đúng những lựa chọn hồ sơ nêu ra: **giao lại cho…** (chọn trong danh sách agent có ghế ở dự án, kèm lý do chuyển giao — máy chủ từ chối chuyển người mà không nói vì sao, FR-028), **đổi việc kế tiếp**, **huỷ việc** (kèm ô lý do — FR-030), và **"tôi đã xử lý xong"** (người chủ tự gỡ bên ngoài hệ). Hiện mục này chỉ có nút *Mở*, nên hệ hỏi người chủ mấy đifgều mà không cho họ làm điều nào (FR-061a)
 - [X] T165 Nghiệm thu đường trả lời. **Lá thư đóng vì người chủ bấm, KHÔNG phải vì vòng quét** (FR-061b), và máy chủ đóng mục cùng lần chốt với hành động (FR-061e). Bốn lối phải đi thử đủ: giao lại → người mới được gọi dậy **đúng một lần**, kể cả khi bấm lại; đổi việc kế tiếp và **"tôi đã xử lý xong"** → không ai được gọi lúc bấm, vòng quét nhặt lại và bắt đầu **từ Mức 1**; huỷ việc → đầu việc rời khỏi tầm quét và bấm lại không ném lỗi. Cộng một bài kiểm chứng minh hành động hỏng thì **mục vẫn còn nguyên** — đó là bằng chứng của một-lần-chốt
