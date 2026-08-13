@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -229,18 +229,32 @@ export default function CollaborationRoom() {
   const { id: taskId, workspaceId } = useParams<{ id: string; workspaceId: string }>();
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const store = useAppStore();
-  const task = store.tasks.find((t) => t.id === taskId);
+  // One selector per value, the way every other page reads the store. `useAppStore()`
+  // with no selector subscribes to the *whole* store and hands back a fresh object on
+  // any change anywhere, so nothing derived from it could keep its identity across a
+  // render — which is why the React Compiler gave up on this component fifteen times
+  // over. Actions keep their identity for the life of the store; state slices change
+  // only when that slice changes.
+  const tasks = useAppStore((s) => s.tasks);
+  const mariuses = useAppStore((s) => s.mariuses);
+  const projects = useAppStore((s) => s.projects);
+  const currentUser = useAppStore((s) => s.currentUser);
+  const updateTask = useAppStore((s) => s.updateTask);
+  const addComment = useAppStore((s) => s.addComment);
+  const setTaskCriteria = useAppStore((s) => s.setTaskCriteria);
+  const publishArtifact = useAppStore((s) => s.publishArtifact);
+  const addTaskDependency = useAppStore((s) => s.addTaskDependency);
+  const removeTaskDependency = useAppStore((s) => s.removeTaskDependency);
+  const hydrateTask = useAppStore((s) => s.hydrateTask);
+
+  const task = tasks.find((t) => t.id === taskId);
 
   // Subscribe to the per-task wake trace SSE.
   useTaskStream(taskId);
 
   // Load the task + its comment thread + artifacts on mount. Depends on the one
-  // action, not on `store`: `useAppStore()` above hands back a new object on every
-  // store change, so listing `store` here would re-hydrate on the very state this
-  // effect writes — a loop. A selected action keeps its identity for the life of
-  // the store, so this stays "once per task".
-  const hydrateTask = useAppStore((s) => s.hydrateTask);
+  // action, never on a whole-store object: an effect that re-runs on the very state it
+  // writes is a loop.
   useEffect(() => {
     if (!taskId) return;
     hydrateTask(taskId);
@@ -279,14 +293,13 @@ export default function CollaborationRoom() {
 
   // The task's single assignee (one owner per task) resolved to agent data — 0 or 1.
   const assignedAgents = task?.assigneeId
-    ? store.mariuses.filter((m) => m.id === task.assigneeId)
+    ? mariuses.filter((m) => m.id === task.assigneeId)
     : [];
-  const currentUser = store.currentUser;
 
   // Get dependency (blocked_by) tasks + the candidates the picker can add (same project,
   // not itself, not already a blocker).
-  const dependencyTasks = store.tasks.filter((t) => task?.dependencies?.includes(t.id));
-  const candidateBlockers = store.tasks.filter(
+  const dependencyTasks = tasks.filter((t) => task?.dependencies?.includes(t.id));
+  const candidateBlockers = tasks.filter(
     (x) =>
       x.projectId === task?.projectId &&
       x.id !== task?.id &&
@@ -311,7 +324,12 @@ export default function CollaborationRoom() {
     traceEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [task?.trace?.length]);
 
-  const handleStatusChange = useCallback((newStatus: string) => {
+  // The handlers below are deliberately plain functions. With the React Compiler on, it
+  // memoizes them itself and does a better job of it: hand-written dependency arrays here
+  // could not be preserved (fifteen reports), and a `useCallback` the compiler cannot
+  // preserve makes it bail out of the *whole component*, so the manual memoization was
+  // costing every optimization in this file to buy back seven.
+  const handleStatusChange = (newStatus: string) => {
     if (!task) return;
     const from = task.status as TaskPhase;
     const to = newStatus as TaskPhase;
@@ -326,27 +344,27 @@ export default function CollaborationRoom() {
       if (!answer || !answer.trim()) return;  // no reason, no move — the server agrees
       reason = answer.trim();
     }
-    store.updateTask(task.id, { status: to as Task['status'], statusReason: reason });
-  }, [task, hasArtifacts, blockedByUnfinished, store, t]);
+    updateTask(task.id, { status: to as Task['status'], statusReason: reason });
+  };
 
-  const handleSendComment = useCallback(() => {
+  const handleSendComment = () => {
     if (!commentInput.trim() || !task) return;
-    store.addComment(task.id, {
+    addComment(task.id, {
       authorId: currentUser?.id || 'user-patron',
       authorName: currentUser?.name || t('collaborationRoom.patron'),
       content: commentInput.trim(),
     });
     setCommentInput('');
-  }, [commentInput, task, store, currentUser, t]);
+  };
 
   const [criteriaDraft, setCriteriaDraft] = useState<string | null>(null);
   const [criteriaError, setCriteriaError] = useState<string | null>(null);
 
-  const handleSaveCriteria = useCallback(async () => {
+  const handleSaveCriteria = async () => {
     if (!task || criteriaDraft === null) return;
     setCriteriaError(null);
     try {
-      await store.setTaskCriteria(
+      await setTaskCriteria(
         task.id,
         criteriaDraft.split('\n').map((line) => line.trim()).filter(Boolean),
       );
@@ -354,7 +372,7 @@ export default function CollaborationRoom() {
     } catch (e) {
       setCriteriaError(e instanceof Error ? e.message : String(e));
     }
-  }, [task, criteriaDraft, store]);
+  };
 
   // ── Công nhận đầu ra (FR-033, FR-035) ──────────────────────────────────────
   const [approvals, setApprovals] = useState<ApprovalDTO[]>([]);
@@ -389,35 +407,31 @@ export default function CollaborationRoom() {
     (a) => a.round === currentRound && a.signer_kind === 'leader' && a.result === 'approve',
   );
 
-  const handleSign = useCallback(
-    async (approve: boolean) => {
-      if (!task) return;
-      let reason: string | undefined;
-      if (!approve) {
-        const said = window.prompt(t('collaborationRoom.acceptance.reasonPrompt'));
-        if (!said || !said.trim()) return;
-        reason = said.trim();
-      }
-      setSigning(true);
-      setApprovalError(null);
-      try {
-        await signTaskApproval(task.id, approve, reason);
-        await store.hydrateTask(task.id);
-        setApprovalsKey((n) => n + 1);
-      } catch (e) {
-        setApprovalError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setSigning(false);
-      }
-    },
-    [task, store, t],
-  );
+  const handleSign = async (approve: boolean) => {
+    if (!task) return;
+    let reason: string | undefined;
+    if (!approve) {
+      const said = window.prompt(t('collaborationRoom.acceptance.reasonPrompt'));
+      if (!said || !said.trim()) return;
+      reason = said.trim();
+    }
+    setSigning(true);
+    setApprovalError(null);
+    try {
+      await signTaskApproval(task.id, approve, reason);
+      await hydrateTask(task.id);
+      setApprovalsKey((n) => n + 1);
+    } catch (e) {
+      setApprovalError(e instanceof Error ? e.message : String(e));
+    }
+    setSigning(false);
+  };
 
   const handleAddDependency = async (blocksTaskId: string) => {
     if (!task || !blocksTaskId) return;
     setDepError(null);
     try {
-      await store.addTaskDependency(task.id, blocksTaskId);
+      await addTaskDependency(task.id, blocksTaskId);
       setDepPicker('');
     } catch (e) {
       // Server rejects self-loop/duplicate/cross-project/cycle with a 422 detail (#91).
@@ -429,15 +443,15 @@ export default function CollaborationRoom() {
     if (!task) return;
     setDepError(null);
     try {
-      await store.removeTaskDependency(task.id, blocksTaskId);
+      await removeTaskDependency(task.id, blocksTaskId);
     } catch (e) {
       setDepError(e instanceof ApiError ? e.message : t('collaborationRoom.context.dependencyFailed'));
     }
   };
 
-  const handleAddArtifact = useCallback(() => {
+  const handleAddArtifact = () => {
     if (!task || !artifactForm.name.trim()) return;
-    store.publishArtifact(task.id, {
+    publishArtifact(task.id, {
       type: artifactForm.type,
       name: artifactForm.name.trim(),
       url: artifactForm.url.trim() || undefined,
@@ -445,21 +459,21 @@ export default function CollaborationRoom() {
     });
     setArtifactForm({ name: '', url: '', type: 'file' });
     setShowAddArtifactModal(false);
-  }, [task, artifactForm, store]);
+  };
 
-  const handleApprove = useCallback(() => {
+  const handleApprove = () => {
     if (!task) return;
-    store.updateTask(task.id, { status: 'done' });
-  }, [task, store]);
+    updateTask(task.id, { status: 'done' });
+  };
 
-  const handleRequestChanges = useCallback(() => {
+  const handleRequestChanges = () => {
     if (!task) return;
     // Sending work back is *in_review → in_progress*, and it costs a reason: the worker
     // has to know what to fix (spec 001 FR-030).
     const answer = window.prompt(t('taskRules.reworkPrompt'));
     if (!answer || !answer.trim()) return;
-    store.updateTask(task.id, { status: 'in_progress', statusReason: answer.trim() });
-  }, [task, store, t]);
+    updateTask(task.id, { status: 'in_progress', statusReason: answer.trim() });
+  };
 
   if (!task) {
     return (
@@ -498,7 +512,7 @@ export default function CollaborationRoom() {
           <span className="font-mono text-mono-md text-terracotta">{task.identifier}</span>
           <span className="text-ink-muted">&middot;</span>
           <span className="font-body text-body-sm text-ink-light truncate max-w-[200px]">
-            {store.projects.find((p) => p.id === task.projectId)?.name}
+            {projects.find((p) => p.id === task.projectId)?.name}
           </span>
         </div>
 
@@ -931,7 +945,7 @@ export default function CollaborationRoom() {
                   authorName={comment.authorName ?? t('collaborationRoom.patron')}
                   authorId={comment.authorId}
                   authorRole={
-                    store.mariuses.find((m) => m.id === comment.authorId)?.role || t('collaborationRoom.patron')
+                    mariuses.find((m) => m.id === comment.authorId)?.role || t('collaborationRoom.patron')
                   }
                   content={comment.content}
                   timestamp={comment.timestamp}
