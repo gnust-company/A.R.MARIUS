@@ -174,6 +174,86 @@ def test_a_new_cause_starts_its_own_budget() -> None:
     assert state.cause == "thành phẩm đã mất"
 
 
+# ── điều kiện vào nấc (FR-059a) ─────────────────────────────────────────────────
+
+
+def test_a_rung_with_nothing_to_act_on_is_entered_at_the_next_one_instead() -> None:
+    """FR-059a. Level 1 is *re-wake the assignee*; with nobody assigned it has no subject.
+
+    Not an exception to the no-skipping rule: skipping passes over a rung that could still
+    work, and this rung cannot. The distinction is worth a test because the two look
+    identical from the outside — both arrive at Level 2 — and only the budget tells them
+    apart.
+    """
+    step = advance(
+        fresh(), cap=CAP, handover_cap=HANDOVER_CAP, progressed=False, level1_available=False
+    )
+
+    assert step.level is EscalationLevel.LEVEL_2
+    assert step.handovers == 1, "lần hỏi Trưởng dự án đầu tiên phải được tính ngay"
+
+
+def test_no_level_one_attempt_is_spent_on_a_rung_that_cannot_run() -> None:
+    """The cost the rule exists to avoid, stated as a number.
+
+    Before this check an unassigned task spent its whole Level-1 budget — three attempts,
+    spaced 5, 10 and 20 minutes — waking nobody, and reached the Leader some thirty-five
+    minutes late. ``attempts`` staying at zero is what the Level-2 question and the Level-3
+    dossier read to say *nobody was assigned* rather than *we called and nobody came*.
+    """
+    state = fresh()
+    for _ in range(CAP + 2):
+        state = advance(
+            state,
+            cap=CAP,
+            handover_cap=HANDOVER_CAP,
+            progressed=False,
+            level1_available=False,
+        )
+        assert state.level is not EscalationLevel.LEVEL_1
+
+    assert state.attempts == 0
+
+
+def test_losing_the_assignee_midway_moves_the_task_off_level_one() -> None:
+    """The entry condition is checked on every step, not once on the way in.
+
+    A task can be unassigned while the ladder is part-way through its budget. From that
+    moment Level 1 has nothing to act on, and carrying on would spend the rest of the
+    budget calling a number nobody is on — the same waste, arrived at from the other side.
+    The attempts already made stay on record for the dossier (FR-061).
+    """
+    state = climb(fresh(), 2)
+    assert state.level is EscalationLevel.LEVEL_1 and state.attempts == 2
+
+    state = advance(
+        state, cap=CAP, handover_cap=HANDOVER_CAP, progressed=False, level1_available=False
+    )
+
+    assert state.level is EscalationLevel.LEVEL_2
+    assert state.attempts == 2, "hồ sơ phải giữ được hai lần đã thử"
+    assert state.handovers == 1
+
+
+def test_a_new_cause_on_an_unassigned_task_still_starts_at_level_two() -> None:
+    """A fresh cause resets the budget, and the entry condition is checked on that path
+    too — otherwise the one route back to Level 1 would be the one that skips the check."""
+    state = climb(fresh("người phụ trách ngoại tuyến"), CAP)
+
+    state = advance(
+        state,
+        cap=CAP,
+        handover_cap=HANDOVER_CAP,
+        progressed=False,
+        cause="thành phẩm đã mất",
+        level1_available=False,
+    )
+
+    assert state.level is EscalationLevel.LEVEL_2
+    assert state.attempts == 0
+    assert state.cause == "thành phẩm đã mất"
+
+
 # ── khoảng cách giãn dần ────────────────────────────────────────────────────────
 
 
