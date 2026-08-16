@@ -8,7 +8,7 @@ What matters is not that *an* event fires — it is that **every** transition fi
 run's status is moved from five places, and a screen that hears four of them shows a run
 frozen at whatever the missing one left behind. So there is a test per path, plus one that
 pins the payload: the workspace channel is held open for a whole session, and principle 4
-of ``contracts/su-kien-day.md`` keeps content off it.
+of ``contracts/push-events.md`` keeps content off it.
 """
 
 from __future__ import annotations

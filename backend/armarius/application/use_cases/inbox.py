@@ -244,7 +244,7 @@ class InboxService:
 
     async def _publish(self, event: str, item: InboxItem) -> None:
         """Push to the recipient's channel. Identifiers and labels only — never the body
-        (contracts/su-kien-day.md §4: events carry no sensitive content)."""
+        (contracts/push-events.md §4: events carry no sensitive content)."""
         await self._bus.publish(
             patron_topic(item.recipient_user_id),
             event,

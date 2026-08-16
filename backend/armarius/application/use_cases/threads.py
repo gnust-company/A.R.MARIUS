@@ -28,7 +28,7 @@ async def announce_comment(
     """Tell the project channel a comment landed (no-op if the bus is not wired).
 
     An identifier and nothing else — the comment body stays off the wire (contract
-    `su-kien-day` principle 4). The listener re-reads through the API, where the workspace
+    `push-events` principle 4). The listener re-reads through the API, where the workspace
     guard still applies; a body on the channel would be a second way to read the row with
     no guard in front of it.
     """

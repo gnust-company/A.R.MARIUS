@@ -454,7 +454,7 @@ async def get_orchestration(
     )
 
 
-# ── project context, plan and phase (spec 001, contracts/mat-nguoi-dung.md §1–3) ──
+# ── project context, plan and phase (spec 001, contracts/user-surface.md §1–3) ──
 
 
 @router.get("/projects/{project_id}/context", response_model=ProjectContextViewOut)

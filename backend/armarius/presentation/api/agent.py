@@ -524,7 +524,7 @@ async def publish_artifact(
     return ArtifactOut.model_validate(artifact)
 
 
-# ── Leader: context, plan, phase proposal (spec 001, contracts/mat-agent.md §2) ───
+# ── Leader: context, plan, phase proposal (spec 001, contracts/agent-surface.md §2) ───
 #
 # Note what is NOT here: there is no route for deciding on a plan or moving a phase. The
 # Leader submits and proposes; the patron decides (FR-004, FR-014). The absence is the

@@ -1245,7 +1245,7 @@ class TaskService:
     async def _publish(
         self, project_id: UUID | None, event: str, data: dict[str, object]
     ) -> None:
-        """Identifiers and labels only — never task content (contracts/su-kien-day §4)."""
+        """Identifiers and labels only — never task content (contracts/push-events §4)."""
         if self._bus is None or project_id is None:
             return
         await self._bus.publish(project_topic(project_id), event, data)

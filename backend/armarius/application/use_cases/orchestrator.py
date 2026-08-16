@@ -173,7 +173,7 @@ class OrchestrationLoop:
             await uow.commit()
         # After the row is durable, never before: an event is a signal to go re-read, and
         # a board that re-read on a pass that then rolled back would show a sweep that
-        # never happened (contracts/su-kien-day §Nguyên tắc 1).
+        # never happened (contracts/push-events §Nguyên tắc 1).
         await self._announce(sweep)
         return sweep
 

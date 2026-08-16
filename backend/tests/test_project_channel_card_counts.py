@@ -250,7 +250,7 @@ async def test_each_of_the_four_changes_puts_something_on_the_project_channel():
 
 
 async def test_the_new_events_carry_no_task_content():
-    """Contract `su-kien-day` principle 4. A comment body or an artifact name on the
+    """Contract `push-events` principle 4. A comment body or an artifact name on the
     channel would be a second way to read the row with no workspace guard in front of it."""
     async with await _client() as c:
         h, ws_id = await _patron(c, "counts-d@armarius.dev")

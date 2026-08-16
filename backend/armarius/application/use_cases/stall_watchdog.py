@@ -250,7 +250,7 @@ class StallWatchdog:
     # ── plumbing ─────────────────────────────────────────────────────────────────
     async def _publish(self, task: Task, verdict: str) -> None:
         """Tell the project channel. Identifiers and labels only — never the description
-        (contracts/su-kien-day.md §4)."""
+        (contracts/push-events.md §4)."""
         if task.project_id is None:  # pragma: no cover - defensive
             return
         await self._bus.publish(

@@ -123,7 +123,7 @@ async def test_creating_a_task_puts_something_on_the_project_channel():
 
 
 async def test_the_created_event_carries_no_task_content():
-    """Contract `su-kien-day` principle 4: identifiers and labels, never the text itself.
+    """Contract `push-events` principle 4: identifiers and labels, never the text itself.
 
     An event is a signal — the page re-reads through the API, where the workspace guard
     still applies. Content on the wire would make the stream a second, unguarded way to

@@ -1,4 +1,4 @@
-"""Patron inbox endpoints (spec 001 §11, contracts/mat-nguoi-dung.md §5).
+"""Patron inbox endpoints (spec 001 §11, contracts/user-surface.md §5).
 
 Replaces the browser-side filtering the Inbox page does today with a real surface. Every
 route is scoped to the **calling** patron: there is deliberately no way to read or

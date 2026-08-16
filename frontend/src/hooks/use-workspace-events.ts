@@ -2,7 +2,7 @@
 // `marius.*` event into a re-read of that workspace's agents.
 //
 // It used to patch the store from each event's payload instead, which is what principle 1
-// of `contracts/su-kien-day.md` forbids — an event is a signal to re-read, never the state
+// of `contracts/push-events.md` forbids — an event is a signal to re-read, never the state
 // itself. That inversion cost the status dot outright (T169): the server publishes
 // `marius.online` as a bare id, this hook demanded a `status` field before it would touch
 // anything, and so the one event that says an agent came back was dropped on the floor. A
