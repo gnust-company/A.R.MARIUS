@@ -27,6 +27,7 @@ from armarius.domain.entities.project import ProjectStatus
 from armarius.domain.entities.task import TaskStatus
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
+from tests.support.projects import force_phase
 
 _LIVE = (ProjectStatus.OPERATING, ProjectStatus.MAINTAINING)
 _NOT_LIVE = (ProjectStatus.SETUP, ProjectStatus.PLANNING, ProjectStatus.CLOSED)
@@ -62,12 +63,7 @@ async def _stage(uow_factory, phase: ProjectStatus):
         description="Gom số liệu bán hàng rồi kết xuất ra tệp bảng tính.",
         status=TaskStatus.DRAFT,
     )
-    async with uow_factory() as uow:
-        stored = await uow.projects.get(project.id)
-        assert stored is not None
-        stored.status = phase
-        await uow.projects.update(stored)
-        await uow.commit()
+    await force_phase(uow_factory, project.id, phase)
     return tasks, task, worker
 
 

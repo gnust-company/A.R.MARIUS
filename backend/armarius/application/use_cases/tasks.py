@@ -24,7 +24,7 @@ from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.review_reset import retire_signatures_on_move
 from armarius.application.use_cases.threads import announce_comment
 from armarius.application.use_cases.types import UowFactory
-from armarius.application.use_cases.wake_engine import WakeEngine
+from armarius.application.use_cases.wake_engine import ProjectClosedError, WakeEngine
 from armarius.domain.entities.checklist_item import (
     AcceptanceResult,
     ChecklistItem,
@@ -79,6 +79,9 @@ EVENT_TASK_CREATED = "task.created"
 # shows, not about the status field.
 EVENT_TASK_CHECKLIST = "task.checklist_changed"
 EVENT_TASK_DEPENDENCIES = "task.dependencies_changed"
+# The patron rewrote the job itself — title, priority or deadline are all drawn on the
+# card, so the board owes the same signal it owes a move (FR-070a, FR-080a).
+EVENT_TASK_UPDATED = "task.updated"
 
 
 @dataclass(frozen=True)
@@ -110,8 +113,28 @@ def _coerce_priority(value: str | TaskPriority | None) -> TaskPriority:
         return TaskPriority.MEDIUM
 
 
+class _Unset:
+    """"This field was not in the request" — distinct from "set this field to nothing".
+
+    An edit needs both (FR-070a). The motivating case is the one the spec names: a
+    deadline typed in by mistake has to be *removable*, and with the house "None means
+    unchanged" idiom it never can be — the patron would be back to deleting the task and
+    recreating it, losing its comments, artifacts and history in the process.
+    """
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return "UNSET"
+
+
+UNSET = _Unset()
+
+
 class ProjectNotReadyForTasks(Exception):
     """Raised when a real task is created before the plan gate opened (spec 001 FR-003)."""
+
+
+class TitleRequiredError(Exception):
+    """Raised when an edit would leave a task with no title (FR-070a)."""
 
 
 class AlreadyAssignedError(Exception):
@@ -417,6 +440,105 @@ class TaskService:
             await uow.commit()
         await self.after_assign(effects)
         return effects.task
+
+    async def edit(
+        self,
+        task_id: UUID,
+        *,
+        title: str | None | _Unset = UNSET,
+        description: str | None | _Unset = UNSET,
+        priority: str | TaskPriority | _Unset = UNSET,
+        due_date: datetime | None | _Unset = UNSET,
+        definition_of_done: str | None | _Unset = UNSET,
+        user_id: str | None = None,
+    ) -> Task:
+        """The patron rewriting a task after it exists (FR-070, FR-070a).
+
+        Which gate applies is decided by **who is calling**, not by which field is touched
+        (FR-070a). This is the patron's door, and the patron's edits take effect at once —
+        that is the whole point of FR-070. The Leader touching one of the five big things
+        goes through its own change-request route instead, and the assignee has no edit
+        door at all: it adds progress notes in the thread and leaves the requirement it
+        was handed alone (FR-018).
+
+        Only what the caller actually sent is touched, and passing an empty value clears
+        the field rather than being read as "no change" — see `_Unset`.
+
+        Not gated on the project phase, unlike creating or assigning. Rewording a draft
+        while the plan is still being argued about is ordinary work and wakes nobody. A
+        *closed* project is the exception: it is history, and history is read-only
+        (FR-005).
+        """
+        changed: list[str] = []
+        async with self._uow() as uow:
+            task = await uow.tasks.get(task_id)
+            if task is None:
+                raise LookupError("task not found")
+            await self._assert_project_open(uow, task)
+
+            if not isinstance(title, _Unset) and title != task.title:
+                # The one field with no empty state: a task nobody can name is a task
+                # nobody can find. Clearing it is refused rather than quietly ignored.
+                if not (title or "").strip():
+                    raise TitleRequiredError("Đầu việc phải có tiêu đề.")
+                task.title = str(title)
+                changed.append("title")
+            if not isinstance(description, _Unset) and description != task.description:
+                # Through the entity, so the FR-018 lock stays the single place that
+                # decides who may rewrite a requirement.
+                task.set_description(description, by_worker=False)
+                changed.append("description")
+            if not isinstance(priority, _Unset):
+                resolved = _coerce_priority(priority)
+                if resolved is not task.priority:
+                    task.priority = resolved
+                    changed.append("priority")
+            if not isinstance(due_date, _Unset) and due_date != task.due_date:
+                task.due_date = due_date
+                changed.append("due_date")
+            if (
+                not isinstance(definition_of_done, _Unset)
+                and definition_of_done != task.definition_of_done
+            ):
+                task.definition_of_done = definition_of_done
+                changed.append("definition_of_done")
+
+            if not changed:
+                # An edit that edits nothing is not an event. Recording it would dilute
+                # the one log the patron reads to find out when the job changed.
+                return task
+
+            task.updated_at = utcnow()
+            updated = await uow.tasks.update(task)
+            await self._log(
+                uow,
+                task_id,
+                TaskLogKind.EDITED,
+                actor_kind=ActorKind.USER,
+                actor_user_id=user_id,
+                # Field names, not values: the log is a trail, not a copy of every draft
+                # a description ever passed through.
+                detail={"fields": changed},
+            )
+            await uow.commit()
+            project_id = updated.project_id
+
+        # The board draws the title, the priority and the deadline, so an edit changes
+        # what is on screen exactly as a move does (FR-080a).
+        await self._publish(
+            project_id,
+            EVENT_TASK_UPDATED,
+            {"task_id": str(task_id), "fields": changed},
+        )
+        return updated
+
+    async def _assert_project_open(self, uow: UnitOfWork, task: Task) -> None:
+        """FR-005 — a closed project is readable, never writable."""
+        if task.project_id is None:  # pragma: no cover - defensive
+            return
+        project = await uow.projects.get(task.project_id)
+        if project is not None and project_rules.is_closed(project.status):
+            raise ProjectClosedError("Dự án đã đóng — lịch sử chỉ đọc, không sửa được.")
 
     async def _assert_phase_accepts_work(self, uow: UnitOfWork, task: Task) -> None:
         """FR-003 — a worker is only put on a task once the patron has approved the plan.

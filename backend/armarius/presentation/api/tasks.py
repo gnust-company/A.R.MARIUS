@@ -28,6 +28,7 @@ from armarius.presentation.schemas import (
     CommentOut,
     CreateTaskIn,
     CriterionOut,
+    EditTaskIn,
     NextActionIn,
     PostCommentIn,
     PublishArtifactIn,
@@ -92,6 +93,23 @@ async def get_task(
     task_id: UUID, container: ContainerDep, user: CurrentUser
 ) -> TaskOut:
     return TaskOut.model_validate(await own_task(container, user, task_id))
+
+
+@router.patch("/tasks/{task_id}", response_model=TaskOut)
+async def edit_task(
+    task_id: UUID, body: EditTaskIn, container: ContainerDep, user: CurrentUser
+) -> TaskOut:
+    """The patron's direct edit (FR-070, FR-070a) — effective immediately.
+
+    Only the fields actually present in the request body are forwarded, so omitting a
+    field leaves it alone while sending it as null clears it. Without that distinction a
+    deadline entered by mistake could never be removed, which is the exact hole FR-070a
+    was written to close.
+    """
+    await own_task(container, user, task_id)
+    sent = body.model_dump(include=body.model_fields_set)
+    task = await container.tasks.edit(task_id, user_id=str(user.id), **sent)
+    return TaskOut.model_validate(task)
 
 
 @router.post("/tasks/{task_id}/assign", response_model=TaskOut)

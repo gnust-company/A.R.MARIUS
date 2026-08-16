@@ -42,12 +42,13 @@ const KANBAN_COLUMNS: { status: TaskStatus; bg: string; headerBg: string; border
   { status: 'done', bg: 'bg-[#D8EADD]', headerBg: 'bg-[#D8EADD]', borderColor: 'border-[#A8D8B8]' },
 ];
 
-type BoardPriority = 'P0' | 'P1' | 'P2'
+type BoardPriority = 'P0' | 'P1' | 'P2' | 'P3'
 
 const PRIORITY_BORDER: Record<BoardPriority, string> = {
   P0: 'border-l-[#C25E3A]',
   P1: 'border-l-[#D4A843]',
   P2: 'border-l-[#A89880]',
+  P3: 'border-l-[#C8BCA8]',
 };
 
 const STATUS_BORDER: Record<string, string> = {
@@ -63,6 +64,7 @@ const PRIORITY_BADGE: Record<BoardPriority, { bg: string; text: string }> = {
   P0: { bg: 'bg-[#F5DDD6]', text: 'text-[#B84A32]' },
   P1: { bg: 'bg-[#F5E8CC]', text: 'text-[#8B6A28]' },
   P2: { bg: 'bg-[#E8E0D8]', text: 'text-[#8B7A6A]' },
+  P3: { bg: 'bg-[#EFEAE2]', text: 'text-[#9C8E7E]' },
 };
 
 // ─── Task Card ───────────────────────────────────────────────────────────────
@@ -83,7 +85,7 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
   // priority, so tasks can arrive with values (e.g. 'normal') that have no PRIORITY_BADGE /
   // PRIORITY_BORDER entry — reading `.bg` off the resulting undefined crashed the whole board
   // (#70). Fall back to the lowest tier for anything unrecognized.
-  const priorityKey: BoardPriority = (['P0', 'P1', 'P2'] as const).includes(task.priority as BoardPriority)
+  const priorityKey: BoardPriority = (['P0', 'P1', 'P2', 'P3'] as const).includes(task.priority as BoardPriority)
     ? (task.priority as BoardPriority)
     : 'P2';
   // Read the counts, never `task.comments.length` and friends. Those arrays are filled by

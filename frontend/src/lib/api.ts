@@ -616,6 +616,24 @@ export async function updateTaskStatus(taskId: string, status: string, reason?: 
   return post<TaskDTO>(`/v1/tasks/${taskId}/status`, { status, reason })
 }
 
+/** The patron rewriting a task after it exists (FR-070a). Takes effect immediately.
+ *
+ * Send only the keys you mean to change: the server reads which fields were present, so
+ * an omitted key is left alone while `due_date: null` clears a deadline entered by
+ * mistake. Spreading a whole task object in here would silently rewrite every field. */
+export async function editTask(
+  taskId: string,
+  body: {
+    title?: string
+    description?: string | null
+    priority?: string
+    due_date?: string | null
+    definition_of_done?: string | null
+  },
+): Promise<TaskDTO> {
+  return patch<TaskDTO>(`/v1/tasks/${taskId}`, body)
+}
+
 
 /** Bring a closed task back. The reason is mandatory — the server refuses without it. */
 export async function reopenTask(taskId: string, reason: string): Promise<TaskDTO> {

@@ -80,12 +80,31 @@ export function taskStatusFromDTO(status: string): TaskStatus {
   return known[status] ?? 'todo'
 }
 
-export function priorityFromDTO(): Priority {
-  // Backend does NOT expose priority in `TaskOut`; default to the board's lowest tier.
-  // Must be a key the board understands (P0/P1/P2) — a 'normal' value has no entry in the
-  // board's PRIORITY_BADGE/PRIORITY_BORDER maps and crashed the whole board (#70).
-  // (Future: if `TaskDTO` grows `priority`, map critical/high/medium/low → P0/P1/P2.)
-  return 'P2'
+/** Backend tiers → the board's own labels. Unknown/absent lands on the middle tier.
+ *
+ * This used to return a constant `'P2'` on the grounds that `TaskOut` carried no
+ * priority. It carries one — so every card on the board drew the same tier no matter what
+ * the patron chose, and the patron's choice was silently discarded on the way to the
+ * screen. The result must stay a key the board's badge/border maps define; a value they
+ * do not define crashed the whole board once (#70).
+ */
+const PRIORITY_FROM_DTO: Record<string, Priority> = {
+  critical: 'P0',
+  high: 'P1',
+  medium: 'P2',
+  low: 'P3',
+}
+
+export function priorityFromDTO(value?: string | null): Priority {
+  return PRIORITY_FROM_DTO[(value ?? '').toLowerCase()] ?? 'P2'
+}
+
+/** The way back, for the edit form (FR-070a). */
+export const PRIORITY_TO_DTO: Record<string, string> = {
+  P0: 'critical',
+  P1: 'high',
+  P2: 'medium',
+  P3: 'low',
 }
 
 // ── Workspace ───────────────────────────────────────────────────────────────────────────
@@ -212,7 +231,7 @@ export function taskToVM(dto: TaskDTO): Task {
     title: dto.title,
     description: dto.description ?? undefined,
     status: taskStatusFromDTO(dto.status),
-    priority: priorityFromDTO(),
+    priority: priorityFromDTO(dto.priority),
     projectId: dto.project_id ?? '',
     assigneeId: dto.assigned_marius_id ?? undefined,
     statusReason: dto.status_reason ?? undefined,
@@ -221,6 +240,7 @@ export function taskToVM(dto: TaskDTO): Task {
     stalled: dto.stalled ?? false,
     stalledReason: dto.stalled_reason ?? undefined,
     definitionOfDone: dto.definition_of_done ?? undefined,
+    dueDate: dto.due_date ?? null,
     createdAt: dto.created_at ?? new Date().toISOString(),
     updatedAt: dto.updated_at ?? undefined,
     trace: [],
