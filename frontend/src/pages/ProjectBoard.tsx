@@ -460,7 +460,7 @@ export default function ProjectBoard() {
   // block spent a request a minute to usually learn nothing.
   //
   // An event is only a **signal**: on receipt re-read the slice that changed, never build
-  // state out of the event stream itself (contracts/su-kien-day, principle 1).
+  // state out of the event stream itself (contracts/push-events, principle 1).
   useEffect(() => {
     if (!projectId) return;
     return subscribeProjectEvents(projectId, (event) => {

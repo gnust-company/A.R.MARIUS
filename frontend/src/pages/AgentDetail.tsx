@@ -236,7 +236,7 @@ export default function AgentDetail() {
   // holds open, so listening costs nothing extra.
   //
   // The event is a **signal**, not the data: on receipt this re-reads the run list rather
-  // than trying to patch a row out of the payload (contracts/su-kien-day.md, principle 1).
+  // than trying to patch a row out of the payload (contracts/push-events.md, principle 1).
   const loadRuns = useCallback(() => {
     if (!workspaceId || !id) return;
     listMariusRuns(workspaceId, id)

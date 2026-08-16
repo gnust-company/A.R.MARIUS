@@ -6,7 +6,7 @@ move one way — and the direction it could not move (an agent that died) is the
 needs to see. The dot stayed green until the page was reloaded.
 
 The payload is the other half of the subject. These events carry an id and nothing else, on
-purpose: principle 1 of ``contracts/su-kien-day.md`` makes an event a *signal* to re-read,
+purpose: principle 1 of ``contracts/push-events.md`` makes an event a *signal* to re-read,
 never the state itself. A test pins that, because "just put the status in the payload" is
 the shortcut that always looks reasonable in review and quietly makes a missed event
 unrecoverable.
@@ -97,7 +97,7 @@ async def test_an_agent_that_dies_says_so_without_anyone_asking() -> None:
 
 
 async def test_the_event_carries_no_liveness_value() -> None:
-    """A signal, not a source of truth (contracts/su-kien-day.md, nguyên tắc 1).
+    """A signal, not a source of truth (contracts/push-events.md, nguyên tắc 1).
 
     If the state rides in the payload, a listener that misses the event — replay window
     overflow, a reconnect gap — shows a wrong value with no way to notice it is wrong.

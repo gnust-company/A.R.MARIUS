@@ -1030,7 +1030,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   },
 
   // Re-read just this workspace's agents. What a `marius.*` push event triggers: the event
-  // is a signal, and this is the read (contracts/su-kien-day.md, principle 1).
+  // is a signal, and this is the read (contracts/push-events.md, principle 1).
   //
   // Narrower than `hydrateWorkspace` on purpose — that one also fetches projects and skills,
   // and an agent coming back online is no reason to refetch a board. Shares the host-stamping

@@ -78,7 +78,7 @@ class ArtifactService:
             await uow.commit()
 
         # Identifiers only — the artifact's name is content, and content stays off the
-        # channel (contract `su-kien-day` principle 4).
+        # channel (contract `push-events` principle 4).
         if self._bus is not None:
             await self._bus.publish(
                 project_topic(project_id),

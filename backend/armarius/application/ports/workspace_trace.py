@@ -8,7 +8,7 @@ The agent detail screen does not. It asks a different question — "has anything
 to *this agent*?" — and no channel could answer it, so the screen fell back to asking the
 server again every fifteen seconds, which Constitution IV forbids (FR-080). This port is
 the channel that answers it: a run's lifecycle, announced on the workspace the agent
-belongs to, carrying ids only (contracts/su-kien-day.md, principle 4).
+belongs to, carrying ids only (contracts/push-events.md, principle 4).
 
 Same shape as :class:`TaskTracePublisher` and for the same reason — the application layer
 states *what* it wants announced and stays ignorant of the concrete ``TopicEventBus``.
@@ -54,7 +54,7 @@ async def announce_run_state(
 
     Ids and a status label only, never prompt or output text — the workspace channel is the
     one stream a browser holds open for a whole session, and principle 4 of
-    ``contracts/su-kien-day.md`` keeps content off it. A listener treats this as a signal
+    ``contracts/push-events.md`` keeps content off it. A listener treats this as a signal
     and re-reads.
 
     Call it after every commit that moves a run's status. Miss one and the screen shows
@@ -82,7 +82,7 @@ async def announce_agent_offline(
     """Announce that an agent crossed into offline (no-op if not wired).
 
     Deliberately carries an id and nothing else — no liveness value. This is a *signal*
-    under principle 1 of ``contracts/su-kien-day.md``: the listener re-reads the agent
+    under principle 1 of ``contracts/push-events.md``: the listener re-reads the agent
     rather than believing the event. Putting the new state in the payload is the tempting
     shortcut and it is the one that rots — the moment an event is the source of truth, a
     listener that misses it (replay window overflow, a reconnect gap) shows a wrong value
