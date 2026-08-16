@@ -283,18 +283,25 @@ suốt đời nó.
 
 ## 13. Gói tin đánh thức **[sửa]**
 
-Tám phần bắt buộc (FR-044). Phần nào rỗng thì ghi rõ "không có" (FR-045).
+**Lõi bốn phần** cho mọi lời gọi (FR-044), cộng **phần riêng theo loại lời gọi** (FR-044a). Phần nào **có
+mặt** mà rỗng thì ghi rõ "không có" (FR-045).
 
-| Phần | Trạng thái |
+| Lõi — mọi lời gọi | Trạng thái |
 |---|---|
 | Vai của agent trong dự án | **[có]** |
-| **Bối cảnh dự án** | **[mới]** — thiếu hẳn trong gói tin hiện tại |
-| Đầu việc kèm mô tả và trạng thái | **[có]** |
+| **Bối cảnh dự án đã duyệt** | **[mới]** — thiếu hẳn trong gói tin hiện tại |
 | Lý do gọi dậy, viết thành câu | **[có]** |
 | Danh bạ đồng đội kèm trạng thái sống | **[có]** |
-| Tin nhắn mới kể từ lượt trước | **[có]** |
-| Việc kế tiếp đang chờ | **[có]** |
-| Nơi nộp thành phẩm và cách báo trạng thái | **[sửa]** — đang lẫn trong đoạn hướng dẫn, tách thành mục riêng |
+
+| Phần riêng | Thuộc loại lời gọi nào | Trạng thái |
+|---|---|---|
+| Đầu việc kèm mô tả và trạng thái | Gọi thợ | **[có]** |
+| Tin nhắn mới kể từ lượt trước | Gọi thợ | **[có]** |
+| Việc kế tiếp đang chờ | Gọi thợ | **[có]** |
+| Nơi nộp thành phẩm và cách báo trạng thái | Gọi thợ | **[sửa]** — đang lẫn trong đoạn hướng dẫn, tách thành mục riêng |
+| Danh sách điểm treo nêu đích danh | Gọi Trưởng dự án theo nhịp | **[mới]** |
+| Quyết định của người chủ, kèm nguyên văn góp ý | Gọi Trưởng dự án vì người chủ vừa quyết | **[mới]** |
+| Hồ sơ đã thử và ca dẫn tới Mức 2 | Gọi Trưởng dự án ở Mức 2 thang phục hồi | **[mới]** |
 
 ---
 

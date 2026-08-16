@@ -9,8 +9,9 @@
 
 Đưa toàn bộ sản phẩm khớp với thiết kế vận hành dự án: dự án có **năm giai đoạn** với cổng duyệt kế hoạch bắt
 buộc, đầu việc chuẩn hoá qua **năm cổng chặn**, đầu ra cần **hai chữ ký** (Trưởng dự án và người chủ đã cấp
-agent) kèm công tắc tự động công nhận, gói tin đánh thức **tám phần** với gộp lời gọi bền, **nhịp điều phối
-có kiểm soát** cho Trưởng dự án, và một **lưới an toàn** sáu động cơ đẩy với thang phục hồi ba mức.
+agent) kèm công tắc tự động công nhận, gói tin đánh thức **lõi bốn phần cộng phần riêng theo loại lời gọi**
+với gộp lời gọi bền, **nhịp điều phối có kiểm soát** cho Trưởng dự án, và một **lưới an toàn** sáu động cơ
+đẩy với thang phục hồi ba mức.
 
 Khảo sát mã hiện tại ([research.md](./research.md)) cho ra bức tranh: **22 yêu cầu đã đúng, 20 có một phần
 hoặc lệch, 42 chưa có**. Phần lõi đầu việc gần như đã đúng và là nền tốt; toàn bộ **tầng điều phối** chưa tồn
@@ -127,7 +128,7 @@ là một nhánh, một PR, dừng chờ người chủ duyệt**.
 | **1** | 1 (P1) | Năm giai đoạn, Bối cảnh có phiên bản, bản kế hoạch, cổng duyệt bắt buộc | FR-001…014 | — |
 | **2** | 2 (P1) | Siết đầu việc: cổng mô tả, bỏ lối tắt, lý do bắt buộc, danh sách tiêu chí, mở khoá tự động, nhật ký theo đầu việc, gỡ đường thợ tự nhận | FR-015…032, FR-072 | Đợt 1 (cần hạng mục để biết "trong khuôn") |
 | **3** | 3 (P2) | Hai chữ ký, người cấp trên ghế, công tắc tự động, hộp thư thật | FR-033…043, FR-077 | Đợt 2 |
-| **4** | 4 (P2) | Gói tin tám phần kèm Bối cảnh, gộp lời gọi bền ở tầng lưu trữ, bổ sung cớ đánh thức | FR-044…051 | Đợt 1 (cần Bối cảnh) |
+| **4** | 4 (P2) | Gói tin lõi bốn phần kèm Bối cảnh đã duyệt cộng phần riêng theo loại lời gọi, gộp lời gọi bền ở tầng lưu trữ, bổ sung cớ đánh thức và cưỡng chế hai danh sách cớ | FR-044…051 | Đợt 1 (cần Bối cảnh) |
 | **5** | 5 (P3) | Nhịp điều phối có kiểm soát | FR-052…055 | Đợt 4 |
 | **6** | 6 (P3) | Động cơ đẩy, cờ đình trệ, thang ba mức, nhắc chủ ba bậc, xếp hàng, khôi phục | FR-056…069, FR-075, FR-076 | Đợt 3, 5 |
 
