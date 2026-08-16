@@ -7,6 +7,8 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
+from armarius.domain.services.wake_reason import WakeReason
+
 
 class RunStatus(StrEnum):
     QUEUED = "queued"
@@ -63,6 +65,10 @@ class Run:
     task_id: UUID | None = None
     adapter_type: str = ""
     wake_source: WakeSource = WakeSource.ON_DEMAND
+    # `trigger_detail` is the English rendering the wake packet carries; `trigger_causes`
+    # is the same answer as data, so the agent screen can say it in the reader's language
+    # (Constitution VII). Rows older than the second field have only the first.
+    trigger_causes: list[WakeReason] = field(default_factory=list)
     trigger_detail: str | None = None
     status: RunStatus = RunStatus.QUEUED
     external_run_id: str | None = None

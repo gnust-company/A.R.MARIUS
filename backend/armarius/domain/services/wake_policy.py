@@ -61,7 +61,12 @@ SYSTEM_WAKE_CAUSES: frozenset[WakeSource] = frozenset(
 class WakeDecision:
     should_wake: bool
     source: WakeSource | None = None
+    #: Why, for the log — free text, read by people debugging this table.
     reason: str = ""
+    #: Why, for the agent — a code from the closed list in ``wake_reason``. The log line
+    #: and the wake packet are two different readers; one sentence cannot serve both
+    #: (Constitution VII), and only this one crosses the wire.
+    code: str = ""
     escalate_to_human: bool = False
 
 
@@ -103,6 +108,7 @@ def decide_self_wake(
             True,
             source=WakeSource.NUDGE,
             reason="in limbo without a reason; ask for an update",
+            code="no_reason_recorded",
         )
 
     if task_status == TaskStatus.IN_PROGRESS:
@@ -116,6 +122,7 @@ def decide_self_wake(
                 True,
                 source=WakeSource.CONTINUATION,
                 reason="run dropped; resume the task session",
+                code="run_dropped",
             )
         # Completed cleanly with unfinished work — resume.
         if run_status == RunStatus.COMPLETED and has_next_action:
@@ -127,6 +134,7 @@ def decide_self_wake(
                 True,
                 source=WakeSource.CONTINUATION,
                 reason="work left unfinished (next_action set); continue",
+                code="work_unfinished",
             )
         # Completed, nothing recorded, status unchanged — bounded nudge then escalate.
         if run_status == RunStatus.COMPLETED and not has_next_action:
@@ -138,6 +146,7 @@ def decide_self_wake(
                 True,
                 source=WakeSource.NUDGE,
                 reason="stopped without recording progress",
+                code="stopped_without_progress",
             )
         # Still running — leave it; the watchdog guards liveness.
         return WakeDecision(False, reason="run still in flight")

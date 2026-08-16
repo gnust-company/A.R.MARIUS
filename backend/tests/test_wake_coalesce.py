@@ -39,6 +39,7 @@ from armarius.domain.entities.wakeup import (
     WakeupRequest,
     WakeupStatus,
 )
+from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.database.models import WakeupModel
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
@@ -215,17 +216,17 @@ async def test_three_causes_at_once_produce_one_run_naming_all_three(uow_factory
 
     first = await engine.enqueue(
         marius_id=alice.id, task_id=task.id, source=WakeSource.COMMENT,
-        reason="Bob bình luận trên đầu việc",
+        reason=wake_reason("new_comment"),
     )
     await asyncio.wait_for(adapter.started.wait(), timeout=5)
     second, third = await asyncio.gather(
         engine.enqueue(
             marius_id=alice.id, task_id=task.id, source=WakeSource.MENTION,
-            reason="Bob nhắc tên bạn",
+            reason=wake_reason("mentioned"),
         ),
         engine.enqueue(
             marius_id=alice.id, task_id=task.id, source=WakeSource.IDLE_REMINDER,
-            reason="đầu việc im quá lâu",
+            reason=wake_reason("no_reason_recorded"),
         ),
     )
 
@@ -236,8 +237,14 @@ async def test_three_causes_at_once_produce_one_run_naming_all_three(uow_factory
     assert len(runs) == 1, [str(r.wake_source) for r in runs]
 
     merged = (await _pending(uow_factory, alice.id, task.id))[0]
-    for cause in ("Bob bình luận trên đầu việc", "Bob nhắc tên bạn", "đầu việc im quá lâu"):
-        assert cause in (merged.reason or ""), merged.reason
+    assert {c.code for c in merged.causes} == {
+        "new_comment",
+        "mentioned",
+        "no_reason_recorded",
+    }, merged.causes
+    # And the English rendering the packet carries names all three too.
+    for phrase in ("comment", "mentioned", "no reason recorded"):
+        assert phrase in (merged.reason or ""), merged.reason
     # T112: the merged wake carries the strongest cause, not whichever arrived first.
     assert merged.source == WakeSource.MENTION, merged.source
 
@@ -254,7 +261,7 @@ async def test_a_restart_does_not_open_a_second_run(uow_factory) -> None:
 
     run_id = await before.enqueue(
         marius_id=alice.id, task_id=task.id, source=WakeSource.COMMENT,
-        reason="Bob bình luận trên đầu việc",
+        reason=wake_reason("new_comment"),
     )
     await asyncio.wait_for(adapter.started.wait(), timeout=5)
 
@@ -262,7 +269,7 @@ async def test_a_restart_does_not_open_a_second_run(uow_factory) -> None:
     after = _engine(uow_factory, BlockingAdapter())
     again = await after.enqueue(
         marius_id=alice.id, task_id=task.id, source=WakeSource.MENTION,
-        reason="Bob nhắc tên bạn",
+        reason=wake_reason("mentioned"),
     )
 
     assert again == run_id, "khởi động lại xong là mở lượt chạy thứ hai"
@@ -288,12 +295,12 @@ async def test_a_cause_that_arrived_mid_run_is_reconsidered_when_the_run_ends(
 
     await engine.enqueue(
         marius_id=alice.id, task_id=task.id, source=WakeSource.COMMENT,
-        reason="Bob bình luận trên đầu việc",
+        reason=wake_reason("new_comment"),
     )
     await asyncio.wait_for(adapter.started.wait(), timeout=5)
     await engine.enqueue(
         marius_id=alice.id, task_id=task.id, source=WakeSource.MENTION,
-        reason="Bob nhắc tên bạn giữa lúc đang chạy",
+        reason=wake_reason("mentioned"),
     )
 
     adapter.release.set()
@@ -303,7 +310,7 @@ async def test_a_cause_that_arrived_mid_run_is_reconsidered_when_the_run_ends(
         runs = await uow.runs.list_by_task(task.id)
     assert len(runs) == 2, "cớ đến giữa lượt chạy bị nuốt mất"
     follow_up = sorted(runs, key=lambda r: r.created_at or utcnow())[-1]
-    assert "Bob nhắc tên bạn giữa lúc đang chạy" in (follow_up.trigger_detail or "")
+    assert "You were mentioned" in (follow_up.trigger_detail or "")
 
 
 async def test_the_packet_that_went_out_is_kept(uow_factory) -> None:
@@ -315,14 +322,14 @@ async def test_the_packet_that_went_out_is_kept(uow_factory) -> None:
 
     await engine.enqueue(
         marius_id=alice.id, task_id=task.id, source=WakeSource.COMMENT,
-        reason="Bob bình luận trên đầu việc",
+        reason=wake_reason("new_comment"),
     )
     await asyncio.wait_for(adapter.started.wait(), timeout=5)
 
     sent = (await _pending(uow_factory, alice.id, task.id))[0].prompt or ""
     assert "## Project context" in sent
     assert "## Where to put your work and how to report status" in sent
-    assert "Bob bình luận trên đầu việc" in sent
+    assert "A new comment was posted" in sent
 
     adapter.release.set()
     await engine.drain()
@@ -344,7 +351,7 @@ async def test_a_cause_still_coalesces_when_the_run_outlived_its_wake_row(
 
     run_id = await engine.enqueue(
         marius_id=alice.id, task_id=task.id, source=WakeSource.COMMENT,
-        reason="Bob bình luận trên đầu việc",
+        reason=wake_reason("new_comment"),
     )
     await asyncio.wait_for(adapter.started.wait(), timeout=5)
     async with uow_factory() as uow:
@@ -356,7 +363,7 @@ async def test_a_cause_still_coalesces_when_the_run_outlived_its_wake_row(
 
     again = await engine.enqueue(
         marius_id=alice.id, task_id=task.id, source=WakeSource.MENTION,
-        reason="Bob nhắc tên bạn",
+        reason=wake_reason("mentioned"),
     )
     assert again == run_id
 
@@ -366,7 +373,7 @@ async def test_a_cause_still_coalesces_when_the_run_outlived_its_wake_row(
     assert len(runs) == 1
     # The cause is not lost just because there was no row to merge it into: it is recorded
     # against the run, which is what the end-of-run re-evaluation reads.
-    assert [w.reason for w in absorbed] == ["Bob nhắc tên bạn"]
+    assert [c.code for w in absorbed for c in w.causes] == ["mentioned"]
 
     adapter.release.set()
     await engine.drain()
@@ -382,7 +389,7 @@ async def test_a_turn_cut_short_hands_the_pair_back(uow_factory) -> None:
 
     run_id = await engine.enqueue(
         marius_id=alice.id, task_id=task.id, source=WakeSource.COMMENT,
-        reason="Bob bình luận trên đầu việc",
+        reason=wake_reason("new_comment"),
     )
     await asyncio.wait_for(adapter.started.wait(), timeout=5)
     for bg in list(engine._bg):
@@ -399,7 +406,7 @@ async def test_a_turn_cut_short_hands_the_pair_back(uow_factory) -> None:
     adapter.release.set()
     fresh = await engine.enqueue(
         marius_id=alice.id, task_id=task.id, source=WakeSource.MENTION,
-        reason="Bob nhắc tên bạn",
+        reason=wake_reason("mentioned"),
     )
     assert fresh != run_id
     await engine.drain()
@@ -426,23 +433,23 @@ async def test_a_cause_that_lands_before_the_turn_starts_reaches_the_packet(
 
     run_id = await engine.enqueue(
         marius_id=alice.id, task_id=task.id, source=WakeSource.COMMENT,
-        reason="Bob bình luận trên đầu việc",
+        reason=wake_reason("new_comment"),
     )
     await engine.enqueue(
         marius_id=alice.id, task_id=task.id, source=WakeSource.MENTION,
-        reason="Bob nhắc tên bạn",
+        reason=wake_reason("mentioned"),
     )
 
     async with uow_factory() as uow:
         queued = await uow.runs.get(run_id)
     assert queued is not None
     assert queued.wake_source == WakeSource.MENTION, queued.wake_source
-    assert "Bob nhắc tên bạn" in (queued.trigger_detail or ""), queued.trigger_detail
+    assert "You were mentioned" in (queued.trigger_detail or ""), queued.trigger_detail
 
     # End to end, read off the adapter: this is the text the agent was actually handed.
     adapter.release.set()
     await engine._execute_run(run_id, alice.id, task.id)
 
     assert adapter.prompts, "lượt chạy không hề khởi động"
-    assert "Bob nhắc tên bạn" in adapter.prompts[0], adapter.prompts[0]
-    assert "Bob bình luận trên đầu việc" in adapter.prompts[0]
+    assert "You were mentioned" in adapter.prompts[0], adapter.prompts[0]
+    assert "A new comment was posted" in adapter.prompts[0]

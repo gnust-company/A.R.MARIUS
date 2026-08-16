@@ -15,6 +15,7 @@ from fastapi import APIRouter
 from armarius.domain.entities.comment import AuthorKind
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.task import TaskStatus
+from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.api.scoping import own_project, own_task
 from armarius.presentation.deps import ContainerDep
@@ -321,7 +322,11 @@ async def wake_task(
         marius_id=body.marius_id,
         task_id=task_id,
         source=WakeSource.ON_DEMAND,
-        reason=body.reason or "manual wake from dashboard",
+        reason=(
+            wake_reason("manual_wake_note", note=body.reason)
+            if (body.reason or "").strip()
+            else wake_reason("manual_wake")
+        ),
     )
     return RunStartedOut(run_id=run_id)
 

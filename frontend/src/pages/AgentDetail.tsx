@@ -161,6 +161,15 @@ function RunRow({ run }: { run: RunDTO }) {
   const tone = RUN_STATUS_COLORS[run.status] || RUN_STATUS_COLORS.stopped;
   const wakeLabel = t(`agentDetail.wakeSource.${run.wake_source}`, { defaultValue: run.wake_source });
   const statusLabel = t(`agentDetail.runStatus.${run.status}`, { defaultValue: run.status });
+  // Every cause, worded here rather than on the server: the same wake also went to an
+  // agent, and that copy is always English (Hiến pháp VII), so the server stores the code
+  // and both sides render it. A run recorded before the codes existed has no causes —
+  // it falls back to the sentence it does carry.
+  const wakeReason = (run.trigger_causes ?? []).length
+    ? (run.trigger_causes ?? [])
+        .map((c) => t(`agentDetail.wakeReason.${c.code}`, { ...(c.params ?? {}), defaultValue: c.code }))
+        .join(' · ')
+    : run.trigger_detail;
 
   return (
     <div className="rounded-lg border border-[#E3D7BC] bg-[#FBF6EA] overflow-hidden">
@@ -175,8 +184,8 @@ function RunRow({ run }: { run: RunDTO }) {
               {statusLabel}
             </span>
           </div>
-          {run.trigger_detail && (
-            <p className="mt-1 text-[12px] text-[#6B5E4E] break-words line-clamp-2">{run.trigger_detail}</p>
+          {wakeReason && (
+            <p className="mt-1 text-[12px] text-[#6B5E4E] break-words line-clamp-2">{wakeReason}</p>
           )}
           {run.error && (
             <p className="mt-1 flex items-start gap-1 text-[12px] text-[#8A3B22]">

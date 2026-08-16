@@ -342,9 +342,11 @@ async def test_finishing_a_task_wakes_the_leader_to_pass_the_word(uow_factory) -
     # dự án được gọi lần nữa để soạn bản tổng kết (FR-043). Gộp chúng lại là mất bớt.
     assert len(leader.calls) == 3
     assert all(c["project_id"] == project.id for c in leader.calls)
-    assert leader.calls[0]["reason"] == "một đầu việc chuyển sang chờ rà soát"
-    assert leader.calls[1]["reason"] == "một đầu việc vừa xong"
-    assert leader.calls[2]["reason"] == "cả đợt việc đã xong"
+    assert [c["reason"].code for c in leader.calls] == [
+        "task_in_review",
+        "task_done",
+        "batch_done",
+    ]
 
 
 async def test_the_project_channel_hears_the_unlock(uow_factory) -> None:
@@ -446,7 +448,9 @@ async def test_the_freed_task_calls_the_worker_holding_it(uow_factory) -> None:
     assert len(called) == 1, "được gỡ vướng mà không ai gọi người phụ trách dậy"
     assert called[0]["marius_id"] == alice.id, "gọi nhầm người"
     assert called[0]["task_id"] == blocked.id
-    assert blocker.identifier in called[0]["reason"], (
+    cause = called[0]["reason"]
+    assert cause.code == "dependency_cleared", cause
+    assert cause.params["blocker"] == blocker.identifier, (
         "gọi dậy mà không nói vướng nào vừa được gỡ (FR-046)"
     )
 

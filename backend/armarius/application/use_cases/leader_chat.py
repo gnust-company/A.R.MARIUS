@@ -40,6 +40,7 @@ from armarius.domain.services.leader_chat_prompt import (
     PlanScopeEntry,
     build_leader_chat_prompt,
 )
+from armarius.domain.services.wake_reason import WakeReason
 from armarius.infrastructure.events.topic_bus import TopicEventBus
 from armarius.shared.background import settle
 from armarius.shared.clock import utcnow
@@ -162,7 +163,7 @@ class LeaderChatService:
 
     # ── system-initiated wake (spec 001) ─────────────────────────────────────────
     async def notify(
-        self, *, project_id: UUID, text: str, source: WakeSource, reason: str
+        self, *, project_id: UUID, text: str, source: WakeSource, reason: WakeReason
     ) -> bool:
         """Wake the Leader about the **project** — no task involved (FR-002, FR-013).
 
@@ -196,7 +197,8 @@ class LeaderChatService:
                     marius_id=leader_id,
                     task_id=None,
                     source=source,
-                    reason=reason,
+                    causes=[reason],
+                    reason=reason.render_en(),
                     prompt=text,
                     status=WakeupStatus.DISPATCHED if deliverable else WakeupStatus.QUEUED,
                     created_at=now,
@@ -226,7 +228,9 @@ class LeaderChatService:
             await uow.leader_chats.update(conversation)
             await uow.commit()
 
-        await self._publish(project_id, "system.message", {"text": text, "reason": reason})
+        await self._publish(
+            project_id, "system.message", {"text": text, "reason": reason.render_en()}
+        )
         await self._publish(project_id, "chat.state", {"state": str(ChatState.THINKING)})
         self._spawn_turn(conversation.id)
         return True

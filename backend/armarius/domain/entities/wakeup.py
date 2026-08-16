@@ -12,6 +12,7 @@ from enum import StrEnum
 from uuid import UUID, uuid4
 
 from armarius.domain.entities.run import WakeSource
+from armarius.domain.services.wake_reason import WakeReason
 
 
 class WakeupStatus(StrEnum):
@@ -53,6 +54,11 @@ class WakeupRequest:
     marius_id: UUID | None = None
     task_id: UUID | None = None
     source: WakeSource = WakeSource.ON_DEMAND
+    # Two forms of the same answer, on purpose (Constitution VII). `causes` is the record —
+    # code plus parameters, which either reader can render in its own language. `reason` is
+    # the English rendering, kept because the wake packet is built from it and because rows
+    # written before `causes` existed have nothing else to show.
+    causes: list[WakeReason] = field(default_factory=list)
     reason: str | None = None
     prompt: str | None = None  # optional pre-built wake prompt
     status: WakeupStatus = WakeupStatus.QUEUED

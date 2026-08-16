@@ -57,6 +57,8 @@ from armarius.domain.services.approval_rules import (
     rejection_rounds,
 )
 from armarius.domain.services.push_reason_rules import provisional_drive
+from armarius.domain.services.wake_reason import WakeReason
+from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.events.topic_bus import (
     TopicEventBus,
     patron_topic,
@@ -252,10 +254,8 @@ class ApprovalService:
                 # the loss written down — and the criteria already scored left alone, so
                 # only the missing part is redone. Nothing is signed on this path, so the
                 # whole signing block below is skipped.
-                lost = (
-                    task.assigned_marius_id,
-                    await self._report_lost_deliverable(uow, task, missing, now=now),
-                )
+                await self._report_lost_deliverable(uow, task, missing, now=now)
+                lost = (task.assigned_marius_id, ", ".join(missing))
             else:
                 if approve:
                     # Story 3 scenario 1 puts the scoring *before* the signature: the
@@ -334,7 +334,9 @@ class ApprovalService:
             # minutes it takes the sweep to notice a task with nothing driving it; the net
             # exists for losses nobody saw, not for one we just found ourselves.
             if lost_worker is not None:
-                await self._wake_for_rework(task_id, lost_worker, lost_reason)
+                await self._wake_for_rework(
+                    task_id, lost_worker, wake_reason("artifact_missing", files=lost_reason)
+                )
             return task
 
         if placed is not None:
@@ -344,7 +346,11 @@ class ApprovalService:
         if close_it:
             await self._close(task_id)
         if rejected_worker is not None:
-            await self._wake_for_rework(task_id, rejected_worker, reason or "")
+            await self._wake_for_rework(
+                task_id,
+                rejected_worker,
+                wake_reason("output_rejected", note=(reason or "").strip() or "—"),
+            )
         if pull_in_leader:
             await self._wake_leader_to_review_the_brief(task_id, project_id)
 
@@ -415,7 +421,7 @@ class ApprovalService:
             await uow.inbox.update(item)
 
     async def _wake_for_rework(
-        self, task_id: UUID, marius_id: UUID, reason: str
+        self, task_id: UUID, marius_id: UUID, cause: WakeReason
     ) -> None:
         if self._wake is None:
             return
@@ -423,7 +429,7 @@ class ApprovalService:
             marius_id=marius_id,
             task_id=task_id,
             source=WakeSource.APPROVAL_REJECTED,
-            reason=f"đầu ra bị trả lại: {reason}".strip(),
+            reason=cause,
         )
 
     async def _wake_leader_to_review_the_brief(
@@ -439,10 +445,7 @@ class ApprovalService:
             marius_id=leader_id,
             task_id=task_id,
             source=WakeSource.BRIEF_REVIEW,
-            reason=(
-                f"đầu việc đã bị trả lại {REJECTION_ROUND_CEILING} vòng — "
-                "soát lại đề bài và bộ tiêu chí"
-            ),
+            reason=wake_reason("brief_review", rounds=REJECTION_ROUND_CEILING),
         )
 
     async def _leader_marius(self, project_id: UUID) -> UUID | None:
@@ -556,11 +559,12 @@ class ApprovalService:
 
     async def _report_lost_deliverable(
         self, uow: UnitOfWork, task: Task, missing: list[str], *, now: datetime
-    ) -> str:
+    ) -> None:
         """Send the task back to the step that produced the lost output, and say so.
 
-        Returns the reason, so the caller wakes the worker with the same words that went
-        into the record rather than a second copy that can drift from it.
+        The sentence written here is the board's copy and stays Vietnamese; the worker's
+        wake names the same files through a reason code, because that copy is read by an
+        agent and is therefore English (Constitution VII).
         """
         listed = ", ".join(missing)
         reason = f"thành phẩm không còn trong kho: {listed}"
@@ -582,7 +586,6 @@ class ApprovalService:
                 after=str(TaskStatus.IN_PROGRESS),
                 reason=reason,
             )
-        return reason
 
 
 __all__ = [

@@ -347,13 +347,26 @@ export interface ArtifactDTO {
 
 // One system→agent dispatch (backend `RunOut`). The agent-detail view lists these as the
 // system↔agent interaction log; `RunEventOut` is the per-run trace, fetched on expand.
+export interface WakeCauseDTO {
+  code: string
+  params?: Record<string, string>
+}
+
 export interface RunDTO {
   id: string
   task_id?: string | null
   marius_id?: string | null
   adapter_type: string
   wake_source: string
-  /** Why the run was woken — rendered under the wake label on the agent screen. */
+  /**
+   * Why the run was woken, as data: a code from the server's closed list plus its
+   * parameters. Rendered here through i18n so the line follows the reader's language —
+   * the server cannot word it for us, because the same wake also goes to an agent and
+   * that copy is always English (Hiến pháp VII).
+   */
+  trigger_causes?: WakeCauseDTO[]
+  /** The English rendering the agent's packet carried. Only shown for runs recorded
+   * before the codes existed, which have no causes to render. */
   trigger_detail?: string | null
   status: string
   external_run_id?: string | null

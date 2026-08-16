@@ -38,6 +38,7 @@ from armarius.domain.entities.wakeup import (
     WakeupRequest,
     WakeupStatus,
 )
+from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
@@ -207,7 +208,10 @@ async def test_a_release_that_loses_the_write_race_still_hands_the_pair_back(
     # And the pair really is free: a new cause opens its own run rather than folding into
     # a turn nobody is driving. This is the assertion the log line cannot make.
     fresh = await engine.enqueue(
-        marius_id=alice.id, task_id=task.id, source=WakeSource.COMMENT, reason="Bob hỏi",
+        marius_id=alice.id,
+        task_id=task.id,
+        source=WakeSource.COMMENT,
+        reason=wake_reason("new_comment"),
     )
     await engine.drain()
     assert fresh != run.id
@@ -250,7 +254,10 @@ async def test_a_release_that_never_lands_leaves_the_pair_to_the_watchdog(
     # The leftover wake row goes with it: the pair is genuinely free again, not wedged
     # behind a row nothing will ever come back to close.
     fresh = await engine.enqueue(
-        marius_id=alice.id, task_id=task.id, source=WakeSource.COMMENT, reason="Bob hỏi",
+        marius_id=alice.id,
+        task_id=task.id,
+        source=WakeSource.COMMENT,
+        reason=wake_reason("new_comment"),
     )
     await engine.drain()
     assert fresh != run.id

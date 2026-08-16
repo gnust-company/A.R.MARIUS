@@ -10,6 +10,7 @@ from armarius.application.use_cases.types import UowFactory
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.domain.entities.comment import AuthorKind, Comment
 from armarius.domain.entities.run import WakeSource
+from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import utcnow
 
@@ -105,7 +106,7 @@ class ThreadService:
                 marius_id=marius_id,
                 task_id=task_id,
                 source=WakeSource.MENTION,
-                reason="you were mentioned in the task thread",
+                reason=wake_reason("mentioned"),
             )
 
         # FR-048: a new comment on a task you are responsible for is a cause in its own
@@ -123,7 +124,7 @@ class ThreadService:
                 marius_id=assignee,
                 task_id=task_id,
                 source=WakeSource.COMMENT,
-                reason="a new comment was posted on the task you are responsible for",
+                reason=wake_reason("new_comment"),
             )
         return created
 

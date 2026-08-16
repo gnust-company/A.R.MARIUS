@@ -339,6 +339,7 @@ class RunModel(Base):
     task_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
     adapter_type: Mapped[str] = mapped_column(String(80), default="")
     wake_source: Mapped[str] = mapped_column(String(40), default="on_demand")
+    trigger_causes: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list)
     trigger_detail: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
     external_run_id: Mapped[str | None] = mapped_column(String(200))
@@ -400,6 +401,9 @@ class WakeupModel(Base):
     marius_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
     task_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
     source: Mapped[str] = mapped_column(String(40), default="on_demand")
+    # The causes as data — [{"code": ..., "params": {...}}] — so either reader can word
+    # them itself (Constitution VII). `reason` keeps the English rendering.
+    causes: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list)
     reason: Mapped[str | None] = mapped_column(Text)
     prompt: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="queued")

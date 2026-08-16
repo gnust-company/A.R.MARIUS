@@ -71,6 +71,7 @@ from armarius.domain.repositories.repositories import (
     WorkspaceRepository,
 )
 from armarius.domain.services.push_reason_rules import WATCHED_STATUSES
+from armarius.domain.services.wake_reason import to_payload as causes_to_payload
 from armarius.infrastructure.database.models import (
     ArtifactModel,
     ChecklistItemModel,
@@ -1312,6 +1313,7 @@ class SqlRunRepository(RunRepository):
                 task_id=run.task_id,
                 adapter_type=run.adapter_type,
                 wake_source=str(run.wake_source),
+                trigger_causes=causes_to_payload(run.trigger_causes),
                 trigger_detail=run.trigger_detail,
                 status=str(run.status),
                 external_run_id=run.external_run_id,
@@ -1351,6 +1353,7 @@ class SqlRunRepository(RunRepository):
         # cause was then excluded from the end-of-run re-check too, on the assumption it
         # had already reached the packet. It had not.
         m.wake_source = str(run.wake_source)
+        m.trigger_causes = causes_to_payload(run.trigger_causes)
         m.trigger_detail = run.trigger_detail
         m.external_run_id = run.external_run_id
         m.session_id_before = run.session_id_before
@@ -1546,6 +1549,7 @@ class SqlWakeupRepository(WakeupRepository):
                 marius_id=wakeup.marius_id,
                 task_id=wakeup.task_id,
                 source=str(wakeup.source),
+                causes=causes_to_payload(wakeup.causes),
                 reason=wakeup.reason,
                 prompt=wakeup.prompt,
                 status=str(wakeup.status),
@@ -1571,6 +1575,7 @@ class SqlWakeupRepository(WakeupRepository):
         if m is None:
             raise LookupError("wakeup not found")
         m.source = str(wakeup.source)
+        m.causes = causes_to_payload(wakeup.causes)
         m.reason = wakeup.reason
         m.prompt = wakeup.prompt
         m.status = str(wakeup.status)

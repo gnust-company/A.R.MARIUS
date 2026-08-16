@@ -35,6 +35,7 @@ from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.domain.entities.run import RunStatus, WakeSource
 from armarius.domain.entities.task import TaskStatus
 from armarius.domain.entities.task_log import ActorKind, TaskLogKind
+from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.shared.clock import as_utc, utcnow
 from armarius.shared.logging import get_logger
 
@@ -165,9 +166,8 @@ class LivenessWatchdog:
                 marius_id=assignee,
                 task_id=task_id,
                 source=WakeSource.CONTINUATION,
-                reason=(
-                    "lượt chạy trước bị treo — làm tiếp từ: "
-                    + (next_action or "chỗ đang dở")
+                reason=wake_reason(
+                    "run_hung", next_action=next_action or "where you left off"
                 ),
             )
         if task_id is not None and self._drives is not None:
