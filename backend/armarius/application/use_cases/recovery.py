@@ -50,6 +50,7 @@ from armarius.domain.services.escalation import (
     backoff_seconds,
 )
 from armarius.domain.services.push_reason_rules import watches
+from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.events.topic_bus import TopicEventBus, patron_topic
 from armarius.shared.clock import as_utc, utcnow
 from armarius.shared.logging import get_logger
@@ -522,7 +523,7 @@ class RecoveryEscalator:
                 marius_id=task.assigned_marius_id,
                 task_id=task.id,
                 source=WakeSource.CONTINUATION,
-                reason=f"lưới an toàn gọi lại: {cause}",
+                reason=wake_reason(_recovery_code(task)),
             )
         except Exception:
             # FR-063: the wake did not reach the agent. The work is fine and the transport
@@ -587,7 +588,12 @@ class RecoveryEscalator:
                 "Hết lượt mà đầu việc vẫn đứng im thì người chủ được hỏi."
             ),
             source=WakeSource.NUDGE,
-            reason=f"leo thang Mức 2: {cause}",
+            reason=wake_reason(
+                "escalated_to_leader",
+                task=task.identifier or task.id,
+                attempt=ladder.handover_attempts,
+                ceiling=_HANDOVER_ATTEMPTS,
+            ),
         )
         if not delivered:
             logger.warning(
@@ -813,7 +819,9 @@ class OfflineFalloutService:
                         "Giao lại cho ai, hay chờ họ quay lại?"
                     ),
                     source=WakeSource.NUDGE,
-                    reason=_ASSIGNEE_OFFLINE,
+                    reason=wake_reason(
+                        "assignee_offline", task=task.identifier or task.id
+                    ),
                 )
 
         for project_id in leader_projects:
@@ -884,3 +892,23 @@ class OfflineFalloutService:
             and grant.role_key in leader_keys
             for grant in await uow.seat_grants.list_by_project(project_id)
         )
+
+
+# Which stall the safety net is calling back about. Read off the task's own drive — the
+# same field the sweep's verdict was derived from — so the agent is told *which* stall,
+# not merely that there was one. A code rather than that verdict's sentence: the verdict
+# is itself system prose, and system prose sent to an agent has to be English
+# (Constitution VII), which a sentence built for the board is not.
+_RECOVERY_CODES: dict[TaskDrive, str] = {
+    TaskDrive.RUN_ACTIVE: "recovery_run_active",
+    TaskDrive.WAKE_SCHEDULED: "recovery_wake_scheduled",
+    TaskDrive.WAITING_RECOVERY: "recovery_waiting_recovery",
+    TaskDrive.WAITING_EXTERNAL: "recovery_waiting_external",
+}
+
+
+def _recovery_code(task: Task) -> str:
+    """A task with no drive at all is the orphan case — nobody on it, nothing booked."""
+    if task.drive is None:
+        return "recovery_orphaned"
+    return _RECOVERY_CODES.get(task.drive, "recovery_unknown")

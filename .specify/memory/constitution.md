@@ -1,5 +1,18 @@
 <!--
 Sync Impact Report
+- Phiên bản: 1.0.1 → 1.1.0
+- Loại bump: MINOR — thêm một nguyên tắc mới (VII), không sửa và không bỏ nguyên tắc nào.
+- Phần thêm: **VII. Gói tin gửi agent dùng tiếng Anh.** Điều VI đã đặt luật cho chữ hiển thị với
+  người dùng, nhưng chưa điều nào nói chữ hệ thống gửi cho *agent* dùng thứ tiếng gì. Mã vốn đã
+  làm đúng — gói tin đánh thức viết toàn tiếng Anh — nên đây là luật đuổi theo mã, trừ mấy câu
+  *lý do gọi dậy* các đợt gần đây viết bằng tiếng Việt rồi nhét vào giữa một gói tin tiếng Anh.
+  Người chủ chốt ngày 2026-08-16, khi thấy câu lý do gọi dậy hiện lẫn hai thứ tiếng trên màn hình
+  agent (T193).
+- Nguyên tắc sửa: không có. Phần bớt: không có. TODO: không có.
+-->
+
+<!--
+Sync Impact Report (1.0.1)
 - Phiên bản: 1.0.0 → 1.0.1
 - Loại bump: PATCH — làm rõ chữ nghĩa Nguyên tắc II cho khớp ý định vốn có; không nguyên tắc nào
   được thêm, bớt, hay đổi mục đích.
@@ -59,6 +72,18 @@ tiếng Việt không dấu là "rác", không được đưa ra giao diện.
 
 Lý do: người dùng cuối là người Việt; chất lượng ngôn ngữ là phần thấy được của chất lượng sản phẩm.
 
+### VII. Tiếng Anh cho agent
+Mọi chữ **hệ thống** sinh ra rồi gửi cho agent — lời gọi dậy, lời nhắc, mô tả công cụ, câu hướng dẫn —
+PHẢI viết bằng tiếng Anh. Chữ do **người** nhập (bối cảnh dự án, tiêu đề và mô tả đầu việc, bình luận)
+giữ nguyên thứ tiếng người viết, không dịch.
+
+Hệ quả: một câu vừa gửi cho agent vừa hiện lên màn hình thì KHÔNG ĐƯỢC lưu sẵn thành câu. Phải lưu **mã
+lý do kèm tham số**, rồi mỗi phía tự dựng câu: tiếng Anh cho agent, qua cơ chế i18n cho người dùng.
+
+Lý do: agent không có ngôn ngữ giao diện để chọn, nên chữ gửi cho nó phải cố định một thứ tiếng; trộn hai
+thứ tiếng trong một gói tin làm mô hình yếu đọc sai. Điều này KHÔNG mâu thuẫn Điều VI — hai điều nói về
+hai người đọc khác nhau.
+
 ## Định vị sản phẩm
 
 Armarius là nơi làm việc dùng chung: nhiều người ở nhiều team mời agent của mình vào, agent tự nhận việc,
@@ -82,4 +107,4 @@ của runtime ngoài.
   Nguyên tắc: **đặc tả đi trước, mã theo sau và phải chứng minh khớp đặc tả.**
 - Mọi PR PHẢI xác nhận tuân Hiến pháp; thay đổi phức tạp PHẢI giải trình lý do.
 
-**Version**: 1.0.1 | **Ratified**: 2026-07-29 | **Last Amended**: 2026-07-31
+**Version**: 1.1.0 | **Ratified**: 2026-07-29 | **Last Amended**: 2026-08-16

@@ -43,6 +43,7 @@ from armarius.domain.entities.wakeup import WakeupRequest, WakeupStatus
 from armarius.domain.entities.workspace import Workspace
 from armarius.domain.services.escalation import EscalationLevel
 from armarius.domain.services.orchestration_cadence import Snag, SnagKind
+from armarius.domain.services.wake_reason import from_payload as causes_from_payload
 from armarius.infrastructure.database.models import (
     ArtifactModel,
     ChecklistItemModel,
@@ -293,6 +294,7 @@ def run_to_entity(m: RunModel) -> Run:
         task_id=m.task_id,
         adapter_type=m.adapter_type,
         wake_source=WakeSource(m.wake_source),
+        trigger_causes=causes_from_payload(m.trigger_causes),
         trigger_detail=m.trigger_detail,
         status=RunStatus(m.status),
         external_run_id=m.external_run_id,
@@ -342,6 +344,7 @@ def wakeup_to_entity(m: WakeupModel) -> WakeupRequest:
         marius_id=m.marius_id,
         task_id=m.task_id,
         source=WakeSource(m.source),
+        causes=causes_from_payload(m.causes),
         reason=m.reason,
         prompt=m.prompt,
         status=WakeupStatus(m.status),

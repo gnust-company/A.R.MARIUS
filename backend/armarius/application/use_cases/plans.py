@@ -35,6 +35,8 @@ from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.task import TaskStatus
 from armarius.domain.entities.task_log import ActorKind, TaskLogKind
 from armarius.domain.services import plan_gate, project_rules
+from armarius.domain.services.wake_reason import WakeReason
+from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import utcnow
 
@@ -261,7 +263,7 @@ class PlanService:
             await self._wake_leader(
                 project_id,
                 WakeSource.PATRON_DECISION,
-                reason="người chủ yêu cầu chỉnh Bối cảnh",
+                reason=wake_reason("context_change_requested"),
                 text=f"Người chủ chưa duyệt Bối cảnh. Góp ý: {note}",
             )
         return pending
@@ -350,7 +352,7 @@ class PlanService:
             await self._wake_leader(
                 project_id,
                 WakeSource.PATRON_DECISION,
-                reason=f"người chủ quyết kế hoạch: {decision}",
+                reason=wake_reason("plan_decided", decision=decision),
                 text=self._decision_message(outcome),
             )
         return plan
@@ -379,7 +381,7 @@ class PlanService:
         return f"Người chủ đã duyệt kế hoạch.\n\n{outcome.next_action}"
 
     async def _wake_leader(
-        self, project_id: UUID, source: WakeSource, *, reason: str, text: str
+        self, project_id: UUID, source: WakeSource, *, reason: WakeReason, text: str
     ) -> None:
         try:
             await self._leader_chat.notify(

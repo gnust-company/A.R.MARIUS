@@ -175,7 +175,9 @@ async def test_a_run_silent_past_grace_is_declared_hung_and_the_work_resumes(
     call = wakes.calls[0]
     assert call["marius_id"] == alice.id, "gọi nhầm người — phải đúng người phụ trách cũ"
     assert call["task_id"] == task.id
-    assert "kết xuất bảng tính" in call["reason"], (
+    cause = call["reason"]
+    assert cause.code == "run_hung", cause
+    assert "kết xuất bảng tính" in cause.params["next_action"], (
         "gọi lại mà không trỏ vào việc kế tiếp đã lưu, nên phần đã làm coi như mất"
     )
 

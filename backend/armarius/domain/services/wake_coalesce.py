@@ -7,9 +7,10 @@ When several causes land on the same *(agent, task)* pair at once, the agent mus
     Order of arrival is an accident of timing; a patron's decision that lands a
     millisecond after an idle reminder must not be filed as an idle reminder, because the
     agent reads the cause to decide how urgently to treat the wake.
-  * **what it says** — *every* cause, listed. Keeping only the strongest would silently
-    drop the question a teammate asked; the agent would wake, act on the strong cause, and
-    never learn there was a second thing waiting.
+  * **what it says** — *every* cause, kept as data (a code plus its parameters, see
+    ``wake_reason``) so each reader can word it in its own language. Keeping only the
+    strongest would silently drop the question a teammate asked; the agent would wake, act
+    on the strong cause, and never learn there was a second thing waiting.
 
 No I/O here: the caller hands over what is already recorded and gets back what the merged
 wake should become.
@@ -17,7 +18,10 @@ wake should become.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from armarius.domain.entities.run import WakeSource
+from armarius.domain.services.wake_reason import WakeReason, merge
 
 # How loudly each cause speaks, low to high. The ordering is about *who is waiting on the
 # answer*: a person blocked on a decision outranks a teammate's comment, which outranks the
@@ -44,10 +48,6 @@ _STRENGTH: dict[WakeSource, int] = {
     WakeSource.PATRON_DECISION: 100,
 }
 
-# What one cause looks like in the merged reason. Kept here so the parser and the writer
-# can never drift apart.
-_BULLET = "• "
-
 
 def strength(source: WakeSource) -> int:
     return _STRENGTH.get(source, 0)
@@ -61,42 +61,23 @@ def stronger_source(current: WakeSource, incoming: WakeSource) -> WakeSource:
     otherwise would be inventing a distinction. So for those pairs the order of arrival does
     settle it. That is fine: the ranking exists to stop a loud cause being filed under a
     quiet one, not to impose a total order on causes that are genuinely the same weight.
-    Either way the merged reason still names both.
+    Either way the merged wake still names every cause.
     """
     return incoming if strength(incoming) > strength(current) else current
 
 
-def merge_causes(existing: str | None, source: WakeSource, reason: str | None) -> str:
-    """Fold one more cause into a merged reason, preserving every cause exactly once.
+def merge_reasons(
+    existing: Sequence[WakeReason], source: WakeSource, incoming: WakeReason | None
+) -> list[WakeReason]:
+    """Fold one more cause into the list this wake already owes.
 
-    The first cause is stored plainly (an un-merged wake reads like an ordinary sentence);
-    the moment a second arrives the whole thing becomes a list, so the agent can see it was
-    woken for more than one thing.
+    Every cause is kept, not just the strongest. Keeping only the strongest would silently
+    drop the question a teammate asked: the agent would wake, act on the loud cause, and
+    never learn there was a second thing waiting.
 
-    Duplicates are dropped by comparing the text, so two causes of different kinds that
-    happen to be worded identically collapse into one line. That is the right trade here:
-    repeating the same sentence twice tells the agent nothing, and each cause still has its
-    own row in ``wakeup_requests`` — the merged reason is a summary, not the record.
+    A caller with nothing to say still leaves a mark — the wake source itself, worded by
+    the same table. Better a thin sentence than a wake that says nothing at all about why
+    it happened, which is what FR-046 forbids.
     """
-    incoming = (reason or "").strip() or str(source)
-    causes = split_causes(existing)
-    if incoming in causes:
-        return existing or incoming
-    causes.append(incoming)
-    if len(causes) == 1:
-        return causes[0]
-    return "\n".join(f"{_BULLET}{c}" for c in causes)
-
-
-def split_causes(merged: str | None) -> list[str]:
-    """Read a merged reason back out as the list of causes that went into it."""
-    text = (merged or "").strip()
-    if not text:
-        return []
-    if _BULLET not in text:
-        return [text]
-    return [
-        line.strip().removeprefix(_BULLET).strip()
-        for line in text.splitlines()
-        if line.strip()
-    ]
+    cause = incoming if incoming is not None else WakeReason(code=str(source))
+    return merge(existing, cause)

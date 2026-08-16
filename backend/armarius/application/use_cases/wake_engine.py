@@ -48,7 +48,7 @@ from armarius.domain.entities.wakeup import (
     WakeupStatus,
 )
 from armarius.domain.entities.workspace import Project, Workspace
-from armarius.domain.services.wake_coalesce import merge_causes, stronger_source
+from armarius.domain.services.wake_coalesce import merge_reasons, stronger_source
 from armarius.domain.services.wake_policy import decide_self_wake
 from armarius.domain.services.wake_prompt import (
     DirectoryEntry,
@@ -57,6 +57,8 @@ from armarius.domain.services.wake_prompt import (
     WakeContext,
     build_wake_prompt,
 )
+from armarius.domain.services.wake_reason import WakeReason, render_en
+from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.shared.background import settle
 from armarius.shared.clock import utcnow
 from armarius.shared.logging import get_logger
@@ -115,7 +117,7 @@ class WakeEngine:
         marius_id: UUID,
         task_id: UUID,
         source: WakeSource,
-        reason: str | None = None,
+        reason: WakeReason | None = None,
         continuation_attempt: int = 0,
     ) -> UUID:
         """Queue a task-scoped wake. Returns the run id (the existing one if coalesced).
@@ -154,7 +156,7 @@ class WakeEngine:
         marius_id: UUID,
         task_id: UUID,
         source: WakeSource,
-        reason: str | None,
+        reason: WakeReason | None,
     ) -> UUID | None:
         """Merge one more cause into the wake this pair already owes, if there is one.
 
@@ -187,7 +189,8 @@ class WakeEngine:
             target = pending[0] if pending else None
             if target is not None:
                 target.source = stronger_source(target.source, source)
-                target.reason = merge_causes(target.reason, source, reason)
+                target.causes = merge_reasons(target.causes, source, reason)
+                target.reason = render_en(target.causes)
                 target.updated_at = utcnow()
                 await uow.wakeups.update(target)
 
@@ -200,7 +203,8 @@ class WakeEngine:
                     marius_id=marius_id,
                     task_id=task_id,
                     source=source,
-                    reason=reason,
+                    causes=merge_reasons([], source, reason),
+                    reason=render_en(merge_reasons([], source, reason)),
                     status=WakeupStatus.COALESCED,
                     run_id=run.id,
                     created_at=utcnow(),
@@ -213,6 +217,7 @@ class WakeEngine:
             # — that cause is handled by the re-evaluation when the run ends (step 3).
             if run.status == RunStatus.QUEUED and target is not None:
                 run.wake_source = target.source
+                run.trigger_causes = list(target.causes)
                 run.trigger_detail = target.reason
                 await uow.runs.update(run)
 
@@ -224,7 +229,7 @@ class WakeEngine:
         marius_id: UUID,
         task_id: UUID,
         source: WakeSource,
-        reason: str | None,
+        reason: WakeReason | None,
         continuation_attempt: int,
     ) -> UUID:
         async with self._uow() as uow:
@@ -232,13 +237,15 @@ class WakeEngine:
             marius = await uow.mariuses.get(marius_id)
             if task is None or marius is None:
                 raise LookupError("task or marius not found")
+            causes = merge_reasons([], source, reason)
             run = Run(
                 project_id=task.project_id,
                 marius_id=marius_id,
                 task_id=task_id,
                 adapter_type=marius.adapter_type,
                 wake_source=source,
-                trigger_detail=reason,
+                trigger_causes=causes,
+                trigger_detail=render_en(causes),
                 status=RunStatus.QUEUED,
                 continuation_attempt=continuation_attempt,
                 created_at=utcnow(),
@@ -251,7 +258,8 @@ class WakeEngine:
                     marius_id=marius_id,
                     task_id=task_id,
                     source=source,
-                    reason=reason,
+                    causes=causes,
+                    reason=render_en(causes),
                     status=WakeupStatus.DISPATCHED,
                     run_id=run.id,
                     created_at=utcnow(),
@@ -408,15 +416,17 @@ class WakeEngine:
         if not owed:
             return
 
-        source = owed[0].source
-        merged: str | None = None
-        for w in owed:
-            source = stronger_source(source, w.source)
-            merged = merge_causes(merged, w.source, w.reason)
         logger.info("re-waking %s for %d cause(s) absorbed mid-run", marius_id, len(owed))
-        await self.enqueue(
-            marius_id=marius_id, task_id=task_id, source=source, reason=merged
-        )
+        # One call per cause rather than a pre-merged one. The first opens the run; the
+        # rest fold into it through the very same coalescing path a live cause takes, which
+        # is the path that already knows how to keep each cause exactly once and file the
+        # wake under the strongest of them. Merging here as well would be a second
+        # implementation of that rule, free to drift from the first.
+        for w in owed:
+            for cause in w.causes or [wake_reason(str(w.source))]:
+                await self.enqueue(
+                    marius_id=marius_id, task_id=task_id, source=w.source, reason=cause
+                )
 
     async def _do_execute_run(self, run_id: UUID) -> None:
         async with self._uow() as uow:
@@ -696,7 +706,7 @@ class WakeEngine:
                 marius_id=marius_id,
                 task_id=task_id,
                 source=decision.source,
-                reason=decision.reason,
+                reason=wake_reason(decision.code) if decision.code else None,
                 continuation_attempt=next_attempt,
             )
 

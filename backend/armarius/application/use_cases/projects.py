@@ -691,6 +691,7 @@ class ProjectService:
         if self._leader_chat is None:
             return
         from armarius.domain.entities.run import WakeSource
+        from armarius.domain.services.wake_reason import reason as wake_reason
 
         try:
             await self._leader_chat.notify(
@@ -701,7 +702,7 @@ class ProjectService:
                     "rồi lập kế hoạch và trình cho người chủ duyệt."
                 ),
                 source=WakeSource.PROJECT_READY,
-                reason="dự án vừa đủ đội",
+                reason=wake_reason("roster_complete"),
             )
         except LookupError:  # pragma: no cover - project vanished mid-flight
             return

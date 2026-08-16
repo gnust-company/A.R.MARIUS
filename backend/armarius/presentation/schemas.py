@@ -578,14 +578,24 @@ class WakeIn(BaseModel):
     reason: str | None = None
 
 
+class WakeCauseOut(_Out):
+    """One cause, as data. The interface holds the phrase table for both languages."""
+
+    code: str
+    params: dict[str, str] = Field(default_factory=dict)
+
+
 class RunOut(_Out):
     id: UUID
     task_id: UUID | None = None
     marius_id: UUID | None = None
     adapter_type: str
     wake_source: str
-    # Why this run was woken. The agent screen renders it under the wake label;
-    # leaving it off the response is what made that line permanently blank.
+    # Why this run was woken, twice over. `trigger_causes` is the record — a code and its
+    # parameters, which the interface words in the reader's own language. `trigger_detail`
+    # is the English rendering the agent's packet carried, kept as the fallback for runs
+    # recorded before the codes existed (Constitution VII).
+    trigger_causes: list[WakeCauseOut] = Field(default_factory=list)
     trigger_detail: str | None = None
     status: str
     external_run_id: str | None = None

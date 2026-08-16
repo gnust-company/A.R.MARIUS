@@ -274,8 +274,10 @@ async def test_a_lost_deliverable_wakes_the_worker_right_away(uow_factory) -> No
     call = wakes.calls[-1]
     assert call["marius_id"] == alice.id, "gọi nhầm người"
     assert call["task_id"] == task.id
-    assert "không còn trong kho" in call["reason"], (
-        "gọi dậy mà không nói vì sao, nên người phụ trách phải tự đi tìm"
+    cause = call["reason"]
+    assert cause.code == "artifact_missing", cause
+    assert "bao-cao.xlsx" in cause.params["files"], (
+        "gọi dậy mà không nói tệp nào mất, nên người phụ trách phải tự đi tìm"
     )
 
 

@@ -61,6 +61,8 @@ from armarius.domain.services.push_reason_rules import (
     provisional_drive,
     queue_order,
 )
+from armarius.domain.services.wake_reason import WakeReason
+from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import as_utc, utcnow
 
@@ -94,7 +96,7 @@ class LeaderNotifier(Protocol):
     """The one thing task use cases need from the Leader chat: wake it about a project."""
 
     async def notify(
-        self, *, project_id: UUID, text: str, source: WakeSource, reason: str
+        self, *, project_id: UUID, text: str, source: WakeSource, reason: WakeReason
     ) -> bool: ...
 
 
@@ -319,7 +321,7 @@ class TaskService:
                 marius_id=assignee,
                 task_id=task_id,
                 source=WakeSource.ASSIGNMENT,
-                reason="you were assigned to this task",
+                reason=wake_reason("assigned"),
             )
         await self._settle_drive(task_id)
         return updated
@@ -509,7 +511,7 @@ class TaskService:
             marius_id=effects.marius_id,
             task_id=effects.task_id,
             source=WakeSource.ASSIGNMENT,
-            reason="you were assigned to this task",
+            reason=wake_reason("assigned"),
         )
         await self._settle_drive(effects.task_id)
 
@@ -554,7 +556,9 @@ class TaskService:
                 f"Một thợ xin nhận đầu việc {task.identifier or task_id}. "
                 "Vào xem rồi giao hoặc trả lời."
             ),
-            reason="thợ xin nhận đầu việc",
+            reason=wake_reason(
+                "worker_asked_for_task", task=task.identifier or task_id
+            ),
             source=WakeSource.WORKER_HANDBACK,
         )
         return task
@@ -601,7 +605,7 @@ class TaskService:
             text=(
                 f"Thợ trả lại đầu việc {updated.identifier or task_id}: {reason}"
             ),
-            reason="thợ trả việc hoặc hỏi lại",
+            reason=wake_reason("worker_handback", task=updated.identifier or task_id),
             source=WakeSource.WORKER_HANDBACK,
         )
         return updated
@@ -740,7 +744,7 @@ class TaskService:
                     f"Đầu việc {updated.identifier or task_id} đã nộp và đang chờ bạn chấm "
                     "theo bộ tiêu chí."
                 ),
-                reason="một đầu việc chuyển sang chờ rà soát",
+                reason=wake_reason("task_in_review", task=updated.identifier or task_id),
                 source=WakeSource.TASK_IN_REVIEW,
             )
         if target is TaskStatus.DONE:
@@ -754,7 +758,7 @@ class TaskService:
                         else "."
                     )
                 ),
-                reason="một đầu việc vừa xong",
+                reason=wake_reason("task_done", task=updated.identifier or task_id),
                 source=WakeSource.TASK_DONE,
             )
             if not await self._project_has_open_tasks(project_id):
@@ -768,7 +772,7 @@ class TaskService:
                         "người chủ kèm ba lựa chọn: đóng dự án, chuyển bảo trì, "
                         "hoặc mở đợt việc mới."
                     ),
-                    reason="cả đợt việc đã xong",
+                    reason=wake_reason("batch_done"),
                     source=WakeSource.TASK_DONE,
                 )
         # Last, on purpose: the drive depends on the wakes and inbox items the block
@@ -1239,15 +1243,13 @@ class TaskService:
             marius_id=freed.assigned_marius_id,
             task_id=freed.id,
             source=WakeSource.DEPENDENCY_CLEARED,
-            reason=(
-                "vướng đã được gỡ: "
-                f"{cleared_by.identifier or cleared_by.id} đã xong, đầu việc của bạn "
-                "chuyển sang chờ làm"
+            reason=wake_reason(
+                "dependency_cleared", blocker=cleared_by.identifier or cleared_by.id
             ),
         )
 
     async def _notify_leader(
-        self, project_id: UUID | None, *, text: str, reason: str, source: WakeSource
+        self, project_id: UUID | None, *, text: str, reason: WakeReason, source: WakeSource
     ) -> None:
         if self._leader_chat is None or project_id is None:
             return

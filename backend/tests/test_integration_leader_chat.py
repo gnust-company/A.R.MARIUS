@@ -32,6 +32,7 @@ from armarius.domain.entities.leader_chat import ChatState, LeaderChatError
 from armarius.domain.entities.marius import Liveness
 from armarius.domain.entities.run import RunStatus, WakeSource
 from armarius.domain.entities.task import TaskStatus
+from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
@@ -281,7 +282,7 @@ async def test_a_wake_that_could_not_be_delivered_does_not_mark_the_leader_alive
         project_id=project.id,
         text="Đầu việc đang đình trệ, cần bạn quyết.",
         source=WakeSource.NUDGE,
-        reason="leo thang Mức 2",
+        reason=wake_reason("escalated_to_leader", task="T-1", attempt=1, ceiling=3),
     )
     await _settle_chat(chat, project.id)
 
