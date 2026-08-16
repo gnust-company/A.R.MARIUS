@@ -91,6 +91,10 @@ Với một dự án đang *vận hành*:
 | Tạo cạnh phụ thuộc khép vòng | Từ chối ngay lúc tạo, nêu vòng đi qua đâu |
 | Tạo đầu việc **trong khuôn** hạng mục đã duyệt | Cho qua, giao ngay |
 | Tạo đầu việc **ngoài khuôn** | Ở lại *nháp*, mục chờ duyệt vào hộp thư người chủ |
+| **Người chủ** sửa hạn chót của một đầu việc đã tạo | Có hiệu lực ngay (FR-070a) |
+| **Trưởng dự án** sửa hạn chót hoặc tiêu chí công nhận | Treo chờ người chủ duyệt, chưa vào thẳng |
+| **Trưởng dự án** sửa mô tả chi tiết | Tự quyết, có hiệu lực ngay |
+| **Người phụ trách** sửa yêu cầu gốc | Từ chối; chỉ được thêm ghi chú tiến trình |
 
 Rồi cho một đầu việc chạy trọn đường đúng → kiểm mốc hoàn tất được ghi, việc phụ thuộc được mở khoá, và
 Trưởng dự án được gọi dậy để giao tiếp.
@@ -129,17 +133,25 @@ Một dự án, **một người chủ** (phạm vi hiện tại — xem Làm r�
 ## Kịch bản 4 — Gói tin đánh thức và gộp lời gọi *(Câu chuyện 4)*
 
 1. Giao một đầu việc cho một thợ, đọc gói tin nó nhận.
-   → Đủ **tám phần**. **Bối cảnh dự án có mặt** (đây là phần đang thiếu). Phần nào rỗng ghi rõ "không có".
-   Nơi nộp thành phẩm là một mục riêng, không lẫn trong đoạn hướng dẫn.
-2. Bắn ba cớ gọi gần như cùng lúc cho **cùng** một cặp thợ–đầu việc (một bình luận mới, một lần nhắc tên,
+   → Đủ **lõi bốn phần** cộng bốn phần riêng của lời gọi thợ. **Bối cảnh dự án đã duyệt có mặt** (đây là
+   phần đang thiếu). Phần nào có mặt mà rỗng thì ghi rõ "không có". Nơi nộp thành phẩm là một mục riêng,
+   không lẫn trong đoạn hướng dẫn.
+2. Ép một nhịp điều phối có điểm treo, đọc gói tin **Trưởng dự án** nhận.
+   → Đủ **lõi bốn phần** cộng danh sách điểm treo nêu đích danh. **Không** có "đầu việc đang nói tới",
+   **không** có "việc kế tiếp", **không** có "nơi nộp thành phẩm" — và cũng **không** có bốn dòng "không có"
+   thế chỗ chúng (FR-044a).
+3. Bắn ba cớ gọi gần như cùng lúc cho **cùng** một cặp thợ–đầu việc (một bình luận mới, một lần nhắc tên,
    một lần lưới an toàn gọi lại).
    → Thợ chỉ thấy **một** lần gọi, lý do gộp liệt kê đủ ba cớ. Chỉ **một** lượt chạy.
-3. Trong lúc một lượt đang chạy, bắn thêm một cớ.
+4. Trong lúc một lượt đang chạy, bắn thêm một cớ.
    → Lượt đang chạy hấp thụ; khi lượt kết thúc, hệ thống đánh giá lại xem còn cần gọi không rồi mới bắn.
-4. **Khởi động lại vùng chứa máy chủ giữa lúc có lệnh treo**, rồi bắn lại cớ đó.
+5. **Khởi động lại vùng chứa máy chủ giữa lúc có lệnh treo**, rồi bắn lại cớ đó.
    → Vẫn chỉ một lệnh treo. Đây là chỗ cơ chế cũ (bộ nhớ tiến trình) hỏng.
-5. Thợ nộp bài, bóng chuyền sang Trưởng dự án rà.
+6. Thợ nộp bài, bóng chuyền sang Trưởng dự án rà.
    → Thợ **không** bị gọi dậy vì việc rà soát đó.
+7. Bắn một cớ **không nằm trong danh sách** của vai nhận — ví dụ một cớ chỉ dành cho Trưởng dự án nhưng gửi
+   cho thợ.
+   → Bị **từ chối và ghi lại**, không phải im lặng cho qua (FR-048a).
 
 ## Kịch bản 5 — Nhịp điều phối *(Câu chuyện 5)*
 
@@ -157,23 +169,26 @@ Một dự án, **một người chủ** (phạm vi hiện tại — xem Làm r�
    cũ** được gọi lại trỏ vào việc kế tiếp. Phần đã làm không mất.
 2. **Mất động cơ**: ép một đầu việc vào tình trạng không còn động cơ đẩy nào sống.
    → Cờ đình trệ nổi kèm lý do. Đầu việc **không bao giờ** tự nhảy sang *xong*.
-3. **Cạn ngân sách**: để một đầu việc bị tự gọi lại đủ ba lần mà không tiến.
+3. **Ngoài vòng quét**: để sẵn vài đầu việc ở *tồn kho* và vài đầu việc ở *nháp/đề xuất*, chạy vài lượt quét.
+   → **Không** cái nào nổi cờ đình trệ (FR-057). Đây là chỗ dễ hỏng nhất khi sửa truy vấn quét: nới ra một
+   chút là cả kho tồn nổi cờ, và bảng đầy báo động giả thì không ai đọc báo động thật nữa.
+4. **Cạn ngân sách**: để một đầu việc bị tự gọi lại đủ ba lần mà không tiến.
    → Dừng tự thử, leo Mức 2: Trưởng dự án được gọi kèm hồ sơ đã thử.
-4. **Chưa có người phụ trách**: để một đầu việc *chờ làm* **không gán ai** mất động cơ đẩy (FR-059a).
+5. **Chưa có người phụ trách**: để một đầu việc *chờ làm* **không gán ai** mất động cơ đẩy (FR-059a).
    → Thang vào **thẳng Mức 2**, **0 lần thử Mức 1**, và lời hỏi Trưởng dự án nói rõ đầu việc chưa có người
    phụ trách — không dùng câu "đã tự gọi lại N lần". Đếm thời gian từ lúc nổi cờ tới lúc Trưởng được hỏi:
    phải là ngay lượt quét đó, không phải sau ~35 phút.
-5. **Đặt lại bộ đếm**: cho đầu việc có tiến triển thật (nộp thêm, đổi trạng thái tiến lên).
+6. **Đặt lại bộ đếm**: cho đầu việc có tiến triển thật (nộp thêm, đổi trạng thái tiến lên).
    → Bộ đếm về không.
-6. **Ngoại tuyến**: ngắt một thợ.
+7. **Ngoại tuyến**: ngắt một thợ.
    → Thử lại theo nhịp giãn dần; suốt thời gian đó đầu việc gắn động cơ *chờ hành động phục hồi* và **không**
    bị tính đình trệ. Sau chuỗi thất bại → tuyên ngoại tuyến, đầu việc về *bị chặn* với lý do "người phụ trách
    ngoại tuyến", Trưởng dự án được báo.
-7. **Trưởng dự án ngoại tuyến** → người chủ được báo thẳng.
-8. **Người chủ im lặng**: để một mục chờ vượt ngưỡng nhắc.
+8. **Trưởng dự án ngoại tuyến** → người chủ được báo thẳng.
+9. **Người chủ im lặng**: để một mục chờ vượt ngưỡng nhắc.
    → Nhắc ba bậc thưa dần vào hộp thư. Dự án đậu đúng chỗ chờ, không tự đánh dấu xong hay thất bại. Trưởng
    dự án vẫn cho chạy tiếp các nhánh không phụ thuộc vào quyết định đang chờ.
-9. **Khởi động lại**: dựng lại vùng chứa máy chủ.
+10. **Khởi động lại**: dựng lại vùng chứa máy chủ.
    → Mọi đầu việc chưa đóng có lại động cơ đẩy đúng, dựng từ trạng thái bền cuối cùng.
 
 ## Kiểm chứng ràng buộc Hiến pháp
@@ -185,7 +200,7 @@ Một dự án, **một người chủ** (phạm vi hiện tại — xem Làm r�
 | Trung lập adapter | Tra tầng nghiệp vụ, không có nhánh mã theo loại agent |
 | Đẩy không hỏi vòng | Mở bảng dự án, xem lưu lượng mạng: không có vòng lặp hỏi lại; trạng thái đổi thì giao diện tự cập nhật |
 | Góc nhìn dự án | Cùng một agent giữ hai vai ở hai dự án → gói tin đánh thức mỗi bên nêu đúng vai của dự án đó |
-| Tiếng Việt | Rà giao diện: không chuỗi cứng ngoài cơ chế đa ngôn ngữ, không chuỗi thiếu dấu |
+| Tiếng Việt | Rà giao diện: không chuỗi cứng ngoài cơ chế đa ngôn ngữ, không chuỗi thiếu dấu. **Và**: cố tình đâm vào một cổng chặn ở máy chủ rồi đọc câu hiện trên màn — phải là câu do giao diện dựng, không phải câu máy chủ gửi sang (FR-084a) |
 
 **Ba lưu ý khi chạy bảng này** — đều là chỗ đã làm sai một lần ở T160, và cái sai đọc lên y hệt cái đúng:
 

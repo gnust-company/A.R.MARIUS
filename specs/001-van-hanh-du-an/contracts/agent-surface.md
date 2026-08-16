@@ -40,21 +40,29 @@ Hai cửa trên là **một cửa sổ, hai lối** (FR-060b), nên chúng dùng
 
 ## 4. Gói tin đánh thức **[sửa]**
 
-Không phải một lối vào — là nội dung hệ thống trao cho agent lúc gọi dậy. Tám phần bắt buộc:
+Không phải một lối vào — là nội dung hệ thống trao cho agent lúc gọi dậy.
+
+**Lõi bốn phần**, mọi lời gọi đều có, không loại trừ (FR-044):
 
 1. Vai của agent trong dự án này
-2. **Bối cảnh dự án đã duyệt** — phần đang thiếu
-3. Đầu việc đang nói tới, kèm mô tả và trạng thái
-4. Lý do gọi dậy, viết thành câu người đọc hiểu
-5. Danh bạ đồng đội kèm trạng thái sống
-6. Tin nhắn mới kể từ lượt trước
-7. Việc kế tiếp đang chờ
-8. **Nơi nộp thành phẩm và cách báo trạng thái** — tách thành mục riêng
+2. **Bối cảnh dự án đã duyệt** — bản đã qua cổng duyệt, không phải cột thô trên bảng dự án
+3. Lý do gọi dậy, viết thành câu người đọc hiểu
+4. Danh bạ đồng đội kèm trạng thái sống
 
-Phần nào rỗng thì ghi rõ "không có" (FR-045).
+**Phần riêng theo loại lời gọi** (FR-044a) — không loại nào phải điền ô của loại khác:
 
-Với gói tin **nhịp điều phối** gửi Trưởng dự án, phần *lý do gọi dậy* liệt kê đích danh từng điểm treo —
-"đầu việc AR-12 đang bị chặn, AR-19 sắp trễ, AR-23 đang chờ bạn quyết" — không nói chung chung (FR-054).
+| Loại lời gọi | Phần thêm |
+|---|---|
+| Gọi thợ vào một đầu việc | Đầu việc đang nói tới kèm mô tả và trạng thái · tin nhắn mới kể từ lượt trước · việc kế tiếp đang chờ · **nơi nộp thành phẩm và cách báo trạng thái** |
+| Gọi Trưởng dự án theo nhịp điều phối | Danh sách điểm treo nêu **đích danh** từng điểm (FR-054) |
+| Gọi Trưởng dự án vì người chủ vừa quyết | Chính quyết định đó, kèm nguyên văn góp ý nếu có |
+| Gọi Trưởng dự án ở Mức 2 thang phục hồi | Hồ sơ đã thử, và ca nào dẫn tới Mức 2 (FR-059a) |
+
+Phần nào **có mặt** mà rỗng thì ghi rõ "không có" (FR-045). Luật đó không buộc một loại phải mang phần không
+thuộc về nó.
+
+Ví dụ phần *lý do gọi dậy* của lời gọi theo nhịp: "đầu việc AR-12 đang bị chặn, AR-19 sắp trễ, AR-23 đang
+chờ bạn quyết" — không nói chung chung "đến giờ rồi".
 
 ## 5. Cớ đánh thức
 

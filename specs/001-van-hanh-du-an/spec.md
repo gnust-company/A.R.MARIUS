@@ -88,6 +88,20 @@
   **không** — kiểm trước, không có người phụ trách thì lên thẳng Mức 2, ghi rõ lý do. Mã hiện tại biết là
   không gọi được ai nhưng vẫn đếm đủ ba lần thử rồi mới đi tiếp, tiêu khoảng 35 phút không làm gì. Chép
   thành **FR-059a**: điều kiện vào một nấc phải kiểm được **trước khi** bước vào nấc đó.
+- Hỏi: Luật "tám phần cho **mọi** gói tin đánh thức" có hợp lý không? → Đáp *(người chủ chốt)*: **bỏ**. Mỗi
+  lần gọi dậy có một mục đích và một người nhận khác nhau; ép chung khuôn là bắt một vai điền vào ô của vai
+  khác. Thay bằng **lõi bốn phần** bắt buộc cho mọi lời gọi, cộng phần riêng theo từng loại — **FR-044**,
+  **FR-044a**, FR-045 viết lại, SC-005 sửa theo.
+- Hỏi: FR-057 ghi vòng quét canh gác rà "mọi đầu việc chưa đóng", nhưng *nháp/đề xuất* và *tồn kho* có nên
+  rà không? → Đáp: **không**. Cả hai chưa có ai hứa sẽ chạm vào, quét thì chúng nổi cờ đình trệ ngay lượt
+  đầu. FR-057 viết lại thành bốn trạng thái *đang trên bảng*, kèm lý do loại trừ.
+- Ba chỗ đặc tả đang đúng nhưng **không có răng**, vá luôn để nửa mã không phải bàn lại:
+  - **FR-048a** — hai danh sách cớ đánh thức phải cưỡng chế tại chỗ phát lệnh, không được làm tài liệu suông.
+    Hiện chỉ bài kiểm đọc chúng, nên chúng đã trôi khỏi thực tế mà không ai biết.
+  - **FR-070a** — phải có lối sửa đầu việc sau khi tạo, và cổng nào áp là do **ai gọi** quyết. Không có lối
+    này thì FR-070 chỉ đúng trên giấy.
+  - **FR-084a** — câu báo lỗi cũng là chuỗi hiển thị: máy chủ trả mã lỗi và tham số, giao diện dựng câu.
+  - Mục Giả định gọi tên **bốn ngưỡng** còn đóng cứng, để "mọi ngưỡng chỉnh được" không còn chỗ lách.
 
 ---
 
@@ -246,14 +260,16 @@ một agent trên cùng một đầu việc thì được gộp thành đúng m�
 **Vì sao ưu tiên này**: Agent ngủ giữa các lượt và mất trí nhớ làm việc. Gói tin thiếu ngữ cảnh biến mỗi lần
 gọi dậy thành một cuộc dò tìm; gọi trùng thì sinh chạy chồng, nộp trùng, giẫm hỏng dữ liệu.
 
-**Kiểm thử độc lập**: Gọi dậy một thợ vì một đầu việc mới giao → kiểm gói tin có đủ tám phần, phần nào không
-có nội dung thì ghi "không có" chứ không để trống. Bắn ba cớ gọi cùng lúc cho một cặp agent–đầu việc → agent
-chỉ thấy đúng một lần gọi, với lý do gộp liệt kê đủ ba cớ.
+**Kiểm thử độc lập**: Gọi dậy một thợ vì một đầu việc mới giao → kiểm gói tin có đủ **lõi bốn phần** cộng
+phần riêng của lời gọi thợ, phần nào có mặt mà không có nội dung thì ghi "không có" chứ không để trống. Gọi
+dậy Trưởng dự án theo nhịp điều phối → cũng đủ lõi bốn phần, nhưng **không** mang các phần chỉ thuộc về lời
+gọi thợ. Bắn ba cớ gọi cùng lúc cho một cặp agent–đầu việc → agent chỉ thấy đúng một lần gọi, với lý do gộp
+liệt kê đủ ba cớ.
 
 **Kịch bản chấp nhận**:
 
-1. **Cho** bất kỳ lần đánh thức nào, **khi** gói tin được dựng, **thì** nó chứa đủ tám phần và mọi phần rỗng
-   đều ghi rõ "không có".
+1. **Cho** bất kỳ lần đánh thức nào, **khi** gói tin được dựng, **thì** nó chứa đủ **lõi bốn phần** cùng phần
+   riêng của loại lời gọi đó, và mọi phần có mặt mà rỗng đều ghi rõ "không có".
 2. **Cho** bất kỳ lần đánh thức nào, **khi** agent mở gói tin, **thì** phần *lý do gọi dậy* là một câu cụ thể
    (ví dụ "thợ vừa nộp bài đầu việc AR-12, cần bạn rà soát"), không phải một cú thúc trống.
 3. **Cho** một agent đang có một lệnh gọi treo cho một đầu việc, **khi** một cớ gọi thứ hai cho đúng cặp đó
@@ -531,10 +547,29 @@ thứ tự gắn trên từng chữ ký.
 
 #### G. Gói tin đánh thức và điều phối lời gọi
 
-- **FR-044**: Mỗi gói tin đánh thức PHẢI gồm đủ tám phần: vai của agent trong dự án; Bối cảnh dự án; đầu việc
-  đang nói tới cùng mô tả và trạng thái; lý do gọi dậy; danh bạ đồng đội kèm trạng thái trực tuyến; tin nhắn
-  mới kể từ lượt trước; việc kế tiếp đang chờ; nơi nộp thành phẩm và cách báo trạng thái.
-- **FR-045**: Phần nào của gói tin không có nội dung PHẢI ghi rõ "không có"; KHÔNG ĐƯỢC để trống âm thầm.
+- **FR-044**: Mỗi gói tin đánh thức PHẢI gồm một **lõi bốn phần**, không lời gọi nào được miễn:
+  1. **vai của agent trong dự án này**;
+  2. **Bối cảnh dự án đã duyệt** — bản đã qua cổng duyệt, không phải cột thô trên bảng dự án (FR-009);
+  3. **lý do gọi dậy** (FR-046);
+  4. **danh bạ đồng đội kèm trạng thái trực tuyến**.
+
+  Bốn phần này trả lời ba câu mà agent nào cũng phải biết trước khi làm bất cứ việc gì: *mình là ai ở đây*,
+  *dự án đang đi đâu*, *tại sao bị gọi lúc này*. Thiếu một cái là agent đoán, mà agent đoán là agent làm sai.
+- **FR-044a**: Ngoài lõi, mỗi **loại lời gọi** PHẢI mang thêm đúng phần loại đó cần, và HỆ THỐNG KHÔNG ĐƯỢC
+  ép mọi loại dùng chung một khuôn:
+  - *gọi thợ vào một đầu việc* — đầu việc đang nói tới kèm mô tả và trạng thái; tin nhắn mới kể từ lượt
+    trước; việc kế tiếp đang chờ; nơi nộp thành phẩm và cách báo trạng thái.
+  - *gọi Trưởng dự án theo nhịp điều phối* — danh sách điểm treo nêu đích danh từng điểm (FR-054).
+  - *gọi Trưởng dự án vì người chủ vừa quyết một điều* — chính quyết định đó, kèm nguyên văn góp ý nếu có.
+  - *gọi Trưởng dự án ở Mức 2 của thang phục hồi* — hồ sơ đã thử, và ca nào dẫn tới Mức 2 (FR-059a).
+
+  Vì sao tách: năm trong tám phần của khuôn cũ **vô nghĩa với Trưởng dự án**. Nó bị gọi vì lượt rà tìm ra ba
+  điểm treo trên bảng — "đầu việc đang nói tới" là cái nào trong ba? "Việc kế tiếp" của một người điều phối
+  là gì? "Nơi nộp thành phẩm" thì càng không. Ép chung khuôn là bắt một vai điền vào ô của vai khác, và một
+  ô điền bừa còn tệ hơn một ô không có.
+- **FR-045**: Phần nào **có mặt** trong loại lời gọi đó mà không có nội dung PHẢI ghi rõ "không có"; KHÔNG
+  ĐƯỢC để trống âm thầm. Luật này KHÔNG buộc một loại lời gọi phải mang phần không thuộc về nó — nó chỉ cấm
+  im lặng ở những phần loại đó đã nhận.
 - **FR-046**: Phần *lý do gọi dậy* PHẢI là một câu người đọc hiểu nói thẳng vì sao agent bị gọi lúc này.
 - **FR-047**: HỆ THỐNG PHẢI đánh thức Trưởng dự án khi và chỉ khi có một trong các cớ: người chủ nhắn hoặc
   hỏi; người chủ duyệt hoặc yêu cầu chỉnh kế hoạch; người chủ công nhận hoặc từ chối một đầu ra; người
@@ -545,6 +580,10 @@ thứ tự gắn trên từng chữ ký.
   của mình đã được gỡ; hoặc **lưới an toàn gọi lại** vì đầu việc mất động cơ đẩy (Mức 1 của thang phục hồi,
   FR-059). Cớ cuối là đường duy nhất để một đầu việc đứng im gọi được thợ dậy: nhịp điều phối (FR-052) không
   còn nhìn chuyện đứng im nữa, và cũng chưa bao giờ gọi thợ.
+- **FR-048a**: Hai danh sách khép ở FR-047 và FR-048 PHẢI được **cưỡng chế ngay tại chỗ phát lệnh gọi**,
+  không được để làm tài liệu suông. Một cớ không nằm trong danh sách của vai nhận thì lệnh gọi đó bị từ chối
+  và ghi lại. Danh sách chỉ có sức nặng khi thêm một cớ mới **buộc** người thêm phải quyết ngay cớ đó gọi ai;
+  để nó ngoài đường chạy thì nó trôi khỏi thực tế mà không ai biết.
 - **FR-049**: HỆ THỐNG KHÔNG ĐƯỢC đánh thức một agent chỉ vì dự án có biến động chung — chỉ gọi khi có việc
   thuộc phần của chính nó đang chờ.
 - **FR-050**: Với mỗi cặp *(agent, đầu việc)*, HỆ THỐNG PHẢI giữ tối đa **một** lệnh đánh thức đang treo và
@@ -599,8 +638,13 @@ thứ tự gắn trên từng chữ ký.
 - **FR-056**: Mỗi đầu việc chưa đóng PHẢI gắn đúng một **động cơ đẩy** trong sáu loại: đang có lượt chạy; đã
   hẹn một lần đánh thức; đang chờ một mốc bên ngoài; đang chờ người chủ; đang bị chặn bởi việc khác; đang chờ
   một hành động phục hồi.
-- **FR-057**: HỆ THỐNG PHẢI chạy một vòng quét canh gác định kỳ rà mọi đầu việc chưa đóng, kiểm xem động cơ
-  đẩy có tồn tại và còn sống hay không.
+- **FR-057**: HỆ THỐNG PHẢI chạy một vòng quét canh gác định kỳ rà mọi đầu việc **đang trên bảng** — *chờ
+  làm*, *đang làm*, *chờ rà soát*, *bị chặn* — kiểm xem động cơ đẩy có tồn tại và còn sống hay không.
+
+  Hai trạng thái chưa đóng nằm **ngoài** vòng quét, và đó là chủ ý chứ không phải bỏ sót: *nháp/đề xuất* là
+  đề nghị của Trưởng dự án đang chờ người chủ gật — chưa phải việc đã nhận, chưa ai hứa gì; *tồn kho* là việc
+  đã đỗ có chủ ý. Quét hai loại đó thì mọi mục tồn kho nổi cờ đình trệ ngay lượt quét đầu tiên, và một báo
+  động lúc nào cũng kêu là một báo động bị tắt.
 - **FR-058**: KHI một đầu việc không còn động cơ đẩy sống, HỆ THỐNG PHẢI nổi cờ *đình trệ* kèm lý do, và
   KHÔNG ĐƯỢC chuyển đầu việc đó sang *xong* trong bất kỳ hoàn cảnh nào.
 
@@ -717,6 +761,16 @@ thứ tự gắn trên từng chữ ký.
 
 - **FR-070**: Người chủ PHẢI có quyền can thiệp trực tiếp ở mức tương đương Trưởng dự án — bình luận, giao
   hoặc sửa một đầu việc, đổi ưu tiên, bố trí thợ. Đây là quyền, không phải nghĩa vụ.
+- **FR-070a**: PHẢI có một lối **sửa đầu việc sau khi tạo** — tiêu đề, mô tả chi tiết, độ ưu tiên, hạn chót,
+  tiêu chí công nhận. Cổng nào áp là do **ai gọi** quyết, không phải do trường nào bị chạm:
+  - **người chủ** sửa thẳng, có hiệu lực ngay — đây chính là quyền FR-070 nói tới;
+  - **Trưởng dự án** chạm vào một trong năm thứ lớn (phạm vi, mục tiêu/Bối cảnh, chi phí, thời hạn, tiêu chí
+    công nhận) thì thay đổi **treo chờ người chủ duyệt**, không vào thẳng (FR-075); chạm thứ khác thì tự
+    quyết;
+  - **người phụ trách** chỉ được thêm ghi chú tiến trình, KHÔNG ĐƯỢC sửa yêu cầu gốc (FR-018).
+
+  Không có lối này thì FR-070 chỉ đúng trên giấy: người chủ đặt sai một hạn chót lúc tạo là phải huỷ đầu việc
+  rồi tạo lại, mất cả bình luận, thành phẩm và vết.
 - **FR-071**: Thợ giao tiếp **qua đầu việc** — bình luận và phòng cộng tác của chính đầu việc nó phụ trách,
   cộng với thành phẩm nó nộp. HỆ THỐNG KHÔNG ĐƯỢC cho thợ đặt bất cứ thứ gì thẳng vào hộp thư người chủ.
   Trưởng dự án được đánh thức khi có trao đổi mới và đọc thay; người chủ đọc nếu muốn, không bắt buộc.
@@ -754,6 +808,13 @@ thứ tự gắn trên từng chữ ký.
   đồng chung *(Hiến pháp III)*.
 - **FR-084**: Mọi chuỗi hiển thị PHẢI đi qua cơ chế đa ngôn ngữ, và tiếng Việt hiển thị PHẢI đủ dấu *(Hiến
   pháp VI)*.
+- **FR-084a**: **Câu báo lỗi cũng là chuỗi hiển thị.** Mặt giao tiếp PHẢI trả **mã lỗi và tham số**; giao
+  diện dựng câu qua cơ chế đa ngôn ngữ. HỆ THỐNG KHÔNG ĐƯỢC trả một câu đã dựng sẵn rồi hiện thẳng lên màn
+  hình.
+
+  Nói riêng ra vì đây là con đường duy nhất khiến hai thứ tiếng nằm cạnh nhau trên **cùng một màn** dù mọi
+  chuỗi trong giao diện đều đã sạch: chuỗi lỗi không sinh ra ở giao diện nên mọi lần rà chuỗi cứng đều đi
+  qua nó mà không thấy.
 
 ### Thực thể chính
 
@@ -779,7 +840,8 @@ thứ tự gắn trên từng chữ ký.
   sống hay đã tắt.
 - **Lệnh đánh thức** — một yêu cầu gọi dậy nhận diện theo bộ ba *(agent, đầu việc, lý do)*; tối đa một lệnh
   treo cho mỗi cặp agent–đầu việc.
-- **Gói tin đánh thức** — phong bì ngữ cảnh tám phần trao cho agent lúc gọi dậy.
+- **Gói tin đánh thức** — phong bì ngữ cảnh trao cho agent lúc gọi dậy: lõi bốn phần cộng phần riêng theo
+  loại lời gọi.
 - **Lượt chạy** — một phiên làm việc của agent trên một đầu việc; phát tín hiệu báo sống định kỳ; tối đa một
   lượt tại một thời điểm cho mỗi cặp agent–đầu việc.
 - **Mục hộp thư người chủ** — một thứ cần người chủ để mắt: chờ duyệt, chờ trả lời, chờ công nhận, cảnh báo
@@ -800,7 +862,8 @@ thứ tự gắn trên từng chữ ký.
   mang cờ đình trệ. Không tồn tại đầu việc đứng im mà không có cờ.
 - **SC-003**: 0 đầu việc đạt trạng thái *xong* mà không có thành phẩm đính kèm.
 - **SC-004**: 0 đầu việc có nhiều hơn một người phụ trách tại bất kỳ thời điểm nào.
-- **SC-005**: 100% gói tin đánh thức có đủ tám phần; mọi phần rỗng đều ghi rõ "không có" thay vì để trống.
+- **SC-005**: 100% gói tin đánh thức có đủ **lõi bốn phần**, và đủ phần riêng của loại lời gọi đó; mọi phần
+  có mặt mà rỗng đều ghi rõ "không có" thay vì để trống.
 - **SC-006**: Trong một đợt chạy thử có bắn cớ gọi chồng nhau, 0 trường hợp một cặp agent–đầu việc có quá một
   lượt chạy đồng thời hoặc quá một lệnh đánh thức treo.
 - **SC-007**: Một lượt chạy tắt tiếng được phát hiện, tuyên treo và đưa về guồng trong vòng 15 phút, và phần
@@ -852,7 +915,9 @@ thứ tự gắn trên từng chữ ký.
   trần tự phục hồi Mức 1 là 3 lần; trần vòng từ chối công nhận là 3 lần; nhắc người chủ ở 8 giờ → 24 giờ →
   72 giờ rồi thưa dần. Riêng **nhịp điều phối** tài liệu gốc không cho số — lấy mặc định: rà mỗi 15 phút,
   trần 4 lần đánh thức theo nhịp trong một giờ, giãn tối đa lên 2 giờ khi dự án chạy trơn tru. Mọi ngưỡng
-  PHẢI chỉnh được, không đóng cứng.
+  PHẢI chỉnh được, không đóng cứng — **kể cả bốn cái dễ bị bỏ quên** vì chúng là trần chứ không phải nhịp:
+  trần độ giãn (8 lần), trần khoảng cách giữa hai lượt rà (2 giờ), sàn khoảng cách (60 giây), và trần số lần
+  hỏi Trưởng dự án ở Mức 2 (3 lần). Trần Mức 1 vốn đã chỉnh được; bốn cái này phải ngang hàng với nó.
   - **"Giãn tối đa lên 2 giờ" chịu cả hai trần cùng lúc** — làm rõ 2026-08-06, vì mỗi trần một mình đều sai
     ở một đầu của dải cấu hình. Độ giãn KHÔNG ĐƯỢC vượt **8 lần** nhịp đã đặt, **và** KHÔNG ĐƯỢC vượt **2
     giờ**. Chỉ có bội số thì dự án đặt nhịp 1 giờ sẽ giãn thành 8 giờ; chỉ có con số tuyệt đối thì dự án đặt
