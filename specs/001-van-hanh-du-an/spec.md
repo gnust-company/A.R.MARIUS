@@ -71,6 +71,24 @@
   làm việc, **quyền**…". Phần quyền cho **người** chưa hề có, và chính câu đó đẻ ra toàn bộ giả định nhiều
   người chủ ở trên.
 
+### Phiên 2026-08-16 — hội tụ Giai đoạn 10, nhóm việc thứ nhất
+
+- Hỏi: Vì sao **hai** vòng chạy ngầm cùng đi tìm "đầu việc nào không ai sắp chạm vào"? → Đáp *(người chủ
+  chốt)*: **bỏ hẳn loại điểm treo *im lâu* khỏi nhịp điều phối** (FR-052). Chỉ mình nó buộc nhịp điều phối
+  phải hỏi câu đó, mà đó đúng là câu vòng quét canh gác (FR-057) sinh ra để trả lời — bằng **động cơ đẩy**
+  (FR-056), thứ phân biệt được *"đã gọi người làm nhưng lượt chạy chưa khởi động"* với *"gọi lại mấy lần đều
+  không tới được người làm"*. Nhịp điều phối không đọc động cơ đẩy lấy một lần, nên nó đếm nhầm cả hai ca
+  đó là im lâu, dù FR-063 nói thẳng ca sau không được tính.
+
+  Trưởng dự án **không mất tin**: thang phục hồi vốn đã gọi nó ở Mức 2, có ngân sách và có ghi sổ. *Im lâu*
+  chỉ là con đường thứ hai tới cùng một người với cùng một tin, đi tắt qua thang. Cái giá: Trưởng nghe muộn
+  hơn (Mức 2 tới sau khoảng 35 phút thay vì 5 phút) — không đáng kể với nhịp dự án *vài giờ tới vài ngày*,
+  đổi lại tin ấy **luôn đúng**. Thay thế cho phiên 2026-07-31, vế ngưỡng *im lâu* = 5 phút.
+- Hỏi: Thang phục hồi có được vào Mức 1 khi đầu việc **chưa gán ai** không? → Đáp *(người chủ chốt)*:
+  **không** — kiểm trước, không có người phụ trách thì lên thẳng Mức 2, ghi rõ lý do. Mã hiện tại biết là
+  không gọi được ai nhưng vẫn đếm đủ ba lần thử rồi mới đi tiếp, tiêu khoảng 35 phút không làm gì. Chép
+  thành **FR-059a**: điều kiện vào một nấc phải kiểm được **trước khi** bước vào nấc đó.
+
 ---
 
 ## Kịch bản người dùng & kiểm thử *(bắt buộc)*
@@ -253,23 +271,24 @@ chỉ thấy đúng một lần gọi, với lý do gộp liệt kê đủ ba c�
 ### Câu chuyện 5 — Trưởng dự án là quản lý có nhịp điều phối, không phải đồng hồ chờ chuông (Ưu tiên: P3)
 
 Trưởng dự án tự đi rà bảng việc theo một nhịp *có kiểm soát*: trước mỗi nhịp hệ thống tự soi xem có đầu việc
-nào im lâu, sắp trễ, đang chờ quyết định của nó, hay đang mắc kẹt. Có thì gọi dậy kèm danh sách đích danh
-những điểm cần nhìn. Không có thì bỏ qua nhịp đó trong im lặng.
+nào sắp trễ, đang mắc kẹt, hay đang chờ quyết định của nó. Có thì gọi dậy kèm danh sách đích danh những điểm
+cần nhìn. Không có thì bỏ qua nhịp đó trong im lặng.
 
 **Vì sao ưu tiên này**: Không có nhịp này thì mọi đầu việc chỉ tiến khi có ai đó gõ cửa — dự án đứng im mà
 không ai biết. Nhưng nó xếp sau câu chuyện 4 vì phải có gói tin đánh thức chuẩn trước. Đây cũng là vai bị
 đánh rơi trong bản thiết kế cũ.
 
 **Kiểm thử độc lập**: Để một dự án chạy trơn tru không có điểm treo → đếm số lần Trưởng dự án bị gọi dậy theo
-nhịp phải bằng không. Làm một đầu việc im quá ngưỡng → nhịp kế tiếp gọi dậy Trưởng dự án với lý do nêu đích
+nhịp phải bằng không. Đẩy một đầu việc sang *bị chặn* → nhịp kế tiếp gọi dậy Trưởng dự án với lý do nêu đích
 danh đầu việc đó.
 
 **Kịch bản chấp nhận**:
 
-1. **Cho** một dự án không có đầu việc nào im lâu, sắp trễ, mắc kẹt hay chờ quyết định, **khi** một nhịp
-   điều phối đến hạn, **thì** hệ thống **không** đánh thức Trưởng dự án và nhịp đó trôi qua trong im lặng.
+1. **Cho** một dự án không có đầu việc nào sắp trễ, mắc kẹt hay chờ quyết định, **khi** một nhịp điều phối
+   đến hạn, **thì** hệ thống **không** đánh thức Trưởng dự án và nhịp đó trôi qua trong im lặng.
 2. **Cho** một dự án có ba điểm treo, **khi** nhịp đến hạn, **thì** Trưởng dự án được gọi dậy đúng một lần
-   với lý do liệt kê đủ ba điểm ("đầu việc X im hai ngày, đầu việc Y sắp trễ, đầu việc Z đang chờ bạn quyết").
+   với lý do liệt kê đủ ba điểm ("đầu việc X đang bị chặn, đầu việc Y sắp trễ, đầu việc Z đang chờ bạn
+   quyết").
 3. **Cho** một dự án đang chạy trơn tru trong thời gian dài, **khi** hệ thống điều tiết nhịp, **thì** khoảng
    cách giữa các lần rà tự giãn ra; khi xuất hiện dấu hiệu ứ đọng thì nhịp dày trở lại.
 4. **Cho** một khoảng thời gian bất kỳ, **khi** đếm số lần Trưởng dự án bị gọi dậy theo nhịp, **thì** con số
@@ -523,7 +542,9 @@ thứ tự gắn trên từng chữ ký.
   đầu việc chuyển sang *xong*; một đầu việc thất bại hoặc quá hạn; hoặc một nhịp điều phối có điểm treo thật.
 - **FR-048**: HỆ THỐNG PHẢI đánh thức một thợ khi và chỉ khi có một trong các cớ: được giao đầu việc mới; bị
   nhắc tên trong trao đổi; có bình luận mới trên đầu việc mình phụ trách; cần làm tiếp một lượt còn dở; vướng
-  của mình đã được gỡ; hoặc bị nhắc vì **im lâu** (định nghĩa ở FR-052, ngưỡng ở mục Giả định).
+  của mình đã được gỡ; hoặc **lưới an toàn gọi lại** vì đầu việc mất động cơ đẩy (Mức 1 của thang phục hồi,
+  FR-059). Cớ cuối là đường duy nhất để một đầu việc đứng im gọi được thợ dậy: nhịp điều phối (FR-052) không
+  còn nhìn chuyện đứng im nữa, và cũng chưa bao giờ gọi thợ.
 - **FR-049**: HỆ THỐNG KHÔNG ĐƯỢC đánh thức một agent chỉ vì dự án có biến động chung — chỉ gọi khi có việc
   thuộc phần của chính nó đang chờ.
 - **FR-050**: Với mỗi cặp *(agent, đầu việc)*, HỆ THỐNG PHẢI giữ tối đa **một** lệnh đánh thức đang treo và
@@ -536,13 +557,17 @@ thứ tự gắn trên từng chữ ký.
 #### H. Nhịp điều phối của Trưởng dự án
 
 - **FR-052**: HỆ THỐNG PHẢI chạy một nhịp điều phối định kỳ *có kiểm soát* cho Trưởng dự án: trước mỗi nhịp
-  tự soi bảng việc tìm các **điểm treo**. Đúng bốn loại, mỗi loại có một định nghĩa kiểm được:
-  - *im lâu* — đầu việc không có hoạt động nào quá ngưỡng **và** không có lượt chạy nào đang sống. Vế thứ
-    hai để không giẫm lên cơ chế nghi treo (FR-062), thứ vốn đã lo trường hợp agent đang chạy rồi đứng hình.
+  tự soi bảng việc tìm các **điểm treo**. Đúng ba loại, mỗi loại đọc **một trường** trên bảng việc và có một
+  định nghĩa kiểm được:
   - *sắp trễ* — đầu việc có hạn chót và thời gian còn lại vừa chạm một trong các mốc cảnh báo. Đầu việc
     **không đặt hạn chót thì không bao giờ tính là sắp trễ**.
   - *mắc kẹt* — đầu việc đang ở trạng thái *bị chặn*.
   - *chờ quyết định của Trưởng dự án* — có một việc đang đợi chính Trưởng dự án ra tay.
+
+  Nhịp này KHÔNG ĐƯỢC hỏi *"có gì sắp chạm vào đầu việc này không"*. Đó là câu hỏi của vòng quét canh gác
+  (FR-057), thứ có **động cơ đẩy** (FR-056) để trả lời cho đúng và có thang phục hồi (FR-059) để xử lý câu
+  trả lời — trong đó Mức 2 vốn đã gọi chính Trưởng dự án. Nhịp điều phối chỉ đọc những trường nó tự nhìn
+  thấy trên bảng: hạn chót, trạng thái, sổ chữ ký.
 - **FR-053**: NẾU không có điểm treo nào, HỆ THỐNG KHÔNG ĐƯỢC đánh thức Trưởng dự án; nhịp đó trôi qua trong
   im lặng.
 - **FR-054**: NẾU có điểm treo, gói tin PHẢI nêu đích danh từng điểm cần nhìn, không nói chung chung "đến giờ
@@ -550,15 +575,15 @@ thứ tự gắn trên từng chữ ký.
 - **FR-055**: HỆ THỐNG PHẢI đặt trần số lần đánh thức theo nhịp trong một khoảng thời gian, tự giãn nhịp khi
   dự án **chạy trơn tru** và làm dày nhịp khi có **dấu hiệu ứ đọng**. Hai cụm đó không được để hiểu theo cảm
   tính — chúng là hai mặt của **một** phép đếm duy nhất:
-  - *chạy trơn tru* = lượt rà tìm thấy **0 điểm treo** (bốn loại ở FR-052, không loại nào khác);
+  - *chạy trơn tru* = lượt rà tìm thấy **0 điểm treo** (ba loại ở FR-052, không loại nào khác);
   - *có dấu hiệu ứ đọng* = lượt rà tìm thấy **từ 1 điểm treo trở lên**.
 
   Độ giãn tính theo **số lượt rà liên tiếp** tìm thấy 0 điểm treo. Một lượt có điểm treo xoá sạch chuỗi đó và
   kéo nhịp về dày hơn mức đã đặt. HỆ THỐNG KHÔNG ĐƯỢC dùng bất kỳ thước đo "trơn tru" nào khác — không điểm
   số, không trung bình, không phán đoán.
 
-  **Trần chỉ được phép hoãn, không được phép nuốt.** Ba loại điểm treo *im lâu*, *mắc kẹt*, *chờ quyết định*
-  được dựng lại từ bảng việc ở mọi lượt rà nên tự chúng thoả điều này. Riêng *sắp trễ* có trí nhớ: một mốc đã
+  **Trần chỉ được phép hoãn, không được phép nuốt.** Hai loại điểm treo *mắc kẹt* và *chờ quyết định* được
+  dựng lại từ bảng việc ở mọi lượt rà nên tự chúng thoả điều này. Riêng *sắp trễ* có trí nhớ: một mốc đã
   báo thì không báo lại. Vì vậy HỆ THỐNG chỉ được ghi một mốc hạn chót là **đã báo** khi lượt rà đó thật sự
   **giao được tới tay** Trưởng dự án. *Đã tiêu một lần gọi* KHÔNG đồng nghĩa *đã báo*: lượt rà bị trần chặn,
   lượt rà không có kênh gửi, và lượt rà gọi đi nhưng **không giao được** (Trưởng dự án ngoại tuyến hoặc đang
@@ -586,6 +611,21 @@ thứ tự gắn trên từng chữ ký.
 - **FR-059**: HỆ THỐNG PHẢI áp thang phục hồi ba mức theo đúng thứ tự, KHÔNG ĐƯỢC nhảy cóc: Mức 1 — hệ thống
   tự gọi lại, giữ nguyên người phụ trách, không quyết gì mới; Mức 2 — Trưởng dự án quyết một hành động phục
   hồi tường minh; Mức 3 — đẩy lên người chủ, chỉ với những quyết định duy nhất người chủ mới quyết được.
+- **FR-059a**: Mỗi nấc có một **điều kiện vào**, và HỆ THỐNG PHẢI kiểm điều kiện đó **trước khi** bước vào
+  nấc. Điều kiện vào Mức 1 là *đầu việc có người phụ trách* — vì Mức 1 định nghĩa là "hệ tự gọi lại, **giữ
+  nguyên người phụ trách**". Đầu việc chưa gán ai thì Mức 1 không có đối tượng để tác động: HỆ THỐNG KHÔNG
+  ĐƯỢC tiêu một lần thử nào ở nấc đó, và đầu việc PHẢI vào **thẳng Mức 2**.
+
+  Đây KHÔNG phải nhảy cóc theo nghĩa FR-059 cấm. Nhảy cóc là bỏ qua một nấc **còn có thể chạy**; đây là một
+  nấc **không áp dụng được**. Một cái thang bỏ ngân sách vào nấc nó biết chắc là trống thì không còn là
+  thang, nó là đồng hồ đếm ngược — và cái giá đúng bằng cả ngân sách Mức 1 (mặc định 3 lần, giãn dần, khoảng
+  35 phút) tiêu vào chỗ không ai nghe.
+
+  Lời hỏi Trưởng dự án ở Mức 2 PHẢI nói rõ đầu việc **chưa có người phụ trách**, không được dùng chung câu
+  chữ với ca kia. Hai ca dẫn tới Mức 2 cần hai hành động khác hẳn nhau: *gọi mãi người phụ trách không dậy*
+  thì Trưởng đổi người hoặc gỡ chặn; *chưa ai được giao* thì Trưởng chỉ cần **giao việc**. Hồ sơ ở Mức 3
+  (FR-061) PHẢI giữ được phân biệt đó — đây là ca thứ ba của cùng một luật mà FR-060a đã đặt ra cho *đã hỏi
+  tới nơi* với *không gọi được*.
 - **FR-060**: Mức 1 PHẢI có trần số lần tự gọi lại cho mỗi nguyên nhân trên mỗi đầu việc, khoảng cách giãn
   dần; bộ đếm PHẢI đặt lại về không khi đầu việc có tiến triển thật.
 - **FR-060a**: Mức 2 PHẢI có trần số lần hỏi Trưởng dự án cho mỗi nguyên nhân, khoảng cách giãn dần như Mức 1.
@@ -705,7 +745,7 @@ thứ tự gắn trên từng chữ ký.
   diện nhận tin rồi **đọc lại** dữ liệu chứ KHÔNG dựng trạng thái từ nội dung tin. Không được để một giá
   trị trên màn hình chỉ đúng lại sau khi tải lại trang. FR-080 mới cấm *hỏi vòng*; chỗ hụt thứ ba là
   **không hỏi mà cũng không được báo** — nhìn giống "đang yên" y hệt như hỏi vòng bị treo
-  *(Hiến pháp IV, hợp đồng `contracts/su-kien-day.md` nguyên tắc 1)*.
+  *(Hiến pháp IV, hợp đồng `contracts/push-events.md` nguyên tắc 1)*.
 - **FR-081**: Mọi truy vấn dữ liệu của tính năng này PHẢI giới hạn trong workspace của người gọi; truy cập
   chéo workspace PHẢI trả về "không tìm thấy" *(Hiến pháp I)*.
 - **FR-082**: Ngữ cảnh của agent (vai, đồng đội, đánh thức, lời nhắc vai) PHẢI lấy theo vai trong **dự án**
@@ -819,11 +859,11 @@ thứ tự gắn trên từng chữ ký.
     nhịp 1 phút — tức người vận hành đang nói "theo sát việc này" — bị kéo ra 120 lần. Ngoại lệ duy nhất:
     dự án tự đặt nhịp **rộng hơn 2 giờ** thì giữ nguyên nhịp của nó; trần này chặn *độ giãn*, không được
     phép rà dày hơn mức người vận hành yêu cầu.
-- **Hai ngưỡng của điểm treo** — chốt 2026-07-31, tài liệu gốc không có:
-  - *im lâu* = **5 phút** không có hoạt động nào trên đầu việc **và** không có lượt chạy nào đang sống. Vế
-    thứ hai để không giẫm lên ngưỡng nghi treo 10 phút — hai cơ chế lo hai kiểu im khác nhau.
-  - *sắp trễ* = bốn mốc cảnh báo trước hạn chót: **24 giờ, 12 giờ, 6 giờ, 1 giờ**, mỗi mốc báo đúng một lần.
-    Hạn chót là trường không bắt buộc, nên đầu việc không đặt hạn chót thì **không bao giờ** tính là sắp trễ.
+- **Ngưỡng của điểm treo *sắp trễ*** — chốt 2026-07-31, tài liệu gốc không có: bốn mốc cảnh báo trước hạn
+  chót là **24 giờ, 12 giờ, 6 giờ, 1 giờ**, mỗi mốc báo đúng một lần. Hạn chót là trường không bắt buộc, nên
+  đầu việc không đặt hạn chót thì **không bao giờ** tính là sắp trễ.
+  - Ngưỡng *im lâu* (5 phút) đã bỏ cùng với loại điểm treo đó — xem phiên làm rõ 2026-08-16. Hai loại điểm
+    treo còn lại đọc thẳng trạng thái và sổ chữ ký nên không cần ngưỡng thời gian nào.
 
 **Mặc định hợp lý khác**
 

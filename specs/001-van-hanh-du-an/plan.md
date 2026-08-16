@@ -74,9 +74,9 @@ specs/001-van-hanh-du-an/
 ├── data-model.md        # Giai đoạn 1 — thực thể, trường, chuyển trạng thái, di trú
 ├── contracts/           # Giai đoạn 1 — hợp đồng giao diện
 │   ├── README.md
-│   ├── mat-nguoi-dung.md
-│   ├── mat-agent.md
-│   └── su-kien-day.md
+│   ├── user-surface.md
+│   ├── agent-surface.md
+│   └── push-events.md
 ├── quickstart.md        # Giai đoạn 1 — kịch bản kiểm chứng chạy thật
 └── checklists/
     └── requirements.md

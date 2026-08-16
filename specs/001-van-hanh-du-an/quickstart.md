@@ -41,7 +41,7 @@ sự kiểm; `--force` để không bỏ qua nhờ bộ nhớ đệm của lần
 chạy `tsc -b`, nên nó mới là chỗ kiểm kiểu thật sự đang diễn ra.
 
 **Lưu ý về mốc nền**: `mypy armarius` **luôn thoát mã 1** vì dự án mang sẵn một lượng lỗi có từ trước, ghi ở
-bảng T002 trong [khao-sat-du-lieu.md](./khao-sat-du-lieu.md). Nó **không phải cổng đỏ/xanh** mà là cổng
+bảng T002 trong [data-survey.md](./data-survey.md). Nó **không phải cổng đỏ/xanh** mà là cổng
 *không được tăng*: so số đo với mốc nền, tăng thì mới là hỏng. (`npm run lint` từng cùng loại với nó, mốc
 nền 50; **từ T173 nó về 0 và thành cổng đỏ/xanh thật**.) Vì vậy đừng nối các lệnh bằng `&&` — nối thì
 `mypy` cắt ngang, và bộ kiểm máy chủ, kiểm kiểu giao diện, dựng bản phát hành sẽ **không bao giờ chạy tới**
@@ -51,7 +51,7 @@ trong khi người chạy tưởng đã kiểm đủ.
 hợp lớp ghi nhớ *viết tay* không giữ được; những cú pháp bộ biên dịch chưa hạ được thì chúng im lặng đi qua,
 và thành phần đó lặng lẽ không được tối ưu. Muốn biết thật thì chạy bộ biên dịch lên toàn bộ `frontend/src`
 và đếm sự kiện biên dịch hỏng — mốc sau T173 ghi ở bảng T002 trong
-[khao-sat-du-lieu.md](./khao-sat-du-lieu.md): **357 hàm được tối ưu, 2 lần bỏ cuộc, cả hai trong một thành
+[data-survey.md](./data-survey.md): **357 hàm được tối ưu, 2 lần bỏ cuộc, cả hai trong một thành
 phần dựng sẵn không màn nào dùng**.
 
 **Lưu ý về kiểm thử hiện có**: siết bảng chuyển trạng thái sẽ làm đỏ vài bài kiểm đang dựa vào đường
@@ -132,7 +132,7 @@ Một dự án, **một người chủ** (phạm vi hiện tại — xem Làm r�
    → Đủ **tám phần**. **Bối cảnh dự án có mặt** (đây là phần đang thiếu). Phần nào rỗng ghi rõ "không có".
    Nơi nộp thành phẩm là một mục riêng, không lẫn trong đoạn hướng dẫn.
 2. Bắn ba cớ gọi gần như cùng lúc cho **cùng** một cặp thợ–đầu việc (một bình luận mới, một lần nhắc tên,
-   một lần nhắc vì im lâu).
+   một lần lưới an toàn gọi lại).
    → Thợ chỉ thấy **một** lần gọi, lý do gộp liệt kê đủ ba cớ. Chỉ **một** lượt chạy.
 3. Trong lúc một lượt đang chạy, bắn thêm một cớ.
    → Lượt đang chạy hấp thụ; khi lượt kết thúc, hệ thống đánh giá lại xem còn cần gọi không rồi mới bắn.
@@ -143,9 +143,9 @@ Một dự án, **một người chủ** (phạm vi hiện tại — xem Làm r�
 
 ## Kịch bản 5 — Nhịp điều phối *(Câu chuyện 5)*
 
-1. Để một dự án chạy trơn tru, không đầu việc nào im lâu, sắp trễ, mắc kẹt hay chờ quyết định.
+1. Để một dự án chạy trơn tru, không đầu việc nào sắp trễ, mắc kẹt hay chờ quyết định.
    → Đếm số lần Trưởng dự án bị gọi dậy theo nhịp: phải bằng **không**. Nhịp trôi qua trong im lặng.
-2. Làm cho ba đầu việc rơi vào ba tình cảnh khác nhau (một im quá ngưỡng, một sắp trễ, một chờ quyết định).
+2. Làm cho ba đầu việc rơi vào ba tình cảnh khác nhau (một đang bị chặn, một sắp trễ, một chờ quyết định).
    → Nhịp kế tiếp gọi Trưởng dự án **đúng một lần**, lý do nêu **đích danh cả ba**.
 3. Để dự án chạy trơn tru một thời gian dài → khoảng cách giữa các lần rà tự giãn. Tạo ứ đọng → nhịp dày lại.
 4. Đếm số lần gọi theo nhịp trong một giờ → không vượt trần đã đặt.
@@ -159,17 +159,21 @@ Một dự án, **một người chủ** (phạm vi hiện tại — xem Làm r�
    → Cờ đình trệ nổi kèm lý do. Đầu việc **không bao giờ** tự nhảy sang *xong*.
 3. **Cạn ngân sách**: để một đầu việc bị tự gọi lại đủ ba lần mà không tiến.
    → Dừng tự thử, leo Mức 2: Trưởng dự án được gọi kèm hồ sơ đã thử.
-4. **Đặt lại bộ đếm**: cho đầu việc có tiến triển thật (nộp thêm, đổi trạng thái tiến lên).
+4. **Chưa có người phụ trách**: để một đầu việc *chờ làm* **không gán ai** mất động cơ đẩy (FR-059a).
+   → Thang vào **thẳng Mức 2**, **0 lần thử Mức 1**, và lời hỏi Trưởng dự án nói rõ đầu việc chưa có người
+   phụ trách — không dùng câu "đã tự gọi lại N lần". Đếm thời gian từ lúc nổi cờ tới lúc Trưởng được hỏi:
+   phải là ngay lượt quét đó, không phải sau ~35 phút.
+5. **Đặt lại bộ đếm**: cho đầu việc có tiến triển thật (nộp thêm, đổi trạng thái tiến lên).
    → Bộ đếm về không.
-5. **Ngoại tuyến**: ngắt một thợ.
+6. **Ngoại tuyến**: ngắt một thợ.
    → Thử lại theo nhịp giãn dần; suốt thời gian đó đầu việc gắn động cơ *chờ hành động phục hồi* và **không**
    bị tính đình trệ. Sau chuỗi thất bại → tuyên ngoại tuyến, đầu việc về *bị chặn* với lý do "người phụ trách
    ngoại tuyến", Trưởng dự án được báo.
-6. **Trưởng dự án ngoại tuyến** → người chủ được báo thẳng.
-7. **Người chủ im lặng**: để một mục chờ vượt ngưỡng nhắc.
+7. **Trưởng dự án ngoại tuyến** → người chủ được báo thẳng.
+8. **Người chủ im lặng**: để một mục chờ vượt ngưỡng nhắc.
    → Nhắc ba bậc thưa dần vào hộp thư. Dự án đậu đúng chỗ chờ, không tự đánh dấu xong hay thất bại. Trưởng
    dự án vẫn cho chạy tiếp các nhánh không phụ thuộc vào quyết định đang chờ.
-8. **Khởi động lại**: dựng lại vùng chứa máy chủ.
+9. **Khởi động lại**: dựng lại vùng chứa máy chủ.
    → Mọi đầu việc chưa đóng có lại động cơ đẩy đúng, dựng từ trạng thái bền cuối cùng.
 
 ## Kiểm chứng ràng buộc Hiến pháp

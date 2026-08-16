@@ -54,7 +54,7 @@ Không phải một lối vào — là nội dung hệ thống trao cho agent l�
 Phần nào rỗng thì ghi rõ "không có" (FR-045).
 
 Với gói tin **nhịp điều phối** gửi Trưởng dự án, phần *lý do gọi dậy* liệt kê đích danh từng điểm treo —
-"đầu việc AR-12 im hai ngày, AR-19 sắp trễ, AR-23 đang chờ bạn quyết" — không nói chung chung (FR-054).
+"đầu việc AR-12 đang bị chặn, AR-19 sắp trễ, AR-23 đang chờ bạn quyết" — không nói chung chung (FR-054).
 
 ## 5. Cớ đánh thức
 
@@ -62,7 +62,6 @@ Với gói tin **nhịp điều phối** gửi Trưởng dự án, phần *lý d
 |---|---|---|
 | Được giao việc, bị nhắc tên, có bình luận mới, tiếp lượt dở, gọi tay | **[có]** | Thợ |
 | Vướng đã được gỡ | **[sửa]** | Thợ |
-| Bị nhắc vì im lâu | **[mới]** | Thợ |
 | Đầu việc chuyển *chờ rà soát* | **[mới]** | Trưởng dự án |
 | Đầu việc chuyển *xong* | **[mới]** | Trưởng dự án |
 | Người chủ quyết (duyệt kế hoạch, công nhận, chuyển giai đoạn) | **[mới]** | Trưởng dự án |

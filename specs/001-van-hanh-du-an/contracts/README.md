@@ -6,9 +6,9 @@ Ba mặt giao tiếp phải mở rộng. Ký hiệu: **[có]** đã tồn tại 
 
 | Mặt | Ai gọi | Tệp hợp đồng |
 |---|---|---|
-| Mặt người dùng (`/v1`) | Trình duyệt của người chủ | [mat-nguoi-dung.md](./mat-nguoi-dung.md) |
-| Mặt agent (`/agent`) | Trưởng dự án và thợ | [mat-agent.md](./mat-agent.md) |
-| Dòng sự kiện đẩy | Trình duyệt, một chiều | [su-kien-day.md](./su-kien-day.md) |
+| Mặt người dùng (`/v1`) | Trình duyệt của người chủ | [user-surface.md](./user-surface.md) |
+| Mặt agent (`/agent`) | Trưởng dự án và thợ | [agent-surface.md](./agent-surface.md) |
+| Dòng sự kiện đẩy | Trình duyệt, một chiều | [push-events.md](./push-events.md) |
 
 ## Nguyên tắc chung
 
