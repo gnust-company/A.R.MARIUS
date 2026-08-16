@@ -40,6 +40,7 @@ from armarius.domain.services.leader_chat_prompt import (
     PlanScopeEntry,
     build_leader_chat_prompt,
 )
+from armarius.domain.services.wake_prompt import ProjectBrief
 from armarius.domain.services.wake_reason import WakeReason
 from armarius.infrastructure.events.topic_bus import TopicEventBus
 from armarius.shared.background import settle
@@ -296,13 +297,31 @@ class LeaderChatService:
                 PlanScopeEntry(item_id=i.id, title=i.title)
                 for i in (approved_plan.items if approved_plan else [])
             ]
+            # FR-009: the brief in force, same as every worker's packet. Reading
+            # `project.context`/`project.objective` instead — two raw columns that pass
+            # through no gate — meant the patron could revise the brief and have it
+            # approved, workers would read the new version, and the Leader would keep
+            # arguing from the old one.
+            approved_brief = await uow.project_contexts.get_approved(project.id)
+            brief = (
+                ProjectBrief(
+                    objective=approved_brief.objective,
+                    background=approved_brief.background,
+                    constraints=approved_brief.constraints,
+                    scope=approved_brief.scope,
+                    principles=approved_brief.principles,
+                )
+                if approved_brief is not None
+                else None
+            )
             prompt = build_leader_chat_prompt(
                 LeaderChatContext(
                     leader_name=leader.name,
                     project_id=project_id,
                     project_name=project.name,
                     workspace_name=workspace.name if workspace else "",
-                    project_context=project.context or project.objective,
+                    project_brief=brief,
+                    commission=project.context or project.objective or "",
                     directory=directory,
                     recent_turns=[
                         ChatTurn(role=t.get("role", ""), text=t.get("text", ""))

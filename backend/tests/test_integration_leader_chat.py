@@ -30,6 +30,10 @@ from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.domain.entities.leader_chat import ChatState, LeaderChatError
 from armarius.domain.entities.marius import Liveness
+from armarius.domain.entities.project_context import (
+    ContextApprovalStatus,
+    ProjectContext,
+)
 from armarius.domain.entities.run import RunStatus, WakeSource
 from armarius.domain.entities.task import TaskStatus
 from armarius.domain.services.wake_reason import reason as wake_reason
@@ -37,6 +41,7 @@ from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.events.topic_bus import TopicEventBus
+from armarius.shared.clock import utcnow
 from tests.support.fakes import FakeLivenessProbe
 
 _TERMINAL = (RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.TIMED_OUT)
@@ -293,3 +298,91 @@ async def test_a_wake_that_could_not_be_delivered_does_not_mark_the_leader_alive
         "một lần gọi hụt được ghi nhận là tín hiệu sống, nên Trưởng dự án đã chết vẫn "
         "mãi mãi trực tuyến và người chủ không bao giờ được báo (FR-064)"
     )
+
+
+class _CapturingAdapter:
+    """Keeps the packet it was handed, so a test can read what the Leader was actually
+    told rather than what the builder would produce if called the same way."""
+
+    type = "capturing"
+    capabilities = AdapterCapabilities(resumable=True, streaming=True, transport="process")
+
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+
+    async def execute(self, ctx):  # noqa: ANN001
+        self.prompts.append(ctx.prompt)
+        if ctx.on_event is not None:
+            await ctx.on_event("assistant.delta", {"text": "ok"})
+        return ExecResult(status=RunStatus.COMPLETED, session_params=ctx.session_params)
+
+    async def test_environment(self, config: dict):  # noqa: ANN001, ARG002
+        return Diagnostics(ok=True, detail="fine")
+
+
+@pytest.mark.asyncio
+async def test_the_leader_is_told_the_approved_brief_not_the_raw_project_columns(
+    uow_factory,
+) -> None:
+    """FR-009 trên dịch vụ thật (T183).
+
+    Dựng đúng tình huống làm lộ chỗ hụt: một bản Bối cảnh **đã duyệt** nằm cạnh hai cột
+    thô trên bảng dự án mang chữ khác. Thợ đọc bản đã duyệt; trước lần sửa này, Trưởng dự
+    án đọc hai cột thô — nên người chủ sửa Bối cảnh rồi duyệt xong, hai bên vẫn cãi nhau
+    trên hai bản khác nhau.
+    """
+    bus = TopicEventBus()
+    adapter = _CapturingAdapter()
+    registry = InMemoryAdapterRegistry()
+    registry.register(adapter)  # type: ignore[arg-type]
+    liveness = LivenessEngine(uow_factory, FakeLivenessProbe(True))
+    chat = LeaderChatService(
+        uow_factory,
+        registry=registry,
+        control_bus=bus,
+        liveness=liveness,
+        base_url="http://api",
+        run_timeout_seconds=30,
+    )
+    workspaces = WorkspaceService(uow_factory)
+    projects = ProjectService(uow_factory)
+    mariuses = MariusService(uow_factory)
+
+    ws = await workspaces.create_workspace("WS")
+    project = await projects.create_project(ws.id, "Apollo", roles=_roster())
+    leader = await mariuses.register(
+        workspace_id=ws.id, name="Lead", role="Leader",
+        skills=[], adapter_type="capturing", adapter_config={},
+    )
+    await projects.grant_seat(project.id, "leader", leader.id, system=True)
+    await liveness.record_signal(leader.id)
+
+    # Hai cột thô nói một đằng…
+    async with uow_factory() as uow:
+        stored = await uow.projects.get(project.id)
+        assert stored is not None
+        stored.objective = "STALE OBJECTIVE COLUMN"
+        stored.context = "STALE CONTEXT COLUMN"
+        await uow.projects.update(stored)
+        # …bản Bối cảnh đã duyệt nói một nẻo.
+        await uow.project_contexts.add(
+            ProjectContext(
+                project_id=project.id,
+                version=1,
+                objective="Ship the approved calculator.",
+                constraints="No third-party maths libraries.",
+                approval_status=ContextApprovalStatus.APPROVED,
+                approved_at=utcnow(),
+            )
+        )
+        await uow.commit()
+
+    await chat.send(project_id=project.id, message="Where are we?")
+    await _settle_chat(chat, project.id)
+
+    assert adapter.prompts, "Trưởng dự án chưa được gọi lần nào"
+    packet = adapter.prompts[-1]
+    assert "Ship the approved calculator." in packet
+    assert "No third-party maths libraries." in packet
+    assert "STALE OBJECTIVE COLUMN" not in packet
+    assert "STALE CONTEXT COLUMN" not in packet

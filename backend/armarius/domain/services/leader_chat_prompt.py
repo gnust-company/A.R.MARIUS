@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from armarius.domain.services.agent_prompt import agent_prompt_footer
+from armarius.domain.services.wake_prompt import NONE_MARKER, ProjectBrief
 
 
 @dataclass(frozen=True)
@@ -49,7 +50,13 @@ class LeaderChatContext:
     project_id: UUID
     project_name: str
     workspace_name: str
-    project_context: str | None
+    # The brief the patron approved (FR-009) — the same five parts, from the same version,
+    # that every worker on this project is woken with. `None` until one is approved.
+    project_brief: ProjectBrief | None
+    # The patron's own commission text off the project row. Raw material for the brief, not
+    # a substitute for it: shown only while there is no approved version, and always
+    # labelled as unapproved. It is the patron's writing, so it stays in their words.
+    commission: str
     directory: list[ChatDirectoryEntry]
     recent_turns: list[ChatTurn]
     plan_items: list[PlanScopeEntry]
@@ -57,6 +64,11 @@ class LeaderChatContext:
     # Leader knows the duties attached to its seat. Empty when the leader role has none.
     leader_role_description: str = ""
     credential_file: str | None = None
+
+
+def _value(text: str | None) -> str:
+    """An empty part reads as absent, never as a gap the agent has to interpret."""
+    return text.strip() if text and text.strip() else NONE_MARKER
 
 
 def build_leader_chat_prompt(ctx: LeaderChatContext) -> str:
@@ -77,8 +89,31 @@ def build_leader_chat_prompt(ctx: LeaderChatContext) -> str:
         f"- Workspace: {ctx.workspace_name or 'unknown'}"
         f" · Project: {ctx.project_name or 'unknown'} (id: {ctx.project_id})"
     )
-    if ctx.project_context:
-        lines.append(f"- Project context: {ctx.project_context.strip()}")
+    lines.append("")
+
+    lines.append("## Project context")
+    if ctx.project_brief is not None:
+        # Same five parts, same wording as the worker packet. The Leader and the worker
+        # judging each other's work off two different briefs is how a project drifts.
+        lines.append(
+            "The brief the patron approved for this project. It is what you and your "
+            "workers both answer to — judge proposals and finished work against it."
+        )
+        lines.append(f"- Objective: {_value(ctx.project_brief.objective)}")
+        lines.append(f"- Background: {_value(ctx.project_brief.background)}")
+        lines.append(f"- Constraints: {_value(ctx.project_brief.constraints)}")
+        lines.append(f"- Scope: {_value(ctx.project_brief.scope)}")
+        lines.append(f"- Principles: {_value(ctx.project_brief.principles)}")
+    else:
+        lines.append(
+            "There is **no approved brief** for this project yet. Writing one with the "
+            "patron is your job here; until they approve it, nothing below is settled."
+        )
+        if ctx.commission.strip():
+            lines.append(
+                f"- What the patron wrote when they opened the project: "
+                f"{ctx.commission.strip()}"
+            )
     lines.append("")
 
     if ctx.directory:
