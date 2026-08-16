@@ -26,6 +26,7 @@ from armarius.application.use_cases.recovery import NotOnTheLeadersRung
 from armarius.application.use_cases.tasks import (
     AlreadyAssignedError,
     ProjectNotReadyForTasks,
+    TitleRequiredError,
 )
 from armarius.application.use_cases.wake_engine import ProjectClosedError
 from armarius.domain.entities.approval import RejectionNeedsReasonError
@@ -114,6 +115,11 @@ def install_error_handlers(app: FastAPI) -> None:
         _: Request, exc: DescriptionRequiredError
     ) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(TitleRequiredError)
+    async def _title_required(_: Request, exc: TitleRequiredError) -> JSONResponse:
+        # FR-070a — an edit may clear a deadline, never the name of the job.
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
 
     @app.exception_handler(StatusReasonRequiredError)
     async def _reason_required(

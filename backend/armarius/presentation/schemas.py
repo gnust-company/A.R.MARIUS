@@ -377,6 +377,22 @@ class MetaOut(BaseModel):
 
 
 # ------------------------------------------------------------------------- task
+class EditTaskIn(BaseModel):
+    """The patron rewriting a task after it exists (FR-070a).
+
+    Every field is optional, and *omitted* is not the same as *sent empty*: sending
+    ``due_date: null`` wipes a deadline typed in by mistake, while leaving `due_date` out
+    keeps whatever is there. The route reads `model_fields_set` to tell the two apart, so
+    do not give these fields defaults that hide the difference.
+    """
+
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    description: str | None = None
+    priority: str | None = None
+    due_date: datetime | None = None
+    definition_of_done: str | None = None
+
+
 class CreateTaskIn(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     description: str | None = None

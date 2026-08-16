@@ -25,11 +25,28 @@ import {
   XCircle,
 } from 'lucide-react';
 import { ApiError, listTaskApprovals, signTaskApproval, type ApprovalDTO } from '@/lib/api';
-import { useAppStore, type TraceEvent, type Task } from '@/store/appStore';
+import {
+  useAppStore,
+  type Priority,
+  type Task,
+  type TaskEditPatch,
+  type TraceEvent,
+} from '@/store/appStore';
 import { useTaskStream } from '@/hooks/use-task-stream';
 import { subscribeProjectEvents } from '@/lib/sse';
 import { cn, wsHref } from '@/lib/utils';
 import { blockedReasonKey, needsReason, type TaskPhase } from '@/lib/taskRules';
+
+/** Bốn trường người chủ sửa được trên màn, ở dạng chuỗi mà ô nhập dùng. */
+interface TaskEditDraft {
+  title: string
+  description: string
+  priority: Priority
+  dueDate: string
+}
+
+/** Bốn mức ưu tiên, đúng bốn mức máy chủ có. */
+const PRIORITY_OPTIONS: readonly Priority[] = ['P0', 'P1', 'P2', 'P3'];
 
 // ─── Trace Event Type Colors ─────────────────────────────────────────────────
 
@@ -240,6 +257,7 @@ export default function CollaborationRoom() {
   const projects = useAppStore((s) => s.projects);
   const currentUser = useAppStore((s) => s.currentUser);
   const updateTask = useAppStore((s) => s.updateTask);
+  const editTask = useAppStore((s) => s.editTask);
   const addComment = useAppStore((s) => s.addComment);
   const setTaskCriteria = useAppStore((s) => s.setTaskCriteria);
   const publishArtifact = useAppStore((s) => s.publishArtifact);
@@ -359,6 +377,53 @@ export default function CollaborationRoom() {
 
   const [criteriaDraft, setCriteriaDraft] = useState<string | null>(null);
   const [criteriaError, setCriteriaError] = useState<string | null>(null);
+
+  // ── Người chủ sửa thẳng đầu việc (FR-070, FR-070a) ─────────────────────────
+  // Không có ô này thì người chủ gõ nhầm một hạn chót là phải huỷ đầu việc rồi tạo lại,
+  // mất cả bình luận, thành phẩm và vết. Bản nháp là `null` khi không mở ô sửa.
+  const [editDraft, setEditDraft] = useState<TaskEditDraft | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const openEditor = () => {
+    if (!task) return;
+    setEditError(null);
+    setEditDraft({
+      title: task.title,
+      description: task.description ?? '',
+      priority: (task.priority as Priority) ?? 'P2',
+      // Ô ngày của trình duyệt chỉ nhận "YYYY-MM-DD"; máy chủ gửi về cả giờ.
+      dueDate: task.dueDate ? task.dueDate.slice(0, 10) : '',
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!task || !editDraft) return;
+    setEditError(null);
+    setSaving(true);
+    try {
+      // Chỉ gửi thứ thật sự đổi. Ô để trống là **xoá** cái đang có, nên nó gửi đi một giá
+      // trị rỗng chứ không phải im lặng bỏ qua — đó là cách gỡ một hạn chót đặt nhầm.
+      const patch: TaskEditPatch = {};
+      if (editDraft.title !== task.title) patch.title = editDraft.title;
+      if (editDraft.description !== (task.description ?? '')) {
+        patch.description = editDraft.description.trim() ? editDraft.description : null;
+      }
+      if (editDraft.priority !== task.priority) patch.priority = editDraft.priority;
+      const currentDue = task.dueDate ? task.dueDate.slice(0, 10) : '';
+      if (editDraft.dueDate !== currentDue) {
+        patch.dueDate = editDraft.dueDate ? `${editDraft.dueDate}T00:00:00Z` : null;
+      }
+      if (Object.keys(patch).length > 0) {
+        await editTask(task.id, patch);
+      }
+      setEditDraft(null);
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleSaveCriteria = async () => {
     if (!task || criteriaDraft === null) return;
@@ -534,7 +599,7 @@ export default function CollaborationRoom() {
           className="flex-[30] flex flex-col min-h-0 bg-vellum-deep border border-vellum-dark rounded-md overflow-hidden"
         >
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
-            {/* Task Header */}
+            {/* Task Header — cùng chỗ đọc và chỗ sửa (FR-070, FR-070a). */}
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <span className="font-mono text-mono-md text-terracotta">{task.identifier}</span>
@@ -543,9 +608,102 @@ export default function CollaborationRoom() {
                   {task.priority}
                 </span>
               </div>
-              <h1 className="font-display text-display-sm text-ink leading-tight">
-                {task.title}
-              </h1>
+
+              {editDraft !== null ? (
+                <div className="space-y-2">
+                  <input
+                    value={editDraft.title}
+                    onChange={(e) => setEditDraft({ ...editDraft, title: e.target.value })}
+                    placeholder={t('collaborationRoom.context.edit.titlePlaceholder')}
+                    className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors"
+                  />
+                  <textarea
+                    value={editDraft.description}
+                    onChange={(e) => setEditDraft({ ...editDraft, description: e.target.value })}
+                    rows={4}
+                    placeholder={t('collaborationRoom.context.edit.descriptionPlaceholder')}
+                    className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors resize-none"
+                  />
+                  <div className="flex gap-2">
+                    <label className="flex-1">
+                      <span className="block font-body text-body-xs text-ink-muted mb-1">
+                        {t('collaborationRoom.context.edit.priority')}
+                      </span>
+                      <select
+                        value={editDraft.priority}
+                        onChange={(e) =>
+                          setEditDraft({ ...editDraft, priority: e.target.value as Priority })
+                        }
+                        className="w-full px-2 py-1.5 bg-vellum border border-vellum-dark rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none cursor-pointer"
+                      >
+                        {PRIORITY_OPTIONS.map((p) => (
+                          <option key={p} value={p}>
+                            {t(`tasks.priority.${p}`)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex-1">
+                      <span className="block font-body text-body-xs text-ink-muted mb-1">
+                        {t('collaborationRoom.context.edit.dueDate')}
+                      </span>
+                      <input
+                        type="date"
+                        value={editDraft.dueDate}
+                        onChange={(e) => setEditDraft({ ...editDraft, dueDate: e.target.value })}
+                        className="w-full px-2 py-1.5 bg-vellum border border-vellum-dark rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none"
+                      />
+                    </label>
+                  </div>
+                  {/* Ô hạn chót để trống là xoá hẳn, không phải bỏ qua — nói thẳng ra, vì
+                      đây đúng là chỗ người ta ngại bấm nếu không chắc chuyện gì xảy ra. */}
+                  <p className="font-body text-body-xs text-ink-muted">
+                    {t('collaborationRoom.context.edit.hint')}
+                  </p>
+                  {editError && (
+                    <p className="font-body text-body-xs text-error">{editError}</p>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      disabled={saving}
+                      onClick={() => void handleSaveEdit()}
+                      className="px-3 py-1.5 rounded-md bg-gold text-ink font-body text-body-xs font-medium hover:bg-gold-light transition-colors disabled:opacity-50"
+                    >
+                      {t('common.save')}
+                    </button>
+                    <button
+                      disabled={saving}
+                      onClick={() => { setEditDraft(null); setEditError(null); }}
+                      className="px-3 py-1.5 rounded-md border border-vellum-dark text-ink-light font-body text-body-xs hover:text-ink transition-colors disabled:opacity-50"
+                    >
+                      {t('common.cancel')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <h1 className="font-display text-display-sm text-ink leading-tight">
+                    {task.title}
+                  </h1>
+                  {task.description && (
+                    <p className="mt-1.5 font-body text-body-sm text-ink-light whitespace-pre-wrap">
+                      {task.description}
+                    </p>
+                  )}
+                  {task.dueDate && (
+                    <p className="mt-1.5 font-body text-body-xs text-ink-muted">
+                      {t('collaborationRoom.context.edit.dueDate')}:{' '}
+                      {new Date(task.dueDate).toLocaleDateString()}
+                    </p>
+                  )}
+                  <button
+                    onClick={openEditor}
+                    className="mt-2 font-body text-body-xs text-terracotta hover:underline"
+                  >
+                    {t('collaborationRoom.context.edit.open')}
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Status */}

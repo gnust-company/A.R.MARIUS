@@ -33,6 +33,9 @@ class TaskLogKind(StrEnum):
     CRITERIA_CHANGED = "criteria_changed"
     REOPENED = "reopened"
     PLAN_ITEM_LINKED = "plan_item_linked"
+    # The patron rewrote the job after it existed (FR-070a). `detail["fields"]` names what
+    # moved; the values themselves stay on the task, not in the trail.
+    EDITED = "edited"
 
 
 class ActorKind(StrEnum):

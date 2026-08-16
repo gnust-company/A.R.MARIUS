@@ -11,6 +11,7 @@ import {
   mariusToVM,
   onboardingToVM,
   projectDetailToVM,
+  PRIORITY_TO_DTO,
   projectToVM,
   skillToVM,
   taskToVM,
@@ -169,6 +170,8 @@ export interface Task {
   checklist?: ChecklistItem[]
   cardCounts?: TaskCardCounts
   definitionOfDone?: string
+  /** Hạn chót (FR-070a). Người chủ sửa được, và xoá được. */
+  dueDate?: string | null
   /** Why the task sits where it does — mandatory on blocked/cancelled/send-back (FR-030). */
   statusReason?: string
   /** The approved plan item that makes this task in scope (FR-027); absent = outside it. */
@@ -186,8 +189,17 @@ export interface Task {
  * current task — which is what every call site has always passed. */
 export type TaskUpdate = Partial<Task> | ((prev: Task) => Task)
 
+/** Bản vá người chủ gửi lên. Mọi trường đều tuỳ chọn; `null` là xoá. */
+export interface TaskEditPatch {
+  title?: string
+  description?: string | null
+  priority?: Priority
+  dueDate?: string | null
+  definitionOfDone?: string | null
+}
+
 export type TaskStatus = 'pending' | 'in-progress' | 'review' | 'done' | 'cancelled' | 'todo' | 'in_review' | 'in_progress' | 'backlog' | 'blocked' | 'draft'
-export type Priority = 'low' | 'normal' | 'high' | 'urgent' | 'P0' | 'P1' | 'P2'
+export type Priority = 'low' | 'normal' | 'high' | 'urgent' | 'P0' | 'P1' | 'P2' | 'P3'
 
 // Backend draft-task status — a Leader-proposed draft only promotes to `todo` on Patron
 // approval in the Leader chat (#82).
@@ -474,6 +486,10 @@ interface AppStoreState {
   setSidebarCollapsed: (collapsed: boolean) => void
   setSseConnected: (connected: boolean) => void
   updateTask: (taskId: string, updater: TaskUpdate) => Promise<void>
+  /** Người chủ sửa thẳng một đầu việc, có hiệu lực ngay (FR-070, FR-070a).
+   *  Chỉ gửi đi những khoá thật sự có trong bản vá: khoá vắng mặt là *không đụng*,
+   *  còn khoá mang giá trị rỗng là *xoá* — hai chuyện khác nhau ở phía máy chủ. */
+  editTask: (taskId: string, patch: TaskEditPatch) => Promise<void>
   /** Add a blocked_by edge (this task waits on blocksTaskId), then refresh its blocker list. */
   addTaskDependency: (taskId: string, blocksTaskId: string) => Promise<void>
   /** Remove a blocked_by edge. */
@@ -667,6 +683,24 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
         console.error('updateTask status failed, reverted:', e)
       }
     }
+  },
+
+  editTask: async (taskId, patch) => {
+    // Dựng thân yêu cầu từ đúng những khoá người gọi đưa vào, không phải từ cả đầu việc:
+    // trải một đối tượng đầy đủ vào đây là lặng lẽ ghi đè mọi trường, và làm mất luôn
+    // phân biệt "không đụng" với "xoá" mà cả lối này dựa vào.
+    const body: Record<string, unknown> = {}
+    if ('title' in patch) body.title = patch.title
+    if ('description' in patch) body.description = patch.description
+    if ('priority' in patch) body.priority = PRIORITY_TO_DTO[patch.priority as string] ?? patch.priority
+    if ('dueDate' in patch) body.due_date = patch.dueDate
+    if ('definitionOfDone' in patch) body.definition_of_done = patch.definitionOfDone
+    // Lỗi để nổi lên: ô sửa cần hiện câu từ chối của máy chủ chứ không nuốt đi.
+    const dto = await api.editTask(taskId, body)
+    const fresh = taskToVM(dto)
+    set({
+      tasks: get().tasks.map((t) => (t.id === taskId ? { ...t, ...fresh } : t)),
+    })
   },
 
   addTaskDependency: async (taskId, blocksTaskId) => {

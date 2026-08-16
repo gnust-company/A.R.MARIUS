@@ -439,9 +439,10 @@ export const en = {
       cancelled: 'Cancelled',
     },
     priority: {
-      P0: 'P0',
-      P1: 'P1',
-      P2: 'P2',
+      P0: 'Critical',
+      P1: 'High',
+      P2: 'Medium',
+      P3: 'Low',
     },
   },
   board: {
@@ -611,6 +612,14 @@ export const en = {
       criteriaLocked: 'The worker has started — changing the criteria now is a scope change and has to go to the patron.',
       criteriaPlaceholder: 'One checkable true/false statement per line.',
       criteriaHint: 'One criterion per line. Set them before the worker starts.',
+      edit: {
+        open: 'Edit task',
+        titlePlaceholder: 'Task title',
+        descriptionPlaceholder: 'The detailed brief: what to do and how.',
+        priority: 'Priority',
+        dueDate: 'Deadline',
+        hint: 'Edits take effect immediately. Leaving the deadline blank removes it altogether.',
+      },
       dependencies: 'Dependencies',
       noDependencies: 'No blockers — this task depends on nothing.',
       addDependency: '+ Add a blocker…',

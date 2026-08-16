@@ -440,9 +440,10 @@ export const vi = {
       cancelled: 'Đã hủy',
     },
     priority: {
-      P0: 'P0',
-      P1: 'P1',
-      P2: 'P2',
+      P0: 'Khẩn cấp',
+      P1: 'Cao',
+      P2: 'Trung bình',
+      P3: 'Thấp',
     },
   },
   board: {
@@ -612,6 +613,14 @@ export const vi = {
       criteriaLocked: 'Người phụ trách đã bắt tay — sửa tiêu chí lúc này là một thay đổi lớn, phải treo chờ người chủ duyệt.',
       criteriaPlaceholder: 'Mỗi dòng một khẳng định đúng/sai kiểm được.',
       criteriaHint: 'Mỗi dòng là một tiêu chí. Đặt trước khi người phụ trách bắt tay.',
+      edit: {
+        open: 'Sửa đầu việc',
+        titlePlaceholder: 'Tiêu đề đầu việc',
+        descriptionPlaceholder: 'Mô tả chi tiết: làm gì và làm thế nào.',
+        priority: 'Độ ưu tiên',
+        dueDate: 'Hạn chót',
+        hint: 'Sửa xong có hiệu lực ngay. Để trống ô hạn chót là gỡ hẳn hạn chót đang có.',
+      },
       dependencies: 'Phụ thuộc',
       noDependencies: 'Không có việc chặn — nhiệm vụ này không chờ việc nào.',
       addDependency: '+ Thêm việc chặn…',
