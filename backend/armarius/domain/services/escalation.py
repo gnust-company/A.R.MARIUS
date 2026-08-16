@@ -10,6 +10,14 @@ is the rule that carries the weight: a ladder that can jump straight to the patr
 ladder that asks a person for something the system had not even tried once, and after two
 of those the person stops reading.
 
+Each rung also has an **entry condition**, checked before the rung is entered rather than
+discovered inside it (FR-059a). Level 1 is defined as *re-wake the same assignee*, so a
+task with nobody on it has no rung to enter: it goes straight to Level 2, and spends no
+budget on the way. That is not skipping. Skipping is passing over a rung that could still
+work; this is a rung that does not apply. Before the check existed, an unassigned task
+burned its whole Level-1 budget — three attempts, spaced 5, 10 and 20 minutes — calling a
+number nobody was on, and only then asked the Leader.
+
 Two things this module deliberately does *not* know: what counts as "real progress" (that
 is a judgement about comments, artifacts and status moves, and it belongs to the
 application layer, which passes the verdict in), and what the recovery action actually is.
@@ -65,11 +73,20 @@ def advance(
     handover_cap: int,
     progressed: bool,
     cause: str | None = None,
+    level1_available: bool = True,
 ) -> EscalationState:
     """Where the ladder stands after one more sweep found this task still stuck.
 
     ``progressed`` — the task genuinely moved since the last look. ``cause`` — what the
     task is stuck on now; a different cause than the one on record starts a fresh budget.
+    ``level1_available`` — whether Level 1 has anything to act on, i.e. whether the task
+    has an assignee to re-wake (FR-059a). False sends the task straight to Level 2 without
+    spending a single attempt, and keeps it there if it is already on Level 1: a rung that
+    stopped applying halfway through is no more enterable than one that never applied.
+
+    The flag is phrased as *is this rung available* rather than *is somebody assigned* on
+    purpose. This module knows rungs and budgets; who is on a task is the application
+    layer's fact to look up and pass in, the same way ``progressed`` is.
 
     There is deliberately no "the Leader answered" input. Answering is not the thing this
     ladder measures — a Leader can say *I reassigned it to Bob* and leave a task exactly as
@@ -86,12 +103,17 @@ def advance(
 
     # A new cause is a new problem. Same task, same ladder, fresh budget — both budgets.
     if cause is not None and cause != state.cause:
-        return EscalationState(level=EscalationLevel.LEVEL_1, attempts=1, cause=cause)
+        return _enter_from_scratch(cause, level1_available=level1_available)
 
     if state.level is EscalationLevel.NONE:
-        return replace(state, level=EscalationLevel.LEVEL_1, attempts=1)
+        return _enter_from_scratch(state.cause, level1_available=level1_available)
 
     if state.level is EscalationLevel.LEVEL_1:
+        # Entry condition re-checked, not assumed to hold for the rest of the rung: a task
+        # can lose its assignee mid-budget, and from that moment Level 1 has nothing left
+        # to act on. The attempts already spent stay on record for the dossier (FR-061).
+        if not level1_available:
+            return replace(state, level=EscalationLevel.LEVEL_2, handovers=1)
         if state.attempts < cap:
             return replace(state, attempts=state.attempts + 1)
         # Budget spent. Hand over — and leave the counter where it is, because that number
@@ -112,6 +134,18 @@ def advance(
     # Level 3. There is nothing above the patron, and the inbox item is already waiting on
     # them — further sweeps must leave the state completely alone rather than churn it.
     return state
+
+
+def _enter_from_scratch(cause: str, *, level1_available: bool) -> EscalationState:
+    """The rung a fresh problem starts on, entry condition checked first (FR-059a).
+
+    ``attempts`` stays at zero on the Level-2 path, and that zero is load-bearing: it is
+    what the Level-2 question and the Level-3 dossier read to tell *nobody was assigned*
+    apart from *the assignee was called and never came*.
+    """
+    if not level1_available:
+        return EscalationState(level=EscalationLevel.LEVEL_2, handovers=1, cause=cause)
+    return EscalationState(level=EscalationLevel.LEVEL_1, attempts=1, cause=cause)
 
 
 def backoff_seconds(attempt: int, *, base_seconds: int) -> int:

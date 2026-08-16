@@ -168,6 +168,10 @@ class RecoveryEscalator:
                 handover_cap=_HANDOVER_ATTEMPTS,
                 progressed=False,
                 cause=cause,
+                # FR-059a — Level 1 is *re-wake the assignee*, so an unassigned task has
+                # no rung to enter and goes straight to the Leader. Read here, from the
+                # task row, because the ladder itself must not know about assignees.
+                level1_available=task.assigned_marius_id is not None,
             )
             ladder.apply(state, now=now)
             ladder.last_attempt_at = now
@@ -189,7 +193,7 @@ class RecoveryEscalator:
             await uow.push_reasons.upsert(ladder)
             await uow.commit()
 
-        await self._act(task, ladder, cause=cause, now=now, climbed=before != state.level)
+        await self._act(task, ladder, cause=cause, now=now, before=before)
 
     async def leader_decided(
         self, task_id: UUID, *, action: str, now: datetime | None = None
@@ -460,14 +464,18 @@ class RecoveryEscalator:
         *,
         cause: str,
         now: datetime,
-        climbed: bool,
+        before: EscalationLevel,
     ) -> None:
+        # The rung it came from, not "the one below where it is now": those two stopped
+        # being the same answer once an unassigned task could enter at Level 2 (FR-059a),
+        # and the log would have claimed a Level-1 attempt that never happened.
+        climbed = before is not ladder.level
         if climbed:
             await self._log.record(
                 task.id,
                 TaskLogKind.ESCALATED,
                 actor_kind=ActorKind.SYSTEM,
-                before=f"mức {int(ladder.level) - 1}",
+                before=f"mức {int(before)}",
                 after=f"mức {int(ladder.level)}",
                 reason=cause,
                 detail={"attempts": ladder.attempts},
@@ -501,10 +509,13 @@ class RecoveryEscalator:
     ) -> None:
         """Mức 1 — poke the same assignee, decide nothing new.
 
-        A task with nobody on it cannot be re-woken, and that is not a failure to log
-        loudly: it is a task that needs the Leader, which the next rung is for.
+        A task with nobody on it never reaches this rung: having an assignee is Level 1's
+        entry condition and it is checked before the ladder steps in (FR-059a), so such a
+        task is already at Level 2 being handed to the Leader. The guard below is what is
+        left of the old behaviour — it used to be where an unassigned task quietly landed
+        after burning its whole budget on nobody.
         """
-        if task.assigned_marius_id is None:
+        if task.assigned_marius_id is None:  # pragma: no cover - unreachable via advance
             return
         try:
             await self._wakes.enqueue(
@@ -538,14 +549,26 @@ class RecoveryEscalator:
         **delivered** is still worth knowing, but only for the record: it decides whether
         the patron is told the Leader was asked or told nobody could reach them, and those
         two send the patron to do different things.
+
+        The two roads *into* this rung do need separate wording (FR-059a). A task whose
+        assignee was called and never came wants the Leader to reassign, split or unblock
+        it; a task nobody was ever given wants one thing, and it is not any of those.
+        Handing both the same paragraph would tell the Leader the system had tried three
+        times to wake somebody who does not exist.
         """
         if self._notifier is None or task.project_id is None:  # pragma: no cover
             return
-        delivered = await self._notifier.notify(
-            project_id=task.project_id,
-            text=(
-                f"Đầu việc {task.identifier or task.id} — {task.title} đang đình trệ.\n\n"
-                f"Vì sao: {cause}.\n\n"
+        if task.assigned_marius_id is None:
+            situation = (
+                "Đầu việc này chưa có người phụ trách, nên không có ai để hệ tự gọi lại: "
+                "Mức 1 không có đối tượng để tác động và hệ không tiêu lần thử nào vào "
+                "đó. Hai đường:\n"
+                "  1. Bạn giao đầu việc cho một người — giao xong là hệ tự gọi người đó "
+                "dậy, không cần bạn làm gì thêm.\n"
+                "  2. Không có ai để giao — báo lại để hệ đưa thẳng người chủ.\n\n"
+            )
+        else:
+            situation = (
                 f"Hệ thống đã tự gọi lại {ladder.attempts} lần mà đầu việc không nhúc "
                 "nhích, nên giờ cần bạn. Hai đường:\n"
                 "  1. Bạn xử lý — giao lại cho người khác, tách nhỏ, đổi yêu cầu, hay dừng "
@@ -553,6 +576,13 @@ class RecoveryEscalator:
                 "lời hứa.\n"
                 "  2. Ngoài tầm bạn — báo lại để hệ đưa thẳng người chủ, đừng ngồi thử "
                 "cho có.\n\n"
+            )
+        delivered = await self._notifier.notify(
+            project_id=task.project_id,
+            text=(
+                f"Đầu việc {task.identifier or task.id} — {task.title} đang đình trệ.\n\n"
+                f"Vì sao: {cause}.\n\n"
+                f"{situation}"
                 f"Đây là lần hỏi thứ {ladder.handover_attempts}/{_HANDOVER_ATTEMPTS}. "
                 "Hết lượt mà đầu việc vẫn đứng im thì người chủ được hỏi."
             ),
@@ -613,8 +643,15 @@ class RecoveryEscalator:
         # instead — the more useful sentence of the two, because a Leader nobody can reach
         # is a problem only the patron can fix, and it wants a different action from them.
         leader_asked = ladder.leader_reached_at is not None
+        # FR-059a — the dossier keeps the same distinction the Level-2 question made, for
+        # the same reason: a task nobody was ever given asks the patron for one thing, and
+        # it is not the thing an exhausted Level 1 asks for. Reported as a flag rather than
+        # inferred from `level1_attempts == 0`, so a reader never has to guess whether a
+        # zero means *not applicable* or *not yet tried*.
+        level1_applicable = task.assigned_marius_id is not None
         dossier: dict[str, object] = {
             "cause": cause,
+            "level1_applicable": level1_applicable,
             "level1_attempts": ladder.attempts,
             "last_attempt_at": ladder.last_attempt_at.isoformat()
             if ladder.last_attempt_at
@@ -622,7 +659,10 @@ class RecoveryEscalator:
             "leader_asked": leader_asked,
             "leader_asks": ladder.handover_attempts,
             "question": (
-                "Đầu việc này đã qua cả hai mức phục hồi mà vẫn không đi tiếp. "
+                "Đầu việc này chưa được giao cho ai, và Trưởng dự án cũng không giao. "
+                "Bạn muốn giao cho ai, hay huỷ nó?"
+                if not level1_applicable
+                else "Đầu việc này đã qua cả hai mức phục hồi mà vẫn không đi tiếp. "
                 "Bạn muốn giao lại cho ai khác, thu hẹp yêu cầu, hay huỷ nó?"
                 if leader_asked
                 else "Đầu việc này kẹt và không gọi được Trưởng dự án. Bạn muốn dựng lại "
@@ -637,13 +677,16 @@ class RecoveryEscalator:
             body=(
                 f"{task.title}\n\nVì sao: {cause}\n"
                 + (
-                    f"Hệ thống đã tự gọi lại {ladder.attempts} lần, rồi hỏi Trưởng dự "
-                    f"án {ladder.handover_attempts} lần. Trưởng dự án đã đọc nhưng đầu "
-                    "việc vẫn không có ai chạm vào."
+                    "Đầu việc chưa có người phụ trách nên hệ không tự gọi lại lần nào "
+                    f"— đã hỏi Trưởng dự án {ladder.handover_attempts} lần"
+                    if not level1_applicable
+                    else f"Hệ thống đã tự gọi lại {ladder.attempts} lần, rồi hỏi Trưởng "
+                    f"dự án {ladder.handover_attempts} lần"
+                )
+                + (
+                    ". Trưởng dự án đã đọc nhưng đầu việc vẫn không có ai chạm vào."
                     if leader_asked
-                    else f"Hệ thống đã tự gọi lại {ladder.attempts} lần, rồi thử hỏi "
-                    f"Trưởng dự án {ladder.handover_attempts} lần mà không gọi được "
-                    "— nên việc này chưa từng có ai quyết."
+                    else " mà không gọi được — nên việc này chưa từng có ai quyết."
                 )
             ),
             project_id=task.project_id,

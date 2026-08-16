@@ -39,6 +39,7 @@ from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.entities.task import TaskStatus
+from armarius.domain.entities.task_log import TaskLogKind
 from armarius.domain.entities.wakeup import WakeupRequest
 from armarius.domain.services.escalation import EscalationLevel
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
@@ -55,7 +56,6 @@ THRESHOLDS = ProjectThresholds(
     hang_suspect_seconds=600,
     hang_grace_seconds=120,
     orchestration_cadence_seconds=900,
-    task_silence_seconds=300,
     due_soon_hours=(24, 12, 6, 1),
     patron_reminder_hours=(8, 24, 72),
     level1_recovery_attempts=CAP,
@@ -207,6 +207,115 @@ async def test_the_budget_runs_out_and_the_leader_is_asked(uow_factory) -> None:
     assert "đình trệ" in notifier.calls[0]["text"]
     ladder = await _ladder(uow_factory, task.id)
     assert ladder is not None and ladder.level >= EscalationLevel.LEVEL_2
+
+
+# ── điều kiện vào nấc: đầu việc chưa có người phụ trách (FR-059a) ───────────────
+
+
+@pytest.mark.asyncio
+async def test_a_task_with_nobody_on_it_reaches_the_leader_on_the_first_sweep(
+    uow_factory,
+) -> None:
+    """FR-059a. Level 1 is *re-wake the assignee*, so an unassigned task has no rung there.
+
+    The cost of the old behaviour, measured: the ladder spent all three attempts waking
+    nobody, spaced 5, 10 and 20 minutes, and the Leader — the one party that could have
+    fixed this in one move, by assigning somebody — heard about it some thirty-five
+    minutes late.
+    """
+    _, project, _alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=None)
+    wakes, notifier = RecordingWakes(), RecordingNotifier()
+
+    await _escalator(
+        uow_factory, wakes=wakes, notifier=notifier, bus=TopicEventBus()
+    ).climb(task, cause=CAUSE, now=T0)
+
+    assert wakes.calls == [], "không có ai để gọi mà hệ vẫn tiêu một lần thử"
+    assert notifier.calls, "chưa gán ai mà Trưởng dự án không được hỏi ngay"
+    ladder = await _ladder(uow_factory, task.id)
+    assert ladder is not None
+    assert ladder.level is EscalationLevel.LEVEL_2
+    assert ladder.attempts == 0
+
+
+@pytest.mark.asyncio
+async def test_the_leader_is_told_which_of_the_two_roads_led_to_it(uow_factory) -> None:
+    """FR-059a. Two ways into Mức 2, two different things for the Leader to do.
+
+    *The assignee was called and never came* wants a reassignment, a split, an unblock.
+    *Nobody was ever given this* wants one move: assign it. Sharing one paragraph would
+    have told the Leader the system tried three times to wake somebody who does not exist.
+    """
+    _, project, alice = await _world(uow_factory)
+    unassigned = await _task(uow_factory, project.id, assignee=None)
+    stalled = await _task(uow_factory, project.id, assignee=alice.id)
+
+    orphan_notifier, worked_notifier = RecordingNotifier(), RecordingNotifier()
+    await _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=orphan_notifier, bus=TopicEventBus()
+    ).climb(unassigned, cause=CAUSE, now=T0)
+    worked = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=worked_notifier, bus=TopicEventBus()
+    )
+    for hour in range(5):
+        await worked.climb(stalled, cause=CAUSE, now=T0 + timedelta(hours=hour))
+
+    orphan_text = orphan_notifier.calls[0]["text"]
+    assert "chưa có người phụ trách" in orphan_text
+    assert "Hệ thống đã tự gọi lại" not in orphan_text, (
+        "nói với Trưởng dự án là đã gọi lại, trong khi không gọi ai lần nào"
+    )
+    assert "Hệ thống đã tự gọi lại" in worked_notifier.calls[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_the_log_records_the_rung_the_task_actually_came_from(uow_factory) -> None:
+    """The entry used to be written as *the level below where it is now*, which was the
+    same answer only while every climb was one rung. A task entering at Mức 2 would have
+    left a line claiming a Mức 1 attempt that never happened."""
+    _, project, _alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=None)
+
+    await _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(), bus=TopicEventBus()
+    ).climb(task, cause=CAUSE, now=T0)
+
+    async with uow_factory() as uow:
+        entries = list(await uow.task_logs.list_by_task(task.id))
+    climbs = [e for e in entries if e.kind is TaskLogKind.ESCALATED]
+    assert climbs, "leo thang mà không ghi vết"
+    assert climbs[0].before == "mức 0"
+    assert climbs[0].after == "mức 2"
+
+
+@pytest.mark.asyncio
+async def test_the_patron_dossier_keeps_the_unassigned_case_apart(uow_factory) -> None:
+    """FR-061 through FR-059a: the record has to survive all the way to the patron.
+
+    A bare ``level1_attempts: 0`` is ambiguous — *not applicable* and *not tried yet* read
+    the same — so the flag is carried explicitly and the letter says it in words.
+    """
+    _, project, _alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=None)
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(), bus=TopicEventBus()
+    )
+
+    for hour in range(7):
+        await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
+
+    async with uow_factory() as uow:
+        items = list(await uow.inbox.list_for_recipient("patron-1"))
+    escalations = [i for i in items if i.kind is InboxItemKind.ESCALATION]
+    assert escalations, "leo hết thang mà người chủ không nhận được gì"
+    dossier = escalations[0].attempt_dossier
+    assert dossier.get("level1_applicable") is False
+    assert dossier.get("level1_attempts") == 0
+    assert "giao" in str(dossier.get("question", "")), (
+        "hồ sơ không nói điều duy nhất cần làm là giao đầu việc cho ai đó"
+    )
+    assert "chưa có người phụ trách" in escalations[0].body
 
 
 class UnreachableNotifier:
