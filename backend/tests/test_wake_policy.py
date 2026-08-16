@@ -95,3 +95,10 @@ def test_a_worker_is_not_on_the_hook_for_reviewing_or_deciding() -> None:
     assert WakeSource.TASK_IN_REVIEW not in WORKER_WAKE_CAUSES
     assert WakeSource.PATRON_DECISION not in WORKER_WAKE_CAUSES
     assert WakeSource.TASK_DONE not in WORKER_WAKE_CAUSES
+
+
+def test_being_unblocked_is_the_workers_business_and_nobody_elses() -> None:
+    """FR-048 names it in the worker's list, and only there: the blocker clearing is a
+    call to *start*, and the only person who can start is whoever holds the task."""
+    assert WakeSource.DEPENDENCY_CLEARED in WORKER_WAKE_CAUSES
+    assert WakeSource.DEPENDENCY_CLEARED not in LEADER_WAKE_CAUSES
