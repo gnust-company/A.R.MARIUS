@@ -494,6 +494,7 @@ export const vi = {
       allClear: 'Không có điểm treo nào. Nhịp trôi qua trong im lặng.',
       skipped: 'Chưa gọi Trưởng dự án: {{reason}}',
       kind: {
+        // Retired kind — kept so sweeps recorded before FR-052 dropped it still render.
         silent: 'Im lâu',
         due_soon: 'Sắp tới hạn',
         blocked: 'Bị chặn',

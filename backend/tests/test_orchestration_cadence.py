@@ -1,13 +1,14 @@
-"""The four snags, and the rhythm that stretches and tightens (spec 001 FR-052, FR-055).
+"""The three snags, and the rhythm that stretches and tightens (spec 001 FR-052, FR-055).
 
 Everything here is a pure function driven off a **fixed** clock. A cadence rule tested
 against the real clock is a rule tested once, at whatever moment the suite happened to
-run; against a fixed clock every boundary is reachable — one second either side of the
-silence threshold, the exact moment a deadline mark is crossed, the sweep that finds
-nothing.
+run; against a fixed clock every boundary is reachable — the exact moment a deadline mark
+is crossed, the sweep that finds nothing.
 
-The spec is specific about all four snags, and the specificity is the point: "the board
-looks stuck" is not a rule anybody can implement twice the same way.
+The spec is specific about all three snags, and the specificity is the point: "the board
+looks stuck" is not a rule anybody can implement twice the same way. There used to be a
+fourth, *silent*, and its removal is guarded here too: this cadence must not go back to
+asking whether anything is about to touch a task.
 """
 
 from __future__ import annotations
@@ -28,7 +29,6 @@ from armarius.domain.services.orchestration_cadence import (
 )
 
 NOW = datetime(2026, 8, 5, 12, 0, 0, tzinfo=UTC)
-SILENCE = 300  # 5 minutes (FR-052, resolved in the spec's Assumptions)
 MARKS = (24, 12, 6, 1)
 
 
@@ -39,8 +39,6 @@ def _snapshot(**kw) -> TaskSnapshot:
         title="Kết xuất báo cáo",
         status=TaskStatus.IN_PROGRESS,
         due_date=None,
-        last_activity_at=NOW,
-        has_active_run=False,
         awaiting_leader_decision=False,
     )
     base.update(kw)
@@ -51,72 +49,52 @@ def _kinds(snags: list[Snag]) -> set[SnagKind]:
     return {s.kind for s in snags}
 
 
-# ── im lâu ───────────────────────────────────────────────────────────────────────
+# ── mắc kẹt và chờ quyết định ────────────────────────────────────────────────────
 
-async def test_a_task_quiet_past_the_threshold_with_no_live_run_is_a_snag() -> None:
-    task = _snapshot(last_activity_at=NOW - timedelta(seconds=SILENCE + 1))
+async def test_a_blocked_task_is_a_snag_that_names_itself() -> None:
+    task = _snapshot(status=TaskStatus.BLOCKED)
 
-    snags = find_snags([task], now=NOW, silence_seconds=SILENCE, due_soon_hours=MARKS)
+    snags = find_snags([task], now=NOW, due_soon_hours=MARKS)
 
-    assert _kinds(snags) == {SnagKind.SILENT}
+    assert _kinds(snags) == {SnagKind.BLOCKED}
     # FR-054: the packet must name what to look at, so the snag has to carry the identity
     # of the task rather than a bare count.
     assert snags[0].identifier == "P-1"
     assert "P-1" in snags[0].detail
 
 
-async def test_a_task_one_second_inside_the_threshold_is_not_a_snag() -> None:
-    task = _snapshot(last_activity_at=NOW - timedelta(seconds=SILENCE - 1))
+async def test_a_task_waiting_on_the_leader_is_a_snag() -> None:
+    task = _snapshot(status=TaskStatus.IN_REVIEW, awaiting_leader_decision=True)
 
-    assert find_snags([task], now=NOW, silence_seconds=SILENCE, due_soon_hours=MARKS) == []
+    assert _kinds(find_snags([task], now=NOW, due_soon_hours=MARKS)) == {
+        SnagKind.AWAITING_LEADER
+    }
 
 
-async def test_a_quiet_task_with_a_live_run_is_not_silent() -> None:
-    """The second half of the FR-052 definition, and the reason it is there.
+async def test_a_task_nobody_is_touching_is_not_this_cadence_s_business() -> None:
+    """The retired *silent* snag, guarded so it cannot come back (FR-052).
 
-    An agent that started a turn and went dark is the hang detector's job (FR-062), which
-    has its own thresholds and its own recovery. If the cadence also called it silent the
-    Leader would be woken about a task the safety net is already holding.
+    A task can sit untouched for a month and still be none of this loop's concern: whether
+    anything is about to touch it is the stall sweep's question (FR-057), answered from the
+    drive (FR-056), which this cadence does not read and must not guess at. It once did
+    guess, and counted a queued-but-not-yet-running wake — and a retry against an offline
+    assignee, which FR-063 says explicitly must not count — as silence.
+
+    The snapshot carries no activity timestamp and no live-run flag at all, so the rule has
+    nothing to relapse with. This test fails at import if either field returns.
     """
-    task = _snapshot(
-        last_activity_at=NOW - timedelta(hours=3),
-        has_active_run=True,
-    )
+    untouched = _snapshot(status=TaskStatus.IN_PROGRESS)
 
-    assert find_snags([task], now=NOW, silence_seconds=SILENCE, due_soon_hours=MARKS) == []
-
-
-async def test_a_blocked_task_is_reported_as_stuck_not_as_silent() -> None:
-    """A task with a stated reason for being quiet gets one snag, not two.
-
-    *Blocked* and *awaiting the Leader* both explain the silence. Reporting them twice
-    would inflate every sweep and teach the Leader to skim the list.
-    """
-    blocked = _snapshot(
-        status=TaskStatus.BLOCKED, last_activity_at=NOW - timedelta(hours=3)
-    )
-    awaiting = _snapshot(
-        identifier="P-2",
-        status=TaskStatus.IN_REVIEW,
-        awaiting_leader_decision=True,
-        last_activity_at=NOW - timedelta(hours=3),
-    )
-
-    snags = find_snags(
-        [blocked, awaiting], now=NOW, silence_seconds=SILENCE, due_soon_hours=MARKS
-    )
-
-    assert _kinds(snags) == {SnagKind.BLOCKED, SnagKind.AWAITING_LEADER}
+    assert find_snags([untouched], now=NOW, due_soon_hours=MARKS) == []
 
 
 async def test_closed_tasks_never_snag() -> None:
-    long_ago = NOW - timedelta(days=30)
     closed = [
-        _snapshot(status=TaskStatus.DONE, last_activity_at=long_ago),
-        _snapshot(status=TaskStatus.CANCELLED, last_activity_at=long_ago),
+        _snapshot(status=TaskStatus.DONE, due_date=NOW - timedelta(days=30)),
+        _snapshot(status=TaskStatus.CANCELLED, due_date=NOW - timedelta(days=30)),
     ]
 
-    assert find_snags(closed, now=NOW, silence_seconds=SILENCE, due_soon_hours=MARKS) == []
+    assert find_snags(closed, now=NOW, due_soon_hours=MARKS) == []
 
 
 # ── sắp trễ ──────────────────────────────────────────────────────────────────────
@@ -127,15 +105,15 @@ async def test_a_task_without_a_deadline_is_never_due_soon() -> None:
     A rule that treated *no deadline* as *infinitely overdue* — or as due now — would put
     every untimed task on every sweep and drown the real ones.
     """
-    task = _snapshot(due_date=None, last_activity_at=NOW)
+    task = _snapshot(due_date=None)
 
-    assert find_snags([task], now=NOW, silence_seconds=SILENCE, due_soon_hours=MARKS) == []
+    assert find_snags([task], now=NOW, due_soon_hours=MARKS) == []
 
 
 async def test_crossing_a_deadline_mark_is_a_snag_naming_the_mark() -> None:
     task = _snapshot(due_date=NOW + timedelta(hours=5))
 
-    snags = find_snags([task], now=NOW, silence_seconds=SILENCE, due_soon_hours=MARKS)
+    snags = find_snags([task], now=NOW, due_soon_hours=MARKS)
 
     assert _kinds(snags) == {SnagKind.DUE_SOON}
     # 5 hours left has crossed the 24, 12 and 6 hour marks; the tightest one is the news.
@@ -154,7 +132,6 @@ async def test_a_mark_already_reported_does_not_fire_again() -> None:
     snags = find_snags(
         [task],
         now=NOW,
-        silence_seconds=SILENCE,
         due_soon_hours=MARKS,
         reported_marks=already,
     )
@@ -169,7 +146,6 @@ async def test_a_tighter_mark_fires_even_when_a_looser_one_was_reported() -> Non
     snags = find_snags(
         [task],
         now=NOW,
-        silence_seconds=SILENCE,
         due_soon_hours=MARKS,
         reported_marks=already,
     )
@@ -198,34 +174,33 @@ async def test_three_tasks_in_three_predicaments_produce_three_named_snags() -> 
     One sweep, three snags, each naming its own task — that is what FR-054 asks the packet
     to carry, and the rule has to hand it up in that shape.
     """
-    silent = _snapshot(identifier="P-1", last_activity_at=NOW - timedelta(hours=1))
+    blocked = _snapshot(identifier="P-1", status=TaskStatus.BLOCKED)
     due = _snapshot(identifier="P-2", due_date=NOW + timedelta(hours=5))
     waiting = _snapshot(
         identifier="P-3", status=TaskStatus.IN_REVIEW, awaiting_leader_decision=True
     )
 
-    snags = find_snags(
-        [silent, due, waiting], now=NOW, silence_seconds=SILENCE, due_soon_hours=MARKS
-    )
+    snags = find_snags([blocked, due, waiting], now=NOW, due_soon_hours=MARKS)
 
-    assert _kinds(snags) == {SnagKind.SILENT, SnagKind.DUE_SOON, SnagKind.AWAITING_LEADER}
+    assert _kinds(snags) == {SnagKind.BLOCKED, SnagKind.DUE_SOON, SnagKind.AWAITING_LEADER}
     assert {s.identifier for s in snags} == {"P-1", "P-2", "P-3"}
 
 
 async def test_a_healthy_board_produces_no_snags_at_all() -> None:
     """FR-053's precondition. A sweep over a project that is running well finds nothing,
-    and *nothing* is what stops the Leader being woken."""
+    and *nothing* is what stops the Leader being woken.
+
+    None of these three has moved recently, and after FR-052 lost its *silent* snag that
+    is exactly as it should be: quiet is not a snag, and a board of quiet open work must
+    cost the Leader nothing.
+    """
     healthy = [
-        _snapshot(identifier="P-1", last_activity_at=NOW - timedelta(seconds=30)),
-        _snapshot(identifier="P-2", status=TaskStatus.TODO, last_activity_at=NOW),
-        _snapshot(
-            identifier="P-3",
-            last_activity_at=NOW - timedelta(hours=2),
-            has_active_run=True,
-        ),
+        _snapshot(identifier="P-1"),
+        _snapshot(identifier="P-2", status=TaskStatus.TODO),
+        _snapshot(identifier="P-3", status=TaskStatus.IN_REVIEW),
     ]
 
-    assert find_snags(healthy, now=NOW, silence_seconds=SILENCE, due_soon_hours=MARKS) == []
+    assert find_snags(healthy, now=NOW, due_soon_hours=MARKS) == []
 
 
 # ── giãn và làm dày nhịp (FR-055) ────────────────────────────────────────────────

@@ -507,6 +507,8 @@ def snag_to_row(snag: Snag) -> dict[str, object]:
 
 
 def snag_from_row(row: dict[str, object]) -> Snag:
+    # Rows written before *silent* was retired still say so, and reading history must not
+    # raise — which is exactly why the enum member outlived the rule that produced it.
     return Snag(
         kind=SnagKind(str(row.get("kind", SnagKind.SILENT))),
         task_id=UUID(str(row["task_id"])),

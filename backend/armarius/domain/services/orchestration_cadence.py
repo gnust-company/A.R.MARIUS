@@ -7,8 +7,11 @@ tick, and only spends a wake when the looking found something.
 
 This module is the *looking*, and nothing else — no I/O, no clock of its own. Two jobs:
 
-  * **find the snags** (FR-052). Four kinds, each with a definition that two people would
-    implement the same way. "The board looks stuck" is not one of those.
+  * **find the snags** (FR-052). Three kinds, each one field on the board read against a
+    definition that two people would implement the same way. "The board looks stuck" is
+    not one of those, and neither is "is anything about to touch this task" — that
+    question belongs to the stall sweep (FR-057), which has the drive (FR-056) to answer
+    it correctly and the recovery ladder (FR-059) to act on the answer.
   * **set the rhythm** (FR-055). Stretch while the project runs smoothly, tighten when work
     backs up, and never exceed a ceiling of wakes per hour.
 
@@ -28,12 +31,19 @@ from armarius.domain.entities.task import TaskStatus
 
 
 class SnagKind(StrEnum):
-    """The four things worth waking a Leader for. Closed list — FR-052 names all four."""
+    """The three things worth waking a Leader for. Closed list — FR-052 names all three."""
 
-    SILENT = "silent"  # quiet past the threshold with nothing running
     DUE_SOON = "due_soon"  # the deadline just crossed a warning mark
     BLOCKED = "blocked"  # sitting in *blocked*
     AWAITING_LEADER = "awaiting_leader"  # waiting on the Leader itself to act
+
+    # Retired. This cadence used to ask "has this task gone quiet", which is the stall
+    # sweep's question and which this loop had no drive to answer correctly — a task whose
+    # wake was queued but not yet running, and a task being retried because its assignee is
+    # offline, both read as silent here, and FR-063 says the second must not count. The
+    # member survives so sweeps recorded before the retirement still load; nothing produces
+    # it. Do not reintroduce a kind that needs this question.
+    SILENT = "silent"
 
 
 # Tasks that are finished with. Never a snag, however long ago they last moved.
@@ -48,10 +58,10 @@ _NOT_ON_THE_BOARD: frozenset[TaskStatus] = frozenset({TaskStatus.DRAFT})
 class TaskSnapshot:
     """One task as the sweep sees it — everything the rules need, and nothing else.
 
-    Deliberately not the ``Task`` entity: two of these fields (``has_active_run``,
-    ``awaiting_leader_decision``) are answers to questions about *other* tables, and
-    passing the entity would either hide those lookups inside the rule or leave the rule
-    unable to ask them.
+    Deliberately not the ``Task`` entity: ``awaiting_leader_decision`` is an answer about
+    *another* table, and passing the entity would either hide that lookup inside the rule
+    or leave the rule unable to ask it. The other three fields are read straight off the
+    board, which is the whole of what FR-052 allows this cadence to look at.
     """
 
     task_id: UUID
@@ -59,8 +69,6 @@ class TaskSnapshot:
     title: str
     status: TaskStatus
     due_date: datetime | None
-    last_activity_at: datetime | None
-    has_active_run: bool
     awaiting_leader_decision: bool
 
 
@@ -97,7 +105,6 @@ def find_snags(
     snapshots: Iterable[TaskSnapshot],
     *,
     now: datetime,
-    silence_seconds: int,
     due_soon_hours: Sequence[int],
     reported_marks: Mapping[UUID, int] | None = None,
 ) -> list[Snag]:
@@ -113,10 +120,7 @@ def find_snags(
         if task.status in _CLOSED or task.status in _NOT_ON_THE_BOARD:
             continue
 
-        explained = False
-
         if task.status is TaskStatus.BLOCKED:
-            explained = True
             snags.append(
                 Snag(
                     kind=SnagKind.BLOCKED,
@@ -127,7 +131,6 @@ def find_snags(
             )
 
         if task.awaiting_leader_decision:
-            explained = True
             snags.append(
                 Snag(
                     kind=SnagKind.AWAITING_LEADER,
@@ -135,22 +138,6 @@ def find_snags(
                     identifier=task.identifier,
                     detail=(
                         f"{task.identifier} — {task.title}: đang chờ chính bạn ra quyết định."
-                    ),
-                )
-            )
-
-        # *Silent* is for a quiet task with **no** stated reason for being quiet. A blocked
-        # task and one waiting on the Leader are both quiet by design; reporting them twice
-        # would double the length of every sweep and teach the reader to skim it.
-        if not explained and _is_silent(task, now=now, silence_seconds=silence_seconds):
-            snags.append(
-                Snag(
-                    kind=SnagKind.SILENT,
-                    task_id=task.task_id,
-                    identifier=task.identifier,
-                    detail=(
-                        f"{task.identifier} — {task.title}: im quá "
-                        f"{silence_seconds // 60} phút, không có lượt chạy nào đang sống."
                     ),
                 )
             )
@@ -171,21 +158,6 @@ def find_snags(
                 )
             )
     return snags
-
-
-def _is_silent(task: TaskSnapshot, *, now: datetime, silence_seconds: int) -> bool:
-    """Quiet past the threshold **and** with nothing running (FR-052).
-
-    The second half is not a refinement, it is the whole reason the rule is safe to run
-    every few minutes: a task whose agent started a turn and went dark belongs to the hang
-    detector (FR-062), which has its own thresholds and its own recovery. Two mechanisms
-    chasing the same task would wake the Leader about work that is already being rescued.
-    """
-    if task.has_active_run:
-        return False
-    if task.last_activity_at is None:
-        return True
-    return (now - task.last_activity_at).total_seconds() >= silence_seconds
 
 
 # ── the rhythm (FR-055) ──────────────────────────────────────────────────────────

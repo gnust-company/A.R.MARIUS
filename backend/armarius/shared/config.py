@@ -84,8 +84,6 @@ class Settings(BaseSettings):
     # How often the orchestration loop body wakes up to see which projects are due.
     # Much shorter than any project's own rhythm: the loop ticks, the project decides.
     orchestration_tick_seconds: float = 60.0
-    # A task with no activity AND no live run for this long counts as *silent* (FR-052).
-    task_silence_seconds: int = 300
     # Hours-before-deadline marks at which a task counts as *due soon* (FR-052). A task
     # with no deadline is never due soon.
     due_soon_hours: str = "24,12,6,1"
