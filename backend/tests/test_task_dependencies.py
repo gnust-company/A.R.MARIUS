@@ -16,6 +16,7 @@ from armarius.application.use_cases.projects import ProjectService, RoleSpec
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.application.use_cases.workspaces import WorkspaceService
+from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.task import DependencyNotMetError, TaskStatus
 from armarius.domain.entities.task_dependency import TaskDependencyError
 from armarius.infrastructure.adapters.echo import EchoAdapter
@@ -378,3 +379,141 @@ async def test_a_refused_move_names_the_blockers_that_are_missing(uow_factory) -
     assert set(refused.value.blockers) == {first.identifier, second.identifier}
     for identifier in (first.identifier, second.identifier):
         assert identifier in str(refused.value)
+
+
+# ── Được gỡ vướng là một cớ gọi dậy (FR-048, SC-009) ─────────────────────────────
+# Đổi trạng thái mới là nửa việc. SC-009 đòi đầu việc được gỡ phải *chuyển sang chờ làm
+# **và giao đi*** mà người chủ không phải chạm vào — nên người phụ trách phải được gọi
+# ngay tại đây, chứ không phải chờ lưới an toàn nhặt lại mười lăm phút sau.
+
+
+class _RecordingWakes:
+    """Stands in for the wake engine so a test can ask *who was called, and why*."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    async def enqueue(self, **kwargs) -> None:  # noqa: ANN003
+        self.calls.append(kwargs)
+
+
+def _services_with_recorded_wakes(uow_factory):
+    from armarius.application.use_cases.task_log import TaskLogService
+
+    wakes = _RecordingWakes()
+    tasks = TaskService(uow_factory, wakes, task_logs=TaskLogService(uow_factory))
+    return (
+        ProjectService(uow_factory),
+        tasks,
+        WorkspaceService(uow_factory),
+        MariusService(uow_factory),
+        wakes,
+    )
+
+
+def _cleared_wakes(wakes: _RecordingWakes) -> list[dict]:
+    return [c for c in wakes.calls if c["source"] is WakeSource.DEPENDENCY_CLEARED]
+
+
+async def _worker(mariuses, workspace_id, name="Alice"):
+    return await mariuses.register(
+        workspace_id=workspace_id,
+        name=name,
+        role="Worker",
+        skills=[],
+        adapter_type="echo",
+        adapter_config={},
+    )
+
+
+async def test_the_freed_task_calls_the_worker_holding_it(uow_factory) -> None:
+    """SC-009: gỡ xong là giao đi, không phải chỉ đổi một cột rồi để đấy."""
+    projects, tasks, workspaces, mariuses, wakes = _services_with_recorded_wakes(
+        uow_factory
+    )
+    ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
+    alice = await _worker(mariuses, ws.id)
+    blocker = await tasks.create(project_id=project.id, title="blocker", description="mô tả")
+    blocked = await tasks.create(
+        project_id=project.id, title="blocked", description="mô tả đủ để giao"
+    )
+    await tasks.add_dependency(blocked.id, blocker.id)
+    await tasks.assign(blocked.id, alice.id)
+
+    await _walk_to_done(tasks, uow_factory, blocker.id)
+
+    called = _cleared_wakes(wakes)
+    assert len(called) == 1, "được gỡ vướng mà không ai gọi người phụ trách dậy"
+    assert called[0]["marius_id"] == alice.id, "gọi nhầm người"
+    assert called[0]["task_id"] == blocked.id
+    assert blocker.identifier in called[0]["reason"], (
+        "gọi dậy mà không nói vướng nào vừa được gỡ (FR-046)"
+    )
+
+
+async def test_a_freed_task_with_nobody_on_it_calls_nobody(uow_factory) -> None:
+    """Không có người phụ trách thì không có ai để gọi — chuyện đó là của thang phục hồi."""
+    projects, tasks, workspaces, _mariuses, wakes = _services_with_recorded_wakes(
+        uow_factory
+    )
+    _ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
+    blocker = await tasks.create(project_id=project.id, title="blocker", description="mô tả")
+    blocked = await tasks.create(
+        project_id=project.id, title="blocked", description="mô tả đủ để giao"
+    )
+    await tasks.add_dependency(blocked.id, blocker.id)
+
+    await _walk_to_done(tasks, uow_factory, blocker.id)
+
+    assert _cleared_wakes(wakes) == []
+
+
+async def test_a_task_still_waiting_on_someone_else_is_not_called(uow_factory) -> None:
+    """Nửa được gỡ vẫn là bị chặn. Gọi lúc này là gọi người ta dậy để ngồi nhìn."""
+    projects, tasks, workspaces, mariuses, wakes = _services_with_recorded_wakes(
+        uow_factory
+    )
+    ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
+    alice = await _worker(mariuses, ws.id)
+    first = await tasks.create(project_id=project.id, title="một", description="mô tả")
+    second = await tasks.create(project_id=project.id, title="hai", description="mô tả")
+    blocked = await tasks.create(
+        project_id=project.id, title="chờ", description="mô tả đủ để giao"
+    )
+    await tasks.add_dependency(blocked.id, first.id)
+    await tasks.add_dependency(blocked.id, second.id)
+    await tasks.assign(blocked.id, alice.id)
+
+    await _walk_to_done(tasks, uow_factory, first.id)
+
+    assert _cleared_wakes(wakes) == []
+
+
+async def test_a_draft_that_stops_waiting_is_still_not_work(uow_factory) -> None:
+    """Hết bị chặn không có nghĩa là đã được duyệt lên bảng.
+
+    Một đầu việc *nháp* nằm ngoài luồng cho tới khi ai đó duyệt nó; gỡ vướng cho nó không
+    làm nó thành việc phải làm. Cớ này nói *"phần của mày đã sẵn sàng"* — nói câu đó về một
+    bản nháp là nói sai.
+    """
+    projects, tasks, workspaces, mariuses, wakes = _services_with_recorded_wakes(
+        uow_factory
+    )
+    ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
+    alice = await _worker(mariuses, ws.id)
+    blocker = await tasks.create(project_id=project.id, title="blocker", description="mô tả")
+    draft = await tasks.create(
+        project_id=project.id,
+        title="nháp",
+        description="mô tả đủ để giao",
+        status=TaskStatus.DRAFT,
+    )
+    await tasks.add_dependency(draft.id, blocker.id)
+    await tasks.assign(draft.id, alice.id)
+
+    await _walk_to_done(tasks, uow_factory, blocker.id)
+
+    async with uow_factory() as uow:
+        still_draft = await uow.tasks.get(draft.id)
+    assert still_draft is not None and still_draft.status == TaskStatus.DRAFT
+    assert _cleared_wakes(wakes) == []

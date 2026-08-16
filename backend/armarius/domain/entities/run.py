@@ -41,6 +41,11 @@ class WakeSource(StrEnum):
     # could ever produce, which made both lists aspirational rather than exhaustive.
     TASK_IN_REVIEW = "task_in_review"  # a task reached *in review* → the Leader must judge it
     IDLE_REMINDER = "idle_reminder"  # the task went quiet past its threshold (FR-052)
+    # The blocker it was waiting on finished (FR-031 → FR-048, SC-009). Freeing a task is
+    # only half of handing it over: without this the freed task sits in *todo* until the
+    # stall sweep happens past it, which is the safety net doing the job of the mechanism
+    # it exists to back up.
+    DEPENDENCY_CLEARED = "dependency_cleared"
 
 
 # A run that is still holding the (agent, task) pair. FR-050 allows at most one at a time,

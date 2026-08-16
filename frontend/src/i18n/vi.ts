@@ -714,6 +714,7 @@ export const vi = {
       assignment: 'Giao việc',
       mention: 'Nhắc tên',
       comment: 'Bình luận',
+      dependency_cleared: 'Đã gỡ vướng',
       on_demand: 'Theo yêu cầu',
       continuation: 'Tiếp tục',
       nudge: 'Nhắc nhở',

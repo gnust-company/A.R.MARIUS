@@ -34,6 +34,9 @@ _STRENGTH: dict[WakeSource, int] = {
     WakeSource.TASK_DONE: 65,
     WakeSource.WORKER_HANDBACK: 70,
     WakeSource.ASSIGNMENT: 80,
+    # Tied with assignment on purpose: both say "this is yours and you can start now", and
+    # to the worker being handed a task and having its task unblocked are the same call.
+    WakeSource.DEPENDENCY_CLEARED: 80,
     WakeSource.PROJECT_READY: 80,
     WakeSource.APPROVAL_REJECTED: 90,
     WakeSource.BRIEF_REVIEW: 90,

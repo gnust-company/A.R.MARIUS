@@ -713,6 +713,7 @@ export const en = {
       assignment: 'Task assignment',
       mention: 'Mention',
       comment: 'Comment',
+      dependency_cleared: 'Dependency cleared',
       on_demand: 'On demand',
       continuation: 'Continuation',
       nudge: 'Nudge',

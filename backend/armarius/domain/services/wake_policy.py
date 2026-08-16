@@ -45,6 +45,7 @@ WORKER_WAKE_CAUSES: frozenset[WakeSource] = frozenset(
         WakeSource.MENTION,  # named in a conversation
         WakeSource.COMMENT,  # new comment on a task it owns
         WakeSource.APPROVAL_REJECTED,  # its output came back for rework
+        WakeSource.DEPENDENCY_CLEARED,  # what it was waiting on is done (FR-031, SC-009)
         WakeSource.IDLE_REMINDER,  # its task went quiet past the threshold (FR-052)
     }
 )

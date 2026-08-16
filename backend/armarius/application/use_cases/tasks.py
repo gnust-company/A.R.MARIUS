@@ -775,6 +775,7 @@ class TaskService:
         # above just created, and asking before them would settle on a stale answer.
         await self._settle_drive(task_id)
         for freed in unlocked:
+            await self._wake_the_freed(freed, cleared_by=updated)
             # An unblocked task changed drive too — the thing it was waiting on is gone.
             await self._settle_drive(freed.id)
 
@@ -1216,6 +1217,34 @@ class TaskService:
             await self._inbox.resolve_pending_for_task(
                 task_id, kind=InboxItemKind.MAJOR_CHANGE_APPROVAL
             )
+
+    async def _wake_the_freed(self, freed: Task, *, cleared_by: Task) -> None:
+        """Call whoever holds a task that just stopped waiting (FR-048, SC-009).
+
+        Two conditions, and both are about not calling somebody to look at nothing.
+
+        *Somebody holds it* — an unassigned task has no one to wake; it needs the Leader to
+        put a name on it, and the recovery ladder is the road there (FR-059).
+
+        *It is on the board* — being unblocked is not the same as being approved. A draft
+        stops waiting exactly like any other task, but it is still a proposal, and telling
+        a worker "your part is ready" about a proposal is telling it something untrue. The
+        status is read after the unlock, so this is the question "is it work now", not "was
+        it moved just now": a task already *in progress* has somebody on it who does not
+        need to be interrupted to be told they may continue.
+        """
+        if freed.assigned_marius_id is None or freed.status is not TaskStatus.TODO:
+            return
+        await self._wake.enqueue(
+            marius_id=freed.assigned_marius_id,
+            task_id=freed.id,
+            source=WakeSource.DEPENDENCY_CLEARED,
+            reason=(
+                "vướng đã được gỡ: "
+                f"{cleared_by.identifier or cleared_by.id} đã xong, đầu việc của bạn "
+                "chuyển sang chờ làm"
+            ),
+        )
 
     async def _notify_leader(
         self, project_id: UUID | None, *, text: str, reason: str, source: WakeSource
