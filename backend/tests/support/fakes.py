@@ -36,7 +36,7 @@ from armarius.domain.entities.skill import Skill
 from armarius.domain.entities.task import Task, TaskStatus
 from armarius.domain.entities.task_dependency import TaskDependency
 from armarius.domain.entities.task_log import TaskLogEntry
-from armarius.domain.entities.workspace import Project, Workspace
+from armarius.domain.entities.workspace import Project, ProjectStatus, Workspace
 from armarius.domain.services.push_reason_rules import watches
 
 
@@ -120,6 +120,12 @@ class _FakeTaskRepo:
         self._s.tasks[task.id] = task
         return task
 
+    def _in_a_closed_project(self, task: Task) -> bool:
+        """FR-005 — mirrors the SQL scans' phase clause. A task whose project is missing
+        from the store counts as live, exactly as NOT EXISTS treats it."""
+        project = self._s.projects.get(task.project_id) if task.project_id else None
+        return project is not None and project.status is ProjectStatus.CLOSED
+
     async def list_stall_candidates(
         self, now: datetime, *, limit: int = 500
     ) -> list[Task]:
@@ -127,6 +133,7 @@ class _FakeTaskRepo:
             t
             for t in self._s.tasks.values()
             if watches(t.status)
+            and not self._in_a_closed_project(t)
             and (
                 t.drive is None
                 or (t.drive_expires_at is not None and t.drive_expires_at <= now)
@@ -135,7 +142,11 @@ class _FakeTaskRepo:
         ][:limit]
 
     async def list_open(self, *, limit: int = 1000) -> list[Task]:
-        return [t for t in self._s.tasks.values() if watches(t.status)][:limit]
+        return [
+            t
+            for t in self._s.tasks.values()
+            if watches(t.status) and not self._in_a_closed_project(t)
+        ][:limit]
 
 
 class _FakeRunRepo:

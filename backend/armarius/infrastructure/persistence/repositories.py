@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import CursorResult, case, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from armarius.domain.entities.approval import Approval
 from armarius.domain.entities.artifact import Artifact
@@ -23,6 +24,7 @@ from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.onboarding import OnboardingSession
 from armarius.domain.entities.orchestration_sweep import OrchestrationSweep
 from armarius.domain.entities.plan import Plan
+from armarius.domain.entities.project import ProjectStatus
 from armarius.domain.entities.project_context import ContextApprovalStatus, ProjectContext
 from armarius.domain.entities.push_reason import TaskPushReason
 from armarius.domain.entities.role import Role
@@ -856,6 +858,27 @@ class SqlMariusRepository(MariusRepository):
 _WATCHED_STATUS_VALUES: list[str] = sorted(str(s) for s in WATCHED_STATUSES)
 
 
+def _not_in_a_closed_project() -> ColumnElement[bool]:
+    """The FR-005 half of both safety-net scans: a closed project is history.
+
+    Written as NOT EXISTS rather than `project_id NOT IN (closed ids)` on purpose. The
+    `IN` form compares against an empty cell as *unknown* rather than *true*, so the day
+    `tasks.project_id` stops being mandatory, every task without a project would drop
+    silently out of the net — and a task with no project is exactly the kind nobody is
+    coming back for. NOT EXISTS keeps those rows.
+
+    It costs the one join the scan otherwise avoids. Worth it: the alternative is the
+    recovery ladder waking workers about a project the patron has declared finished, and
+    `change_phase` already promises in writing that nothing wakes for a closed project.
+    """
+    return ~(
+        select(ProjectModel.id)
+        .where(ProjectModel.id == TaskModel.project_id)
+        .where(ProjectModel.status == str(ProjectStatus.CLOSED))
+        .exists()
+    )
+
+
 class SqlTaskRepository(TaskRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
@@ -936,6 +959,7 @@ class SqlTaskRepository(TaskRepository):
         stmt = (
             select(TaskModel)
             .where(TaskModel.status.in_(_WATCHED_STATUS_VALUES))
+            .where(_not_in_a_closed_project())
             .where(
                 or_(
                     TaskModel.drive.is_(None),
@@ -956,6 +980,7 @@ class SqlTaskRepository(TaskRepository):
         stmt = (
             select(TaskModel)
             .where(TaskModel.status.in_(_WATCHED_STATUS_VALUES))
+            .where(_not_in_a_closed_project())
             .order_by(TaskModel.updated_at)
             .limit(limit)
         )

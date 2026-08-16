@@ -48,6 +48,7 @@ from armarius.domain.entities.wakeup import (
     WakeupStatus,
 )
 from armarius.domain.entities.workspace import Project, Workspace
+from armarius.domain.services.project_rules import is_closed
 from armarius.domain.services.wake_coalesce import merge_reasons, stronger_source
 from armarius.domain.services.wake_policy import decide_self_wake
 from armarius.domain.services.wake_prompt import (
@@ -69,6 +70,10 @@ _BLOCK_REASON_STATUSES = {TaskStatus.BLOCKED, TaskStatus.BACKLOG}
 #: How much of a crash's description is kept on the run. Enough to name what happened
 #: without letting one runaway message dominate the row.
 _MAX_ERROR_CHARS = 500
+
+
+class ProjectClosedError(Exception):
+    """Raised when something tries to wake an agent about a closed project (FR-005)."""
 
 
 def _describe(exc: BaseException) -> str:
@@ -130,6 +135,7 @@ class WakeEngine:
         is no longer what guarantees the invariant. The partial unique index is. If two
         callers race past the lock, the loser is told the pair is busy and folds in.
         """
+        await self._refuse_if_closed(task_id)
         async with self._lock:
             for attempt in (0, 1):
                 folded = await self._fold_into_pending(marius_id, task_id, source, reason)
@@ -150,6 +156,29 @@ class WakeEngine:
 
         self._spawn(run_id, marius_id, task_id)
         return run_id
+
+    async def _refuse_if_closed(self, task_id: UUID) -> None:
+        """FR-005 — a closed project wakes nobody, through any door.
+
+        This sits in front of every wake rather than beside each caller because the doors
+        are not all on the board. Filtering the stall sweep stops the loop that walks
+        `tasks`; it does nothing about the hung-run reaper, which walks `runs` and re-wakes
+        the assignee of a run that was still live when the patron closed the project. Two
+        loops, two tables, one rule — so the rule goes where both of them pass.
+
+        Refusing loudly rather than quietly returning: the patron's own manual wake button
+        comes through here too, and a button that silently does nothing is worse than one
+        that says why.
+        """
+        async with self._uow() as uow:
+            task = await uow.tasks.get(task_id)
+            if task is None or task.project_id is None:
+                return
+            project = await uow.projects.get(task.project_id)
+            if project is not None and is_closed(project.status):
+                raise ProjectClosedError(
+                    "Dự án đã đóng — không đánh thức agent của nó nữa."
+                )
 
     async def _fold_into_pending(
         self,

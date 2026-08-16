@@ -27,6 +27,7 @@ from armarius.application.use_cases.tasks import (
     AlreadyAssignedError,
     ProjectNotReadyForTasks,
 )
+from armarius.application.use_cases.wake_engine import ProjectClosedError
 from armarius.domain.entities.approval import RejectionNeedsReasonError
 from armarius.domain.entities.checklist_item import (
     CriteriaLockedError,
@@ -66,6 +67,11 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(InvalidPhaseTransition)
     async def _bad_phase(_: Request, exc: InvalidPhaseTransition) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(ProjectClosedError)
+    async def _closed_project_wake(_: Request, exc: ProjectClosedError) -> JSONResponse:
+        # FR-005 — the manual wake button on a closed project's task.
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(ProjectClosed)

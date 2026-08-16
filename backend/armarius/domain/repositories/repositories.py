@@ -236,9 +236,15 @@ class TaskRepository(ABC):
         out of the first two clauses, and keeps a red flag on the board forever. An alarm
         with no route back down is an alarm people learn to ignore.
 
+        Tasks in a **closed** project are excluded (FR-005). Closing a project only moves
+        one column on the project row; every open task it holds stays exactly where it was,
+        so without this clause the net keeps flagging them and the recovery ladder keeps
+        waking their workers — about a project the patron has declared finished.
+
         The one query the stall sweep runs, across every workspace, forever. It reads three
-        indexed columns on `tasks` and joins nothing — which is the whole reason the drive's
-        deadline lives on the task row rather than beside the ladder state.
+        indexed columns on `tasks` — which is the whole reason the drive's deadline lives on
+        the task row rather than beside the ladder state — plus one existence check against
+        `projects` for the phase.
 
         ``limit`` bounds one pass, not the problem: a service that comes up to ten thousand
         dropped tasks should raise the first few hundred alarms now and the rest next tick,
@@ -247,8 +253,11 @@ class TaskRepository(ABC):
 
     @abstractmethod
     async def list_open(self, *, limit: int = 1000) -> Sequence[Task]:
-        """Every watched task, drive or no drive. Used once at startup to rebuild drives
-        from the last durable state (FR-068), never on the hot path."""
+        """Every watched task outside a closed project, drive or no drive. Used once at
+        startup to rebuild drives from the last durable state (FR-068), never on the hot
+        path. Closed projects are skipped for the same reason as the sweep: rebuilding a
+        drive for a task nobody will ever be woken about is work done to no end, and it
+        puts that task back in the net's sights."""
 
 
 class TaskPushReasonRepository(ABC):
