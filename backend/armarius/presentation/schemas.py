@@ -838,7 +838,6 @@ class ThresholdsOut(_Out):
     hang_suspect_seconds: int
     hang_grace_seconds: int
     orchestration_cadence_seconds: int
-    task_silence_seconds: int
     due_soon_hours: list[int]
     patron_reminder_hours: list[int]
     level1_recovery_attempts: int
@@ -853,7 +852,6 @@ class ThresholdsIn(BaseModel):
     hang_suspect_seconds: int | None = Field(default=None, gt=0)
     hang_grace_seconds: int | None = Field(default=None, gt=0)
     orchestration_cadence_seconds: int | None = Field(default=None, gt=0)
-    task_silence_seconds: int | None = Field(default=None, gt=0)
     due_soon_hours: list[int] | None = None
     patron_reminder_hours: list[int] | None = None
     level1_recovery_attempts: int | None = Field(default=None, gt=0)

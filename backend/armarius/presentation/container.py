@@ -94,7 +94,6 @@ def _system_thresholds() -> ProjectThresholds:
         hang_suspect_seconds=settings.hang_suspect_seconds,
         hang_grace_seconds=settings.hang_grace_seconds,
         orchestration_cadence_seconds=settings.orchestration_cadence_seconds,
-        task_silence_seconds=settings.task_silence_seconds,
         due_soon_hours=tuple(settings.due_soon_hour_marks),
         patron_reminder_hours=tuple(settings.patron_reminder_hour_tiers),
         level1_recovery_attempts=settings.level1_recovery_attempts,

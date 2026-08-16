@@ -141,7 +141,6 @@ class OrchestrationLoop:
         snags = find_snags(
             snapshots,
             now=now,
-            silence_seconds=thresholds.task_silence_seconds,
             due_soon_hours=thresholds.due_soon_hours,
             reported_marks=carried,
         )
@@ -233,21 +232,22 @@ class OrchestrationLoop:
     ) -> list[TaskSnapshot]:
         """Everything the rules need about every open task, in one place.
 
-        Two of the fields are answers about other tables — is a run live for this task, is
-        the Leader's signature the thing this task is waiting on — and they are gathered
-        here rather than inside the rule so the rule stays a pure function.
+        One field is an answer about another table — is the Leader's signature the thing
+        this task is waiting on — and it is gathered here rather than inside the rule so
+        the rule stays a pure function. It is asked **once for the whole board**, not once
+        per task. This runs on a loop that never stops: a per-task lookup would turn a
+        two-hundred-task project into hundreds of round trips every pass, on every
+        project, forever.
 
-        Both are asked **once for the whole board**, not once per task. This runs on a loop
-        that never stops: a per-task lookup would turn a two-hundred-task project into some
-        four hundred round trips every pass, on every project, forever.
+        The rest is read straight off the board, which is all FR-052 lets this cadence
+        look at. It used to also ask which tasks had a live run, to decide whether a quiet
+        task was quiet for a reason; that question went with the *silent* snag.
         """
         tasks = [
             t
             for t in await uow.tasks.list_by_project(project_id)
             if t.status not in (TaskStatus.DONE, TaskStatus.CANCELLED, TaskStatus.DRAFT)
         ]
-        open_ids = [t.id for t in tasks]
-        running = await uow.runs.task_ids_with_active_run(open_ids)
         in_review = [t.id for t in tasks if t.status is TaskStatus.IN_REVIEW]
         awaiting = self._awaiting_leader(
             in_review, await uow.approvals.list_for_tasks(in_review)
@@ -259,8 +259,6 @@ class OrchestrationLoop:
                 title=task.title,
                 status=task.status,
                 due_date=as_utc(task.due_date),
-                last_activity_at=as_utc(task.updated_at or task.created_at),
-                has_active_run=task.id in running,
                 awaiting_leader_decision=task.id in awaiting,
             )
             for task in tasks

@@ -493,6 +493,7 @@ export const en = {
       allClear: 'Nothing hanging. The sweep passed in silence.',
       skipped: 'Leader not woken: {{reason}}',
       kind: {
+        // Retired kind — kept so sweeps recorded before FR-052 dropped it still render.
         silent: 'Silent',
         due_soon: 'Due soon',
         blocked: 'Blocked',

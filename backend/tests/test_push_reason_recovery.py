@@ -44,7 +44,6 @@ THRESHOLDS = ProjectThresholds(
     hang_suspect_seconds=600,
     hang_grace_seconds=120,
     orchestration_cadence_seconds=900,
-    task_silence_seconds=300,
     due_soon_hours=(24, 12, 6, 1),
     patron_reminder_hours=(8, 24, 72),
     level1_recovery_attempts=3,

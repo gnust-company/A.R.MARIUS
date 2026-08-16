@@ -46,7 +46,6 @@ THRESHOLDS = ProjectThresholds(
     hang_suspect_seconds=600,
     hang_grace_seconds=120,
     orchestration_cadence_seconds=900,
-    task_silence_seconds=300,
     due_soon_hours=(24, 12, 6, 1),
     patron_reminder_hours=(8, 24, 72),
     level1_recovery_attempts=3,
@@ -173,12 +172,12 @@ async def test_three_predicaments_wake_the_leader_exactly_once_naming_all_three(
     uow_factory,
 ) -> None:
     project, alice = await _world(uow_factory)
-    silent = await _task(
+    blocked = await _task(
         uow_factory,
         project.id,
-        title="Việc im lâu",
-        status=TaskStatus.IN_PROGRESS,
-        updated_at=T0 - timedelta(hours=2),
+        title="Việc bị chặn",
+        status=TaskStatus.BLOCKED,
+        updated_at=T0,
     )
     due = await _task(
         uow_factory,
@@ -202,10 +201,10 @@ async def test_three_predicaments_wake_the_leader_exactly_once_naming_all_three(
 
     assert len(notifier.calls) == 1
     packet = notifier.calls[0]["text"]
-    for task in (silent, due, waiting):
+    for task in (blocked, due, waiting):
         assert (task.identifier or "") in packet, f"{task.identifier} không có trong gói tin"
     assert {s.kind for s in sweep.snags} == {
-        SnagKind.SILENT,
+        SnagKind.BLOCKED,
         SnagKind.DUE_SOON,
         SnagKind.AWAITING_LEADER,
     }
@@ -213,9 +212,28 @@ async def test_three_predicaments_wake_the_leader_exactly_once_naming_all_three(
 
 
 @pytest.mark.asyncio
-async def test_a_task_with_a_live_run_is_left_to_the_hang_detector(uow_factory) -> None:
+async def test_a_task_gone_quiet_is_left_to_the_stall_sweep(uow_factory) -> None:
+    """FR-052 no longer lets this loop ask whether anything is about to touch a task.
+
+    Two tasks that used to wake the Leader and now must not: one that has simply been
+    quiet for hours, and one whose agent started a turn and went dark. Both belong to the
+    stall sweep (FR-057), which reads the drive (FR-056) and can tell *a wake is queued*
+    from *nobody is coming* — a distinction this loop never had, which is why it once
+    reported a task being retried against an offline assignee as silent, in direct
+    contradiction of FR-063.
+
+    The old version of this test only covered the second task, so it passed for a reason
+    that had nothing to do with the rule under it.
+    """
     project, alice = await _world(uow_factory)
-    task = await _task(
+    await _task(
+        uow_factory,
+        project.id,
+        title="Việc im lâu, không ai chạm",
+        status=TaskStatus.IN_PROGRESS,
+        updated_at=T0 - timedelta(hours=2),
+    )
+    running = await _task(
         uow_factory,
         project.id,
         title="Việc đang có lượt chạy",
@@ -226,7 +244,7 @@ async def test_a_task_with_a_live_run_is_left_to_the_hang_detector(uow_factory) 
         await uow.runs.add(
             Run(
                 marius_id=alice.id,
-                task_id=task.id,
+                task_id=running.id,
                 status=RunStatus.RUNNING,
                 wake_source=WakeSource.ASSIGNMENT,
                 created_at=T0 - timedelta(hours=2),
@@ -235,8 +253,9 @@ async def test_a_task_with_a_live_run_is_left_to_the_hang_detector(uow_factory) 
         await uow.commit()
     notifier = RecordingNotifier()
 
-    await _loop(uow_factory, notifier).sweep_project(project.id, now=T0)
+    sweep = await _loop(uow_factory, notifier).sweep_project(project.id, now=T0)
 
+    assert sweep.snags == []
     assert notifier.calls == []
 
 
@@ -340,15 +359,18 @@ async def test_the_gap_stretches_while_quiet_and_tightens_when_work_backs_up(
     )
     assert quiet[-1].next_interval_seconds > quiet[0].next_interval_seconds
 
+    # A real snag, not an old timestamp: FR-052 counts three kinds and *quiet* is not one
+    # of them, so backing the clock up would now change nothing at all.
     async with uow_factory() as uow:
         stored = await uow.tasks.get(healthy.id)
         assert stored is not None
-        stored.updated_at = T0 - timedelta(days=1)
+        stored.status = TaskStatus.BLOCKED
         await uow.tasks.update(stored)
         await uow.commit()
 
     backed_up = await loop.sweep_project(project.id, now=T0 + timedelta(hours=4))
 
+    assert backed_up.snags != []
     assert backed_up.next_interval_seconds < quiet[0].next_interval_seconds
 
 

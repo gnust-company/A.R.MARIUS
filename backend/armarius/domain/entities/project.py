@@ -53,7 +53,6 @@ class ProjectThresholds:
     hang_suspect_seconds: int
     hang_grace_seconds: int
     orchestration_cadence_seconds: int
-    task_silence_seconds: int
     due_soon_hours: tuple[int, ...]
     patron_reminder_hours: tuple[int, ...]
     level1_recovery_attempts: int

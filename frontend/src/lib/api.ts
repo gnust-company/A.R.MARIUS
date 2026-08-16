@@ -948,7 +948,6 @@ export interface ThresholdsDTO {
   hang_suspect_seconds: number
   hang_grace_seconds: number
   orchestration_cadence_seconds: number
-  task_silence_seconds: number
   due_soon_hours: number[]
   patron_reminder_hours: number[]
   level1_recovery_attempts: number
@@ -956,7 +955,10 @@ export interface ThresholdsDTO {
   orchestration_wakes_per_hour: number
 }
 
-/** One thing the last orchestration sweep found on the board (spec 001 FR-052). */
+/** One thing the last orchestration sweep found on the board (spec 001 FR-052).
+ *
+ * FR-052 names three kinds. `'silent'` is retired and nothing produces it any more; it
+ * stays in the union so sweeps recorded before the retirement still render. */
 export interface SnagDTO {
   kind: 'silent' | 'due_soon' | 'blocked' | 'awaiting_leader'
   task_id: string
