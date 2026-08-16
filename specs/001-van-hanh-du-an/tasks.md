@@ -54,9 +54,9 @@ phải yêu cầu mới:
 
 **Mục đích**: biết mình đang đứng ở đâu trước khi siết. Ba trong bốn việc dưới đây là để không bị bất ngờ.
 
-- [X] T001 Rà cơ sở dữ liệu thật đếm số đầu việc đã đi thẳng *đang làm → xong* và số đầu việc đang *xong* mà không có thành phẩm, ghi kết quả vào `specs/001-van-hanh-du-an/khao-sat-du-lieu.md`
-- [X] T002 [P] Ghi mốc nền vào `specs/001-van-hanh-du-an/khao-sat-du-lieu.md`: số bài kiểm máy chủ đang xanh, số lỗi mypy, số cảnh báo lint giao diện — để sau này phân biệt "đỏ đúng" với "đỏ do mình làm hỏng"
-- [X] T003 [P] Rà mọi nơi gọi `TaskService.claim` trong `mcp/src/`, `frontend/src/` và `backend/armarius/presentation/`, ghi kết quả vào `specs/001-van-hanh-du-an/khao-sat-du-lieu.md` (rủi ro của QĐ-8)
+- [X] T001 Rà cơ sở dữ liệu thật đếm số đầu việc đã đi thẳng *đang làm → xong* và số đầu việc đang *xong* mà không có thành phẩm, ghi kết quả vào `specs/001-van-hanh-du-an/data-survey.md`
+- [X] T002 [P] Ghi mốc nền vào `specs/001-van-hanh-du-an/data-survey.md`: số bài kiểm máy chủ đang xanh, số lỗi mypy, số cảnh báo lint giao diện — để sau này phân biệt "đỏ đúng" với "đỏ do mình làm hỏng"
+- [X] T003 [P] Rà mọi nơi gọi `TaskService.claim` trong `mcp/src/`, `frontend/src/` và `backend/armarius/presentation/`, ghi kết quả vào `specs/001-van-hanh-du-an/data-survey.md` (rủi ro của QĐ-8)
 - [X] T004 [P] Khai bộ ngưỡng thời gian mặc định của hệ thống trong `backend/armarius/shared/config.py` (nghi treo 10 phút, ân hạn 2 phút, quét canh gác 60 giây, nhịp điều phối 15 phút, nhắc 8/24/72 giờ, trần Mức 1 là 3, trần từ chối là 3, **im lâu 5 phút**, **sắp trễ ở bốn mốc 24/12/6/1 giờ**)
 
 ---
@@ -145,8 +145,8 @@ Trưởng dự án tự duyệt kế hoạch của mình → bị chặn. Ngư�
 
 ### Mặt giao tiếp
 
-- [X] T044 [US1] Lối vào cho người chủ — giai đoạn, Bối cảnh, kế hoạch, quyết định — trong `backend/armarius/presentation/api/projects.py` theo [contracts/mat-nguoi-dung.md](./contracts/mat-nguoi-dung.md) mục 1–3
-- [X] T045 [US1] Lối vào cho Trưởng dự án — nộp Bối cảnh, trình kế hoạch, đề xuất chuyển giai đoạn — trong `backend/armarius/presentation/api/agent.py` theo [contracts/mat-agent.md](./contracts/mat-agent.md) mục 2
+- [X] T044 [US1] Lối vào cho người chủ — giai đoạn, Bối cảnh, kế hoạch, quyết định — trong `backend/armarius/presentation/api/projects.py` theo [contracts/user-surface.md](./contracts/user-surface.md) mục 1–3
+- [X] T045 [US1] Lối vào cho Trưởng dự án — nộp Bối cảnh, trình kế hoạch, đề xuất chuyển giai đoạn — trong `backend/armarius/presentation/api/agent.py` theo [contracts/agent-surface.md](./contracts/agent-surface.md) mục 2
 - [X] T046 [US1] Lược đồ yêu cầu và đáp cho Bối cảnh, kế hoạch, quyết định trong `backend/armarius/presentation/schemas.py`
 
 ### Giao diện
@@ -546,7 +546,7 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   thay đổi, và đó là thứ làm bộ biên dịch không giữ nổi lớp ghi nhớ nào trong màn này.
   Tách khỏi T172 vì nó **đổi bản dựng** và đổi cách vẽ lại của toàn giao diện, không phải một việc dọn lint.
   Xong thì mốc nền rà mã giao diện đổi từ *"không được tăng 50"* sang **"phải bằng 0"**, và mốc đó ghi lại vào
-  bảng T002 ở `khao-sat-du-lieu.md`. **Nghiệm thu**: dựng lại vùng chứa giao diện, đi hết sáu kịch bản trong
+  bảng T002 ở `data-survey.md`. **Nghiệm thu**: dựng lại vùng chứa giao diện, đi hết sáu kịch bản trong
   `quickstart.md` — bộ biên dịch vẽ lại sai thì không lộ ra ở lint hay ở bản dựng, chỉ lộ khi bấm.
 
   **Xong 2026-08-13.** Rà mã giao diện **0**, kiểm kiểu sạch, bản phát hành dựng được.
@@ -677,7 +677,7 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   diện, lọc theo cổng máy chủ sẽ đếm ra 0 và trông y hệt một kết quả đạt.
 
   **Đã làm.** Thêm sự kiện `task.created` vào kênh dự án, và ghi nó vào bảng hợp đồng
-  `contracts/su-kien-day.md` — bảng cũ chỉ có *"mọi lần đổi trạng thái"*, mà một đầu việc mới **không đổi
+  `contracts/push-events.md` — bảng cũ chỉ có *"mọi lần đổi trạng thái"*, mà một đầu việc mới **không đổi
   trạng thái**, nó xuất hiện. Giao diện không phải sửa gì: bảng vốn đọc lại toàn bộ khi có bất kỳ tin nào
   trên kênh dự án. Bắn cả cho đầu việc *bản nháp* — bản nháp không được vẽ nên lượt đọc lại không thấy gì
   và tốn một truy vấn; đổi lại là **không có điều kiện theo trạng thái** phải giữ cho đúng mỗi lần tập
@@ -706,7 +706,7 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   nằm giữa hai lối: không phải tiếng Anh như mọi định danh khác trong mã, mà cũng không phải tiếng Việt
   thật vì mất dấu — kho thành ra có ba lối đặt tên thay vì hai. Nay theo đúng lối các sự kiện tiếng Anh đã
   có sẵn (`marius.online`, `workspace_agent.designated`). Bảng đối chiếu cũ → mới nằm ở cuối
-  `contracts/su-kien-day.md`.
+  `contracts/push-events.md`.
 
   **Không phải chuyển dữ liệu** — kênh sự kiện chạy hoàn toàn trong bộ nhớ, khởi động lại là xong.
 
@@ -742,7 +742,7 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
   gắn bốn trường này vào `TaskOut`: đó cũng là thứ mà lối đọc một đầu việc và **toàn bộ lối agent** trả về,
   nên mọi lượt đọc ấy sẽ phải trả tiền cho ba phép đếm gộp mà chúng không bao giờ vẽ.
 
-  **Nửa thứ hai — bốn tin đẩy**, ghi trong `contracts/su-kien-day.md`. Hai chỗ phải nối kênh mới có chỗ
+  **Nửa thứ hai — bốn tin đẩy**, ghi trong `contracts/push-events.md`. Hai chỗ phải nối kênh mới có chỗ
   bắn: phần lời bình và phần thành phẩm trước đó không cầm kênh nào. Lời bình được ghi ở **ba** nơi, không
   phải một — ngoài phần lời bình còn hai đường trong phần đầu việc (thợ xin nhận việc, thợ trả việc) tự ghi
   thẳng dòng dữ liệu. Thẻ đếm cả ba như nhau, nên cả ba phải bắn cùng một tin. Tin gỡ ràng buộc **bắn cả
@@ -909,7 +909,7 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
 - [X] T164 Bốn hành động ngay trên mục *leo thang* ở `frontend/src/pages/Inbox.tsx`, khớp đúng những lựa chọn hồ sơ nêu ra: **giao lại cho…** (chọn trong danh sách agent có ghế ở dự án, kèm lý do chuyển giao — máy chủ từ chối chuyển người mà không nói vì sao, FR-028), **đổi việc kế tiếp**, **huỷ việc** (kèm ô lý do — FR-030), và **"tôi đã xử lý xong"** (người chủ tự gỡ bên ngoài hệ). Hiện mục này chỉ có nút *Mở*, nên hệ hỏi người chủ mấy đifgều mà không cho họ làm điều nào (FR-061a)
 - [X] T165 Nghiệm thu đường trả lời. **Lá thư đóng vì người chủ bấm, KHÔNG phải vì vòng quét** (FR-061b), và máy chủ đóng mục cùng lần chốt với hành động (FR-061e). Bốn lối phải đi thử đủ: giao lại → người mới được gọi dậy **đúng một lần**, kể cả khi bấm lại; đổi việc kế tiếp và **"tôi đã xử lý xong"** → không ai được gọi lúc bấm, vòng quét nhặt lại và bắt đầu **từ Mức 1**; huỷ việc → đầu việc rời khỏi tầm quét và bấm lại không ném lỗi. Cộng một bài kiểm chứng minh hành động hỏng thì **mục vẫn còn nguyên** — đó là bằng chứng của một-lần-chốt
 - [X] T166 [P] Chuỗi hiển thị của T164 vào `frontend/src/i18n/vi.ts` + `en.ts`, tiếng Việt đủ dấu (FR-084)
-- [X] T167 Gỡ vòng hỏi lại cuối cùng ở giao diện: `frontend/src/pages/AgentDetail.tsx` nạp lại danh sách lượt chạy của một agent mỗi 15 giây (FR-080, Hiến pháp IV). Khác ba chỗ kia ở chỗ nó **không có kênh nào để nghe** — động cơ đánh thức bắn theo *lượt chạy* và theo *đầu việc*, màn này theo *agent*. Nên việc thật là thêm một sự kiện vòng đời lượt chạy lên kênh workspace (`contracts/su-kien-day.md`) rồi mới nối màn vào. Tách ra vì nó sửa **hợp đồng đẩy**, không phải sửa một trang; tạm thời ghi vào danh sách miễn trừ có tên trong `backend/tests/test_constitution_guards.py`. **Đếm lại thì trạng thái lượt chạy bị đổi ở *năm* chỗ, không phải hai**: mở lượt chạy, bắt đầu, kết thúc, máy chủ dừng giữa chừng (`_release_pair`), và người canh gác tuyên treo (`liveness_watchdog`). Hai chỗ cuối không có ai bấm gì mà trạng thái vẫn đổi — bỏ sót thì màn quay mãi, tức là đúng lỗi cũ. Cả năm bắn `run.status_changed` qua một cổng chung `ports/workspace_trace.py`; danh sách miễn trừ nay **rỗng**. Hai điều sửa thêm dọc đường: trang nghe ké kết nối `Layout` đã mở sẵn (không mở kết nối thứ hai, cũng không đi qua mảng `events` không bao giờ được dọn), và `use-workspace-events.ts` trước đó vá trạng thái sống-chết của agent theo **bất kỳ** sự kiện nào có `marius_id` + `status` — sự kiện mới có đủ hai trường đó nên sẽ làm mọi agent bắt đầu chạy bị đổi trạng thái sai
+- [X] T167 Gỡ vòng hỏi lại cuối cùng ở giao diện: `frontend/src/pages/AgentDetail.tsx` nạp lại danh sách lượt chạy của một agent mỗi 15 giây (FR-080, Hiến pháp IV). Khác ba chỗ kia ở chỗ nó **không có kênh nào để nghe** — động cơ đánh thức bắn theo *lượt chạy* và theo *đầu việc*, màn này theo *agent*. Nên việc thật là thêm một sự kiện vòng đời lượt chạy lên kênh workspace (`contracts/push-events.md`) rồi mới nối màn vào. Tách ra vì nó sửa **hợp đồng đẩy**, không phải sửa một trang; tạm thời ghi vào danh sách miễn trừ có tên trong `backend/tests/test_constitution_guards.py`. **Đếm lại thì trạng thái lượt chạy bị đổi ở *năm* chỗ, không phải hai**: mở lượt chạy, bắt đầu, kết thúc, máy chủ dừng giữa chừng (`_release_pair`), và người canh gác tuyên treo (`liveness_watchdog`). Hai chỗ cuối không có ai bấm gì mà trạng thái vẫn đổi — bỏ sót thì màn quay mãi, tức là đúng lỗi cũ. Cả năm bắn `run.status_changed` qua một cổng chung `ports/workspace_trace.py`; danh sách miễn trừ nay **rỗng**. Hai điều sửa thêm dọc đường: trang nghe ké kết nối `Layout` đã mở sẵn (không mở kết nối thứ hai, cũng không đi qua mảng `events` không bao giờ được dọn), và `use-workspace-events.ts` trước đó vá trạng thái sống-chết của agent theo **bất kỳ** sự kiện nào có `marius_id` + `status` — sự kiện mới có đủ hai trường đó nên sẽ làm mọi agent bắt đầu chạy bị đổi trạng thái sai
 - [X] T168 Bộ kiểm máy chủ **hỏng chập chờn lúc dựng** với *database is locked*, đọc lên như thể bài bên cạnh hỏng chứ không phải bài trước chưa xong. Đo được: chạy riêng `backend/tests/test_spec_regressions.py` thì hỏng 2–3 trên 10 lượt; chạy toàn bộ thì hỏng khoảng 1 trên 3 lượt. **Có trên nhánh chính từ trước T167**, không phải lỗi mới.
 
   **Bằng chứng đã lấy được** (in trạng thái ngay lúc kẹt, đừng đoán lại từ đầu): không một việc chạy nền nào đang chờ, không mối nối nào đang được dùng, nhưng bể chứa vẫn giữ ba mối nối cũ và một luồng thợ của chúng vẫn sống. Nghĩa là mối nối được trả về bể **từ một vòng lặp sự kiện đã đóng** — nó không còn đường nào gỡ giao dịch của mình, nên nằm im trông như rảnh mà vẫn giữ khoá ghi. Gốc rễ: máy chủ giữ **một** bể chứa mối nối chung cho cả tiến trình, còn mỗi bài kiểm chạy trên một vòng lặp riêng.
@@ -934,7 +934,7 @@ trệ, **không bao giờ** tự nhảy sang *xong*.
 
   **Hai chiều hỏng vì hai lý do khác nhau, phải vá cả hai** — vá một chiều thì chấm vẫn sai một nửa số lần:
 
-  1. **Agent sống lại**: máy chủ *có* đẩy tin (`marius.online`), nhưng tin chỉ mang mã agent, không mang trạng thái — đúng nguyên tắc 1 của `contracts/su-kien-day.md` (*sự kiện là tín hiệu, không phải nguồn sự thật*). Bên hỏng là trình duyệt: `use-workspace-events.ts` moi trạng thái ra khỏi tin rồi vá tại chỗ, tức là **dựng trạng thái từ dòng sự kiện** — đúng thứ nguyên tắc đó cấm. Tin không mang trạng thái nên bị điều kiện chặn bỏ qua, bắn ra rồi rơi vào hư không.
+  1. **Agent sống lại**: máy chủ *có* đẩy tin (`marius.online`), nhưng tin chỉ mang mã agent, không mang trạng thái — đúng nguyên tắc 1 của `contracts/push-events.md` (*sự kiện là tín hiệu, không phải nguồn sự thật*). Bên hỏng là trình duyệt: `use-workspace-events.ts` moi trạng thái ra khỏi tin rồi vá tại chỗ, tức là **dựng trạng thái từ dòng sự kiện** — đúng thứ nguyên tắc đó cấm. Tin không mang trạng thái nên bị điều kiện chặn bỏ qua, bắn ra rồi rơi vào hư không.
   2. **Agent im hẳn**: không có tin nào cả. `LivenessEngine._announce_offline` chỉ gọi phần cứu đầu việc đang rơi dở; **không ai nối nó với màn hình**. Đây là thiếu hẳn, không phải sai thiết kế.
 
   **Cách vá phải theo hợp đồng, không phải theo đường dễ**: KHÔNG nhét trạng thái vào tin (đó là hợp thức hoá đúng cái sai, và mở đường cho mọi tin sau). Trình duyệt **nghe tin rồi đọc lại** agent — y hệt cách T167 làm với danh sách lượt chạy. Kéo theo: gỡ luôn **cả ba** khối vá-tại-chỗ trong `use-workspace-events.ts` (trạng thái mời/xoá, huy hiệu đẩy kỹ năng, huy hiệu agent xác nhận cài xong) chứ không chừa khối nào — chừa lại là lặp đúng lỗi cũ: viết đúng trên đường đang nhìn rồi bỏ các đường khác. Phía máy chủ thêm tin lúc agent tắt, đi qua cổng chung `ports/workspace_trace.py` mà T167 đã dựng.
@@ -1068,3 +1068,65 @@ tự gộp**. Sau mỗi lần gộp: đồng bộ nhánh chính rồi chạy `co
   của gói lớp trung gian
 - Ba yêu cầu ràng buộc nền (FR-078 → FR-084) không thành đợt riêng — chúng là điều mọi đợt phải giữ, kiểm ở
   Giai đoạn 9
+---
+
+## Giai đoạn 10: Hội tụ (2026-08-15)
+
+**Mục đích**: mười ba điểm lệch giữa đặc tả và mã, tìm ra khi rà lại toàn bộ 89 yêu cầu sau khi đóng đợt ở
+T162. Không việc nào ở đây là tính năng mới — tất cả là chỗ mã làm khác điều đặc tả đã ghi.
+
+**Hai việc đầu cùng một gốc, và người chủ đã chốt luật.** T179 và T180 đều là hệ quả của một quyết định cũ:
+câu hỏi *"đầu việc này có ai sắp chạm vào không"* được trả lời bằng **hai** thứ hẹp — dòng đầu việc có đổi
+không, và có lượt chạy nào đang sống không. Trong khi hệ đã có sẵn câu trả lời đúng cho câu hỏi đó: **động
+cơ đẩy** (FR-056), thứ biết phân biệt *"đã gọi người làm nhưng nó chưa từng bắt đầu"* với *"gọi lại mấy lần
+đều không tới được người làm"*. Vòng nhịp điều phối không hỏi nó lấy một lần.
+
+Người chủ chốt ba luật, ghi ở đây để khỏi bàn lại (2026-08-15):
+
+1. **Bỏ hẳn *im lâu* khỏi vòng nhịp điều phối.** Ba loại điểm treo còn lại — *sắp trễ*, *mắc kẹt*, *chờ
+   quyết định của Trưởng dự án* — mỗi loại chỉ cần đọc **một trường** (hạn chót · trạng thái · sổ chữ ký).
+   Chỉ mình *im lâu* buộc vòng này phải hỏi *"có gì đang chạm vào đầu việc này không"*, mà đó đúng là câu
+   `StallWatchdog` sinh ra để trả lời — và Trưởng dự án **vốn đã được báo** qua Mức 2 của thang phục hồi, có
+   ngân sách và có ghi sổ. *Im lâu* là con đường thứ hai tới cùng một người, cùng một tin, đi tắt qua thang.
+   Cái giá: Trưởng nghe muộn hơn (Mức 2 tới sau khoảng 35 phút thay vì 5 phút) — không đáng kể với nhịp dự
+   án *vài giờ tới vài ngày*, và đổi lại tin ấy **luôn đúng**.
+2. **Bỏ luật "tám phần cho mọi gói tin đánh thức"** (xem T191).
+3. **Từ *chờ rà soát* bị trả về *đang làm* thì phải gọi người phụ trách dậy** — mã đang làm đúng
+   (`APPROVAL_REJECTED`).
+
+**Một đề xuất đã rút.** Tôi từng đề nghị thêm loại điểm treo *hàng chờ phình*. Người chủ hỏi ngược lại
+`StallWatchdog` đã nhìn đầu việc chưa gán ai chưa — kiểm ra là **có**: một đầu việc *chờ làm* không có người
+phụ trách thì `infer_drive` trả về *không có động cơ đẩy nào*, cờ đình trệ nổi với đúng câu
+*"việc bị bỏ quên: không ai đang làm, cũng không có lịch gọi ai vào làm"*, rồi thang đưa nó tới Trưởng dự án
+ở Mức 2. Đề xuất đó là dựng bản sao thứ hai của thứ đã chạy. Rút. Còn lại đúng một lỗ thật, ghi ở T180.
+
+**Tiến độ.** Nửa đặc tả của T179 và T180 đã vào (2026-08-16): FR-052 còn ba loại điểm treo, FR-048 đổi cớ
+gọi thợ, **FR-059a** mới, mục Giả định bỏ ngưỡng *im lâu*, thêm một bước kiểm ở bản hướng dẫn kiểm chứng.
+Hai ô dưới vẫn để trống vì **nửa mã chưa làm** — đánh dấu xong chỉ khi mã theo kịp và đã dựng dịch vụ thật
+lên tự kiểm. Cùng đợt này bốn tệp mô tả mang tên tiếng Việt đã đổi sang tên tiếng Anh.
+
+**Một lời cảnh báo về bài kiểm.** Sáu trong mười ba lỗ dưới đây đều có bài kiểm canh mà vẫn xanh. Rõ nhất là
+`tests/test_orchestrator_loop.py:244` — nó rà ngay tại mốc không nên không bao giờ chạm ngưỡng im. Bài kiểm
+tồn tại không có nghĩa là luật được canh; phải kiểm bài kiểm có chạy qua đúng đường không.
+
+- [ ] T179 [US5] Bỏ loại điểm treo *im lâu* khỏi vòng nhịp điều phối — sửa `spec.md` FR-052 xuống còn **ba** loại trước, rồi gỡ mã ở `backend/armarius/domain/services/orchestration_cadence.py` (`_is_silent`, nhánh `SnagKind.SILENT` trong `find_snags`) và `backend/armarius/application/use_cases/orchestrator.py` (`_snapshot_board` thôi không cần `last_activity_at` nữa). Theo luật 1 người chủ chốt (contradicts). Hai bằng chứng đây là trùng lặp chứ không phải bảo hiểm kép: **(a)** `TaskSnapshot` không đọc `task.drive` lấy một lần, nên đầu việc *đang làm* mà lệnh gọi đã đặt-chưa-chạy, hoặc đang thử lại vì người làm ngoại tuyến, đều bị đếm là *im lâu* — dù FR-063 nói thẳng ca sau **không được tính**; **(b)** `_is_silent` có sẵn một chú thích lo đúng chuyện *"hai cơ chế cùng đuổi một đầu việc sẽ gọi Trưởng dậy về việc đã được cứu rồi"*, nhưng chỉ chặn cơ chế nghi treo, quên mất thang phục hồi. Gỡ xong thì vòng này **không còn phải hỏi câu đó nữa** — cả ba loại còn lại đều là đọc một trường. Dọn nốt bài kiểm và khoá `SnagKind.SILENT`
+- [ ] T180 [US6] **Kiểm có người phụ trách hay không TRƯỚC khi vào Mức 1**; không có thì lên **thẳng Mức 2** với lý do ghi rõ *"đầu việc chưa có người phụ trách"*. Ở `backend/armarius/application/use_cases/recovery.py` (chỗ nâng nấc quanh dòng 476 và `_rewake_assignee` dòng 499) cùng `backend/armarius/domain/services/escalation.py` (`advance`). Theo FR-059, FR-060 và chỉ đạo người chủ 2026-08-15 (partial).
+
+  Mức 1 định nghĩa là *"hệ tự gọi lại **đúng người phụ trách**"*. Đầu việc chưa gán ai thì nấc đó **không có đối tượng để tác động** — nó không thể thành công, không phải nó thất bại. Mã đã biết: `_rewake_assignee` trả về ngay, kèm chú thích *"a task with nobody on it cannot be re-woken… it is a task that needs the Leader, which the next rung is for"*. Biết vậy mà nấc thang **vẫn đếm đủ ba lần thử**, giãn dần 5 → 10 → 20 phút, tiêu hết khoảng 35 phút **không làm gì cả**, rồi mới lên Mức 2 hỏi Trưởng dự án.
+
+  Luật đúng: **điều kiện vào một nấc phải kiểm được trước khi bước vào nấc đó.** Một cái thang bỏ ngân sách vào nấc nó biết chắc là trống thì không còn là thang, nó là đồng hồ đếm ngược.
+
+  Lý do phải **ghi thành chữ** chứ không im lặng nhảy nấc: Mức 2 hỏi Trưởng dự án *"quyết một hành động phục hồi"*, và hai ca dẫn tới Mức 2 cần hai hành động khác hẳn nhau — *"gọi mãi người phụ trách không dậy"* thì Trưởng đổi người hoặc gỡ chặn; *"chưa ai được giao"* thì Trưởng chỉ cần **giao việc**. FR-061 vốn đã đòi hồ sơ phân biệt được *đã hỏi tới nơi* với *không gọi được*; đây là ca thứ ba của cùng một luật.
+- [ ] T181 [US4] Bổ sung cớ đánh thức *vướng của mình đã được gỡ*, ở `backend/armarius/domain/entities/run.py` (`WakeSource`), `backend/armarius/application/use_cases/tasks.py` (`_unlock_dependents` dòng 1128 và chỗ gọi nó ở dòng 777) và `backend/armarius/domain/services/wake_policy.py` — theo FR-048, SC-009 (missing). Việc được gỡ chuyển sang *chờ làm* rồi chỉ được `_settle_drive` tính lại động cơ đẩy; không ai gọi người phụ trách dậy. SC-009 đòi việc được gỡ phải *"chuyển sang chờ làm **và giao đi**"* mà người chủ không phải chạm vào. Lưới an toàn có nhặt lại ở Mức 1, nhưng đó là lưới đỡ hộ cho cơ chế đã thiết kế
+- [ ] T182 [US6] Cho vòng quét canh gác biết dự án nào đã đóng, ở `backend/armarius/infrastructure/persistence/repositories.py` (`list_stall_candidates`, dòng ~937/957) — theo FR-005 (contradicts). Truy vấn lọc **chỉ theo trạng thái đầu việc**, không hỏi dự án. Một dự án chuyển sang *đóng* chỉ đổi cột trạng thái; đầu việc còn mở của nó ở nguyên đó, nên vòng quét vẫn nhặt, vẫn gắn cờ đình trệ, và Mức 1 vẫn gọi thợ dậy. Vòng nhịp điều phối thì làm đúng (`orchestrator.py:296`, `_LIVE_PHASES`) — chính sự lệch giữa hai vòng là bằng chứng đây là chỗ bỏ sót. Chú thích của `change_phase` đang khẳng định ngược: *"once closed, nothing wakes for this project again"*
+- [ ] T183 [US1] Cho lời gọi Trưởng dự án dùng Bối cảnh **đã duyệt**, ở `backend/armarius/application/use_cases/leader_chat.py` (dòng 301) — theo FR-009 (partial). Gói tin thợ đọc `uow.project_contexts.get_approved(...)` — bản Bối cảnh có phiên bản, đã qua cổng duyệt. Lời nhắc Trưởng dự án đọc `project.context or project.objective` — hai cột thô trên bảng dự án, không qua cổng nào. FR-009 đòi Bối cảnh **đang hiệu lực** đính vào **mọi** gói tin đánh thức gửi **mọi** agent, và Trưởng dự án là một agent. Hệ quả thực tế: người chủ sửa Bối cảnh rồi duyệt, thợ đọc bản mới, Trưởng vẫn đọc bản cũ
+- [ ] T184 Đưa câu lỗi máy chủ vào cơ chế đa ngôn ngữ, ở `backend/armarius/presentation/errors.py` cộng các nơi ném lỗi trong `domain/` và `application/`, và mặt dựng câu ở `frontend/src/lib/api.ts` + `i18n/` — theo FR-084, SC-013, Hiến pháp VI (contradicts). Mọi lối xử lý lỗi trả `{"detail": str(exc)}`, `api.ts` lấy nguyên chuỗi đó làm `ApiError.message`, và các trang hiện thẳng nó lên màn. 131 chỗ ném lỗi trong tầng nghiệp vụ, câu chữ **pha lẫn hai thứ tiếng**: `"Cannot move task from 'x' to 'y'."`, `"A published artifact must be linked before review/done."`, `"This dependency would create a cycle."` nằm cạnh `"Còn việc phụ thuộc chưa xong"`. T155 rà chuỗi cứng ở giao diện và ra sạch — vì nó không rà đường này. Kế hoạch đợt đã ghi đúng cách làm: *"mặt giao tiếp trả mã lỗi và tham số, giao diện dựng câu qua cơ chế đa ngôn ngữ"*; mã chưa làm thế
+- [ ] T185 [US4] Sửa hai danh sách cớ đánh thức cho khớp thực tế phát, ở `backend/armarius/domain/services/wake_policy.py` (dòng 28-50) — theo FR-047, FR-048 (contradicts). `IDLE_REMINDER` nằm trong danh sách cớ của **thợ**, nhưng nơi duy nhất phát nó (`orchestrator.py:221`) gọi **Trưởng dự án**; đồng thời cớ cuối của FR-047 — *một nhịp điều phối có điểm treo thật* — không có mặt trong danh sách cớ của Trưởng. Hai danh sách này chỉ `tests/test_wake_policy.py` đọc, không nơi nào cưỡng chế, nên chúng đang là tài liệu ghi sai. Chốt luôn: hoặc cưỡng chế ở `wake_engine`, hoặc ghi rõ chúng chỉ là tài liệu
+- [ ] T186 [US1] Thêm cổng giai đoạn dự án cho lối **giao** đầu việc, ở `backend/armarius/application/use_cases/tasks.py` (`assign_within`, dòng 415) — theo FR-003 (partial). FR-003 đòi từ chối mọi thao tác *tạo* **hoặc giao** khi dự án chưa *vận hành*/*bảo trì*; `accepts_real_tasks` hiện có đúng một nơi gọi, ở lối tạo (dòng 197). Một đầu việc *nháp* tạo hợp lệ trong *lập kế hoạch* vẫn giao được, mà giao thì bắn lệnh gọi thợ dậy trước khi kế hoạch được duyệt
+- [ ] T187 [US6] Mở lối sửa đầu việc cho người chủ, ở `backend/armarius/presentation/api/tasks.py` + `backend/armarius/application/use_cases/tasks.py` và màn tương ứng trong `frontend/src/` — theo FR-070 (missing). Bộ định tuyến hiện có tạo/giao/đổi trạng thái/mở lại/ký/tiêu chí/việc kế tiếp/phụ thuộc/bình luận/thành phẩm/gọi dậy/nhật ký, nhưng **không lối nào sửa** tiêu đề, mô tả, độ ưu tiên hay hạn chót sau khi tạo. FR-070 đòi người chủ ngang Trưởng dự án — *"sửa một đầu việc, đổi ưu tiên"*. Lối này phải đi qua cổng FR-075: chạm hạn chót hoặc tiêu chí công nhận là treo chờ duyệt, không sửa thẳng; và qua cổng FR-018: người phụ trách chỉ thêm ghi chú, không sửa yêu cầu gốc
+- [ ] T188 [P] [US5] Đưa bốn ngưỡng còn đóng cứng ra thiết lập — `_MAX_STRETCH`, `_MAX_INTERVAL_SECONDS`, `_MIN_INTERVAL_SECONDS` ở `backend/armarius/domain/services/orchestration_cadence.py` (dòng 210-215) và `_HANDOVER_ATTEMPTS` ở `backend/armarius/application/use_cases/recovery.py` (dòng 100) — sang `ProjectThresholds` và `backend/armarius/shared/config.py`. Theo FR-055 và FR-060a (partial). Mục Giả định của đặc tả đòi **mọi** ngưỡng chỉnh được; trần Mức 1 đã ở `config.py` (`level1_recovery_attempts`) còn trần Mức 2 thì không — chính sự lệch đó cho thấy đây là bỏ sót chứ không phải chủ ý
+- [ ] T189 [P] [US4] Đánh thức Trưởng dự án khi người chủ **từ chối** một đầu ra, ở `backend/armarius/application/use_cases/approvals.py` (quanh dòng 347) — theo FR-047 (partial). Từ chối hiện chỉ gọi thợ (`APPROVAL_REJECTED`); Trưởng chỉ bị kéo vào sau trần ba vòng (`BRIEF_REVIEW`). FR-047 ghi cớ là *"người chủ công nhận **hoặc từ chối** một đầu ra"* — hai vế, mã mới làm một
+- [ ] T190 [P] [US2] Nêu rõ vòng phụ thuộc đi qua những đầu việc nào, ở `backend/armarius/application/use_cases/tasks.py` (`_would_cycle` dòng 1284 và chỗ ném lỗi dòng 1043) — theo FR-032 (partial). Việc chặn khép vòng đã đúng, nhưng câu trả về là `"This dependency would create a cycle."` — FR-032 đòi *"nêu rõ vòng đó đi qua những đầu việc nào"*. Đối chiếu FR-025 làm đúng chuyện này (liệt kê mã việc còn thiếu). Sửa cùng T184 vì cùng đường câu chữ
+- [ ] T191 Bỏ luật "tám phần cho mọi gói tin đánh thức", thay bằng **lõi bốn phần + phần riêng theo loại lời gọi** — sửa `spec.md` FR-044/FR-045 trước, rồi tới `backend/armarius/domain/services/wake_prompt.py` và `leader_chat_prompt.py`. Theo luật 2 người chủ chốt (contradicts). Lý do bỏ: năm trong tám phần **vô nghĩa với Trưởng dự án**. Nó bị gọi dậy vì nhịp rà tìm ra ba điểm treo trên bảng — "đầu việc đang nói tới" là cái nào trong ba? "Việc kế tiếp" của một người điều phối là gì? "Nơi nộp thành phẩm" thì càng không. Ép chung khuôn là ép một vai điền vào ô của vai khác.
+  **Lõi bắt buộc cho mọi lời gọi, không loại trừ**: vai trong dự án · Bối cảnh **đã duyệt** (nối T183) · lý do gọi dậy · danh bạ đồng đội. Bốn phần này trả lời ba câu mà agent nào cũng phải biết trước khi làm gì: *mình là ai, dự án đang đi đâu, tại sao bị gọi lúc này*. Thiếu một cái là agent đoán, mà agent đoán là agent làm sai.
+  **Phần riêng**: lời gọi thợ thêm bốn phần cũ (đầu việc kèm mô tả và trạng thái · tin nhắn mới từ lượt trước · việc kế tiếp · nơi nộp thành phẩm và cách báo trạng thái); lời gọi Trưởng theo nhịp thêm danh sách điểm treo nêu đích danh; lời gọi Trưởng vì người chủ ra quyết định thêm chính quyết định đó. Luật FR-045 (phần rỗng ghi rõ *"không có"*) giữ nguyên, áp cho phần nào **có mặt** trong loại lời gọi đó
