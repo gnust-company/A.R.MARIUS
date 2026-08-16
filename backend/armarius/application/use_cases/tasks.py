@@ -291,6 +291,10 @@ class TaskService:
             task = await uow.tasks.get(task_id)
             if task is None:
                 raise LookupError("task not found")
+            # FR-003 again, at the other door that turns a proposal into work. Releasing a
+            # draft *is* creating a real task — the exemption `create` grants a draft ends
+            # exactly here, because this is the step that wakes somebody.
+            await self._assert_phase_accepts_work(uow, task)
             before = str(task.status)
             if task.assigned_marius_id is not None:
                 assert_assignable(task)
@@ -414,6 +418,23 @@ class TaskService:
         await self.after_assign(effects)
         return effects.task
 
+    async def _assert_phase_accepts_work(self, uow: UnitOfWork, task: Task) -> None:
+        """FR-003 — a worker is only put on a task once the patron has approved the plan.
+
+        Read from the project rather than trusted from the caller: the phase can move
+        between the screen drawing a button and the request arriving, and the caller here
+        is sometimes an agent that never saw the screen at all.
+        """
+        if task.project_id is None:  # pragma: no cover - defensive
+            return
+        project = await uow.projects.get(task.project_id)
+        if project is None or project_rules.accepts_real_tasks(project.status):
+            return
+        raise ProjectNotReadyForTasks(
+            "Kế hoạch chưa được duyệt — dự án chưa nhận đầu việc thật "
+            f"(giai đoạn hiện tại: '{project.status}')."
+        )
+
     async def assign_within(
         self,
         uow: UnitOfWork,
@@ -431,14 +452,20 @@ class TaskService:
         other did not, and a retry from there runs the assignment a second time, waking
         the new owner twice for one incident.
 
-        Two gates apply. The description-gate (FR-029): nobody is handed a title and left
+        Three gates apply. The phase-gate (FR-003): the project has to be *operating* or
+        *maintaining*. The description-gate (FR-029): nobody is handed a title and left
         to guess. The one-assignee gate (FR-028): a task has exactly one owner at a time,
         so putting a second person on it is refused — say it is a **transfer** and give a
         reason, or split the task in two.
+
+        Note the phase-gate has no draft exemption, unlike the one on `create`. That one
+        exists because a draft wakes nobody; an assignment always does, so there is no
+        such thing as assigning "provisionally".
         """
         task = await uow.tasks.get(task_id)
         if task is None:
             raise LookupError("task not found")
+        await self._assert_phase_accepts_work(uow, task)
         if await uow.mariuses.get(marius_id) is None:
             raise LookupError("marius not found")
         previous = task.assigned_marius_id

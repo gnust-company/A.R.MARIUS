@@ -30,6 +30,7 @@ from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.domain.entities.leader_chat import ChatState, LeaderChatError
 from armarius.domain.entities.marius import Liveness
+from armarius.domain.entities.project import ProjectStatus
 from armarius.domain.entities.project_context import (
     ContextApprovalStatus,
     ProjectContext,
@@ -98,6 +99,16 @@ async def _settle_runs(runs: RunQueryService, task_id, *, want_marius=None, atte
         last = len(items)
         await asyncio.sleep(0.02)
     return await runs.list_by_task(task_id)
+
+
+async def _make_operating(uow_factory, project_id) -> None:
+    """Đưa dự án tới giai đoạn nhận việc thật, không đi vòng qua cả cổng kế hoạch."""
+    async with uow_factory() as uow:
+        stored = await uow.projects.get(project_id)
+        assert stored is not None
+        stored.status = ProjectStatus.OPERATING
+        await uow.projects.update(stored)
+        await uow.commit()
 
 
 async def _register_leader(mariuses, projects, ws, project, *, online_via=None):
@@ -189,6 +200,10 @@ async def test_proposed_task_approve_flips_todo_and_wakes(uow_factory) -> None:
         skills=[], adapter_type="echo", adapter_config={},
     )
     await projects.grant_seat(project.id, "backend", worker.id, system=True)
+    # Duyệt một đề xuất là biến nó thành việc thật, nên nó đòi dự án đã qua cổng kế hoạch
+    # (FR-003). Bài kiểm này nói về chuyện *duyệt xong thì gọi ai dậy*, nên đưa dự án tới
+    # đúng giai đoạn nó phải ở thay vì mượn một cảnh mà luật không cho phép.
+    await _make_operating(uow_factory, project.id)
 
     draft = await tasks.create(
         project_id=project.id, title="Build /login", status=TaskStatus.DRAFT,
