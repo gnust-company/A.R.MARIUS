@@ -605,7 +605,7 @@ export default function CollaborationRoom() {
                 <span className="font-mono text-mono-md text-terracotta">{task.identifier}</span>
                 <span className={cn('inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full font-body text-body-xs font-medium', task.priority === 'P0' ? 'bg-terracotta/10 text-terracotta' : task.priority === 'P1' ? 'bg-gold/10 text-gold' : 'bg-ink-muted/10 text-ink-muted')}>
                   <Star className="w-3 h-3" fill="currentColor" />
-                  {task.priority}
+                  {t(`tasks.priority.${task.priority}`)}
                 </span>
               </div>
 

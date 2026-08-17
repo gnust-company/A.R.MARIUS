@@ -374,6 +374,8 @@ export const en = {
     nothingWaiting: 'When a decision is yours to make, it shows up here.',
     unknownProject: 'Unknown project',
     open: 'Open task',
+    closedProject: 'Project closed',
+    closedProjectHint: 'The project is closed — this letter is read-only now.',
     accept: 'Accept',
     sendBack: 'Send back',
     rejectReasonPrompt: 'Sending it back needs a reason — the worker gets this as their next action:',
