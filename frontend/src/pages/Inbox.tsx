@@ -221,9 +221,12 @@ function EscalationActions({
         >
           <XCircle size={12} /> {t('inbox.escalation.cancelTask')}
         </button>
+        {/* Not disabled when frozen, unlike the three above it: this one writes nothing
+            into the project, only into the patron's own inbox. Freezing it too is what
+            once left letters that could never be cleared. */}
         <button
           className={primaryButton}
-          disabled={busy || frozen}
+          disabled={busy}
           title={frozen ? t('inbox.closedProjectHint') : t('inbox.escalation.handledHint')}
           data-testid="escalation-handled"
           onClick={() => void run('handled')}
@@ -358,10 +361,13 @@ export default function Inbox() {
 
   useEffect(() => {
     let alive = true;
-    getInbox({ status: tab })
+    // The second tab means *no longer waiting*, which includes letters voided when their
+    // project closed — nobody answered those, so the server does not file them under
+    // resolved. One call for everything, filtered here, rather than two for one list.
+    getInbox({ status: tab === 'pending' ? 'pending' : 'all' })
       .then((rows) => {
         if (!alive) return;
-        setItems(rows);
+        setItems(tab === 'pending' ? rows : rows.filter((r) => r.status !== 'pending'));
         setError(null);
       })
       .catch((e: unknown) => {
@@ -387,12 +393,17 @@ export default function Inbox() {
     [projects, t],
   );
 
-  /** Its project is closed, so nothing on this letter can be acted on any more (FR-005).
+  /** Its project is closed, so nothing on this letter may touch the task any more (FR-005).
    *
    * The letter is left where it is rather than swept away: it is a record of a question
    * that was asked, and the project is kept precisely so its history can still be read.
    * The server refuses these calls regardless — this is what stops the patron from being
-   * offered a button that only ever answers "no". */
+   * offered a button that only ever answers "no".
+   *
+   * Clearing the letter is deliberately **not** one of them: it writes into the inbox, not
+   * into the project, and it is the one thing a patron still needs to be able to do here.
+   * Closing a project retires its open letters anyway, so this mostly covers the narrow
+   * window where a letter is placed as the project is being closed. */
   const isFrozen = useCallback(
     (id?: string | null) => (projects || []).find((p) => p.id === id)?.status === 'closed',
     [projects],
@@ -517,7 +528,7 @@ export default function Inbox() {
                                   {t('inbox.reminderTier', { tier: item.reminder_tier })}
                                 </span>
                               )}
-                              {isFrozen(item.project_id) && (
+                              {(item.status === 'void' || isFrozen(item.project_id)) && (
                                 <span
                                   className="px-1.5 py-0.5 text-[10px] rounded bg-[#E3D7BC] text-[#6B5E4E]"
                                   data-testid="inbox-closed-badge"
