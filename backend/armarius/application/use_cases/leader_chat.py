@@ -24,6 +24,13 @@ from armarius.application.ports.adapter import AdapterRegistry, ExecContext
 from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.onboarding import credential_file_for
+from armarius.application.use_cases.seats import (
+    leader_marius_id,
+    leader_role_keys,
+)
+from armarius.application.use_cases.seats import (
+    leader_role as leader_role_of,
+)
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.leader_chat import (
     ChatState,
@@ -53,7 +60,6 @@ logger = get_logger(__name__)
 
 # A Leader can take a turn unless it is offline/hung; otherwise the chat is disabled.
 _AVAILABLE = {Liveness.ONLINE, Liveness.WORKING, Liveness.CHECKING}
-_LEADER_ROLE_KEY = "leader"
 _PROMPT_TURN_TAIL = 10  # recent turns included in the prompt for grounding
 
 
@@ -314,12 +320,7 @@ class LeaderChatService:
             workspace = await uow.workspaces.get(leader.workspace_id)
             directory = await self._team(uow, project.id, leader_id=leader.id)
             # The Leader's own project role, for the prompt header (its duties/description).
-            project_roles = {
-                r.key: r for r in await uow.roles.list_by_project(project.id)
-            }
-            leader_role = project_roles.get(_LEADER_ROLE_KEY) or next(
-                (r for r in project_roles.values() if r.is_leader), None
-            )
+            leader_role = await leader_role_of(uow, project.id)
             project_id = project.id
             adapter_type = leader.adapter_type
             adapter_config = dict(leader.adapter_config)
@@ -490,30 +491,21 @@ class LeaderChatService:
         )
 
     async def _leader_of(self, uow, project_id: UUID) -> UUID | None:  # noqa: ANN001
-        grants = await uow.seat_grants.list_by_project(project_id)
-        leader = next(
-            (
-                g
-                for g in grants
-                if g.status == SeatGrantStatus.GRANTED
-                and g.role_key == _LEADER_ROLE_KEY
-                and g.marius_id is not None
-            ),
-            None,
-        )
-        return leader.marius_id if leader else None
+        return await leader_marius_id(uow, project_id)
 
     async def _team(
         self, uow, project_id: UUID, *, leader_id: UUID  # noqa: ANN001
     ) -> list[ChatDirectoryEntry]:
         grants = await uow.seat_grants.list_by_project(project_id)
-        roles = {r.key: r for r in await uow.roles.list_by_project(project_id)}
+        role_rows = await uow.roles.list_by_project(project_id)
+        roles = {r.key: r for r in role_rows}
+        leader_keys = leader_role_keys(role_rows)
         entries: list[ChatDirectoryEntry] = []
         seen: set[UUID] = set()
         for g in grants:
             if (
                 g.status != SeatGrantStatus.GRANTED
-                or g.role_key == _LEADER_ROLE_KEY
+                or g.role_key in leader_keys
                 or g.marius_id is None
                 or g.marius_id == leader_id
                 or g.marius_id in seen

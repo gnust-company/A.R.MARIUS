@@ -198,6 +198,42 @@ async def test_the_cause_the_role_owns_still_goes_through(uow_factory) -> None: 
     await engine.drain()
 
 
+async def test_a_leader_put_back_on_the_seat_is_still_the_leader(uow_factory) -> None:  # noqa: ANN001
+    """Đổi người ra khỏi ghế trưởng rồi đổi chính người ấy vào lại là chuyện người chủ làm
+    được qua giao diện. Mỗi lần trao ghế viết một dòng **mới**, nên sau hai thao tác đó
+    người này có hai dòng: dòng cũ đã thu hồi nằm trước, dòng đang hiệu lực nằm sau. Đọc
+    dòng đầu rồi dừng thì kết luận họ chẳng có vai gì, và mọi lời gọi dành cho Trưởng dự án
+    im lặng rơi — đúng cái sự im lặng luật này sinh ra để chặn."""
+    project, leader, _worker, task = await _world(uow_factory)
+    async with uow_factory() as uow:
+        grants = await uow.seat_grants.list_by_project(project.id)
+        seat = next(g for g in grants if g.marius_id == leader.id)
+        seat.revoke()
+        await uow.seat_grants.update(seat)
+        await uow.seat_grants.add(
+            SeatGrant(
+                project_id=project.id,
+                role_key="leader",
+                marius_id=leader.id,
+                status=SeatGrantStatus.GRANTED,
+                granted_by_user_id="patron",
+                created_at=utcnow(),
+            )
+        )
+        await uow.commit()
+    engine = _engine(uow_factory)
+
+    run_id = await engine.enqueue(
+        marius_id=leader.id,
+        task_id=task.id,
+        source=WakeSource.BRIEF_REVIEW,
+        reason=wake_reason("brief_review", rounds=3),
+    )
+
+    assert run_id is not None, "người đang ngồi ghế trưởng phải nhận được cớ của Trưởng dự án"
+    await engine.drain()
+
+
 async def test_being_named_reaches_the_leader_as_it_reaches_a_teammate(
     uow_factory,  # noqa: ANN001
 ) -> None:
