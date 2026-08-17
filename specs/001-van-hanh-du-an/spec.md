@@ -583,16 +583,28 @@ thứ tự gắn trên từng chữ ký.
 - **FR-047**: HỆ THỐNG PHẢI đánh thức Trưởng dự án khi và chỉ khi có một trong các cớ: người chủ nhắn hoặc
   hỏi; người chủ duyệt hoặc yêu cầu chỉnh kế hoạch; người chủ công nhận hoặc từ chối một đầu ra; người
   chủ quyết chuyển giai đoạn hoặc mở đợt mới; một thợ báo kẹt; một đầu việc chuyển sang *chờ rà soát*; một
-  đầu việc chuyển sang *xong*; một đầu việc thất bại hoặc quá hạn; hoặc một nhịp điều phối có điểm treo thật.
+  đầu việc chuyển sang *xong*; một đầu việc thất bại hoặc quá hạn; một nhịp điều phối có điểm treo thật;
+  hoặc **bị nhắc tên** trong luồng trao đổi của một đầu việc.
 - **FR-048**: HỆ THỐNG PHẢI đánh thức một thợ khi và chỉ khi có một trong các cớ: được giao đầu việc mới; bị
   nhắc tên trong trao đổi; có bình luận mới trên đầu việc mình phụ trách; cần làm tiếp một lượt còn dở; vướng
-  của mình đã được gỡ; hoặc **lưới an toàn gọi lại** vì đầu việc mất động cơ đẩy (Mức 1 của thang phục hồi,
-  FR-059). Cớ cuối là đường duy nhất để một đầu việc đứng im gọi được thợ dậy: nhịp điều phối (FR-052) không
-  còn nhìn chuyện đứng im nữa, và cũng chưa bao giờ gọi thợ.
+  của mình đã được gỡ; **đầu ra của mình bị trả về để sửa** (FR-040); **yêu cầu của đầu việc bị người chủ đổi
+  giữa chừng** (FR-070a); hoặc **lưới an toàn gọi lại** vì đầu việc mất động cơ đẩy (Mức 1 của thang phục
+  hồi, FR-059). Cớ cuối là đường duy nhất để một đầu việc đứng im gọi được thợ dậy: nhịp điều phối (FR-052)
+  không còn nhìn chuyện đứng im nữa, và cũng chưa bao giờ gọi thợ.
 - **FR-048a**: Hai danh sách khép ở FR-047 và FR-048 PHẢI được **cưỡng chế ngay tại chỗ phát lệnh gọi**,
   không được để làm tài liệu suông. Một cớ không nằm trong danh sách của vai nhận thì lệnh gọi đó bị từ chối
   và ghi lại. Danh sách chỉ có sức nặng khi thêm một cớ mới **buộc** người thêm phải quyết ngay cớ đó gọi ai;
-  để nó ngoài đường chạy thì nó trôi khỏi thực tế mà không ai biết.
+  để nó ngoài đường chạy thì nó trôi khỏi thực tế mà không ai biết. Ba điều kèm theo, để chốt này chặn đúng
+  chứ không chặn bừa:
+  - **Vai đọc từ công việc, không đọc từ hồ sơ agent**: ai đang giữ đầu việc là thợ của đầu việc ấy, ai ngồi
+    ghế trưởng là Trưởng dự án. Một agent đội **cả hai vai** cùng lúc thì được gọi bởi cả hai danh sách —
+    Trưởng dự án tự ôm một đầu việc là chuyện hợp lệ, chặn nó là từ chối đúng những lời gọi đúng.
+  - **Cớ gọi thẳng tên** (bị nhắc tên) tới được cả hai vai: đây là lời gọi duy nhất do người gửi chọn người
+    nhận, nên nó không thuộc riêng vai nào. Người không giữ đầu việc và cũng không dẫn dự án thì **chỉ** cớ
+    này lọt tới — đúng tinh thần FR-049.
+  - **Từ chối là từ chối lệnh gọi, không phải huỷ việc đang làm**: hành động sinh ra lệnh gọi ấy — bình luận
+    vừa gửi, đầu việc vừa chuyển trạng thái — vẫn đứng. Lệnh gọi bị từ chối nằm lại trong sổ lệnh gọi với
+    dấu riêng, vì thứ đáng bắt là **nếp lặp lại**, không phải một lần rơi.
 - **FR-049**: HỆ THỐNG KHÔNG ĐƯỢC đánh thức một agent chỉ vì dự án có biến động chung — chỉ gọi khi có việc
   thuộc phần của chính nó đang chờ.
 - **FR-050**: Với mỗi cặp *(agent, đầu việc)*, HỆ THỐNG PHẢI giữ tối đa **một** lệnh đánh thức đang treo và

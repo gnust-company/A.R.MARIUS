@@ -1102,8 +1102,8 @@ phụ trách thì `infer_drive` trả về *không có động cơ đẩy nào*,
 
 **Đặc tả đã sửa xong toàn bộ (2026-08-16). Từ đây trở đi mười ba việc dưới chỉ còn phần mã.** Không việc
 nào còn phải quay lại bàn luật. Ô chỉ được đánh dấu xong khi mã theo kịp **và** đã dựng dịch vụ thật lên tự
-kiểm — **T179, T180, T181, T182, T183, T186, T187, T192, T193, T195 và T196 xong (2026-08-16); T188 và
-T197 xong (2026-08-17). Còn năm việc: T184, T185, T189, T190, T191, cộng T194.**
+kiểm — **T179, T180, T181, T182, T183, T186, T187, T192, T193, T195 và T196 xong (2026-08-16); T188, T197,
+T185 và T189 xong (2026-08-17). Còn ba việc: T184, T190, T191, cộng T194.**
 
 **Hiến pháp lên 1.1.0 (2026-08-16).** T193 để lộ một luật chưa ai ghi: chữ **hệ thống** gửi cho agent phải
 là tiếng Anh, vì agent không có ngôn ngữ giao diện để chọn. Mã vốn đã làm đúng — gói tin đánh thức viết
@@ -1165,7 +1165,17 @@ tồn tại không có nghĩa là luật được canh; phải kiểm bài kiể
   khối trông như đã duyệt mà chẳng ai duyệt. Kèm theo là câu người chủ viết lúc mở dự án, ghi rõ đó là
   nguyên liệu thô; câu ấy do **người** viết nên giữ nguyên thứ tiếng của họ (Hiến pháp VII)
 - [ ] T184 Đưa câu lỗi máy chủ vào cơ chế đa ngôn ngữ, ở `backend/armarius/presentation/errors.py` cộng các nơi ném lỗi trong `domain/` và `application/`, và mặt dựng câu ở `frontend/src/lib/api.ts` + `i18n/` — theo FR-084, SC-013, Hiến pháp VI (contradicts). Mọi lối xử lý lỗi trả `{"detail": str(exc)}`, `api.ts` lấy nguyên chuỗi đó làm `ApiError.message`, và các trang hiện thẳng nó lên màn. 131 chỗ ném lỗi trong tầng nghiệp vụ, câu chữ **pha lẫn hai thứ tiếng**: `"Cannot move task from 'x' to 'y'."`, `"A published artifact must be linked before review/done."`, `"This dependency would create a cycle."` nằm cạnh `"Còn việc phụ thuộc chưa xong"`. T155 rà chuỗi cứng ở giao diện và ra sạch — vì nó không rà đường này. Kế hoạch đợt đã ghi đúng cách làm: *"mặt giao tiếp trả mã lỗi và tham số, giao diện dựng câu qua cơ chế đa ngôn ngữ"*; mã chưa làm thế
-- [ ] T185 [US4] Sửa hai danh sách cớ đánh thức cho khớp thực tế phát, ở `backend/armarius/domain/services/wake_policy.py` (dòng 28-50) — theo FR-047, FR-048 (contradicts). `IDLE_REMINDER` nằm trong danh sách cớ của **thợ**, nhưng nơi duy nhất phát nó (`orchestrator.py:221`) gọi **Trưởng dự án**; đồng thời cớ cuối của FR-047 — *một nhịp điều phối có điểm treo thật* — không có mặt trong danh sách cớ của Trưởng. Hai danh sách này chỉ `tests/test_wake_policy.py` đọc, không nơi nào cưỡng chế, nên chúng đang là tài liệu ghi sai. **Đã chốt ở FR-048a: cưỡng chế** — một cớ không nằm trong danh sách của vai nhận thì lệnh gọi bị từ chối và ghi lại. Việc này vì thế gồm hai phần: xếp lại `IDLE_REMINDER` sang danh sách Trưởng dự án (nó vốn gọi Trưởng, không gọi thợ), và dựng chỗ cưỡng chế ở `wake_engine`
+- [x] T185 [US4] Sửa hai danh sách cớ đánh thức cho khớp thực tế phát, ở `backend/armarius/domain/services/wake_policy.py` (dòng 28-50) — theo FR-047, FR-048 (contradicts). `IDLE_REMINDER` nằm trong danh sách cớ của **thợ**, nhưng nơi duy nhất phát nó (`orchestrator.py:221`) gọi **Trưởng dự án**; đồng thời cớ cuối của FR-047 — *một nhịp điều phối có điểm treo thật* — không có mặt trong danh sách cớ của Trưởng. Hai danh sách này chỉ `tests/test_wake_policy.py` đọc, không nơi nào cưỡng chế, nên chúng đang là tài liệu ghi sai. **Đã chốt ở FR-048a: cưỡng chế** — một cớ không nằm trong danh sách của vai nhận thì lệnh gọi bị từ chối và ghi lại. Việc này vì thế gồm hai phần: xếp lại `IDLE_REMINDER` sang danh sách Trưởng dự án (nó vốn gọi Trưởng, không gọi thợ), và dựng chỗ cưỡng chế ở `wake_engine`
+
+  **Làm 2026-08-17.** Cưỡng chế ở **cả hai cửa** một lệnh gọi đi ra, không phải một: cửa theo đầu việc
+  (`wake_engine.enqueue`) và cửa theo dự án (`leader_chat.notify`). Vá mỗi cửa đầu là để nguyên đường
+  gọi Trưởng dự án — đúng cái bẫy đã sập nhiều lần. Vai đọc từ **công việc**: ai giữ đầu việc là thợ của
+  đầu việc ấy, ai ngồi ghế trưởng là Trưởng dự án, và một agent đội cả hai vai thì được gọi bởi cả hai
+  danh sách. Cớ *bị nhắc tên* tới được cả hai vai vì nó là lời gọi duy nhất do người gửi chọn người
+  nhận. Lệnh gọi bị từ chối **nằm lại trong sổ** với dấu riêng thay vì làm hỏng hành động đã sinh ra nó:
+  người chủ vừa gửi một bình luận thì bình luận ấy vẫn đứng. Hai danh sách cũng được sửa cho khớp thực
+  tế phát: thêm *đầu ra bị trả về* và *yêu cầu bị đổi giữa chừng* vào danh sách thợ (chúng có thật, có
+  FR riêng, chỉ chưa được ghi vào đây)
 - [x] T186 [US1] Thêm cổng giai đoạn dự án cho lối **giao** đầu việc, ở `backend/armarius/application/use_cases/tasks.py` (`assign_within`, dòng 415) — theo FR-003 (partial). FR-003 đòi từ chối mọi thao tác *tạo* **hoặc giao** khi dự án chưa *vận hành*/*bảo trì*; `accepts_real_tasks` hiện có đúng một nơi gọi, ở lối tạo (dòng 197). Một đầu việc *nháp* tạo hợp lệ trong *lập kế hoạch* vẫn giao được, mà giao thì bắn lệnh gọi thợ dậy trước khi kế hoạch được duyệt
 
   **Hai cửa, không phải một.** Ngoài lối giao còn lối **duyệt một đề xuất**: nó đẩy *nháp* thành *chờ
@@ -1197,7 +1207,13 @@ tồn tại không có nghĩa là luật được canh; phải kiểm bài kiể
   nâng nó lên mười là chuyện hợp lý; nâng nó lên mười mà kéo theo người chủ phải đợi qua mười lần gọi
   Trưởng dự án hỏng mới biết Trưởng đã mất tích thì không
 
-- [ ] T189 [P] [US4] Đánh thức Trưởng dự án khi người chủ **từ chối** một đầu ra, ở `backend/armarius/application/use_cases/approvals.py` (quanh dòng 347) — theo FR-047 (partial). Từ chối hiện chỉ gọi thợ (`APPROVAL_REJECTED`); Trưởng chỉ bị kéo vào sau trần ba vòng (`BRIEF_REVIEW`). FR-047 ghi cớ là *"người chủ công nhận **hoặc từ chối** một đầu ra"* — hai vế, mã mới làm một
+- [x] T189 [P] [US4] Đánh thức Trưởng dự án khi người chủ **từ chối** một đầu ra, ở `backend/armarius/application/use_cases/approvals.py` (quanh dòng 347) — theo FR-047 (partial). Từ chối hiện chỉ gọi thợ (`APPROVAL_REJECTED`); Trưởng chỉ bị kéo vào sau trần ba vòng (`BRIEF_REVIEW`). FR-047 ghi cớ là *"người chủ công nhận **hoặc từ chối** một đầu ra"* — hai vế, mã mới làm một
+
+  **Làm 2026-08-17.** Đi bằng cửa dự án — cùng kênh mà *chờ rà soát* và *xong* đang dùng — nên Trưởng
+  dự án giữ được một mạch chuyện về dự án của nó thay vì bị gọi nguội. Hai chỗ **không** gọi: khi vòng
+  thứ ba vừa bấm phanh (lời gọi soát đề bài đã kéo Trưởng vào đúng đầu việc ấy với thông điệp mạnh hơn,
+  gửi thêm một lời nữa về cùng một lần từ chối là ồn), và khi chính Trưởng dự án chấm không đạt (nó vừa
+  ra quyết định ấy). Cớ mới `patron_rejected_output`, có nhãn cả hai thứ tiếng
 - [ ] T190 [P] [US2] Nêu rõ vòng phụ thuộc đi qua những đầu việc nào, ở `backend/armarius/application/use_cases/tasks.py` (`_would_cycle` dòng 1284 và chỗ ném lỗi dòng 1043) — theo FR-032 (partial). Việc chặn khép vòng đã đúng, nhưng câu trả về là `"This dependency would create a cycle."` — FR-032 đòi *"nêu rõ vòng đó đi qua những đầu việc nào"*. Đối chiếu FR-025 làm đúng chuyện này (liệt kê mã việc còn thiếu). Sửa cùng T184 vì cùng đường câu chữ
 - [ ] T191 Bỏ luật "tám phần cho mọi gói tin đánh thức", thay bằng **lõi bốn phần + phần riêng theo loại lời gọi** — đặc tả đã sửa (FR-044, FR-044a, FR-045, SC-005, và bản mô tả mặt agent §4), giờ tới `backend/armarius/domain/services/wake_prompt.py` và `leader_chat_prompt.py`. Theo luật 2 người chủ chốt (contradicts). Lý do bỏ: năm trong tám phần **vô nghĩa với Trưởng dự án**. Nó bị gọi dậy vì nhịp rà tìm ra ba điểm treo trên bảng — "đầu việc đang nói tới" là cái nào trong ba? "Việc kế tiếp" của một người điều phối là gì? "Nơi nộp thành phẩm" thì càng không. Ép chung khuôn là ép một vai điền vào ô của vai khác.
   **Lõi bắt buộc cho mọi lời gọi, không loại trừ**: vai trong dự án · Bối cảnh **đã duyệt** (nối T183) · lý do gọi dậy · danh bạ đồng đội. Bốn phần này trả lời ba câu mà agent nào cũng phải biết trước khi làm gì: *mình là ai, dự án đang đi đâu, tại sao bị gọi lúc này*. Thiếu một cái là agent đoán, mà agent đoán là agent làm sai.
@@ -1205,6 +1221,13 @@ tồn tại không có nghĩa là luật được canh; phải kiểm bài kiể
 - [x] T192 Điền chín nhãn cớ đánh thức còn thiếu ở `frontend/src/i18n/vi.ts` và `en.ts` (khối `agentDetail.wakeSource`) — theo FR-084 (partial). Bảng nhãn chỉ có sáu cớ đời đầu; chín cớ thêm về sau (`leader_chat`, `project_ready`, `patron_decision`, `task_done`, `worker_handback`, `approval_rejected`, `brief_review`, `task_in_review`, `idle_reminder`) rơi vào nhánh dự phòng, nên màn hình tiếng Việt hiện thẳng chuỗi mã tiếng Anh gạch dưới. Tìm ra khi làm T181 — cớ mới đã có nhãn ngay, chín cớ cũ thì chưa
 - [x] T193 Đưa câu *lý do gọi dậy* ra khỏi tiếng Anh, ở các nơi phát lệnh gọi trong `backend/armarius/application/use_cases/` (`tasks.py`, `threads.py`, `wake_policy.py`) — theo FR-084, FR-046 (contradicts). Câu này không chỉ đi vào gói tin gửi agent: màn hình agent hiện nó nguyên văn cho người chủ đọc. Trên cùng một màn đang có *"you were assigned to this task"* và *"in limbo without a reason; ask for an update"* nằm cạnh *"lưới an toàn gọi lại: việc bị bỏ quên…"*. Cùng họ với T184 nhưng khác đường: đây là chuỗi **lưu trong sổ** rồi mới hiện, nên phải quyết cách dựng câu trước — mã lý do kèm tham số, hay dựng sẵn lúc phát. Chụp màn hình bằng chứng khi kiểm chứng T181
 - [ ] T194 Đưa **phần thân** các lời gọi gửi agent sang tiếng Anh, ở `backend/armarius/domain/services/wake_prompt.py` (gói tin nhịp điều phối, dòng 205-242) và các chỗ dựng `text=` trong `application/use_cases/` (`tasks.py`, `projects.py`, `plans.py`, `recovery.py`) — theo Hiến pháp VII (contradicts). T193 mới sửa **dòng lý do**; phần thân — câu hỏi Mức 2 gửi Trưởng dự án, hồ sơ Mức 3, danh sách điểm treo của nhịp điều phối, lời báo dự án đủ đội — vẫn là văn xuôi tiếng Việt gửi thẳng cho agent. Khác T193 ở chỗ: mấy câu này **không hiện lên màn hình**, chỉ agent đọc, nên không cần mã lý do — dịch thẳng sang tiếng Anh là xong. Phần do **người** nhập (Bối cảnh, tiêu đề đầu việc, bình luận) giữ nguyên thứ tiếng người viết
+
+  **Sửa tiền đề (2026-08-17, tìm ra khi làm T189):** câu *"mấy câu này không hiện lên màn hình"* chỉ
+  đúng với một nửa. Các lời gọi đi bằng **cửa dự án** (`leader_chat.notify`) được ghi vào chính luồng
+  trò chuyện mà người chủ đọc ở tab *Chat với Trưởng dự án* — vừa gửi agent vừa hiện lên màn. Hiến pháp
+  VII đã chốt cách xử: loại đó lưu **mã + tham số**, không lưu câu. Nên T194 tách làm hai: chỗ chỉ agent
+  đọc thì dịch thẳng; sáu chỗ đi qua cửa dự án thì phải đổi sang mã, và đó là việc nặng hơn — nó chạm cả
+  cấu trúc luồng trò chuyện lẫn mặt hiển thị
 - [x] T195 [US6] Báo cho người phụ trách khi yêu cầu bị sửa dưới chân họ, ở `backend/armarius/application/use_cases/tasks.py` (`edit`) — theo FR-070a, FR-046 (missing). Lối sửa của người chủ (T187) có hiệu lực ngay và **không nói với ai**. Người chủ viết lại mô tả một đầu việc *đang làm* thì người phụ trách vẫn đang làm bản cũ, và chỉ biết nếu tự mở lại màn hình. Cần **người chủ chốt** trước khi làm: sửa trường nào thì đáng gọi dậy (đổi mô tả và hạn chót thì rõ là đáng; đổi độ ưu tiên thì chưa chắc), và cớ gọi dậy mang mã gì — dùng lại một mã có sẵn hay mở mã mới trong danh sách đóng ở `wake_reason.py`. Chưa chốt thì không tự đặt, vì đặt sai một cớ là dạy sai người thợ về ý nghĩa của lần bị gọi
 
   **Đã chốt và làm (2026-08-16).** Gọi khi chạm vào *mô tả chi tiết*, *hạn chót* hoặc *định nghĩa
