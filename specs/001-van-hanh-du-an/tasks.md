@@ -1102,8 +1102,8 @@ phụ trách thì `infer_drive` trả về *không có động cơ đẩy nào*,
 
 **Đặc tả đã sửa xong toàn bộ (2026-08-16). Từ đây trở đi mười ba việc dưới chỉ còn phần mã.** Không việc
 nào còn phải quay lại bàn luật. Ô chỉ được đánh dấu xong khi mã theo kịp **và** đã dựng dịch vụ thật lên tự
-kiểm — **T179, T180, T181, T182, T183, T186, T187, T192 và T193 xong (2026-08-16), còn sáu việc
-trong mười ba, cộng T194 và T195 mới mở.**
+kiểm — **T179, T180, T181, T182, T183, T186, T187, T192, T193, T195 và T196 xong (2026-08-16),
+còn sáu việc trong mười ba, cộng T194.**
 
 **Hiến pháp lên 1.1.0 (2026-08-16).** T193 để lộ một luật chưa ai ghi: chữ **hệ thống** gửi cho agent phải
 là tiếng Anh, vì agent không có ngôn ngữ giao diện để chọn. Mã vốn đã làm đúng — gói tin đánh thức viết
@@ -1197,5 +1197,26 @@ tồn tại không có nghĩa là luật được canh; phải kiểm bài kiể
 - [x] T192 Điền chín nhãn cớ đánh thức còn thiếu ở `frontend/src/i18n/vi.ts` và `en.ts` (khối `agentDetail.wakeSource`) — theo FR-084 (partial). Bảng nhãn chỉ có sáu cớ đời đầu; chín cớ thêm về sau (`leader_chat`, `project_ready`, `patron_decision`, `task_done`, `worker_handback`, `approval_rejected`, `brief_review`, `task_in_review`, `idle_reminder`) rơi vào nhánh dự phòng, nên màn hình tiếng Việt hiện thẳng chuỗi mã tiếng Anh gạch dưới. Tìm ra khi làm T181 — cớ mới đã có nhãn ngay, chín cớ cũ thì chưa
 - [x] T193 Đưa câu *lý do gọi dậy* ra khỏi tiếng Anh, ở các nơi phát lệnh gọi trong `backend/armarius/application/use_cases/` (`tasks.py`, `threads.py`, `wake_policy.py`) — theo FR-084, FR-046 (contradicts). Câu này không chỉ đi vào gói tin gửi agent: màn hình agent hiện nó nguyên văn cho người chủ đọc. Trên cùng một màn đang có *"you were assigned to this task"* và *"in limbo without a reason; ask for an update"* nằm cạnh *"lưới an toàn gọi lại: việc bị bỏ quên…"*. Cùng họ với T184 nhưng khác đường: đây là chuỗi **lưu trong sổ** rồi mới hiện, nên phải quyết cách dựng câu trước — mã lý do kèm tham số, hay dựng sẵn lúc phát. Chụp màn hình bằng chứng khi kiểm chứng T181
 - [ ] T194 Đưa **phần thân** các lời gọi gửi agent sang tiếng Anh, ở `backend/armarius/domain/services/wake_prompt.py` (gói tin nhịp điều phối, dòng 205-242) và các chỗ dựng `text=` trong `application/use_cases/` (`tasks.py`, `projects.py`, `plans.py`, `recovery.py`) — theo Hiến pháp VII (contradicts). T193 mới sửa **dòng lý do**; phần thân — câu hỏi Mức 2 gửi Trưởng dự án, hồ sơ Mức 3, danh sách điểm treo của nhịp điều phối, lời báo dự án đủ đội — vẫn là văn xuôi tiếng Việt gửi thẳng cho agent. Khác T193 ở chỗ: mấy câu này **không hiện lên màn hình**, chỉ agent đọc, nên không cần mã lý do — dịch thẳng sang tiếng Anh là xong. Phần do **người** nhập (Bối cảnh, tiêu đề đầu việc, bình luận) giữ nguyên thứ tiếng người viết
-- [ ] T195 [US6] Báo cho người phụ trách khi yêu cầu bị sửa dưới chân họ, ở `backend/armarius/application/use_cases/tasks.py` (`edit`) — theo FR-070a, FR-046 (missing). Lối sửa của người chủ (T187) có hiệu lực ngay và **không nói với ai**. Người chủ viết lại mô tả một đầu việc *đang làm* thì người phụ trách vẫn đang làm bản cũ, và chỉ biết nếu tự mở lại màn hình. Cần **người chủ chốt** trước khi làm: sửa trường nào thì đáng gọi dậy (đổi mô tả và hạn chót thì rõ là đáng; đổi độ ưu tiên thì chưa chắc), và cớ gọi dậy mang mã gì — dùng lại một mã có sẵn hay mở mã mới trong danh sách đóng ở `wake_reason.py`. Chưa chốt thì không tự đặt, vì đặt sai một cớ là dạy sai người thợ về ý nghĩa của lần bị gọi
-- [ ] T196 [US6] Đóng nốt lối ghi vào dự án đã đóng, ở `backend/armarius/application/use_cases/tasks.py` (`transition`, `reopen`, `set_criteria`, `set_next_action`), `threads.py` và `artifacts` — theo FR-005 (partial). T182 chặn **mọi lệnh gọi dậy**, T187 chặn **lối sửa**; nhưng đổi trạng thái, bình luận, nộp thành phẩm và đặt tiêu chí trên một dự án đã đóng thì vẫn ghi được. FR-005 nói lịch sử giữ ở dạng **chỉ đọc**. Cần **người chủ chốt** phạm vi trước: chặn hết mọi lối ghi (kể cả bình luận của chính người chủ để tự ghi chú), hay chỉ chặn những lối làm đổi trạng thái công việc. Hai câu trả lời cho ra hai hệ thống khác nhau, nên không tự quyết
+- [x] T195 [US6] Báo cho người phụ trách khi yêu cầu bị sửa dưới chân họ, ở `backend/armarius/application/use_cases/tasks.py` (`edit`) — theo FR-070a, FR-046 (missing). Lối sửa của người chủ (T187) có hiệu lực ngay và **không nói với ai**. Người chủ viết lại mô tả một đầu việc *đang làm* thì người phụ trách vẫn đang làm bản cũ, và chỉ biết nếu tự mở lại màn hình. Cần **người chủ chốt** trước khi làm: sửa trường nào thì đáng gọi dậy (đổi mô tả và hạn chót thì rõ là đáng; đổi độ ưu tiên thì chưa chắc), và cớ gọi dậy mang mã gì — dùng lại một mã có sẵn hay mở mã mới trong danh sách đóng ở `wake_reason.py`. Chưa chốt thì không tự đặt, vì đặt sai một cớ là dạy sai người thợ về ý nghĩa của lần bị gọi
+
+  **Đã chốt và làm (2026-08-16).** Gọi khi chạm vào *mô tả chi tiết*, *hạn chót* hoặc *định nghĩa
+  hoàn thành* — ba thứ đổi nghĩa công việc. Không gọi khi đổi tiêu đề hay độ ưu tiên: chúng không đổi
+  việc phải làm, mà cắt ngang một lượt làm việc để báo một tin không dùng được là dạy agent rằng lệnh
+  gọi nói chung không đáng đọc. Không gọi khi đầu việc đã đóng — muốn làm tiếp thì **mở lại**, và đó là
+  một thao tác khác, có lý do kèm theo. Cớ mới `requirement_changed`, xếp ngang *giao việc* trong bảng
+  thứ bậc gộp lệnh gọi: với người thợ đây là câu *việc bạn đang cầm không còn là việc ấy nữa*
+- [x] T196 [US6] Đóng nốt lối ghi vào dự án đã đóng, ở `backend/armarius/application/use_cases/tasks.py` (`transition`, `reopen`, `set_criteria`, `set_next_action`), `threads.py` và `artifacts` — theo FR-005 (partial). T182 chặn **mọi lệnh gọi dậy**, T187 chặn **lối sửa**; nhưng đổi trạng thái, bình luận, nộp thành phẩm và đặt tiêu chí trên một dự án đã đóng thì vẫn ghi được. FR-005 nói lịch sử giữ ở dạng **chỉ đọc**. Cần **người chủ chốt** phạm vi trước: chặn hết mọi lối ghi (kể cả bình luận của chính người chủ để tự ghi chú), hay chỉ chặn những lối làm đổi trạng thái công việc. Người chủ chốt 2026-08-16: **đóng băng hoàn toàn** — mọi thao tác trên dự án dừng hẳn, chỉ còn xem lại được
+
+  **Áp một lần, ở chỗ mọi lệnh đi qua**, chứ không rải ở từng nơi: lệnh nào không phải đọc mà chạm tới
+  một dự án — trực tiếp hay qua một đầu việc — đều bị từ chối khi dự án đã đóng. Lối thêm sau này tự
+  thừa hưởng, và một bài kiểm **duyệt cả bảng đường dẫn** đỏ lên nếu có lối ghi nào lọt ra ngoài. Ba lớp
+  lỗi giống hệt nhau ở ba tầng gom về một, đặt cạnh chính cái luật nó nói tới
+
+  **Còn đúng một lối mở: vứt cả dự án đi.** Đóng băng nội dung mà vẫn không xoá được thì người chủ mắc
+  kẹt vĩnh viễn với thứ họ đã tuyên bố là xong. Đây là quyết định có chủ ý, không phải chỗ sót
+
+  **Lộ ra một lỗi có sẵn khi kiểm chứng lối vứt ấy**: xoá bất kỳ dự án nào từng chạy agent đều trả lỗi
+  máy chủ, kể cả dự án chưa hề đóng. Vòng xoá viết từ hồi một dự án chỉ có đầu việc, bình luận, thành
+  phẩm, vai và ghế; mười mấy bảng thêm sau đó chưa bao giờ được thêm vào. Trên Postgres khoá ngoại chặn
+  thẳng, trên SQLite thì im lặng bỏ lại rác — nên bài kiểm cũ xanh. Sửa cùng chỗ này, một vòng xoá dùng
+  chung cho cả xoá dự án lẫn xoá không gian làm việc
