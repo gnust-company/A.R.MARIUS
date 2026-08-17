@@ -41,6 +41,9 @@ _STRENGTH: dict[WakeSource, int] = {
     # Tied with assignment on purpose: both say "this is yours and you can start now", and
     # to the worker being handed a task and having its task unblocked are the same call.
     WakeSource.DEPENDENCY_CLEARED: 80,
+    # Ranked with assignment for the same reason: to the worker this is the sentence
+    # "the job you are holding is not the job any more", which outranks a comment.
+    WakeSource.REQUIREMENT_CHANGED: 80,
     WakeSource.PROJECT_READY: 80,
     WakeSource.APPROVAL_REJECTED: 90,
     WakeSource.BRIEF_REVIEW: 90,

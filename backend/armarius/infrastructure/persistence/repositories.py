@@ -108,6 +108,86 @@ from armarius.infrastructure.persistence import mappers
 from armarius.shared.clock import utcnow
 
 
+async def _purge_projects(session: AsyncSession, project_ids: Sequence[UUID]) -> None:
+    """Delete a set of projects and every row they own, children first.
+
+    One list, used by both the project delete and the workspace delete, because they are
+    the same cascade and keeping two copies is how one of them falls behind. Which is
+    exactly what happened: this cascade was written when a project owned tasks, comments,
+    artifacts, roles and seats, and every table added afterwards — runs, wakes, sessions,
+    the task log, the acceptance criteria, the signatures, the recovery ladder, the plan,
+    the brief, the cadence record, the Leader conversation — was never added to it. On
+    Postgres those foreign keys refuse the delete outright, so deleting any project an
+    agent had ever run on failed with a 500; on SQLite it silently orphaned the rows.
+
+    No ``ON DELETE CASCADE`` anywhere in the schema, so the order below IS the constraint
+    graph: run events before runs, plan items before plans, everything hanging off a task
+    before the task, everything hanging off a project before the project.
+    """
+    if not project_ids:
+        return
+    ids = list(project_ids)
+
+    task_ids = (
+        await session.execute(select(TaskModel.id).where(TaskModel.project_id.in_(ids)))
+    ).scalars().all()
+    run_ids = (
+        await session.execute(select(RunModel.id).where(RunModel.project_id.in_(ids)))
+    ).scalars().all()
+    plan_ids = (
+        await session.execute(select(PlanModel.id).where(PlanModel.project_id.in_(ids)))
+    ).scalars().all()
+
+    if run_ids:
+        await session.execute(delete(RunEventModel).where(RunEventModel.run_id.in_(run_ids)))
+    if task_ids:
+        for owned_by_task in (
+            ArtifactModel,
+            CommentModel,
+            ChecklistItemModel,
+            TaskApprovalModel,
+            TaskLogModel,
+            TaskPushReasonModel,
+        ):
+            await session.execute(
+                delete(owned_by_task).where(owned_by_task.task_id.in_(task_ids))
+            )
+        # Both ends of a dependency edge point at a task, and an edge is dropped when
+        # either end goes — a project can be deleted while a sibling still points into it.
+        await session.execute(
+            delete(TaskDependencyModel).where(
+                or_(
+                    TaskDependencyModel.task_id.in_(task_ids),
+                    TaskDependencyModel.blocks_task_id.in_(task_ids),
+                )
+            )
+        )
+    for keyed_on_project in (WakeupModel, SessionModel, RunModel):
+        await session.execute(
+            delete(keyed_on_project).where(keyed_on_project.project_id.in_(ids))
+        )
+    if task_ids:
+        await session.execute(delete(TaskModel).where(TaskModel.id.in_(task_ids)))
+    if plan_ids:
+        await session.execute(delete(PlanItemModel).where(PlanItemModel.plan_id.in_(plan_ids)))
+    for owned_by_project in (
+        PlanModel,
+        ProjectContextModel,
+        ProjectAutoApprovalModel,
+        OrchestrationSweepModel,
+        ProjectLeaderConversationModel,
+        SeatGrantModel,
+        RoleModel,
+        # The patron's inbox lives on the workspace, but an item that points at a deleted
+        # project is a row on a screen that can no longer open.
+        InboxItemModel,
+    ):
+        await session.execute(
+            delete(owned_by_project).where(owned_by_project.project_id.in_(ids))
+        )
+    await session.execute(delete(ProjectModel).where(ProjectModel.id.in_(ids)))
+
+
 class SqlWorkspaceRepository(WorkspaceRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
@@ -238,24 +318,7 @@ class SqlWorkspaceRepository(WorkspaceRepository):
             )
         )
 
-        if project_ids:
-            if task_ids:
-                await self._s.execute(
-                    delete(ArtifactModel).where(ArtifactModel.task_id.in_(task_ids))
-                )
-                await self._s.execute(
-                    delete(CommentModel).where(CommentModel.task_id.in_(task_ids))
-                )
-                await self._s.execute(delete(TaskModel).where(TaskModel.id.in_(task_ids)))
-            await self._s.execute(
-                delete(SeatGrantModel).where(SeatGrantModel.project_id.in_(project_ids))
-            )
-            await self._s.execute(
-                delete(RoleModel).where(RoleModel.project_id.in_(project_ids))
-            )
-            await self._s.execute(
-                delete(ProjectModel).where(ProjectModel.workspace_id == workspace_id)
-            )
+        await _purge_projects(self._s, project_ids)
         await self._s.execute(delete(LabelModel).where(LabelModel.workspace_id == workspace_id))
         await self._s.execute(
             delete(MariusModel).where(MariusModel.workspace_id == workspace_id)
@@ -491,32 +554,9 @@ class SqlProjectRepository(ProjectRepository):
         return project
 
     async def remove(self, project_id: UUID) -> None:
-        """Delete a project and its owned children (roles, seat grants, tasks and each
-        task's comments/artifacts). The FK columns have no ``ON DELETE CASCADE``, so a
-        bare project delete orphans (SQLite) or errors (Postgres) — we cascade explicitly
-        inside the aggregate boundary so the behaviour is identical on both backends."""
-        task_ids = (
-            await self._s.execute(
-                select(TaskModel.id).where(TaskModel.project_id == project_id)
-            )
-        ).scalars().all()
-        if task_ids:
-            await self._s.execute(
-                delete(ArtifactModel).where(ArtifactModel.task_id.in_(task_ids))
-            )
-            await self._s.execute(
-                delete(CommentModel).where(CommentModel.task_id.in_(task_ids))
-            )
-            await self._s.execute(
-                delete(TaskModel).where(TaskModel.id.in_(task_ids))
-            )
-        await self._s.execute(
-            delete(SeatGrantModel).where(SeatGrantModel.project_id == project_id)
-        )
-        await self._s.execute(delete(RoleModel).where(RoleModel.project_id == project_id))
-        m = await self._s.get(ProjectModel, project_id)
-        if m is not None:
-            await self._s.delete(m)
+        """Delete a project and every row it owns — see `_purge_projects` for the order
+        and for why the list is shared with the workspace delete."""
+        await _purge_projects(self._s, [project_id])
         await self._s.flush()
 
 

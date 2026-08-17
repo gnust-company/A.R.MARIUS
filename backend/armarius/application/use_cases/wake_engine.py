@@ -48,7 +48,7 @@ from armarius.domain.entities.wakeup import (
     WakeupStatus,
 )
 from armarius.domain.entities.workspace import Project, Workspace
-from armarius.domain.services.project_rules import is_closed
+from armarius.domain.services.project_rules import ProjectClosed, is_closed
 from armarius.domain.services.wake_coalesce import merge_reasons, stronger_source
 from armarius.domain.services.wake_policy import decide_self_wake
 from armarius.domain.services.wake_prompt import (
@@ -70,10 +70,6 @@ _BLOCK_REASON_STATUSES = {TaskStatus.BLOCKED, TaskStatus.BACKLOG}
 #: How much of a crash's description is kept on the run. Enough to name what happened
 #: without letting one runaway message dominate the row.
 _MAX_ERROR_CHARS = 500
-
-
-class ProjectClosedError(Exception):
-    """Raised when something tries to wake an agent about a closed project (FR-005)."""
 
 
 def _describe(exc: BaseException) -> str:
@@ -176,7 +172,7 @@ class WakeEngine:
                 return
             project = await uow.projects.get(task.project_id)
             if project is not None and is_closed(project.status):
-                raise ProjectClosedError(
+                raise ProjectClosed(
                     "Dự án đã đóng — không đánh thức agent của nó nữa."
                 )
 

@@ -28,6 +28,7 @@ from armarius.domain.entities.project import Project, ProjectStatus, ProjectThre
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
 from armarius.domain.services import project_key, project_rules
+from armarius.domain.services.project_rules import ProjectClosed
 from armarius.shared.clock import utcnow
 
 if TYPE_CHECKING:  # imported for typing only — these are injected, never constructed here
@@ -46,10 +47,6 @@ class DuplicateRoleKey(Exception):
 
 class DuplicateProjectKey(Exception):
     """Raised when a project key collides with an existing one in the same workspace."""
-
-
-class ProjectClosed(Exception):
-    """Raised when anything tries to write to a closed project (spec 001 FR-005)."""
 
 
 def _slugify(value: str) -> str:

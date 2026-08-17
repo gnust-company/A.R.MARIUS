@@ -15,20 +15,18 @@ from armarius.application.use_cases.onboarding_session import (
     OnboardingBusy,
     WorkspaceAgentUnavailable,
 )
-from armarius.application.use_cases.plans import PlanningError, ProjectClosed
+from armarius.application.use_cases.plans import PlanningError
 from armarius.application.use_cases.projects import (
     DuplicateProjectKey,
     DuplicateRoleKey,
     SystemOnlyOperation,
 )
-from armarius.application.use_cases.projects import ProjectClosed as ProjectClosedService
 from armarius.application.use_cases.recovery import NotOnTheLeadersRung
 from armarius.application.use_cases.tasks import (
     AlreadyAssignedError,
     ProjectNotReadyForTasks,
     TitleRequiredError,
 )
-from armarius.application.use_cases.wake_engine import ProjectClosedError
 from armarius.domain.entities.approval import RejectionNeedsReasonError
 from armarius.domain.entities.checklist_item import (
     CriteriaLockedError,
@@ -53,7 +51,11 @@ from armarius.domain.entities.task import (
 from armarius.domain.entities.task_dependency import TaskDependencyError
 from armarius.domain.services.plan_gate import PlanGateError
 from armarius.domain.services.project_key import InvalidProjectKey
-from armarius.domain.services.project_rules import InvalidPhaseTransition, InvalidProjectPlan
+from armarius.domain.services.project_rules import (
+    InvalidPhaseTransition,
+    InvalidProjectPlan,
+    ProjectClosed,
+)
 
 
 def install_error_handlers(app: FastAPI) -> None:
@@ -70,20 +72,9 @@ def install_error_handlers(app: FastAPI) -> None:
     async def _bad_phase(_: Request, exc: InvalidPhaseTransition) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
-    @app.exception_handler(ProjectClosedError)
-    async def _closed_project_wake(_: Request, exc: ProjectClosedError) -> JSONResponse:
-        # FR-005 — the manual wake button on a closed project's task.
-        return JSONResponse(status_code=409, content={"detail": str(exc)})
-
     @app.exception_handler(ProjectClosed)
     async def _closed_project(_: Request, exc: ProjectClosed) -> JSONResponse:
-        # FR-005 — a closed project is readable, never writable.
-        return JSONResponse(status_code=409, content={"detail": str(exc)})
-
-    @app.exception_handler(ProjectClosedService)
-    async def _closed_project_service(
-        _: Request, exc: ProjectClosedService
-    ) -> JSONResponse:
+        # FR-005 — a closed project is frozen: readable, never writable, through any door.
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(PlanGateError)

@@ -12,10 +12,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from armarius.domain.entities.task import TaskStatus
 from armarius.presentation.api.auth import CurrentUser
+from armarius.presentation.api.frozen import refuse_when_frozen
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
     LeaderChatOut,
@@ -23,7 +24,9 @@ from armarius.presentation.schemas import (
     TaskOut,
 )
 
-router = APIRouter(prefix="/v1", tags=["leader-chat"])
+# FR-005 — a closed project is frozen. The guard hangs on the router, not on each
+# route, so a route added later cannot forget it.
+router = APIRouter(prefix="/v1", tags=["leader-chat"], dependencies=[Depends(refuse_when_frozen)])
 
 
 async def _require_owned_project(container, user, project_id: UUID):

@@ -24,7 +24,7 @@ from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.review_reset import retire_signatures_on_move
 from armarius.application.use_cases.threads import announce_comment
 from armarius.application.use_cases.types import UowFactory
-from armarius.application.use_cases.wake_engine import ProjectClosedError, WakeEngine
+from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.domain.entities.checklist_item import (
     AcceptanceResult,
     ChecklistItem,
@@ -55,6 +55,7 @@ from armarius.domain.services.approval_rules import (
     is_closable,
     missing_signatures,
 )
+from armarius.domain.services.project_rules import ProjectClosed
 from armarius.domain.services.push_reason_rules import (
     QueueCandidate,
     keeps_running,
@@ -127,6 +128,26 @@ class _Unset:
 
 
 UNSET = _Unset()
+
+
+#: The fields whose change makes the worker's current understanding of the job wrong
+#: (FR-070a → FR-046). A title reworded or a priority bumped does not change what has to
+#: be built, and waking somebody mid-turn to tell them nothing actionable is how an agent
+#: learns that wake packets are not worth reading.
+_SUBSTANTIVE: frozenset[str] = frozenset({"description", "due_date", "definition_of_done"})
+
+#: Statuses in which somebody is still going to act on this task. A finished task is not
+#: dragged back to life by an edit — reopening is its own deliberate move, with a reason.
+_STILL_IN_PLAY: frozenset[TaskStatus] = frozenset(
+    {TaskStatus.TODO, TaskStatus.IN_PROGRESS, TaskStatus.IN_REVIEW, TaskStatus.BLOCKED}
+)
+
+
+def _worker_to_warn(task: Task, changed: Sequence[str]) -> UUID | None:
+    """Who, if anyone, needs to be told the job just moved under them."""
+    if task.assigned_marius_id is None or task.status not in _STILL_IN_PLAY:
+        return None
+    return task.assigned_marius_id if _SUBSTANTIVE & set(changed) else None
 
 
 class ProjectNotReadyForTasks(Exception):
@@ -522,6 +543,7 @@ class TaskService:
             )
             await uow.commit()
             project_id = updated.project_id
+            tell = _worker_to_warn(updated, changed)
 
         # The board draws the title, the priority and the deadline, so an edit changes
         # what is on screen exactly as a move does (FR-080a).
@@ -530,6 +552,16 @@ class TaskService:
             EVENT_TASK_UPDATED,
             {"task_id": str(task_id), "fields": changed},
         )
+        if tell is not None:
+            await self._wake.enqueue(
+                marius_id=tell,
+                task_id=task_id,
+                source=WakeSource.REQUIREMENT_CHANGED,
+                reason=wake_reason(
+                    "requirement_changed", fields=", ".join(_SUBSTANTIVE & set(changed))
+                ),
+            )
+            await self._settle_drive(task_id)
         return updated
 
     async def _assert_project_open(self, uow: UnitOfWork, task: Task) -> None:
@@ -538,7 +570,7 @@ class TaskService:
             return
         project = await uow.projects.get(task.project_id)
         if project is not None and project_rules.is_closed(project.status):
-            raise ProjectClosedError("Dự án đã đóng — lịch sử chỉ đọc, không sửa được.")
+            raise ProjectClosed("Dự án đã đóng — lịch sử chỉ đọc, không sửa được.")
 
     async def _assert_phase_accepts_work(self, uow: UnitOfWork, task: Task) -> None:
         """FR-003 — a worker is only put on a task once the patron has approved the plan.

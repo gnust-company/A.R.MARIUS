@@ -17,12 +17,13 @@ from uuid import uuid4
 
 import pytest
 
-from armarius.application.use_cases.wake_engine import ProjectClosedError, WakeEngine
+from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.project import Project, ProjectStatus
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.task import Task, TaskStatus
 from armarius.domain.entities.workspace import Workspace
+from armarius.domain.services.project_rules import ProjectClosed
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.shared.clock import utcnow
@@ -88,7 +89,7 @@ async def test_nothing_can_wake_an_agent_about_a_closed_project(uow_factory) -> 
         await uow.commit()
 
     engine = WakeEngine(uow_factory, InMemoryAdapterRegistry(), InMemoryEventBus())
-    with pytest.raises(ProjectClosedError):
+    with pytest.raises(ProjectClosed):
         await engine.enqueue(
             marius_id=marius.id, task_id=task.id, source=WakeSource.CONTINUATION
         )

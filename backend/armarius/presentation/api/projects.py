@@ -11,12 +11,13 @@ import re
 from datetime import timedelta
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from armarius.application.use_cases.projects import RoleSpec
 from armarius.domain.entities.project import Project, ProjectStatus
 from armarius.domain.services.plan_gate import PlanDecision
 from armarius.presentation.api.auth import CurrentUser
+from armarius.presentation.api.frozen import refuse_when_frozen
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
     AddRoleIn,
@@ -45,7 +46,9 @@ from armarius.presentation.schemas import (
 )
 from armarius.shared.clock import as_utc
 
-router = APIRouter(prefix="/v1", tags=["projects"])
+# FR-005 — a closed project is frozen. The guard hangs on the router, not on each
+# route, so a route added later cannot forget it.
+router = APIRouter(prefix="/v1", tags=["projects"], dependencies=[Depends(refuse_when_frozen)])
 
 
 def _slug(value: str) -> str:

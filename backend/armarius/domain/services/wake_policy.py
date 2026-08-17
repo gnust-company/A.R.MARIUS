@@ -47,6 +47,7 @@ WORKER_WAKE_CAUSES: frozenset[WakeSource] = frozenset(
         WakeSource.APPROVAL_REJECTED,  # its output came back for rework
         WakeSource.DEPENDENCY_CLEARED,  # what it was waiting on is done (FR-031, SC-009)
         WakeSource.IDLE_REMINDER,  # its task went quiet past the threshold (FR-052)
+        WakeSource.REQUIREMENT_CHANGED,  # the patron rewrote the job under it (FR-070a)
     }
 )
 
