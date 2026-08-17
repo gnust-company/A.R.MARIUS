@@ -56,6 +56,7 @@ from armarius.domain.services.wake_prompt import (
     DirectoryEntry,
     ProjectBrief,
     ThreadMessage,
+    WakeAudience,
     WakeContext,
     build_wake_prompt,
 )
@@ -539,6 +540,14 @@ class WakeEngine:
                 else None
             )
 
+            # Which set of extras this packet carries (FR-044a). Read off the work, the way
+            # the cause guard reads it: whoever holds the task is its worker. An agent
+            # wearing both hats gets the worker packet — it is the one doing the job.
+            audience = (
+                WakeAudience.WORKER
+                if task.assigned_marius_id == marius.id
+                else WakeAudience.LEADER
+            )
             prompt = build_wake_prompt(
                 _wake_context(
                     run,
@@ -550,6 +559,7 @@ class WakeEngine:
                     workspace,
                     project,
                     brief,
+                    audience,
                 )
             )
 
@@ -856,6 +866,7 @@ def _wake_context(
     workspace: Workspace | None = None,
     project: Project | None = None,
     brief: ProjectContext | None = None,
+    audience: WakeAudience = WakeAudience.WORKER,
 ) -> WakeContext:
     dir_entries = [
         DirectoryEntry(
@@ -887,6 +898,7 @@ def _wake_context(
         new_messages=thread,
         source=run.wake_source,
         reason=run.trigger_detail,
+        audience=audience,
         self_role=(self_role.title if self_role else ""),
         self_role_description=(self_role.description if self_role else ""),
         project_brief=(

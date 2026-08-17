@@ -261,7 +261,7 @@ class PlanService:
                 project_id,
                 WakeSource.PATRON_DECISION,
                 reason=wake_reason("context_change_requested"),
-                text=f"Người chủ chưa duyệt Bối cảnh. Góp ý: {note}",
+                detail=f"What the patron wrote: {note}",
             )
         return pending
 
@@ -350,7 +350,7 @@ class PlanService:
                 project_id,
                 WakeSource.PATRON_DECISION,
                 reason=wake_reason("plan_decided", decision=decision),
-                text=self._decision_message(outcome),
+                detail=self._decision_message(outcome),
             )
         return plan
 
@@ -373,16 +373,18 @@ class PlanService:
                 await self._inbox.resolve(item.id)
 
     def _decision_message(self, outcome: plan_gate.PlanOutcome) -> str:
+        """The extra a plan decision owes the Leader (FR-044a): the verdict's consequence,
+        and the patron's own note verbatim when they left one."""
         if outcome.note:
-            return f"Người chủ đã quyết. Góp ý: {outcome.note}\n\n{outcome.next_action}"
-        return f"Người chủ đã duyệt kế hoạch.\n\n{outcome.next_action}"
+            return f"What the patron wrote: {outcome.note}\n\n{outcome.next_action}"
+        return outcome.next_action
 
     async def _wake_leader(
-        self, project_id: UUID, source: WakeSource, *, reason: WakeReason, text: str
+        self, project_id: UUID, source: WakeSource, *, reason: WakeReason, detail: str = ""
     ) -> None:
         try:
             await self._leader_chat.notify(
-                project_id=project_id, text=text, source=source, reason=reason
+                project_id=project_id, source=source, reason=reason, detail=detail
             )
         except LookupError:  # pragma: no cover - project vanished mid-flight
             return

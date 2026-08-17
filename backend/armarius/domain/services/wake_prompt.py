@@ -2,27 +2,42 @@
 
 Pure function over plain value objects so it stays unit-testable.
 
-Spec 001 FR-044 fixes the shape: **eight** parts, always, in this order —
+Spec 001 FR-044 fixes a **four-part core** no wake is exempt from —
 
   1. the agent's role on this project
-  2. the approved project brief
-  3. the task, its description and its status
-  4. why it was woken, in a sentence a person can read (FR-046)
-  5. the teammates it can talk to, with their liveness
-  6. what was said while it was asleep
-  7. the next action waiting to be picked up
-  8. where to put the work and how to report status
+  2. the approved project brief (FR-009)
+  3. why it was woken, in a sentence a person can read (FR-046)
+  4. the teammates it can talk to, with their liveness
 
-FR-045 adds the rule that makes the shape worth having: a part with nothing in it says so
-(``NONE_MARKER``) instead of disappearing. A section that is simply absent is ambiguous —
-the agent cannot tell "nobody has said anything" from "that section failed to render", so
-it fills the gap with a guess. An explicitly empty section is a fact it can act on.
+Those four settle the three things any agent must know before it does anything at all: who
+it is here, where the project is going, and why it is awake right now. Miss one and the
+agent guesses, and a guessing agent is a wrong agent.
+
+FR-044a supplies the rest **per call type** rather than one shape for everyone. This module
+builds the packets that leave by the task door, where the extras are the task and the
+thread on it; a worker additionally gets its recorded next action and how to hand work
+back, and the Leader does not — it was pulled onto this task to judge or decide, not to
+hand anything in. Five of the eight parts of the old one-shape-fits-all packet meant
+nothing to the Leader, and a box filled in for the sake of filling it in is worse than a
+box that was never there.
+
+FR-045 governs what happens *inside* the parts a packet does carry: a part with nothing in
+it says so (``NONE_MARKER``) instead of disappearing. A section that is simply absent is
+ambiguous — the agent cannot tell "nobody has said anything" from "that section failed to
+render", so it fills the gap with a guess. An explicitly empty section is a fact it can act
+on. The rule bans silence in the parts a call type has; it does not hand a call type parts
+that are not its own.
+
+Everything written here is English: it is the agent's copy, and an agent has no interface
+language to choose (Constitution VII). What the *patron* reads about the same wake is
+rendered separately from the cause's code and parameters — see `wake_reason`.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.services.agent_prompt import agent_prompt_footer
@@ -31,6 +46,19 @@ from armarius.domain.services.orchestration_cadence import Snag
 # What an empty part reads as. One constant so no caller invents its own wording, and so a
 # test can count the empty parts of a packet.
 NONE_MARKER = "(none)"
+
+
+class WakeAudience(StrEnum):
+    """Who the packet is addressed to — the two hats the task door can wake (FR-048a).
+
+    Read off the work rather than off the agent record, exactly as the cause guard reads
+    it: whoever holds the task is its worker, whoever holds the leader seat is its Leader.
+    An agent wearing both hats on the same task is woken as the worker — it is the one
+    doing the job, and the job is what the extras are for.
+    """
+
+    WORKER = "worker"
+    LEADER = "leader"
 
 
 @dataclass(frozen=True)
@@ -50,7 +78,7 @@ class ThreadMessage:
 
 @dataclass(frozen=True)
 class ProjectBrief:
-    """The approved project context, part 2 of the packet (FR-009).
+    """The approved project context, part 2 of the core (FR-009).
 
     The gap this closes: the Leader received the objective in its chat prompt while the
     worker actually doing the job never did — so the worker judged its own output against
@@ -75,6 +103,9 @@ class WakeContext:
     new_messages: list[ThreadMessage]
     source: WakeSource
     reason: str | None = None
+    # Which set of extras rides along (FR-044a). Defaults to the worker packet because the
+    # task door was built for it; the Leader is the case that has to be asked for.
+    audience: WakeAudience = WakeAudience.WORKER
     # The woken agent's OWN role in THIS project (title + description), resolved via its
     # SeatGrant.role_key → Role. Empty when the agent holds no seat in the project.
     self_role: str = ""
@@ -94,8 +125,11 @@ def _value(text: str | None) -> str:
     return text.strip() if text and text.strip() else NONE_MARKER
 
 
-def build_wake_prompt(ctx: WakeContext) -> str:
-    lines: list[str] = []
+# ── the four-part core (FR-044) ──────────────────────────────────────────────────
+
+
+def _core(ctx: WakeContext, lines: list[str]) -> None:
+    """The four parts every wake carries, in the order the requirement lists them."""
 
     # ── 1. the agent's role on this project ────────────────────────────────────
     if ctx.self_role:
@@ -130,12 +164,7 @@ def build_wake_prompt(ctx: WakeContext) -> str:
     lines.append(f"- Principles: {_value(brief.principles)}")
     lines.append("")
 
-    # ── 3. the task ────────────────────────────────────────────────────────────
-    lines.append(f"## Task: {ctx.task_title}  [{ctx.task_status}]")
-    lines.append(_value(ctx.task_description))
-    lines.append("")
-
-    # ── 4. why now (FR-046) ────────────────────────────────────────────────────
+    # ── 3. why now (FR-046) ────────────────────────────────────────────────────
     lines.append("## Why you were woken")
     woke = f"- source: {ctx.source}"
     if ctx.reason:
@@ -143,7 +172,7 @@ def build_wake_prompt(ctx: WakeContext) -> str:
     lines.append(woke)
     lines.append("")
 
-    # ── 5. who else is here ────────────────────────────────────────────────────
+    # ── 4. who else is here ────────────────────────────────────────────────────
     lines.append("## Your teammates on this project (who you can @mention)")
     if ctx.directory:
         for d in ctx.directory:
@@ -156,7 +185,21 @@ def build_wake_prompt(ctx: WakeContext) -> str:
         lines.append(f"- {NONE_MARKER} — you are the only seat holder on this project.")
     lines.append("")
 
-    # ── 6. what happened while it slept ────────────────────────────────────────
+
+# ── the task door's extras (FR-044a) ─────────────────────────────────────────────
+
+
+def _task_extras(ctx: WakeContext, lines: list[str]) -> None:
+    """What a wake about one task adds to the core.
+
+    The task and its thread go to both hats: the Leader cannot judge work it has not been
+    shown, and the conversation on the task is where it was asked to look in the first
+    place. The two parts below them are the worker's alone.
+    """
+    lines.append(f"## Task: {ctx.task_title}  [{ctx.task_status}]")
+    lines.append(_value(ctx.task_description))
+    lines.append("")
+
     lines.append("## New messages since you last worked")
     if ctx.new_messages:
         for m in ctx.new_messages:
@@ -165,12 +208,21 @@ def build_wake_prompt(ctx: WakeContext) -> str:
         lines.append(f"- {NONE_MARKER}")
     lines.append("")
 
-    # ── 7. the work waiting to be picked up ────────────────────────────────────
+    if ctx.audience is WakeAudience.LEADER:
+        lines.append("## How to act")
+        lines.append(
+            "- You are not the one doing this task. Read it, then judge, decide or answer."
+        )
+        lines.append(
+            "- Use your Armarius tools: post a comment (@mention to reach someone), sign "
+            "the work off, or send it back with what has to change."
+        )
+        return
+
     lines.append("## Your recorded next action")
     lines.append(_value(ctx.next_action))
     lines.append("")
 
-    # ── 8. how to hand the work back ───────────────────────────────────────────
     # Its own part, not a bullet buried in general advice: this is what the agent looks up
     # when it is finished, and it competes with nothing when it has a heading of its own.
     lines.append("## Where to put your work and how to report status")
@@ -194,36 +246,44 @@ def build_wake_prompt(ctx: WakeContext) -> str:
         "- Use your Armarius tools to update the task and post comments (@mention to ask "
         "others)."
     )
+
+
+def build_wake_prompt(ctx: WakeContext) -> str:
+    lines: list[str] = []
+    _core(ctx, lines)
+    _task_extras(ctx, lines)
     # Every system→agent message ends with the SAME token-location footer so even a weak
     # model always knows where its token lives — unconditional, identical to the invite,
     # skill-install and onboarding prompts (#80). No task-wake ever goes out without it.
     return "\n".join(lines) + agent_prompt_footer(ctx.credential_file)
 
 
-# ── the orchestration-cadence packet (FR-054) ────────────────────────────────────
+# ── the orchestration-cadence extra (FR-044a, FR-054) ────────────────────────────
 
-_CADENCE_HEADING = "## Nhịp điều phối — những điểm treo cần bạn nhìn"
+CADENCE_HEADING = "## The snags this sweep found"
 
 _SNAG_HEADINGS: dict[str, str] = {
-    "silent": "Im lâu, không ai đang làm",
-    "due_soon": "Sắp tới hạn",
-    "blocked": "Đang bị chặn",
-    "awaiting_leader": "Đang chờ chính bạn quyết",
+    "silent": "Quiet, nobody working on them",
+    "due_soon": "Due soon",
+    "blocked": "Blocked",
+    "awaiting_leader": "Waiting on your own decision",
 }
 
 
-def build_cadence_prompt(snags: Sequence[Snag]) -> str:
-    """The Leader's cadence wake, naming every snag it is being woken for (FR-054).
+def cadence_detail(snags: Sequence[Snag]) -> str:
+    """The extra a cadence wake carries, naming every snag it is being woken for (FR-054).
 
-    "Đến giờ rà bảng rồi" is the packet this requirement exists to forbid: it costs a turn
-    and hands over nothing, so the Leader has to go and re-derive what the sweep already
-    knew. Every line here names a task the Leader can open.
+    An extra, not a packet: this leaves by the project door, where the Leader's own chat
+    prompt supplies the four-part core. "Time to look at the board" is the wake this
+    requirement exists to forbid — it costs a turn and hands over nothing, so the Leader
+    has to go and re-derive what the sweep already knew. Every line here names a task the
+    Leader can open.
 
     Grouped by kind rather than listed flat because the four kinds want four different
     responses — a stuck task needs unblocking, a task waiting on the Leader needs a
     decision — and a flat list makes the reader sort them again.
     """
-    lines = [_CADENCE_HEADING, ""]
+    lines = [CADENCE_HEADING, ""]
     by_kind: dict[str, list[Snag]] = {}
     for snag in snags:
         by_kind.setdefault(str(snag.kind), []).append(snag)
@@ -237,8 +297,8 @@ def build_cadence_prompt(snags: Sequence[Snag]) -> str:
         lines.append("")
 
     lines.append(
-        "Đây là một lượt rà theo nhịp, không phải một đầu việc mới được giao. Xem từng "
-        "điểm ở trên rồi hành động: gỡ chặn, giục người phụ trách, chấm bài đang chờ, hoặc "
-        "ghi rõ vì sao để nguyên."
+        "This is a scheduled sweep, not a new task handed to you. Work through the points "
+        "above: unblock what is stuck, chase whoever owes an update, judge what is waiting "
+        "on you, or write down why something stays as it is."
     )
     return "\n".join(lines)

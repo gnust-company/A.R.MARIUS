@@ -50,3 +50,36 @@ class ProjectLeaderConversation:
             *self.transcript,
             {"role": role, "text": text, "ts": ts.isoformat()},
         ]
+
+    def append_system(
+        self,
+        *,
+        code: str,
+        params: dict[str, str],
+        text: str,
+        detail: str,
+        ts: datetime,
+    ) -> None:
+        """Record a wake the system delivered into this conversation (FR-044).
+
+        Not a `patron` turn and not a `leader` one: nobody said this, the system did, and
+        rendering it as either puts words in someone's mouth — it used to arrive on screen
+        as a bubble from the Leader itself.
+
+        The cause is kept as **code plus parameters**, not as a finished sentence, because
+        both an agent and a person read this same turn and they do not read the same
+        language (Constitution VII). `text` is the agent's English copy; `detail` is the
+        part that only the agent needs (the snag list, the dossier behind an escalation)
+        and never reaches the screen.
+        """
+        self.transcript = [
+            *self.transcript,
+            {
+                "role": "system",
+                "code": code,
+                "params": dict(params),
+                "text": text,
+                "detail": detail,
+                "ts": ts.isoformat(),
+            },
+        ]

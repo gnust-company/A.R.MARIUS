@@ -577,38 +577,42 @@ class RecoveryEscalator:
             return
         if task.assigned_marius_id is None:
             situation = (
-                "Đầu việc này chưa có người phụ trách, nên không có ai để hệ tự gọi lại: "
-                "Mức 1 không có đối tượng để tác động và hệ không tiêu lần thử nào vào "
-                "đó. Hai đường:\n"
-                "  1. Bạn giao đầu việc cho một người — giao xong là hệ tự gọi người đó "
-                "dậy, không cần bạn làm gì thêm.\n"
-                "  2. Không có ai để giao — báo lại để hệ đưa thẳng người chủ.\n\n"
+                "Nobody holds this task, so there was nobody for the safety net to call "
+                "back: Level 1 had no one to act on and spent no attempt on it. Two ways "
+                "out:\n"
+                "  1. Assign it to someone — assigning wakes them by itself, nothing "
+                "further is needed from you.\n"
+                "  2. There is nobody to assign — say so, and the question goes straight "
+                "to the patron.\n\n"
             )
         else:
             situation = (
-                f"Hệ thống đã tự gọi lại {ladder.attempts} lần mà đầu việc không nhúc "
-                "nhích, nên giờ cần bạn. Hai đường:\n"
-                "  1. Bạn xử lý — giao lại cho người khác, tách nhỏ, đổi yêu cầu, hay dừng "
-                "hẳn — rồi làm thật, vì hệ đợi đầu việc có người chạm vào chứ không đợi "
-                "lời hứa.\n"
-                "  2. Ngoài tầm bạn — báo lại để hệ đưa thẳng người chủ, đừng ngồi thử "
-                "cho có.\n\n"
+                f"The safety net called them back {ladder.attempts} time(s) and the task "
+                "has not moved, so it is with you now. Two ways out:\n"
+                "  1. Handle it — reassign, split it up, change what is asked, or stop it "
+                "outright — and actually do it: the system waits for the task to be "
+                "touched, not for a promise.\n"
+                "  2. It is beyond you — say so, and the question goes straight to the "
+                "patron. Do not spend a turn looking busy.\n\n"
             )
         delivered = await self._notifier.notify(
             project_id=task.project_id,
-            text=(
-                f"Đầu việc {task.identifier or task.id} — {task.title} đang đình trệ.\n\n"
-                f"Vì sao: {cause}.\n\n"
-                f"{situation}"
-                f"Đây là lần hỏi thứ {ladder.handover_attempts}/{handover_cap}. "
-                "Hết lượt mà đầu việc vẫn đứng im thì người chủ được hỏi."
-            ),
             source=WakeSource.NUDGE,
             reason=wake_reason(
                 "escalated_to_leader",
                 task=task.identifier or task.id,
                 attempt=ladder.handover_attempts,
                 ceiling=handover_cap,
+            ),
+            # The dossier behind the escalation — the extra this call type owes on top of
+            # the core (FR-044a, FR-059a): what was tried, and which case brought it here.
+            detail=(
+                f"{task.identifier or task.id} — {task.title} has stalled.\n\n"
+                f"Why: {_STALL_CLAUSE_EN.get(_recovery_code(task), 'it lost its drive')}."
+                "\n\n"
+                f"{situation}"
+                f"This is ask {ladder.handover_attempts} of {handover_cap}. When they run "
+                "out and the task is still still, the patron is asked."
             ),
         )
         if not delivered:
@@ -851,15 +855,11 @@ class OfflineFalloutService:
             if self._notifier is not None and task.project_id is not None:
                 await self._notifier.notify(
                     project_id=task.project_id,
-                    text=(
-                        f"{task.identifier or task.id} — {task.title}: người phụ trách "
-                        "vừa bị tuyên ngoại tuyến, đầu việc đã chuyển sang *bị chặn*. "
-                        "Giao lại cho ai, hay chờ họ quay lại?"
-                    ),
                     source=WakeSource.NUDGE,
                     reason=wake_reason(
                         "assignee_offline", task=task.identifier or task.id
                     ),
+                    detail=f"The task is: {task.title}",
                 )
 
         for project_id in leader_projects:
@@ -942,3 +942,17 @@ def _recovery_code(task: Task) -> str:
     if task.drive is None:
         return "recovery_orphaned"
     return _RECOVERY_CODES.get(task.drive, "recovery_unknown")
+
+
+# The same stalls again, worded for the Leader instead of for the worker: it is being told
+# what went wrong with somebody *else's* turn, so "the safety net called you back" is the
+# wrong sentence even though it is the same fact. Read off the same code, from the same
+# drive, so the two never describe different stalls.
+_STALL_CLAUSE_EN: dict[str, str] = {
+    "recovery_orphaned": "nobody is working on it and no wake is booked",
+    "recovery_run_active": "the run holding it went quiet mid-turn",
+    "recovery_wake_scheduled": "someone was called for it but never started",
+    "recovery_waiting_recovery": "the earlier re-wakes never reached anyone",
+    "recovery_waiting_external": "it is waiting on something outside and is overdue",
+    "recovery_unknown": "it lost its drive",
+}

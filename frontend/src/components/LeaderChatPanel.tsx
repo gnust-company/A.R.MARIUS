@@ -15,6 +15,7 @@
 // LeaderChatWidget; this component is just the panel contents.
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, Bot, Loader2, WifiOff, Check, X } from 'lucide-react';
 import {
@@ -32,7 +33,7 @@ import * as api from '@/lib/api';
 import { subscribeLeaderChat } from '@/lib/sse';
 
 interface ChatMessage {
-  role: 'patron' | 'leader';
+  role: 'patron' | 'leader' | 'system';
   text: string;
   /** True while this leader message is still being streamed (assistant.delta). */
   streaming?: boolean;
@@ -48,13 +49,38 @@ function chatStateOf(raw: unknown): ChatState {
   return (raw as ChatState | null | undefined) ?? 'idle';
 }
 
+/** What a system turn reads as on screen.
+ *
+ *  A system turn is a wake the platform delivered into this conversation, and it is stored
+ *  as a cause **code plus its parameters** rather than a finished sentence: the Leader gets
+ *  that same turn in English inside its packet, while the patron reads it here in whichever
+ *  language they picked (Constitution VII). The stored English is the fallback, for rows
+ *  written before the codes existed. */
+function systemText(
+  turn: { code?: string | null; params?: Record<string, string> | null; text?: string },
+  t: TFunction,
+): string {
+  if (!turn.code) return turn.text ?? '';
+  const key = `agentDetail.wakeReason.${turn.code}`;
+  const rendered = t(key, { ...(turn.params ?? {}) });
+  return rendered === key ? (turn.text ?? '') : rendered;
+}
+
 function toMessages(
-  transcript: Array<{ role: string; text: string }> | undefined,
+  transcript: api.LeaderChatTurn[] | undefined,
+  t: TFunction,
 ): ChatMessage[] {
-  return (transcript ?? []).map((t) => ({
-    role: t.role === 'patron' ? 'patron' : 'leader',
-    text: t.text,
-  }));
+  return (transcript ?? []).map((turn) => {
+    // Neither the patron nor the Leader said this — the platform did. Folding it into the
+    // Leader's bubble put the Leader's own wake notices in its mouth.
+    if (turn.role === 'system') {
+      return { role: 'system' as const, text: systemText(turn, t) };
+    }
+    return {
+      role: turn.role === 'patron' ? ('patron' as const) : ('leader' as const),
+      text: turn.text,
+    };
+  });
 }
 
 // assistant-ui markdown renderer. MarkdownTextPrimitive reads the part text from
@@ -104,7 +130,7 @@ export default function LeaderChatPanel({
         const dto = await api.getLeaderChat(projectId);
         if (!alive) return;
         setChat(dto);
-        setMessages(toMessages(dto.transcript));
+        setMessages(toMessages(dto.transcript, t));
         setState(chatStateOf(dto.state));
         await refreshProposed();
       } catch (e) {
@@ -115,7 +141,7 @@ export default function LeaderChatPanel({
     return () => {
       alive = false;
     };
-  }, [projectId, refreshProposed]);
+  }, [projectId, refreshProposed, t]);
 
   // Live stream: the Leader's reply arrives as assistant.delta; chat.state marks
   // the turn. Streaming deltas are folded into a trailing partial leader message
@@ -143,6 +169,18 @@ export default function LeaderChatPanel({
           if (last && last.role === 'leader' && last.text === final) return m; // de-dup
           return [...m, { role: 'leader', text: final }];
         });
+      } else if (type === 'system.message') {
+        // A wake the platform just delivered. Shown as it lands, so the patron sees why
+        // the Leader started thinking instead of watching it stir for no visible reason.
+        const notice = systemText(
+          {
+            code: typeof data.code === 'string' ? data.code : null,
+            params: (data.params ?? null) as Record<string, string> | null,
+            text: typeof data.text === 'string' ? data.text : '',
+          },
+          t,
+        );
+        if (notice) setMessages((m) => [...m, { role: 'system', text: notice }]);
       } else if (type === 'chat.state' && typeof data.state === 'string') {
         const next = data.state as 'idle' | 'thinking' | 'failed';
         setState(next);
@@ -152,7 +190,7 @@ export default function LeaderChatPanel({
             .getLeaderChat(projectId)
             .then((dto) => {
               setChat(dto);
-              setMessages(toMessages(dto.transcript)); // canonical — drops any un-finalized partial
+              setMessages(toMessages(dto.transcript, t)); // canonical — drops any un-finalized partial
             })
             .catch(() => {});
         }
@@ -178,14 +216,14 @@ export default function LeaderChatPanel({
         try {
           const dto = await api.getLeaderChat(projectId);
           setChat(dto);
-          setMessages(toMessages(dto.transcript));
+          setMessages(toMessages(dto.transcript, t));
           setState(chatStateOf(dto.state));
         } catch {
           setState('idle');
         }
       }
     },
-    [projectId],
+    [projectId, t],
   );
 
   // assistant-ui runtime: our messages are the source of truth; the runtime only
@@ -195,7 +233,12 @@ export default function LeaderChatPanel({
     messages,
     isRunning: state === 'thinking',
     convertMessage: (m: ChatMessage) => ({
-      role: m.role === 'patron' ? ('user' as const) : ('assistant' as const),
+      role:
+        m.role === 'patron'
+          ? ('user' as const)
+          : m.role === 'system'
+            ? ('system' as const)
+            : ('assistant' as const),
       content: m.text,
     }),
     onNew: async (message: AppendMessage) => {
@@ -348,7 +391,13 @@ export default function LeaderChatPanel({
                 </ThreadPrimitive.Empty>
                 <ThreadPrimitive.Messages>
                   {({ message }) =>
-                    message.role === 'user' ? <PatronBubble /> : <LeaderBubble />
+                    message.role === 'user' ? (
+                      <PatronBubble />
+                    ) : message.role === 'system' ? (
+                      <SystemNotice />
+                    ) : (
+                      <LeaderBubble />
+                    )
                   }
                 </ThreadPrimitive.Messages>
                 {state === 'thinking' && !hasStreamingPartial && (
@@ -412,6 +461,19 @@ function PatronBubble() {
   return (
     <MessagePrimitive.Root className="flex justify-end">
       <div className="max-w-[85%] rounded-lg px-3 py-1.5 bg-terracotta text-white font-body text-body-sm whitespace-pre-wrap break-words">
+        <MessagePrimitive.Parts />
+      </div>
+    </MessagePrimitive.Root>
+  );
+}
+
+// A wake the platform delivered into the conversation — centred, quiet, and deliberately
+// not a bubble: nobody said it, so giving it a speaker's shape would be a lie. It used to
+// arrive dressed as the Leader talking to itself.
+function SystemNotice() {
+  return (
+    <MessagePrimitive.Root className="flex justify-center">
+      <div className="max-w-[92%] rounded-md px-2.5 py-1 bg-vellum border border-dashed border-vellum-dark text-ink-muted font-body text-body-xs text-center whitespace-pre-wrap break-words">
         <MessagePrimitive.Parts />
       </div>
     </MessagePrimitive.Root>

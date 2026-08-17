@@ -67,10 +67,15 @@ class RecordingNotifier:
         self._deliverable = deliverable
 
     async def notify(
-        self, *, project_id: UUID, text: str, source: WakeSource, reason: str
+        self, *, project_id: UUID, source: WakeSource, reason, detail: str = ""
     ) -> bool:
         self.calls.append(
-            {"project_id": project_id, "text": text, "source": source, "reason": reason}
+            {
+                "project_id": project_id,
+                "source": source,
+                "reason": reason,
+                "detail": detail,
+            }
         )
         return self._deliverable
 
@@ -200,7 +205,7 @@ async def test_three_predicaments_wake_the_leader_exactly_once_naming_all_three(
     sweep = await loop.sweep_project(project.id, now=T0)
 
     assert len(notifier.calls) == 1
-    packet = notifier.calls[0]["text"]
+    packet = notifier.calls[0]["detail"]
     for task in (blocked, due, waiting):
         assert (task.identifier or "") in packet, f"{task.identifier} không có trong gói tin"
     assert {s.kind for s in sweep.snags} == {
@@ -536,7 +541,7 @@ async def test_a_deadline_mark_crossed_under_the_cap_is_still_delivered(
         "mốc hạn chót chạm đúng lúc trần đang chặn đã bị ghi là 'đã báo', "
         "nên Trưởng dự án không bao giờ nhận được"
     )
-    assert "hạn chót" in notifier.calls[-1]["text"]
+    assert "due in under" in notifier.calls[-1]["detail"]
 
 
 @pytest.mark.asyncio
@@ -584,7 +589,7 @@ async def test_a_deadline_mark_is_kept_when_the_wake_could_not_be_delivered(
         "mốc hạn chót bị tiêu trên một lượt gọi không giao được, nên khi Trưởng dự án "
         "quay lại thì không còn gì nêu tên đầu việc đang chạy về phía hạn"
     )
-    assert back.calls and "hạn chót" in back.calls[-1]["text"]
+    assert back.calls and "due in under" in back.calls[-1]["detail"]
 
 
 # ── vòng nền: chỉ quét dự án đã tới nhịp ─────────────────────────────────────────

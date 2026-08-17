@@ -50,7 +50,7 @@ from armarius.domain.services.orchestration_cadence import (
     quiet_streak,
     within_hourly_cap,
 )
-from armarius.domain.services.wake_prompt import build_cadence_prompt
+from armarius.domain.services.wake_prompt import cadence_detail
 from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import as_utc, utcnow
@@ -221,9 +221,9 @@ class OrchestrationLoop:
 
         delivered = await self._notifier.notify(
             project_id=project_id,
-            text=build_cadence_prompt(snags),
             source=WakeSource.IDLE_REMINDER,
             reason=wake_reason("cadence_snags", count=len(snags)),
+            detail=cadence_detail(snags),
         )
         # A wake that could not be delivered is still a wake spent against the ceiling —
         # it is on the record as a pending cause, and the Leader will read it when it comes

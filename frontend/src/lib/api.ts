@@ -779,8 +779,18 @@ export async function publishArtifact(
 // ── Chat with Leader (project-level 1-1 chat · #82) ───────────────────────────────────────
 
 export interface LeaderChatTurn {
-  role: string // 'patron' | 'leader'
+  role: string // 'patron' | 'leader' | 'system'
+  /**
+   * The agent's English copy of the turn. For a `system` turn (a wake the platform
+   * delivered) this is NOT what the patron reads — `code` + `params` are, rendered through
+   * the phrase table, because the Leader and the patron read the same turn in two
+   * different languages (Constitution VII).
+   */
   text: string
+  /** `system` turns only: the wake cause, as a code from the closed list. */
+  code?: string | null
+  /** `system` turns only: what fills the cause's placeholders. */
+  params?: Record<string, string> | null
   ts?: string | null
 }
 
@@ -998,6 +1008,13 @@ export interface SnagDTO {
   kind: 'silent' | 'due_soon' | 'blocked' | 'awaiting_leader'
   task_id: string
   identifier: string
+  title: string
+  mark_hours?: number | null
+  /**
+   * The agent's English copy of this snag, kept for the audit record of what actually went
+   * out in the wake packet. NOT for display — the screen builds its own sentence from the
+   * fields above so the patron reads it in their language (Constitution VII).
+   */
   detail: string
 }
 

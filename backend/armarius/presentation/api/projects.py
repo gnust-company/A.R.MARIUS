@@ -450,6 +450,8 @@ async def get_orchestration(
                 kind=str(s.kind),
                 task_id=s.task_id,
                 identifier=s.identifier,
+                title=s.title,
+                mark_hours=s.mark_hours,
                 detail=s.detail,
             )
             for s in last.snags

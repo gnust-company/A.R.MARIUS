@@ -504,6 +504,7 @@ def snag_to_row(snag: Snag) -> dict[str, object]:
         "kind": str(snag.kind),
         "task_id": str(snag.task_id),
         "identifier": snag.identifier,
+        "title": snag.title,
         "detail": snag.detail,
         "mark_hours": snag.mark_hours,
     }
@@ -516,6 +517,7 @@ def snag_from_row(row: dict[str, object]) -> Snag:
         kind=SnagKind(str(row.get("kind", SnagKind.SILENT))),
         task_id=UUID(str(row["task_id"])),
         identifier=str(row.get("identifier", "")),
+        title=str(row.get("title", "")),
         detail=str(row.get("detail", "")),
         mark_hours=int(str(mark)) if (mark := row.get("mark_hours")) is not None else None,
     )

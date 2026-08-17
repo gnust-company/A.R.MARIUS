@@ -172,7 +172,12 @@ class LeaderChatService:
 
     # ── system-initiated wake (spec 001) ─────────────────────────────────────────
     async def notify(
-        self, *, project_id: UUID, text: str, source: WakeSource, reason: WakeReason
+        self,
+        *,
+        project_id: UUID,
+        source: WakeSource,
+        reason: WakeReason,
+        detail: str = "",
     ) -> bool:
         """Wake the Leader about the **project** — no task involved (FR-002, FR-013).
 
@@ -192,6 +197,13 @@ class LeaderChatService:
         cause at all. The patron's own turn in the chat tab does not come through here: it
         goes straight to `send`, which is the one cause — the patron writing — that needs
         no test.
+
+        Callers hand over a **cause**, never a sentence. What the Leader ends up reading is
+        the four-part core of its own chat prompt (role, brief, why it is awake, who else is
+        here — FR-044) plus `detail`, the extra this particular call type owes it (FR-044a).
+        `detail` is the agent's copy and therefore English; the cause is stored as code and
+        parameters so the patron, who watches the very same conversation, reads it in their
+        own language (Constitution VII).
         """
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)
@@ -205,6 +217,11 @@ class LeaderChatService:
             leader = await uow.mariuses.get(leader_id) if leader_id else None
 
             now = utcnow()
+            # The agent's copy of the packet body: the cause, then whatever this call type
+            # owes on top of it.
+            body = reason.render_en()
+            if detail.strip():
+                body = f"{body}\n\n{detail.strip()}" if body else detail.strip()
             deliverable = (
                 leader is not None
                 and leader.liveness in _AVAILABLE
@@ -218,7 +235,7 @@ class LeaderChatService:
                     source=source,
                     causes=[reason],
                     reason=reason.render_en(),
-                    prompt=text,
+                    prompt=body,
                     status=WakeupStatus.DISPATCHED if deliverable else WakeupStatus.QUEUED,
                     created_at=now,
                 )
@@ -241,14 +258,22 @@ class LeaderChatService:
                 )
                 await uow.leader_chats.add(conversation)
             conversation.leader_marius_id = leader_id
-            conversation.append("system", text, now)
+            conversation.append_system(
+                code=reason.code,
+                params=dict(reason.params),
+                text=reason.render_en(),
+                detail=detail.strip(),
+                ts=now,
+            )
             conversation.state = ChatState.THINKING
             conversation.updated_at = now
             await uow.leader_chats.update(conversation)
             await uow.commit()
 
         await self._publish(
-            project_id, "system.message", {"text": text, "reason": reason.render_en()}
+            project_id,
+            "system.message",
+            {"code": reason.code, "params": dict(reason.params), "text": body},
         )
         await self._publish(project_id, "chat.state", {"state": str(ChatState.THINKING)})
         self._spawn_turn(conversation.id)
@@ -348,6 +373,14 @@ class LeaderChatService:
                 if approved_brief is not None
                 else None
             )
+            tail = list(conversation.transcript[-_PROMPT_TURN_TAIL:])
+            # A wake that opened this turn is the packet's *why you were woken* (FR-044),
+            # not one more line of chat history. It is lifted out of the tail so it is said
+            # once, in the part built to say it — and so its extra (FR-044a) rides along
+            # instead of being flattened into a quote of something nobody said.
+            opening_wake = (
+                tail.pop() if tail and tail[-1].get("role") == "system" else None
+            )
             prompt = build_leader_chat_prompt(
                 LeaderChatContext(
                     leader_name=leader.name,
@@ -358,9 +391,15 @@ class LeaderChatService:
                     commission=project.context or project.objective or "",
                     directory=directory,
                     recent_turns=[
-                        ChatTurn(role=t.get("role", ""), text=t.get("text", ""))
-                        for t in conversation.transcript[-_PROMPT_TURN_TAIL:]
+                        ChatTurn(role=str(t.get("role", "")), text=str(t.get("text", "")))
+                        for t in tail
                     ],
+                    wake_reason=(
+                        str(opening_wake.get("text", "")) if opening_wake else ""
+                    ),
+                    wake_detail=(
+                        str(opening_wake.get("detail", "")) if opening_wake else ""
+                    ),
                     plan_items=plan_items,
                     leader_role_description=(
                         leader_role.description if leader_role else ""

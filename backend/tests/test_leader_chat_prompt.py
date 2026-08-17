@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from armarius.domain.services.leader_chat_prompt import (
     ChatDirectoryEntry,
+    ChatTurn,
     LeaderChatContext,
     build_leader_chat_prompt,
 )
@@ -134,3 +135,60 @@ def test_with_neither_a_brief_nor_a_commission_nothing_is_invented():
     prompt = build_leader_chat_prompt(_ctx(project_brief=None, commission=""))
     assert "no approved brief" in prompt.lower()
     assert "- Objective:" not in prompt
+
+
+# ── lõi bốn phần ở cửa dự án (FR-044, FR-044a) ───────────────────────────────────
+
+
+def test_a_wake_says_why_the_leader_is_awake_instead_of_leaving_it_to_guess():
+    """Phần thứ ba của lõi. Trước đây cửa dự án nhét câu đánh thức vào *lịch sử trò
+    chuyện*, nên gói tin không có mục nào trả lời "vì sao lúc này"."""
+    prompt = build_leader_chat_prompt(
+        _ctx(wake_reason="The orchestration sweep found 3 snag(s) on the board.")
+    )
+    assert "## Why you were woken" in prompt
+    assert "found 3 snag(s)" in prompt
+
+
+def test_the_extra_of_this_call_type_rides_under_the_reason():
+    prompt = build_leader_chat_prompt(
+        _ctx(
+            wake_reason="The orchestration sweep found 1 snag(s) on the board.",
+            wake_detail="## The snags this sweep found\n\n- P1-2 — Nút lưu: blocked.",
+        )
+    )
+    why = prompt[prompt.index("## Why you were woken") :]
+    assert "P1-2 — Nút lưu: blocked." in why
+
+
+def test_a_patron_message_carries_no_wake_section_at_all():
+    """FR-044a cấm ép mọi loại lời gọi dùng chung một khuôn. Người chủ vừa gõ một câu thì
+    lý do nằm ngay đó — dựng thêm một mục "vì sao bị gọi" rỗng là thêm nhiễu."""
+    prompt = build_leader_chat_prompt(_ctx())
+    assert "## Why you were woken" not in prompt
+
+
+def test_a_system_line_is_not_put_in_the_leaders_mouth():
+    """Câu do hệ phát không phải người chủ nói, cũng không phải Trưởng dự án nói. Gán cho
+    "You" là đưa lời hệ thống vào miệng nó, và nó đọc lại chính thông báo đánh thức của
+    mình như một thứ mình đã phát biểu."""
+    prompt = build_leader_chat_prompt(
+        _ctx(
+            recent_turns=[
+                ChatTurn(role="patron", text="Tình hình sao rồi?"),
+                ChatTurn(role="leader", text="Đang chạy tốt."),
+                ChatTurn(role="system", text="A worker handed P1-3 back."),
+            ]
+        )
+    )
+    assert "- Patron: Tình hình sao rồi?" in prompt
+    assert "- You: Đang chạy tốt." in prompt
+    assert "- System: A worker handed P1-3 back." in prompt
+
+
+def test_an_empty_team_says_so_rather_than_vanishing():
+    """FR-045 ở phần thứ tư của lõi: mục biến mất thì Trưởng dự án không phân biệt được
+    "chưa ai được cấp ghế" với "danh sách đội hỏng", và nó sẽ tự nghĩ ra một đội."""
+    prompt = build_leader_chat_prompt(_ctx(directory=[]))
+    assert "## Your team (workers you can assign)" in prompt
+    assert "nobody else holds a seat" in prompt

@@ -272,7 +272,6 @@ async def test_the_project_channel_refuses_a_cause_the_leader_does_not_own(
 
     delivered = await chat.notify(
         project_id=project.id,
-        text="Vướng của bạn đã được gỡ.",
         source=WakeSource.DEPENDENCY_CLEARED,
         reason=wake_reason("dependency_cleared", blocker="P-2"),
     )
@@ -303,7 +302,6 @@ async def test_the_project_channel_still_carries_the_leaders_own_causes(
 
     delivered = await chat.notify(
         project_id=project.id,
-        text="Nhịp điều phối tìm ra 2 điểm treo.",
         source=WakeSource.IDLE_REMINDER,
         reason=wake_reason("cadence_snags", count=2),
     )
