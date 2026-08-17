@@ -10,13 +10,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from armarius.domain.entities.comment import AuthorKind
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.task import TaskStatus
 from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.presentation.api.auth import CurrentUser
+from armarius.presentation.api.frozen import refuse_when_frozen
 from armarius.presentation.api.scoping import own_project, own_task
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
@@ -45,7 +46,9 @@ from armarius.presentation.schemas import (
     decode_artifact_content,
 )
 
-router = APIRouter(prefix="/v1", tags=["tasks"])
+# FR-005 — a closed project is frozen. The guard hangs on the router, not on each
+# route, so a route added later cannot forget it.
+router = APIRouter(prefix="/v1", tags=["tasks"], dependencies=[Depends(refuse_when_frozen)])
 
 
 def _parse_status(value: str) -> TaskStatus:

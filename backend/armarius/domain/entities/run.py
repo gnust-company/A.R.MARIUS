@@ -48,6 +48,10 @@ class WakeSource(StrEnum):
     # stall sweep happens past it, which is the safety net doing the job of the mechanism
     # it exists to back up.
     DEPENDENCY_CLEARED = "dependency_cleared"
+    # The patron rewrote the brief or moved the deadline under someone already working
+    # on it (FR-070a → FR-046). Without this the worker finishes the job it was first
+    # handed and finds out at review that the job changed.
+    REQUIREMENT_CHANGED = "requirement_changed"
 
 
 # A run that is still holding the (agent, task) pair. FR-050 allows at most one at a time,

@@ -34,6 +34,11 @@ ENGLISH: dict[str, str] = {
     "dependency_cleared": (
         "{blocker} is done, so this task is no longer blocked and is ready to start."
     ),
+    "requirement_changed": (
+        "The patron changed this task while you were on it ({fields}). "
+        "Re-read the task before you carry on — what you were told first may no "
+        "longer be what is wanted."
+    ),
     "output_rejected": "Your output was sent back for rework: {note}",
     "artifact_missing": (
         "Your published output is no longer in the store, so the task came back to you: "

@@ -26,6 +26,15 @@ class InvalidProjectPlan(Exception):
     """Raised when a roster plan violates the leader/worker rule (LLD §4)."""
 
 
+class ProjectClosed(Exception):
+    """Raised when anything tries to write to a closed project (FR-005).
+
+    Lives here, beside `is_closed`, because "closed means frozen" is one rule with one
+    meaning. It used to be three identical classes in three services, which is how a rule
+    ends up enforced in three places and skipped in thirty.
+    """
+
+
 class InvalidPhaseTransition(Exception):
     """Raised when a phase change is not on the map (spec 001 FR-004, FR-005)."""
 

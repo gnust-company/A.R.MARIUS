@@ -35,6 +35,7 @@ from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.task import TaskStatus
 from armarius.domain.entities.task_log import ActorKind, TaskLogKind
 from armarius.domain.services import plan_gate, project_rules
+from armarius.domain.services.project_rules import ProjectClosed
 from armarius.domain.services.wake_reason import WakeReason
 from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
@@ -46,10 +47,6 @@ EVENT_PHASE_CHANGED = "project.phase_changed"
 EVENT_CONTEXT_SUBMITTED = "context.submitted"
 EVENT_CONTEXT_DECIDED = "context.decided"
 EVENT_MAJOR_CHANGE_REQUESTED = "thay-doi-lon.trinh"
-
-
-class ProjectClosed(Exception):
-    """Raised when anything tries to write to a closed project (FR-005)."""
 
 
 class PlanningError(Exception):

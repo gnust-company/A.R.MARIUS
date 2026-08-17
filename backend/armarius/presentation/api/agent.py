@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from armarius.application.use_cases.onboarding_brain import _slug
 from armarius.application.use_cases.plans import PlanItemSpec
@@ -18,6 +18,7 @@ from armarius.domain.entities.comment import AuthorKind
 from armarius.domain.entities.marius import Liveness, Marius
 from armarius.domain.entities.project import ProjectStatus
 from armarius.domain.entities.task import Task, TaskStatus
+from armarius.presentation.api.frozen import refuse_when_frozen
 from armarius.presentation.container import Container
 from armarius.presentation.deps import ContainerDep, CurrentMarius
 from armarius.presentation.schemas import (
@@ -52,7 +53,9 @@ from armarius.presentation.schemas import (
     decode_artifact_content,
 )
 
-router = APIRouter(prefix="/agent", tags=["agent"])
+# FR-005 — a closed project is frozen. The guard hangs on the router, not on each
+# route, so a route added later cannot forget it.
+router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(refuse_when_frozen)])
 
 
 @router.get("/me")

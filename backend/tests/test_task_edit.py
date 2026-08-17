@@ -13,15 +13,18 @@ thẳng, có hiệu lực ngay. Lối này là lối của người chủ, nên 
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from uuid import UUID, uuid4
 
 import pytest
 
+from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.projects import ProjectService, RoleSpec
 from armarius.application.use_cases.task_log import TaskLogService
 from armarius.application.use_cases.tasks import TaskService, TitleRequiredError
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.domain.entities.project import ProjectStatus
+from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.task import TaskPriority, TaskStatus
 from armarius.domain.entities.task_log import TaskLogKind
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
@@ -151,10 +154,10 @@ async def test_an_edit_that_changes_nothing_is_not_an_event(uow_factory) -> None
 async def test_a_closed_projects_task_is_read_only(uow_factory) -> None:
     """FR-005 — lịch sử đọc được, không viết được. Khác cổng FR-003: một đầu việc *nháp*
     ở giai đoạn lập kế hoạch vẫn sửa được, vì sửa một bản nháp không giao việc cho ai."""
-    from armarius.application.use_cases.wake_engine import ProjectClosedError
+    from armarius.domain.services.project_rules import ProjectClosed
 
     tasks, task = await _stage(uow_factory, phase=ProjectStatus.CLOSED)
-    with pytest.raises(ProjectClosedError):
+    with pytest.raises(ProjectClosed):
         await tasks.edit(task.id, title="Tên mới", user_id="u1")
 
 
@@ -180,3 +183,111 @@ async def test_the_deadline_moves_where_it_is_told(uow_factory) -> None:
     edited = await tasks.edit(task.id, due_date=later, user_id="u1")
 
     assert edited.due_date == later
+
+
+# ── Người phụ trách phải biết yêu cầu vừa bị sửa (FR-046, T195) ────────────────────
+
+
+class _RecordedWakes:
+    """Bắt lấy mọi lệnh gọi dậy phát ra, thay vì để nó chạy thật."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[UUID, UUID, WakeSource, object]] = []
+
+    async def enqueue(self, *, marius_id, task_id, source, reason=None, **_):  # noqa: ANN001
+        self.calls.append((marius_id, task_id, source, reason))
+        return uuid4()
+
+
+async def _staged_with_a_worker_on_it(uow_factory):
+    """Một đầu việc *đang làm*, đã có người phụ trách — tình huống duy nhất mà sửa yêu
+    cầu là sửa dưới chân một người đang làm dở."""
+    workspaces = WorkspaceService(uow_factory)
+    projects = ProjectService(uow_factory)
+    mariuses = MariusService(uow_factory)
+    wakes = _RecordedWakes()
+    tasks = TaskService(uow_factory, wakes, task_logs=TaskLogService(uow_factory))  # type: ignore[arg-type]
+
+    ws = await workspaces.create_workspace("WS")
+    project = await projects.create_project(ws.id, "Apollo", roles=_roster())
+    await force_phase(uow_factory, project.id, ProjectStatus.OPERATING)
+    worker = await mariuses.register(
+        workspace_id=ws.id, name="Alice", role="Dev",
+        skills=[], adapter_type="echo", adapter_config={},
+    )
+    task = await tasks.create(
+        project_id=project.id,
+        title="Xuất báo cáo tháng",
+        description="Gom số liệu bán hàng rồi kết xuất ra tệp bảng tính.",
+        due_date=_DEADLINE,
+        assigned_marius_id=worker.id,
+    )
+    async with uow_factory() as uow:
+        stored = await uow.tasks.get(task.id)
+        assert stored is not None
+        stored.status = TaskStatus.IN_PROGRESS
+        await uow.tasks.update(stored)
+        await uow.commit()
+    wakes.calls.clear()
+    return tasks, task, worker, wakes
+
+
+async def test_rewriting_the_brief_tells_the_worker(uow_factory) -> None:
+    """Sửa xong mà không nói thì người phụ trách vẫn làm bản cũ tới lúc nộp."""
+    tasks, task, worker, wakes = await _staged_with_a_worker_on_it(uow_factory)
+
+    await tasks.edit(task.id, description="Đổi: gom số liệu cả quý.", user_id="u1")
+
+    assert len(wakes.calls) == 1
+    marius_id, task_id, source, reason = wakes.calls[0]
+    assert marius_id == worker.id
+    assert task_id == task.id
+    assert source is WakeSource.REQUIREMENT_CHANGED
+    assert reason is not None
+    assert "description" in reason.render_en()
+
+
+async def test_moving_the_deadline_tells_the_worker(uow_factory) -> None:
+    tasks, task, _, wakes = await _staged_with_a_worker_on_it(uow_factory)
+
+    await tasks.edit(task.id, due_date=None, user_id="u1")
+
+    assert len(wakes.calls) == 1
+    assert wakes.calls[0][2] is WakeSource.REQUIREMENT_CHANGED
+
+
+async def test_a_cosmetic_change_does_not_interrupt_anyone(uow_factory) -> None:
+    """Đổi độ ưu tiên không đổi việc phải làm. Gọi dậy vì nó là cắt ngang một lượt làm
+    việc để báo một tin không dùng được — và một lệnh gọi vô nghĩa dạy người thợ rằng
+    lệnh gọi nói chung không đáng đọc."""
+    tasks, task, _, wakes = await _staged_with_a_worker_on_it(uow_factory)
+
+    await tasks.edit(task.id, priority="critical", title="Tên gọn hơn", user_id="u1")
+
+    assert wakes.calls == []
+
+
+async def test_nobody_on_the_task_means_nobody_to_tell(uow_factory) -> None:
+    tasks, task = await _stage(uow_factory)
+    wakes = _RecordedWakes()
+    tasks._wake = wakes  # type: ignore[assignment]
+
+    await tasks.edit(task.id, description="Viết lại cho rõ.", user_id="u1")
+
+    assert wakes.calls == []
+
+
+async def test_a_finished_task_is_not_reopened_by_an_edit(uow_factory) -> None:
+    """Đầu việc đã đóng thì sửa một dòng chữ không được kéo người ta quay lại làm — muốn
+    làm tiếp thì mở lại đầu việc, và đó là một thao tác khác, có lý do kèm theo."""
+    tasks, task, _, wakes = await _staged_with_a_worker_on_it(uow_factory)
+    async with uow_factory() as uow:
+        stored = await uow.tasks.get(task.id)
+        assert stored is not None
+        stored.status = TaskStatus.DONE
+        await uow.tasks.update(stored)
+        await uow.commit()
+
+    await tasks.edit(task.id, description="Ghi chú thêm sau khi xong.", user_id="u1")
+
+    assert wakes.calls == []
