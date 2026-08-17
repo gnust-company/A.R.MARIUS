@@ -28,6 +28,7 @@ import StatusChip from '@/components/StatusChip';
 import Modal from '@/components/Modal';
 import LeaderChatWidget from '@/components/LeaderChatWidget';
 import { cn, wsHref } from '@/lib/utils';
+import { errorText } from '@/lib/errors';
 
 // The board's columns. *Bị chặn* earns one: a blocked task used to fall off the board
 // entirely, which is the exact failure spec 001 is built to prevent — a task nobody can
@@ -250,7 +251,7 @@ function AddTaskFormModal({
       setForm({ title: '', description: '', status: defaultStatus, assigneeId: '', priority: 'medium', dueDate: '', dod: '' });
       onClose();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(errorText(e, t));
     }
     setBusy(false);
   };

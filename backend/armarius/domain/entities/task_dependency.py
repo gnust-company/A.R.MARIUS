@@ -10,8 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
+from armarius.shared.errors import CodedError
 
-class TaskDependencyError(Exception):
+
+class TaskDependencyError(CodedError):
     """Raised for an invalid dependency edge (e.g. a self-loop)."""
 
 
@@ -27,4 +29,4 @@ class TaskDependency:
             and self.blocks_task_id is not None
             and self.task_id == self.blocks_task_id
         ):
-            raise TaskDependencyError("A task cannot depend on itself.")
+            raise TaskDependencyError("dependency_self_loop")

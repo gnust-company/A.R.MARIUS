@@ -40,11 +40,13 @@ from tests.support.agents import GATEWAY_KEY, GATEWAY_URL
 
 _HTTP_METHODS = ("get", "post", "put", "patch", "delete")
 
-# What the ownership guard says when it turns a caller away. The sweep matches on this text
-# and not on the status code alone, because a 404 is not evidence the guard ran: the skill
-# import route already 404s for a stranger simply because the URL it was handed does not
-# resolve, and that is a route the sweep would otherwise have passed while it stood open.
-_GUARD_SAYS = "workspace not found"
+# What the ownership guard answers with when it turns a caller away. The sweep matches on
+# this cause code and not on the status code alone, because a 404 is not evidence the guard
+# ran: the skill import route already 404s for a stranger simply because the URL it was
+# handed does not resolve, and that is a route the sweep would otherwise have passed while
+# it stood open. The code and not the sentence, because the sentence is now built per
+# reader (FR-084a) and a sweep pinned to one wording would go green in the other language.
+_GUARD_SAYS = "workspace_not_found"
 
 # Routes where the owner's own GET legitimately answers 404 because there is nothing to
 # return yet — checked separately from the stranger sweep so an empty answer is never
@@ -181,13 +183,14 @@ def _workspace_routes(spec: dict[str, Any]) -> Iterator[tuple[str, str, dict[str
 
 
 def _detail(response: Any) -> str | None:
-    """The error text, or None when the body is not an error at all — a leaked route answers
-    with the rows themselves (often a bare list), which must not crash the sweep."""
+    """The refusal's cause code, or None when the body is not a refusal at all — a leaked
+    route answers with the rows themselves (often a bare list), which must not crash the
+    sweep."""
     try:
         body = response.json()
     except ValueError:
         return None
-    return body.get("detail") if isinstance(body, dict) else None
+    return body.get("code") if isinstance(body, dict) else None
 
 
 def _fill(path: str, seeds: dict[str, str]) -> str:

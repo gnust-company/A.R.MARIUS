@@ -16,13 +16,15 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from armarius.shared.errors import BadRequest
+
 # Bắt đầu bằng chữ cái, theo sau là 1–9 ký tự [A-Z0-9] → tổng 2–10 ký tự.
 PROJECT_KEY_RE = re.compile(r"^[A-Z][A-Z0-9]{1,9}$")
 _SUGGEST_MAX_LEN = 4
 _FALLBACK_KEY = "PROJ"
 
 
-class InvalidProjectKey(ValueError):
+class InvalidProjectKey(BadRequest):
     """Project key sai format (phải khớp ``^[A-Z][A-Z0-9]{1,9}$``)."""
 
 
@@ -50,7 +52,5 @@ def validate_project_key(key: str) -> str:
     """Trả về key đã chuẩn hoá (viết hoa) nếu hợp lệ; ngược lại ném :class:`InvalidProjectKey`."""
     normalized = key.strip().upper()
     if not PROJECT_KEY_RE.match(normalized):
-        raise InvalidProjectKey(
-            f"project key must be 2–10 uppercase chars, starting with a letter (got {key!r})."
-        )
+        raise InvalidProjectKey("project_key_invalid", key=repr(key))
     return normalized

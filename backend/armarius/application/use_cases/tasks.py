@@ -66,6 +66,7 @@ from armarius.domain.services.wake_reason import WakeReason
 from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import as_utc, utcnow
+from armarius.shared.errors import CodedError, NotFound
 
 if TYPE_CHECKING:  # pragma: no cover — typing only, keeps the import graph acyclic
     from armarius.application.use_cases.inbox import InboxService
@@ -161,15 +162,15 @@ def _worker_to_warn(task: Task, changed: Sequence[str]) -> UUID | None:
     return task.assigned_marius_id if _SUBSTANTIVE & set(changed) else None
 
 
-class ProjectNotReadyForTasks(Exception):
+class ProjectNotReadyForTasks(CodedError):
     """Raised when a real task is created before the plan gate opened (spec 001 FR-003)."""
 
 
-class TitleRequiredError(Exception):
+class TitleRequiredError(CodedError):
     """Raised when an edit would leave a task with no title (FR-070a)."""
 
 
-class AlreadyAssignedError(Exception):
+class AlreadyAssignedError(CodedError):
     """Raised when a second worker is put on a task that already has one (FR-028)."""
 
 
@@ -247,7 +248,7 @@ class TaskService:
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)
             if project is None:
-                raise LookupError("project not found")
+                raise NotFound("project_not_found")
             # FR-003: a real task exists only once the patron has approved the plan. A
             # draft is exempt — a proposal is precisely the thing you make before the
             # answer is in, and it cannot wake anyone.
@@ -255,8 +256,7 @@ class TaskService:
                 project.status
             ):
                 raise ProjectNotReadyForTasks(
-                    "Kế hoạch chưa được duyệt — dự án chưa nhận đầu việc thật "
-                    f"(giai đoạn hiện tại: '{project.status}')."
+                    "project_not_ready_for_tasks", status=project.status
                 )
             # Mint "{KEY}-{seq}" — the seq is allocated atomically (UPDATE … RETURNING) so
             # concurrent creates never share a number and the number is never reused.
@@ -345,7 +345,7 @@ class TaskService:
         async with self._uow() as uow:
             task = await uow.tasks.get(task_id)
             if task is None:
-                raise LookupError("task not found")
+                raise NotFound("task_not_found")
             # FR-003 again, at the other door that turns a proposal into work. Releasing a
             # draft *is* creating a real task — the exemption `create` grants a draft ends
             # exactly here, because this is the step that wakes somebody.
@@ -390,7 +390,7 @@ class TaskService:
         async with self._uow() as uow:
             task = await uow.tasks.get(task_id)
             if task is None:
-                raise LookupError("task not found")
+                raise NotFound("task_not_found")
             now = utcnow()
             before = str(task.status)
             task.transition_to(
@@ -440,10 +440,10 @@ class TaskService:
         async with self._uow() as uow:
             task = await uow.tasks.get(task_id)
             if task is None:
-                raise LookupError("task not found")
+                raise NotFound("task_not_found")
             project = await uow.projects.get(task.project_id)
             if project is None or project.workspace_id != workspace_id:
-                raise LookupError("task not found")
+                raise NotFound("task_not_found")
             return task
 
     async def list_by_project(
@@ -505,14 +505,14 @@ class TaskService:
         async with self._uow() as uow:
             task = await uow.tasks.get(task_id)
             if task is None:
-                raise LookupError("task not found")
+                raise NotFound("task_not_found")
             await self._assert_project_open(uow, task)
 
             if not isinstance(title, _Unset) and title != task.title:
                 # The one field with no empty state: a task nobody can name is a task
                 # nobody can find. Clearing it is refused rather than quietly ignored.
                 if not (title or "").strip():
-                    raise TitleRequiredError("Đầu việc phải có tiêu đề.")
+                    raise TitleRequiredError("task_needs_title")
                 task.title = str(title)
                 changed.append("title")
             if not isinstance(description, _Unset) and description != task.description:
@@ -581,7 +581,7 @@ class TaskService:
             return
         project = await uow.projects.get(task.project_id)
         if project is not None and project_rules.is_closed(project.status):
-            raise ProjectClosed("Dự án đã đóng — lịch sử chỉ đọc, không sửa được.")
+            raise ProjectClosed("project_closed")
 
     async def _assert_phase_accepts_work(self, uow: UnitOfWork, task: Task) -> None:
         """FR-003 — a worker is only put on a task once the patron has approved the plan.
@@ -595,10 +595,7 @@ class TaskService:
         project = await uow.projects.get(task.project_id)
         if project is None or project_rules.accepts_real_tasks(project.status):
             return
-        raise ProjectNotReadyForTasks(
-            "Kế hoạch chưa được duyệt — dự án chưa nhận đầu việc thật "
-            f"(giai đoạn hiện tại: '{project.status}')."
-        )
+        raise ProjectNotReadyForTasks("project_not_ready_for_tasks", status=project.status)
 
     async def assign_within(
         self,
@@ -629,20 +626,17 @@ class TaskService:
         """
         task = await uow.tasks.get(task_id)
         if task is None:
-            raise LookupError("task not found")
+            raise NotFound("task_not_found")
         await self._assert_phase_accepts_work(uow, task)
         if await uow.mariuses.get(marius_id) is None:
-            raise LookupError("marius not found")
+            raise NotFound("agent_not_found")
         previous = task.assigned_marius_id
         if (
             previous is not None
             and previous != marius_id
             and not (transfer_reason or "").strip()
         ):
-            raise AlreadyAssignedError(
-                "Đầu việc đã có người phụ trách. Một đầu việc chỉ có đúng một người: "
-                "chuyển giao kèm lý do, hoặc chẻ thành hai đầu việc."
-            )
+            raise AlreadyAssignedError("task_already_assigned")
         assert_assignable(task)
         now = utcnow()
         task.assigned_marius_id = marius_id
@@ -720,7 +714,7 @@ class TaskService:
         async with self._uow() as uow:
             task = await uow.tasks.get(task_id)
             if task is None:
-                raise LookupError("task not found")
+                raise NotFound("task_not_found")
             await uow.comments.add(
                 Comment(
                     task_id=task_id,
@@ -765,7 +759,7 @@ class TaskService:
         async with self._uow() as uow:
             task = await uow.tasks.get(task_id)
             if task is None:
-                raise LookupError("task not found")
+                raise NotFound("task_not_found")
             await uow.comments.add(
                 Comment(
                     task_id=task_id,
@@ -838,7 +832,7 @@ class TaskService:
         unlocked: list[Task] = []
         task = await uow.tasks.get(task_id)
         if task is None:
-            raise LookupError("task not found")
+            raise NotFound("task_not_found")
         before = str(task.status)
         artifact_count = await uow.artifacts.count_by_task(task_id)
         deps_satisfied = True
@@ -1049,7 +1043,7 @@ class TaskService:
         async with self._uow() as uow:
             task = await uow.tasks.get(task_id)
             if task is None:
-                raise LookupError("task not found")
+                raise NotFound("task_not_found")
             before = str(task.status)
             now = utcnow()
             task.reopen(now, reason=reason)
@@ -1088,7 +1082,7 @@ class TaskService:
         """The write half of `set_next_action`. **The caller owns the transaction.**"""
         task = await uow.tasks.get(task_id)
         if task is None:
-            raise LookupError("task not found")
+            raise NotFound("task_not_found")
         task.next_action = next_action
         task.updated_at = utcnow()
         return await uow.tasks.update(task)
@@ -1097,7 +1091,7 @@ class TaskService:
     async def list_criteria(self, task_id: UUID) -> Sequence[ChecklistItem]:
         async with self._uow() as uow:
             if await uow.tasks.get(task_id) is None:
-                raise LookupError("task not found")
+                raise NotFound("task_not_found")
             return await uow.criteria.list_by_task(task_id)
 
     async def set_criteria(
@@ -1109,7 +1103,7 @@ class TaskService:
         async with self._uow() as uow:
             task = await uow.tasks.get(task_id)
             if task is None:
-                raise LookupError("task not found")
+                raise NotFound("task_not_found")
             project_id = task.project_id
             assert_criteria_editable(task)
             before = len(await uow.criteria.list_by_task(task_id))
@@ -1165,19 +1159,19 @@ class TaskService:
         async with self._uow() as uow:
             task = await uow.tasks.get(task_id)
             if task is None:
-                raise LookupError("task not found")
+                raise NotFound("task_not_found")
             project_id = task.project_id
             assert_criteria_ratable(task)
 
             items = list(await uow.criteria.list_by_task(task_id))
             item = next((i for i in items if i.id == criterion_id), None)
             if item is None:
-                raise LookupError("criterion not found")
+                raise NotFound("criterion_not_found")
 
             if evidence_artifact_id is not None:
                 own = await uow.artifacts.list_by_task(task_id)
                 if not any(a.id == evidence_artifact_id for a in own):
-                    raise LookupError("artifact not found")
+                    raise NotFound("artifact_not_found")
 
             before = str(item.result)
             item.rate(result, evidence_artifact_id=evidence_artifact_id)
@@ -1221,15 +1215,18 @@ class TaskService:
             task = await uow.tasks.get(task_id)
             blocker = await uow.tasks.get(blocks_task_id)
             if task is None or blocker is None:
-                raise LookupError("task not found")
+                raise NotFound("task_not_found")
             if task.project_id != blocker.project_id:
-                raise TaskDependencyError("A dependency must stay within one project.")
+                raise TaskDependencyError("dependency_cross_project")
             # Construct first: the entity rejects a self-loop in __post_init__.
             edge = TaskDependency(task_id=task_id, blocks_task_id=blocks_task_id)
             if await uow.dependencies.get(task_id, blocks_task_id) is not None:
-                raise TaskDependencyError("This dependency already exists.")
-            if await self._would_cycle(uow, task_id, blocks_task_id):
-                raise TaskDependencyError("This dependency would create a cycle.")
+                raise TaskDependencyError("dependency_exists")
+            ring = await self._cycle_closed_by(uow, task_id, blocks_task_id)
+            if ring:
+                raise TaskDependencyError(
+                    "dependency_cycle", cycle=await self._name_ring(uow, ring)
+                )
             created = await uow.dependencies.add(edge)
             # Waiting on another task is a drive, not a void: the task is accounted for,
             # so the watchdog leaves it alone until the blocker lands.
@@ -1501,24 +1498,49 @@ class TaskService:
             detail=detail,
         )
 
-    async def _would_cycle(
+    async def _cycle_closed_by(
         self, uow: UnitOfWork, task_id: UUID, blocks_task_id: UUID
-    ) -> bool:
-        """Would adding "task_id blocked_by blocks_task_id" close a cycle? True when
-        ``task_id`` is already reachable from ``blocks_task_id`` via existing edges."""
+    ) -> list[UUID]:
+        """The ring adding "task_id blocked_by blocks_task_id" would close — empty if none.
+
+        Answers with the ring itself rather than yes/no because FR-032 asks the refusal to
+        say *which* tasks the cycle runs through. A reader told only that "this would make
+        a cycle" has to find it by hand on a board where the one edge that would reveal it
+        is precisely the edge that was just refused.
+
+        Walks "what does this wait on" outwards from ``blocks_task_id``, keeping a parent
+        for each hop so the path home can be read back the moment ``task_id`` turns up.
+        """
+        parent: dict[UUID, UUID] = {}
         seen: set[UUID] = set()
         frontier: list[UUID] = [blocks_task_id]
         while frontier:
             current = frontier.pop()
             if current == task_id:
-                return True
+                back: list[UUID] = [current]
+                while current in parent:
+                    current = parent[current]
+                    back.append(current)
+                back.reverse()
+                # Named from the edge being added, and closing on itself, so the ring reads
+                # as a ring: A → B → … → A.
+                return [task_id, *back]
             if current in seen:
                 continue
             seen.add(current)
             for edge in await uow.dependencies.list_blockers(current):
-                if edge.blocks_task_id is not None:
+                if edge.blocks_task_id is not None and edge.blocks_task_id not in seen:
+                    parent[edge.blocks_task_id] = current
                     frontier.append(edge.blocks_task_id)
-        return False
+        return []
+
+    async def _name_ring(self, uow: UnitOfWork, ring: Sequence[UUID]) -> str:
+        """The ring as a reader sees it on the board: task codes, in order."""
+        names: list[str] = []
+        for tid in ring:
+            found = await uow.tasks.get(tid)
+            names.append((found.identifier if found else None) or str(tid))
+        return " → ".join(names)
 
 
 def _actor_kind(user_id: str | None, marius_id: UUID | None) -> ActorKind:

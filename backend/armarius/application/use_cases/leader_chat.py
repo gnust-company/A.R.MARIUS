@@ -54,6 +54,7 @@ from armarius.domain.services.wake_reason import WakeReason
 from armarius.infrastructure.events.topic_bus import TopicEventBus
 from armarius.shared.background import settle
 from armarius.shared.clock import utcnow
+from armarius.shared.errors import NotFound
 from armarius.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -99,7 +100,7 @@ class LeaderChatService:
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)
             if project is None:
-                raise LookupError("project not found")
+                raise NotFound("project_not_found")
             conversation = await uow.leader_chats.get_by_project(project_id)
             leader_id = await self._leader_of(uow, project_id)
             if conversation is None:
@@ -132,16 +133,14 @@ class LeaderChatService:
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)
             if project is None:
-                raise LookupError("project not found")
+                raise NotFound("project_not_found")
             conversation = await uow.leader_chats.get_by_project(project_id)
             leader_id = await self._leader_of(uow, project_id)
             leader = await uow.mariuses.get(leader_id) if leader_id else None
             if leader is None:
-                raise LeaderChatError("no Leader is seated on this project")
+                raise LeaderChatError("no_leader_seated")
             if leader.liveness not in _AVAILABLE:
-                raise LeaderChatError(
-                    "the Leader is offline — the chat is disabled until it comes online"
-                )
+                raise LeaderChatError("leader_offline")
 
             now = utcnow()
             if conversation is None:
@@ -153,7 +152,7 @@ class LeaderChatService:
                 )
                 await uow.leader_chats.add(conversation)
             if conversation.state == ChatState.THINKING:
-                raise LeaderChatError("the Leader is still replying — wait for its answer")
+                raise LeaderChatError("leader_still_replying")
 
             conversation.leader_marius_id = leader_id
             conversation.append("patron", message, now)
@@ -208,7 +207,7 @@ class LeaderChatService:
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)
             if project is None:
-                raise LookupError("project not found")
+                raise NotFound("project_not_found")
             if not may_wake(source, roles={WakeRole.LEADER}):
                 await self._record_refusal(uow, project_id, source, reason)
                 return False

@@ -29,6 +29,8 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
+from armarius.shared.errors import CodedError
+
 
 class TaskStatus(StrEnum):
     DRAFT = "draft"  # Leader's proposal; → todo only on approve (Leader chat, #82)
@@ -138,62 +140,50 @@ REASON_REQUIRED_MOVES: frozenset[tuple[TaskStatus, TaskStatus]] = frozenset(
 )
 
 
-class TaskTransitionError(Exception):
+class TaskTransitionError(CodedError):
     """Raised when an illegal status transition is attempted."""
 
 
-class ArtifactRequiredError(Exception):
+class ArtifactRequiredError(CodedError):
     """Raised when moving to review/done without a linked published artifact."""
 
 
-class DependencyNotMetError(Exception):
+class DependencyNotMetError(CodedError):
     """Raised when entering todo/in_progress while a blocked_by dependency is unfinished.
 
-    Carries the identifiers of what is still missing (FR-025). "A dependency is not done"
+    Names what is still missing in its parameters (FR-025). "A dependency is not done"
     tells the reader nothing they can act on; "TASK-3, TASK-7" tells them where to look.
     """
 
-    def __init__(self, message: str, *, blockers: tuple[str, ...] = ()) -> None:
-        super().__init__(message)
-        self.blockers = blockers
 
-
-class DescriptionRequiredError(Exception):
+class DescriptionRequiredError(CodedError):
     """Raised when handing a task to a worker with an empty description (FR-029)."""
 
 
-class StatusReasonRequiredError(Exception):
+class StatusReasonRequiredError(CodedError):
     """Raised when a move that needs a stated reason arrives without one (FR-030)."""
 
 
-class StalledTaskError(Exception):
+class StalledTaskError(CodedError):
     """Raised when something tries to close a task the system has dropped (FR-058)."""
 
 
-class SignaturesRequiredError(Exception):
+class SignaturesRequiredError(CodedError):
     """Raised when a task is closed without both signatures (FR-033).
 
     Names who is still missing, because "not approved yet" leaves the reader hunting for
     whose turn it is.
     """
 
-    def __init__(self, message: str, *, missing: tuple[str, ...] = ()) -> None:
-        super().__init__(message)
-        self.missing = missing
 
-
-class CriteriaNotMetError(Exception):
+class CriteriaNotMetError(CodedError):
     """Raised when a task is closed with a criterion still unrated or failed (FR-019).
 
     Names them, for the same reason `SignaturesRequiredError` names who is missing.
     """
 
-    def __init__(self, message: str, *, unmet: tuple[str, ...] = ()) -> None:
-        super().__init__(message)
-        self.unmet = unmet
 
-
-class DescriptionLockedError(Exception):
+class DescriptionLockedError(CodedError):
     """Raised when a worker tries to rewrite the requirement it was given (FR-018)."""
 
 
@@ -210,9 +200,7 @@ def assert_assignable(task: Task) -> None:
     receiving a one-line title and being left to guess the job.
     """
     if _is_blank(task.description):
-        raise DescriptionRequiredError(
-            "Đầu việc phải có mô tả chi tiết trước khi giao cho người phụ trách."
-        )
+        raise DescriptionRequiredError("task_needs_description")
 
 
 def is_in_scope(task: Task) -> bool:
@@ -301,42 +289,40 @@ class Task:
             return
         if not self.can_transition_to(target):
             raise TaskTransitionError(
-                f"Cannot move task from '{self.status}' to '{target}'."
+                "task_transition_invalid", current=self.status, target=target
             )
         if target is TaskStatus.DONE and self.stalled:
-            raise StalledTaskError(
-                "Đầu việc đang mang cờ đình trệ thì không được chuyển sang *xong* "
-                f"({self.stalled_reason or 'không rõ lý do'})."
-            )
+            # The stall verdict is still free text on the row, so it is handed over as a
+            # parameter rather than folded into the wording — and when there is none, the
+            # refusal says so with its own code instead of a blank pair of brackets (T200).
+            if self.stalled_reason:
+                raise StalledTaskError(
+                    "task_stalled_cannot_finish_named", reason=self.stalled_reason
+                )
+            raise StalledTaskError("task_stalled_cannot_finish")
         if target in SIGNATURE_REQUIRED_STATUSES and not signatures_complete:
             listed = ", ".join(missing_signatures)
-            raise SignaturesRequiredError(
-                "Đầu việc chỉ đóng khi đủ hai chữ ký"
-                + (f" — còn thiếu: {listed}." if listed else "."),
-                missing=missing_signatures,
-            )
+            if listed:
+                raise SignaturesRequiredError(
+                    "task_needs_signatures_named", missing=listed
+                )
+            raise SignaturesRequiredError("task_needs_signatures")
         if target in CRITERIA_REQUIRED_STATUSES and not criteria_met:
             listed = ", ".join(unmet_criteria)
-            raise CriteriaNotMetError(
-                "Đầu việc chỉ đóng khi mọi tiêu chí công nhận đã chấm đạt"
-                + (f" — còn: {listed}." if listed else "."),
-                unmet=unmet_criteria,
-            )
+            if listed:
+                raise CriteriaNotMetError("task_criteria_unmet_named", unmet=listed)
+            raise CriteriaNotMetError("task_criteria_unmet")
         if target in ARTIFACT_REQUIRED_STATUSES and not has_artifact:
-            raise ArtifactRequiredError(
-                "A published artifact must be linked before review/done."
-            )
+            raise ArtifactRequiredError("task_needs_artifact")
         if target in DEPENDENCY_GATED_STATUSES and not deps_satisfied:
             listed = ", ".join(unmet_blockers)
-            raise DependencyNotMetError(
-                "Còn việc phụ thuộc chưa xong"
-                + (f": {listed}." if listed else "."),
-                blockers=unmet_blockers,
-            )
+            if listed:
+                raise DependencyNotMetError(
+                    "task_dependencies_unmet_named", blockers=listed
+                )
+            raise DependencyNotMetError("task_dependencies_unmet")
         if self._reason_required(target) and _is_blank(reason):
-            raise StatusReasonRequiredError(
-                f"Chuyển sang '{target}' phải nêu lý do."
-            )
+            raise StatusReasonRequiredError("task_move_needs_reason", target=target)
         self.status = target
         self.status_reason = reason
         if target == TaskStatus.IN_PROGRESS:
@@ -359,11 +345,9 @@ class Task:
         """
         target = REOPEN_TARGETS.get(self.status)
         if target is None:
-            raise TaskTransitionError(
-                f"Chỉ mở lại được đầu việc đã đóng; đầu việc này đang ở '{self.status}'."
-            )
+            raise TaskTransitionError("task_reopen_not_closed", status=self.status)
         if _is_blank(reason):
-            raise StatusReasonRequiredError("Mở lại một đầu việc đã đóng phải nêu lý do.")
+            raise StatusReasonRequiredError("task_reopen_needs_reason")
         self.status = target
         self.status_reason = reason
         self.completed_at = None
@@ -377,7 +361,5 @@ class Task:
         the acceptance criteria end up measuring the wrong thing.
         """
         if by_worker:
-            raise DescriptionLockedError(
-                "Người phụ trách chỉ được thêm ghi chú tiến trình, không sửa yêu cầu gốc."
-            )
+            raise DescriptionLockedError("task_description_locked")
         self.description = description

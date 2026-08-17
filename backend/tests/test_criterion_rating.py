@@ -137,7 +137,9 @@ async def test_a_pass_over_http_must_cite_an_artifact() -> None:
         item = (await _criteria(c, p, task_id))[0]
         r = await _rate(c, p, task_id, item["id"])
     assert r.status_code == 409, r.text
-    assert "bằng chứng" in r.json()["detail"]
+    # Lời từ chối trả về *mã cớ*, không phải câu đã dựng — cùng lời ấy vừa đi tới agent
+    # (tiếng Anh) vừa lên màn người chủ (tiếng của họ), nên câu chữ là chuyện của mỗi bên.
+    assert r.json()["code"] == "evidence_required", r.text
 
 
 async def test_the_evidence_must_belong_to_this_task() -> None:
@@ -172,7 +174,7 @@ async def test_a_criterion_is_scored_while_the_task_is_in_review() -> None:
         item = written.json()[0]
         r = await _rate(c, p, task_id, item["id"], evidence=str(task_id))
     assert r.status_code == 409, r.text
-    assert "chờ rà soát" in r.json()["detail"]
+    assert r.json()["code"] == "criterion_not_ratable", r.text
 
 
 async def test_only_the_leader_seat_scores() -> None:

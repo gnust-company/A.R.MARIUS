@@ -52,6 +52,7 @@ from armarius.presentation.schemas import (
     TransitionIn,
     decode_artifact_content,
 )
+from armarius.shared.errors import NotFound
 
 # FR-005 — a closed project is frozen. The guard hangs on the router, not on each
 # route, so a route added later cannot forget it.
@@ -121,7 +122,7 @@ async def get_my_skill_bundle(
                 description=sk.description,
                 files=sk.files,
             )
-    raise LookupError(f"skill '{slug}' is not linked to you")
+    raise NotFound("skill_not_linked", slug=slug)
 
 
 @router.post("/skills/{slug}/installed", status_code=200)
@@ -133,7 +134,7 @@ async def confirm_skill_installed(
     you (you can only confirm skills you were granted)."""
     linked = await effective_skills(container, marius)
     if not any(sk.slug == slug for sk in linked):
-        raise LookupError(f"skill '{slug}' is not linked to you")
+        raise NotFound("skill_not_linked", slug=slug)
     updated = await container.mariuses.set_skill_installs(marius.id, {slug: "installed"})
     await container.control_bus.publish(
         f"ws:{updated.workspace_id}",
@@ -148,10 +149,10 @@ async def _wa_onboarding_session(container, marius, session_id: UUID):
     """Load an onboarding session, asserting this Marius is its workspace's host agent."""
     session = await container.onboarding.get(session_id)
     if session is None or session.workspace_id is None:
-        raise LookupError("onboarding session not found")
+        raise NotFound("onboarding_session_not_found")
     ws = await container.workspaces.get_workspace(session.workspace_id)
     if ws is None or ws.workspace_agent_id != marius.id:
-        raise LookupError("onboarding session not found")
+        raise NotFound("onboarding_session_not_found")
     return session
 
 
@@ -210,7 +211,7 @@ async def _task_in_caller_workspace(
     place that narrows the agent's optional workspace id, instead of each route doing it.
     """
     if marius.workspace_id is None:
-        raise LookupError("task not found")
+        raise NotFound("task_not_found")
     return await container.tasks.get_in_workspace(task_id, marius.workspace_id)
 
 
@@ -228,7 +229,7 @@ async def agent_create_task(
     project's scope (FR-027). Scoped to the caller's workspace (#15)."""
     project = await container.projects.get_project(project_id)
     if project is None or project.workspace_id != marius.workspace_id:
-        raise LookupError("project not found")  # cross-workspace → 404
+        raise NotFound("project_not_found")  # cross-workspace → 404
     task = await container.tasks.propose(
         project_id=project_id,
         title=body.title,
@@ -257,7 +258,7 @@ async def agent_request_major_change(
     """
     project = await container.projects.get_project(project_id)
     if project is None or project.workspace_id != marius.workspace_id:
-        raise LookupError("project not found")  # cross-workspace → 404
+        raise NotFound("project_not_found")  # cross-workspace → 404
     item = await container.plans.request_major_change(
         project_id,
         area=body.area,
@@ -289,7 +290,7 @@ async def agent_declare_recovery(
     """
     task = await _task_in_caller_workspace(container, marius, task_id)
     if task.project_id is None:
-        raise LookupError("task not found")
+        raise NotFound("task_not_found")
     await _leader_seat(container, marius, task.project_id)
     await container.recovery.leader_decided(task_id, action=body.action)
     if body.next_action:
@@ -318,7 +319,7 @@ async def agent_escalate_task(
     """
     task = await _task_in_caller_workspace(container, marius, task_id)
     if task.project_id is None:
-        raise LookupError("task not found")
+        raise NotFound("task_not_found")
     await _leader_seat(container, marius, task.project_id)
     await container.recovery.leader_gave_up(task_id, reason=body.reason)
     return {"status": "đã chuyển lên người chủ"}
@@ -341,7 +342,7 @@ async def agent_ready_queue(
     """
     project = await container.projects.get_project(project_id)
     if project is None or project.workspace_id != marius.workspace_id:
-        raise LookupError("project not found")  # cross-workspace → 404
+        raise NotFound("project_not_found")  # cross-workspace → 404
     return [
         TaskOut.model_validate(t)
         for t in await container.tasks.ready_queue(project_id)
@@ -447,7 +448,7 @@ async def sign_approval(
     """
     task = await _task_in_caller_workspace(container, marius, task_id)
     if task.project_id is None:
-        raise LookupError("task not found")
+        raise NotFound("task_not_found")
     await _leader_seat(container, marius, task.project_id)
     signed = await container.approvals.sign_as_leader(
         task_id, marius_id=marius.id, approve=body.approve, reason=body.reason
@@ -486,7 +487,7 @@ async def rate_criterion(
     """
     task = await _task_in_caller_workspace(container, marius, task_id)
     if task.project_id is None:
-        raise LookupError("task not found")
+        raise NotFound("task_not_found")
     await _leader_seat(container, marius, task.project_id)
     item = await container.tasks.rate_criterion(
         task_id,
@@ -542,10 +543,10 @@ async def _leader_seat(container, marius: Marius, project_id: UUID) -> None:
     """
     project = await container.projects.get_project(project_id)
     if project is None or project.workspace_id != marius.workspace_id:
-        raise LookupError("project not found")
+        raise NotFound("project_not_found")
     seats = await container.projects.list_agents(project_id)
     if not any(s.marius_id == marius.id and s.is_primary for s in seats):
-        raise LookupError("project not found")
+        raise NotFound("project_not_found")
 
 
 @router.post("/projects/{project_id}/context", response_model=ProjectContextOut)

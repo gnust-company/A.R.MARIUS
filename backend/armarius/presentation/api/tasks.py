@@ -46,6 +46,7 @@ from armarius.presentation.schemas import (
     WakeIn,
     decode_artifact_content,
 )
+from armarius.shared.errors import Forbidden
 
 # FR-005 — a closed project is frozen. The guard hangs on the router, not on each
 # route, so a route added later cannot forget it.
@@ -163,9 +164,7 @@ async def sign_approval(
     await own_task(container, user, task_id)
     responsible = await container.approvals.responsible_patron(task_id)
     if responsible != str(user.id):
-        raise PermissionError(
-            "Chỉ người chủ đã cấp agent làm đầu việc này mới ký công nhận được."
-        )
+        raise Forbidden("not_the_signing_patron")
     task = await container.approvals.sign_as_patron(
         task_id, user_id=str(user.id), approve=body.approve, reason=body.reason
     )
@@ -355,9 +354,7 @@ async def wake_task(
         # This button's cause is one of the system's own, allowed for every role, so the
         # branch does not fire today — but the rule lives in the engine, not here, and a
         # route that answered with a null run id would be lying to whoever pressed it.
-        raise WakeCauseRefused(
-            "Không đánh thức được agent này: cớ gọi không thuộc phần việc của vai họ."
-        )
+        raise WakeCauseRefused("wake_cause_refused")
     return RunStartedOut(run_id=run_id)
 
 

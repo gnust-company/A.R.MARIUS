@@ -64,6 +64,7 @@ from armarius.domain.services.wake_reason import WakeReason, render_en
 from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.shared.background import settle
 from armarius.shared.clock import utcnow
+from armarius.shared.errors import NotFound
 from armarius.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -182,9 +183,7 @@ class WakeEngine:
                 return
             project = await uow.projects.get(task.project_id)
             if project is not None and is_closed(project.status):
-                raise ProjectClosed(
-                    "Dự án đã đóng — không đánh thức agent của nó nữa."
-                )
+                raise ProjectClosed("project_closed_no_wake")
 
     async def _cause_fits_the_recipient(
         self,
@@ -325,7 +324,7 @@ class WakeEngine:
             task = await uow.tasks.get(task_id)
             marius = await uow.mariuses.get(marius_id)
             if task is None or marius is None:
-                raise LookupError("task or marius not found")
+                raise NotFound("task_or_agent_not_found")
             causes = merge_reasons([], source, reason)
             run = Run(
                 project_id=task.project_id,

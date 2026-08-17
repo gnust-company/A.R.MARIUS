@@ -25,6 +25,7 @@ from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.marius import InviteStatus, Marius
 from armarius.domain.entities.run import RunStatus
 from armarius.shared.clock import utcnow
+from armarius.shared.errors import BadRequest, NotFound
 
 # Upper bound on the dispatch hand-off. A network dispatch returns as soon as the gateway
 # accepts the run, so this only bounds the fallback (fast in-process) adapters.
@@ -41,11 +42,11 @@ class StatusNotifier(Protocol):
     async def publish(self, topic: str, type: str, data: dict) -> int: ...
 
 
-class GatewayUnreachable(ValueError):
+class GatewayUnreachable(BadRequest):
     """The operator-supplied gateway did not pass the adapter's reachability probe."""
 
 
-class UnknownAdapter(ValueError):
+class UnknownAdapter(BadRequest):
     """The operator selected an adapter type no registry knows about."""
 
 
@@ -91,15 +92,15 @@ class InviteService:
         try:
             adapter = self._registry.get(adapter_type)
         except LookupError as exc:
-            raise UnknownAdapter(f"unknown adapter type '{adapter_type}'") from exc
+            raise UnknownAdapter("unknown_adapter", adapter=adapter_type) from exc
         probe = await adapter.test_environment({"base_url": gateway_url, "api_key": api_key})
         if not probe.ok:
-            raise GatewayUnreachable(probe.detail or "gateway unreachable")
+            raise GatewayUnreachable("gateway_unreachable", reason=probe.detail or "no detail")
 
         now = utcnow()
         async with self._uow() as uow:
             if await uow.workspaces.get(workspace_id) is None:
-                raise LookupError("workspace not found")
+                raise NotFound("workspace_not_found")
             marius = Marius(
                 workspace_id=workspace_id,
                 name=name,
@@ -134,7 +135,7 @@ class InviteService:
         async with self._uow() as uow:
             marius = await uow.mariuses.get(marius_id)
             if marius is None:
-                raise LookupError("marius not found")
+                raise NotFound("agent_not_found")
             adapter_type = marius.adapter_type
             adapter_config = dict(marius.adapter_config or {})
         try:

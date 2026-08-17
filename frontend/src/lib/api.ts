@@ -5,20 +5,17 @@
 // roster (detail/grant), mariuses, labels, skills, tasks (CRUD + comments + artifacts),
 // and the two SSE routes (for URL construction only; the stream itself lives in sse.ts).
 //
-// Error responses raise an `ApiError` with a `detail` string (the server‑sent `detail` field
-// or a fallback message). Callers can display it as a toast or inline alert.
+// Error responses raise an `ApiError` carrying the server's cause code and parameters
+// (FR-084a). Callers put it on screen through `errorText`, which words it in the patron's
+// language; `ApiError.message` is the server's English rendering, kept as the fallback.
 
 import { getToken, logout, refreshAccessToken, type UserDTO } from './auth'
+import { ApiError, throwApiError } from './errors'
 import { API_BASE } from './env'
 
-export class ApiError extends Error {
-  status?: number
-  constructor(detail: string, status?: number) {
-    super(detail)
-    this.name = 'ApiError'
-    this.status = status
-  }
-}
+// The refusal type and the body reader both live in `./errors`, below this module and
+// below `auth.ts`, so the login screen gets the same coded refusals every other page does.
+export { ApiError } from './errors'
 
 // Single-flight token refresh. When several authenticated requests 401 at once (common on an
 // F5 that fans out many GETs after the access token expired), they must all await the SAME
@@ -75,7 +72,10 @@ async function fetchWithAuth(input: RequestInfo | URL, init?: RequestInit): Prom
     } else {
       // Refresh failed → logged out; clear local state and surface the 401.
       logout()
-      throw new ApiError('Session expired. Please log in again.', 401)
+      // The one refusal the client raises on its own behalf: no server said this, the
+      // refresh simply did not come back. Coded all the same, so it is worded like the
+      // rest instead of being the one English sentence on a Vietnamese screen.
+      throw new ApiError('Session expired. Please log in again.', 401, 'session_expired')
     }
   }
 
@@ -85,14 +85,7 @@ async function fetchWithAuth(input: RequestInfo | URL, init?: RequestInit): Prom
 async function get<T>(path: string): Promise<T> {
   const res = await fetchWithAuth(path)
   if (!res.ok) {
-    let detail = `${res.status} ${res.statusText}`
-    try {
-      const data = await res.json()
-      if (data?.detail) detail = typeof data.detail === 'string' ? data.detail : detail
-    } catch {
-      // non-JSON error body — keep the status-line fallback
-    }
-    throw new ApiError(detail, res.status)
+    await throwApiError(res)
   }
   return (await res.json()) as T
 }
@@ -114,14 +107,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   })
   if (!res.ok) {
-    let detail = `${res.status} ${res.statusText}`
-    try {
-      const data = await res.json()
-      if (data?.detail) detail = typeof data.detail === 'string' ? data.detail : detail
-    } catch {
-      // non-JSON error body — keep the status-line fallback
-    }
-    throw new ApiError(detail, res.status)
+    await throwApiError(res)
   }
   return (await res.json()) as T
 }
@@ -132,14 +118,7 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   })
   if (!res.ok) {
-    let detail = `${res.status} ${res.statusText}`
-    try {
-      const data = await res.json()
-      if (data?.detail) detail = typeof data.detail === 'string' ? data.detail : detail
-    } catch {
-      // non-JSON error body — keep the status-line fallback
-    }
-    throw new ApiError(detail, res.status)
+    await throwApiError(res)
   }
   return (await res.json()) as T
 }
@@ -150,14 +129,7 @@ async function put<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   })
   if (!res.ok) {
-    let detail = `${res.status} ${res.statusText}`
-    try {
-      const data = await res.json()
-      if (data?.detail) detail = typeof data.detail === 'string' ? data.detail : detail
-    } catch {
-      // non-JSON error body — keep the status-line fallback
-    }
-    throw new ApiError(detail, res.status)
+    await throwApiError(res)
   }
   return (await res.json()) as T
 }
@@ -167,14 +139,7 @@ async function put<T>(path: string, body: unknown): Promise<T> {
 async function del(path: string): Promise<void> {
   const res = await fetchWithAuth(path, { method: 'DELETE' })
   if (!res.ok && res.status !== 204) {
-    let detail = `${res.status} ${res.statusText}`
-    try {
-      const data = await res.json()
-      if (data?.detail) detail = typeof data.detail === 'string' ? data.detail : detail
-    } catch {
-      // non-JSON error body — keep the status-line fallback
-    }
-    throw new ApiError(detail, res.status)
+    await throwApiError(res)
   }
 }
 
@@ -444,14 +409,7 @@ export async function getProject(projectId: string): Promise<ProjectDetailDTO> {
 export async function deleteProject(projectId: string): Promise<void> {
   const res = await fetchWithAuth(`/v1/projects/${projectId}`, { method: 'DELETE' })
   if (!res.ok && res.status !== 204) {
-    let detail = `${res.status} ${res.statusText}`
-    try {
-      const data = await res.json()
-      if (data?.detail) detail = typeof data.detail === 'string' ? data.detail : detail
-    } catch {
-      // non-JSON error body — keep the status-line fallback
-    }
-    throw new ApiError(detail, res.status)
+    await throwApiError(res)
   }
 }
 

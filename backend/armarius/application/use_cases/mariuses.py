@@ -9,6 +9,7 @@ from uuid import UUID
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.marius import Marius
 from armarius.shared.clock import utcnow
+from armarius.shared.errors import NotFound
 
 
 class MariusService:
@@ -29,7 +30,7 @@ class MariusService:
     ) -> Marius:
         async with self._uow() as uow:
             if await uow.workspaces.get(workspace_id) is None:
-                raise LookupError("workspace not found")
+                raise NotFound("workspace_not_found")
             marius = Marius(
                 workspace_id=workspace_id,
                 name=name,
@@ -60,7 +61,7 @@ class MariusService:
         async with self._uow() as uow:
             marius = await uow.mariuses.get(marius_id)
             if marius is None:
-                raise LookupError("marius not found")
+                raise NotFound("agent_not_found")
             if name is not None:
                 marius.name = name
             if role is not None:
@@ -87,7 +88,7 @@ class MariusService:
         async with self._uow() as uow:
             marius = await uow.mariuses.get(marius_id)
             if marius is None:
-                raise LookupError("marius not found")
+                raise NotFound("agent_not_found")
             marius.skill_installs = {**marius.skill_installs, **updates}
             marius.updated_at = utcnow()
             updated = await uow.mariuses.update(marius)
@@ -106,7 +107,7 @@ class MariusService:
         async with self._uow() as uow:
             marius = await uow.mariuses.get(marius_id)
             if marius is None:
-                raise LookupError("marius not found")
+                raise NotFound("agent_not_found")
             ws = (
                 await uow.workspaces.get(marius.workspace_id)
                 if marius.workspace_id

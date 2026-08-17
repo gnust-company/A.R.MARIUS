@@ -44,6 +44,7 @@ from armarius.domain.entities.onboarding import OnboardingSession, OnboardingSta
 from armarius.domain.entities.run import RunStatus
 from armarius.domain.services.agent_prompt import agent_prompt_footer
 from armarius.shared.clock import utcnow
+from armarius.shared.errors import CodedError, NotFound
 
 # Online/Working is the only "ready" for onboarding (LLD §10). Checking / Offline / Silent
 # means the agent cannot take a turn right now — fail fast rather than queue.
@@ -172,16 +173,13 @@ class OnboardingService:
         """
         wa = await self._ws_agent.ensure_workspace_agent(workspace_id)
         if wa is None or not _wa_ready(wa):
-            raise WorkspaceAgentUnavailable(
-                "set up the Workspace Agent first — invite an agent with 'Make Workspace "
-                "Agent' and its gateway creds, then ensure it is online and retry"
-            )
+            raise WorkspaceAgentUnavailable("workspace_agent_not_set_up")
 
         now = utcnow()
         async with self._uow() as uow:
             ws = await uow.workspaces.get(workspace_id)
             if ws is None:
-                raise LookupError("workspace not found")
+                raise NotFound("workspace_not_found")
             # Retire any still-open session so the new one is the only live chat.
             for prior in await uow.onboardings.list_by_workspace(workspace_id):
                 if prior.status == OnboardingStatus.OPEN:
@@ -209,14 +207,12 @@ class OnboardingService:
         async with self._uow() as uow:
             fresh = await uow.onboardings.get(session_id)
         if fresh is None:
-            raise LookupError("onboarding session not found")
+            raise NotFound("onboarding_session_not_found")
         # The wake completed but the agent never asked anything / posted a draft → treat as a
         # failure so the user always gets a clear signal (never an empty, stuck chat).
         if not (fresh.collected.get("pending_question") or fresh.collected.get("draft")):
             await self._abandon(session_id)
-            raise WorkspaceAgentUnavailable(
-                "the Workspace Agent did not start the interview — check it is online and retry"
-            )
+            raise WorkspaceAgentUnavailable("workspace_agent_no_interview")
         return fresh
 
     async def answer(self, session_id: UUID, value: str) -> OnboardingSession:
@@ -238,16 +234,13 @@ class OnboardingService:
             ws = await uow.workspaces.get(workspace_id) if workspace_id else None
             history = _qa_pairs(session.transcript)
         if workspace_id is None:
-            raise LookupError("onboarding session has no workspace")
+            raise NotFound("onboarding_session_has_no_workspace")
         workspace_name = ws.name if ws else "the workspace"
 
         wa = await self._ws_agent.ensure_workspace_agent(workspace_id)
         if wa is None or not _wa_ready(wa):
             await self._abandon(session_id)
-            raise WorkspaceAgentUnavailable(
-                "set up the Workspace Agent first — invite an agent with 'Make Workspace "
-                "Agent' and its gateway creds, then ensure it is online and retry"
-            )
+            raise WorkspaceAgentUnavailable("workspace_agent_not_set_up")
         answer_prompt = build_onboarding_answer_prompt(
             base_url=self._base_url, session_id=str(session_id), history=history
         ) + agent_prompt_footer(credential_file_for(wa, workspace_name))
@@ -256,12 +249,10 @@ class OnboardingService:
         async with self._uow() as uow:
             fresh = await uow.onboardings.get(session_id)
         if fresh is None:
-            raise LookupError("onboarding session not found")
+            raise NotFound("onboarding_session_not_found")
         if not (fresh.collected.get("pending_question") or fresh.collected.get("draft")):
             await self._abandon(session_id)
-            raise WorkspaceAgentUnavailable(
-                "the Workspace Agent did not respond — check it is online and retry"
-            )
+            raise WorkspaceAgentUnavailable("workspace_agent_silent")
         return fresh
 
     # ── real Workspace-Agent runtime callbacks (the guided agent drives the interview) ──
@@ -271,7 +262,7 @@ class OnboardingService:
         async with self._uow() as uow:
             session = await self._open(uow, session_id)
             if session.collected.get("pending_question") is not None:
-                raise OnboardingBusy("a question is already awaiting an answer")
+                raise OnboardingBusy("onboarding_question_pending")
             session.collected = {
                 **session.collected, "phase": "asking",
                 "pending_question": question, "draft": None,
@@ -329,7 +320,7 @@ class OnboardingService:
         async with self._uow() as uow:
             fresh = await uow.onboardings.get(session_id)
             if fresh is None:
-                raise LookupError("onboarding session not found")
+                raise NotFound("onboarding_session_not_found")
             fresh.finalize(project.id)  # OPEN → FINALIZED
             fresh.updated_at = utcnow()
             await uow.onboardings.update(fresh)
@@ -368,7 +359,7 @@ class OnboardingService:
         except LookupError:
             await self._abandon(session_id)
             raise WorkspaceAgentUnavailable(
-                f"the Workspace Agent runtime '{wa.adapter_type}' is not available"
+                "workspace_agent_runtime_missing", adapter=wa.adapter_type
             ) from None
         ctx = ExecContext(
             prompt=prompt,
@@ -384,14 +375,10 @@ class OnboardingService:
             result = await adapter.execute(ctx)
         except Exception:
             await self._abandon(session_id)
-            raise WorkspaceAgentUnavailable(
-                "the Workspace Agent could not be reached — check it is online and retry"
-            ) from None
+            raise WorkspaceAgentUnavailable("workspace_agent_unreachable") from None
         if result.status != RunStatus.COMPLETED:
             await self._abandon(session_id)
-            raise WorkspaceAgentUnavailable(
-                "the Workspace Agent did not respond — check it is online and retry"
-            )
+            raise WorkspaceAgentUnavailable("workspace_agent_silent")
 
     async def _abandon(self, session_id: UUID) -> None:
         """Idempotently abandon a session (only if still OPEN) — used on the wake-fail path."""
@@ -406,15 +393,15 @@ class OnboardingService:
     async def _open(self, uow, session_id: UUID) -> OnboardingSession:  # noqa: ANN001
         session = await uow.onboardings.get(session_id)
         if session is None:
-            raise LookupError("onboarding session not found")
+            raise NotFound("onboarding_session_not_found")
         return session
 
 
-class OnboardingBusy(Exception):
+class OnboardingBusy(CodedError):
     """Raised when a live WA posts a new question while the previous one is unanswered."""
 
 
-class WorkspaceAgentUnavailable(Exception):
+class WorkspaceAgentUnavailable(CodedError):
     """The Workspace Agent is not online, or a wake failed — onboarding cannot proceed.
 
     Mapped to HTTP 409 so the client can tell the user to enroll/wake the agent (no fallback).

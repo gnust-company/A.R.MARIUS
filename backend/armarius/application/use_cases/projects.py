@@ -30,6 +30,7 @@ from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
 from armarius.domain.services import project_key, project_rules
 from armarius.domain.services.project_rules import ProjectClosed
 from armarius.shared.clock import utcnow
+from armarius.shared.errors import BadRequest, CodedError, NotFound
 from armarius.shared.logging import get_logger
 
 if TYPE_CHECKING:  # imported for typing only — these are injected, never constructed here
@@ -40,15 +41,15 @@ if TYPE_CHECKING:  # imported for typing only — these are injected, never cons
 logger = get_logger(__name__)
 
 
-class SystemOnlyOperation(Exception):
+class SystemOnlyOperation(CodedError):
     """Raised when a seat grant/revoke is attempted by a non-system actor (LLD §3.3)."""
 
 
-class DuplicateRoleKey(Exception):
+class DuplicateRoleKey(CodedError):
     """Raised when a role would collide with an existing roster key (API_CONTRACT §3.3)."""
 
 
-class DuplicateProjectKey(Exception):
+class DuplicateProjectKey(CodedError):
     """Raised when a project key collides with an existing one in the same workspace."""
 
 
@@ -140,15 +141,13 @@ class ProjectService:
         now = utcnow()
         async with self._uow() as uow:
             if await uow.workspaces.get(workspace_id) is None:
-                raise LookupError("workspace not found")
+                raise NotFound("workspace_not_found")
             # Resolve the JIRA-style KEY: explicit → validate + reject-on-collision;
             # missing → suggest from name and auto-uniquify (suffix a digit).
             if key and key.strip():
                 resolved_key = project_key.validate_project_key(key)  # raises InvalidProjectKey
                 if await uow.projects.get_by_key(workspace_id, resolved_key) is not None:
-                    raise DuplicateProjectKey(
-                        f"project key '{resolved_key}' is already used in this workspace"
-                    )
+                    raise DuplicateProjectKey("project_key_taken", key=resolved_key)
             else:
                 base = project_key.suggest_project_key(name)
                 resolved_key, suffix = base, 2
@@ -203,12 +202,10 @@ class ProjectService:
             )
         async with self._uow() as uow:
             if await uow.projects.get(project_id) is None:
-                raise LookupError("project not found")
+                raise NotFound("project_not_found")
             existing = await uow.roles.list_by_project(project_id)
             if any(r.key == spec.key for r in existing):
-                raise DuplicateRoleKey(
-                    f"role key '{spec.key}' already exists in this project's roster"
-                )
+                raise DuplicateRoleKey("role_key_taken", key=spec.key)
             role = self._role_from_spec(spec)
             role.project_id = project_id
             role.created_at = utcnow()
@@ -244,7 +241,7 @@ class ProjectService:
         async with self._uow() as uow:
             role = await uow.roles.get(role_id)
             if role is None:
-                raise LookupError("role not found")
+                raise NotFound("role_not_found")
             self._mutate_role(role, **changes)
             updated = await uow.roles.update(role)
             await uow.commit()
@@ -276,7 +273,7 @@ class ProjectService:
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)
             if project is None:
-                raise LookupError("project not found")
+                raise NotFound("project_not_found")
             if description is not None:
                 project.description = description
             if objective is not None:
@@ -302,7 +299,7 @@ class ProjectService:
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)
             if project is None:
-                raise LookupError("project not found")
+                raise NotFound("project_not_found")
         return self._resolve(project)
 
     async def set_thresholds(
@@ -313,7 +310,7 @@ class ProjectService:
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)
             if project is None:
-                raise LookupError("project not found")
+                raise NotFound("project_not_found")
             known = {f.name for f in fields(ProjectThresholds)}
             project.settings = {
                 **project.settings,
@@ -334,7 +331,7 @@ class ProjectService:
     async def delete_project(self, project_id: UUID) -> None:
         async with self._uow() as uow:
             if await uow.projects.get(project_id) is None:
-                raise LookupError("project not found")
+                raise NotFound("project_not_found")
             await uow.projects.remove(project_id)
             await uow.commit()
 
@@ -343,7 +340,7 @@ class ProjectService:
         """Roles with seat fill + seated agents and their liveness (API_CONTRACT §3.3)."""
         async with self._uow() as uow:
             if await uow.projects.get(project_id) is None:
-                raise LookupError("project not found")
+                raise NotFound("project_not_found")
             roles = await uow.roles.list_by_project(project_id)
             grants = await uow.seat_grants.list_by_project(project_id)
             # Batch-load every seated agent once (avoids an N+1 over the grants).
@@ -423,7 +420,7 @@ class ProjectService:
         roles = await uow.roles.list_by_project(project_id)
         role = next((r for r in roles if r.key == role_key), None)
         if role is None:
-            raise LookupError(f"role '{role_key}' not in project roster")
+            raise NotFound("role_not_in_roster", role=role_key)
         return role
 
     async def update_role_by_key(
@@ -447,7 +444,7 @@ class ProjectService:
                 g.status == SeatGrantStatus.GRANTED and g.role_key == role_key
                 for g in grants
             ):
-                raise ValueError("Cannot remove a role while an agent holds its seat.")
+                raise BadRequest("role_seat_held")
             await uow.roles.remove(role.id)
             await uow.commit()
 
@@ -471,17 +468,17 @@ class ProjectService:
         workspace owner, and a later guess would be indistinguishable from a fact.
         """
         if not system:
-            raise SystemOnlyOperation("Seat grants are issued by the system only.")
+            raise SystemOnlyOperation("seat_grants_system_only")
         now = utcnow()
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)
             if project is None:
-                raise LookupError("project not found")
+                raise NotFound("project_not_found")
             roles = await uow.roles.list_by_project(project_id)
             if not any(r.key == role_key for r in roles):
-                raise LookupError(f"role '{role_key}' not in project roster")
+                raise NotFound("role_not_in_roster", role=role_key)
             if await uow.mariuses.get(marius_id) is None:
-                raise LookupError("marius not found")
+                raise NotFound("agent_not_found")
             grant = SeatGrant(
                 project_id=project_id,
                 role_key=role_key,
@@ -506,11 +503,11 @@ class ProjectService:
     async def revoke_seat(self, grant_id: UUID, *, system: bool = False) -> SeatGrant:
         """Revoke a seat. SYSTEM-ONLY. Activation never rolls back (LLD §4)."""
         if not system:
-            raise SystemOnlyOperation("Seat revokes are issued by the system only.")
+            raise SystemOnlyOperation("seat_revokes_system_only")
         async with self._uow() as uow:
             grant = await uow.seat_grants.get(grant_id)
             if grant is None:
-                raise LookupError("seat grant not found")
+                raise NotFound("seat_grant_not_found")
             grant.revoke()  # raises SeatGrantError if already revoked
             updated = await uow.seat_grants.update(grant)
             await uow.commit()
@@ -526,7 +523,7 @@ class ProjectService:
     ) -> SeatGrant:
         """Revoke the GRANTED seat for (marius, role) in a project. SYSTEM-ONLY (§3.3)."""
         if not system:
-            raise SystemOnlyOperation("Seat revokes are issued by the system only.")
+            raise SystemOnlyOperation("seat_revokes_system_only")
         async with self._uow() as uow:
             grants = await uow.seat_grants.list_by_project(project_id)
             grant = next(
@@ -540,7 +537,7 @@ class ProjectService:
                 None,
             )
             if grant is None:
-                raise LookupError("no granted seat for that agent/role")
+                raise NotFound("no_granted_seat")
             grant.revoke()
             updated = await uow.seat_grants.update(grant)
             await uow.commit()
@@ -553,7 +550,7 @@ class ProjectService:
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)
             if project is None:
-                raise LookupError("project not found")
+                raise NotFound("project_not_found")
             flipped = await self._recompute_active(uow, project)
             if flipped:
                 await uow.commit()
@@ -718,9 +715,9 @@ class ProjectService:
         """Load a project and refuse every write once it is closed (FR-005)."""
         project = await uow.projects.get(project_id)
         if project is None:
-            raise LookupError("project not found")
+            raise NotFound("project_not_found")
         if project_rules.is_closed(project.status):
-            raise ProjectClosed("This project is closed — its history is read-only.")
+            raise ProjectClosed("project_closed")
         return project
 
     async def assert_writable(self, project_id: UUID) -> Project:

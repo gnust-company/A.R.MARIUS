@@ -40,6 +40,7 @@ from armarius.domain.services.liveness_fsm import (
     snapshot_of,
 )
 from armarius.shared.clock import utcnow
+from armarius.shared.errors import NotFound
 from armarius.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -95,7 +96,7 @@ class LivenessEngine:
         async with self._uow() as uow:
             marius = await uow.mariuses.get(marius_id)
             if marius is None:
-                raise LookupError("marius not found")
+                raise NotFound("agent_not_found")
             apply_state(marius, on_signal(now))
             marius.updated_at = now
             await uow.mariuses.update(marius)
@@ -108,7 +109,7 @@ class LivenessEngine:
         async with self._uow() as uow:
             marius = await uow.mariuses.get(marius_id)
             if marius is None:
-                raise LookupError("marius not found")
+                raise NotFound("agent_not_found")
             apply_state(marius, begin_turn(snapshot_of(marius), now))
             marius.updated_at = now
             await uow.mariuses.update(marius)
@@ -130,7 +131,7 @@ class LivenessEngine:
         async with self._uow() as uow:
             marius = await uow.mariuses.get(marius_id)
             if marius is None:
-                raise LookupError("marius not found")
+                raise NotFound("agent_not_found")
             was = marius.liveness
             decision = plan_tick(snapshot_of(marius), now, self._cfg)
             if decision.action != LivenessAction.PROBE:
@@ -155,7 +156,7 @@ class LivenessEngine:
         async with self._uow() as uow:
             marius = await uow.mariuses.get(marius_id)
             if marius is None:  # pragma: no cover — vanished mid-probe
-                raise LookupError("marius not found")
+                raise NotFound("agent_not_found")
             before_fold = marius.liveness
             result = on_probe_result(
                 snapshot_of(marius), now, success=answered, cfg=self._cfg

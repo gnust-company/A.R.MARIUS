@@ -4,6 +4,7 @@ import { Loader2, AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import Modal from './Modal';
 import { cn } from '@/lib/utils';
+import { errorText } from '@/lib/errors';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -42,7 +43,7 @@ export default function ConfirmDialog({
       onClose();
     } catch (e) {
       setBusy(false);
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e, t));
     }
   };
 

@@ -10,6 +10,7 @@ from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.artifact import Artifact
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import utcnow
+from armarius.shared.errors import BadRequest, NotFound
 
 EVENT_TASK_ARTIFACT = "task.artifact_added"
 
@@ -43,13 +44,13 @@ class ArtifactService:
         async with self._uow() as uow:
             task = await uow.tasks.get(task_id)
             if task is None:
-                raise LookupError("task not found")
+                raise NotFound("task_not_found")
             project_id = task.project_id
             assert project_id is not None
 
             if kind == "link":
                 if not uri:
-                    raise ValueError("link artifacts require a uri")
+                    raise BadRequest("artifact_link_needs_uri")
                 artifact = Artifact(
                     project_id=project_id,
                     task_id=task_id,
@@ -61,7 +62,7 @@ class ArtifactService:
                 )
             else:
                 if content is None:
-                    raise ValueError(f"{kind} artifacts require content")
+                    raise BadRequest("artifact_needs_content", kind=kind)
                 stored = await self._store.save_bytes(project_id, name, content)
                 artifact = Artifact(
                     project_id=project_id,

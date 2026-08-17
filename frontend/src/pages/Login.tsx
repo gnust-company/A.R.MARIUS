@@ -2,9 +2,11 @@
 // The `RequireAuth` wrapper redirects any unauthenticated visit to `/login`.
 
 import { useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 
 import { login, register } from '@/lib/auth'
+import { errorText } from '@/lib/errors';
 import { useAppStore } from '@/store/appStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 
 export default function Login() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const setCurrentUser = useAppStore((s) => s.setCurrentUser)
   const hydrateWorkspaces = useAppStore((s) => s.hydrateWorkspaces)
@@ -33,10 +36,6 @@ export default function Login() {
       return
     }
     setBusy(true)
-    // The branch is a statement, not a `?:` expression, and the failure message is built
-    // outside the block: the React Compiler has no lowering for a conditional *expression*
-    // inside try/catch and drops the whole component when it meets one.
-    const failed = 'Authentication failed'
     try {
       let user
       if (mode === 'login') {
@@ -48,7 +47,7 @@ export default function Login() {
       await hydrateWorkspaces()
       navigate('/workspaces')
     } catch (err) {
-      setError(err instanceof Error ? err.message : failed)
+      setError(errorText(err, t))
     }
     setBusy(false)
   }

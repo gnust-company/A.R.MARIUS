@@ -8,6 +8,7 @@ from uuid import UUID
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.label import Label
 from armarius.shared.clock import utcnow
+from armarius.shared.errors import NotFound
 
 
 class LabelService:
@@ -21,7 +22,7 @@ class LabelService:
     async def create(self, workspace_id: UUID, name: str, color: str = "") -> Label:
         async with self._uow() as uow:
             if await uow.workspaces.get(workspace_id) is None:
-                raise LookupError("workspace not found")
+                raise NotFound("workspace_not_found")
             label = Label(
                 workspace_id=workspace_id,
                 name=name,

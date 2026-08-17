@@ -23,6 +23,8 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
+from armarius.shared.errors import CodedError
+
 
 class SignerKind(StrEnum):
     """Which of the two required signatures this row is."""
@@ -36,7 +38,7 @@ class ApprovalResult(StrEnum):
     REJECT = "reject"
 
 
-class ApprovalError(Exception):
+class ApprovalError(CodedError):
     """Raised when a signature cannot be recorded as asked."""
 
 
@@ -66,6 +68,4 @@ class Approval:
 
     def __post_init__(self) -> None:
         if self.result is ApprovalResult.REJECT and not (self.reason or "").strip():
-            raise RejectionNeedsReasonError(
-                "Từ chối công nhận thì phải nêu lý do — thợ cần biết sửa gì."
-            )
+            raise RejectionNeedsReasonError("rejection_needs_reason")

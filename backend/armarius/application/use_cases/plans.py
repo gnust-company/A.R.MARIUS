@@ -40,6 +40,7 @@ from armarius.domain.services.wake_reason import WakeReason
 from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import utcnow
+from armarius.shared.errors import CodedError, NotFound
 
 EVENT_PLAN_SUBMITTED = "plan.submitted"
 EVENT_PLAN_DECIDED = "plan.decided"
@@ -49,7 +50,7 @@ EVENT_CONTEXT_DECIDED = "context.decided"
 EVENT_MAJOR_CHANGE_REQUESTED = "thay-doi-lon.trinh"
 
 
-class PlanningError(Exception):
+class PlanningError(CodedError):
     """Raised when a context/plan action does not fit the project's current phase."""
 
 
@@ -181,9 +182,7 @@ class PlanService:
         async with self._uow() as uow:
             project = await self._writable(uow, project_id)
             if project.status is not ProjectStatus.PLANNING:
-                raise PlanningError(
-                    f"A plan can only be submitted while planning (project is '{project.status}')."
-                )
+                raise PlanningError("plan_only_while_planning", status=project.status)
             now = utcnow()
             plan = Plan(
                 project_id=project_id,
@@ -237,7 +236,7 @@ class PlanService:
             await self._writable(uow, project_id)
             pending = await uow.project_contexts.get_pending(project_id)
             if pending is None:
-                raise PlanningError("There is no context version awaiting a decision.")
+                raise PlanningError("no_context_awaiting_decision")
             now = utcnow()
             if approve:
                 pending.approval_status = ContextApprovalStatus.APPROVED
@@ -245,7 +244,7 @@ class PlanService:
                 pending.approved_by_user_id = user_id
             else:
                 if not (note or "").strip():
-                    raise PlanningError("Sending a context back must say why.")
+                    raise PlanningError("context_send_back_needs_reason")
                 pending.approval_status = ContextApprovalStatus.DRAFT
             pending.updated_at = now
             await uow.project_contexts.update(pending)
@@ -282,7 +281,7 @@ class PlanService:
             project = await self._writable(uow, project_id)
             plan = await uow.plans.get_current(project_id)
             if plan is None:
-                raise PlanningError("This project has no plan yet.")
+                raise PlanningError("project_has_no_plan")
 
             outcome = plan_gate.decide(
                 plan.status,
@@ -315,9 +314,7 @@ class PlanService:
                     await uow.project_contexts.update(pending_context)
                     context = pending_context
                 if not plan_gate.can_leave_planning(context is not None, plan.status):
-                    raise PlanningError(
-                        "The project cannot leave planning without an approved context."
-                    )
+                    raise PlanningError("planning_needs_approved_context")
                 project_rules.assert_phase_transition(project.status, outcome.next_phase)
                 project.status = outcome.next_phase
                 project.updated_at = now
@@ -359,11 +356,9 @@ class PlanService:
         """Load the project and refuse every write once it is closed (FR-005)."""
         project = await uow.projects.get(project_id)
         if project is None:
-            raise LookupError("project not found")
+            raise NotFound("project_not_found")
         if project_rules.is_closed(project.status):
-            raise ProjectClosed(
-                "This project is closed — its history is read-only."
-            )
+            raise ProjectClosed("project_closed")
         return project
 
     async def _resolve_plan_items(self, project_id: UUID, recipient: str) -> None:
@@ -420,7 +415,7 @@ class PlanService:
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)
             if project is None:
-                raise LookupError("project not found")
+                raise NotFound("project_not_found")
             workspace_id = project.workspace_id
             recipient = (project.created_by_user_id or "").strip()
             if not recipient and workspace_id is not None:
@@ -428,9 +423,7 @@ class PlanService:
                 recipient = (workspace.owner_user_id or "").strip() if workspace else ""
 
         if not recipient or workspace_id is None:
-            raise PlanningError(
-                "Dự án chưa có người chủ nào để hỏi, nên chưa duyệt được thay đổi lớn."
-            )
+            raise PlanningError("no_patron_to_ask")
         item = await self._inbox.place(
             workspace_id=workspace_id,
             recipient_user_id=recipient,

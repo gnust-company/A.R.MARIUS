@@ -16,6 +16,7 @@ from enum import StrEnum
 
 from armarius.domain.entities.run import RunStatus, WakeSource
 from armarius.domain.entities.task import TERMINAL_STATUSES, TaskStatus
+from armarius.shared.errors import CodedError
 
 # ── the two closed lists (FR-047, FR-048) ────────────────────────────────────
 #
@@ -80,7 +81,7 @@ SYSTEM_WAKE_CAUSES: frozenset[WakeSource] = frozenset(
 )
 
 
-class WakeCauseRefused(Exception):
+class WakeCauseRefused(CodedError):
     """A wake was asked for with a cause the recipient's role may not be woken for.
 
     Raised only where a human is waiting on the answer — the manual wake button. The

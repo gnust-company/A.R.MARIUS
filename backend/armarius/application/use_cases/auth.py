@@ -10,30 +10,24 @@ from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.domain.entities.user import User, UserRole
 from armarius.infrastructure.security.jwt import JWTService
 from armarius.infrastructure.security.password import PasswordService
+from armarius.shared.errors import CodedError
 
 
-class AuthError(Exception):
+class AuthError(CodedError):
     """Base exception for auth errors."""
-
-    def __init__(self, message: str, code: str = "auth_error"):
-        self.message = message
-        self.code = code
-        super().__init__(message)
 
 
 class DuplicateEmailError(AuthError):
-    def __init__(self):
-        super().__init__("Email already registered", code="duplicate_email")
+    """That email already has an account."""
 
 
 class DuplicateUsernameError(AuthError):
-    def __init__(self):
-        super().__init__("Username already taken", code="duplicate_username")
+    """The handle derived from the email is taken."""
 
 
 class InvalidCredentialsError(AuthError):
-    def __init__(self):
-        super().__init__("Invalid email or password", code="invalid_credentials")
+    """Wrong email or password — and the same answer for an unknown account, so a
+    caller cannot tell the two apart and enumerate who is registered."""
 
 
 def _username_from_email(email: str) -> str:
@@ -78,7 +72,7 @@ class AuthService:
             # Check for existing email
             existing_email = await uow.users.get_by_email(email)
             if existing_email is not None:
-                raise DuplicateEmailError()
+                raise DuplicateEmailError("email_already_registered")
 
             # Derive a unique internal username from the email if not provided.
             if username:
@@ -130,13 +124,13 @@ class AuthService:
             if user is None:
                 # Timing attack protection: hash the password anyway
                 self._pwd.hash(password)
-                raise InvalidCredentialsError()
+                raise InvalidCredentialsError("invalid_credentials")
 
             if not self._pwd.verify(password, user.hashed_password):
-                raise InvalidCredentialsError()
+                raise InvalidCredentialsError("invalid_credentials")
 
             if not user.is_active:
-                raise InvalidCredentialsError()
+                raise InvalidCredentialsError("invalid_credentials")
 
             # Update last login
             user.update_last_login()
@@ -160,7 +154,7 @@ class AuthService:
         async with self._uow() as uow:
             user = await uow.users.get(user_id)
             if user is None or not user.is_active:
-                raise InvalidCredentialsError()
+                raise InvalidCredentialsError("invalid_credentials")
 
         # Generate new tokens
         new_access = self._jwt.create_access_token(user_id)

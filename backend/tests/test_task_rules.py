@@ -54,7 +54,7 @@ def test_done_requires_both_signatures() -> None:
             has_artifact=True,
             missing_signatures=("patron",),
         )
-    assert refused.value.missing == ("patron",)
+    assert refused.value.params["missing"] == "patron"
     assert "patron" in str(refused.value)
     assert task.status == TaskStatus.IN_REVIEW
 
@@ -90,7 +90,7 @@ def test_done_names_the_criteria_that_are_not_passed_yet() -> None:
             signatures_complete=True,
             unmet_criteria=("Có tệp kết xuất",),
         )
-    assert refused.value.unmet == ("Có tệp kết xuất",)
+    assert refused.value.params["unmet"] == "Có tệp kết xuất"
     assert "Có tệp kết xuất" in str(refused.value)
     assert task.status == TaskStatus.IN_REVIEW
 
