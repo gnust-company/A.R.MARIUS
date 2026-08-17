@@ -21,16 +21,17 @@ from armarius.domain.entities.project import Project
 from armarius.domain.entities.run import Run
 from armarius.domain.entities.task import Task
 from armarius.presentation.container import Container
+from armarius.shared.errors import NotFound
 
 
 async def own_project(container: Container, user: object, project_id: UUID) -> Project:
     """The project, only if the caller owns the workspace holding it."""
     project = await container.projects.get_project(project_id)
     if project is None:
-        raise LookupError("project not found")
+        raise NotFound("project_not_found")
     ws = await container.workspaces.get_workspace(project.workspace_id)
     if ws is None or ws.owner_user_id != str(getattr(user, "id", "")):
-        raise LookupError("project not found")  # cross-workspace → 404
+        raise NotFound("project_not_found")  # cross-workspace → 404
     return project
 
 
@@ -38,11 +39,11 @@ async def own_task(container: Container, user: object, task_id: UUID) -> Task:
     """The task, only if the caller owns the workspace holding it."""
     task = await container.tasks.get(task_id)
     if task is None or task.project_id is None:
-        raise LookupError("task not found")
+        raise NotFound("task_not_found")
     try:
         await own_project(container, user, task.project_id)
     except LookupError as exc:
-        raise LookupError("task not found") from exc
+        raise NotFound("task_not_found") from exc
     return task
 
 
@@ -50,9 +51,9 @@ async def own_run(container: Container, user: object, run_id: UUID) -> Run:
     """The run, only if the caller owns the workspace its task lives in."""
     run = await container.runs.get(run_id)
     if run is None or run.task_id is None:
-        raise LookupError("run not found")
+        raise NotFound("run_not_found")
     try:
         await own_task(container, user, run.task_id)
     except LookupError as exc:
-        raise LookupError("run not found") from exc
+        raise NotFound("run_not_found") from exc
     return run

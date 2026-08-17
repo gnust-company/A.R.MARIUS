@@ -211,7 +211,7 @@ async def test_fr028_a_second_person_cannot_be_added_to_a_task():
             json={"marius_id": second_id},
         )
         assert refused.status_code == 409, refused.text
-        assert "chuyển giao" in refused.json()["detail"]
+        assert refused.json()["code"] == "task_already_assigned", refused.text
 
         # Người cũ vẫn giữ việc — lời từ chối không được làm rơi mất người phụ trách.
         still = await c.get(f"/v1/tasks/{task_id}", headers=p.headers)

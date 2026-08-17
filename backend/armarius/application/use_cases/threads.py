@@ -13,6 +13,7 @@ from armarius.domain.entities.run import WakeSource
 from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import utcnow
+from armarius.shared.errors import NotFound
 
 _MENTION_RE = re.compile(r"@([A-Za-z0-9_\-\.]+)")
 
@@ -68,7 +69,7 @@ class ThreadService:
         async with self._uow() as uow:
             task = await uow.tasks.get(task_id)
             if task is None:
-                raise LookupError("task not found")
+                raise NotFound("task_not_found")
             project = await uow.projects.get(task.project_id) if task.project_id else None
             directory = (
                 await uow.mariuses.list_by_workspace(project.workspace_id)

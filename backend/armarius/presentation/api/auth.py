@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, status
 from pydantic import BaseModel, EmailStr, Field
 
 from armarius.application.use_cases.auth import (
@@ -14,6 +14,7 @@ from armarius.application.use_cases.auth import (
 )
 from armarius.domain.entities.user import User
 from armarius.presentation.deps import ContainerDep
+from armarius.shared.errors import Conflict, Forbidden, Unauthorized
 
 # ---------------------------------------------------------------------------
 # Schemas
@@ -92,29 +93,21 @@ async def get_current_user(
 ) -> User:
     """Resolve the authenticated user from a Bearer token (human user API)."""
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token"
-        )
+        raise Unauthorized("missing_bearer_token")
 
     token = authorization.split(" ", 1)[1].strip()
 
     try:
         user_id = container.jwt_service.verify_access_token(token)
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)
-        ) from e
+        raise Unauthorized("invalid_access_token") from e
 
     user = await container.auth.get_current_user(user_id)
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
-        )
+        raise Unauthorized("user_not_found")
 
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive"
-        )
+        raise Forbidden("user_inactive")
 
     return user
 
@@ -146,9 +139,7 @@ async def register(
             password=data.password,
         )
     except DuplicateEmailError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
-        ) from None
+        raise Conflict("email_already_registered") from None
 
     return RegisterOut(
         user=UserOut.from_entity(user),
@@ -167,10 +158,7 @@ async def login(
             email=data.email, password=data.password
         )
     except InvalidCredentialsError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
-        ) from None
+        raise Unauthorized("invalid_credentials") from None
 
     return LoginOut(
         user=UserOut.from_entity(user),
@@ -187,9 +175,7 @@ async def refresh(
     try:
         access, refresh = await container.auth.refresh_tokens(data.refresh_token)
     except InvalidCredentialsError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
-        ) from None
+        raise Unauthorized("invalid_refresh_token") from None
 
     return AuthTokensOut(access_token=access, refresh_token=refresh)
 

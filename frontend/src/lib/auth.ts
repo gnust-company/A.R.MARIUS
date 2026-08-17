@@ -5,6 +5,7 @@
 // localStorage; a `getToken()` reads the current access token for the Bearer header.
 
 import { API_BASE } from './env'
+import { throwApiError } from './errors'
 
 const ACCESS_KEY = 'armarius.access'
 const REFRESH_KEY = 'armarius.refresh'
@@ -61,16 +62,7 @@ async function authPost<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    let detail = `${res.status} ${res.statusText}`
-    try {
-      const data = await res.json()
-      if (data?.detail) detail = typeof data.detail === 'string' ? data.detail : detail
-    } catch {
-      // non-JSON error body — keep the status line
-    }
-    throw new Error(detail)
-  }
+  if (!res.ok) await throwApiError(res)
   return (await res.json()) as T
 }
 

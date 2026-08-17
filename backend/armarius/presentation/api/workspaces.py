@@ -32,6 +32,7 @@ from armarius.presentation.schemas import (
     WorkspaceOut,
 )
 from armarius.shared.config import settings
+from armarius.shared.errors import CodedError, NotFound
 
 router = APIRouter(prefix="/v1", tags=["workspaces"])
 
@@ -78,7 +79,7 @@ async def delete_workspace(
 async def _require_owned_workspace(container, user, workspace_id: UUID):
     ws = await container.workspaces.get_workspace(workspace_id)
     if ws is None or ws.owner_user_id != str(user.id):
-        raise LookupError("workspace not found")
+        raise NotFound("workspace_not_found")
     return ws
 
 
@@ -162,7 +163,7 @@ async def list_marius_runs(
     await _require_owned_workspace(container, user, workspace_id)
     marius = await container.mariuses.get(marius_id)
     if marius is None or marius.workspace_id != workspace_id:
-        raise LookupError("marius not found")
+        raise NotFound("agent_not_found")
     runs = await container.runs.list_by_marius(marius_id)
     return [RunOut.model_validate(r) for r in runs]
 
@@ -205,7 +206,7 @@ async def update_marius(
     await _require_owned_workspace(container, user, workspace_id)
     existing = await container.mariuses.get(marius_id)
     if existing is None or existing.workspace_id != workspace_id:
-        raise LookupError("marius not found")
+        raise NotFound("agent_not_found")
     marius = await container.mariuses.update(
         marius_id,
         name=body.name,
@@ -258,7 +259,7 @@ async def install_skills(
     await _require_owned_workspace(container, user, workspace_id)
     marius = await container.mariuses.get(marius_id)
     if marius is None or marius.workspace_id != workspace_id:
-        raise LookupError("marius not found")
+        raise NotFound("agent_not_found")
 
     # Merge requested skill_ids into the existing links (de-dup, preserve order).
     existing = list(marius.skill_ids)
@@ -324,7 +325,7 @@ async def delete_marius(
     await _require_owned_workspace(container, user, workspace_id)
     marius = await container.mariuses.get(marius_id)
     if marius is None or marius.workspace_id != workspace_id:
-        raise LookupError("marius not found")
+        raise NotFound("agent_not_found")
     await container.mariuses.delete(marius_id)
     await container.control_bus.publish(
         f"ws:{workspace_id}",
@@ -352,7 +353,7 @@ async def get_skill(
     await _require_owned_workspace(container, user, workspace_id)
     skill = await container.skills.get_skill(skill_id)
     if skill is None or skill.workspace_id != workspace_id:
-        raise LookupError("skill not found")
+        raise NotFound("skill_not_found")
     return SkillOut.model_validate(skill)
 
 
@@ -384,8 +385,10 @@ async def import_skill(
         skill = await container.skills.import_from_url(
             workspace_id=workspace_id, url=body.source_url
         )
-    except ValueError as e:
-        raise LookupError(str(e)) from e
+    except CodedError as e:
+        # The import failed on what the URL pointed at, so the answer is 404 — but the
+        # reason travels with its code, not flattened into a sentence.
+        raise NotFound(e.code, **e.params) from e
     return SkillOut.model_validate(skill)
 
 
@@ -402,7 +405,7 @@ async def update_skill(
     await _require_owned_workspace(container, user, workspace_id)
     existing = await container.skills.get_skill(skill_id)
     if existing is None or existing.workspace_id != workspace_id:
-        raise LookupError("skill not found")
+        raise NotFound("skill_not_found")
     skill = await container.skills.update_files(skill_id, body.files)
     return SkillOut.model_validate(skill)
 
@@ -417,5 +420,5 @@ async def delete_skill(
     await _require_owned_workspace(container, user, workspace_id)
     skill = await container.skills.get_skill(skill_id)
     if skill is None or skill.workspace_id != workspace_id:
-        raise LookupError("skill not found")
+        raise NotFound("skill_not_found")
     await container.skills.delete_skill(skill_id)

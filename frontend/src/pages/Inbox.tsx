@@ -40,6 +40,7 @@ import {
   type ProjectAgentDTO,
 } from '@/lib/api';
 import { wsHref } from '@/lib/utils';
+import { errorText } from '@/lib/errors';
 import { useAppStore } from '@/store/appStore';
 
 /** Máy chủ đặt mục theo loại; mỗi loại có biểu tượng và nhãn riêng. */
@@ -159,12 +160,12 @@ function EscalationActions({
         if (alive) setAgents(rows);
       })
       .catch((e: unknown) => {
-        if (alive) onError(e instanceof Error ? e.message : String(e));
+        if (alive) onError(errorText(e, t));
       });
     return () => {
       alive = false;
     };
-  }, [mode, agents, item.project_id, onError]);
+  }, [mode, agents, item.project_id, onError, t]);
 
   const close = () => {
     setMode(null);
@@ -187,7 +188,7 @@ function EscalationActions({
       close();
       onDone();
     } catch (e) {
-      onError(e instanceof Error ? e.message : String(e));
+      onError(errorText(e, t));
     }
     setBusy(null);
   };
@@ -371,7 +372,7 @@ export default function Inbox() {
         setError(null);
       })
       .catch((e: unknown) => {
-        if (alive) setError(e instanceof Error ? e.message : String(e));
+        if (alive) setError(errorText(e, t));
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -379,7 +380,7 @@ export default function Inbox() {
     return () => {
       alive = false;
     };
-  }, [tab, reloadKey]);
+  }, [tab, reloadKey, t]);
 
   const switchTab = (next: 'pending' | 'resolved') => {
     if (next === tab) return;
@@ -436,7 +437,7 @@ export default function Inbox() {
       await signTaskApproval(item.task_id, approve, reason);
       reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e, t));
     }
     setBusyId(null);
   };

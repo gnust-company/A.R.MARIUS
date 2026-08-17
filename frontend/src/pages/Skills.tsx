@@ -22,6 +22,7 @@ import Modal from '@/components/Modal';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import PageTitle from '@/components/PageTitle';
 import { cn, wsHref } from '@/lib/utils';
+import { errorText } from '@/lib/errors';
 import { useTranslation } from 'react-i18next';
 
 // ─── Animation Variants ──────────────────────────────────────────────────────
@@ -170,7 +171,7 @@ export default function Skills() {
       newSkill = await importSkill(githubUrl.trim(), workspaceId);
       setCreateModalOpen(false);
     } catch (e) {
-      setImportError(e instanceof Error ? e.message : String(e));
+      setImportError(errorText(e, t));
     }
     setCreating(false);
     if (newSkill?.id) navigate(wsHref(workspaceId, `/skills/${newSkill.id}`));

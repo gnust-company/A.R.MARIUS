@@ -27,6 +27,7 @@ from uuid import UUID
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.skill import Skill
 from armarius.shared.clock import utcnow
+from armarius.shared.errors import BadRequest, NotFound
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 BUILTIN_SKILL_FILE = BACKEND_ROOT / "static" / "skills" / "armarius-http" / "SKILL.md"
@@ -183,7 +184,7 @@ class SkillService:
     async def _persist(self, workspace_id: UUID, skill: Skill) -> Skill:
         async with self._uow() as uow:
             if await uow.workspaces.get(workspace_id) is None:
-                raise LookupError("workspace not found")
+                raise NotFound("workspace_not_found")
             name, desc = derive_meta(skill.files)
             if name:
                 skill.name = name
@@ -216,9 +217,7 @@ class SkillService:
         """Clone a skill from a GitHub folder URL (detect SKILL.md, pull that folder)."""
         files = await clone_github_folder(url)
         if not any(n in files for n in _SKILL_MD_NAMES):
-            raise ValueError(
-                "No SKILL.md found at that URL. Point at a folder (or repo) containing one."
-            )
+            raise BadRequest("skill_md_not_found")
         name, desc = derive_meta(files)
         skill = Skill(
             name=name or _name_from_url(url),
@@ -235,7 +234,7 @@ class SkillService:
         async with self._uow() as uow:
             skill = await uow.skills.get(skill_id)
             if skill is None:
-                raise LookupError("skill not found")
+                raise NotFound("skill_not_found")
             skill.files = {k: v for k, v in files.items() if v is not None}
             name, desc = derive_meta(skill.files)
             if name:
@@ -253,9 +252,9 @@ class SkillService:
         async with self._uow() as uow:
             skill = await uow.skills.get(skill_id)
             if skill is None:
-                raise LookupError("skill not found")
+                raise NotFound("skill_not_found")
             if skill.source == "builtin":
-                raise ValueError("Built-in skills can't be deleted.")
+                raise BadRequest("builtin_skill_undeletable")
             await uow.skills.remove(skill_id)
             await uow.commit()
 
@@ -299,7 +298,7 @@ def _parse_github_url(url: str) -> tuple[str, str, str, str]:
     """Return (owner, repo, ref, path) from a GitHub URL, or raise ValueError."""
     m = _GH_URL_RE.search(url.strip())
     if not m:
-        raise ValueError("That doesn't look like a GitHub URL.")
+        raise BadRequest("not_a_github_url")
     owner, repo, ref, path = m.group(1), m.group(2), m.group(3) or "main", m.group(4) or ""
     return owner, repo, ref, path
 
@@ -357,7 +356,7 @@ async def clone_github_folder(url: str) -> dict[str, str]:
     try:
         await asyncio.to_thread(_walk_contents, owner, repo, ref, path, out, path)
     except urllib.error.HTTPError as e:
-        raise ValueError(f"GitHub returned {e.code}: {e.reason}") from e
+        raise BadRequest("github_error", status=e.code, reason=e.reason) from e
     except urllib.error.URLError as e:
-        raise ValueError(f"Could not reach GitHub: {e.reason}") from e
+        raise BadRequest("github_unreachable", reason=e.reason) from e
     return out

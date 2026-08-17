@@ -23,6 +23,8 @@ from enum import StrEnum
 from typing import NamedTuple
 from uuid import UUID, uuid4
 
+from armarius.shared.errors import CodedError
+
 
 class AcceptanceResult(StrEnum):
     UNRATED = "unrated"
@@ -38,15 +40,15 @@ class ChecklistTally(NamedTuple):
     passed: int = 0
 
 
-class CriteriaLockedError(Exception):
+class CriteriaLockedError(CodedError):
     """Raised when the yardstick is rewritten after the work has begun (FR-019/FR-075)."""
 
 
-class CriterionNotRatableError(Exception):
+class CriterionNotRatableError(CodedError):
     """Raised when a criterion is scored outside review (Story 3 scenario 1)."""
 
 
-class EvidenceRequiredError(Exception):
+class EvidenceRequiredError(CodedError):
     """Raised when a criterion is marked *passed* with nothing that proves it.
 
     A pass nobody can trace back to an output is the "fake done" this whole story exists
@@ -74,11 +76,7 @@ def assert_criteria_editable(task: object) -> None:
     """
     status = str(getattr(task, "status", ""))
     if status not in CRITERIA_EDITABLE_STATUSES:
-        raise CriteriaLockedError(
-            "Bộ tiêu chí công nhận phải đặt trước khi người phụ trách bắt tay; "
-            f"đầu việc đang ở '{status}'. Sửa lúc này là một thay đổi lớn, "
-            "phải treo chờ người chủ duyệt."
-        )
+        raise CriteriaLockedError("criteria_locked", status=status)
 
 
 def assert_criteria_ratable(task: object) -> None:
@@ -88,10 +86,7 @@ def assert_criteria_ratable(task: object) -> None:
     """
     status = str(getattr(task, "status", ""))
     if status not in CRITERIA_RATABLE_STATUSES:
-        raise CriterionNotRatableError(
-            "Chỉ chấm tiêu chí khi đầu việc đang *chờ rà soát*; "
-            f"đầu việc đang ở '{status}'."
-        )
+        raise CriterionNotRatableError("criterion_not_ratable", status=status)
 
 
 @dataclass
@@ -120,9 +115,7 @@ class ChecklistItem:
         has since been replaced.
         """
         if result is AcceptanceResult.PASSED and evidence_artifact_id is None:
-            raise EvidenceRequiredError(
-                f"Chấm đạt tiêu chí '{self.text}' phải chỉ ra thành phẩm làm bằng chứng."
-            )
+            raise EvidenceRequiredError("evidence_required", criterion=self.text)
         self.result = result
         self.done = result is AcceptanceResult.PASSED
         self.evidence_artifact_id = evidence_artifact_id

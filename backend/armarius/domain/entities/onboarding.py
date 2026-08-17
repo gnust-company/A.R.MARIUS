@@ -12,6 +12,8 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
+from armarius.shared.errors import CodedError
+
 
 class OnboardingStatus(StrEnum):
     OPEN = "open"
@@ -19,7 +21,7 @@ class OnboardingStatus(StrEnum):
     ABANDONED = "abandoned"
 
 
-class OnboardingError(Exception):
+class OnboardingError(CodedError):
     """Raised on an illegal onboarding-session transition."""
 
 
@@ -42,7 +44,7 @@ class OnboardingSession:
         the plan. Both sides of that conversation land here as ``{role, text, ts}`` turns.
         """
         if self.status != OnboardingStatus.OPEN:
-            raise OnboardingError(f"Cannot message a '{self.status}' onboarding session.")
+            raise OnboardingError("onboarding_cannot_message", status=self.status)
         self.transcript = [
             *self.transcript,
             {"role": role, "text": text, "ts": ts.isoformat() if ts else None},
@@ -51,11 +53,11 @@ class OnboardingSession:
     def finalize(self, project_id: UUID) -> None:
         """Mark the chat resolved into a real project (Sprint 7 wires the build)."""
         if self.status != OnboardingStatus.OPEN:
-            raise OnboardingError(f"Cannot finalize a '{self.status}' onboarding session.")
+            raise OnboardingError("onboarding_cannot_finalize", status=self.status)
         self.status = OnboardingStatus.FINALIZED
         self.created_project_id = project_id
 
     def abandon(self) -> None:
         if self.status != OnboardingStatus.OPEN:
-            raise OnboardingError(f"Cannot abandon a '{self.status}' onboarding session.")
+            raise OnboardingError("onboarding_cannot_abandon", status=self.status)
         self.status = OnboardingStatus.ABANDONED

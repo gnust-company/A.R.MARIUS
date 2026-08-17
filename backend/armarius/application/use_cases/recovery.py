@@ -56,6 +56,7 @@ from armarius.domain.services.push_reason_rules import watches
 from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.events.topic_bus import TopicEventBus, patron_topic
 from armarius.shared.clock import as_utc, utcnow
+from armarius.shared.errors import CodedError, NotFound
 from armarius.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -77,11 +78,11 @@ class EscalationAnswer(StrEnum):
     HANDLED = "handled"
 
 
-class EscalationAnswerInvalid(Exception):
+class EscalationAnswerInvalid(CodedError):
     """Raised when an answer is missing what it needs, or asks for the impossible."""
 
 
-class NotOnTheLeadersRung(Exception):
+class NotOnTheLeadersRung(CodedError):
     """Raised when either Leader door is used from anywhere but Mức 2 (FR-059).
 
     The door means *I have been asked about this and it is beyond me*. From lower down it
@@ -229,10 +230,7 @@ class RecoveryEscalator:
         async with self._uow() as uow:
             ladder = await uow.push_reasons.get_for_task(task_id)
         if ladder is None or ladder.level is not EscalationLevel.LEVEL_2:
-            raise NotOnTheLeadersRung(
-                "Đầu việc này không đang chờ Trưởng dự án quyết, nên chưa ghi nhận được "
-                "hành động phục hồi."
-            )
+            raise NotOnTheLeadersRung("not_the_leaders_call")
         await self._log.record(
             task_id,
             TaskLogKind.ESCALATED,
@@ -258,17 +256,14 @@ class RecoveryEscalator:
             ladder = await uow.push_reasons.get_for_task(task_id)
             task = await uow.tasks.get(task_id)
             if task is None:
-                raise LookupError("task not found")
+                raise NotFound("task_not_found")
             if ladder is not None and ladder.level >= EscalationLevel.LEVEL_3:
                 # Already with the patron. Not an error — a Leader asking twice is asking
                 # for the right thing — but the second call must not place a second item,
                 # because an inbox that repeats itself stops being read.
                 return
             if ladder is None or ladder.level is not EscalationLevel.LEVEL_2:
-                raise NotOnTheLeadersRung(
-                    "Đầu việc này chưa tới lượt Trưởng dự án quyết, nên chưa chuyển lên "
-                    "người chủ được. Hệ thống vẫn đang tự thử."
-                )
+                raise NotOnTheLeadersRung("not_yet_the_leaders_call")
             ladder.level = EscalationLevel.LEVEL_3
             ladder.next_retry_at = None
             ladder.updated_at = now
@@ -408,17 +403,15 @@ class RecoveryEscalator:
                 and task_id is not None
             )
             if answer is not EscalationAnswer.HANDLED and not acts_on_task:
-                raise EscalationAnswerInvalid(
-                    "Chỉ mục leo thang gắn với một đầu việc mới nhận được hành động này."
-                )
+                raise EscalationAnswerInvalid("escalation_needs_a_task")
             if acts_on_task and self._tasks is None:  # pragma: no cover - always wired
-                raise EscalationAnswerInvalid("không có dịch vụ đầu việc để thi hành")
+                raise EscalationAnswerInvalid("escalation_needs_task_service")
             if acts_on_task:
                 await self._refuse_if_closed(uow, item)
                 assert task_id is not None and self._tasks is not None
                 if answer is EscalationAnswer.REASSIGN:
                     if marius_id is None:
-                        raise EscalationAnswerInvalid("giao lại thì phải nói giao cho ai")
+                        raise EscalationAnswerInvalid("reassign_needs_a_target")
                     assigned = await self._tasks.assign_within(
                         uow,
                         task_id,
@@ -776,7 +769,7 @@ class RecoveryEscalator:
             return
         project = await uow.projects.get(project_id)
         if project is not None and project_rules.is_closed(project.status):
-            raise ProjectClosed("This project is closed — its history is read-only.")
+            raise ProjectClosed("project_closed")
 
     @staticmethod
     async def _workspace_of(uow: UnitOfWork, task: Task) -> UUID | None:

@@ -22,6 +22,7 @@ from armarius.domain.entities.inbox_item import InboxItem, InboxItemKind, InboxI
 from armarius.domain.services.reminders import due_reminder_tier
 from armarius.infrastructure.events.topic_bus import TopicEventBus, patron_topic
 from armarius.shared.clock import as_utc, utcnow
+from armarius.shared.errors import NotFound
 from armarius.shared.logging import get_logger
 
 if TYPE_CHECKING:  # pragma: no cover — typing only, keeps the import graph acyclic
@@ -138,9 +139,9 @@ class InboxService:
         """
         item = await uow.inbox.get(item_id)
         if item is None:
-            raise LookupError("inbox item not found")
+            raise NotFound("inbox_item_not_found")
         if recipient_user_id is not None and item.recipient_user_id != recipient_user_id:
-            raise LookupError("inbox item not found")
+            raise NotFound("inbox_item_not_found")
         if item.status is not InboxItemStatus.PENDING:
             # Already off the waiting list, whichever way it left. Asked rather than
             # "is it RESOLVED" so that a voided letter cannot be turned into a resolved

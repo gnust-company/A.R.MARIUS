@@ -21,6 +21,8 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
+from armarius.shared.errors import CodedError
+
 
 class ChatState(StrEnum):
     """Turn-taking state of the conversation (offline-ness is derived live, not stored)."""
@@ -30,7 +32,7 @@ class ChatState(StrEnum):
     FAILED = "failed"  # last Leader turn errored; the patron may retry (treated as idle)
 
 
-class LeaderChatError(Exception):
+class LeaderChatError(CodedError):
     """Raised on an illegal leader-chat operation (no Leader seated, offline, or busy)."""
 
 

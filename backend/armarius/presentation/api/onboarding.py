@@ -19,6 +19,7 @@ from fastapi import APIRouter
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import OnboardingAnswerIn, OnboardingOut
+from armarius.shared.errors import NotFound
 
 router = APIRouter(prefix="/v1", tags=["onboarding"])
 
@@ -26,7 +27,7 @@ router = APIRouter(prefix="/v1", tags=["onboarding"])
 async def _require_owned_workspace(container, user, workspace_id: UUID):
     ws = await container.workspaces.get_workspace(workspace_id)
     if ws is None or ws.owner_user_id != str(user.id):
-        raise LookupError("workspace not found")
+        raise NotFound("workspace_not_found")
     return ws
 
 
@@ -34,7 +35,7 @@ async def _owned_session(container, user, session_id: UUID):
     """Load an onboarding session and confirm its workspace belongs to the caller."""
     session = await container.onboarding.get(session_id)
     if session is None or session.workspace_id is None:
-        raise LookupError("onboarding session not found")
+        raise NotFound("onboarding_session_not_found")
     await _require_owned_workspace(container, user, session.workspace_id)
     return session
 
@@ -64,7 +65,7 @@ async def get_active_onboarding(
     await _require_owned_workspace(container, user, workspace_id)
     session = await container.onboarding.active_for(workspace_id)
     if session is None:
-        raise LookupError("no active onboarding session")
+        raise NotFound("no_active_onboarding_session")
     return OnboardingOut.model_validate(session)
 
 

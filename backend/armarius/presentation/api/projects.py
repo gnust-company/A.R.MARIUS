@@ -45,6 +45,7 @@ from armarius.presentation.schemas import (
     UpdateRoleIn,
 )
 from armarius.shared.clock import as_utc
+from armarius.shared.errors import BadRequest, NotFound
 
 # FR-005 — a closed project is frozen. The guard hangs on the router, not on each
 # route, so a route added later cannot forget it.
@@ -61,17 +62,17 @@ def _slug(value: str) -> str:
 async def _require_owned_workspace(container, user, workspace_id: UUID):
     ws = await container.workspaces.get_workspace(workspace_id)
     if ws is None or ws.owner_user_id != str(user.id):
-        raise LookupError("workspace not found")
+        raise NotFound("workspace_not_found")
     return ws
 
 
 async def _require_owned_project(container, user, project_id: UUID) -> Project:
     project = await container.projects.get_project(project_id)
     if project is None:
-        raise LookupError("project not found")
+        raise NotFound("project_not_found")
     ws = await container.workspaces.get_workspace(project.workspace_id)
     if ws is None or ws.owner_user_id != str(user.id):
-        raise LookupError("project not found")  # cross-workspace → 404
+        raise NotFound("project_not_found")  # cross-workspace → 404
     return project
 
 
@@ -494,7 +495,7 @@ async def get_project_plan(
     await _require_owned_project(container, user, project_id)
     plan = await container.plans.get_plan(project_id)
     if plan is None:
-        raise LookupError("plan not found")
+        raise NotFound("plan_not_found")
     return PlanOut.model_validate(plan)
 
 
@@ -537,13 +538,11 @@ def _parse_decision(value: str) -> PlanDecision:
     try:
         return PlanDecision(value)
     except ValueError as exc:
-        raise ValueError(
-            f"unknown decision '{value}' — expected duyet, yeu_cau_chinh or hoi_lai"
-        ) from exc
+        raise BadRequest("unknown_plan_decision", decision=value) from exc
 
 
 def _parse_phase(value: str) -> ProjectStatus:
     try:
         return ProjectStatus(value)
     except ValueError as exc:
-        raise ValueError(f"unknown project phase '{value}'") from exc
+        raise BadRequest("unknown_project_phase", phase=value) from exc

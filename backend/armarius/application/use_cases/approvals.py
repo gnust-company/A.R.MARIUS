@@ -66,6 +66,7 @@ from armarius.infrastructure.events.topic_bus import (
     project_topic,
 )
 from armarius.shared.clock import utcnow
+from armarius.shared.errors import CodedError, NotFound
 
 if TYPE_CHECKING:  # pragma: no cover — typing only, keeps the import graph acyclic
     from armarius.application.use_cases.task_log import TaskLogService
@@ -76,7 +77,7 @@ EVENT_APPROVAL_SIGNED = "signature.recorded"
 EVENT_INBOX_ITEM_PLACED = "inbox.item_added"
 
 
-class ApprovalError(Exception):
+class ApprovalError(CodedError):
     """Raised when a signature cannot be applied as asked."""
 
 
@@ -101,10 +102,6 @@ class CriteriaNotScoredError(ApprovalError):
     reads to everyone involved as the system losing the close rather than as a step
     somebody skipped.
     """
-
-    def __init__(self, message: str, *, unmet: tuple[str, ...] = ()) -> None:
-        super().__init__(message)
-        self.unmet = unmet
 
 
 class ApprovalService:
@@ -145,26 +142,19 @@ class ApprovalService:
         async with self._uow() as uow:
             task = await uow.tasks.get(task_id)
             if task is None:
-                raise LookupError("task not found")
+                raise NotFound("task_not_found")
             return await self._responsible_patron_in(uow, task)
 
     async def _responsible_patron_in(self, uow: UnitOfWork, task: Task) -> str:
         if task.assigned_marius_id is None or task.project_id is None:
-            raise ResponsiblePatronUnknown(
-                "Đầu việc chưa có người phụ trách nên chưa biết ai phải ký."
-            )
+            raise ResponsiblePatronUnknown("signer_unknown_no_assignee")
         grants = await uow.seat_grants.list_by_project(task.project_id)
         for grant in grants:
             if grant.marius_id == task.assigned_marius_id and grant.is_active:
                 if not (grant.granted_by_user_id or "").strip():
-                    raise ResponsiblePatronUnknown(
-                        "Ghế của agent này không ghi ai đã cấp — không suy đoán được "
-                        "ai phải ký (FR-034)."
-                    )
+                    raise ResponsiblePatronUnknown("signer_unknown_no_granter")
                 return grant.granted_by_user_id or ""
-        raise ResponsiblePatronUnknown(
-            "Agent đang làm đầu việc này không ngồi ghế nào trong dự án."
-        )
+        raise ResponsiblePatronUnknown("signer_unknown_no_seat")
 
     # ── the switch (FR-036 → FR-038) ─────────────────────────────────────────
 
@@ -244,11 +234,9 @@ class ApprovalService:
         async with self._uow() as uow:
             task = await uow.tasks.get(task_id)
             if task is None:
-                raise LookupError("task not found")
+                raise NotFound("task_not_found")
             if task.status is not TaskStatus.IN_REVIEW:
-                raise NotReadyForSignatureError(
-                    f"Đầu việc đang ở '{task.status}' — chỉ ký khi đang *chờ rà soát*."
-                )
+                raise NotReadyForSignatureError("not_ready_to_sign", status=task.status)
             project_id = task.project_id
             label = task.identifier or str(task_id)
             missing = await self._missing_deliverables(uow, task_id)
@@ -272,9 +260,7 @@ class ApprovalService:
                     unmet = criteria_not_passed(await uow.criteria.list_by_task(task_id))
                     if unmet:
                         raise CriteriaNotScoredError(
-                            "Chưa chấm đạt hết bộ tiêu chí công nhận nên chưa ký được"
-                            f" — còn: {', '.join(unmet)}.",
-                            unmet=unmet,
+                            "criteria_not_scored", unmet=", ".join(unmet)
                         )
                 history = list(await uow.approvals.list_for_task(task_id))
                 signature = Approval(

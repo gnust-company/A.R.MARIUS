@@ -33,6 +33,7 @@ import { listMariusRuns, listRunEvents, type RunDTO, type RunEventDTO } from '@/
 import Modal from '@/components/Modal';
 import VellumPanel from '@/components/VellumPanel';
 import { cn, wsHref } from '@/lib/utils';
+import { errorText } from '@/lib/errors';
 import { onWorkspaceEvent } from '@/hooks/use-workspace-events';
 
 // ─── Status palette (mirrors Directory's Scriptorium tones) ───────────────────
@@ -250,8 +251,8 @@ export default function AgentDetail() {
     if (!workspaceId || !id) return;
     listMariusRuns(workspaceId, id)
       .then((rows) => { setRuns(rows); setError(null); })
-      .catch((e) => setError(e?.message || 'Failed to load runs'));
-  }, [workspaceId, id]);
+      .catch((e) => setError(errorText(e, t)));
+  }, [workspaceId, id, t]);
 
   useEffect(() => { loadRuns(); }, [loadRuns]);
 

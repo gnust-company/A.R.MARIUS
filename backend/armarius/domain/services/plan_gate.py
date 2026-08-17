@@ -17,6 +17,7 @@ from enum import StrEnum
 
 from armarius.domain.entities.plan import PlanStatus
 from armarius.domain.entities.project import ProjectStatus
+from armarius.shared.errors import CodedError
 
 
 class PlanDecision(StrEnum):
@@ -27,7 +28,7 @@ class PlanDecision(StrEnum):
     ASK_BACK = "hoi_lai"
 
 
-class PlanGateError(Exception):
+class PlanGateError(CodedError):
     """Raised when a decision cannot be applied as asked."""
 
 
@@ -67,20 +68,13 @@ def decide(
     the plan is not on the table or a note-requiring decision came without one.
     """
     if decider_is_leader:
-        raise SelfApprovalError(
-            "The Leader cannot decide on its own plan — this is the patron's call."
-        )
+        raise SelfApprovalError("plan_self_approval")
     if plan_status is not PlanStatus.SUBMITTED:
-        raise PlanGateError(
-            f"There is no plan awaiting a decision (plan is '{plan_status}')."
-        )
+        raise PlanGateError("no_plan_awaiting_decision", status=plan_status)
 
     cleaned = (note or "").strip()
     if decision in _DECISIONS_NEEDING_A_NOTE and not cleaned:
-        raise PlanGateError(
-            "Asking for changes or asking a question must say why — "
-            "the Leader has nothing to act on otherwise."
-        )
+        raise PlanGateError("plan_change_needs_reason")
 
     if decision is PlanDecision.APPROVE:
         return PlanOutcome(

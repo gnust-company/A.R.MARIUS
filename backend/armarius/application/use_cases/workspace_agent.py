@@ -18,6 +18,7 @@ from uuid import UUID
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.marius import Marius
 from armarius.shared.clock import utcnow
+from armarius.shared.errors import NotFound
 
 WORKSPACE_AGENT_ROLE = "Workspace Agent"
 
@@ -36,7 +37,7 @@ class WorkspaceAgentService:
         async with self._uow() as uow:
             ws = await uow.workspaces.get(workspace_id)
             if ws is None:
-                raise LookupError("workspace not found")
+                raise NotFound("workspace_not_found")
             if ws.workspace_agent_id is not None:
                 host = await uow.mariuses.get(ws.workspace_agent_id)
                 if host is not None:
@@ -69,10 +70,10 @@ class WorkspaceAgentService:
         async with self._uow() as uow:
             ws = await uow.workspaces.get(workspace_id)
             if ws is None:
-                raise LookupError("workspace not found")
+                raise NotFound("workspace_not_found")
             marius = await uow.mariuses.get(marius_id)
             if marius is None or marius.workspace_id != workspace_id:
-                raise LookupError("marius not found")
+                raise NotFound("agent_not_found")
             if ws.workspace_agent_id == marius.id:
                 return marius
 

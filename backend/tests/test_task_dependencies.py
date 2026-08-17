@@ -383,8 +383,9 @@ async def test_a_refused_move_names_the_blockers_that_are_missing(uow_factory) -
     with pytest.raises(DependencyNotMetError) as refused:
         await tasks.transition(blocked.id, TaskStatus.TODO)
 
-    assert set(refused.value.blockers) == {first.identifier, second.identifier}
+    named = refused.value.params["blockers"]
     for identifier in (first.identifier, second.identifier):
+        assert identifier in named
         assert identifier in str(refused.value)
 
 

@@ -12,13 +12,15 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
+from armarius.shared.errors import CodedError
+
 
 class SeatGrantStatus(StrEnum):
     GRANTED = "granted"
     REVOKED = "revoked"
 
 
-class SeatGrantError(Exception):
+class SeatGrantError(CodedError):
     """Raised on an illegal grant transition (e.g. revoking an already-revoked grant)."""
 
 
@@ -44,5 +46,5 @@ class SeatGrant:
     def revoke(self) -> None:
         """The only exit from `granted` (LLD §3.3). Idempotent revoke is an error."""
         if self.status != SeatGrantStatus.GRANTED:
-            raise SeatGrantError(f"Cannot revoke a seat that is '{self.status}'.")
+            raise SeatGrantError("seat_already_revoked", status=self.status)
         self.status = SeatGrantStatus.REVOKED

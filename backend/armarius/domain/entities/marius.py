@@ -17,6 +17,8 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
+from armarius.shared.errors import CodedError
+
 
 class Liveness(StrEnum):
     """Observable liveness state of a Marius, owned by Armarius (not the runtime)."""
@@ -36,7 +38,7 @@ class InviteStatus(StrEnum):
     REVOKED = "revoked"
 
 
-class InviteError(Exception):
+class InviteError(CodedError):
     """Raised on an illegal invite-lifecycle transition (LLD §3.4)."""
 
 
@@ -96,9 +98,9 @@ class Marius:
         Allowed from INVITED (the normal invite path) or PENDING_REVIEW (legacy rows only).
         """
         if self.invite_status == InviteStatus.REVOKED:
-            raise InviteError("Cannot activate a revoked agent.")
+            raise InviteError("agent_revoked_cannot_activate")
         if self.invite_status == InviteStatus.APPROVED:
-            raise InviteError("Agent is already active.")
+            raise InviteError("agent_already_active")
         self.agent_token = agent_token
         self.approved_at = now
         self.invite_status = InviteStatus.APPROVED
@@ -106,5 +108,5 @@ class Marius:
     def revoke(self) -> None:
         """Withdraw an agent's access from any pre-revoked state (LLD §3.4)."""
         if self.invite_status == InviteStatus.REVOKED:
-            raise InviteError(f"Cannot revoke from '{self.invite_status}'.")
+            raise InviteError("agent_cannot_revoke", status=self.invite_status)
         self.invite_status = InviteStatus.REVOKED

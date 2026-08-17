@@ -1,0 +1,192 @@
+"""Lời từ chối của máy chủ là **mã cớ kèm tham số**, không phải câu đã dựng (T184, FR-084a).
+
+Cùng một lời từ chối có hai người đọc không đọc chung một thứ tiếng. Agent gọi mặt giao
+tiếp không có ngôn ngữ giao diện để chọn, nên bản của nó là tiếng Anh (Hiến pháp VII).
+Người chủ đọc đúng lời ấy trên màn, bằng thứ tiếng họ đã chọn. Một câu dựng sẵn ở máy chủ
+chỉ phục vụ được một trong hai.
+
+Bốn thứ được canh ở đây:
+
+  * mọi lối từ chối trả về `code` (và `params` khi câu cần chỗ điền), chứ không chỉ `detail`;
+  * `detail` — bản duy nhất agent đọc — không còn một chữ tiếng Việt nào;
+  * bảng câu chữ hai bên **khớp mã**: máy chủ có mã nào thì giao diện phải có câu cho mã ấy,
+    và ngược lại, vì lệch một chiều nào cũng cho ra một màn hình trắng chữ;
+  * lời từ chối khép vòng phụ thuộc **nêu đích danh vòng đi qua đâu** (T190, FR-032).
+"""
+
+from __future__ import annotations
+
+import pathlib
+import re
+
+from httpx import AsyncClient
+
+from armarius.shared.errors import ENGLISH, CodedError, NotFound, render_en
+from tests.support.planning import OperatingProject, client, operating_project
+
+VIETNAMESE = "ăâđêôơưàáảãạèéẻẽẹìíỉĩịòóỏõọùúủũụỳýỷỹỵ"
+_I18N = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src" / "i18n"
+
+# Lời từ chối mà **máy khách tự dựng**, không máy chủ nào gửi: lượt làm mới phiên hỏng thì
+# không có phản hồi nào để đọc mã ra. Ghi tên ở đây chứ không nới lỏng phép so khớp, để một
+# mã mồ côi thật vẫn bị bắt.
+_CLIENT_ONLY = {"session_expired"}
+
+
+def _has_vietnamese(text: str) -> bool:
+    lowered = text.lower()
+    return any(ch in lowered for ch in VIETNAMESE)
+
+
+def _interface_codes(language: str) -> set[str]:
+    """The codes the screen has a phrase for, read straight out of the phrase table."""
+    source = (_I18N / f"{language}.ts").read_text(encoding="utf-8")
+    block = re.search(r"\n  errors: \{\n(.*?)\n  \},\n", source, re.S)
+    assert block, f"{language}.ts has no errors block"
+    return set(re.findall(r"^    ([a-z0-9_]+):", block.group(1), re.M))
+
+
+# ── the wire's half ───────────────────────────────────────────────────────────
+
+
+def test_the_agents_copy_of_a_refusal_has_no_vietnamese_in_it() -> None:
+    """Hiến pháp VII: chữ hệ thống gửi agent phải tiếng Anh. `detail` là bản của agent."""
+    guilty = [code for code, text in ENGLISH.items() if _has_vietnamese(text)]
+    assert not guilty, guilty
+
+
+def test_a_refusal_carries_its_parts_instead_of_a_finished_sentence() -> None:
+    refusal = NotFound("role_not_in_roster", role="backend")
+    assert refusal.code == "role_not_in_roster"
+    assert refusal.params == {"role": "backend"}
+    # Vẫn là một `LookupError`, vì vài chỗ bắt đúng loại đó để hiểu là "không còn nữa".
+    assert isinstance(refusal, LookupError)
+    assert "backend" in str(refusal)
+    assert refusal.to_payload() == {
+        "detail": "Role 'backend' is not in this project's roster.",
+        "code": "role_not_in_roster",
+        "params": {"role": "backend"},
+    }
+
+
+def test_a_code_nobody_has_worded_yet_still_says_which_rule_refused() -> None:
+    """Rơi về chính cái mã, không rơi về rỗng: đọc hơi lạ vẫn hơn không đọc được gì."""
+    assert render_en("a_rule_written_after_this_build", {}) == "a_rule_written_after_this_build"
+    # Thiếu một chỗ điền thì cũng không được ném ra giữa lúc đang trả lời.
+    assert "(unknown)" in render_en("role_not_in_roster", {})
+
+
+# ── the screen's half ─────────────────────────────────────────────────────────
+
+
+def test_every_code_the_server_can_send_has_a_phrase_on_screen() -> None:
+    for language in ("en", "vi"):
+        missing = sorted(set(ENGLISH) - _interface_codes(language))
+        assert not missing, f"{language}.ts thiếu câu cho: {missing}"
+
+
+def test_the_screen_has_no_phrase_for_a_code_the_server_never_sends() -> None:
+    """Chiều ngược lại. Một câu mồ côi không hỏng gì hôm nay, nhưng nó là dấu của một mã
+    vừa bị đổi tên ở một phía — và phía kia thì chưa."""
+    for language in ("en", "vi"):
+        orphans = sorted(_interface_codes(language) - set(ENGLISH) - _CLIENT_ONLY)
+        assert not orphans, f"{language}.ts còn câu thừa cho: {orphans}"
+
+
+def test_the_two_languages_carry_the_same_placeholders() -> None:
+    """Chỗ điền lệch nhau là một câu tiếng Việt mất tham số mà bài kiểm nào cũng xanh."""
+    for code, template in ENGLISH.items():
+        wanted = set(re.findall(r"\{(\w+)\}", template))
+        for language in ("en", "vi"):
+            source = (_I18N / f"{language}.ts").read_text(encoding="utf-8")
+            line = re.search(rf"^    {code}: '(.*)',$", source, re.M)
+            assert line, f"{language}.ts thiếu dòng {code}"
+            assert set(re.findall(r"\{\{(\w+)\}\}", line.group(1))) == wanted, code
+
+
+# ── through the running server ────────────────────────────────────────────────
+
+
+async def _a_task(c: AsyncClient, p: OperatingProject) -> str:
+    r = await c.post(
+        f"/agent/projects/{p.project_id}/tasks",
+        headers=p.leader_headers,
+        json={
+            "title": "Kết xuất báo cáo tháng",
+            "description": "Gom số liệu rồi kết xuất.",
+            "assignee_marius_id": p.worker_id,
+            "plan_item_id": p.item_id(),
+        },
+    )
+    assert r.status_code == 201, r.text
+    return str(r.json()["id"])
+
+
+async def test_a_refusal_over_http_answers_with_a_code_and_no_vietnamese() -> None:
+    async with client() as c:
+        p = await operating_project(c, "coded-errors@armarius.dev")
+        task_id = await _a_task(c, p)
+        # Đóng thẳng một đầu việc vừa mở: bảng chuyển trạng thái từ chối.
+        refused = await c.post(
+            f"/agent/tasks/{task_id}/status",
+            headers=p.worker_headers,
+            json={"status": "done"},
+        )
+    assert refused.status_code == 409, refused.text
+    body = refused.json()
+    assert body["code"], body
+    assert body["code"] in ENGLISH, body["code"]
+    assert not _has_vietnamese(body["detail"]), body["detail"]
+    # Tham số là *mảnh*, không phải một câu hệ thống khác đội lốt tham số.
+    assert all(not _has_vietnamese(str(v)) for v in body["params"].values()), body["params"]
+
+
+async def test_a_missing_thing_answers_404_with_the_code_that_says_which_thing() -> None:
+    async with client() as c:
+        p = await operating_project(c, "coded-404@armarius.dev")
+        gone = await c.get(
+            "/v1/tasks/00000000-0000-0000-0000-000000000000", headers=p.headers
+        )
+    assert gone.status_code == 404, gone.text
+    assert gone.json()["code"] == "task_not_found", gone.text
+
+
+# ── T190: the ring is named ───────────────────────────────────────────────────
+
+
+async def test_a_refused_cycle_names_the_tasks_it_would_run_through() -> None:
+    """FR-032. Từ chối suông thì người đọc phải tự dò trên một cái bảng mà chính cạnh vừa
+    bị chặn là thứ duy nhất chưa có ở đó."""
+    async with client() as c:
+        p = await operating_project(c, "coded-cycle@armarius.dev")
+        first, second, third = [await _a_task(c, p) for _ in range(3)]
+        for waiter, blocker in ((first, second), (second, third)):
+            edge = await c.post(
+                f"/v1/tasks/{waiter}/dependencies",
+                headers=p.headers,
+                json={"blocks_task_id": blocker},
+            )
+            assert edge.status_code in (200, 201), edge.text
+        closed = await c.post(
+            f"/v1/tasks/{third}/dependencies",
+            headers=p.headers,
+            json={"blocks_task_id": first},
+        )
+        codes = {
+            tid: (await c.get(f"/v1/tasks/{tid}", headers=p.headers)).json()["identifier"]
+            for tid in (first, second, third)
+        }
+    assert closed.status_code == 422, closed.text
+    body = closed.json()
+    assert body["code"] == "dependency_cycle", body
+    ring = body["params"]["cycle"]
+    for identifier in codes.values():
+        assert identifier in ring, ring
+    # Khép lại chính nó, nên đọc ra là một vòng chứ không phải một đoạn.
+    assert ring.split(" → ")[0] == ring.split(" → ")[-1] == codes[third]
+
+
+def test_the_ring_is_carried_as_a_parameter_not_baked_into_the_wording() -> None:
+    refusal = CodedError("dependency_cycle", cycle="A → B → A")
+    assert refusal.params == {"cycle": "A → B → A"}
+    assert str(refusal) == "This dependency would close a cycle: A → B → A."

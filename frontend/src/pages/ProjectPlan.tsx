@@ -23,6 +23,7 @@ import {
 } from '@/lib/api';
 import { subscribeProjectEvents } from '@/lib/sse';
 import { cn, wsHref } from '@/lib/utils';
+import { errorText } from '@/lib/errors';
 
 /** A context part. Empty reads as "không có" — absent must never look like a gap. */
 function ContextPart({ label, value }: { label: string; value: string }) {
@@ -125,14 +126,13 @@ export default function ProjectPlan() {
           ? t('projectPlan.decidedChanges')
           : t('projectPlan.decidedAsked');
     const noteOrNone = note.trim() || undefined;
-    const failed = t('projectPlan.loadFailed');
     try {
       const updated = await decideProjectPlan(projectId, decision, noteOrNone);
       setPlan(updated);
       setNote('');
       setMessage(decided);
     } catch (e) {
-      setError(e instanceof Error ? e.message : failed);
+      setError(errorText(e, t));
     }
     setBusy(false);
   };
@@ -140,12 +140,11 @@ export default function ProjectPlan() {
   const approveContext = async () => {
     if (!projectId) return;
     setBusy(true);
-    const failed = t('projectPlan.loadFailed');
     try {
       await approveProjectContext(projectId, true);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : failed);
+      setError(errorText(e, t));
     }
     setBusy(false);
   };

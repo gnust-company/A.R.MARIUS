@@ -20,13 +20,14 @@ from armarius.domain.entities.marius import Liveness
 from armarius.domain.entities.project import Project, ProjectStatus
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
+from armarius.shared.errors import CodedError
 
 
-class InvalidProjectPlan(Exception):
+class InvalidProjectPlan(CodedError):
     """Raised when a roster plan violates the leader/worker rule (LLD §4)."""
 
 
-class ProjectClosed(Exception):
+class ProjectClosed(CodedError):
     """Raised when anything tries to write to a closed project (FR-005).
 
     Lives here, beside `is_closed`, because "closed means frozen" is one rule with one
@@ -35,7 +36,7 @@ class ProjectClosed(Exception):
     """
 
 
-class InvalidPhaseTransition(Exception):
+class InvalidPhaseTransition(CodedError):
     """Raised when a phase change is not on the map (spec 001 FR-004, FR-005)."""
 
 
@@ -67,7 +68,7 @@ def assert_phase_transition(current: ProjectStatus, target: ProjectStatus) -> No
     """Raise `InvalidPhaseTransition` unless `current → target` is allowed."""
     if not can_change_phase(current, target):
         raise InvalidPhaseTransition(
-            f"A project cannot go from '{current}' to '{target}'."
+            "project_phase_transition_invalid", current=current, target=target
         )
 
 
@@ -94,20 +95,16 @@ def validate_plan(roles: Iterable[Role]) -> None:
     roles = list(roles)
     leaders = [r for r in roles if r.is_leader]
     if len(leaders) != 1:
-        raise InvalidProjectPlan(
-            f"A project needs exactly one leader role, found {len(leaders)}."
-        )
+        raise InvalidProjectPlan("project_needs_one_leader_role", found=len(leaders))
     if leaders[0].seats != 1:
-        raise InvalidProjectPlan("The leader role must have exactly one seat.")
+        raise InvalidProjectPlan("leader_role_needs_one_seat")
     workers = [r for r in roles if not r.is_leader and r.seats >= 1]
     if not workers:
-        raise InvalidProjectPlan("A project needs at least one worker role with a seat.")
+        raise InvalidProjectPlan("project_needs_a_worker_role")
     undescribed = [r for r in roles if not (r.description or "").strip()]
     if undescribed:
         titles = ", ".join(r.title or r.key for r in undescribed)
-        raise InvalidProjectPlan(
-            f"Every role needs a description of what it does — missing for: {titles}."
-        )
+        raise InvalidProjectPlan("role_needs_a_description", roles=titles)
 
 
 def _active_grants(grants: Iterable[SeatGrant]) -> list[SeatGrant]:

@@ -23,6 +23,7 @@ from armarius.presentation.schemas import (
     LeaderChatSendIn,
     TaskOut,
 )
+from armarius.shared.errors import NotFound
 
 # FR-005 — a closed project is frozen. The guard hangs on the router, not on each
 # route, so a route added later cannot forget it.
@@ -32,10 +33,10 @@ router = APIRouter(prefix="/v1", tags=["leader-chat"], dependencies=[Depends(ref
 async def _require_owned_project(container, user, project_id: UUID):
     project = await container.projects.get_project(project_id)
     if project is None:
-        raise LookupError("project not found")
+        raise NotFound("project_not_found")
     ws = await container.workspaces.get_workspace(project.workspace_id)
     if ws is None or ws.owner_user_id != str(user.id):
-        raise LookupError("project not found")  # cross-workspace → 404
+        raise NotFound("project_not_found")  # cross-workspace → 404
     return project
 
 
@@ -90,7 +91,7 @@ async def approve_task(
 ) -> TaskOut:
     task = await container.tasks.get(task_id)
     if task is None or task.project_id is None:
-        raise LookupError("task not found")
+        raise NotFound("task_not_found")
     await _require_owned_project(container, user, task.project_id)
     approved = await container.tasks.approve_proposed(task_id)
     return TaskOut.model_validate(approved)
@@ -102,7 +103,7 @@ async def reject_task(
 ) -> TaskOut:
     task = await container.tasks.get(task_id)
     if task is None or task.project_id is None:
-        raise LookupError("task not found")
+        raise NotFound("task_not_found")
     await _require_owned_project(container, user, task.project_id)
     rejected = await container.tasks.reject_proposed(task_id)
     return TaskOut.model_validate(rejected)

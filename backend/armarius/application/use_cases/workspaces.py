@@ -11,6 +11,7 @@ from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.user import User
 from armarius.domain.entities.workspace import Project, Workspace
 from armarius.shared.clock import utcnow
+from armarius.shared.errors import BadRequest, NotFound
 
 
 def _slugify(value: str) -> str:
@@ -55,7 +56,7 @@ class WorkspaceService:
         async with self._uow() as uow:
             ws = await uow.workspaces.get(workspace_id)
             if ws is None:
-                raise LookupError("workspace not found")
+                raise NotFound("workspace_not_found")
             ws.name = name
             ws.slug = _slugify(name)
             ws.updated_at = utcnow()
@@ -69,15 +70,13 @@ class WorkspaceService:
         async with self._uow() as uow:
             ws = await uow.workspaces.get(workspace_id)
             if ws is None:
-                raise LookupError("workspace not found")
+                raise NotFound("workspace_not_found")
             # Fast path: reject deleting the only workspace up front (friendly error, no
             # write). This check alone is racy — two concurrent deletes can both read len==2
             # and proceed (issue #27 TOCTOU) — so we re-verify AFTER the delete below.
             owned = await uow.workspaces.list_by_owner(owner_user_id)
             if len(owned) <= 1:
-                raise ValueError(
-                    "You can't delete your only workspace — create another one first."
-                )
+                raise BadRequest("last_workspace")
             await uow.workspaces.remove(workspace_id)
             # Re-read inside the same transaction: if the delete just emptied the owner's
             # last workspace (a concurrent delete slipped past the pre-check), raise so the
@@ -86,9 +85,7 @@ class WorkspaceService:
             # Postgres fix would take SELECT ... FOR UPDATE, deferred until PG is in prod.
             remaining = await uow.workspaces.list_by_owner(owner_user_id)
             if not remaining:
-                raise ValueError(
-                    "You can't delete your only workspace — create another one first."
-                )
+                raise BadRequest("last_workspace")
             await uow.commit()
 
     async def ensure_personal_workspace(self, user: User) -> Workspace:
@@ -121,7 +118,7 @@ class WorkspaceService:
     ) -> Project:
         async with self._uow() as uow:
             if await uow.workspaces.get(workspace_id) is None:
-                raise LookupError("workspace not found")
+                raise NotFound("workspace_not_found")
             project = Project(
                 workspace_id=workspace_id,
                 name=name,

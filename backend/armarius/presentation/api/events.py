@@ -23,6 +23,7 @@ from sse_starlette.sse import EventSourceResponse
 from armarius.infrastructure.events.topic_bus import patron_topic, project_topic
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
+from armarius.shared.errors import NotFound
 
 router = APIRouter(prefix="/v1", tags=["events"])
 
@@ -47,7 +48,9 @@ def _frame(event) -> dict:
     return {"id": str(event.seq), "event": event.type, "data": json.dumps(event.data)}
 
 
-async def _require_own_workspace(container, user, workspace_id: UUID | None, missing: str) -> None:
+async def _require_own_workspace(
+    container, user, workspace_id: UUID | None, not_found: str
+) -> None:
     """Every stream is workspace-scoped: not yours reads as *not found*, never *forbidden*,
     so a caller cannot probe for the existence of another workspace's rows (Constitution I)."""
     ws = (
@@ -56,7 +59,7 @@ async def _require_own_workspace(container, user, workspace_id: UUID | None, mis
         else None
     )
     if ws is None or ws.owner_user_id != str(user.id):
-        raise LookupError(missing)
+        raise NotFound(not_found)
 
 
 async def _stream(container, request: Request, topic: str) -> EventSourceResponse:
@@ -113,7 +116,7 @@ async def workspace_events(
     container: ContainerDep,
     user: CurrentUser,
 ) -> EventSourceResponse:
-    await _require_own_workspace(container, user, workspace_id, "workspace not found")
+    await _require_own_workspace(container, user, workspace_id, "workspace_not_found")
     return await _stream(container, request, f"ws:{workspace_id}")
 
 
@@ -126,11 +129,11 @@ async def task_stream(
 ) -> EventSourceResponse:
     task = await container.tasks.get(task_id)
     if task is None:
-        raise LookupError("task not found")
+        raise NotFound("task_not_found")
     project = await container.projects.get_project(task.project_id)
     if project is None:
-        raise LookupError("task not found")
-    await _require_own_workspace(container, user, project.workspace_id, "task not found")
+        raise NotFound("task_not_found")
+    await _require_own_workspace(container, user, project.workspace_id, "task_not_found")
     return await _stream(container, request, f"task:{task_id}")
 
 
@@ -145,8 +148,8 @@ async def leader_chat_stream(
     streams here as ``assistant.delta`` events, plus ``chat.state``/``leader.message``."""
     project = await container.projects.get_project(project_id)
     if project is None:
-        raise LookupError("project not found")
-    await _require_own_workspace(container, user, project.workspace_id, "project not found")
+        raise NotFound("project_not_found")
+    await _require_own_workspace(container, user, project.workspace_id, "project_not_found")
     return await _stream(container, request, f"leader-chat:{project_id}")
 
 
@@ -160,8 +163,8 @@ async def project_events(
     """Project board channel (spec 001) — phase changes, task status, stall flags."""
     project = await container.projects.get_project(project_id)
     if project is None:
-        raise LookupError("project not found")
-    await _require_own_workspace(container, user, project.workspace_id, "project not found")
+        raise NotFound("project_not_found")
+    await _require_own_workspace(container, user, project.workspace_id, "project_not_found")
     return await _stream(container, request, project_topic(project_id))
 
 

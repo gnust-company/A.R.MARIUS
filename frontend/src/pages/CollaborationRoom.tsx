@@ -36,6 +36,7 @@ import { useTaskStream } from '@/hooks/use-task-stream';
 import { subscribeProjectEvents } from '@/lib/sse';
 import { cn, wsHref } from '@/lib/utils';
 import { blockedReasonKey, needsReason, type TaskPhase } from '@/lib/taskRules';
+import { errorText } from '@/lib/errors';
 
 /** Bốn trường người chủ sửa được trên màn, ở dạng chuỗi mà ô nhập dùng. */
 interface TaskEditDraft {
@@ -419,7 +420,7 @@ export default function CollaborationRoom() {
       }
       setEditDraft(null);
     } catch (e) {
-      setEditError(e instanceof Error ? e.message : String(e));
+      setEditError(errorText(e, t));
     } finally {
       setSaving(false);
     }
@@ -435,7 +436,7 @@ export default function CollaborationRoom() {
       );
       setCriteriaDraft(null);
     } catch (e) {
-      setCriteriaError(e instanceof Error ? e.message : String(e));
+      setCriteriaError(errorText(e, t));
     }
   };
 
@@ -487,7 +488,7 @@ export default function CollaborationRoom() {
       await hydrateTask(task.id);
       setApprovalsKey((n) => n + 1);
     } catch (e) {
-      setApprovalError(e instanceof Error ? e.message : String(e));
+      setApprovalError(errorText(e, t));
     }
     setSigning(false);
   };
@@ -500,7 +501,7 @@ export default function CollaborationRoom() {
       setDepPicker('');
     } catch (e) {
       // Server rejects self-loop/duplicate/cross-project/cycle with a 422 detail (#91).
-      setDepError(e instanceof ApiError ? e.message : t('collaborationRoom.context.dependencyFailed'));
+      setDepError(e instanceof ApiError ? errorText(e, t) : t('collaborationRoom.context.dependencyFailed'));
     }
   };
 
@@ -510,7 +511,7 @@ export default function CollaborationRoom() {
     try {
       await removeTaskDependency(task.id, blocksTaskId);
     } catch (e) {
-      setDepError(e instanceof ApiError ? e.message : t('collaborationRoom.context.dependencyFailed'));
+      setDepError(e instanceof ApiError ? errorText(e, t) : t('collaborationRoom.context.dependencyFailed'));
     }
   };
 

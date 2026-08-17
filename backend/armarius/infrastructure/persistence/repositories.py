@@ -106,6 +106,7 @@ from armarius.infrastructure.database.models import (
 )
 from armarius.infrastructure.persistence import mappers
 from armarius.shared.clock import utcnow
+from armarius.shared.errors import NotFound
 
 
 async def _purge_projects(session: AsyncSession, project_ids: Sequence[UUID]) -> None:
@@ -226,7 +227,7 @@ class SqlWorkspaceRepository(WorkspaceRepository):
     async def update(self, workspace: Workspace) -> Workspace:
         m = await self._s.get(WorkspaceModel, workspace.id)
         if m is None:
-            raise LookupError("workspace not found")
+            raise NotFound("workspace_not_found")
         m.name = workspace.name
         m.slug = workspace.slug
         m.workspace_agent_id = workspace.workspace_agent_id
@@ -440,7 +441,7 @@ class SqlOnboardingRepository(OnboardingRepository):
     async def update(self, session: OnboardingSession) -> OnboardingSession:
         m = await self._s.get(OnboardingSessionModel, session.id)
         if m is None:
-            raise LookupError("onboarding session not found")
+            raise NotFound("onboarding_session_not_found")
         m.status = str(session.status)
         m.transcript = list(session.transcript)
         m.collected = dict(session.collected)
@@ -528,7 +529,7 @@ class SqlProjectRepository(ProjectRepository):
         )
         value = (await self._s.execute(stmt)).scalar_one_or_none()
         if value is None:
-            raise LookupError("project not found")
+            raise NotFound("project_not_found")
         # `next_task_seq` is the NEXT number to assign (starts at 1); the UPDATE advanced
         # it, so the number we just claimed is the pre-increment value.
         return int(value) - 1
@@ -536,7 +537,7 @@ class SqlProjectRepository(ProjectRepository):
     async def update(self, project: Project) -> Project:
         m = await self._s.get(ProjectModel, project.id)
         if m is None:
-            raise LookupError("project not found")
+            raise NotFound("project_not_found")
         m.name = project.name
         m.slug = project.slug
         m.key = project.key
@@ -598,7 +599,7 @@ class SqlRoleRepository(RoleRepository):
     async def update(self, role: Role) -> Role:
         m = await self._s.get(RoleModel, role.id)
         if m is None:
-            raise LookupError("role not found")
+            raise NotFound("role_not_found")
         m.key = role.key
         m.title = role.title
         m.seats = role.seats
@@ -652,7 +653,7 @@ class SqlSeatGrantRepository(SeatGrantRepository):
     async def update(self, grant: SeatGrant) -> SeatGrant:
         m = await self._s.get(SeatGrantModel, grant.id)
         if m is None:
-            raise LookupError("seat grant not found")
+            raise NotFound("seat_grant_not_found")
         m.role_key = grant.role_key
         m.marius_id = grant.marius_id
         m.status = str(grant.status)
@@ -835,7 +836,7 @@ class SqlMariusRepository(MariusRepository):
     async def update(self, marius: Marius) -> Marius:
         m = await self._s.get(MariusModel, marius.id)
         if m is None:
-            raise LookupError("marius not found")
+            raise NotFound("agent_not_found")
         m.name = marius.name
         m.role = marius.role
         m.skills = list(marius.skills)
@@ -971,7 +972,7 @@ class SqlTaskRepository(TaskRepository):
     async def update(self, task: Task) -> Task:
         m = await self._s.get(TaskModel, task.id)
         if m is None:
-            raise LookupError("task not found")
+            raise NotFound("task_not_found")
         m.identifier = task.identifier
         m.title = task.title
         m.description = task.description
@@ -1410,7 +1411,7 @@ class SqlRunRepository(RunRepository):
     async def update(self, run: Run) -> Run:
         m = await self._s.get(RunModel, run.id)
         if m is None:
-            raise LookupError("run not found")
+            raise NotFound("run_not_found")
         m.status = str(run.status)
         # Both of these change after a run is created: a cause folded in before the turn
         # starts re-files the run under the stronger cause and rewrites the merged reason
@@ -1781,7 +1782,7 @@ class SqlSkillRepository(SkillRepository):
     async def update(self, skill: Skill) -> Skill:
         m = await self._s.get(SkillModel, skill.id)
         if m is None:
-            raise LookupError("skill not found")
+            raise NotFound("skill_not_found")
         m.slug = skill.slug
         m.name = skill.name
         m.description = skill.description

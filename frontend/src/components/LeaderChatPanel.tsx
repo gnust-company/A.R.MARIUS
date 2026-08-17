@@ -31,6 +31,7 @@ import VellumPanel from '@/components/VellumPanel';
 import { cn } from '@/lib/utils';
 import * as api from '@/lib/api';
 import { subscribeLeaderChat } from '@/lib/sse';
+import { errorText } from '@/lib/errors';
 
 interface ChatMessage {
   role: 'patron' | 'leader' | 'system';
@@ -134,7 +135,7 @@ export default function LeaderChatPanel({
         setState(chatStateOf(dto.state));
         await refreshProposed();
       } catch (e) {
-        if (alive) setError(e instanceof Error ? e.message : String(e));
+        if (alive) setError(errorText(e, t));
       }
       if (alive) setLoading(false);
     })();
@@ -212,7 +213,7 @@ export default function LeaderChatPanel({
         setChat(dto);
       } catch (e) {
         // Rejected (offline / turn in flight) → resync from the server, surface the detail.
-        setError(e instanceof Error ? e.message : String(e));
+        setError(errorText(e, t));
         try {
           const dto = await api.getLeaderChat(projectId);
           setChat(dto);
@@ -263,9 +264,9 @@ export default function LeaderChatPanel({
       else await api.rejectTask(taskId);
       setProposed((p) => p.filter((task) => task.id !== taskId));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e, t));
     }
-  }, []);
+  }, [t]);
 
   return (
     <VellumPanel className="flex flex-col h-full">
