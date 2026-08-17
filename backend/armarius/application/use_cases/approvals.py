@@ -36,6 +36,7 @@ from uuid import UUID
 from armarius.application.ports.artifact_store import ArtifactStore
 from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.review_reset import retire_signatures_on_move
+from armarius.application.use_cases.seats import leader_marius_id
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.approval import Approval, ApprovalResult, SignerKind
 from armarius.domain.entities.artifact import ArtifactKind
@@ -490,12 +491,7 @@ class ApprovalService:
 
     async def _leader_marius(self, project_id: UUID) -> UUID | None:
         async with self._uow() as uow:
-            roles = await uow.roles.list_by_project(project_id)
-            leader_keys = {r.key for r in roles if r.is_leader}
-            for grant in await uow.seat_grants.list_by_project(project_id):
-                if grant.role_key in leader_keys and grant.is_active:
-                    return grant.marius_id
-        return None
+            return await leader_marius_id(uow, project_id)
 
     # ── the record (FR-039) ──────────────────────────────────────────────────
 

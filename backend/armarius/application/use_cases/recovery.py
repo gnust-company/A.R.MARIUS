@@ -29,6 +29,7 @@ from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.inbox import InboxService
 from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.push_reason import PushReasonService
+from armarius.application.use_cases.seats import holds_the_leader_seat
 from armarius.application.use_cases.task_log import TaskLogService
 from armarius.application.use_cases.tasks import (
     AssignEffects,
@@ -920,15 +921,7 @@ class OfflineFalloutService:
     async def _holds_the_leader_seat(
         uow: UnitOfWork, project_id: UUID, marius_id: UUID
     ) -> bool:
-        leader_keys = {
-            role.key for role in await uow.roles.list_by_project(project_id) if role.is_leader
-        }
-        return any(
-            grant.marius_id == marius_id
-            and grant.is_active
-            and grant.role_key in leader_keys
-            for grant in await uow.seat_grants.list_by_project(project_id)
-        )
+        return await holds_the_leader_seat(uow, project_id, marius_id)
 
 
 # Which stall the safety net is calling back about. Read off the task's own drive — the

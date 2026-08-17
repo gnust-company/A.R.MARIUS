@@ -27,6 +27,7 @@ from armarius.application.ports.workspace_trace import (
     announce_run_state,
 )
 from armarius.application.use_cases.onboarding import credential_file_for
+from armarius.application.use_cases.seats import holds_the_leader_seat
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.marius import Liveness, Marius
@@ -208,15 +209,10 @@ class WakeEngine:
             roles: set[WakeRole] = set()
             if task.assigned_marius_id == marius_id:
                 roles.add(WakeRole.WORKER)
-            if task.project_id is not None:
-                leader_keys = {
-                    r.key for r in await uow.roles.list_by_project(task.project_id) if r.is_leader
-                }
-                for grant in await uow.seat_grants.list_by_project(task.project_id):
-                    if grant.marius_id == marius_id and grant.role_key in leader_keys:
-                        if grant.is_active:
-                            roles.add(WakeRole.LEADER)
-                        break
+            if task.project_id is not None and await holds_the_leader_seat(
+                uow, task.project_id, marius_id
+            ):
+                roles.add(WakeRole.LEADER)
             if may_wake(source, roles=roles):
                 return True
 
