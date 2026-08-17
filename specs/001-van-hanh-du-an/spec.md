@@ -416,6 +416,15 @@ thứ tự gắn trên từng chữ ký.
 - **FR-005**: KHI dự án chuyển sang *đóng*, HỆ THỐNG PHẢI dừng mọi nhịp đánh thức của dự án đó và giữ toàn
   bộ lịch sử ở dạng chỉ đọc để người chủ xem lại bất cứ lúc nào. KHÔNG cần thông báo cho đội — agent không
   được đánh thức nữa thì tự nhiên hết việc.
+- **FR-005a**: KHI dự án chuyển sang *đóng*, HỆ THỐNG PHẢI đánh dấu **hết hiệu lực** mọi mục hộp thư của dự
+  án đó còn đang chờ người chủ trả lời, thuộc mọi loại. Dấu này KHÔNG ĐƯỢC dùng chung với dấu *đã xử lý*:
+  người chủ chưa hề trả lời, ghi là đã trả lời là ghi sai lịch sử. Mục vẫn nằm lại trong hộp thư và vẫn đọc
+  lại được, chỉ thôi được tính vào số đang chờ và thôi bị thang nhắc đòi trả lời. Lý do: một câu hỏi về dự án
+  đã đóng là câu hỏi không bao giờ trả lời được, vì mọi hành động của nó đều bị FR-005 từ chối.
+- **FR-005b**: Việc **đóng một mục hộp thư** KHÔNG tính là thao tác ghi vào dự án, nên PHẢI làm được kể cả
+  khi dự án đã đóng. Nó chỉ dọn hộp thư của chính người chủ, không đổi gì trên đầu việc. Cấm gộp nó vào cùng
+  chốt với các hành động ghi vào đầu việc (giao lại, đặt bước tiếp theo, huỷ): gộp một lần đã để lại những
+  mục hộp thư không bao giờ dọn được và một con số đang chờ không bao giờ về không.
 - **FR-006**: HỆ THỐNG KHÔNG ĐƯỢC tự tuyên bất kỳ dự án nào là hoàn thành. "Dự án xong" chỉ là một quyết định
   chuyển giai đoạn của người chủ.
 

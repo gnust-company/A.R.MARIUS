@@ -1102,8 +1102,8 @@ phụ trách thì `infer_drive` trả về *không có động cơ đẩy nào*,
 
 **Đặc tả đã sửa xong toàn bộ (2026-08-16). Từ đây trở đi mười ba việc dưới chỉ còn phần mã.** Không việc
 nào còn phải quay lại bàn luật. Ô chỉ được đánh dấu xong khi mã theo kịp **và** đã dựng dịch vụ thật lên tự
-kiểm — **T179, T180, T181, T182, T183, T186, T187, T192, T193, T195 và T196 xong (2026-08-16),
-còn sáu việc trong mười ba, cộng T194.**
+kiểm — **T179, T180, T181, T182, T183, T186, T187, T192, T193, T195 và T196 xong (2026-08-16); T188 và
+T197 xong (2026-08-17). Còn năm việc: T184, T185, T189, T190, T191, cộng T194.**
 
 **Hiến pháp lên 1.1.0 (2026-08-16).** T193 để lộ một luật chưa ai ghi: chữ **hệ thống** gửi cho agent phải
 là tiếng Anh, vì agent không có ngôn ngữ giao diện để chọn. Mã vốn đã làm đúng — gói tin đánh thức viết
@@ -1188,7 +1188,15 @@ tồn tại không có nghĩa là luật được canh; phải kiểm bài kiể
   đã đóng thì không sửa được (FR-005); nhưng **không** áp cổng FR-003, vì sửa một bản nháp lúc đang bàn
   kế hoạch không giao việc cho ai. Mỗi lần sửa để lại một dòng ghi *tên trường* nào đổi, không chép nội
   dung — sổ vết không phải kho. Sửa mà không đổi gì thì không ghi
-- [ ] T188 [P] [US5] Đưa bốn ngưỡng còn đóng cứng ra thiết lập — `_MAX_STRETCH`, `_MAX_INTERVAL_SECONDS`, `_MIN_INTERVAL_SECONDS` ở `backend/armarius/domain/services/orchestration_cadence.py` (dòng 210-215) và `_HANDOVER_ATTEMPTS` ở `backend/armarius/application/use_cases/recovery.py` (dòng 100) — sang `ProjectThresholds` và `backend/armarius/shared/config.py`. Theo FR-055 và FR-060a (partial). Mục Giả định của đặc tả đòi **mọi** ngưỡng chỉnh được; trần Mức 1 đã ở `config.py` (`level1_recovery_attempts`) còn trần Mức 2 thì không — chính sự lệch đó cho thấy đây là bỏ sót chứ không phải chủ ý
+- [x] T188 [P] [US5] Đưa bốn ngưỡng còn đóng cứng ra thiết lập — `_MAX_STRETCH`, `_MAX_INTERVAL_SECONDS`, `_MIN_INTERVAL_SECONDS` ở `backend/armarius/domain/services/orchestration_cadence.py` (dòng 210-215) và `_HANDOVER_ATTEMPTS` ở `backend/armarius/application/use_cases/recovery.py` (dòng 100) — sang `ProjectThresholds` và `backend/armarius/shared/config.py`. Theo FR-055 và FR-060a (partial). Mục Giả định của đặc tả đòi **mọi** ngưỡng chỉnh được; trần Mức 1 đã ở `config.py` (`level1_recovery_attempts`) còn trần Mức 2 thì không — chính sự lệch đó cho thấy đây là bỏ sót chứ không phải chủ ý
+
+  **Làm 2026-08-17.** Ba cái chặn của nhịp rà thành tham số bắt buộc của phép tính, không có giá trị
+  mặc định trong chữ ký: một giá trị mặc định ở đó là một ngưỡng không ai tìm ra và không ai chỉnh
+  được — đúng cái bệnh vừa chữa. Trần Mức 2 đọc từ ngưỡng của dự án như trần Mức 1, và giữ là **hai
+  ngưỡng riêng** đúng như lý do đã ghi sẵn trong mã: trần Mức 1 trả lời *cho agent thử lại bao lâu*,
+  nâng nó lên mười là chuyện hợp lý; nâng nó lên mười mà kéo theo người chủ phải đợi qua mười lần gọi
+  Trưởng dự án hỏng mới biết Trưởng đã mất tích thì không
+
 - [ ] T189 [P] [US4] Đánh thức Trưởng dự án khi người chủ **từ chối** một đầu ra, ở `backend/armarius/application/use_cases/approvals.py` (quanh dòng 347) — theo FR-047 (partial). Từ chối hiện chỉ gọi thợ (`APPROVAL_REJECTED`); Trưởng chỉ bị kéo vào sau trần ba vòng (`BRIEF_REVIEW`). FR-047 ghi cớ là *"người chủ công nhận **hoặc từ chối** một đầu ra"* — hai vế, mã mới làm một
 - [ ] T190 [P] [US2] Nêu rõ vòng phụ thuộc đi qua những đầu việc nào, ở `backend/armarius/application/use_cases/tasks.py` (`_would_cycle` dòng 1284 và chỗ ném lỗi dòng 1043) — theo FR-032 (partial). Việc chặn khép vòng đã đúng, nhưng câu trả về là `"This dependency would create a cycle."` — FR-032 đòi *"nêu rõ vòng đó đi qua những đầu việc nào"*. Đối chiếu FR-025 làm đúng chuyện này (liệt kê mã việc còn thiếu). Sửa cùng T184 vì cùng đường câu chữ
 - [ ] T191 Bỏ luật "tám phần cho mọi gói tin đánh thức", thay bằng **lõi bốn phần + phần riêng theo loại lời gọi** — đặc tả đã sửa (FR-044, FR-044a, FR-045, SC-005, và bản mô tả mặt agent §4), giờ tới `backend/armarius/domain/services/wake_prompt.py` và `leader_chat_prompt.py`. Theo luật 2 người chủ chốt (contradicts). Lý do bỏ: năm trong tám phần **vô nghĩa với Trưởng dự án**. Nó bị gọi dậy vì nhịp rà tìm ra ba điểm treo trên bảng — "đầu việc đang nói tới" là cái nào trong ba? "Việc kế tiếp" của một người điều phối là gì? "Nơi nộp thành phẩm" thì càng không. Ép chung khuôn là ép một vai điền vào ô của vai khác.
@@ -1233,3 +1241,29 @@ tồn tại không có nghĩa là luật được canh; phải kiểm bài kiể
   **Thư của dự án đã đóng thì nằm lại, không biến mất.** Người chủ chốt 2026-08-17: gắn dấu *dự án đã
   đóng* lên thẻ thư và tắt hết nút trên đó. Không tự dọn thư khi đóng dự án — lá thư là bằng chứng một
   câu hỏi đã từng được đặt ra, và dự án giữ lại chính là để đọc lại lịch sử ấy
+
+  **Nhưng tắt hết nút là tắt quá tay — xem T197.**
+
+- [x] T197 [US6] Đóng dự án thì đóng luôn thư nó còn treo, và trả lại nút dọn thư — ở
+  `backend/armarius/application/use_cases/projects.py` (`change_phase`), `inbox.py`, `recovery.py`
+  (`answer_escalation`), `presentation/api/inbox.py` và `frontend/src/pages/Inbox.tsx` — theo **FR-005a**
+  và **FR-005b** mới. Hệ quả trực tiếp của T196: chốt đóng băng treo ở cửa chung của hộp thư nên **cả
+  năm** nút chết một lượt, kể cả nút chỉ để **đóng lá thư**. Nút ấy không ghi gì vào dự án — nó dọn hộp
+  thư của chính người chủ — nên hậu quả là lá thư không bao giờ ra khỏi danh sách đang chờ được nữa, con
+  số đang chờ không bao giờ về không, và thang nhắc vẫn đi đòi một câu trả lời mà hệ đã tự cấm
+
+  **Chỗ bỏ sót nặng hơn:** luật này đã có sẵn trong mã từ trước, ở lối đổi giai đoạn — người chủ quyết
+  xong thì hệ tự đóng những lá thư đang chờ quyết định ấy, *"người chủ không phải dọn tay"*. Đóng dự án
+  là quyết định lớn nhất trong tất cả mà không làm việc đó. T196 vá cái cửa mà không đọc lại luật nằm
+  ngay bên cạnh
+
+  **Người chủ chốt 2026-08-17: đóng dự án thì đóng thư luôn.** Đánh dấu **hết hiệu lực**, một trạng thái
+  thứ ba bên cạnh *đang chờ* và *đã xong*, chứ không mượn dấu *đã xong*: người chủ chưa hề trả lời. Cột
+  lưu trạng thái vốn là chữ tự do nên không phải đổi cấu trúc kho. Thư vẫn nằm trong hộp thư, mang dấu
+  *dự án đã đóng*, đọc lại được ở tab thứ hai — nay mang nghĩa *không còn chờ nữa* thay vì *đã xong*
+
+  **Và chốt đóng băng của hộp thư chuyển vào bên trong**, chặn đúng ba hành động ghi vào đầu việc. Cửa
+  không tự phân biệt được: hành động nào nằm trong **thân** lời gọi, đọc sau khi đã chọn xong lối. Hai
+  lối hộp thư vì thế xuống danh sách miễn của bài kiểm duyệt, kèm lý do viết tay — và một bài kiểm mới
+  canh đúng ranh giới ấy: ba nút kia 409, nút dọn thư 200. Phần này phòng cửa sổ hẹp giữa lúc đóng dự án
+  và lúc quét thư; ngoài cửa sổ ấy thì thư đã hết hiệu lực rồi nên bấm gì cũng không xảy ra chuyện gì
