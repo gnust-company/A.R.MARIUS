@@ -27,6 +27,10 @@ class WakeupStatus(StrEnum):
     # replace it?".
     SUPERSEDED = "superseded"  # a newer pending wake for the same pair took its place
     ORPHANED = "orphaned"  # no run was ever going to close it (the process that owned it died)
+    # The cause was not one the recipient's role may be woken for (FR-048a). Written down
+    # rather than merely dropped: a refusal nobody can read afterwards is the same silence
+    # that let the two cause lists drift out of step with the code in the first place.
+    REFUSED = "refused"
 
 
 # The two statuses that mean "this wake is still owed". FR-050 allows at most one of these

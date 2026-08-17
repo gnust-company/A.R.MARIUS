@@ -50,7 +50,7 @@ from armarius.domain.entities.wakeup import (
 from armarius.domain.entities.workspace import Project, Workspace
 from armarius.domain.services.project_rules import ProjectClosed, is_closed
 from armarius.domain.services.wake_coalesce import merge_reasons, stronger_source
-from armarius.domain.services.wake_policy import decide_self_wake
+from armarius.domain.services.wake_policy import WakeRole, decide_self_wake, may_wake
 from armarius.domain.services.wake_prompt import (
     DirectoryEntry,
     ProjectBrief,
@@ -120,7 +120,7 @@ class WakeEngine:
         source: WakeSource,
         reason: WakeReason | None = None,
         continuation_attempt: int = 0,
-    ) -> UUID:
+    ) -> UUID | None:
         """Queue a task-scoped wake. Returns the run id (the existing one if coalesced).
 
         FR-050 in one place: at most one pending wake and one live run per *(agent, task)*.
@@ -130,8 +130,16 @@ class WakeEngine:
         The lock below still helps (it keeps the common case from doing wasted work) but it
         is no longer what guarantees the invariant. The partial unique index is. If two
         callers race past the lock, the loser is told the pair is busy and folds in.
+
+        Returns ``None`` when the cause is not one this recipient's role may be woken for
+        (FR-048a). Refusing the wake rather than raising is deliberate: the mistake is in
+        whoever booked the wake, and taking down the patron's own action — the comment they
+        posted, the task they moved — would punish the wrong party for it. The refusal is
+        on the record and in the log instead.
         """
         await self._refuse_if_closed(task_id)
+        if not await self._cause_fits_the_recipient(marius_id, task_id, source, reason):
+            return None
         async with self._lock:
             for attempt in (0, 1):
                 folded = await self._fold_into_pending(marius_id, task_id, source, reason)
@@ -175,6 +183,65 @@ class WakeEngine:
                 raise ProjectClosed(
                     "Dự án đã đóng — không đánh thức agent của nó nữa."
                 )
+
+    async def _cause_fits_the_recipient(
+        self,
+        marius_id: UUID,
+        task_id: UUID,
+        source: WakeSource,
+        reason: WakeReason | None,
+    ) -> bool:
+        """FR-048a — hold the two closed cause lists to the wake actually being sent.
+
+        The hats are read from the work, not from the agent record: whoever the task is
+        assigned to is its worker, and whoever holds the project's leader seat is its
+        Leader. One agent can be both at once, and then both sets of causes reach it.
+
+        A refused wake is written down as a wake — same table, its own status — because the
+        thing worth catching is not the single dropped call but the pattern: a cause added
+        without deciding who it may wake shows up here as a row nobody expected.
+        """
+        async with self._uow() as uow:
+            task = await uow.tasks.get(task_id)
+            if task is None:
+                return True  # the run open below will fail on it and say so properly
+            roles: set[WakeRole] = set()
+            if task.assigned_marius_id == marius_id:
+                roles.add(WakeRole.WORKER)
+            if task.project_id is not None:
+                leader_keys = {
+                    r.key for r in await uow.roles.list_by_project(task.project_id) if r.is_leader
+                }
+                for grant in await uow.seat_grants.list_by_project(task.project_id):
+                    if grant.marius_id == marius_id and grant.role_key in leader_keys:
+                        if grant.is_active:
+                            roles.add(WakeRole.LEADER)
+                        break
+            if may_wake(source, roles=roles):
+                return True
+
+            causes = merge_reasons([], source, reason)
+            logger.warning(
+                "wake refused: %s may not wake %s on task %s (roles: %s)",
+                source,
+                marius_id,
+                task_id,
+                ", ".join(sorted(str(r) for r in roles)) or "none",
+            )
+            await uow.wakeups.add(
+                WakeupRequest(
+                    project_id=task.project_id,
+                    marius_id=marius_id,
+                    task_id=task_id,
+                    source=source,
+                    causes=causes,
+                    reason=render_en(causes),
+                    status=WakeupStatus.REFUSED,
+                    created_at=utcnow(),
+                )
+            )
+            await uow.commit()
+            return False
 
     async def _fold_into_pending(
         self,

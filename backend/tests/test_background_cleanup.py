@@ -112,6 +112,15 @@ async def _world(uow_factory):  # noqa: ANN201
         title="Dựng cổng đăng nhập",
         description="Dựng cổng đăng nhập bằng thư điện tử và mật khẩu cho ứng dụng.",
     )
+    # Đầu việc nằm trong tay Alice — đúng như lúc chạy thật, và là điều kiện để những cớ
+    # của thợ (bình luận, nhắc tên) được phép gọi cô ấy dậy (FR-048a). Ghi thẳng chứ không
+    # qua lối giao việc: lối ấy tự bắn một lệnh gọi, mà bài ở đây đếm lệnh gọi.
+    async with uow_factory() as uow:
+        held = await uow.tasks.get(task.id)
+        assert held is not None
+        held.assigned_marius_id = alice.id
+        await uow.tasks.update(held)
+        await uow.commit()
     return ws, project, alice, task
 
 

@@ -56,6 +56,7 @@ from armarius.domain.services.project_rules import (
     InvalidProjectPlan,
     ProjectClosed,
 )
+from armarius.domain.services.wake_policy import WakeCauseRefused
 
 
 def install_error_handlers(app: FastAPI) -> None:
@@ -75,6 +76,11 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ProjectClosed)
     async def _closed_project(_: Request, exc: ProjectClosed) -> JSONResponse:
         # FR-005 — a closed project is frozen: readable, never writable, through any door.
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(WakeCauseRefused)
+    async def _wake_cause_refused(_: Request, exc: WakeCauseRefused) -> JSONResponse:
+        # FR-048a — the two closed cause lists, enforced where the wake leaves the system.
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(PlanGateError)

@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends
 from armarius.domain.entities.comment import AuthorKind
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.task import TaskStatus
+from armarius.domain.services.wake_policy import WakeCauseRefused
 from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.api.frozen import refuse_when_frozen
@@ -349,6 +350,14 @@ async def wake_task(
             else wake_reason("manual_wake")
         ),
     )
+    if run_id is None:
+        # The engine refuses a cause the recipient's role may not be woken for (FR-048a).
+        # This button's cause is one of the system's own, allowed for every role, so the
+        # branch does not fire today — but the rule lives in the engine, not here, and a
+        # route that answered with a null run id would be lying to whoever pressed it.
+        raise WakeCauseRefused(
+            "Không đánh thức được agent này: cớ gọi không thuộc phần việc của vai họ."
+        )
     return RunStartedOut(run_id=run_id)
 
 
