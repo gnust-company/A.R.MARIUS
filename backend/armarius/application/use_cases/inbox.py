@@ -94,6 +94,16 @@ class InboxService:
                 recipient_user_id, status=status, project_id=project_id
             )
 
+    async def get(self, item_id: UUID) -> InboxItem | None:
+        """One item, unscoped. For callers that already know who is asking.
+
+        Deliberately does no recipient check: the freeze guard needs to know which project
+        an item belongs to *before* the route runs, and the route itself is what hides
+        another patron's item behind a 404.
+        """
+        async with self._uow() as uow:
+            return await uow.inbox.get(item_id)
+
     async def resolve(
         self, item_id: UUID, *, recipient_user_id: str | None = None
     ) -> InboxItem:

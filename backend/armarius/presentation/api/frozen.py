@@ -6,10 +6,17 @@ Comments, artifacts, status moves, roster grants and threshold edits all still w
 project the patron had declared finished.
 
 So the rule is applied once, at the edge every request passes through, rather than beside
-each caller: any non-read request that names a project — directly, or through a task —
-is refused while that project is closed. A route added tomorrow inherits it without anyone
-remembering to. `tests/test_closed_project_is_frozen.py` walks the whole route table and
-fails if a write route ever escapes this guard.
+each caller: any non-read request that names a project — directly, through a task, or
+through an inbox item — is refused while that project is closed. A route added tomorrow
+inherits it without anyone remembering to. `tests/test_closed_project_is_frozen.py` walks
+the whole route table and fails if a write route ever escapes this guard.
+
+The inbox door is why that audit had to stop reading path parameters to decide what needs
+guarding. `POST /v1/inbox/{item_id}/answer` names neither a project nor a task in its URL,
+yet answering an escalation reassigns, cancels, or redirects the task it is about — so it
+wrote to closed projects while both the guard and its audit looked straight past it. Which
+project an item belongs to has always been recorded on the item; only the guard's way of
+finding it was too narrow.
 
 Two things deliberately stay possible on a closed project:
 
@@ -19,7 +26,7 @@ Two things deliberately stay possible on a closed project:
     operating inside it.
 
 The service-layer guards (the wake engine, the task edit) stay where they are. They cover
-the callers that never touch HTTP at all: background loops, and the recovery ladder.
+the callers that never touch HTTP at all: the background loops.
 """
 
 from __future__ import annotations
@@ -48,6 +55,39 @@ def _as_uuid(value: object) -> UUID | None:
         return None
 
 
+async def _project_named_by(request: Request, container: ContainerDep) -> UUID | None:
+    """Which project this request is aimed at, or None if it is aimed at none.
+
+    A route names its project directly, or by way of something the project owns. Each hop
+    ends in None when the thing is missing: a request for something that is not there is
+    the route's own 404 to give, not ours to turn into "closed".
+    """
+    params = request.path_params
+
+    direct = _as_uuid(params.get("project_id"))
+    if direct is not None:
+        return direct
+
+    task_id = _as_uuid(params.get("task_id"))
+    if task_id is not None:
+        task = await container.tasks.get(task_id)
+        return task.project_id if task is not None else None
+
+    item_id = _as_uuid(params.get("item_id"))
+    if item_id is not None:
+        item = await container.inbox.get(item_id)
+        if item is None:
+            return None
+        if item.project_id is not None:
+            return item.project_id
+        if item.task_id is not None:
+            task = await container.tasks.get(item.task_id)
+            return task.project_id if task is not None else None
+        return None
+
+    return None  # workspaces, mariuses, skills, auth, onboarding — no project named
+
+
 async def refuse_when_frozen(request: Request, container: ContainerDep) -> None:
     """Refuse any write aimed at a closed project.
 
@@ -62,16 +102,9 @@ async def refuse_when_frozen(request: Request, container: ContainerDep) -> None:
     if (request.method, getattr(route, "path", "")) == _DELETE_THE_PROJECT:
         return
 
-    params = request.path_params
-    project_id = _as_uuid(params.get("project_id"))
+    project_id = await _project_named_by(request, container)
     if project_id is None:
-        task_id = _as_uuid(params.get("task_id"))
-        if task_id is None:
-            return  # not aimed at a project — workspaces, skills, auth, onboarding
-        task = await container.tasks.get(task_id)
-        if task is None or task.project_id is None:
-            return  # a missing task is the route's own 404 to give, not ours
-        project_id = task.project_id
+        return
 
     project = await container.projects.get_project(project_id)
     if project is not None and is_closed(project.status):

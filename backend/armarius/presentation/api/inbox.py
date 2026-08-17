@@ -13,15 +13,19 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from armarius.application.use_cases.recovery import EscalationAnswer
 from armarius.domain.entities.inbox_item import InboxItemStatus
 from armarius.presentation.api.auth import CurrentUser
+from armarius.presentation.api.frozen import refuse_when_frozen
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import AnswerEscalationIn, InboxItemOut
 
-router = APIRouter(prefix="/v1", tags=["inbox"])
+# A letter about a closed project stays in the inbox and stays readable, but nothing on it
+# can be acted on any more (FR-005). The guard finds the project through the item itself —
+# these URLs name only the letter.
+router = APIRouter(prefix="/v1", tags=["inbox"], dependencies=[Depends(refuse_when_frozen)])
 
 
 @router.get("/inbox", response_model=list[InboxItemOut])
