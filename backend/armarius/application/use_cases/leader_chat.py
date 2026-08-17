@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from armarius.application.ports.adapter import AdapterRegistry, ExecContext
+from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.onboarding import credential_file_for
 from armarius.application.use_cases.types import UowFactory
@@ -40,6 +41,7 @@ from armarius.domain.services.leader_chat_prompt import (
     PlanScopeEntry,
     build_leader_chat_prompt,
 )
+from armarius.domain.services.wake_policy import WakeRole, may_wake
 from armarius.domain.services.wake_prompt import ProjectBrief
 from armarius.domain.services.wake_reason import WakeReason
 from armarius.infrastructure.events.topic_bus import TopicEventBus
@@ -177,11 +179,21 @@ class LeaderChatService:
         cannot be delivered. Returns True if the Leader was actually woken; False when it
         is offline or already mid-turn — the phase change still stands, and the pending
         reason is on the record for the orchestration cadence to pick up.
+
+        This is the second of the two doors a wake leaves by, and the cause list is checked
+        at both (FR-048a). Everything arriving here is addressed to the Leader by
+        construction, so the question is simply whether the Leader may be woken for this
+        cause at all. The patron's own turn in the chat tab does not come through here: it
+        goes straight to `send`, which is the one cause — the patron writing — that needs
+        no test.
         """
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)
             if project is None:
                 raise LookupError("project not found")
+            if not may_wake(source, roles={WakeRole.LEADER}):
+                await self._record_refusal(uow, project_id, source, reason)
+                return False
             conversation = await uow.leader_chats.get_by_project(project_id)
             leader_id = await self._leader_of(uow, project_id)
             leader = await uow.mariuses.get(leader_id) if leader_id else None
@@ -235,6 +247,27 @@ class LeaderChatService:
         await self._publish(project_id, "chat.state", {"state": str(ChatState.THINKING)})
         self._spawn_turn(conversation.id)
         return True
+
+    async def _record_refusal(
+        self, uow: UnitOfWork, project_id: UUID, source: WakeSource, reason: WakeReason
+    ) -> None:
+        """Write down a wake the Leader's list does not allow, then drop it (FR-048a)."""
+        logger.warning(
+            "wake refused: %s may not wake the Leader of project %s", source, project_id
+        )
+        await uow.wakeups.add(
+            WakeupRequest(
+                project_id=project_id,
+                marius_id=await self._leader_of(uow, project_id),
+                task_id=None,
+                source=source,
+                causes=[reason],
+                reason=reason.render_en(),
+                status=WakeupStatus.REFUSED,
+                created_at=utcnow(),
+            )
+        )
+        await uow.commit()
 
     # ── the isolated project-scoped turn ─────────────────────────────────────────
     def _spawn_turn(self, conversation_id: UUID) -> None:

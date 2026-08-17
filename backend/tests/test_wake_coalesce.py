@@ -82,7 +82,7 @@ def _engine(uow_factory, adapter: MariusAdapter) -> WakeEngine:
 
 
 async def _world(uow_factory):
-    """A project past the planning gate, one agent, one task assigned to nobody."""
+    """A project past the planning gate, one agent, and the task in that agent's hands."""
     workspaces = WorkspaceService(uow_factory)
     mariuses = MariusService(uow_factory)
     ws = await workspaces.create_workspace("WS")
@@ -108,7 +108,12 @@ async def _world(uow_factory):
     async with uow_factory() as uow:
         seeded = await uow.tasks.get(task.id)
         assert seeded is not None
-        seeded.status_reason = "chờ người phụ trách"
+        seeded.status_reason = "chờ số liệu đầu vào"
+        # Đầu việc nằm trong tay Alice. Đây là điều kiện để những cớ của thợ — bình luận,
+        # nhắc tên, giao việc — được phép gọi cô ấy dậy (FR-048a): vai đọc từ công việc, và
+        # người không giữ đầu việc thì không có gì đang chờ họ. Ghi thẳng chứ không qua lối
+        # giao việc, vì lối ấy tự bắn thêm một lệnh gọi mà mấy bài dưới đang đếm.
+        seeded.assigned_marius_id = alice.id
         await uow.tasks.update(seeded)
         await uow.commit()
     return project, alice, task
@@ -224,8 +229,11 @@ async def test_three_causes_at_once_produce_one_run_naming_all_three(uow_factory
             marius_id=alice.id, task_id=task.id, source=WakeSource.MENTION,
             reason=wake_reason("mentioned"),
         ),
+        # Cớ thứ ba là lời tự nhắc của hệ thống. Nó từng là *nhắc việc đứng im*, thứ mà
+        # nơi duy nhất phát ra lại gọi Trưởng dự án chứ không gọi thợ (T185) — dùng nó ở
+        # đây là mượn một cớ không bao giờ tới người này.
         engine.enqueue(
-            marius_id=alice.id, task_id=task.id, source=WakeSource.IDLE_REMINDER,
+            marius_id=alice.id, task_id=task.id, source=WakeSource.NUDGE,
             reason=wake_reason("no_reason_recorded"),
         ),
     )
