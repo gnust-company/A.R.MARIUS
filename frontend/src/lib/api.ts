@@ -984,6 +984,10 @@ export interface ThresholdsDTO {
   level1_recovery_attempts: number
   rejection_round_cap: number
   orchestration_wakes_per_hour: number
+  orchestration_max_stretch: number
+  orchestration_max_interval_seconds: number
+  orchestration_min_interval_seconds: number
+  level2_handover_attempts: number
 }
 
 /** One thing the last orchestration sweep found on the board (spec 001 FR-052).
@@ -1016,9 +1020,12 @@ export async function getTaskLog(taskId: string): Promise<TaskLogEntryDTO[]> {
   return get<TaskLogEntryDTO[]>(`/v1/tasks/${taskId}/log`)
 }
 
-/** `status` accepts `pending` (default), `resolved` or `all`. */
+/** `status` accepts `pending` (default), `resolved`, `void` or `all`.
+ *
+ * `void` is a letter whose project closed before anyone answered it — off the waiting
+ * list, but never claimed as answered. */
 export async function getInbox(params?: {
-  status?: 'pending' | 'resolved' | 'all'
+  status?: 'pending' | 'resolved' | 'void' | 'all'
   projectId?: string
 }): Promise<InboxItemDTO[]> {
   const query = new URLSearchParams()

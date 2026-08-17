@@ -375,7 +375,7 @@ export const en = {
     unknownProject: 'Unknown project',
     open: 'Open task',
     closedProject: 'Project closed',
-    closedProjectHint: 'The project is closed — this letter is read-only now.',
+    closedProjectHint: 'The project is closed — the task can no longer be changed; all that is left is to clear this letter.',
     accept: 'Accept',
     sendBack: 'Send back',
     rejectReasonPrompt: 'Sending it back needs a reason — the worker gets this as their next action:',
