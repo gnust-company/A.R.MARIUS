@@ -1220,3 +1220,16 @@ tồn tại không có nghĩa là luật được canh; phải kiểm bài kiể
   phẩm, vai và ghế; mười mấy bảng thêm sau đó chưa bao giờ được thêm vào. Trên Postgres khoá ngoại chặn
   thẳng, trên SQLite thì im lặng bỏ lại rác — nên bài kiểm cũ xanh. Sửa cùng chỗ này, một vòng xoá dùng
   chung cho cả xoá dự án lẫn xoá không gian làm việc
+
+  **Rà soát bắt được một lối còn hở, và bài kiểm mù đúng chỗ chốt mù (2026-08-17).** Thư leo thang trong
+  hộp thư người chủ: bấm *giao lại người khác* / *đặt bước tiếp theo* / *huỷ đầu việc* thì ghi thẳng vào
+  đầu việc, kể cả khi dự án đã đóng — người mới bị gọi dậy làm việc cho một dự án đã tuyên bố xong. Lọt
+  vì chốt nhận ra dự án bằng cách đọc **đường dẫn**, mà đường dẫn của lá thư chỉ mang số hiệu lá thư;
+  dự án và đầu việc vốn **đã** ghi trên chính lá thư, chỉ là chốt không tra tới. Bài kiểm duyệt đường
+  dẫn cũng dùng đúng giả định ấy nên không thấy gì. Sửa hai chỗ: chốt tra thêm một nhịp *lá thư → dự
+  án*, và bài kiểm đổi cách soi — duyệt **mọi** lối ghi trong hệ thống, mỗi lối hoặc có chốt hoặc phải
+  nằm trong một danh sách miễn viết tay kèm lý do. Đặt tên đường dẫn kiểu gì cũng không lọt được nữa
+
+  **Thư của dự án đã đóng thì nằm lại, không biến mất.** Người chủ chốt 2026-08-17: gắn dấu *dự án đã
+  đóng* lên thẻ thư và tắt hết nút trên đó. Không tự dọn thư khi đóng dự án — lá thư là bằng chứng một
+  câu hỏi đã từng được đặt ra, và dự án giữ lại chính là để đọc lại lịch sử ấy
