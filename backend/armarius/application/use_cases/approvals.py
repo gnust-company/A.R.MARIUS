@@ -461,12 +461,6 @@ class ApprovalService:
             return
         await self._leader_chat.notify(
             project_id=project_id,
-            text=(
-                f"Người chủ đã từ chối đầu ra của đầu việc {label}"
-                + (f": {note}" if note else ".")
-                + "\nĐầu việc đã quay lại *đang làm* với người cũ. Bạn xem lại phần bạn "
-                "đã chấm đạt, và quyết xem cần đổi gì."
-            ),
             source=WakeSource.PATRON_DECISION,
             reason=wake_reason(
                 "patron_rejected_output", task=label, note=note or "—"

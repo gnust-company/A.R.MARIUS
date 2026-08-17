@@ -97,10 +97,21 @@ class TaskCardCounts:
 
 
 class LeaderNotifier(Protocol):
-    """The one thing task use cases need from the Leader chat: wake it about a project."""
+    """The one thing task use cases need from the Leader chat: wake it about a project.
+
+    A cause, never a sentence. The packet the Leader reads is assembled at the door out of
+    its own four-part core plus `detail`, the extra this call type owes (FR-044, FR-044a) —
+    callers that write the whole body themselves are how eight fixed parts got forced on a
+    role that had no use for five of them.
+    """
 
     async def notify(
-        self, *, project_id: UUID, text: str, source: WakeSource, reason: WakeReason
+        self,
+        *,
+        project_id: UUID,
+        source: WakeSource,
+        reason: WakeReason,
+        detail: str = "",
     ) -> bool: ...
 
 
@@ -733,14 +744,13 @@ class TaskService:
         await announce_comment(self._bus, project_id, task_id)
         await self._notify_leader(
             project_id,
-            text=(
-                f"Một thợ xin nhận đầu việc {task.identifier or task_id}. "
-                "Vào xem rồi giao hoặc trả lời."
-            ),
             reason=wake_reason(
                 "worker_asked_for_task", task=task.identifier or task_id
             ),
             source=WakeSource.WORKER_HANDBACK,
+            # The worker's own words, passed through untouched — a person (or an agent
+            # speaking for itself) wrote them, so they are not the system's to translate.
+            detail=(f"What the worker said: {note.strip()}" if note and note.strip() else ""),
         )
         return task
 
@@ -783,11 +793,9 @@ class TaskService:
         await announce_comment(self._bus, project_id, task_id)
         await self._notify_leader(
             project_id,
-            text=(
-                f"Thợ trả lại đầu việc {updated.identifier or task_id}: {reason}"
-            ),
             reason=wake_reason("worker_handback", task=updated.identifier or task_id),
             source=WakeSource.WORKER_HANDBACK,
+            detail=(f"What the worker said: {reason.strip()}" if reason.strip() else ""),
         )
         return updated
 
@@ -921,40 +929,35 @@ class TaskService:
             # submission; it has nothing left to do until somebody answers.
             await self._notify_leader(
                 project_id,
-                text=(
-                    f"Đầu việc {updated.identifier or task_id} đã nộp và đang chờ bạn chấm "
-                    "theo bộ tiêu chí."
-                ),
                 reason=wake_reason("task_in_review", task=updated.identifier or task_id),
                 source=WakeSource.TASK_IN_REVIEW,
+                detail="Judge it against the task's acceptance criteria.",
             )
         if target is TaskStatus.DONE:
             await self._notify_leader(
                 project_id,
-                text=(
-                    f"Đầu việc {updated.identifier or task_id} đã xong"
-                    + (
-                        f"; {len(unlocked)} đầu việc được mở khoá."
-                        if unlocked
-                        else "."
-                    )
-                ),
                 reason=wake_reason("task_done", task=updated.identifier or task_id),
                 source=WakeSource.TASK_DONE,
+                detail=(
+                    f"{len(unlocked)} task(s) came unblocked with it."
+                    if unlocked
+                    else ""
+                ),
             )
             if not await self._project_has_open_tasks(project_id):
-                # FR-043: cả đợt việc đã khép — Trưởng dự án soạn bản tổng kết, rồi người
-                # chủ quyết đóng dự án / chuyển bảo trì / mở đợt mới. Không có cổng nghiệm
-                # thu cấp dự án (FR-042): công việc đã được công nhận từng đầu việc rồi.
+                # FR-043: the batch is closed — the Leader writes the wrap-up, then the
+                # patron decides between closing the project, moving it to maintenance and
+                # opening a new batch. There is no project-level acceptance gate (FR-042):
+                # the work was already signed off one task at a time.
                 await self._notify_leader(
                     project_id,
-                    text=(
-                        "Mọi đầu việc của đợt đã khép. Soạn bản tổng kết đợt rồi gửi "
-                        "người chủ kèm ba lựa chọn: đóng dự án, chuyển bảo trì, "
-                        "hoặc mở đợt việc mới."
-                    ),
                     reason=wake_reason("batch_done"),
                     source=WakeSource.TASK_DONE,
+                    detail=(
+                        "Write the batch wrap-up and send it to the patron with the three "
+                        "choices open to them: close the project, move it to maintenance, "
+                        "or open a new batch."
+                    ),
                 )
         # Last, on purpose: the drive depends on the wakes and inbox items the block
         # above just created, and asking before them would settle on a stale answer.
@@ -1430,12 +1433,17 @@ class TaskService:
         )
 
     async def _notify_leader(
-        self, project_id: UUID | None, *, text: str, reason: WakeReason, source: WakeSource
+        self,
+        project_id: UUID | None,
+        *,
+        reason: WakeReason,
+        source: WakeSource,
+        detail: str = "",
     ) -> None:
         if self._leader_chat is None or project_id is None:
             return
         await self._leader_chat.notify(
-            project_id=project_id, text=text, source=source, reason=reason
+            project_id=project_id, source=source, reason=reason, detail=detail
         )
 
     async def _publish_status(

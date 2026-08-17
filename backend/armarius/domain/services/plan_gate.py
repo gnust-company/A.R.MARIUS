@@ -48,7 +48,8 @@ class PlanOutcome:
     plan_status: PlanStatus
     next_phase: ProjectStatus | None
     wake_leader: bool
-    # What the Leader is told to do next, in a sentence a reader understands.
+    # What the Leader is told to do next. English: it goes into the wake packet and
+    # nowhere else, so the agent is its only reader (Constitution VII).
     next_action: str
     note: str | None = None
 
@@ -86,7 +87,7 @@ def decide(
             plan_status=PlanStatus.APPROVED,
             next_phase=ProjectStatus.OPERATING,
             wake_leader=True,
-            next_action="Chẻ đầu việc theo kế hoạch đã duyệt và giao cho thợ.",
+            next_action="Break the approved plan into tasks and assign them.",
             note=None,
         )
 
@@ -95,7 +96,7 @@ def decide(
             plan_status=PlanStatus.CHANGES_REQUESTED,
             next_phase=None,
             wake_leader=True,
-            next_action="Sửa kế hoạch theo góp ý của người chủ rồi trình lại.",
+            next_action="Revise the plan along the patron's notes and submit it again.",
             note=cleaned,
         )
 
@@ -104,7 +105,7 @@ def decide(
         plan_status=PlanStatus.SUBMITTED,
         next_phase=None,
         wake_leader=True,
-        next_action="Trả lời câu hỏi của người chủ về bản kế hoạch đang trình.",
+        next_action="Answer the patron's question about the plan on the table.",
         note=cleaned,
     )
 

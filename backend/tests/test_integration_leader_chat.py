@@ -290,7 +290,6 @@ async def test_a_wake_that_could_not_be_delivered_does_not_mark_the_leader_alive
 
     await chat.notify(
         project_id=project.id,
-        text="Đầu việc đang đình trệ, cần bạn quyết.",
         source=WakeSource.NUDGE,
         reason=wake_reason("escalated_to_leader", task="T-1", attempt=1, ceiling=3),
     )

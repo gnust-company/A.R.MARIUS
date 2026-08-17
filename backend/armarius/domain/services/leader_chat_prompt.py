@@ -4,6 +4,12 @@ Deliberately NOT the generic task-wake prompt (``build_wake_prompt``): that one 
 agent to "update the task, publish an artifact, move to review/done" — meaningless for a
 1-1 project conversation, which is why the project-level chat needs its own framing.
 
+This is the project door's packet, so it carries the same four-part core every wake owes
+(FR-044): the Leader's role here, the approved brief, why it is awake, and who else holds a
+seat. What changes per call type is the extra below the core (FR-044a) — the snag list of a
+cadence sweep, the dossier behind an escalation — and a patron simply writing has no extra
+at all, which is why none is forced.
+
 Here the Leader is framed as the project's lead in an ongoing chat with the patron about
 the *whole* project. It answers/advises directly (its reply streams straight back, like
 Open WebUI — we never ask the agent to call an API to deliver its answer). When the patron
@@ -40,7 +46,7 @@ class PlanScopeEntry:
 
 @dataclass(frozen=True)
 class ChatTurn:
-    role: str  # "patron" | "leader"
+    role: str  # "patron" | "leader" | "system"
     text: str
 
 
@@ -63,6 +69,13 @@ class LeaderChatContext:
     # The Leader's own project role description (its leader Role), shown in the header so the
     # Leader knows the duties attached to its seat. Empty when the leader role has none.
     leader_role_description: str = ""
+    # Part 3 of the four-part core (FR-044): why this turn is happening at all. Empty when
+    # the patron simply wrote something — then the reason is their message, sitting right
+    # there in the conversation, and repeating it as a heading would be noise.
+    wake_reason: str = ""
+    # What this particular call type owes on top of the core (FR-044a): the snag list of a
+    # cadence sweep, the dossier behind an escalation. Agent-only, so English.
+    wake_detail: str = ""
     credential_file: str | None = None
 
 
@@ -116,19 +129,35 @@ def build_leader_chat_prompt(ctx: LeaderChatContext) -> str:
             )
     lines.append("")
 
+    # Part 3 of the core (FR-044), before the team so the Leader knows what it is here for
+    # while it reads who is available to help.
+    if ctx.wake_reason:
+        lines.append("## Why you were woken")
+        lines.append(f"- {ctx.wake_reason.strip()}")
+        lines.append("")
+        if ctx.wake_detail.strip():
+            lines.append(ctx.wake_detail.strip())
+            lines.append("")
+
+    # Part 4 of the core. Always rendered, empty or not (FR-045): a Leader that cannot tell
+    # "nobody has been seated yet" from "the roster failed to load" invents a team.
+    lines.append("## Your team (workers you can assign)")
     if ctx.directory:
-        lines.append("## Your team (workers you can assign)")
         for d in ctx.directory:
             role = d.role or "—"
             lines.append(f"- {d.name} ({role}) [{d.liveness}] — marius_id: {d.marius_id}")
             if d.role_description:
                 lines.append(f"    role: {d.role_description.strip()}")
-        lines.append("")
+    else:
+        lines.append(f"- {NONE_MARKER} — nobody else holds a seat on this project yet.")
+    lines.append("")
 
     if ctx.recent_turns:
         lines.append("## Conversation so far")
         for t in ctx.recent_turns:
-            who = "Patron" if t.role == "patron" else "You"
+            # A system line is neither the patron speaking nor the Leader: attributing it
+            # to "You" fed the Leader its own wake notices back as things it had said.
+            who = {"patron": "Patron", "leader": "You"}.get(t.role, "System")
             lines.append(f"- {who}: {t.text}")
         lines.append("")
 

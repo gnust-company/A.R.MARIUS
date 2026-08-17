@@ -704,13 +704,12 @@ class ProjectService:
         try:
             await self._leader_chat.notify(
                 project_id=project_id,
-                text=(
-                    "Dự án vừa đủ đội và mọi thợ đã trực tuyến. "
-                    "Việc của bạn bây giờ: làm rõ Bối cảnh dự án với người chủ, "
-                    "rồi lập kế hoạch và trình cho người chủ duyệt."
-                ),
                 source=WakeSource.PROJECT_READY,
                 reason=wake_reason("roster_complete"),
+                detail=(
+                    "Settle the project brief with the patron first, then draft the plan "
+                    "and submit it for their approval."
+                ),
             )
         except LookupError:  # pragma: no cover - project vanished mid-flight
             return

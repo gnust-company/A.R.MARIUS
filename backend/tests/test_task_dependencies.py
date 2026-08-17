@@ -226,9 +226,14 @@ class _RecordingLeaderChat:
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
-    async def notify(self, *, project_id, text: str, source, reason: str) -> bool:
+    async def notify(self, *, project_id, source, reason, detail: str = "") -> bool:
         self.calls.append(
-            {"project_id": project_id, "text": text, "source": source, "reason": reason}
+            {
+                "project_id": project_id,
+                "source": source,
+                "reason": reason,
+                "detail": detail,
+            }
         )
         return True
 

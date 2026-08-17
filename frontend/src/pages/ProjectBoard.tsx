@@ -630,7 +630,13 @@ export default function ProjectBoard() {
                       <span className="mt-0.5 shrink-0 rounded px-1.5 py-0.5 bg-[#F5DDD6] text-[#B84A32] font-body text-body-xs">
                         {t(`board.cadence.kind.${snag.kind}`)}
                       </span>
-                      <span className="font-body text-body-sm text-ink-light">{snag.detail}</span>
+                      <span className="font-body text-body-sm text-ink-light">
+                        {t(`board.cadence.detail.${snag.kind}`, {
+                          identifier: snag.identifier,
+                          title: snag.title,
+                          hours: snag.mark_hours ?? '',
+                        })}
+                      </span>
                     </li>
                   ))}
                 </ul>

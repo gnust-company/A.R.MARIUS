@@ -79,7 +79,11 @@ class Snag:
     kind: SnagKind
     task_id: UUID
     identifier: str
+    # The agent's copy, English (Constitution VII). The patron reads the same snag on the
+    # project board, so the screen builds its own sentence from `kind` plus the fields
+    # below rather than showing this one — the two readers do not share a language.
     detail: str
+    title: str = ""
     # For *due soon* only: which warning mark this snag is reporting, so the next sweep
     # knows it has already been told (FR-052 says *just crossed*, not *is under*).
     mark_hours: int | None = None
@@ -126,7 +130,8 @@ def find_snags(
                     kind=SnagKind.BLOCKED,
                     task_id=task.task_id,
                     identifier=task.identifier,
-                    detail=f"{task.identifier} — {task.title}: đang bị chặn.",
+                    title=task.title,
+                    detail=f"{task.identifier} — {task.title}: blocked.",
                 )
             )
 
@@ -136,8 +141,9 @@ def find_snags(
                     kind=SnagKind.AWAITING_LEADER,
                     task_id=task.task_id,
                     identifier=task.identifier,
+                    title=task.title,
                     detail=(
-                        f"{task.identifier} — {task.title}: đang chờ chính bạn ra quyết định."
+                        f"{task.identifier} — {task.title}: waiting on your own decision."
                     ),
                 )
             )
@@ -151,8 +157,9 @@ def find_snags(
                     kind=SnagKind.DUE_SOON,
                     task_id=task.task_id,
                     identifier=task.identifier,
+                    title=task.title,
                     detail=(
-                        f"{task.identifier} — {task.title}: còn dưới {mark} giờ là tới hạn."
+                        f"{task.identifier} — {task.title}: due in under {mark} hour(s)."
                     ),
                     mark_hours=mark,
                 )

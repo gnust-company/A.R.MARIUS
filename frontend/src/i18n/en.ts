@@ -502,6 +502,12 @@ export const en = {
         blocked: 'Blocked',
         awaiting_leader: 'Awaiting your decision',
       },
+      detail: {
+        silent: '{{identifier}} — {{title}}: quiet, nobody working on it.',
+        due_soon: '{{identifier}} — {{title}}: due in under {{hours}} hour(s).',
+        blocked: '{{identifier}} — {{title}}: blocked.',
+        awaiting_leader: '{{identifier}} — {{title}}: waiting on the Leader.',
+      },
     },
   },
   leaderChat: {

@@ -77,9 +77,9 @@ class RecordingNotifier:
         self.calls: list[dict] = []
 
     async def notify(
-        self, *, project_id: UUID, text: str, source: WakeSource, reason: str
+        self, *, project_id: UUID, source: WakeSource, reason, detail: str = ""
     ) -> bool:
-        self.calls.append({"project_id": project_id, "text": text, "reason": reason})
+        self.calls.append({"project_id": project_id, "reason": reason, "detail": detail})
         return True
 
 
@@ -204,7 +204,7 @@ async def test_the_budget_runs_out_and_the_leader_is_asked(uow_factory) -> None:
         f"tiêu {len(wakes.calls)} lần tự gọi lại, trần là {CAP}"
     )
     assert notifier.calls, "hết ngân sách rồi mà Trưởng dự án không được hỏi"
-    assert "đình trệ" in notifier.calls[0]["text"]
+    assert "has stalled" in notifier.calls[0]["detail"]
     ladder = await _ladder(uow_factory, task.id)
     assert ladder is not None and ladder.level >= EscalationLevel.LEVEL_2
 
@@ -261,12 +261,12 @@ async def test_the_leader_is_told_which_of_the_two_roads_led_to_it(uow_factory) 
     for hour in range(5):
         await worked.climb(stalled, cause=CAUSE, now=T0 + timedelta(hours=hour))
 
-    orphan_text = orphan_notifier.calls[0]["text"]
-    assert "chưa có người phụ trách" in orphan_text
-    assert "Hệ thống đã tự gọi lại" not in orphan_text, (
+    orphan_text = orphan_notifier.calls[0]["detail"]
+    assert "Nobody holds this task" in orphan_text
+    assert "called them back" not in orphan_text, (
         "nói với Trưởng dự án là đã gọi lại, trong khi không gọi ai lần nào"
     )
-    assert "Hệ thống đã tự gọi lại" in worked_notifier.calls[0]["text"]
+    assert "called them back" in worked_notifier.calls[0]["detail"]
 
 
 @pytest.mark.asyncio
@@ -330,9 +330,11 @@ class UnreachableNotifier:
         self.attempts: list[dict] = []
 
     async def notify(
-        self, *, project_id: UUID, text: str, source: WakeSource, reason: str
+        self, *, project_id: UUID, source: WakeSource, reason, detail: str = ""
     ) -> bool:
-        self.attempts.append({"project_id": project_id, "text": text, "reason": reason})
+        self.attempts.append(
+            {"project_id": project_id, "reason": reason, "detail": detail}
+        )
         return False
 
 
@@ -344,7 +346,7 @@ class FlakyNotifier:
         self._fail_first = fail_first
 
     async def notify(
-        self, *, project_id: UUID, text: str, source: WakeSource, reason: str
+        self, *, project_id: UUID, source: WakeSource, reason, detail: str = ""
     ) -> bool:
         self.attempts.append({"project_id": project_id, "reason": reason})
         return len(self.attempts) > self._fail_first

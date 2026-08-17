@@ -503,6 +503,14 @@ export const vi = {
         blocked: 'Bị chặn',
         awaiting_leader: 'Chờ Trưởng dự án quyết',
       },
+      // The snag sentence is built here rather than taken from the server's `detail`: that
+      // one is the agent's English copy, and the same snag has two readers.
+      detail: {
+        silent: '{{identifier}} — {{title}}: im lâu, không ai đang làm.',
+        due_soon: '{{identifier}} — {{title}}: còn dưới {{hours}} giờ là tới hạn.',
+        blocked: '{{identifier}} — {{title}}: đang bị chặn.',
+        awaiting_leader: '{{identifier}} — {{title}}: đang chờ Trưởng dự án quyết.',
+      },
     },
   },
   leaderChat: {

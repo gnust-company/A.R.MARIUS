@@ -1,10 +1,18 @@
-"""Wake prompt content — every wake names its workspace/project + credential file (#15).
+"""Khuôn gói tin đánh thức — lõi bốn phần, phần riêng theo loại lời gọi (FR-044, FR-044a).
 
-Spec 001 Story 4 adds the shape of the packet itself: eight mandatory parts (FR-044) and
-the rule that an empty part is *stated* as empty rather than dropped (FR-045). Dropping a
-part is what makes a packet ambiguous — the agent cannot tell "nobody has said anything
-yet" apart from "the section broke", so it guesses. Every part is therefore always
-rendered.
+Luật cũ là **tám phần cho mọi lời gọi**. Nó sai ở chỗ không nhìn ai đang nhận: năm trong tám
+phần chỉ có nghĩa với người đang *làm* đầu việc. Trưởng dự án bị kéo vào một đầu việc để chấm
+hoặc để quyết, thế mà vẫn nhận ô "việc kế tiếp của bạn" và cả đoạn dặn nộp thành phẩm ở đâu —
+những ô mà muốn điền cho hết thì phải bịa.
+
+Nên giờ: **lõi bốn phần** không lời gọi nào được miễn (vai của mình ở dự án này, Bối cảnh đã
+duyệt, vì sao bị gọi, đồng đội và ai đang trực), rồi phần riêng của từng loại. FR-045 vẫn giữ
+nguyên và chỉ nói chuyện *bên trong* những phần một gói tin có mang: phần nào có mà rỗng thì
+phải ghi rõ là rỗng, chứ không được biến mất — mất hẳn một mục thì agent không phân biệt được
+"không có gì" với "chỗ này hỏng", và nó sẽ đoán.
+
+Chữ trong gói tin là tiếng Anh: đây là bản của agent, mà agent không có ngôn ngữ để chọn
+(Hiến pháp VII).
 """
 
 from __future__ import annotations
@@ -15,12 +23,13 @@ from armarius.domain.services.wake_prompt import (
     DirectoryEntry,
     ProjectBrief,
     ThreadMessage,
+    WakeAudience,
     WakeContext,
     build_wake_prompt,
 )
 
 
-def _ctx(**overrides) -> WakeContext:
+def _ctx(**overrides) -> WakeContext:  # noqa: ANN003
     base = dict(
         marius_name="Alice",
         task_title="Add dark mode",
@@ -114,24 +123,27 @@ def test_directory_renders_dash_when_role_title_is_empty():
     assert "- @Bob (—) [idle] skills: —" in prompt
 
 
-# ── spec 001 Story 4: the eight-part packet (FR-044, FR-045, FR-046) ────────────
+# ── lõi bốn phần (FR-044) ────────────────────────────────────────────────────────
 
+# Bốn phần, theo đúng thứ tự yêu cầu liệt kê. Giữ ở dạng dữ liệu để một phần lặng lẽ thôi
+# được dựng thì hỏng ngay tại đây kèm tên nó, chứ không nấp sau một bộ kiểm toàn xanh.
+CORE_PARTS = (
+    "You are Alice",  # 1. vai của agent ở dự án này
+    "## Project context",  # 2. Bối cảnh đã duyệt
+    "## Why you were woken",  # 3. vì sao bị gọi, thành câu
+    "## Your teammates on this project",  # 4. đồng đội kèm trạng thái trực tuyến
+)
 
-# The eight parts, in the order FR-044 lists them. Kept as data so a part that quietly
-# stops being rendered fails here by name instead of hiding behind a passing suite.
-EIGHT_PARTS = (
-    "You are Alice",  # 1. the agent's role on this project
-    "## Project context",  # 2. the approved brief
-    "## Task:",  # 3. the task, its description and status
-    "## Why you were woken",  # 4. the reason, in a sentence
-    "## Your teammates on this project",  # 5. the directory with liveness
-    "## New messages since you last worked",  # 6. what happened while it slept
-    "## Your recorded next action",  # 7. the work waiting to be picked up
-    "## Where to put your work and how to report status",  # 8. how to hand work back
+# Phần riêng của loại "gọi thợ vào một đầu việc" (FR-044a).
+WORKER_EXTRAS = (
+    "## Task:",
+    "## New messages since you last worked",
+    "## Your recorded next action",
+    "## Where to put your work and how to report status",
 )
 
 
-def test_the_packet_carries_all_eight_parts():
+def test_every_packet_carries_the_four_part_core():
     prompt = build_wake_prompt(
         _ctx(
             self_role="Backend",
@@ -144,18 +156,46 @@ def test_the_packet_carries_all_eight_parts():
             ),
         )
     )
-    for part in EIGHT_PARTS:
-        assert part in prompt, f"thiếu phần: {part}"
+    for part in CORE_PARTS:
+        assert part in prompt, f"thiếu phần lõi: {part}"
 
-    # And in the order the requirement lists them — an agent reads top-down, so the brief
-    # has to arrive before the task it is supposed to judge.
-    positions = [prompt.index(part) for part in EIGHT_PARTS]
+    # Và theo đúng thứ tự ấy — agent đọc từ trên xuống, nên Bối cảnh phải tới trước cái nó
+    # được giao để đối chiếu.
+    positions = [prompt.index(part) for part in CORE_PARTS]
     assert positions == sorted(positions), positions
+
+    # Lõi đứng trước phần riêng: biết mình là ai rồi mới tới việc phải làm.
+    assert prompt.index(CORE_PARTS[-1]) < prompt.index("## Task:")
+
+
+def test_a_worker_called_into_a_task_gets_the_task_parts():
+    prompt = build_wake_prompt(_ctx(audience=WakeAudience.WORKER))
+    for part in WORKER_EXTRAS:
+        assert part in prompt, f"thiếu phần riêng của thợ: {part}"
+
+
+def test_the_leader_pulled_onto_a_task_is_not_asked_to_fill_a_workers_boxes():
+    """FR-044a. Trưởng dự án bị kéo vào một đầu việc để chấm hoặc để quyết — nó không nộp
+    thành phẩm nào cả. Ô "việc kế tiếp của bạn" và đoạn dặn nộp ở đâu là ô của vai khác, và
+    một ô điền bừa còn tệ hơn một ô không có."""
+    prompt = build_wake_prompt(_ctx(audience=WakeAudience.LEADER))
+
+    for part in CORE_PARTS:
+        assert part in prompt, f"lõi phải có ở mọi loại lời gọi: {part}"
+    # Đầu việc và trao đổi trên nó thì vẫn phải có: không cho xem thì lấy gì mà chấm.
+    assert "## Task: Add dark mode" in prompt
+    assert "## New messages since you last worked" in prompt
+
+    assert "## Your recorded next action" not in prompt
+    assert "## Where to put your work and how to report status" not in prompt
+    assert "publish-artifact" not in prompt
+    # Và được dặn đúng việc của mình.
+    assert "not the one doing this task" in prompt
 
 
 def test_every_empty_part_says_so_instead_of_disappearing():
-    """FR-045. A dropped section reads as 'this packet is broken'; an empty one that says
-    so reads as 'there is genuinely nothing here'. Only the second is actionable."""
+    """FR-045. Một mục bị bỏ rơi đọc thành "gói tin này hỏng"; một mục rỗng mà nói rõ là
+    rỗng thì đọc thành "chỗ này thật sự không có gì". Chỉ cái thứ hai hành động được."""
     prompt = build_wake_prompt(
         _ctx(
             task_description=None,
@@ -165,11 +205,20 @@ def test_every_empty_part_says_so_instead_of_disappearing():
             project_brief=None,
         )
     )
-    for part in EIGHT_PARTS:
+    for part in CORE_PARTS + WORKER_EXTRAS:
         assert part in prompt, f"phần rỗng bị bỏ rơi thay vì ghi rõ: {part}"
-    # Five of them are empty in this packet: brief, description, teammates, messages,
-    # next action. Each must carry the explicit marker.
+    # Năm chỗ rỗng trong gói tin này: Bối cảnh, mô tả, đồng đội, tin nhắn, việc kế tiếp.
     assert prompt.count(NONE_MARKER) >= 5, prompt
+
+
+def test_an_empty_part_that_belongs_to_the_other_role_is_not_conjured_up():
+    """FR-045 cấm im lặng ở phần một loại lời gọi **có mang**; nó không bắt loại này phải
+    mang phần của loại kia. Đọc ngược lại là quay về đúng cái khuôn tám phần vừa bỏ."""
+    prompt = build_wake_prompt(
+        _ctx(audience=WakeAudience.LEADER, next_action=None, new_messages=[])
+    )
+    assert "## New messages since you last worked" in prompt  # phần của nó, rỗng thì nói
+    assert "## Your recorded next action" not in prompt  # không phải phần của nó
 
 
 def test_the_approved_brief_reaches_the_worker_not_just_the_leader():
@@ -196,14 +245,14 @@ def test_a_brief_with_holes_names_the_holes():
         _ctx(project_brief=ProjectBrief(objective="Ra mắt nền tảng.", background=""))
     )
     assert "Ra mắt nền tảng." in prompt
-    brief = prompt[prompt.index("## Project context") : prompt.index("## Task:")]
+    brief = prompt[prompt.index("## Project context") : prompt.index("## Why you were woken")]
     # Four of the five parts are empty here and each says so.
     assert brief.count(NONE_MARKER) == 4, brief
 
 
 def test_where_to_submit_is_its_own_part_not_a_line_of_advice():
-    """FR-044 part 8. Buried in a bullet list of general advice it competes with six other
-    'don't forget' lines; as its own heading it is the thing the agent looks up."""
+    """Buried in a bullet list of general advice it competes with six other 'don't forget'
+    lines; as its own heading it is the thing the agent looks up."""
     prompt = build_wake_prompt(_ctx())
     submit = prompt.index("## Where to put your work and how to report status")
     how = prompt.index("## How to act")

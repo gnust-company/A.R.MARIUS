@@ -894,11 +894,20 @@ class ThresholdsIn(BaseModel):
 
 
 class SnagOut(_Out):
-    """One thing the last sweep found on the board (spec 001 FR-052)."""
+    """One thing the last sweep found on the board (spec 001 FR-052).
+
+    The parts, not a finished sentence: the same snag is read by the Leader in its wake
+    packet and by the patron on the board, and those two do not read the same language
+    (Constitution VII). `detail` is the agent's English copy, kept for the audit record of
+    what actually went out; the screen builds its own line from `kind` plus the fields
+    beside it and never shows `detail`.
+    """
 
     kind: str
     task_id: UUID
     identifier: str
+    title: str = ""
+    mark_hours: int | None = None
     detail: str
 
 
