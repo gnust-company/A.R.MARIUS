@@ -129,12 +129,17 @@ const fieldClasses =
 function EscalationActions({
   item,
   busy,
+  frozen,
   setBusy,
   onError,
   onDone,
 }: {
   item: InboxItemDTO;
   busy: boolean;
+  /** Its project is closed: the letter stays, readable, but nothing on it can be acted
+   *  on any more (FR-005). The server refuses these calls too — this only keeps the
+   *  patron from being handed a button that answers 409. */
+  frozen: boolean;
   setBusy: (id: string | null) => void;
   onError: (message: string | null) => void;
   onDone: () => void;
@@ -194,7 +199,7 @@ function EscalationActions({
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#E3D7BC] pt-3">
         <button
           className={actionButton}
-          disabled={busy}
+          disabled={busy || frozen}
           data-testid="escalation-reassign"
           onClick={() => setMode('assign')}
         >
@@ -202,7 +207,7 @@ function EscalationActions({
         </button>
         <button
           className={actionButton}
-          disabled={busy}
+          disabled={busy || frozen}
           data-testid="escalation-next-action"
           onClick={() => setMode('next')}
         >
@@ -210,7 +215,7 @@ function EscalationActions({
         </button>
         <button
           className={actionButton}
-          disabled={busy}
+          disabled={busy || frozen}
           data-testid="escalation-cancel-task"
           onClick={() => setMode('cancel')}
         >
@@ -218,13 +223,18 @@ function EscalationActions({
         </button>
         <button
           className={primaryButton}
-          disabled={busy}
-          title={t('inbox.escalation.handledHint')}
+          disabled={busy || frozen}
+          title={frozen ? t('inbox.closedProjectHint') : t('inbox.escalation.handledHint')}
           data-testid="escalation-handled"
           onClick={() => void run('handled')}
         >
           <CheckCheck size={12} /> {t('inbox.escalation.handled')}
         </button>
+        {frozen && (
+          <span className="text-xs text-[#8B6A28]" data-testid="escalation-frozen-note">
+            {t('inbox.closedProjectHint')}
+          </span>
+        )}
       </div>
     );
   }
@@ -377,6 +387,17 @@ export default function Inbox() {
     [projects, t],
   );
 
+  /** Its project is closed, so nothing on this letter can be acted on any more (FR-005).
+   *
+   * The letter is left where it is rather than swept away: it is a record of a question
+   * that was asked, and the project is kept precisely so its history can still be read.
+   * The server refuses these calls regardless — this is what stops the patron from being
+   * offered a button that only ever answers "no". */
+  const isFrozen = useCallback(
+    (id?: string | null) => (projects || []).find((p) => p.id === id)?.status === 'closed',
+    [projects],
+  );
+
   const grouped = useMemo(() => {
     const acc: Record<string, InboxItemDTO[]> = {};
     for (const item of items) {
@@ -496,6 +517,14 @@ export default function Inbox() {
                                   {t('inbox.reminderTier', { tier: item.reminder_tier })}
                                 </span>
                               )}
+                              {isFrozen(item.project_id) && (
+                                <span
+                                  className="px-1.5 py-0.5 text-[10px] rounded bg-[#E3D7BC] text-[#6B5E4E]"
+                                  data-testid="inbox-closed-badge"
+                                >
+                                  {t('inbox.closedProject')}
+                                </span>
+                              )}
                             </div>
                             <h4 className="font-medium text-[#2A2318] text-sm">{item.title}</h4>
                             {item.body && (
@@ -523,14 +552,14 @@ export default function Inbox() {
                             {tab === 'pending' && item.kind === 'output_acceptance' && (
                               <>
                                 <button
-                                  disabled={busyId === item.id}
+                                  disabled={busyId === item.id || isFrozen(item.project_id)}
                                   onClick={() => void sign(item, false)}
                                   className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-[#6B5E4E] bg-[#EDE4CE] hover:bg-[#E3D7BC] rounded-md transition-colors disabled:opacity-50"
                                 >
                                   <ThumbsDown size={12} /> {t('inbox.sendBack')}
                                 </button>
                                 <button
-                                  disabled={busyId === item.id}
+                                  disabled={busyId === item.id || isFrozen(item.project_id)}
                                   onClick={() => void sign(item, true)}
                                   className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-[#D4A843] hover:bg-[#E8C96A] rounded-md transition-colors disabled:opacity-50"
                                 >
@@ -544,6 +573,7 @@ export default function Inbox() {
                           <EscalationActions
                             item={item}
                             busy={busyId === item.id}
+                            frozen={isFrozen(item.project_id)}
                             setBusy={setBusyId}
                             onError={setError}
                             onDone={reload}

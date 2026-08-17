@@ -374,6 +374,8 @@ export const vi = {
     nothingWaiting: 'Khi có quyết định thuộc về bạn, nó sẽ hiện ở đây.',
     unknownProject: 'Dự án không xác định',
     open: 'Mở đầu việc',
+    closedProject: 'Dự án đã đóng',
+    closedProjectHint: 'Dự án đã đóng — thư này chỉ còn xem lại được.',
     accept: 'Công nhận',
     sendBack: 'Trả lại sửa',
     rejectReasonPrompt: 'Trả lại thì phải nói rõ cần sửa gì — thợ sẽ nhận đúng câu này làm việc kế tiếp:',
