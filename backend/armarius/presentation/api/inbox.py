@@ -13,19 +13,21 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
 from armarius.application.use_cases.recovery import EscalationAnswer
 from armarius.domain.entities.inbox_item import InboxItemStatus
 from armarius.presentation.api.auth import CurrentUser
-from armarius.presentation.api.frozen import refuse_when_frozen
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import AnswerEscalationIn, InboxItemOut
 
-# A letter about a closed project stays in the inbox and stays readable, but nothing on it
-# can be acted on any more (FR-005). The guard finds the project through the item itself —
-# these URLs name only the letter.
-router = APIRouter(prefix="/v1", tags=["inbox"], dependencies=[Depends(refuse_when_frozen)])
+# The closed-project freeze is enforced **inside** this one, not at the door (FR-005), and
+# it is the only router where that is true. Two of the doors here write into the project
+# and must refuse; the rest write only into the patron's own inbox and must not — closing
+# a letter that has stopped mattering is exactly what a patron needs to still be able to
+# do. The door cannot tell them apart: which it is lives in the request body, and routing
+# happens before the body is read. See `RecoveryEscalator._refuse_if_closed`.
+router = APIRouter(prefix="/v1", tags=["inbox"])
 
 
 @router.get("/inbox", response_model=list[InboxItemOut])

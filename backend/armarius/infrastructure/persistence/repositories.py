@@ -1952,6 +1952,17 @@ class SqlInboxRepository(InboxRepository):
         ).scalars().all()
         return [mappers.inbox_item_to_entity(m) for m in rows]
 
+    async def list_pending_for_project(self, project_id: UUID) -> Sequence[InboxItem]:
+        rows = (
+            await self._s.execute(
+                select(InboxItemModel)
+                .where(InboxItemModel.project_id == project_id)
+                .where(InboxItemModel.status == str(InboxItemStatus.PENDING))
+                .order_by(InboxItemModel.created_at)
+            )
+        ).scalars().all()
+        return [mappers.inbox_item_to_entity(m) for m in rows]
+
     async def list_pending(self, *, limit: int = 500) -> Sequence[InboxItem]:
         stmt = (
             select(InboxItemModel)

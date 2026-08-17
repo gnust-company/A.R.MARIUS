@@ -43,12 +43,14 @@ from armarius.domain.entities.push_reason import TaskPushReason
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.entities.task import Task, TaskDrive, TaskStatus
 from armarius.domain.entities.task_log import ActorKind, TaskLogKind
+from armarius.domain.services import project_rules
 from armarius.domain.services.escalation import (
     EscalationLevel,
     EscalationState,
     advance,
     backoff_seconds,
 )
+from armarius.domain.services.project_rules import ProjectClosed
 from armarius.domain.services.push_reason_rules import watches
 from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.events.topic_bus import TopicEventBus, patron_topic
@@ -92,13 +94,11 @@ class NotOnTheLeadersRung(Exception):
 # for why it is minutes and not seconds.
 _BACKOFF_BASE_SECONDS = 300
 
-# How many times an undelivered Mức 2 handover is retried before the patron is told the
-# Leader could not be reached. Deliberately *not* the Level-1 budget, even though three is
-# the same number today: that budget answers "how long do we let an agent keep trying",
-# which a project may reasonably raise to ten for agents that sleep a lot, and raising it
-# must not silently make a patron wait through ten failed calls to a Leader before hearing
-# that their Leader is gone. Different question, different knob.
-_HANDOVER_ATTEMPTS = 3
+# Both ladder budgets now come from the project's thresholds (`level1_recovery_attempts`
+# and `level2_handover_attempts`). This is what a task with **no project** falls back to —
+# it has nowhere to read a threshold from, and refusing to climb at all would leave it
+# outside the safety net entirely. Not a tuning knob: the knobs are in config.
+_NO_PROJECT_ATTEMPTS = 3
 
 # Said once, here, so the task record and the notification cannot drift apart.
 _ASSIGNEE_OFFLINE = "người phụ trách ngoại tuyến"
@@ -150,7 +150,10 @@ class RecoveryEscalator:
             if task.project_id
             else None
         )
-        cap = thresholds.level1_recovery_attempts if thresholds else 3
+        cap = thresholds.level1_recovery_attempts if thresholds else _NO_PROJECT_ATTEMPTS
+        handover_cap = (
+            thresholds.level2_handover_attempts if thresholds else _NO_PROJECT_ATTEMPTS
+        )
 
         async with self._uow() as uow:
             ladder = await uow.push_reasons.get_for_task(task.id) or TaskPushReason(
@@ -166,7 +169,7 @@ class RecoveryEscalator:
             state = advance(
                 ladder.state(),
                 cap=cap,
-                handover_cap=_HANDOVER_ATTEMPTS,
+                handover_cap=handover_cap,
                 progressed=False,
                 cause=cause,
                 # FR-059a — Level 1 is *re-wake the assignee*, so an unassigned task has
@@ -194,7 +197,9 @@ class RecoveryEscalator:
             await uow.push_reasons.upsert(ladder)
             await uow.commit()
 
-        await self._act(task, ladder, cause=cause, now=now, before=before)
+        await self._act(
+            task, ladder, cause=cause, now=now, before=before, handover_cap=handover_cap
+        )
 
     async def leader_decided(
         self, task_id: UUID, *, action: str, now: datetime | None = None
@@ -408,6 +413,7 @@ class RecoveryEscalator:
             if acts_on_task and self._tasks is None:  # pragma: no cover - always wired
                 raise EscalationAnswerInvalid("không có dịch vụ đầu việc để thi hành")
             if acts_on_task:
+                await self._refuse_if_closed(uow, item)
                 assert task_id is not None and self._tasks is not None
                 if answer is EscalationAnswer.REASSIGN:
                     if marius_id is None:
@@ -466,6 +472,7 @@ class RecoveryEscalator:
         cause: str,
         now: datetime,
         before: EscalationLevel,
+        handover_cap: int,
     ) -> None:
         # The rung it came from, not "the one below where it is now": those two stopped
         # being the same answer once an unassigned task could enter at Level 2 (FR-059a),
@@ -488,7 +495,9 @@ class RecoveryEscalator:
             # Asked on *every* sweep that gets past the clock, not only the one that
             # climbed. Level 2 is a series of spaced asks, exactly like Level 1 — the ask is
             # the attempt, and one attempt is not a rung.
-            await self._ask_leader(task, ladder, cause=cause, now=now)
+            await self._ask_leader(
+                task, ladder, cause=cause, now=now, handover_cap=handover_cap
+            )
         elif ladder.level is EscalationLevel.LEVEL_3 and climbed:
             await self._ask_patron(task, ladder, cause=cause, now=now)
 
@@ -535,7 +544,13 @@ class RecoveryEscalator:
             await self._mark_waiting_on_recovery(task.id, until=retry_at)
 
     async def _ask_leader(
-        self, task: Task, ladder: TaskPushReason, *, cause: str, now: datetime
+        self,
+        task: Task,
+        ladder: TaskPushReason,
+        *,
+        cause: str,
+        now: datetime,
+        handover_cap: int,
     ) -> None:
         """Mức 2 — tell the Leader exactly what is wrong and let it act.
 
@@ -584,7 +599,7 @@ class RecoveryEscalator:
                 f"Đầu việc {task.identifier or task.id} — {task.title} đang đình trệ.\n\n"
                 f"Vì sao: {cause}.\n\n"
                 f"{situation}"
-                f"Đây là lần hỏi thứ {ladder.handover_attempts}/{_HANDOVER_ATTEMPTS}. "
+                f"Đây là lần hỏi thứ {ladder.handover_attempts}/{handover_cap}. "
                 "Hết lượt mà đầu việc vẫn đứng im thì người chủ được hỏi."
             ),
             source=WakeSource.NUDGE,
@@ -592,7 +607,7 @@ class RecoveryEscalator:
                 "escalated_to_leader",
                 task=task.identifier or task.id,
                 attempt=ladder.handover_attempts,
-                ceiling=_HANDOVER_ATTEMPTS,
+                ceiling=handover_cap,
             ),
         )
         if not delivered:
@@ -602,7 +617,7 @@ class RecoveryEscalator:
                 task.id,
                 task.project_id,
                 ladder.handover_attempts,
-                _HANDOVER_ATTEMPTS,
+                handover_cap,
             )
             return
         if ladder.leader_reached_at is not None:
@@ -735,6 +750,28 @@ class RecoveryEscalator:
             else None
         )
         return (workspace.owner_user_id or "") if workspace else ""
+
+    @staticmethod
+    async def _refuse_if_closed(uow: UnitOfWork, item: InboxItem) -> None:
+        """Refuse an answer that would write into a closed project (FR-005).
+
+        Only the three answers that *act on the task* come through here. Closing the letter
+        is not one of them: it writes nothing into the project, only into the patron's own
+        inbox, and freezing it once left letters that could never be cleared and a waiting
+        count that could never come down.
+
+        Checked here rather than at the door because the door cannot tell these cases
+        apart — the answer is in the body, and routing happens before the body is read.
+        """
+        project_id = item.project_id
+        if project_id is None and item.task_id is not None:
+            task = await uow.tasks.get(item.task_id)
+            project_id = task.project_id if task is not None else None
+        if project_id is None:
+            return
+        project = await uow.projects.get(project_id)
+        if project is not None and project_rules.is_closed(project.status):
+            raise ProjectClosed("This project is closed — its history is read-only.")
 
     @staticmethod
     async def _workspace_of(uow: UnitOfWork, task: Task) -> UUID | None:

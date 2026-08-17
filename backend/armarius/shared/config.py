@@ -84,6 +84,15 @@ class Settings(BaseSettings):
     # How often the orchestration loop body wakes up to see which projects are due.
     # Much shorter than any project's own rhythm: the loop ticks, the project decides.
     orchestration_tick_seconds: float = 60.0
+    # How far a run of quiet sweeps may stretch the cadence, as a multiple of the base
+    # rhythm (FR-055). Eight doublings is three quiet sweeps' worth of earned slack.
+    orchestration_max_stretch: int = 8
+    # …and the wall that stretch hits regardless. A quiet project is quiet, not finished,
+    # so something must still look at it within the hour or two.
+    orchestration_max_interval_seconds: int = 2 * 60 * 60
+    # The floor no rhythm may go below, however much is backing up. A sweep is a handful
+    # of queries, but a loop running them every few seconds is a busy-wait in costume.
+    orchestration_min_interval_seconds: int = 60
     # Hours-before-deadline marks at which a task counts as *due soon* (FR-052). A task
     # with no deadline is never due soon.
     due_soon_hours: str = "24,12,6,1"
@@ -99,6 +108,13 @@ class Settings(BaseSettings):
     # minutes — three re-wakes nobody had time to answer, then straight to the Leader.
     # A budget spent that fast is decoration.
     level1_backoff_seconds: int = 300
+    # Level-2 budget: how many spaced asks the Leader gets before the patron is told
+    # (FR-060). Deliberately *not* the Level-1 budget, even though three is the same
+    # number today: that one answers "how long do we let an agent keep trying", which a
+    # project may reasonably raise to ten for agents that sleep a lot, and raising it must
+    # not silently make a patron wait through ten failed calls to a Leader before hearing
+    # their Leader is gone. Different question, different knob.
+    level2_handover_attempts: int = 3
     # How many review rejections on one task before the Leader is pulled in to re-examine
     # the brief and the acceptance criteria (FR-042).
     rejection_round_cap: int = 3

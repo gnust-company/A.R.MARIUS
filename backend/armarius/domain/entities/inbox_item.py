@@ -31,6 +31,11 @@ class InboxItemKind(StrEnum):
 class InboxItemStatus(StrEnum):
     PENDING = "pending"
     RESOLVED = "resolved"
+    #: The question stopped mattering before anyone answered it — today only because the
+    #: project it belonged to was closed (FR-005). Distinct from RESOLVED on purpose: the
+    #: patron never answered, and a record that says they did is a false record. It also
+    #: keeps the reminder ladder honest, which chases everything still PENDING.
+    VOID = "void"
 
 
 @dataclass
@@ -55,4 +60,5 @@ class InboxItem:
     attempt_dossier: dict[str, object] = field(default_factory=dict)
     created_at: datetime | None = None
     last_reminded_at: datetime | None = None
+    #: When it left the waiting list, whichever way it left — answered or voided.
     resolved_at: datetime | None = None

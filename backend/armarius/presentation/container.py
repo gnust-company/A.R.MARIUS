@@ -99,6 +99,10 @@ def _system_thresholds() -> ProjectThresholds:
         level1_recovery_attempts=settings.level1_recovery_attempts,
         rejection_round_cap=settings.rejection_round_cap,
         orchestration_wakes_per_hour=settings.orchestration_wakes_per_hour,
+        orchestration_max_stretch=settings.orchestration_max_stretch,
+        orchestration_max_interval_seconds=settings.orchestration_max_interval_seconds,
+        orchestration_min_interval_seconds=settings.orchestration_min_interval_seconds,
+        level2_handover_attempts=settings.level2_handover_attempts,
     )
 
 

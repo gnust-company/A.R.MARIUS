@@ -60,6 +60,14 @@ class ProjectThresholds:
     # Ceiling on cadence wakes per hour (FR-055). Zero means *no ceiling configured*,
     # never *never wake anyone* — see `within_hourly_cap`.
     orchestration_wakes_per_hour: int = 4
+    # The three bounds on the cadence itself: how far quiet may stretch it, the wall that
+    # stretch hits, and the floor no rhythm may cross (FR-055, `next_interval_seconds`).
+    orchestration_max_stretch: int = 8
+    orchestration_max_interval_seconds: int = 2 * 60 * 60
+    orchestration_min_interval_seconds: int = 60
+    # Spaced asks the Leader gets at Level 2 before the patron is told (FR-060). Separate
+    # from `level1_recovery_attempts` on purpose — see `Settings.level2_handover_attempts`.
+    level2_handover_attempts: int = 3
 
     def with_overrides(self, overrides: dict[str, object] | None) -> ProjectThresholds:
         """Apply a project's overrides on top of these values, ignoring junk.
