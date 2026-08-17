@@ -68,7 +68,7 @@ from armarius.shared.clock import utcnow
 
 if TYPE_CHECKING:  # pragma: no cover — typing only, keeps the import graph acyclic
     from armarius.application.use_cases.task_log import TaskLogService
-    from armarius.application.use_cases.tasks import TaskService
+    from armarius.application.use_cases.tasks import LeaderNotifier, TaskService
     from armarius.application.use_cases.wake_engine import WakeEngine
 
 EVENT_APPROVAL_SIGNED = "signature.recorded"
@@ -124,12 +124,15 @@ class ApprovalService:
         task_logs: TaskLogService | None = None,
         control_bus: TopicEventBus | None = None,
         artifact_store: ArtifactStore | None = None,
+        leader_chat: LeaderNotifier | None = None,
     ) -> None:
         self._uow = uow_factory
         self._tasks = tasks
         self._wake = wake
         self._logs = task_logs
         self._bus = control_bus
+        # How the Leader hears about a decision the patron made on its project (FR-047).
+        self._leader_chat = leader_chat
         # Only used to answer one question, at one moment: is the deliverable still
         # there when somebody is about to sign for it (FR-069).
         self._artifact_store = artifact_store
@@ -235,6 +238,7 @@ class ApprovalService:
         project_id: UUID | None = None
         placed: InboxItem | None = None
         lost: tuple[UUID | None, str] | None = None
+        label = ""
 
         async with self._uow() as uow:
             task = await uow.tasks.get(task_id)
@@ -245,6 +249,7 @@ class ApprovalService:
                     f"Đầu việc đang ở '{task.status}' — chỉ ký khi đang *chờ rà soát*."
                 )
             project_id = task.project_id
+            label = task.identifier or str(task_id)
             missing = await self._missing_deliverables(uow, task_id)
 
             if approve and missing:
@@ -353,6 +358,10 @@ class ApprovalService:
             )
         if pull_in_leader:
             await self._wake_leader_to_review_the_brief(task_id, project_id)
+        elif not approve and signer_kind is SignerKind.PATRON:
+            await self._tell_the_leader_the_patron_refused(
+                project_id, label, (reason or "").strip()
+            )
 
         async with self._uow() as uow:
             refreshed = await uow.tasks.get(task_id)
@@ -430,6 +439,37 @@ class ApprovalService:
             task_id=task_id,
             source=WakeSource.APPROVAL_REJECTED,
             reason=cause,
+        )
+
+    async def _tell_the_leader_the_patron_refused(
+        self, project_id: UUID | None, label: str, note: str
+    ) -> None:
+        """FR-047 — the patron refusing an output is a cause to wake the Leader.
+
+        The requirement names both halves of the patron's verdict, "accepts **or refuses**",
+        and only the accepting half reached the Leader: a close carries its own wake, while
+        a refusal woke the worker and nobody else. The Leader is the one who signed the work
+        off first, and it learned that the patron disagreed only if the same task came back
+        a third time.
+
+        Not sent when the third round has just tripped: that pulls the Leader onto this very
+        task with the stronger message — look at the brief, not at the work — and two wakes
+        about one refusal is the project-wide noise FR-049 exists to stop.
+        """
+        if self._leader_chat is None or project_id is None:
+            return
+        await self._leader_chat.notify(
+            project_id=project_id,
+            text=(
+                f"Người chủ đã từ chối đầu ra của đầu việc {label}"
+                + (f": {note}" if note else ".")
+                + "\nĐầu việc đã quay lại *đang làm* với người cũ. Bạn xem lại phần bạn "
+                "đã chấm đạt, và quyết xem cần đổi gì."
+            ),
+            source=WakeSource.PATRON_DECISION,
+            reason=wake_reason(
+                "patron_rejected_output", task=label, note=note or "—"
+            ),
         )
 
     async def _wake_leader_to_review_the_brief(

@@ -767,6 +767,7 @@ export const en = {
       roster_complete: 'The roster is full and everyone is online. Go and plan.',
       context_change_requested: 'The patron asked for changes to the project context.',
       plan_decided: 'The patron decided on the plan: {{decision}}.',
+      patron_rejected_output: 'The patron refused the output of {{task}}: {{note}}. It went back to the same worker.',
       cadence_snags: 'The orchestration sweep found {{count}} snag(s) on the board.',
       escalated_to_leader: '{{task}} has stalled and needs a decision. Attempt {{attempt}} of {{ceiling}}.',
       assignee_offline: 'The worker on {{task}} was declared offline and the task moved to blocked.',

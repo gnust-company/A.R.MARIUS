@@ -768,6 +768,7 @@ export const vi = {
       roster_complete: 'Dự án đủ đội và mọi thợ đã trực tuyến. Vào lập kế hoạch.',
       context_change_requested: 'Người chủ yêu cầu chỉnh Bối cảnh dự án.',
       plan_decided: 'Người chủ đã quyết kế hoạch: {{decision}}.',
+      patron_rejected_output: 'Người chủ từ chối đầu ra của {{task}}: {{note}}. Đầu việc quay lại với người cũ.',
       cadence_snags: 'Nhịp điều phối tìm ra {{count}} điểm treo trên bảng việc.',
       escalated_to_leader: '{{task}} đang đình trệ và cần bạn quyết bước tiếp. Lần hỏi {{attempt}}/{{ceiling}}.',
       assignee_offline: 'Người phụ trách {{task}} vừa bị tuyên ngoại tuyến, đầu việc chuyển sang bị chặn. Giao lại cho ai, hay chờ họ quay lại?',
