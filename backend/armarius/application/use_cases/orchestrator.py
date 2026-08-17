@@ -66,9 +66,10 @@ _LIVE_PHASES: frozenset[ProjectStatus] = frozenset(
 )
 
 # How far back the loop reads its own history for the two questions counted in *sweeps*:
-# the quiet streak (which needs at most `_MAX_STRETCH` rows to saturate) and the deadline
-# marks already announced. Nothing counted in *time* may be answered from this slice — the
-# hourly ceiling asks the store directly, because a row limit cannot bound a duration.
+# the quiet streak (which saturates once it reaches the project's stretch cap) and the
+# deadline marks already announced. Nothing counted in *time* may be answered from this
+# slice — the hourly ceiling asks the store directly, because a row limit cannot bound a
+# duration.
 _HISTORY_WINDOW = 32
 
 _CAP_REACHED = "chạm trần số lần đánh thức trong một giờ"
@@ -162,6 +163,9 @@ class OrchestrationLoop:
                     quiet_streak=quiet_streak([s.snag_count for s in history]),
                     found_snags=bool(snags),
                 ),
+                max_stretch=thresholds.orchestration_max_stretch,
+                max_interval_seconds=thresholds.orchestration_max_interval_seconds,
+                min_interval_seconds=thresholds.orchestration_min_interval_seconds,
             ),
             # Spent is not delivered: `woke` alone counts a wake the Leader never got.
             reported_marks=_next_marks(

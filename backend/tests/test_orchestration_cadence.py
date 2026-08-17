@@ -31,6 +31,26 @@ from armarius.domain.services.orchestration_cadence import (
 NOW = datetime(2026, 8, 5, 12, 0, 0, tzinfo=UTC)
 MARKS = (24, 12, 6, 1)
 
+# The three bounds on the rhythm are thresholds now, not constants in the code (T188), so
+# the function asks the caller for them. Written out here rather than read from config:
+# these are the figures the spec pins, whereas config is something a deployment can change
+# — and `test_the_system_floor_still_matches_the_numbers_the_spec_pinned` is what keeps the
+# two from drifting apart.
+_SPEC_MAX_STRETCH = 8
+_SPEC_MAX_INTERVAL = 2 * 60 * 60
+_SPEC_MIN_INTERVAL = 60
+
+
+def _interval(base: int, *, state: CadenceState, **bounds: int) -> int:
+    """The next interval at the system floor, unless a test is about a project override."""
+    supplied = {
+        "max_stretch": _SPEC_MAX_STRETCH,
+        "max_interval_seconds": _SPEC_MAX_INTERVAL,
+        "min_interval_seconds": _SPEC_MIN_INTERVAL,
+        **bounds,
+    }
+    return next_interval_seconds(base, state=state, **supplied)
+
 
 def _snapshot(**kw) -> TaskSnapshot:
     base = dict(
@@ -208,7 +228,7 @@ async def test_a_healthy_board_produces_no_snags_at_all() -> None:
 async def test_a_smooth_project_stretches_the_gap_between_sweeps() -> None:
     base = 900
     stretched = [
-        next_interval_seconds(base, state=CadenceState(quiet_streak=n, found_snags=False))
+        _interval(base, state=CadenceState(quiet_streak=n, found_snags=False))
         for n in (0, 1, 2, 3)
     ]
 
@@ -227,7 +247,7 @@ async def test_the_stretch_is_capped_so_a_quiet_project_is_never_abandoned() -> 
     figure it was chosen to hit without anything noticing.
     """
     base = 900  # the default cadence: fifteen minutes
-    very_quiet = next_interval_seconds(
+    very_quiet = _interval(
         base, state=CadenceState(quiet_streak=50, found_snags=False)
     )
 
@@ -241,7 +261,7 @@ async def test_a_slower_cadence_still_stops_at_two_hours() -> None:
     an hourly cadence is eight hours, and nothing in the spec contemplates a project going
     unlooked-at for a working day.
     """
-    hourly = next_interval_seconds(
+    hourly = _interval(
         3600, state=CadenceState(quiet_streak=50, found_snags=False)
     )
 
@@ -254,7 +274,7 @@ async def test_a_fast_cadence_is_not_stretched_to_the_absolute_ceiling() -> None
     An operator who sets one minute is saying *watch this closely*. Stretching that to two
     hours because two hours is "the maximum" would answer them with the opposite.
     """
-    minutely = next_interval_seconds(
+    minutely = _interval(
         60, state=CadenceState(quiet_streak=50, found_snags=False)
     )
 
@@ -268,30 +288,69 @@ async def test_a_project_slower_than_the_ceiling_keeps_its_own_cadence() -> None
     would turn a ceiling into a schedule and sweep three times as often as they asked.
     """
     slow = 6 * 60 * 60
-    assert next_interval_seconds(
+    assert _interval(
         slow, state=CadenceState(quiet_streak=50, found_snags=False)
     ) == slow
-    assert next_interval_seconds(
+    assert _interval(
         slow, state=CadenceState(quiet_streak=0, found_snags=False)
     ) == slow
 
 
 async def test_a_sweep_that_found_snags_tightens_the_rhythm_below_base() -> None:
     base = 900
-    dense = next_interval_seconds(base, state=CadenceState(quiet_streak=9, found_snags=True))
+    dense = _interval(base, state=CadenceState(quiet_streak=9, found_snags=True))
 
     assert dense < base
     # A long quiet streak must not survive a sweep that found something: the moment work
     # backs up, the slack earned while it was smooth is irrelevant.
-    assert dense == next_interval_seconds(
+    assert dense == _interval(
         base, state=CadenceState(quiet_streak=0, found_snags=True)
     )
 
 
 async def test_the_rhythm_never_collapses_into_a_busy_loop() -> None:
-    dense = next_interval_seconds(10, state=CadenceState(quiet_streak=0, found_snags=True))
+    dense = _interval(10, state=CadenceState(quiet_streak=0, found_snags=True))
 
     assert dense >= 60
+
+
+# ── and every one of those bounds is now adjustable (T188) ───────────────────────
+
+async def test_a_project_may_widen_or_narrow_every_bound_of_the_rhythm() -> None:
+    """All three used to be constants in the code, which left the Assumptions' "every
+    threshold is adjustable" a way out. This holds each of them to actually reaching the
+    arithmetic."""
+    quiet = CadenceState(quiet_streak=7, found_snags=False)
+    roomy = {"max_interval_seconds": 48 * 3600}  # out of the way, so the stretch is what bites
+
+    # At the system floor seven quiet sweeps buy the most the stretch allows: eight times.
+    assert _interval(900, state=quiet, **roomy) == 900 * 8
+    # A project told it may drift further does drift further…
+    assert _interval(900, state=quiet, max_stretch=200, **roomy) == 900 * 128
+    # …and one told to stay close stays close.
+    assert _interval(900, state=quiet, max_stretch=2, **roomy) == 1800
+
+    # The wall the stretch hits is a threshold of its own.
+    very_quiet = CadenceState(quiet_streak=50, found_snags=False)
+    assert _interval(900, state=very_quiet, max_stretch=200, **roomy) == 48 * 3600
+
+    # And so is the floor: a project worth watching closely may go below a minute.
+    busy = CadenceState(quiet_streak=0, found_snags=True)
+    assert _interval(10, state=busy, min_interval_seconds=5) == 5
+
+
+async def test_the_system_floor_still_matches_the_numbers_the_spec_pinned() -> None:
+    """The tests above write the spec's figures out by hand. If the shipped defaults drift
+    away from them, this is where that shows up — not in a project running to a rhythm
+    nobody chose."""
+    from armarius.shared.config import Settings
+
+    floor = Settings()
+    assert floor.orchestration_max_stretch == _SPEC_MAX_STRETCH
+    assert floor.orchestration_max_interval_seconds == _SPEC_MAX_INTERVAL
+    assert floor.orchestration_min_interval_seconds == _SPEC_MIN_INTERVAL
+    # The Level-2 ceiling left the code for config in the same round, for the same reason.
+    assert floor.level2_handover_attempts == 3
 
 
 # ── trần số lần gọi trong một giờ (FR-055) ───────────────────────────────────────

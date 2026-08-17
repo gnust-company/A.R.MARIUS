@@ -64,6 +64,13 @@ _NEEDS_NO_GUARD: dict[tuple[str, str], str] = {
     ("POST", "/v1/workspaces/{workspace_id}/skills/manual"): "tầng trên dự án",
     ("PUT", "/v1/workspaces/{workspace_id}/skills/{skill_id}"): "tầng trên dự án",
     ("DELETE", "/v1/workspaces/{workspace_id}/skills/{skill_id}"): "tầng trên dự án",
+    # The two inbox doors: the guard is enforced **inside** rather than at the door,
+    # because one path carries both an action that writes into the project and one that
+    # only tidies the patron's own inbox — and which it is lives in the request body, read
+    # after routing has already happened. Held by
+    # `test_a_letter_on_a_closed_project_refuses_only_what_touches_the_task`.
+    ("POST", "/v1/inbox/{item_id}/answer"): "chốt nằm trong, theo từng loại câu trả lời",
+    ("POST", "/v1/inbox/{item_id}/resolve"): "chỉ dọn hộp thư, không ghi vào dự án",
 }
 
 
@@ -216,14 +223,21 @@ async def test_every_kind_of_write_is_refused_once_the_project_is_closed() -> No
             assert r.status_code == 409, f"{label} vẫn ghi được: {r.status_code} {r.text}"
 
 
-async def test_an_escalation_letter_goes_dead_when_its_project_closes() -> None:
-    """Lối lọt qua bản đầu: thư leo thang trong hộp thư người chủ.
+async def test_a_letter_on_a_closed_project_refuses_only_what_touches_the_task() -> None:
+    """The door the first version let through: an escalation letter in the patron's inbox.
 
-    Kịch bản có thật — một đầu việc đang làm đứng khựng, leo lên tới người chủ thành một
-    lá thư; người chủ đóng dự án (không luật nào cấm đóng khi còn thư treo); rồi vào hộp
-    thư bấm *giao lại cho người khác*. Trước bản vá này lời gọi ấy chạy thật: người mới bị
-    gọi dậy làm việc cho một dự án đã tuyên bố là xong. Đường dẫn của nó chỉ mang số hiệu
-    lá thư, nên cả chốt lẫn bài duyệt đường dẫn đều nhìn xuyên qua.
+    A real scenario — a task in progress goes quiet, climbs to the patron as a letter; the
+    patron closes the project (no rule stops them closing with letters outstanding); then
+    goes to the inbox and presses *reassign*. Before the fix that call really ran, waking
+    somebody new for a project already declared finished. Its URL carries only the letter
+    id, so both the guard and the path-shaped audit looked straight through it.
+
+    But only the three buttons that write to the task should die. The first fix froze the
+    **close the letter** button too, which writes nothing into the project — leaving a
+    letter that could never leave the waiting list. This holds that exact line.
+
+    Closed at the storage layer rather than through the phase route, so the letter stays
+    *pending*: precisely the narrow window the phase route's sweep does not cover.
     """
     async with await _client() as c:
         h, ws = await _register(c, "frozen5@example.com")
@@ -244,17 +258,95 @@ async def test_an_escalation_letter_goes_dead_when_its_project_closes() -> None:
             "giao lại người khác": {"answer": "reassign", "marius_id": str(uuid4())},
             "đặt bước tiếp theo": {"answer": "next_action", "text": "thử lại"},
             "huỷ đầu việc": {"answer": "cancel", "text": "thôi"},
-            "đánh dấu đã xử lý": {"answer": "handled"},
         }.items():
             r = await c.post(f"/v1/inbox/{letter.id}/answer", headers=h, json=body)
             assert r.status_code == 409, f"{label} vẫn chạy: {r.status_code} {r.text}"
 
-        r = await c.post(f"/v1/inbox/{letter.id}/resolve", headers=h)
-        assert r.status_code == 409, r.text
-
-        # Vẫn đọc được — lá thư nằm lại trong hộp thư, chỉ là bấm không ăn nữa.
+        # Still readable — the letter stays where it is.
         listed = await c.get("/v1/inbox", headers=h)
         assert str(letter.id) in {i["id"] for i in listed.json()}
+
+        # …and the patron can still clear it. Without this the letter is stuck for ever.
+        r = await c.post(f"/v1/inbox/{letter.id}/resolve", headers=h)
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "resolved"
+
+
+async def test_closing_a_project_retires_every_letter_it_leaves_open() -> None:
+    """Closing a project closes the questions it leaves outstanding (FR-005).
+
+    A question about a closed project is a question that can never be answered — all three
+    decision buttons are refused from here on. Leaving it in the waiting list means a count
+    that never comes down, and a reminder ladder chasing an answer the system itself
+    forbids.
+
+    Marked *void*, not *resolved*: the patron never answered, and recording that they did
+    would be a false record. The letters stay put and stay readable.
+    """
+    async with await _client() as c:
+        h, ws = await _register(c, "frozen7@example.com")
+        pid, tid = await _live_project_with_a_task(c, ws, h)
+        me = (await c.get("/auth/me", headers=h)).json()
+
+        letters = []
+        for kind, title in (
+            (InboxItemKind.ESCALATION, "Đầu việc đứng khựng"),
+            (InboxItemKind.OUTPUT_ACCEPTANCE, "Thành phẩm chờ ký"),
+            (InboxItemKind.QUESTION, "Trưởng dự án hỏi"),
+        ):
+            letters.append(
+                await app.state.container.inbox.place(
+                    workspace_id=UUID(ws),
+                    recipient_user_id=str(me["id"]),
+                    kind=kind,
+                    title=title,
+                    project_id=UUID(pid),
+                    task_id=UUID(tid),
+                )
+            )
+
+        waiting = await c.get("/v1/inbox", headers=h)
+        assert len({i["id"] for i in waiting.json()}) == len(letters)
+
+        r = await c.post(
+            f"/v1/projects/{pid}/phase", headers=h, json={"target_phase": "closed"}
+        )
+        assert r.status_code == 200, r.text
+
+        # Nothing left in the waiting list…
+        waiting = await c.get("/v1/inbox", headers=h)
+        assert [i for i in waiting.json() if i["project_id"] == pid] == []
+
+        # …but every letter is still there, marked void rather than answered.
+        everything = {i["id"]: i for i in (await c.get("/v1/inbox?status=all", headers=h)).json()}
+        for letter in letters:
+            assert str(letter.id) in everything, f"thư {letter.title} biến mất"
+            assert everything[str(letter.id)]["status"] == "void"
+
+
+async def test_a_retired_letter_cannot_be_turned_into_an_answered_one() -> None:
+    """Pressing a voided letter does nothing at all — including turning it into a resolved
+    one. The patron never answered, and a stray press must not be recorded as their
+    answer."""
+    async with await _client() as c:
+        h, ws = await _register(c, "frozen8@example.com")
+        pid, tid = await _live_project_with_a_task(c, ws, h)
+        me = (await c.get("/auth/me", headers=h)).json()
+        letter = await app.state.container.inbox.place(
+            workspace_id=UUID(ws),
+            recipient_user_id=str(me["id"]),
+            kind=InboxItemKind.ESCALATION,
+            title="Đầu việc đứng khựng",
+            project_id=UUID(pid),
+            task_id=UUID(tid),
+        )
+        await c.post(
+            f"/v1/projects/{pid}/phase", headers=h, json={"target_phase": "closed"}
+        )
+
+        r = await c.post(f"/v1/inbox/{letter.id}/resolve", headers=h)
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "void"
 
 
 async def test_a_letter_about_a_live_project_still_answers() -> None:

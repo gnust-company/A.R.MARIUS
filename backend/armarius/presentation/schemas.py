@@ -869,6 +869,10 @@ class ThresholdsOut(_Out):
     level1_recovery_attempts: int
     rejection_round_cap: int
     orchestration_wakes_per_hour: int
+    orchestration_max_stretch: int
+    orchestration_max_interval_seconds: int
+    orchestration_min_interval_seconds: int
+    level2_handover_attempts: int
 
 
 class ThresholdsIn(BaseModel):
@@ -883,6 +887,10 @@ class ThresholdsIn(BaseModel):
     level1_recovery_attempts: int | None = Field(default=None, gt=0)
     rejection_round_cap: int | None = Field(default=None, gt=0)
     orchestration_wakes_per_hour: int | None = Field(default=None, gt=0)
+    orchestration_max_stretch: int | None = Field(default=None, gt=0)
+    orchestration_max_interval_seconds: int | None = Field(default=None, gt=0)
+    orchestration_min_interval_seconds: int | None = Field(default=None, gt=0)
+    level2_handover_attempts: int | None = Field(default=None, gt=0)
 
 
 class SnagOut(_Out):

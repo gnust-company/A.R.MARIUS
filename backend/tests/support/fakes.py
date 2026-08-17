@@ -593,6 +593,15 @@ class _FakeInboxRepo:
         items.sort(key=lambda i: i.created_at or epoch)
         return items
 
+    async def list_pending_for_project(self, project_id: UUID) -> list[InboxItem]:
+        epoch = datetime.min.replace(tzinfo=UTC)
+        items = [
+            i for i in self._s.inbox.values()
+            if i.project_id == project_id and i.status == InboxItemStatus.PENDING
+        ]
+        items.sort(key=lambda i: i.created_at or epoch)
+        return items
+
 
 class FakeUnitOfWork(UnitOfWork):
     """A UoW backed by an in-memory store. Only the repos the Sprint-2 use cases need."""

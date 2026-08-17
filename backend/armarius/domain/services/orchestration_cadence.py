@@ -179,12 +179,10 @@ def find_snags(
 # for.
 #
 # There is a ceiling at all because a quiet project is quiet, not finished.
-_MAX_STRETCH = 8
-_MAX_INTERVAL_SECONDS = 2 * 60 * 60
-# The floor no rhythm may go below, however much is backing up. A sweep is a handful of
-# queries, but a loop that ran them every few seconds would be a busy-wait wearing the
-# costume of a heartbeat.
-_MIN_INTERVAL_SECONDS = 60
+#
+# All three bounds arrive as arguments rather than living here as constants: they are
+# thresholds like any other, so a project may raise or lower them, and a rule the caller
+# cannot see is a rule the operator cannot change (`ProjectThresholds`).
 
 
 @dataclass(frozen=True)
@@ -195,7 +193,14 @@ class CadenceState:
     found_snags: bool  # …and what *this* sweep found
 
 
-def next_interval_seconds(base_seconds: int, *, state: CadenceState) -> int:
+def next_interval_seconds(
+    base_seconds: int,
+    *,
+    state: CadenceState,
+    max_stretch: int,
+    max_interval_seconds: int,
+    min_interval_seconds: int,
+) -> int:
     """How long to wait before sweeping this project again.
 
     The configured cadence is what a project gets by default; slack is **earned**. A first
@@ -207,14 +212,17 @@ def next_interval_seconds(base_seconds: int, *, state: CadenceState) -> int:
     the whole streak. Asymmetric on purpose: earning slack should be slow and losing it
     instant, because the cost of being slow to notice a stuck project is paid by the
     project, while the cost of an extra sweep is a few queries.
+
+    The three bounds are required arguments, not defaults: a default here would be a
+    threshold nobody can find and nobody can override.
     """
     if state.found_snags:
-        return max(base_seconds // 2, _MIN_INTERVAL_SECONDS)
-    multiplier = int(min(2 ** max(state.quiet_streak, 0), _MAX_STRETCH))
-    stretched = min(base_seconds * multiplier, _MAX_INTERVAL_SECONDS)
-    # Never below the configured cadence: the two-hour ceiling caps how far a quiet project
-    # may drift, and must not hurry along one whose operator asked for something slower.
-    return max(stretched, base_seconds, _MIN_INTERVAL_SECONDS)
+        return max(base_seconds // 2, min_interval_seconds)
+    multiplier = int(min(2 ** max(state.quiet_streak, 0), max_stretch))
+    stretched = min(base_seconds * multiplier, max_interval_seconds)
+    # Never below the configured cadence: the ceiling caps how far a quiet project may
+    # drift, and must not hurry along one whose operator asked for something slower.
+    return max(stretched, base_seconds, min_interval_seconds)
 
 
 def within_hourly_cap(*, wakes_in_last_hour: int, cap: int) -> bool:

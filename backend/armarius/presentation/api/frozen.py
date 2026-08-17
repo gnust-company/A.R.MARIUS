@@ -18,12 +18,21 @@ wrote to closed projects while both the guard and its audit looked straight past
 project an item belongs to has always been recorded on the item; only the guard's way of
 finding it was too narrow.
 
-Two things deliberately stay possible on a closed project:
+Three things deliberately stay possible on a closed project:
 
   * **reading** — the whole point of keeping it;
   * **deleting the project itself** — freezing the contents must not trap the patron with
     a project they can never get rid of. Deleting is disposing of the frozen thing, not
-    operating inside it.
+    operating inside it;
+  * **closing one of its letters** — that writes into the patron's own inbox, not into the
+    project. Refusing it once left letters that could never be cleared and a waiting count
+    that could never come down.
+
+That last one is why the inbox router carries no door guard and enforces the freeze inside
+instead (`RecoveryEscalator._refuse_if_closed`): which of its two doors writes into the
+project is decided by the request *body*, and routing happens before the body is read. The
+item hop below stays regardless — any future guarded route that names only a letter needs
+it, and a guard that cannot find the project is the blind spot this rewrite was about.
 
 The service-layer guards (the wake engine, the task edit) stay where they are. They cover
 the callers that never touch HTTP at all: the background loops.

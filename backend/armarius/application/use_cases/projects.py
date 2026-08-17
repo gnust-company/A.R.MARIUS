@@ -30,11 +30,14 @@ from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
 from armarius.domain.services import project_key, project_rules
 from armarius.domain.services.project_rules import ProjectClosed
 from armarius.shared.clock import utcnow
+from armarius.shared.logging import get_logger
 
 if TYPE_CHECKING:  # imported for typing only — these are injected, never constructed here
     from armarius.application.use_cases.inbox import InboxService
     from armarius.application.use_cases.leader_chat import LeaderChatService
     from armarius.infrastructure.events.topic_bus import TopicEventBus
+
+logger = get_logger(__name__)
 
 
 class SystemOnlyOperation(Exception):
@@ -638,6 +641,11 @@ class ProjectService:
         Closing is terminal and takes the wake cadence with it: once closed, nothing wakes
         for this project again, so the team simply runs out of work — there is nothing to
         announce to them (FR-005).
+
+        It takes the project's open letters with it too. A question about a closed project
+        can never be answered — every action it offers is refused from here on — so leaving
+        it in the patron's waiting list would leave a count that never comes down and a
+        reminder ladder chasing an answer nobody is allowed to give.
         """
         async with self._uow() as uow:
             project = await self._writable(uow, project_id)
@@ -666,7 +674,10 @@ class ProjectService:
                 "reason": reason,
             },
         )
-        await self._resolve_phase_questions(project_id, updated.created_by_user_id)
+        if project_rules.is_closed(target_phase):
+            await self._retire_open_letters(project_id)
+        else:
+            await self._resolve_phase_questions(project_id, updated.created_by_user_id)
         return updated
 
     async def _announce_planning(self, project_id: UUID) -> None:
@@ -717,6 +728,20 @@ class ProjectService:
         """Public form of the closed-project guard, for callers outside this service."""
         async with self._uow() as uow:
             return await self._writable(uow, project_id)
+
+    async def _retire_open_letters(self, project_id: UUID) -> None:
+        """Closing the project retires every letter it left open, of every kind.
+
+        The wider cousin of `_resolve_phase_questions`, and for the same reason: the patron
+        does not tidy up by hand. Wider because closing does not answer one question, it
+        ends all of them — the phase decision, the escalations, the outputs waiting to be
+        judged, the Leader's questions.
+        """
+        if self._inbox is None:
+            return
+        retired = await self._inbox.void_for_project(project_id)
+        if retired:
+            logger.info("project %s closed; retired %s open letters", project_id, retired)
 
     async def _resolve_phase_questions(
         self, project_id: UUID, recipient: str | None

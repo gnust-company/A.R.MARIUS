@@ -141,7 +141,10 @@ class InboxService:
             raise LookupError("inbox item not found")
         if recipient_user_id is not None and item.recipient_user_id != recipient_user_id:
             raise LookupError("inbox item not found")
-        if item.status is InboxItemStatus.RESOLVED:
+        if item.status is not InboxItemStatus.PENDING:
+            # Already off the waiting list, whichever way it left. Asked rather than
+            # "is it RESOLVED" so that a voided letter cannot be turned into a resolved
+            # one — that would record an answer the patron never gave.
             return item, False
         item.status = InboxItemStatus.RESOLVED
         item.resolved_at = utcnow()
@@ -151,6 +154,32 @@ class InboxService:
     async def publish_resolved(self, item: InboxItem) -> None:
         """Announce a resolution whose write landed under somebody else's transaction."""
         await self._publish(EVENT_ITEM_RESOLVED, item)
+
+    async def void_for_project(self, project_id: UUID) -> int:
+        """Retire every letter still waiting on this project. Returns how many.
+
+        Called when the project closes (FR-005). A closed project answers nothing and is
+        answered by nobody, so a question about it is a question that will never be
+        answered — and one that would otherwise sit in the patron's waiting list and be
+        chased by the reminder ladder for ever.
+
+        Voided, not resolved: the patron never answered these, and the record should not
+        say they did. The letters stay where they are and stay readable, which is the
+        whole point of keeping a closed project.
+        """
+        now = utcnow()
+        async with self._uow() as uow:
+            waiting = list(await uow.inbox.list_pending_for_project(project_id))
+            for item in waiting:
+                item.status = InboxItemStatus.VOID
+                item.resolved_at = now
+                await uow.inbox.update(item)
+            if waiting:
+                await uow.commit()
+
+        for item in waiting:
+            await self._publish(EVENT_ITEM_RESOLVED, item)
+        return len(waiting)
 
     # ── the three-tier reminder ladder (FR-065) ──────────────────────────────
     async def send_due_reminders(self, now: datetime | None = None) -> int:

@@ -571,6 +571,15 @@ class InboxRepository(ABC):
     async def list_pending_for_task(self, task_id: UUID) -> Sequence[InboxItem]: ...
 
     @abstractmethod
+    async def list_pending_for_project(self, project_id: UUID) -> Sequence[InboxItem]:
+        """Every item still waiting on this project, whoever it was addressed to.
+
+        Not scoped to a recipient, unlike the patron-facing reads: closing a project has
+        to clear what it leaves behind for *everyone* it ever asked, and the closer is not
+        always the patron who was asked.
+        """
+
+    @abstractmethod
     async def list_pending(self, *, limit: int = 500) -> Sequence[InboxItem]:
         """Every item still waiting, across every workspace, oldest first (FR-065).
 
