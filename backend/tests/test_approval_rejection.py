@@ -12,7 +12,7 @@ thay vì để vòng sửa–nộp lặp vô tận.
 
 from __future__ import annotations
 
-from tests.support.app_db import wakeups_for_task
+from tests.support.app_db import wakeups_for_project, wakeups_for_task
 from tests.support.approvals import task_awaiting_acceptance
 from tests.support.planning import client, operating_project
 
@@ -82,6 +82,70 @@ async def test_a_rejection_wakes_the_worker_who_did_the_work() -> None:
     # Và chỉ còn đúng một lời gọi sống — dòng bị gộp không phải một lần gọi thứ hai.
     live = [w for w in rows if w["status"] != "coalesced"]
     assert len(live) == 1, wakes
+
+
+async def test_a_rejection_by_the_patron_also_reaches_the_leader() -> None:
+    """FR-047 ghi cớ là *người chủ công nhận **hoặc từ chối** một đầu ra* — hai vế.
+
+    Vế công nhận vẫn tới Trưởng dự án, vì đóng việc tự mang theo lời gọi của nó. Vế từ
+    chối thì không: nó gọi thợ rồi thôi. Trưởng dự án là người đã chấm đạt thành phẩm ấy
+    trước, mà chỉ biết người chủ nghĩ khác nếu cùng đầu việc quay lại tới vòng thứ ba.
+    """
+    async with client() as c:
+        p = await operating_project(c, "reject-g@armarius.dev")
+        task_id = await task_awaiting_acceptance(c, p)
+        await _leader_signs(c, p, task_id)
+        await _patron_rejects(c, p, task_id, "Chưa khớp sổ cái quý trước.")
+
+        wakes = await wakeups_for_project(p.project_id)
+
+    rows = [w for w in wakes if "patron_rejected_output" in w["codes"]]
+    assert len(rows) == 1, wakes
+    assert rows[0]["source"] == "patron_decision"
+    assert rows[0]["marius_id"] == str(p.leader_id)
+    assert "sổ cái quý trước" in (rows[0]["prompt"] or ""), rows
+
+
+async def test_the_third_round_does_not_tell_the_leader_the_same_thing_twice() -> None:
+    """Vòng thứ ba đã kéo Trưởng dự án vào đúng đầu việc ấy với lời mạnh hơn — soát lại đề
+    bài, đừng soát người làm. Gửi thêm một lời nữa về cùng một lần từ chối là đúng thứ ồn
+    ào mức dự án mà FR-049 sinh ra để chặn."""
+    async with client() as c:
+        p = await operating_project(c, "reject-h@armarius.dev")
+        task_id = await task_awaiting_acceptance(c, p)
+        for i, reason in enumerate(
+            ("Thiếu đối chiếu.", "Sai kỳ báo cáo.", "Vẫn chưa khớp sổ cái.")
+        ):
+            if i:
+                await _back_to_review(c, p, task_id)
+            await _leader_signs(c, p, task_id)
+            await _patron_rejects(c, p, task_id, reason)
+
+        project_wakes = await wakeups_for_project(p.project_id)
+        task_wakes = await wakeups_for_task(task_id)
+
+    # Hai vòng đầu báo Trưởng dự án; vòng thứ ba nhường chỗ cho lời gọi soát đề bài.
+    told = [w for w in project_wakes if "patron_rejected_output" in w["codes"]]
+    assert len(told) == 2, project_wakes
+    assert len([w for w in task_wakes if w["source"] == "brief_review"]) == 1
+
+
+async def test_the_leader_rejecting_does_not_wake_itself() -> None:
+    """Cớ là *người chủ* từ chối. Trưởng dự án tự chấm không đạt thì nó vừa quyết xong —
+    gọi lại chính nó về quyết định của chính nó là vòng tự cắn đuôi."""
+    async with client() as c:
+        p = await operating_project(c, "reject-i@armarius.dev")
+        task_id = await task_awaiting_acceptance(c, p)
+        r = await c.post(
+            f"/agent/tasks/{task_id}/approval",
+            headers=p.leader_headers,
+            json={"approve": False, "reason": "Chưa đạt tiêu chí thứ hai."},
+        )
+        assert r.status_code == 200, r.text
+
+        wakes = await wakeups_for_project(p.project_id)
+
+    assert [w for w in wakes if "patron_rejected_output" in w["codes"]] == [], wakes
 
 
 async def test_the_rejection_reason_is_required() -> None:

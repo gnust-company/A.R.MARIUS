@@ -306,6 +306,8 @@ def build_container() -> Container:
             # Asked one question, at one moment: is the deliverable still there when
             # somebody is about to sign for it (FR-069).
             artifact_store=store,
+            # The patron refusing an output is the Leader's business too (FR-047, T189).
+            leader_chat=leader_chat,
         ),
         task_logs=TaskLogService(uow_factory),
         threads=ThreadService(uow_factory, wake_engine, control_bus=control_bus),
