@@ -21,6 +21,17 @@ place for. A row with no agent was never a seat. A row whose `role_key` matches 
 its project was already unreadable — every reader joined it to a role and skipped it. Where
 one agent somehow held the same role twice, the most recent row is the one kept.
 
+**A key can name more than one role.** `roles` has no unique constraint on
+`(project_id, key)`: the HTTP door renumbers a clash (`backend`, `backend-2`), but the
+onboarding door takes the roster an agent wrote and passes its keys straight through, and
+two workers titled "Backend" is an ordinary thing for an agent to draft. Joining on the key
+alone therefore copies one seat once per matching role and breaks the primary key — which
+kills the upgrade mid-chain, on a live cluster, exactly once. So the join pins the role the
+running code would have picked: `roles.list_by_project` orders by `created_at` and
+`_role_by_key` takes the first match, so the seat lands where the application already had
+it. `tests/test_the_seat_migration_survives_real_rows.py` runs this chain over rows shaped
+like that.
+
 Revises: d3f7b2a6c1e8
 Create Date: 2026-08-18
 """
@@ -38,9 +49,13 @@ depends_on = None
 
 _INDEXED = ("project_id", "role_id", "marius_id", "granted_by_user_id")
 
-# One row per (project, role, agent): the newest, since that is the grant in force. The
-# correlated pick is spelled out rather than done with a window function so the same
-# statement runs on SQLite and on PostgreSQL.
+# Two things have to be picked, and both are picked the way the running code already picks
+# them. The correlated form is spelled out rather than done with window functions so the
+# same statement runs on SQLite and on PostgreSQL.
+#
+# `(x IS NULL)` leads both orderings because the two databases disagree about where a NULL
+# sorts, and a migration that moves a seat to a different role depending on which database
+# it ran on is worse than either answer on its own.
 _COPY_FORWARD = """
 INSERT INTO seat_grants_rebuilt
     (id, project_id, role_id, marius_id, granted_by_user_id, granted_at, created_at)
@@ -49,16 +64,23 @@ FROM seat_grants g
 JOIN roles r ON r.project_id = g.project_id AND r.key = g.role_key
 WHERE g.status = 'granted'
   AND g.marius_id IS NOT NULL
+  AND r.id = (
+      SELECT r2.id
+      FROM roles r2
+      WHERE r2.project_id = g.project_id
+        AND r2.key = g.role_key
+      ORDER BY (r2.created_at IS NULL), r2.created_at, r2.id
+      LIMIT 1
+  )
   AND g.id = (
       SELECT g2.id
       FROM seat_grants g2
-      JOIN roles r2 ON r2.project_id = g2.project_id AND r2.key = g2.role_key
       WHERE g2.status = 'granted'
         AND g2.marius_id IS NOT NULL
         AND g2.project_id = g.project_id
-        AND r2.id = r.id
+        AND g2.role_key = g.role_key
         AND g2.marius_id = g.marius_id
-      ORDER BY g2.created_at DESC, g2.id DESC
+      ORDER BY (g2.created_at IS NULL), g2.created_at DESC, g2.id DESC
       LIMIT 1
   )
 """
