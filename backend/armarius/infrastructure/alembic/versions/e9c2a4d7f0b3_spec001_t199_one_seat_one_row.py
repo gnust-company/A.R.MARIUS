@@ -16,10 +16,19 @@ seated *now*, and nothing else:
 The table is rebuilt rather than altered in place: SQLite cannot add a foreign key to an
 existing column, and a rebuild is the same statement sequence on both databases.
 
-Three kinds of row do not survive, on purpose. A revoked row is history the new shape has no
-place for. A row with no agent was never a seat. A row whose `role_key` matches no role in
-its project was already unreadable — every reader joined it to a role and skipped it. Where
-one agent somehow held the same role twice, the most recent row is the one kept.
+Four kinds of row do not survive, on purpose, and the last three are the same fact said four
+ways: **the new shape only holds a seat that still points at something.** A revoked row is
+history the new shape has no place for. A row with no agent was never a seat. A row whose
+`role_key` matches no role, or whose `marius_id` names an agent that is gone, was already
+unreadable — every reader joined it and skipped it — and now that both ends are foreign
+keys, copying one would abort the whole upgrade rather than leave a dangling row. Where one
+agent somehow held the same role twice, the most recent row is the one kept.
+
+Seats pointing at a deleted agent are not hypothetical: until this branch, seating an agent
+from another workspace was accepted, and deleting *its* workspace removed the agent while
+leaving the seat behind. Both halves are closed now (`grant_seat` refuses the cross-workspace
+seat, the workspace delete clears seats by agent), but a database written before that still
+carries the rows.
 
 **A key can name more than one role.** `roles` has no unique constraint on
 `(project_id, key)`: the HTTP door renumbers a clash (`backend`, `backend-2`), but the
@@ -62,6 +71,8 @@ INSERT INTO seat_grants_rebuilt
 SELECT g.id, g.project_id, r.id, g.marius_id, g.granted_by_user_id, g.granted_at, g.created_at
 FROM seat_grants g
 JOIN roles r ON r.project_id = g.project_id AND r.key = g.role_key
+JOIN projects p ON p.id = g.project_id
+JOIN mariuses m ON m.id = g.marius_id
 WHERE g.status = 'granted'
   AND g.marius_id IS NOT NULL
   AND r.id = (

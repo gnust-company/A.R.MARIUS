@@ -5,10 +5,17 @@ hình dạng cuối cùng và **không chứng minh được gì** về phép ch
 cũng dựng lại từ ổ trống. Cả hai lối kiểm ấy đi vòng qua đúng chỗ một bản di trú hỏng: lượt
 nâng cấp trên cụm đang chạy, một lần, lúc deploy.
 
-Chỗ hỏng là phép nối đi qua **chuỗi mã vai**. Bảng `roles` không có ràng buộc duy nhất trên
+Hai chỗ hỏng, cùng một gốc: **phép chuyển tin dữ liệu cũ sạch hơn thực tế**.
+
+Một là phép nối đi qua **chuỗi mã vai**. Bảng `roles` không có ràng buộc duy nhất trên
 `(project_id, key)`, và cửa onboarding không làm-duy-nhất khoá như cửa HTTP — agent soạn
 roster có hai vai cùng tiêu đề là ra hai vai cùng khoá. Mỗi dòng ghế khi ấy nối ra hai dòng
 vai, và cùng một `id` được chèn hai lần.
+
+Hai là ghế trỏ vào thứ **không còn tồn tại**. Bảng mới bắt cả hai đầu ghế phải là khoá
+ngoại, nên một dòng mồ côi không còn "im lặng nằm đó" như trước mà làm chết cả lượt nâng
+cấp trên Postgres. Dòng mồ côi ấy có thật: cho tới nhánh này, trao ghế cho agent của
+workspace khác vẫn được nhận, rồi xoá workspace của agent ấy là ghế ở lại một mình.
 """
 
 from __future__ import annotations
@@ -38,7 +45,7 @@ def _alembic(db_file: Path, target: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _seed_a_project_with_two_roles_under_one_key(db_file: Path) -> tuple[str, str, str]:
+def _seed(db_file: Path) -> tuple[str, str, str]:
     """Một dự án, hai vai trùng `key`, và một ghế trỏ vào cái khoá ấy.
 
     Trả về (id ghế, id vai tạo trước, id vai tạo sau) — vai tạo trước là vai mà mã đang chạy
@@ -88,7 +95,7 @@ def test_the_upgrade_survives_two_roles_sharing_one_key(tmp_path: Path) -> None:
     first = _alembic(db_file, _BEFORE_THE_SEAT_MIGRATION)
     assert first.returncode == 0, first.stderr or first.stdout
 
-    grant, older, newer = _seed_a_project_with_two_roles_under_one_key(db_file)
+    grant, older, newer = _seed(db_file)
 
     run = _alembic(db_file, "head")
     assert run.returncode == 0, (
@@ -115,7 +122,7 @@ def test_a_seat_whose_role_key_matches_nothing_is_left_behind(tmp_path: Path) ->
     db_file = tmp_path / "orphan-seat.db"
     assert _alembic(db_file, _BEFORE_THE_SEAT_MIGRATION).returncode == 0
 
-    _seed_a_project_with_two_roles_under_one_key(db_file)
+    _seed(db_file)
     con = sqlite3.connect(db_file)
     con.execute("UPDATE seat_grants SET role_key = 'khong-co-vai-nao'")
     con.commit()
@@ -129,3 +136,41 @@ def test_a_seat_whose_role_key_matches_nothing_is_left_behind(tmp_path: Path) ->
         assert list(con.execute("SELECT id FROM seat_grants")) == []
     finally:
         con.close()
+
+
+def test_a_seat_pointing_at_a_deleted_agent_is_left_behind(tmp_path: Path) -> None:
+    """Ghế trỏ vào một agent đã bị xoá cũng đã không đọc được từ trước.
+
+    Trước bản di trú này `marius_id` không có khoá ngoại, nên dòng ấy nằm im. Bảng mới bắt
+    nó phải trỏ vào một agent có thật, nên chép nó sang là **chết cả lượt nâng cấp** trên
+    Postgres — chứ không phải bỏ qua một dòng.
+    """
+    db_file = tmp_path / "ghost-agent.db"
+    assert _alembic(db_file, _BEFORE_THE_SEAT_MIGRATION).returncode == 0
+    grant, older, _ = _seed(db_file)
+
+    ghost = str(uuid.uuid4())
+    con = sqlite3.connect(db_file)
+    con.execute(
+        "INSERT INTO seat_grants (id, project_id, role_key, marius_id, status, "
+        "granted_by_user_id, created_at) "
+        "SELECT ?, project_id, role_key, ?, 'granted', granted_by_user_id, created_at "
+        "FROM seat_grants WHERE id = ?",
+        (str(uuid.uuid4()), ghost, grant),
+    )
+    con.commit()
+    con.close()
+
+    run = _alembic(db_file, "head")
+    assert run.returncode == 0, (
+        "lượt nâng cấp chết vì một dòng ghế mồ côi:\n" + (run.stderr or run.stdout)
+    )
+
+    con = sqlite3.connect(db_file)
+    try:
+        rows = list(con.execute("SELECT id, role_id, marius_id FROM seat_grants"))
+    finally:
+        con.close()
+    assert [r[0] for r in rows] == [grant], f"ghế mồ côi không được sang: {rows}"
+    assert rows[0][1] == older
+    assert ghost not in {r[2] for r in rows}

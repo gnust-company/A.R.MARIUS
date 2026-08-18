@@ -1385,7 +1385,10 @@ tồn tại không có nghĩa là luật được canh; phải kiểm bài kiể
   và agent nhận đúng câu ấy. Bài kiểm đọc cây cú pháp của T184 không bắt được vì nó chỉ soi các lệnh
   ném thuộc họ error code, còn đây là `ValueError` trần. Phần đáng giá hơn cả bản vá hai dòng là mở
   bài kiểm ấy ra: mọi lệnh ném `ValueError`/`LookupError`/`PermissionError` trần trong `presentation/`
-  và `application/` đều là một lời từ chối lọt ra ngoài bảng
+  và `application/` đều là một lời từ chối lọt ra ngoài bảng. Cùng họ, người rà nêu ở PR #209:
+  `recovery.py:270` (`leader_gave_up`) đẩy **câu Trưởng dự án tự viết** vào `ladder.cause` — một
+  trường giờ mang hình dạng mã — rồi câu ấy chảy vào hồ sơ Mức 3 ở ô `"cause"`, nơi giao diện chờ một
+  mã. Không nổ, chỉ rơi về nhãn chung; nhưng nó là chữ tự do nằm trong ô của mã
 
 - [ ] T202 Làm khoá vai **thật sự duy nhất trong một dự án**, và không trao quá số chỗ của vai — ở
   `backend/armarius/application/use_cases/onboarding_session.py` (`plan_from_collected` truyền thẳng
