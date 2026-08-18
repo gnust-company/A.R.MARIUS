@@ -1377,7 +1377,7 @@ tồn tại không có nghĩa là luật được canh; phải kiểm bài kiể
   tiếng Anh thì người chủ đọc sai thứ tiếng — lời từ chối nêu cái cờ, còn *vì sao* nằm trên chính đầu
   việc, nơi cả hai người đọc đều đã có nó bằng thứ tiếng của mình
 
-- [ ] T201 Bịt nốt lối từ chối **không có mã**, ở `backend/armarius/presentation/api/tasks.py` và
+- [x] T201 Bịt nốt lối từ chối **không có mã**, ở `backend/armarius/presentation/api/tasks.py` và
   `presentation/api/agent.py` (`raise ValueError(f"unknown status '{...}'")`) cùng bài kiểm ở
   `backend/tests/test_error_is_a_code_not_a_sentence.py` — theo FR-084a, Hiến pháp VII. Tìm ra khi chạy
   dịch vụ thật để kiểm T200: gửi một trạng thái sai thì mặt giao tiếp trả `400 {"detail": "unknown
@@ -1389,8 +1389,20 @@ tồn tại không có nghĩa là luật được canh; phải kiểm bài kiể
   `recovery.py:270` (`leader_gave_up`) đẩy **câu Trưởng dự án tự viết** vào `ladder.cause` — một
   trường giờ mang hình dạng mã — rồi câu ấy chảy vào hồ sơ Mức 3 ở ô `"cause"`, nơi giao diện chờ một
   mã. Không nổ, chỉ rơi về nhãn chung; nhưng nó là chữ tự do nằm trong ô của mã
+  **Xong 2026-08-18.** Không phải hai chỗ mà **bảy**: lượt quét tìm thêm `inbox.py:92`
+  (`unknown inbox status`) và `agent.py:635` (`unknown project phase`) — hai cửa tôi không gõ sai lúc
+  thử tay — cùng ba `LookupError` mang câu tiếng Anh trần ở `repositories.py` (416, 1642, 1738), vốn
+  ra `404` chỉ có `detail`. `RuntimeError` **không** nằm trong lượt quét: nó rơi ra `500`, tức lỗi lập
+  trình, mà một cái 500 thì không ai dựng câu cho người đọc. Bốn mã mới vào bảng cùng hai bảng giao
+  diện. `recovery.py` không còn đẩy câu Trưởng dự án tự viết vào `ladder.cause`: thêm mã
+  `stall_leader_gave_up`, còn chữ Trưởng dự án viết thì giữ nguyên văn trong nhật ký đầu việc — chỗ
+  của văn xuôi. Phần đáng giá hơn cả bảy bản vá là bài kiểm mới
+  `test_no_refusal_leaves_the_server_without_a_code`: nó quét mọi lệnh ném `ValueError`/`LookupError`/
+  `PermissionError`/`KeyError` trần trong toàn bộ `armarius/`, kèm bốn chỗ được nêu đích danh là
+  **không tới tay người gọi** (bộ soát pydantic, đọc thẻ, băm mật khẩu, sổ bộ chuyển đổi). Đã chứng
+  minh đỏ trên mã chưa vá: nó nêu đủ cả bảy
 
-- [ ] T202 Làm khoá vai **thật sự duy nhất trong một dự án**, và không trao quá số chỗ của vai — ở
+- [x] T202 Làm khoá vai **thật sự duy nhất trong một dự án**, và không trao quá số chỗ của vai — ở
   `backend/armarius/application/use_cases/onboarding_session.py` (`plan_from_collected` truyền thẳng
   khoá agent soạn), `domain/services/project_rules.py` (`validate_plan` chỉ đếm Trưởng/thợ), `roles`
   (không có ràng buộc duy nhất `(project_id, key)`) và `application/use_cases/projects.py`
@@ -1403,3 +1415,32 @@ tồn tại không có nghĩa là luật được canh; phải kiểm bài kiể
   agent. Nợ có từ trước, không phải hồi quy của #209 — nhưng bản di trú ghế đã phải né nửa (a) và câu
   "một vai có hai chỗ đọc ra là đã đầy" chỉ đóng được nửa (b). Dựng ràng buộc duy nhất cho `roles` cần
   làm-duy-nhất khoá đã có trước, nên đây là việc có di trú, tách riêng
+  **Xong 2026-08-18.** Phép soát đặt ở `validate_plan`, tức **chỗ cả hai cửa cùng đi qua**, chứ không
+  vá riêng cửa onboarding: `add_role` vốn đã từ chối khoá trùng nhưng mỗi lần một vai, còn cả một
+  roster vào cùng lúc thì chưa từng đi qua phép soát nào. Đóng hai đầu, vì mỗi đầu chỉ che được một
+  nửa: `validate_plan` từ chối thẳng (đúng với roster người gõ tay), còn `plan_from_collected` **tự
+  đánh số lại** trước khi giao đi — ở đó tác giả là một mô hình vừa với tay lấy đúng một chữ hai lần,
+  và giết cả lượt trò chuyện vì chuyện chọn chữ của máy là bắt người chủ trả giá cho lỗi của máy.
+  Ràng buộc `uq_roles_project_key` dựng ở tầng cơ sở dữ liệu cho cả dòng đã ghi từ trước; bản di trú
+  viết bằng Python có **vòng chống trùng thật** chứ không phải một phép nối chuỗi đoán rằng hậu tố
+  còn trống — dự án có sẵn `backend2` đặt tay là trường hợp đã kiểm. Nửa dưới: `grant_seat` đọc
+  `role.seats`, nên một vai một chỗ không giữ hai người, và `leader_marius_id` thôi phụ thuộc thứ tự
+  dòng. Ghế **không xê dịch** khi đổi khoá — từ T199 ghế trỏ theo `role_id` — và đó là một điều kiểm
+  riêng, vì nếu ghế còn trỏ theo khoá thì bản di trú này sẽ âm thầm chuyển người sang vai khác
+
+- [x] T203 Đưa về tiếng Anh **chữ máy chủ tự soạn rồi đọc lại vào gói tin gửi agent**, ở
+  `backend/armarius/application/use_cases/approvals.py` (`next_action` ×2) và `tasks.py`
+  (`Comment(author_kind=AGENT, body=...)`) — theo Hiến pháp VII. Ra từ lượt quét sau khi người chủ hỏi
+  *"sao mỗi lần lại ra một việc"*: T200 sửa **một** chỗ của một lớp, rồi lớp ấy bị coi như đã đóng.
+  Lượt quét đọc ra 60 chuỗi tiếng Việt trong `armarius/`, nhưng truy theo đường đi thì **chỉ 3** chạm
+  agent — 57 chuỗi còn lại là tiêu đề hộp thư, dòng nhật ký, nhãn màn hình, tức chữ cho người chủ và
+  đúng chỗ. Đường đánh thức vốn đã an toàn: `reason` có kiểu `WakeReason`, dựng qua `render_en()`,
+  nên một câu tiếng Việt không lọt vào mục *"Why you were woken"* được. Hai ô còn lại thì **không có
+  kiểu nào canh**: `## Your recorded next action` đọc thẳng `task.next_action`, và `## New messages
+  since you last worked` đọc thẳng thân các `Comment`. Cả hai chỗ hỏng đều nằm **ngay cạnh** một dòng
+  mà tác giả đã cân nhắc đúng điều luật này rồi bỏ sót hàng xóm — docstring ở `approvals.py:580` nói
+  thẳng ra điều đó cho dòng `reason=`, mà dòng `next_action` ngay dưới thì không.
+  **Xong 2026-08-18.** Bài kiểm `test_the_agents_packet_is_english.py` quét theo **tên ô** chứ không
+  theo tên tệp, nên một lối ghi mới ở bất cứ đâu trong `armarius/` cũng bị soi, kể cả tệp chưa tồn
+  tại. Lần chạy đỏ đầu chỉ bắt 2/3: giá trị ở `tasks.py:723` là `note or "..."`, một nút `BoolOp` mà
+  phép đọc chữ chưa xử — đúng kiểu sót mà bài kiểm này sinh ra để chặn, và đã vá rồi mới nhận đủ 3/3
