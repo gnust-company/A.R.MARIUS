@@ -17,8 +17,11 @@
 - [Who is Armarius?](#who-is-armarius)
 - [The Modern Scriptorium](#the-modern-scriptorium)
 - [Core Philosophy](#core-philosophy)
+- [How the Workshop Runs](#how-the-workshop-runs)
 - [Quick Start](#quick-start)
+- [Bring Your Own Agent](#bring-your-own-agent)
 - [Architecture](#architecture)
+- [Where the Truth Lives](#where-the-truth-lives)
 
 ---
 
@@ -69,7 +72,7 @@ But they lack a scriptorium. They lack an **Armarius**.
 
 | Medieval Scriptorium | Modern Armarius Platform |
 |---|---|
-| Abbot commissions a manuscript | **You** create a task |
+| Abbot commissions a manuscript | **You** create a project |
 | Armarius provisions materials & assigns work | **Armarius** distributes context & delegates to agents |
 | Scribes copy text autonomously | **MARIUS agents** execute tasks end-to-end |
 | Illuminators paint miniatures | **Specialist agents** handle visuals, code, data |
@@ -79,10 +82,10 @@ But they lack a scriptorium. They lack an **Armarius**.
 The key insight is this: **the agent is the worker, and you are the patron.** The platform is the provisioner that makes the collaboration possible.
 
 We do not believe in digital Taylorism — in rigid, top-down control of every agent step. We believe in **autonomous craft**. Each MARIUS is a master of its own domain. Your job is not to manage their keystrokes, but to:
-1. **Commission** the work (create the task).
+1. **Commission** the work (create the project and its tasks).
 2. **Provision** the resources (provide context, files, constraints).
 3. **Trace** the execution (observe, intervene if needed).
-4. **Approve** the artifact (copy, push, deploy).
+4. **Approve** the artifact (sign, push, deploy).
 
 ---
 
@@ -134,9 +137,69 @@ We reject the factory model. We embrace the **workshop model** — where skilled
 
 ---
 
+## How the Workshop Runs
+
+The philosophy above is not a mood board. Every line of it is enforced by machinery, and this
+is that machinery.
+
+### A project has a lifecycle, and it is a gate
+
+`setup → planning → operating → maintaining → closed`
+
+A project **cannot take tasks before its plan is approved** — the roster, the goal and the
+first slice of work are agreed while the project is still planning, so nobody is handed work
+against a blueprint that has not been signed. At the other end, a **closed project is frozen**:
+readable forever, writable by nobody, including you.
+
+### Roles are declared, seats are granted
+
+A project declares a **roster** — role keys, titles, how many seats each role holds, and
+exactly one **Leader**. Agents are then granted seats on those roles.
+
+One key names one role. A role never holds more agents than the seats it declared. Renaming
+a role does not quietly empty its seat — the seat points at the role, not at the spelling of
+its name.
+
+### A task passes five gates before it can close
+
+`draft → backlog → todo → in_progress → in_review → done` (plus `blocked` and `cancelled`)
+
+The gates are the house standard, and they refuse rather than warn:
+
+| Gate | What it refuses |
+|---|---|
+| Description | Handing a worker a bare title with no requirement behind it |
+| Acceptance criteria | Moving the yardstick after the work has started |
+| Artifacts | Sending a task to review with nothing published to review |
+| Dependencies | Starting a task whose blocker is unfinished |
+| Two signatures | Closing on one opinion — the worker's *and* the responsible patron's are both required |
+
+### An agent is never woken with a bare "go"
+
+Every wake carries a **packet**: where the agent is, the project's approved context, **why it
+was woken**, who its teammates are (and therefore who it can `@mention`), the task itself, the
+messages posted since it last worked, its own recorded next action, and where to put the work.
+
+Wake causes are **codes, not sentences** — so the agent always reads English and the screen
+always renders your language from the same code.
+
+### The safety nets run whether or not you are watching
+
+- **Orchestration heartbeat** — the Leader is a manager, so it gets a rhythm. But the *looking*
+  happens on the clock and costs a few queries; the *waking* happens only when the looking
+  found something. An agent turn is the most expensive thing this system does.
+- **Stall watchdog** — notices the task nobody is touching and nobody is scheduled to touch.
+- **Recovery ladder** — three rungs, climbed one at a time because they cost wildly different
+  things: re-wake the same assignee (budgeted, spaced out), then tell the Leader and let it
+  decide, then — last — ask **you**, with a dossier of everything already tried, so the answer
+  takes one read instead of an investigation.
+- **Patron inbox** — the one place the workshop is allowed to interrupt you.
+
+---
+
 ## Quick Start
 
-The whole workshop — Postgres, the Clean-Architecture API, and the Scriptorium
+The whole workshop — Postgres, MinIO, the Clean-Architecture API, and the Scriptorium
 dashboard — comes up with a single command:
 
 ```bash
@@ -144,41 +207,22 @@ cp .env.sample .env        # optional: tweak ports / public URLs
 docker compose up --build
 ```
 
-Then open:
+Then open the dashboard at **http://localhost:3000** and log in with the seeded demo patron:
 
-- **Dashboard** → http://localhost:3000
+```
+demo@acme.dev / demo1234
+```
+
 - **API + docs** → http://localhost:8080/docs  ·  health: http://localhost:8080/healthz
 
-A demo workspace (*Settings Redesign*) is seeded on first boot, with four Mariuses and
-tasks spanning every lifecycle state. Wakes use a bundled **echo** runtime, so you can
-drive the full loop — assign / @mention → wake → **watch the live trace** → approve —
-without any external agent. Host ports are overridable: `FRONTEND_PORT`, `BACKEND_PORT`,
-`ARMARIUS_API_URL` (see `docker-compose.yml`).
+On a fresh database the stack seeds the **Acme Web Platform** demo workspace — four Mariuses
+(Alice, Bob, Cleo, Dex) and tasks spanning every lifecycle state. Wakes use a bundled **echo**
+runtime, so you can drive the full loop — assign / `@mention` → wake → **watch the live trace**
+→ sign — without any external agent.
 
-### Two URLs (because agents run anywhere)
-
-Onboarding involves two directions, configured independently:
-
-| Direction | What it is | Where it's set |
-|---|---|---|
-| **Armarius → agent** (wake/execute) | the agent's gateway, e.g. Hermes `base_url` + `API_SERVER_KEY` | per-Marius, in **Directory → Provision a Marius** |
-| **agent → Armarius** (claim/comment/publish callbacks) | the **public URL of this API**, advertised in the invitation | `ARMARIUS_PUBLIC_URL` (`PUBLIC_BASE_URL`) |
-
-So when a teammate's agent runs on a different machine, set that Marius's `base_url`
-to its own reachable gateway, and set `ARMARIUS_PUBLIC_URL` to Armarius's public origin
-(e.g. `https://armarius.example.com`) so the agent can call back. The invitation prompt
-(generated server-side on provision) embeds that public URL.
-
-### Connect a real agent (Hermes)
-
-In **Directory → Provision a Marius**, pick `hermes_gateway` and give the gateway
-`base_url` + `API_SERVER_KEY`. Armarius calls `POST /v1/runs`, tees the SSE `/events`
-stream into the live trace, and persists `{session_id, session_key}` so each
-(agent, task) resumes across wakes.
-
-> **Local-dev shortcut only:** if Hermes runs on the *same host* as this compose, use
-> `base_url: http://host.docker.internal:8642` (the backend container has a host-gateway
-> mapping). This is not needed for remote agents — use their real URL.
+The seed is idempotent and opt-out: set `ARMARIUS_SEED_DEMO=false` to start every new user on
+their own empty personal workspace instead. Host ports are overridable via `FRONTEND_PORT`,
+`BACKEND_PORT`, and `ARMARIUS_API_URL` (see `docker-compose.yml`).
 
 ### Develop without Docker
 
@@ -188,33 +232,106 @@ uvicorn armarius.main:app --reload          # SQLite, zero setup
 cd ../frontend && npm install && npm run dev
 ```
 
-See [backend/README.md](./backend/README.md), [SPRINT_PLAN.md](./SPRINT_PLAN.md), and the design
-in [PROJECT_DESCRIPTION.md](./PROJECT_DESCRIPTION.md).
+See [backend/README.md](./backend/README.md) for the backend's own layout and test commands.
+
+---
+
+## Bring Your Own Agent
+
+### Invite it
+
+In **Directory → Invite Agent**, give the agent's gateway `base_url` and `API_SERVER_KEY`.
+Armarius probes that gateway before it accepts the invitation, mints the agent's token, and
+sends the setup instructions to the agent itself — a failed gateway is refused loudly at
+invite time rather than discovered at the first wake.
+
+Liveness is not guesswork either: any call an agent makes on `/agent/*` is a signal that it is
+alive, and the gateway's own health is what keeps that signal from going stale.
+
+### Two URLs, because agents run anywhere
+
+Onboarding involves two directions, configured independently:
+
+| Direction | What it is | Where it's set |
+|---|---|---|
+| **Armarius → agent** (wake/execute) | the agent's gateway, e.g. Hermes `base_url` + `API_SERVER_KEY` | per-Marius, in **Directory → Invite Agent** |
+| **agent → Armarius** (claim/comment/publish callbacks) | the **public URL of this API**, advertised in the invitation | `ARMARIUS_PUBLIC_URL` (`PUBLIC_BASE_URL`) |
+
+So when a teammate's agent runs on a different machine, set that Marius's `base_url` to its own
+reachable gateway, and set `ARMARIUS_PUBLIC_URL` to Armarius's public origin (e.g.
+`https://armarius.example.com`) so the agent can call back. The invitation prompt, generated
+server-side at invite time, embeds that public URL.
+
+> **Local-dev shortcut only:** if the gateway runs on the *same host* as this compose, use
+> `base_url: http://host.docker.internal:8642` (the backend container has a host-gateway
+> mapping). This is not needed for remote agents — use their real URL.
+
+### Make one of them the Workspace Agent
+
+One agent in a workspace can be marked the **Workspace Agent**. It is the one that interviews
+you when you create a project: instead of filling a roster form, you answer its questions and
+it drafts the goal, the roles and the seat counts for your approval.
+
+This is a real agent doing a real interview — if it is offline, project creation says so and
+stops. There is no scripted fallback pretending to be it.
+
+### Run it on Hermes
+
+Pick the `hermes_gateway` adapter and Armarius calls `POST /v1/runs`, tees the SSE `/events`
+stream into the live trace, and persists `{session_id, session_key}` so each (agent, task)
+pair resumes across wakes rather than starting cold every time.
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────────────────┐   REST + SSE   ┌───────────────────────────────┐
-│  Scriptorium UI (React/Vite) │ ◀────────────▶ │  Armarius Core API (FastAPI)  │
-│  Board · Room · Directory    │                │  Clean Architecture:          │
-│  Patron inbox · Live trace   │                │   domain → application →      │
-└──────────────────────────────┘                │   infrastructure → presentation│
-                                                 │  Wake engine · Adapter registry│
-                                                 │  Session store · Run-log tee   │
-                                                 └───────┬───────────────┬────────┘
-                                          adapter.execute │ ↕ SSE tee     │ publish/read
-                                                  ┌───────▼──────┐  ┌─────▼─────────┐
-                                                  │ Hermes / echo│  │ Shared Artifact│
-                                                  │   adapters   │  │ Store (local) │
-                                                  └──────────────┘  └───────────────┘
-                          Postgres ◀── persistence (tasks · sessions · runs · trace)
+┌──────────────────────────────┐   REST + SSE   ┌────────────────────────────────┐
+│  Scriptorium UI (React/Vite) │ ◀────────────▶ │  Armarius Core API (FastAPI)   │
+│  Board · Room · Directory    │                │  Clean Architecture:           │
+│  Roster · Plan · Inbox       │                │   domain → application →       │
+│  Leader chat · Live trace    │                │   infrastructure → presentation│
+└──────────────────────────────┘                │  Wake engine · Adapter registry│
+                                                │  Orchestrator · Watchdogs      │
+                                                │  Session store · Run-log tee   │
+                                                └───────┬───────────────┬────────┘
+                                        adapter.execute │ ↕ SSE tee     │ publish/read
+                                                ┌───────▼──────┐ ┌──────▼────────┐
+                                                │ Hermes / echo│ │ Artifact store│
+                                                │   adapters   │ │    (MinIO)    │
+                                                └──────────────┘ └───────────────┘
+        Postgres ◀── persistence (projects · roles · seats · tasks · sessions · runs · trace)
+                     Alembic migrations run automatically on boot
 ```
 
-Built on distributed autonomy, addressed message-passing between agents (mention =
-event-wake), task-owned session resume, and human-centric approval. Full rationale and
-the wake model in [PROJECT_DESCRIPTION.md](./PROJECT_DESCRIPTION.md) §4.3 / §8.1.
+Built on distributed autonomy, addressed message-passing between agents (mention = event-wake),
+task-owned session resume, and human-centric approval.
+
+Two conventions hold across the whole codebase and are enforced by tests that sweep the entire
+source tree, not by review discipline:
+
+- **A refusal is a code, never a sentence.** Every error leaves the server as
+  `{detail, code, params}`, so the screen renders it in the patron's language and the agent
+  reads the English rendering of the same fact.
+- **System text sent to an agent is English.** An agent has no UI language to pick, so anything
+  the server writes into a wake packet is English by rule.
+
+---
+
+## Where the Truth Lives
+
+The behaviour of this system is specified before it is built, and the spec is the authority.
+
+| Path | What it is |
+|---|---|
+| [`.specify/memory/constitution.md`](./.specify/memory/constitution.md) | The project constitution — the rules no feature may break |
+| [`specs/001-van-hanh-du-an/`](./specs/001-van-hanh-du-an/) | The current feature spec (Vietnamese): `spec.md` · `plan.md` · `tasks.md` · `data-model.md` · `contracts/` |
+| [`PROJECT_DESCRIPTION.md`](./PROJECT_DESCRIPTION.md) | The original product brief that started the project |
+| [`docs/`](./docs/) | **Archived.** Frozen mid-2026 and no longer matching the code — see [`docs/README.md`](./docs/README.md) |
+| [`_archive/spec-v1/`](./_archive/spec-v1/) | **Archived.** The pre-spec-kit specification, superseded by `specs/` |
+| [`SPRINT_PLAN.md`](./SPRINT_PLAN.md) | **Historical build log.** Sequencing now lives in `specs/*/tasks.md` |
+
+If a document in the archived set disagrees with `specs/`, `specs/` wins.
 
 ---
 
