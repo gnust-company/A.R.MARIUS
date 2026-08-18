@@ -375,7 +375,11 @@ class ApprovalService:
         """
         task.transition_to(TaskStatus.IN_PROGRESS, now, reason=reason)
         await retire_signatures_on_move(uow, task.id, TaskStatus.IN_PROGRESS)
-        task.next_action = f"Sửa theo phản hồi: {reason}".strip()
+        # English, because `next_action` is read back to the agent verbatim under
+        # "## Your recorded next action" in the wake packet (Constitution VII). The
+        # board copy of the same verdict is `reason` on the transition above, which
+        # stays the patron's language. Same convention as `plan_gate`.
+        task.next_action = f"Rework along the feedback: {reason}".strip()
         # Provisional (FR-056): the rework wake is booked by the caller after this
         # transaction commits, so the verified drive cannot be known yet. It carries a
         # short clock, which is what makes "sent back and then forgotten" visible.
@@ -586,7 +590,9 @@ class ApprovalService:
         reason = f"thành phẩm không còn trong kho: {listed}"
         task.transition_to(TaskStatus.IN_PROGRESS, now, reason=reason)
         await retire_signatures_on_move(uow, task.id, TaskStatus.IN_PROGRESS)
-        task.next_action = f"Nộp lại thành phẩm đã mất: {listed}"
+        # English for the same reason as the rework next action above: the agent reads
+        # this line back out of its own wake packet.
+        task.next_action = f"Publish the missing outputs again: {listed}"
         provisional = provisional_drive(task.status, now=now)
         task.drive = provisional.kind if provisional else None
         task.drive_expires_at = provisional.expires_at if provisional else None

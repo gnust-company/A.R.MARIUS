@@ -720,7 +720,12 @@ class TaskService:
                     task_id=task_id,
                     author_kind=AuthorKind.AGENT,
                     author_marius_id=marius_id,
-                    body=note or "Tôi xin nhận đầu việc này.",
+                    # The fallback is English: with no note of its own the server is
+                    # writing in the agent's voice, and this comment is replayed into
+                    # the Leader's wake packet under "## New messages since you last
+                    # worked" (Constitution VII). A worker's own `note` is passed
+                    # through untouched — that is the agent's sentence, not ours.
+                    body=note or "I would like to take this task.",
                 )
             )
             await self._log(
