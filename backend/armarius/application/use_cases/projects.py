@@ -198,7 +198,7 @@ class ProjectService:
         # enforces the same "every role has a description" rule itself (spec 03 §3.1, #112).
         if not (spec.description or "").strip():
             raise project_rules.InvalidProjectPlan(
-                f"role '{spec.title or spec.key}' needs a description of what it does."
+                "role_needs_a_description", roles=spec.title or spec.key
             )
         async with self._uow() as uow:
             if await uow.projects.get(project_id) is None:
@@ -227,12 +227,11 @@ class ProjectService:
         if seats is not None:
             role.seats = seats
         if description is not None:
-            # Sửa role không được xoá trắng mô tả (spec 03 §3.1, #112). Chuỗi rỗng đã bị
-            # schema chặn; ở đây bắt luôn trường hợp toàn-khoảng-trắng, đồng bộ add_role.
+            # An edit may not blank a role's description (spec 03 §3.1, #112). The empty
+            # string is already refused by the schema; this catches all-whitespace too,
+            # matching `add_role`.
             if not description.strip():
-                raise project_rules.InvalidProjectPlan(
-                    "A role's description cannot be blanked out."
-                )
+                raise project_rules.InvalidProjectPlan("role_description_not_erasable")
             role.description = description
         if skill_ids is not None:
             role.skill_ids = skill_ids
@@ -652,10 +651,7 @@ class ProjectService:
             # patron approves a plan and the project follows. Without this, this route
             # would be a way to skip the approval FR-011 exists to require.
             if before is ProjectStatus.PLANNING:
-                raise project_rules.InvalidPhaseTransition(
-                    "Rời giai đoạn lập kế hoạch bằng cách duyệt kế hoạch, "
-                    "không đổi giai đoạn thẳng."
-                )
+                raise project_rules.InvalidPhaseTransition("leave_planning_via_plan_gate")
             project.status = target_phase
             project.updated_at = utcnow()
             updated = await uow.projects.update(project)

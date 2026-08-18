@@ -1399,9 +1399,7 @@ class SqlRunRepository(RunRepository):
             await self._s.flush()
         except IntegrityError as exc:
             # The other half of FR-050: a live run already holds this (agent, task) pair.
-            raise WakePairBusyError(
-                "đã có một lượt chạy đang giữ cặp agent–đầu việc này"
-            ) from exc
+            raise WakePairBusyError("wake_pair_busy_run") from exc
         return run
 
     async def get(self, run_id: UUID) -> Run | None:
@@ -1631,9 +1629,7 @@ class SqlWakeupRepository(WakeupRepository):
             # the caller a domain error rather than a driver one: the application layer
             # decides to fold the losing cause in, and it should not have to know which
             # database said no (FR-050).
-            raise WakePairBusyError(
-                "đã có một lệnh đánh thức đang treo cho cặp agent–đầu việc này"
-            ) from exc
+            raise WakePairBusyError("wake_pair_busy_wakeup") from exc
         return wakeup
 
     async def update(self, wakeup: WakeupRequest) -> WakeupRequest:
