@@ -514,6 +514,13 @@ class ProjectService:
             )
             if existing is not None:
                 return self._seat_view(existing, role_key)
+            # `seats` is what the roster promised, so it has to be what the roster holds.
+            # The unique constraint underneath stops *one agent* taking the same seat
+            # twice; it says nothing about *two agents* in a one-seat role, which is the
+            # half that decides who `leader_marius_id` returns.
+            taken = sum(1 for g in seated if g.role_id == role.id)
+            if taken >= role.seats:
+                raise BadRequest("role_seats_full", role=role_key, seats=str(role.seats))
             grant = SeatGrant(
                 project_id=project_id,
                 role_id=role.id,
