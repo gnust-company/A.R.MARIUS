@@ -1386,3 +1386,17 @@ tồn tại không có nghĩa là luật được canh; phải kiểm bài kiể
   ném thuộc họ error code, còn đây là `ValueError` trần. Phần đáng giá hơn cả bản vá hai dòng là mở
   bài kiểm ấy ra: mọi lệnh ném `ValueError`/`LookupError`/`PermissionError` trần trong `presentation/`
   và `application/` đều là một lời từ chối lọt ra ngoài bảng
+
+- [ ] T202 Làm khoá vai **thật sự duy nhất trong một dự án**, và không trao quá số chỗ của vai — ở
+  `backend/armarius/application/use_cases/onboarding_session.py` (`plan_from_collected` truyền thẳng
+  khoá agent soạn), `domain/services/project_rules.py` (`validate_plan` chỉ đếm Trưởng/thợ), `roles`
+  (không có ràng buộc duy nhất `(project_id, key)`) và `application/use_cases/projects.py`
+  (`grant_seat` không đọc `role.seats`). Người rà nêu ở PR #209. Hai nửa của cùng một chuyện:
+  **(a)** cửa HTTP tự đánh số lại khoá trùng (`backend`, `backend-2`) nhưng cửa onboarding thì không,
+  nên hai vai cùng tiêu đề "Backend" do agent soạn ra hai dòng cùng khoá — và bất cứ chỗ nào tra vai
+  theo khoá (`_role_by_key`) trả về vai nào là tuỳ thứ tự dòng; **(b)** ràng buộc duy nhất của T199 là
+  `(project_id, role_id, marius_id)`, nó chặn *một người ngồi hai dòng* nhưng không chặn *hai người
+  ngồi một vai một chỗ*, nên `leader_marius_id` vẫn phụ thuộc thứ tự khi ghế Trưởng bị trao cho hai
+  agent. Nợ có từ trước, không phải hồi quy của #209 — nhưng bản di trú ghế đã phải né nửa (a) và câu
+  "một vai có hai chỗ đọc ra là đã đầy" chỉ đóng được nửa (b). Dựng ràng buộc duy nhất cho `roles` cần
+  làm-duy-nhất khoá đã có trước, nên đây là việc có di trú, tách riêng
