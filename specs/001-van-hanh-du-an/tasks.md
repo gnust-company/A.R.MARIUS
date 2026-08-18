@@ -1376,3 +1376,13 @@ tồn tại không có nghĩa là luật được canh; phải kiểm bài kiể
   `task_stalled_cannot_finish_named`: tham số của nó là câu tuyên, mà mã thì agent đọc ra rác còn câu
   tiếng Anh thì người chủ đọc sai thứ tiếng — lời từ chối nêu cái cờ, còn *vì sao* nằm trên chính đầu
   việc, nơi cả hai người đọc đều đã có nó bằng thứ tiếng của mình
+
+- [ ] T201 Bịt nốt lối từ chối **không có mã**, ở `backend/armarius/presentation/api/tasks.py` và
+  `presentation/api/agent.py` (`raise ValueError(f"unknown status '{...}'")`) cùng bài kiểm ở
+  `backend/tests/test_error_is_a_code_not_a_sentence.py` — theo FR-084a, Hiến pháp VII. Tìm ra khi chạy
+  dịch vụ thật để kiểm T200: gửi một trạng thái sai thì mặt giao tiếp trả `400 {"detail": "unknown
+  status 'xong'"}` — **không `code`, không `params`**, tức là màn hình không dựng được câu tiếng Việt
+  và agent nhận đúng câu ấy. Bài kiểm đọc cây cú pháp của T184 không bắt được vì nó chỉ soi các lệnh
+  ném thuộc họ error code, còn đây là `ValueError` trần. Phần đáng giá hơn cả bản vá hai dòng là mở
+  bài kiểm ấy ra: mọi lệnh ném `ValueError`/`LookupError`/`PermissionError` trần trong `presentation/`
+  và `application/` đều là một lời từ chối lọt ra ngoài bảng

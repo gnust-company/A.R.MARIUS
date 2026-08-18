@@ -90,10 +90,17 @@ def upgrade() -> None:
         sa.Column("granted_by_user_id", sa.String(length=200), nullable=True),
         sa.Column("granted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(["project_id"], ["projects.id"]),
-        sa.ForeignKeyConstraint(["role_id"], ["roles.id"]),
-        sa.ForeignKeyConstraint(["marius_id"], ["mariuses.id"]),
-        sa.PrimaryKeyConstraint("id"),
+        # Named explicitly, all of them: the table is created under a scratch name and
+        # renamed, and a rename does not rename the constraints a database invented for
+        # itself — so anything left unnamed would answer to `seat_grants_rebuilt_*` forever.
+        sa.ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], name="fk_seat_grants_project_id"
+        ),
+        sa.ForeignKeyConstraint(["role_id"], ["roles.id"], name="fk_seat_grants_role_id"),
+        sa.ForeignKeyConstraint(
+            ["marius_id"], ["mariuses.id"], name="fk_seat_grants_marius_id"
+        ),
+        sa.PrimaryKeyConstraint("id", name="pk_seat_grants"),
         sa.UniqueConstraint(
             "project_id", "role_id", "marius_id", name="uq_seat_grants_seat"
         ),
@@ -114,8 +121,10 @@ def downgrade() -> None:
         sa.Column("granted_by_user_id", sa.String(length=200), nullable=True),
         sa.Column("granted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(["project_id"], ["projects.id"]),
-        sa.PrimaryKeyConstraint("id"),
+        sa.ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], name="fk_seat_grants_project_id"
+        ),
+        sa.PrimaryKeyConstraint("id", name="pk_seat_grants"),
     )
     op.execute(sa.text(_COPY_BACK))
     op.drop_table("seat_grants")
