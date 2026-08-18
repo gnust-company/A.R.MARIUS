@@ -81,6 +81,11 @@ class RoleModel(Base):
     """A roster seat definition inside a project (LLD §2.3)."""
 
     __tablename__ = "roles"
+    # The key is how everything else addresses a role — the roster API, the onboarding
+    # plan, the wake packet. Two rows sharing one key inside a project turn every such
+    # lookup into "whichever row came back first", so the database refuses it outright
+    # rather than leaving it to whichever use case remembers to check.
+    __table_args__ = (UniqueConstraint("project_id", "key", name="uq_roles_project_key"),)
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     project_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("projects.id"), index=True)
     key: Mapped[str] = mapped_column(String(120))

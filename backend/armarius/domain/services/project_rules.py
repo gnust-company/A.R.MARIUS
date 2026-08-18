@@ -105,6 +105,15 @@ def validate_plan(roles: Iterable[Role]) -> None:
     if undescribed:
         titles = ", ".join(r.title or r.key for r in undescribed)
         raise InvalidProjectPlan("role_needs_a_description", roles=titles)
+    # One key per project. `add_role` refuses a colliding key one role at a time, but a
+    # whole roster arriving at once never passed through that check — and the onboarding
+    # door hands the agent's own drafted keys straight in, so two roles both titled
+    # "Backend" became two rows sharing a key. Everything that addresses a role by key
+    # then answers from whichever row the database returned first, which is no answer.
+    counted = Counter(r.key for r in roles)
+    repeated = sorted(key for key, n in counted.items() if n > 1)
+    if repeated:
+        raise InvalidProjectPlan("role_keys_must_be_unique", keys=", ".join(repeated))
 
 
 def seats_filled(roles: Iterable[Role], grants: Iterable[SeatGrant]) -> bool:

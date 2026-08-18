@@ -99,6 +99,23 @@ def _looks_like_leader(role: dict[str, Any]) -> bool:
     return str(role.get("title", "")).lower() == "project leader"
 
 
+def _renumber_repeats(rows: list[dict[str, object]]) -> None:
+    """`backend`, `backend2`, `backend3` — in place, keeping the first row on its key.
+
+    First wins because the leader row is first and its key is canonical: a worker the agent
+    happened to key `leader` must be the one that moves.
+    """
+    taken: set[str] = set()
+    for row in rows:
+        base = str(row.get("key") or row.get("title") or "role")
+        key, suffix = base, 2
+        while key in taken:
+            key = f"{base}{suffix}"
+            suffix += 1
+        taken.add(key)
+        row["key"] = key
+
+
 def plan_from_collected(collected: dict) -> dict:
     """Materialise the accumulated draft into ``{name, objective, roles, ...}`` for finalize.
 
@@ -116,6 +133,12 @@ def plan_from_collected(collected: dict) -> dict:
     kept = [{**r, "is_leader": False} for r in raw if not _looks_like_leader(r)]
     workers = kept or [default_worker]
     spec_rows = [_leader_role(), *workers]
+    # Keys the agent drafted, made unique before they leave this function. `validate_plan`
+    # refuses a repeated key outright, which is right for a roster a human typed — but here
+    # the author is a model that reached for the same obvious word twice, and killing the
+    # whole onboarding over that would make the patron redo a conversation to fix a
+    # machine's word choice. Renumbered the same way the project-key door renumbers.
+    _renumber_repeats(spec_rows)
     roles = [
         RoleSpec(
             key=r.get("key") or r.get("title", "role"),
