@@ -264,7 +264,21 @@ class ProjectService:
             return updated
 
     async def remove_role(self, role_id: UUID) -> None:
+        """Drop a role. The same refusal `remove_role_by_key` gives, for the same reason.
+
+        The two doors used to disagree: the by-key one refused an occupied role, this one
+        deleted it. That was survivable while a seat pointed at the role by a string; now
+        that it points at the row, this door would hand the caller a foreign-key error
+        instead of a refusal it can act on.
+        """
         async with self._uow() as uow:
+            role = await uow.roles.get(role_id)
+            if role is None:
+                raise NotFound("role_not_found")
+            if role.project_id is not None:
+                grants = await uow.seat_grants.list_by_project(role.project_id)
+                if any(g.role_id == role_id for g in grants):
+                    raise BadRequest("role_seat_held")
             await uow.roles.remove(role_id)
             await uow.commit()
 
@@ -483,7 +497,15 @@ class ProjectService:
             if project is None:
                 raise NotFound("project_not_found")
             role = await self._role_by_key(uow, project_id, role_key)
-            if await uow.mariuses.get(marius_id) is None:
+            # The agent has to belong to this project's workspace. Checked here because
+            # this is where a seat is created, and a seat across the boundary is what left
+            # an agent's rows reachable from a workspace that does not own it: deleting the
+            # agent's own workspace then hit a seat in somebody else's project, which the
+            # foreign key now refuses outright. Same refusal as *no such agent*, on
+            # purpose — an agent the caller may not see reads the same either way
+            # (Constitution I).
+            agent = await uow.mariuses.get(marius_id)
+            if agent is None or agent.workspace_id != project.workspace_id:
                 raise NotFound("agent_not_found")
             seated = await uow.seat_grants.list_by_project(project_id)
             existing = next(

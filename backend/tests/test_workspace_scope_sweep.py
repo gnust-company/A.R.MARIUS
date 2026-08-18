@@ -316,3 +316,103 @@ async def test_a_stranger_cannot_rewrite_another_workspaces_agent_or_skill():
         )
         assert mine.status_code == 200, mine.text
         assert mine.json()["name"] == "Alpha renamed"
+
+
+async def test_a_seat_cannot_hold_an_agent_from_another_workspace():
+    """Ghế bắc qua ranh giới workspace là cách một agent bị xoá mà ghế ở lại một mình.
+
+    `grant_seat` từng chỉ hỏi *agent này có tồn tại không*. Nên người chủ có hai workspace
+    trao được agent của A vào dự án của B — rồi xoá workspace A: agent biến mất, ghế trong
+    dự án của B vẫn trỏ vào nó. Trước T199 dòng ấy nằm im vì `marius_id` không có khoá
+    ngoại; sau T199 khoá ngoại từ chối thẳng, và lượt xoá workspace **nổ 500**.
+    """
+    async with await _client() as c:
+        h, ws_a = await _register(c, "seat-cross-a@armarius.dev")
+        agent = await c.post(
+            f"/v1/workspaces/{ws_a}/mariuses",
+            headers=h,
+            json={"name": "Alpha", "skills": [], "skill_ids": [], "adapter_type": "echo",
+                  "gateway_url": GATEWAY_URL, "api_key": GATEWAY_KEY},
+        )
+        assert agent.status_code == 201, agent.text
+
+        ws_b = await c.post("/v1/workspaces", headers=h, json={"name": "Beta"})
+        assert ws_b.status_code == 201, ws_b.text
+        project = await c.post(
+            f"/v1/workspaces/{ws_b.json()['id']}/projects",
+            headers=h,
+            json={"name": "Apollo", "key": "APO", "description": "ship it",
+                  "objective": "Ra mắt nền tảng",
+                  "leader": {"description": "Điều phối dự án.", "marius_id": None},
+                  "roles": [{"title": "Backend", "seats": 1,
+                             "description": "Lo phần máy chủ."}]},
+        )
+        assert project.status_code == 201, project.text
+
+        # 404 chứ không 403: một agent người gọi không được thấy thì đọc ra như không có.
+        grant = await c.post(
+            f"/v1/projects/{project.json()['id']}/grant",
+            headers=h,
+            json={"role_key": "backend", "marius_id": agent.json()["id"]},
+        )
+        assert grant.status_code == 404, grant.text
+        assert grant.json()["code"] == "agent_not_found"
+
+
+async def test_deleting_a_workspace_clears_seats_its_agents_still_hold():
+    """Vế còn lại, cho cơ sở dữ liệu ghi trước khi cửa trên được đóng.
+
+    Ghế bị bỏ lại vẫn đang nằm trong dữ liệu thật, và lượt xoá phải dọn được chúng — con
+    trước cha, đúng luật mà cả dây xoá này đi theo.
+    """
+    from uuid import UUID
+
+    from armarius.domain.entities.seat_grant import SeatGrant
+    from armarius.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+
+    async with await _client() as c:
+        h, ws_a = await _register(c, "seat-legacy-a@armarius.dev")
+        agent = await c.post(
+            f"/v1/workspaces/{ws_a}/mariuses",
+            headers=h,
+            json={"name": "Alpha", "skills": [], "skill_ids": [], "adapter_type": "echo",
+                  "gateway_url": GATEWAY_URL, "api_key": GATEWAY_KEY},
+        )
+        assert agent.status_code == 201, agent.text
+
+        ws_b = await c.post("/v1/workspaces", headers=h, json={"name": "Beta"})
+        project = await c.post(
+            f"/v1/workspaces/{ws_b.json()['id']}/projects",
+            headers=h,
+            json={"name": "Apollo", "key": "APO", "description": "ship it",
+                  "objective": "Ra mắt nền tảng",
+                  "leader": {"description": "Điều phối dự án.", "marius_id": None},
+                  "roles": [{"title": "Backend", "seats": 1,
+                             "description": "Lo phần máy chủ."}]},
+        )
+        assert project.status_code == 201, project.text
+
+        # Viết thẳng vào kho, đúng hình dạng dòng mà cửa cũ để lọt.
+        async with SqlAlchemyUnitOfWork() as uow:
+            role = next(
+                r
+                for r in await uow.roles.list_by_project(UUID(project.json()["id"]))
+                if not r.is_leader
+            )
+            await uow.seat_grants.add(
+                SeatGrant(
+                    project_id=UUID(project.json()["id"]),
+                    role_id=role.id,
+                    marius_id=UUID(agent.json()["id"]),
+                    granted_by_user_id="patron",
+                )
+            )
+            await uow.commit()
+
+        gone = await c.delete(f"/v1/workspaces/{ws_a}", headers=h)
+        assert gone.status_code == 204, gone.text
+
+        async with SqlAlchemyUnitOfWork() as uow:
+            left = await uow.seat_grants.list_by_project(UUID(project.json()["id"]))
+        assert left == [], f"ghế của agent đã xoá còn nằm lại: {left}"
+

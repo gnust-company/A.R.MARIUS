@@ -321,6 +321,15 @@ class SqlWorkspaceRepository(WorkspaceRepository):
 
         await _purge_projects(self._s, project_ids)
         await self._s.execute(delete(LabelModel).where(LabelModel.workspace_id == workspace_id))
+        # Any seat still holding one of these agents, wherever it sits. `_purge_projects`
+        # clears the seats of *this workspace's* projects; a seat in somebody else's
+        # project is not reached that way, and the agents are about to go. `grant_seat`
+        # now refuses to make one, but a database written before it did still has them —
+        # and children go before parents, which is the whole rule this cascade follows.
+        if marius_ids:
+            await self._s.execute(
+                delete(SeatGrantModel).where(SeatGrantModel.marius_id.in_(marius_ids))
+            )
         await self._s.execute(
             delete(MariusModel).where(MariusModel.workspace_id == workspace_id)
         )
