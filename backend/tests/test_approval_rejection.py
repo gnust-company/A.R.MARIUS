@@ -54,7 +54,12 @@ async def test_a_rejection_sends_the_task_back_to_in_progress_not_to_draft() -> 
 
     assert task["status"] == "in_progress", task
     assert task["completed_at"] is None
-    assert "sửa theo phản hồi" in (task["next_action"] or "").lower()
+    # `next_action` được đọc lại nguyên văn vào gói tin gửi agent, nên phần máy chủ soạn ở
+    # đây là tiếng Anh (Hiến pháp VII, T203). Lời người chủ viết thì đi kèm nguyên văn — đó
+    # là chữ của người, không phải chữ của hệ thống.
+    assert "rework along the feedback" in (task["next_action"] or "").lower()
+    assert "tháng 6" in (task["next_action"] or "")
+    # Bản của bảng việc, thứ người chủ đọc trên màn, vẫn giữ thứ tiếng của họ.
     assert "tháng 6" in (task["status_reason"] or "")
 
 
