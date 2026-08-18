@@ -51,7 +51,7 @@ from armarius.presentation.deps import ContainerDep
 # fully readable.
 _READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
-_MESSAGE = "Dự án đã đóng — mọi thao tác trên nó đã dừng, chỉ còn xem lại được."
+_REFUSAL = "project_closed"
 
 # The single route that disposes of the project itself, rather than operating inside it.
 _DELETE_THE_PROJECT = ("DELETE", "/v1/projects/{project_id}")
@@ -117,4 +117,4 @@ async def refuse_when_frozen(request: Request, container: ContainerDep) -> None:
 
     project = await container.projects.get_project(project_id)
     if project is not None and is_closed(project.status):
-        raise ProjectClosed(_MESSAGE)
+        raise ProjectClosed(_REFUSAL)

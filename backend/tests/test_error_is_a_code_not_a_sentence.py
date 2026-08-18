@@ -16,6 +16,7 @@ Bốn thứ được canh ở đây:
 
 from __future__ import annotations
 
+import ast
 import pathlib
 import re
 
@@ -26,6 +27,19 @@ from tests.support.planning import OperatingProject, client, operating_project
 
 VIETNAMESE = "ăâđêôơưàáảãạèéẻẽẹìíỉĩịòóỏõọùúủũụỳýỷỹỵ"
 _I18N = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src" / "i18n"
+_BACKEND = pathlib.Path(__file__).resolve().parents[1] / "armarius"
+
+# Ba chỗ ném lỗi với mã **tính lúc chạy**, nên phép quét mã nguồn không đọc ra được. Ghi
+# tên từng chỗ chứ không bỏ qua cả loại: một mã dựng lúc chạy là một mã không ai tra ngược
+# được, nên thêm chỗ thứ tư phải là một quyết định có lý do, không phải chuyện lọt qua.
+_CODE_FORWARDED_AT_RUNTIME = {
+    # Người gọi truyền mã vào; bốn chỗ gọi đều truyền chuỗi có sẵn trong bảng.
+    ("presentation/api/events.py", "NotFound"),
+    # Chuyển tiếp mã của một lời từ chối khác, đổi mã trạng thái chứ không đổi lý do.
+    ("presentation/api/workspaces.py", "NotFound"),
+    # Một hằng số ngay đầu tệp, để cùng một lời từ chối không bị chép lại ở mỗi cửa.
+    ("presentation/api/frozen.py", "ProjectClosed"),
+}
 
 # Lời từ chối mà **máy khách tự dựng**, không máy chủ nào gửi: lượt làm mới phiên hỏng thì
 # không có phản hồi nào để đọc mã ra. Ghi tên ở đây chứ không nới lỏng phép so khớp, để một
@@ -74,6 +88,84 @@ def test_a_code_nobody_has_worded_yet_still_says_which_rule_refused() -> None:
     assert render_en("a_rule_written_after_this_build", {}) == "a_rule_written_after_this_build"
     # Thiếu một chỗ điền thì cũng không được ném ra giữa lúc đang trả lời.
     assert "(unknown)" in render_en("role_not_in_roster", {})
+
+
+# ── every `raise` in the source, not just every row in the table ──────────────
+
+
+def _coded_error_names() -> set[str]:
+    """Every class in the codebase that ends up a `CodedError`, by bare name.
+
+    Resolved by walking the class statements rather than importing: a name is enough to
+    match a `raise`, and importing every module to ask `issubclass` drags the whole
+    application up for a text check.
+    """
+    names = {"CodedError", "NotFound", "BadRequest", "Forbidden", "Unauthorized", "Conflict"}
+    statements = []
+    for path in _BACKEND.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                bases = {b.id for b in node.bases if isinstance(b, ast.Name)}
+                statements.append((node.name, bases))
+    # Repeat until nothing new joins: a subclass may be read before its base.
+    changed = True
+    while changed:
+        changed = False
+        for name, bases in statements:
+            if name not in names and bases & names:
+                names.add(name)
+                changed = True
+    return names
+
+
+def _raised_codes() -> list[tuple[str, int, str, str | None]]:
+    """(file, line, first argument) for every `raise <a coded error>(...)` in the source.
+
+    A first argument that is not a plain string literal reads as ``None`` — that is a
+    refusal whose code cannot be checked here, and the test treats it as a failure for the
+    same reason: a code assembled at run time is a code nobody can look up.
+    """
+    coded = _coded_error_names()
+    found: list[tuple[str, int, str, str | None]] = []
+    for path in sorted(_BACKEND.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Raise) or not isinstance(node.exc, ast.Call):
+                continue
+            called = node.exc.func
+            # Both `raise Thing(...)` and `raise module.Thing(...)`. The second form is
+            # what the sweep that built this table missed — its pattern only knew the
+            # first, so three refusals kept a whole sentence where the code goes.
+            name = (called.id if isinstance(called, ast.Name)
+                    else called.attr if isinstance(called, ast.Attribute) else None)
+            if name not in coded or not node.exc.args:
+                continue
+            first = node.exc.args[0]
+            literal = first.value if isinstance(first, ast.Constant) and isinstance(
+                first.value, str) else None
+            found.append((str(path.relative_to(_BACKEND)), node.lineno, name, literal))
+    return found
+
+
+def test_every_refusal_in_the_source_uses_a_code_the_table_knows() -> None:
+    """Mắt xích ở giữa mà hai bài kiểm bảng không canh.
+
+    Chúng canh "mã trong bảng thì sạch" và "hai bảng khớp nhau". Một chỗ ném lỗi truyền
+    thẳng cả câu vào ô của mã thì **không mã nào vào bảng cả**, nên cả hai đều không có
+    gì để soi: câu đó thành `code` trong phản hồi, và thành luôn `detail` vì tra bảng
+    không thấy thì rơi về chính nó.
+    """
+    raised = _raised_codes()
+    assert len(raised) > 100, f"phép quét hỏng, chỉ thấy {len(raised)} chỗ ném lỗi"
+    strays = [
+        (f, line, cls, arg)
+        for f, line, cls, arg in raised
+        if arg not in ENGLISH and (f, cls) not in _CODE_FORWARDED_AT_RUNTIME
+    ]
+    assert not strays, "chỗ ném lỗi dùng mã không có trong bảng:\n" + "\n".join(
+        f"  {f}:{line} → {arg!r}" for f, line, cls, arg in strays
+    )
 
 
 # ── the screen's half ─────────────────────────────────────────────────────────

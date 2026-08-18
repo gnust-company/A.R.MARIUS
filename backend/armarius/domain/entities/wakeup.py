@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.services.wake_reason import WakeReason
+from armarius.shared.errors import CodedError
 
 
 class WakeupStatus(StrEnum):
@@ -42,7 +43,7 @@ PENDING_WAKEUP_STATUSES: frozenset[WakeupStatus] = frozenset(
 )
 
 
-class WakePairBusyError(Exception):
+class WakePairBusyError(CodedError):
     """The storage layer refused a second pending wake for one (agent, task) pair.
 
     Raised by the repository when the unique index trips, i.e. when two causes raced each

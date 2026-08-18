@@ -60,6 +60,10 @@ ENGLISH: dict[str, str] = {
         "This project is closed — its agents are not woken any more."
     ),
     "project_phase_transition_invalid": "A project cannot go from '{current}' to '{target}'.",
+    "leave_planning_via_plan_gate": (
+        "A project leaves planning by having its plan approved, not by changing the phase "
+        "directly."
+    ),
     "project_key_invalid": (
         "A project key must be 2–10 uppercase characters and start with a letter "
         "(got {key})."
@@ -78,6 +82,7 @@ ENGLISH: dict[str, str] = {
     "role_needs_a_description": (
         "Every role needs a description of what it does — missing for: {roles}."
     ),
+    "role_description_not_erasable": "A role's description cannot be blanked out.",
     "role_seat_held": "A role cannot be removed while an agent holds its seat.",
     "seat_grants_system_only": "Seat grants are issued by the system only.",
     "seat_revokes_system_only": "Seat revokes are issued by the system only.",
@@ -203,6 +208,8 @@ ENGLISH: dict[str, str] = {
     "no_leader_seated": "No Leader is seated on this project.",
     "leader_offline": "The Leader is offline — the chat is disabled until it comes back.",
     "leader_still_replying": "The Leader is still replying — wait for its answer.",
+    "wake_pair_busy_run": "A run is already holding this agent and task.",
+    "wake_pair_busy_wakeup": "A wake is already pending for this agent and task.",
     "wake_cause_refused": (
         "This agent cannot be woken: the cause is not one its role is woken for."
     ),
