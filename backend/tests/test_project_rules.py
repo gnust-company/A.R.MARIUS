@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
 from armarius.domain.entities.marius import Liveness
 from armarius.domain.entities.project import Project, ProjectStatus
 from armarius.domain.entities.role import Role
-from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
+from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.services.project_rules import (
     InvalidProjectPlan,
     recompute_active,
@@ -25,6 +25,11 @@ def _leader() -> Role:
 
 def _worker(key: str = "backend", seats: int = 1) -> Role:
     return Role(key=key, title=key.title(), seats=seats, description="Does the work.")
+
+
+def _seat(role: Role, marius_id: UUID) -> SeatGrant:
+    """A seat points at the role row, not at its key (T199)."""
+    return SeatGrant(project_id=uuid4(), role_id=role.id, marius_id=marius_id)
 
 
 # ── validate_plan ────────────────────────────────────────────────────────────
@@ -67,41 +72,52 @@ def test_plan_needs_a_description_on_every_role() -> None:
 
 
 def test_not_active_until_seats_filled() -> None:
-    roles = [_leader(), _worker(seats=2)]
+    lead_role, work_role = _leader(), _worker(seats=2)
+    roles = [lead_role, work_role]
     m1 = uuid4()
-    grants = [SeatGrant(role_key="leader", marius_id=uuid4()),
-              SeatGrant(role_key="backend", marius_id=m1)]  # only 1 of 2 worker seats
+    grants = [_seat(lead_role, uuid4()),
+              _seat(work_role, m1)]  # only 1 of 2 worker seats
     liveness = {g.marius_id: Liveness.ONLINE for g in grants}
     assert should_activate(roles, grants, liveness) is False
 
 
 def test_not_active_until_every_seat_online() -> None:
-    roles = [_leader(), _worker()]
+    lead_role, work_role = _leader(), _worker()
+    roles = [lead_role, work_role]
     lead, back = uuid4(), uuid4()
-    grants = [SeatGrant(role_key="leader", marius_id=lead),
-              SeatGrant(role_key="backend", marius_id=back)]
+    grants = [_seat(lead_role, lead), _seat(work_role, back)]
     liveness = {lead: Liveness.ONLINE, back: Liveness.CHECKING}  # one not online
     assert should_activate(roles, grants, liveness) is False
 
 
 def test_active_when_all_seats_filled_and_online() -> None:
-    roles = [_leader(), _worker()]
+    lead_role, work_role = _leader(), _worker()
+    roles = [lead_role, work_role]
     lead, back = uuid4(), uuid4()
-    grants = [SeatGrant(role_key="leader", marius_id=lead),
-              SeatGrant(role_key="backend", marius_id=back)]
+    grants = [_seat(lead_role, lead), _seat(work_role, back)]
     liveness = {lead: Liveness.ONLINE, back: Liveness.ONLINE}
     assert should_activate(roles, grants, liveness) is True
 
 
-def test_revoked_grant_does_not_count() -> None:
-    roles = [_leader(), _worker()]
+def test_a_vacated_seat_is_simply_not_there() -> None:
+    """T199 — không còn dòng *đã thu hồi* để phải lọc: ghế trả lại là ghế biến mất."""
+    lead_role, work_role = _leader(), _worker()
+    roles = [lead_role, work_role]
     lead, back = uuid4(), uuid4()
-    grants = [
-        SeatGrant(role_key="leader", marius_id=lead),
-        SeatGrant(role_key="backend", marius_id=back, status=SeatGrantStatus.REVOKED),
-    ]
+    grants = [_seat(lead_role, lead)]  # ghế thợ đã được trả lại
     liveness = {lead: Liveness.ONLINE, back: Liveness.ONLINE}
     assert should_activate(roles, grants, liveness) is False
+
+
+def test_a_renamed_role_does_not_empty_its_own_seats() -> None:
+    """T199 — ghế trỏ vào *dòng vai*, nên đổi mã vai không làm ghế rỗng đi."""
+    lead_role, work_role = _leader(), _worker()
+    roles = [lead_role, work_role]
+    lead, back = uuid4(), uuid4()
+    grants = [_seat(lead_role, lead), _seat(work_role, back)]
+    work_role.key = "server"  # người chủ đổi mã vai
+    liveness = {lead: Liveness.ONLINE, back: Liveness.ONLINE}
+    assert should_activate(roles, grants, liveness) is True
 
 
 def test_recompute_flips_setup_to_planning_once() -> None:
@@ -109,8 +125,7 @@ def test_recompute_flips_setup_to_planning_once() -> None:
     project = Project(status=ProjectStatus.SETUP)
     roles = [_leader(), _worker()]
     lead, back = uuid4(), uuid4()
-    grants = [SeatGrant(role_key="leader", marius_id=lead),
-              SeatGrant(role_key="backend", marius_id=back)]
+    grants = [_seat(roles[0], lead), _seat(roles[1], back)]
     online = {lead: Liveness.ONLINE, back: Liveness.ONLINE}
 
     assert recompute_active(project, roles, grants, online) is True
@@ -124,8 +139,7 @@ def test_activation_never_rolls_back_when_agent_drops() -> None:
     project = Project(status=ProjectStatus.PLANNING)
     roles = [_leader(), _worker()]
     lead, back = uuid4(), uuid4()
-    grants = [SeatGrant(role_key="leader", marius_id=lead),
-              SeatGrant(role_key="backend", marius_id=back)]
+    grants = [_seat(roles[0], lead), _seat(roles[1], back)]
     dropped = {lead: Liveness.ONLINE, back: Liveness.OFFLINE}
 
     assert recompute_active(project, roles, grants, dropped) is False

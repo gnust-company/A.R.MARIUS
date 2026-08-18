@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from armarius.application.use_cases.plans import MajorChangeArea
 from armarius.domain.services.project_key import PROJECT_KEY_RE
+from armarius.domain.services.push_reason_rules import stall_text_en
 
 
 class _Out(BaseModel):
@@ -243,11 +244,12 @@ class ApprovalOut(_Out):
 
 
 class SeatGrantOut(_Out):
+    """A live seat. There is no `status`: a vacated seat is a deleted row (T199)."""
+
     id: UUID
     project_id: UUID | None = None
     role_key: str
     marius_id: UUID | None = None
-    status: str
     # Who put this agent in the seat (FR-034) — what decides who signs for its output.
     granted_by_user_id: str | None = None
     granted_at: datetime | None = None
@@ -458,7 +460,11 @@ class TaskOut(_Out):
     plan_item_id: UUID | None = None
     drive: str | None = None
     stalled: bool = False
+    # The stall verdict has the same two readers a refusal has: `stalled_reason` is the
+    # server's English rendering, for an agent or anyone reading the raw response;
+    # `stalled_reason_code` is what the screen builds the patron's own sentence from.
     stalled_reason: str | None = None
+    stalled_reason_code: str | None = None
     # Filled by Story 3's two-signature rule; an empty list until then, never omitted, so
     # the board can render one shape whatever đợt it is talking to.
     signatures: list[dict[str, object]] = Field(default_factory=list)
@@ -471,6 +477,18 @@ class TaskOut(_Out):
     completed_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _split_the_stall_verdict(self) -> TaskOut:
+        """The task stores one code; the wire carries both readings of it.
+
+        Done here rather than at each of the eleven places that build a `TaskOut`, because
+        a rendering one of them forgot is a screen showing `stall_run_active` to a patron.
+        """
+        if self.stalled_reason_code is None and self.stalled_reason is not None:
+            self.stalled_reason_code = self.stalled_reason
+            self.stalled_reason = stall_text_en(self.stalled_reason)
+        return self
 
 
 # ------------------------------------------------------------------ dependency

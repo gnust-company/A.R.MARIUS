@@ -243,6 +243,9 @@ class Task:
     # Raised by the safety net when a task loses every live drive (FR-058). Not a status:
     # it is an alarm that the system dropped this task, and it seals every door into done.
     stalled: bool = False
+    # Which stall this is, as a code from `push_reason_rules.STALL_ENGLISH` — never a
+    # finished sentence. The board and the agent are both shown it, and they do not read
+    # the same language (T200, Constitution VII).
     stalled_reason: str | None = None
     # The task's single assignee (one owner per task) — the sole source of truth.
     assigned_marius_id: UUID | None = None
@@ -292,13 +295,6 @@ class Task:
                 "task_transition_invalid", current=self.status, target=target
             )
         if target is TaskStatus.DONE and self.stalled:
-            # The stall verdict is still free text on the row, so it is handed over as a
-            # parameter rather than folded into the wording — and when there is none, the
-            # refusal says so with its own code instead of a blank pair of brackets (T200).
-            if self.stalled_reason:
-                raise StalledTaskError(
-                    "task_stalled_cannot_finish_named", reason=self.stalled_reason
-                )
             raise StalledTaskError("task_stalled_cannot_finish")
         if target in SIGNATURE_REQUIRED_STATUSES and not signatures_complete:
             listed = ", ".join(missing_signatures)

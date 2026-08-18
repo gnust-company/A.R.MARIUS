@@ -26,7 +26,7 @@ from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.project import Project, ProjectStatus, ProjectThresholds
 from armarius.domain.entities.role import Role
-from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
+from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.services import project_key, project_rules
 from armarius.domain.services.project_rules import ProjectClosed
 from armarius.shared.clock import utcnow
@@ -68,6 +68,23 @@ class RoleSpec:
     is_leader: bool = False
     description: str = ""
     skill_ids: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class SeatGrantView:
+    """One seat on the way out.
+
+    The seat itself points at the role by identity; the contract addresses roles by key, so
+    the key is resolved here, once, rather than by each caller joining the two tables again.
+    """
+
+    id: UUID
+    project_id: UUID
+    role_key: str
+    marius_id: UUID
+    granted_by_user_id: str | None = None
+    granted_at: datetime | None = None
+    created_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -343,11 +360,7 @@ class ProjectService:
             roles = await uow.roles.list_by_project(project_id)
             grants = await uow.seat_grants.list_by_project(project_id)
             # Batch-load every seated agent once (avoids an N+1 over the grants).
-            seated_ids = {
-                g.marius_id
-                for g in grants
-                if g.status == SeatGrantStatus.GRANTED and g.marius_id is not None
-            }
+            seated_ids = {g.marius_id for g in grants}
             mariuses = {
                 m.id: m for m in await uow.mariuses.list_by_ids(list(seated_ids))
             }
@@ -355,9 +368,7 @@ class ProjectService:
             for role in roles:
                 seated: list[SeatView] = []
                 for g in grants:
-                    if g.status != SeatGrantStatus.GRANTED or g.role_key != role.key:
-                        continue
-                    if g.marius_id is None:
+                    if g.role_id != role.id:
                         continue
                     marius = mariuses.get(g.marius_id)
                     if marius is None:
@@ -406,11 +417,7 @@ class ProjectService:
                 roles = await uow.roles.list_by_project(project.id)
                 grants = await uow.seat_grants.list_by_project(project.id)
                 seats_total = sum(r.seats for r in roles)
-                seats_filled = sum(
-                    1
-                    for g in grants
-                    if g.status == SeatGrantStatus.GRANTED and g.marius_id is not None
-                )
+                seats_filled = len(grants)
                 rows.append((project, seats_total, seats_filled))
             return rows
 
@@ -439,10 +446,7 @@ class ProjectService:
         async with self._uow() as uow:
             role = await self._role_by_key(uow, project_id, role_key)
             grants = await uow.seat_grants.list_by_project(project_id)
-            if any(
-                g.status == SeatGrantStatus.GRANTED and g.role_key == role_key
-                for g in grants
-            ):
+            if any(g.role_id == role.id for g in grants):
                 raise BadRequest("role_seat_held")
             await uow.roles.remove(role.id)
             await uow.commit()
@@ -456,10 +460,15 @@ class ProjectService:
         *,
         system: bool = False,
         granted_by_user_id: str | None = None,
-    ) -> SeatGrant:
+    ) -> SeatGrantView:
         """Seat a Marius. SYSTEM-ONLY: a non-system caller is rejected (LLD §3.3).
 
-        Re-evaluates activation after the grant. Returns the new grant.
+        Re-evaluates activation after the grant. Returns the seat.
+
+        Seating the same agent in the same role twice returns the seat it already has
+        rather than writing a second row. It used to write one, and two rows for one agent
+        then counted as two filled seats — a role with two seats read as full with one
+        agent in it. One agent, one seat, one row.
 
         ``granted_by_user_id`` records **which patron** put this agent here (FR-034) —
         the one who will have to sign for its output. Captured at the moment of the grant
@@ -473,16 +482,20 @@ class ProjectService:
             project = await uow.projects.get(project_id)
             if project is None:
                 raise NotFound("project_not_found")
-            roles = await uow.roles.list_by_project(project_id)
-            if not any(r.key == role_key for r in roles):
-                raise NotFound("role_not_in_roster", role=role_key)
+            role = await self._role_by_key(uow, project_id, role_key)
             if await uow.mariuses.get(marius_id) is None:
                 raise NotFound("agent_not_found")
+            seated = await uow.seat_grants.list_by_project(project_id)
+            existing = next(
+                (g for g in seated if g.role_id == role.id and g.marius_id == marius_id),
+                None,
+            )
+            if existing is not None:
+                return self._seat_view(existing, role_key)
             grant = SeatGrant(
                 project_id=project_id,
-                role_key=role_key,
+                role_id=role.id,
                 marius_id=marius_id,
-                status=SeatGrantStatus.GRANTED,
                 granted_by_user_id=granted_by_user_id,
                 granted_at=now,
                 created_at=now,
@@ -493,24 +506,28 @@ class ProjectService:
 
         if flipped:
             await self._announce_planning(project_id)
-        return grant
+        return self._seat_view(grant, role_key)
 
-    async def list_seat_grants(self, project_id: UUID) -> Sequence[SeatGrant]:
+    async def list_seat_grants(self, project_id: UUID) -> list[SeatGrantView]:
         async with self._uow() as uow:
-            return await uow.seat_grants.list_by_project(project_id)
+            keys = {r.id: r.key for r in await uow.roles.list_by_project(project_id)}
+            return [
+                self._seat_view(g, keys.get(g.role_id, ""))
+                for g in await uow.seat_grants.list_by_project(project_id)
+            ]
 
-    async def revoke_seat(self, grant_id: UUID, *, system: bool = False) -> SeatGrant:
-        """Revoke a seat. SYSTEM-ONLY. Activation never rolls back (LLD §4)."""
+    async def revoke_seat(self, grant_id: UUID, *, system: bool = False) -> SeatGrantView:
+        """Vacate a seat. SYSTEM-ONLY. Activation never rolls back (LLD §4)."""
         if not system:
             raise SystemOnlyOperation("seat_revokes_system_only")
         async with self._uow() as uow:
             grant = await uow.seat_grants.get(grant_id)
             if grant is None:
                 raise NotFound("seat_grant_not_found")
-            grant.revoke()  # raises SeatGrantError if already revoked
-            updated = await uow.seat_grants.update(grant)
+            role = await uow.roles.get(grant.role_id)
+            await uow.seat_grants.remove(grant.id)
             await uow.commit()
-            return updated
+            return self._seat_view(grant, role.key if role else "")
 
     async def revoke_seat_by_role(
         self,
@@ -519,28 +536,43 @@ class ProjectService:
         role_key: str,
         *,
         system: bool = False,
-    ) -> SeatGrant:
-        """Revoke the GRANTED seat for (marius, role) in a project. SYSTEM-ONLY (§3.3)."""
+    ) -> SeatGrantView:
+        """Vacate the seat (marius, role) holds in a project. SYSTEM-ONLY (§3.3).
+
+        The row goes rather than being marked spent. Nothing running reads a vacated seat,
+        and one kept beside the live one is only ever a thing to filter out — which is a
+        step every future reader has to remember and one of them will not.
+        """
         if not system:
             raise SystemOnlyOperation("seat_revokes_system_only")
         async with self._uow() as uow:
+            role = await self._role_by_key(uow, project_id, role_key)
             grants = await uow.seat_grants.list_by_project(project_id)
             grant = next(
                 (
                     g
                     for g in grants
-                    if g.marius_id == marius_id
-                    and g.role_key == role_key
-                    and g.status == SeatGrantStatus.GRANTED
+                    if g.marius_id == marius_id and g.role_id == role.id
                 ),
                 None,
             )
             if grant is None:
                 raise NotFound("no_granted_seat")
-            grant.revoke()
-            updated = await uow.seat_grants.update(grant)
+            await uow.seat_grants.remove(grant.id)
             await uow.commit()
-            return updated
+            return self._seat_view(grant, role_key)
+
+    @staticmethod
+    def _seat_view(grant: SeatGrant, role_key: str) -> SeatGrantView:
+        return SeatGrantView(
+            id=grant.id,
+            project_id=grant.project_id,
+            role_key=role_key,
+            marius_id=grant.marius_id,
+            granted_by_user_id=grant.granted_by_user_id,
+            granted_at=grant.granted_at,
+            created_at=grant.created_at,
+        )
 
     # ── activation ──────────────────────────────────────────────────────────────
     async def recompute_active(self, project_id: UUID) -> bool:
@@ -762,8 +794,6 @@ class ProjectService:
         grants = await uow.seat_grants.list_by_project(project.id)
         liveness_by_marius = {}
         for g in grants:
-            if g.status != SeatGrantStatus.GRANTED or g.marius_id is None:
-                continue
             marius = await uow.mariuses.get(g.marius_id)
             if marius is not None:
                 liveness_by_marius[g.marius_id] = marius.liveness

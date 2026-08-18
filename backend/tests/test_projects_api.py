@@ -198,7 +198,9 @@ async def test_grant_is_system_only_and_lists_agent() -> None:
             json={"marius_id": mid, "role_key": "backend"},
         )
         assert grant.status_code == 201, grant.text
-        assert grant.json()["status"] == "granted"
+        # T199 — a seat is a live row; there is no status on the wire any more.
+        assert "status" not in grant.json()
+        assert grant.json()["role_key"] == "backend"
 
         agents = await c.get(f"/v1/projects/{pid}/agents", headers=h)
         assert agents.status_code == 200
@@ -211,7 +213,7 @@ async def test_grant_is_system_only_and_lists_agent() -> None:
             json={"marius_id": mid, "role_key": "backend"},
         )
         assert revoke.status_code == 200, revoke.text
-        assert revoke.json()["status"] == "revoked"
+        assert revoke.json()["id"] == grant.json()["id"]
         agents2 = await c.get(f"/v1/projects/{pid}/agents", headers=h)
     assert agents2.json() == []
 

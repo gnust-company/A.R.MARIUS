@@ -798,6 +798,18 @@ export const vi = {
   },
   // Server refusals, built here from the cause code the API sends (FR-084a). The server
   // renders its own English for whoever reads the raw response; this table is the patron's.
+  // Which stall the safety net found, worded for the patron. The server stores the code
+  // and renders its own English copy for agents and records (T200, Constitution VII).
+  stall: {
+    stall_orphaned: 'Bị bỏ quên: không ai đang làm, cũng không có lịch gọi ai vào làm.',
+    stall_run_active: 'Người làm nhận việc rồi tắt tiếng giữa chừng.',
+    stall_wake_scheduled: 'Đã gọi người làm nhưng chưa ai bắt đầu.',
+    stall_waiting_recovery: 'Gọi lại mấy lần đều không tới được người làm.',
+    stall_waiting_external: 'Đang chờ một thứ bên ngoài, quá hạn rồi vẫn chưa thấy.',
+    stall_waiting_patron: 'Đang chờ bạn quyết, mà chưa thấy hồi âm.',
+    stall_blocked_by_task: 'Đang chờ một đầu việc khác, mà bên đó không nhúc nhích.',
+    stall_unknown: 'Mất thứ đang đẩy nó đi tiếp.',
+  },
   errors: {
     task_not_found: 'Không tìm thấy đầu việc.',
     project_not_found: 'Không tìm thấy dự án.',
@@ -844,7 +856,6 @@ export const vi = {
     role_seat_held: 'Còn agent ngồi ghế thì chưa bỏ vai đó được.',
     seat_grants_system_only: 'Chỉ hệ thống mới cấp ghế được.',
     seat_revokes_system_only: 'Chỉ hệ thống mới thu ghế được.',
-    seat_already_revoked: 'Ghế đang ở \'{{status}}\' thì không thu lại được.',
     last_workspace: 'Không xoá được không gian làm việc duy nhất — tạo thêm một cái nữa đã.',
     plan_only_while_planning: 'Chỉ nộp kế hoạch khi dự án đang lập kế hoạch (đang ở \'{{status}}\').',
     no_plan_awaiting_decision: 'Không có kế hoạch nào đang chờ quyết (kế hoạch đang ở \'{{status}}\').',
@@ -865,7 +876,6 @@ export const vi = {
     task_reopen_not_closed: 'Chỉ mở lại được đầu việc đã đóng; đầu việc này đang ở \'{{status}}\'.',
     task_reopen_needs_reason: 'Mở lại một đầu việc đã đóng thì phải nêu lý do.',
     task_stalled_cannot_finish: 'Đầu việc đang mang cờ đình trệ thì chưa chuyển sang xong được — gỡ cờ đã.',
-    task_stalled_cannot_finish_named: 'Đầu việc đang mang cờ đình trệ thì chưa chuyển sang xong được ({{reason}}).',
     task_needs_artifact: 'Phải gắn thành phẩm đã công bố trước khi chuyển sang chờ rà soát hoặc xong.',
     task_needs_signatures: 'Đầu việc chỉ đóng khi đủ hai chữ ký.',
     task_needs_signatures_named: 'Đầu việc chỉ đóng khi đủ hai chữ ký — còn thiếu: {{missing}}.',

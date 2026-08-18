@@ -1,36 +1,35 @@
-"""SeatGrant — a system-only seat assignment (LLD §2.4, §3.3).
+"""SeatGrant — who sits in which seat, right now (LLD §2.4, §3.3).
 
-Agents never apply and there is no accept step: a grant is `granted` the moment the
-Patron assigns a Marius to a role seat, and the only transition out is `revoked`.
-Project activation keys off liveness (every seated agent ONLINE), NOT grant state.
+A row is a **live seat and nothing else**. There is no application step and no accept step:
+the seat is taken the moment the Patron puts a Marius in it, and the only way out is for
+the row to go.
+
+It used to keep its own history. Revoking flipped a `status` column to `revoked` and
+re-granting wrote a *second* row beside the first, so "who holds this seat" was a question
+about the newest row that said `granted` — and every one of the eight readers had to
+remember that. One of them did not, read the stale row, and concluded the project's own
+Leader held no role at all. Nothing in the running system ever read a revoked row for any
+other purpose, so the history existed purely as a trap. A revoke now deletes the row: the
+table says who is seated, and there is nothing else in it to misread.
+
+The seat points at the role **by identity**. A `role_key` is a label the patron can edit;
+pointing at it meant a renamed role silently emptied its own seats, and it left the two
+tables joinable only by string comparison spread across the codebase.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import StrEnum
 from uuid import UUID, uuid4
-
-from armarius.shared.errors import CodedError
-
-
-class SeatGrantStatus(StrEnum):
-    GRANTED = "granted"
-    REVOKED = "revoked"
-
-
-class SeatGrantError(CodedError):
-    """Raised on an illegal grant transition (e.g. revoking an already-revoked grant)."""
 
 
 @dataclass
 class SeatGrant:
+    project_id: UUID
+    role_id: UUID
+    marius_id: UUID
     id: UUID = field(default_factory=uuid4)
-    project_id: UUID | None = None
-    role_key: str = ""
-    marius_id: UUID | None = None
-    status: SeatGrantStatus = SeatGrantStatus.GRANTED
     # Which patron put this agent in the seat (FR-034). This is what decides who must
     # sign for the agent's output — recorded at grant time, never inferred afterwards.
     # Today it always resolves to the workspace owner; the day a project has more than one
@@ -38,13 +37,3 @@ class SeatGrant:
     granted_by_user_id: str | None = None
     granted_at: datetime | None = None
     created_at: datetime | None = None
-
-    @property
-    def is_active(self) -> bool:
-        return self.status == SeatGrantStatus.GRANTED
-
-    def revoke(self) -> None:
-        """The only exit from `granted` (LLD §3.3). Idempotent revoke is an error."""
-        if self.status != SeatGrantStatus.GRANTED:
-            raise SeatGrantError("seat_already_revoked", status=self.status)
-        self.status = SeatGrantStatus.REVOKED

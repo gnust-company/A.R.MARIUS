@@ -93,14 +93,22 @@ class RoleModel(Base):
 
 
 class SeatGrantModel(Base):
-    """A system-only seat assignment of a Marius to a role (LLD §2.4, §3.3)."""
+    """A system-only seat assignment of a Marius to a role (LLD §2.4, §3.3).
+
+    Live seats only — a revoke deletes the row. Both sides of the seat are foreign keys, so
+    a deleted agent or a dropped role cannot leave a seat pointing at nothing, and the
+    unique constraint is what makes "one agent, one seat in a role" true in the database
+    rather than only in the use case that happens to check.
+    """
 
     __tablename__ = "seat_grants"
+    __table_args__ = (
+        UniqueConstraint("project_id", "role_id", "marius_id", name="uq_seat_grants_seat"),
+    )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     project_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("projects.id"), index=True)
-    role_key: Mapped[str] = mapped_column(String(120))
-    marius_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
-    status: Mapped[str] = mapped_column(String(20), default="granted")
+    role_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("roles.id"), index=True)
+    marius_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("mariuses.id"), index=True)
     # Who put this agent in the seat (FR-034) — the patron who must sign for its output.
     granted_by_user_id: Mapped[str | None] = mapped_column(String(200), index=True)
     granted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

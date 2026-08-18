@@ -49,7 +49,6 @@ from armarius.domain.entities.checklist_item import (
 from armarius.domain.entities.leader_chat import LeaderChatError
 from armarius.domain.entities.marius import InviteError
 from armarius.domain.entities.onboarding import OnboardingError
-from armarius.domain.entities.seat_grant import SeatGrantError
 from armarius.domain.entities.task import (
     ArtifactRequiredError,
     CriteriaNotMetError,
@@ -120,7 +119,6 @@ _ROUTING: tuple[tuple[type[Exception], int, str], ...] = (
     # box up-front when the Leader is offline (#82), so this is the second line, not the
     # first.
     (LeaderChatError, 409, "the Leader cannot take a turn right now"),
-    (SeatGrantError, 409, "that seat is not in a state this action applies to"),
     (InviteError, 409, "the invite is not in a state this action applies to"),
     (OnboardingError, 409, "illegal session transition on a non-open chat"),
     (OnboardingBusy, 409, "one question at a time — the last one is unanswered"),

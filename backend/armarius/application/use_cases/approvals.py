@@ -150,7 +150,7 @@ class ApprovalService:
             raise ResponsiblePatronUnknown("signer_unknown_no_assignee")
         grants = await uow.seat_grants.list_by_project(task.project_id)
         for grant in grants:
-            if grant.marius_id == task.assigned_marius_id and grant.is_active:
+            if grant.marius_id == task.assigned_marius_id:
                 if not (grant.granted_by_user_id or "").strip():
                     raise ResponsiblePatronUnknown("signer_unknown_no_granter")
                 return grant.granted_by_user_id or ""

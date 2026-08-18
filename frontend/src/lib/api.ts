@@ -267,7 +267,10 @@ export interface TaskDTO {
   drive?: string | null
   /** The system dropped this task — every door into `done` is sealed (FR-058). */
   stalled?: boolean
+  /** The server's English rendering of the stall verdict — for agents and raw readers. */
   stalled_reason?: string | null
+  /** The verdict as a code; the screen words it (see `lib/stall.ts`). */
+  stalled_reason_code?: string | null
   /** Filled by the two-signature rule; empty until that ships. */
   signatures?: Record<string, unknown>[]
   assigned_marius_id?: string | null
@@ -883,12 +886,12 @@ export interface GrantSeatBody {
   role_key: string
 }
 
+/** A live seat. A vacated seat is a deleted row, so there is no status to carry. */
 export interface SeatGrantDTO {
   id: string
   project_id?: string | null
   role_key: string
   marius_id?: string | null
-  status: string
   granted_at?: string | null
   created_at?: string | null
 }

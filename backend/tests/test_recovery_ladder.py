@@ -627,8 +627,11 @@ async def test_the_leader_going_offline_goes_straight_to_the_patron(uow_factory)
     """Telling the Leader its own Leader is gone would be talking into an empty room."""
     ws, project, alice = await _world(uow_factory)
     async with uow_factory() as uow:
+        leader_role = next(
+            r for r in await uow.roles.list_by_project(project.id) if r.is_leader
+        )
         await uow.seat_grants.add(
-            SeatGrant(project_id=project.id, role_key="leader", marius_id=alice.id)
+            SeatGrant(project_id=project.id, role_id=leader_role.id, marius_id=alice.id)
         )
         await uow.commit()
 
@@ -932,8 +935,11 @@ async def test_the_patron_is_told_once_per_outage_not_once_per_reprobe(
     """
     ws, project, alice = await _world(uow_factory)
     async with uow_factory() as uow:
+        leader_role = next(
+            r for r in await uow.roles.list_by_project(project.id) if r.is_leader
+        )
         await uow.seat_grants.add(
-            SeatGrant(project_id=project.id, role_key="leader", marius_id=alice.id)
+            SeatGrant(project_id=project.id, role_id=leader_role.id, marius_id=alice.id)
         )
         await uow.commit()
     fallout = _fallout(uow_factory, notifier=RecordingNotifier(), bus=TopicEventBus())
@@ -957,8 +963,11 @@ async def test_a_resolved_outage_notice_can_be_raised_again(uow_factory) -> None
     handled it and the Leader is still gone, telling them again is new information."""
     ws, project, alice = await _world(uow_factory)
     async with uow_factory() as uow:
+        leader_role = next(
+            r for r in await uow.roles.list_by_project(project.id) if r.is_leader
+        )
         await uow.seat_grants.add(
-            SeatGrant(project_id=project.id, role_key="leader", marius_id=alice.id)
+            SeatGrant(project_id=project.id, role_id=leader_role.id, marius_id=alice.id)
         )
         await uow.commit()
     fallout = _fallout(uow_factory, notifier=RecordingNotifier(), bus=TopicEventBus())

@@ -19,7 +19,7 @@ from armarius.application.use_cases.seats import (
 )
 from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.domain.entities.role import Role
-from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
+from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.shared.clock import utcnow
 
 
@@ -38,7 +38,7 @@ async def _seated(uow_factory, *, role_key: str):  # noqa: ANN001, ANN202
         adapter_config={},
     )
     async with uow_factory() as uow:
-        await uow.roles.add(
+        role = await uow.roles.add(
             Role(
                 project_id=project.id,
                 key=role_key,
@@ -48,12 +48,12 @@ async def _seated(uow_factory, *, role_key: str):  # noqa: ANN001, ANN202
                 created_at=utcnow(),
             )
         )
+        await uow.commit()
         await uow.seat_grants.add(
             SeatGrant(
                 project_id=project.id,
-                role_key=role_key,
+                role_id=role.id,
                 marius_id=leader.id,
-                status=SeatGrantStatus.GRANTED,
                 granted_by_user_id="patron",
                 created_at=utcnow(),
             )
@@ -63,20 +63,20 @@ async def _seated(uow_factory, *, role_key: str):  # noqa: ANN001, ANN202
 
 
 async def test_a_leader_put_back_on_the_seat_is_still_found(uow_factory) -> None:  # noqa: ANN001
-    """Rút ghế rồi trao lại chính người ấy: hai dòng, dòng chết nằm trước. Đọc dòng đầu rồi
-    dừng thì kết luận dự án không có trưởng, và mọi lời gọi dành cho trưởng im lặng rơi."""
+    """Rút ghế rồi trao lại chính người ấy. Trước T199 đây là hai dòng, dòng chết nằm
+    trước — đọc dòng đầu rồi dừng thì kết luận dự án không có trưởng, và mọi lời gọi dành
+    cho trưởng im lặng rơi. Giờ chỉ còn **một** dòng, nên câu hỏi ấy không còn chỗ để sai."""
     project, leader = await _seated(uow_factory, role_key="leader")
     async with uow_factory() as uow:
         grants = await uow.seat_grants.list_by_project(project.id)
         seat = next(g for g in grants if g.marius_id == leader.id)
-        seat.revoke()
-        await uow.seat_grants.update(seat)
+        role_id = seat.role_id
+        await uow.seat_grants.remove(seat.id)
         await uow.seat_grants.add(
             SeatGrant(
                 project_id=project.id,
-                role_key="leader",
+                role_id=role_id,
                 marius_id=leader.id,
-                status=SeatGrantStatus.GRANTED,
                 granted_by_user_id="patron",
                 created_at=utcnow(),
             )
@@ -86,6 +86,7 @@ async def test_a_leader_put_back_on_the_seat_is_still_found(uow_factory) -> None
     async with uow_factory() as uow:
         assert await leader_marius_id(uow, project.id) == leader.id
         assert await holds_the_leader_seat(uow, project.id, leader.id) is True
+        assert len(await uow.seat_grants.list_by_project(project.id)) == 1
 
 
 async def test_the_leader_seat_is_read_off_the_flag_not_off_its_name(uow_factory) -> None:  # noqa: ANN001
@@ -106,8 +107,7 @@ async def test_a_revoked_seat_leaves_the_project_without_a_leader(uow_factory) -
     async with uow_factory() as uow:
         grants = await uow.seat_grants.list_by_project(project.id)
         seat = next(g for g in grants if g.marius_id == leader.id)
-        seat.revoke()
-        await uow.seat_grants.update(seat)
+        await uow.seat_grants.remove(seat.id)
         await uow.commit()
 
     async with uow_factory() as uow:

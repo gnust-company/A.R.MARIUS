@@ -31,7 +31,7 @@ from armarius.domain.services.wake_prompt import NONE_MARKER, ProjectBrief
 class ChatDirectoryEntry:
     marius_id: UUID
     name: str
-    role: str  # the worker's PROJECT role title (resolved via SeatGrant.role_key → Role)
+    role: str  # the worker's PROJECT role title (resolved via SeatGrant.role_id → Role)
     liveness: str
     role_description: str = ""  # what that project role does (optional)
 

@@ -625,9 +625,8 @@ class SqlSeatGrantRepository(SeatGrantRepository):
             SeatGrantModel(
                 id=grant.id,
                 project_id=grant.project_id,
-                role_key=grant.role_key,
+                role_id=grant.role_id,
                 marius_id=grant.marius_id,
-                status=str(grant.status),
                 granted_by_user_id=grant.granted_by_user_id,
                 granted_at=grant.granted_at,
                 created_at=grant.created_at,
@@ -650,17 +649,13 @@ class SqlSeatGrantRepository(SeatGrantRepository):
         ).scalars().all()
         return [mappers.seat_grant_to_entity(m) for m in rows]
 
-    async def update(self, grant: SeatGrant) -> SeatGrant:
-        m = await self._s.get(SeatGrantModel, grant.id)
+    async def remove(self, grant_id: UUID) -> None:
+        """Vacate the seat. The row is the seat, so losing the seat is losing the row."""
+        m = await self._s.get(SeatGrantModel, grant_id)
         if m is None:
             raise NotFound("seat_grant_not_found")
-        m.role_key = grant.role_key
-        m.marius_id = grant.marius_id
-        m.status = str(grant.status)
-        m.granted_by_user_id = grant.granted_by_user_id
-        m.granted_at = grant.granted_at
+        await self._s.delete(m)
         await self._s.flush()
-        return grant
 
 
 class SqlApprovalRepository(ApprovalRepository):

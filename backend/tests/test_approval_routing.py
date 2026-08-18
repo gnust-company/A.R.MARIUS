@@ -18,7 +18,7 @@ from uuid import uuid4
 import pytest
 
 from armarius.domain.entities.inbox_item import InboxItemKind, InboxItemStatus
-from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
+from armarius.domain.entities.seat_grant import SeatGrant
 from tests.support.planning import client, operating_project
 
 
@@ -118,7 +118,7 @@ async def _seed_task_awaiting_acceptance(
             Project(workspace_id=ws.id, name="P", slug=f"p-{uuid4().hex[:8]}", key="PR")
         )
         await uow.commit()
-        await uow.roles.add(
+        role = await uow.roles.add(
             Role(project_id=project.id, key="backend", title="Backend", seats=1)
         )
         worker = await uow.mariuses.add(
@@ -128,9 +128,8 @@ async def _seed_task_awaiting_acceptance(
         await uow.seat_grants.add(
             SeatGrant(
                 project_id=project.id,
-                role_key="backend",
+                role_id=role.id,
                 marius_id=worker.id,
-                status=SeatGrantStatus.GRANTED,
                 granted_by_user_id=granted_by_user_id,
             )
         )

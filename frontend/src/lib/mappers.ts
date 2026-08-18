@@ -238,7 +238,7 @@ export function taskToVM(dto: TaskDTO): Task {
     planItemId: dto.plan_item_id ?? undefined,
     drive: dto.drive ?? undefined,
     stalled: dto.stalled ?? false,
-    stalledReason: dto.stalled_reason ?? undefined,
+    stalledReasonCode: dto.stalled_reason_code ?? undefined,
     definitionOfDone: dto.definition_of_done ?? undefined,
     dueDate: dto.due_date ?? null,
     createdAt: dto.created_at ?? new Date().toISOString(),

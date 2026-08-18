@@ -180,7 +180,8 @@ export interface Task {
   drive?: string
   /** The safety net dropped a flag: every door into `done` is sealed (FR-058). */
   stalled?: boolean
-  stalledReason?: string
+  /** Which stall it is, as a code — worded on screen by `stallText` (T200). */
+  stalledReasonCode?: string
   createdAt: string
   updatedAt?: string
 }

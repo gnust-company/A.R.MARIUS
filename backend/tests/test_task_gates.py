@@ -110,6 +110,7 @@ import pytest  # noqa: E402
 
 from armarius.application.use_cases.approvals import ApprovalService  # noqa: E402
 from armarius.domain.entities.artifact import Artifact, ArtifactKind  # noqa: E402
+from armarius.domain.entities.role import Role  # noqa: E402
 from armarius.domain.entities.seat_grant import SeatGrant  # noqa: E402
 from armarius.domain.entities.task_log import TaskLogKind  # noqa: E402
 
@@ -161,12 +162,14 @@ async def _task_in_review_with_a_stored_artifact(uow_factory):
     async with uow_factory() as uow:
         # The seat grant is what says which patron must co-sign (FR-034); without it
         # the happy path cannot route the second signature at all.
-        roles = list(await uow.roles.list_by_project(project.id))
-        role_key = roles[0].key if roles else "backend"
+        role = await uow.roles.add(
+            Role(project_id=project.id, key="backend", title="Backend", seats=1)
+        )
+        await uow.commit()
         await uow.seat_grants.add(
             SeatGrant(
                 project_id=project.id,
-                role_key=role_key,
+                role_id=role.id,
                 marius_id=alice.id,
                 granted_by_user_id="patron-1",
             )
