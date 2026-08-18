@@ -413,7 +413,7 @@ class SqlLeaderChatRepository(LeaderChatRepository):
     ) -> ProjectLeaderConversation:
         m = await self._s.get(ProjectLeaderConversationModel, conversation.id)
         if m is None:
-            raise LookupError("leader chat conversation not found")
+            raise NotFound("leader_chat_conversation_not_found")
         m.leader_marius_id = conversation.leader_marius_id
         m.session_params = dict(conversation.session_params)
         m.transcript = list(conversation.transcript)
@@ -1639,7 +1639,7 @@ class SqlWakeupRepository(WakeupRepository):
     async def update(self, wakeup: WakeupRequest) -> WakeupRequest:
         m = await self._s.get(WakeupModel, wakeup.id)
         if m is None:
-            raise LookupError("wakeup not found")
+            raise NotFound("wakeup_not_found")
         m.source = str(wakeup.source)
         m.causes = causes_to_payload(wakeup.causes)
         m.reason = wakeup.reason
@@ -1735,7 +1735,7 @@ class SqlUserRepository(UserRepository):
     async def update(self, user: User) -> User:
         m = await self._s.get(UserModel, user.id)
         if m is None:
-            raise LookupError("user not found")
+            raise NotFound("user_not_found")
         m.full_name = user.full_name
         m.hashed_password = user.hashed_password
         m.role = str(user.role)

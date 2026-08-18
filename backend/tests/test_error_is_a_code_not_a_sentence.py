@@ -168,6 +168,76 @@ def test_every_refusal_in_the_source_uses_a_code_the_table_knows() -> None:
     )
 
 
+#: Lỗi dựng sẵn của Python mà `install_error_handlers` bắt và **đổi thành một phản hồi từ
+#: chối**: `ValueError` → 400, `LookupError` (và `KeyError` là con nó) → 404,
+#: `PermissionError` → 403. Ném trần một trong số này là gửi đi một lời từ chối không mã.
+#: `RuntimeError` không có ở đây vì nó rơi ra 500 — đấy là lỗi lập trình, không phải lời
+#: từ chối, và một cái 500 thì không ai dựng câu cho người đọc cả.
+_REFUSAL_BUILTINS = {"ValueError", "LookupError", "PermissionError", "KeyError"}
+
+#: Những chỗ ném trần **không tới được tay người gọi**, kèm lý do từng chỗ. Ghi tên chứ
+#: không nới phép quét: một chỗ thứ tư phải là quyết định có lý do, không phải chuyện lọt.
+_NEVER_REACHES_A_CALLER = {
+    # Bộ soát của pydantic. Pydantic bắt `ValueError` ngay trong lượt soát và tự dựng
+    # phản hồi 422 của nó, nên câu này không đi qua bảng mã của ta.
+    ("presentation/schemas.py", "ValueError"),
+    # Đọc thẻ: người gọi bắt lại rồi ném ra lời từ chối có mã (`invalid_access_token`).
+    ("infrastructure/security/jwt.py", "ValueError"),
+    # Băm mật khẩu: chặn lập trình viên truyền chuỗi rỗng, không phải cửa nhận yêu cầu.
+    ("infrastructure/security/password.py", "ValueError"),
+    # Sổ bộ chuyển đổi: tra một loại chưa đăng ký là sai cấu hình lúc dựng, không phải
+    # một yêu cầu hỏng.
+    ("infrastructure/adapters/registry.py", "LookupError"),
+}
+
+
+def _bare_refusals() -> list[tuple[str, int, str]]:
+    """Mọi `raise` một lỗi dựng sẵn mà tầng phản hồi sẽ biến thành lời từ chối."""
+    coded = _coded_error_names()
+    found: list[tuple[str, int, str]] = []
+    for path in sorted(_BACKEND.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Raise):
+                continue
+            exc = node.exc
+            called = exc.func if isinstance(exc, ast.Call) else exc
+            name = (
+                called.id
+                if isinstance(called, ast.Name)
+                else called.attr
+                if isinstance(called, ast.Attribute)
+                else None
+            )
+            # `NotFound` là `LookupError`, `BadRequest` là `ValueError` — họ mang mã sẵn.
+            if name in coded or name not in _REFUSAL_BUILTINS:
+                continue
+            found.append((str(path.relative_to(_BACKEND)), node.lineno, name))
+    return found
+
+
+def test_no_refusal_leaves_the_server_without_a_code() -> None:
+    """Lỗ mà bài kiểm trên **không** bịt được, và đã lọt bốn cửa suốt hai tháng.
+
+    `_raised_codes` chỉ soi các lệnh ném thuộc họ mã lỗi. Một `raise ValueError(f"...")`
+    trần thì không thuộc họ ấy, nên phép quét đi qua nó — trong khi tầng phản hồi vẫn
+    ngoan ngoãn đổi nó thành `400 {"detail": "unknown status 'xong'"}`: không `code`,
+    không `params`. Màn hình không dựng được câu tiếng Việt, còn agent nhận đúng câu ấy.
+
+    Bốn cửa lọt (`inbox`, `tasks`, `agent` ×2) đều tìm ra bằng tay, mỗi lần một cửa. Bài
+    này thay chỗ cho việc tìm bằng tay.
+    """
+    strays = [
+        (f, line, name)
+        for f, line, name in _bare_refusals()
+        if (f, name) not in _NEVER_REACHES_A_CALLER
+    ]
+    assert not strays, (
+        "lời từ chối ném trần, tới người gọi mà không có mã:\n"
+        + "\n".join(f"  {f}:{line} → raise {name}(...)" for f, line, name in strays)
+    )
+
+
 # ── the screen's half ─────────────────────────────────────────────────────────
 
 

@@ -216,6 +216,10 @@ def provisional_drive(status: TaskStatus, *, now: datetime) -> PushReason | None
 
 STALL_ORPHANED = "stall_orphaned"
 STALL_UNKNOWN = "stall_unknown"
+#: Không phải một phán quyết của vòng quét mà là một lời khai: Trưởng dự án tự nói việc
+#: này ngoài tầm mình. Có mã riêng vì nó là *cớ* khác hẳn — không đến từ động cơ đẩy nào
+#: hết hạn — và vì trước đó chỗ này nhét thẳng câu Trưởng dự án tự viết vào ô của mã.
+STALL_LEADER_GAVE_UP = "stall_leader_gave_up"
 
 _EXPIRED_CODES: dict[TaskDrive, str] = {
     TaskDrive.RUN_ACTIVE: "stall_run_active",
@@ -238,6 +242,7 @@ STALL_ENGLISH: dict[str, str] = {
     "stall_waiting_patron": "this task was parked on the patron and nothing came back",
     "stall_blocked_by_task": "this task was parked behind another task and nothing moved",
     STALL_UNKNOWN: "this task lost its drive",
+    STALL_LEADER_GAVE_UP: "the Leader reported this task beyond their own handling",
 }
 
 

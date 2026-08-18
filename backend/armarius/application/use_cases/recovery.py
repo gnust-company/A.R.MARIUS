@@ -52,7 +52,11 @@ from armarius.domain.services.escalation import (
     backoff_seconds,
 )
 from armarius.domain.services.project_rules import ProjectClosed
-from armarius.domain.services.push_reason_rules import stall_text_en, watches
+from armarius.domain.services.push_reason_rules import (
+    STALL_LEADER_GAVE_UP,
+    stall_text_en,
+    watches,
+)
 from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.events.topic_bus import TopicEventBus, patron_topic
 from armarius.shared.clock import as_utc, utcnow
@@ -267,7 +271,11 @@ class RecoveryEscalator:
             ladder.level = EscalationLevel.LEVEL_3
             ladder.next_retry_at = None
             ladder.updated_at = now
-            cause = ladder.cause or reason
+            # A code, never the Leader's own sentence: this lands in the dossier's
+            # "cause", which the screen renders from a phrase table, so free text there
+            # degrades to the generic "stalled" label. What the Leader actually wrote is
+            # kept verbatim in the task log below, which is where prose belongs.
+            cause = ladder.cause or STALL_LEADER_GAVE_UP
             await uow.push_reasons.upsert(ladder)
             await uow.commit()
 
