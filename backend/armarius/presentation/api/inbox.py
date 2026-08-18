@@ -20,6 +20,7 @@ from armarius.domain.entities.inbox_item import InboxItemStatus
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import AnswerEscalationIn, InboxItemOut
+from armarius.shared.errors import BadRequest
 
 # The closed-project freeze is enforced **inside** this one, not at the door (FR-005), and
 # it is the only router where that is true. Two of the doors here write into the project
@@ -39,9 +40,7 @@ async def list_inbox(
 ) -> list[InboxItemOut]:
     """Items addressed to the caller. ``status=all`` returns both pending and resolved."""
     wanted = None if status == "all" else _parse_status(status)
-    items = await container.inbox.list_for(
-        str(user.id), status=wanted, project_id=project_id
-    )
+    items = await container.inbox.list_for(str(user.id), status=wanted, project_id=project_id)
     return [InboxItemOut.model_validate(i) for i in items]
 
 
@@ -57,9 +56,7 @@ async def resolve_inbox_item(
     once the letter is written, so handing the letter back is what puts it under the net
     again. Every other kind of item just resolves.
     """
-    item = await container.recovery.patron_answered(
-        item_id, recipient_user_id=str(user.id)
-    )
+    item = await container.recovery.patron_answered(item_id, recipient_user_id=str(user.id))
     return InboxItemOut.model_validate(item)
 
 
@@ -89,4 +86,4 @@ def _parse_status(value: str) -> InboxItemStatus:
     try:
         return InboxItemStatus(value)
     except ValueError as exc:
-        raise ValueError(f"unknown inbox status '{value}'") from exc
+        raise BadRequest("unknown_inbox_status", status=value) from exc

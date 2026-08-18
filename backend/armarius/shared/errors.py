@@ -36,6 +36,8 @@ ENGLISH: dict[str, str] = {
     "criterion_not_found": "Criterion not found.",
     "inbox_item_not_found": "Inbox item not found.",
     "seat_grant_not_found": "Seat grant not found.",
+    "leader_chat_conversation_not_found": "Leader chat conversation not found.",
+    "wakeup_not_found": "Wake-up request not found.",
     "task_or_agent_not_found": "Task or agent not found.",
     "onboarding_session_not_found": "Onboarding session not found.",
     "no_active_onboarding_session": "No onboarding session is open.",
@@ -72,7 +74,11 @@ ENGLISH: dict[str, str] = {
     "unknown_plan_decision": (
         "Unknown plan decision '{decision}' — expected duyet, yeu_cau_chinh or hoi_lai."
     ),
+    "role_keys_must_be_unique": "Two roles cannot share the key '{keys}' on one project.",
+    "role_seats_full": "The '{role}' role already holds all {seats} of its seats.",
     "unknown_project_phase": "Unknown project phase '{phase}'.",
+    "unknown_task_status": "Unknown task status '{status}'.",
+    "unknown_inbox_status": "Unknown inbox status '{status}'.",
     "role_key_taken": "Role key '{key}' already exists in this project's roster.",
     "project_needs_one_leader_role": (
         "A project needs exactly one leader role, found {found}."

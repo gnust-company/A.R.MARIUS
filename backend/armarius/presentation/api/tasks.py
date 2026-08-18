@@ -46,7 +46,7 @@ from armarius.presentation.schemas import (
     WakeIn,
     decode_artifact_content,
 )
-from armarius.shared.errors import Forbidden
+from armarius.shared.errors import BadRequest, Forbidden
 
 # FR-005 — a closed project is frozen. The guard hangs on the router, not on each
 # route, so a route added later cannot forget it.
@@ -57,7 +57,7 @@ def _parse_status(value: str) -> TaskStatus:
     try:
         return TaskStatus(value)
     except ValueError as exc:
-        raise ValueError(f"unknown status '{value}'") from exc
+        raise BadRequest("unknown_task_status", status=value) from exc
 
 
 @router.post("/projects/{project_id}/tasks", response_model=TaskOut, status_code=201)

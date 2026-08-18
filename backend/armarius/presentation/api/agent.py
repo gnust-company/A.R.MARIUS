@@ -52,7 +52,7 @@ from armarius.presentation.schemas import (
     TransitionIn,
     decode_artifact_content,
 )
-from armarius.shared.errors import NotFound
+from armarius.shared.errors import BadRequest, NotFound
 
 # FR-005 — a closed project is frozen. The guard hangs on the router, not on each
 # route, so a route added later cannot forget it.
@@ -429,7 +429,7 @@ async def update_status(
     try:
         target = TaskStatus(body.status)
     except ValueError as exc:
-        raise ValueError(f"unknown status '{body.status}'") from exc
+        raise BadRequest("unknown_task_status", status=body.status) from exc
     task = await container.tasks.transition(
         task_id, target, reason=body.reason, marius_id=marius.id
     )
@@ -632,4 +632,4 @@ def _parse_phase(value: str) -> ProjectStatus:
     try:
         return ProjectStatus(value)
     except ValueError as exc:
-        raise ValueError(f"unknown project phase '{value}'") from exc
+        raise BadRequest("unknown_project_phase", phase=value) from exc
