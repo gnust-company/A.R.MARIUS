@@ -1103,7 +1103,13 @@ phụ trách thì `infer_drive` trả về *không có động cơ đẩy nào*,
 **Đặc tả đã sửa xong toàn bộ (2026-08-16). Từ đây trở đi mười ba việc dưới chỉ còn phần mã.** Không việc
 nào còn phải quay lại bàn luật. Ô chỉ được đánh dấu xong khi mã theo kịp **và** đã dựng dịch vụ thật lên tự
 kiểm — **T179, T180, T181, T182, T183, T186, T187, T192, T193, T195 và T196 xong (2026-08-16); T188, T197,
-T185, T189, T191 và T194 xong (2026-08-17); T184 và T190 xong (2026-08-18). Cả mười ba việc đã xong.**
+T185, T189, T191 và T194 xong (2026-08-17); T184 và T190 xong (2026-08-18).**
+
+**Đếm cho đúng (ghi lại 2026-08-18):** danh sách vừa rồi có mười chín mã việc, không phải mười ba. Mười ba
+việc của lượt hội tụ là **T179–T191**; **T192–T197** thêm vào sau lượt ấy — T192, T193 tìm ra lúc dựng dịch
+vụ thật lên kiểm, T194 sinh ra từ Hiến pháp VII (sửa 2026-08-16, tức sau lượt rà), T195 và T196 là hệ quả
+của T187, T197 là hệ quả của T196. Câu "cả mười ba việc đã xong" ở bản trước gộp cả hai nhóm vào một con
+số, làm mất dấu chỗ việc mới thật sự đến từ đâu.
 
 **Ba việc lộ ra trong lúc làm — T198, T199, T200 — xong (2026-08-18).** Không việc nào trong ba đến
 từ đặc tả: hai do người rà nêu ở PR #206, một tìm ra khi làm T194. Cả ba cùng một bệnh — một câu trả
