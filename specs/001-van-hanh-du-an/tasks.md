@@ -1105,6 +1105,10 @@ nào còn phải quay lại bàn luật. Ô chỉ được đánh dấu xong khi
 kiểm — **T179, T180, T181, T182, T183, T186, T187, T192, T193, T195 và T196 xong (2026-08-16); T188, T197,
 T185, T189, T191 và T194 xong (2026-08-17); T184 và T190 xong (2026-08-18). Cả mười ba việc đã xong.**
 
+**Ba việc lộ ra trong lúc làm — T198, T199, T200 — xong (2026-08-18).** Không việc nào trong ba đến
+từ đặc tả: hai do người rà nêu ở PR #206, một tìm ra khi làm T194. Cả ba cùng một bệnh — một câu trả
+lời đúng ở chỗ nó được đọc và sai ở chỗ nó được dùng.
+
 **Hiến pháp lên 1.1.0 (2026-08-16).** T193 để lộ một luật chưa ai ghi: chữ **hệ thống** gửi cho agent phải
 là tiếng Anh, vì agent không có ngôn ngữ giao diện để chọn. Mã vốn đã làm đúng — gói tin đánh thức viết
 toàn tiếng Anh — chỉ mấy câu lý do gọi dậy các đợt gần đây viết bằng tiếng Việt rồi nhét vào giữa. Người
@@ -1322,25 +1326,53 @@ tồn tại không có nghĩa là luật được canh; phải kiểm bài kiể
   canh đúng ranh giới ấy: ba nút kia 409, nút dọn thư 200. Phần này phòng cửa sổ hẹp giữa lúc đóng dự án
   và lúc quét thư; ngoài cửa sổ ấy thì thư đã hết hiệu lực rồi nên bấm gì cũng không xảy ra chuyện gì
 
-- [ ] T198 Kéo phép tra vai người nhận vào trong giao dịch mở lượt chạy, ở
+- [x] T198 Kéo phép tra vai người nhận vào trong giao dịch mở lượt chạy, ở
   `backend/armarius/application/use_cases/wake_engine.py` (`_cause_fits_the_recipient` đọc vai ở một
   giao dịch riêng, rồi `_fold_into_pending`/`_open_run` mới mở giao dịch của mình dưới `self._lock`).
   Người rà nêu ở PR #206, **không chặn**. Giữa hai giao dịch ấy có một khe: ghế trưởng bị rút đúng lúc
   đó thì lệnh gọi vẫn đi, vì nó được duyệt trên ảnh chụp cũ. Hậu quả nhỏ (một lượt gọi thừa cho người
   vừa rời ghế) nhưng nó là một cửa sổ có thật, và siết nó là đổi hình dạng giao dịch của cả cửa đánh
-  thức — đáng là việc riêng chứ không nhét vào một bản vá khác
+  thức — đáng là việc riêng chứ không nhét vào một bản vá khác.
+  **Xong 2026-08-18.** `enqueue` giờ mở **một giao dịch cho mỗi lượt thử**, và phép tra vai, phép gộp
+  lời gọi lẫn lệnh ghi lượt chạy đều nằm trong đó. `_cause_fits_the_recipient` nhận giao dịch của
+  người gọi thay vì tự mở, nên dòng ghế nó duyệt đúng là dòng ghế lúc lượt chạy được ghi; dòng *từ
+  chối* cũng để người gọi ghi. Lệnh loan báo lượt chạy dời ra **sau** lúc chốt giao dịch — loan một
+  lượt chạy rồi bị cuộn lại là cách một cái bảng mọc thêm thẻ cho việc chưa từng bắt đầu. Bài kiểm
+  canh **hình dạng** sinh ra khe ấy (cùng một kho, tức cùng một phiên), và đã chạy ngược trên bản cũ
+  để chứng minh nó đỏ
 
-- [ ] T199 Dọn mô hình ghế: một ghế **một dòng**, khoá ngoại cho `seat_grants.marius_id`, nối vai bằng
+- [x] T199 Dọn mô hình ghế: một ghế **một dòng**, khoá ngoại cho `seat_grants.marius_id`, nối vai bằng
   danh tính thay vì chuỗi chữ `role_key`, và bỏ hẳn lịch sử ghế — ở
   `backend/armarius/domain/entities/seat_grant.py`, `infrastructure/database/models.py` và một bản di
   trú. Trao lại ghế hiện viết một dòng **mới** và để dòng cũ nằm lại; không một chỗ nào trong mã đang
   chạy đọc dòng đã thu hồi, nên lịch sử ấy chỉ tồn tại để mỗi người đọc phải nhớ lọc nó ra — và một
-  người quên lọc là đúng lỗi PR #206 vừa sửa. Cần di trú dữ liệu nên tách riêng
+  người quên lọc là đúng lỗi PR #206 vừa sửa. Cần di trú dữ liệu nên tách riêng.
+  **Xong 2026-08-18.** Trả ghế giờ **xoá dòng**, nên `status`, `SeatGrantStatus`, `revoke()` và
+  `SeatGrantError` biến mất cùng phép lọc ở tám chỗ đọc. Ghế trỏ vào `roles.id` chứ không còn chuỗi mã
+  vai — đổi mã vai không làm ghế tự rỗng nữa. Hai đầu ghế đều là khoá ngoại (`roles.id`,
+  `mariuses.id`), và một ràng buộc duy nhất `(project_id, role_id, marius_id)` đưa luật *một người một
+  ghế* xuống cơ sở dữ liệu: trước đây trao ghế hai lần cho cùng một người viết hai dòng, và hai dòng
+  đọc ra là **hai ghế đã đầy**. Bản di trú dựng lại bảng (SQLite không thêm được khoá ngoại vào cột
+  sẵn có) và bỏ ba loại dòng: đã thu hồi, không có người, và trỏ vào mã vai không khớp vai nào — cả ba
+  đều đã không đọc được từ trước. Mặt giao tiếp bỏ trường `status`; `role_key` giữ nguyên vì hợp đồng
+  gọi vai bằng mã, chỉ là được tra ra ở **một** chỗ thay vì mỗi người đọc tự nối bảng
 
-- [ ] T200 Đưa **câu tuyên đình trệ** sang mã kèm tham số, ở
+- [x] T200 Đưa **câu tuyên đình trệ** sang mã kèm tham số, ở
   `backend/armarius/domain/services/push_reason_rules.py` (`stall_reason`, `_EXPIRED_WORDING`) cùng
   `task.stalled_reason` và chỗ đọc nó ở `frontend/src/` — theo Hiến pháp VII. Cùng bệnh với T193/T194,
   tìm ra khi làm T194: câu này nằm trong cột `stalled_reason`, hiện trên thẻ việc ở bảng dự án cho
   người chủ, **và** đi làm cớ leo thang cho Trưởng dự án. T194 đã chặn được đường sang agent (hồ sơ Mức
   2 dựng câu tiếng Anh từ chính mã động cơ đẩy), nhưng gốc vẫn là một câu tiếng Việt lưu trong sổ. Nặng
-  hơn T193 ở chỗ nó là **cột dữ liệu**, không phải chuỗi dựng lúc phát
+  hơn T193 ở chỗ nó là **cột dữ liệu**, không phải chuỗi dựng lúc phát.
+  **Xong 2026-08-18.** `stalled_reason` giờ lưu **mã**; máy chủ dựng bản tiếng Anh cho sổ ghi và cho
+  agent, màn hình dựng câu tiếng Việt từ chính mã ấy — đúng hình dạng `detail` + `code` của T184, nên
+  `TaskOut` trả cả hai (`stalled_reason` tiếng Anh, `stalled_reason_code`). Bảng mã phủ **cả sáu** loại
+  động cơ đẩy chứ không bốn: hai loại vốn không có đồng hồ vẫn tới được đây qua `provisional_drive`,
+  và trước đó chúng rơi vào một chuỗi f-string ghép tên động cơ đẩy vào câu. Câu *"Vì sao"* trong thư
+  Mức 3 gỡ khỏi thân thư: cùng một sự thật vốn được viết hai lần, và bản trong thân thư là văn xuôi
+  tiếng Việt do máy chủ chọn — giờ chỉ còn trong hồ sơ, để mỗi phía tự dựng. Bảng `_STALL_CLAUSE_EN`
+  ở thang phục hồi xoá luôn vì nó là bản sao thứ hai của cùng phép ánh xạ. Bản di trú đổi năm câu đã
+  nằm trong cơ sở dữ liệu sang mã, phần còn lại thành `stall_unknown`. Bỏ luôn mã lỗi
+  `task_stalled_cannot_finish_named`: tham số của nó là câu tuyên, mà mã thì agent đọc ra rác còn câu
+  tiếng Anh thì người chủ đọc sai thứ tiếng — lời từ chối nêu cái cờ, còn *vì sao* nằm trên chính đầu
+  việc, nơi cả hai người đọc đều đã có nó bằng thứ tiếng của mình
