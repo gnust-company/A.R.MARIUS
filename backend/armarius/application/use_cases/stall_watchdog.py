@@ -47,7 +47,12 @@ from armarius.application.use_cases.task_log import TaskLogService
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.task import Task
 from armarius.domain.entities.task_log import ActorKind, TaskLogKind
-from armarius.domain.services.push_reason_rules import is_live, stall_reason
+from armarius.domain.services.push_reason_rules import (
+    STALL_UNKNOWN,
+    is_live,
+    stall_reason,
+    stall_text_en,
+)
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import utcnow
 from armarius.shared.logging import get_logger
@@ -148,7 +153,7 @@ class StallWatchdog:
                         task.id,
                         TaskLogKind.STALL_CLEARED,
                         actor_kind=ActorKind.SYSTEM,
-                        reason="đã có người hoặc lịch chạm vào đầu việc này trở lại",
+                        reason="a person or a schedule touched this task again",
                     )
                 # The ladder measures an unsolved problem, and this one is solved — by the
                 # Leader's action, by a retry landing, by the patron picking it up, by
@@ -167,7 +172,7 @@ class StallWatchdog:
                     await self._ladder.stand_down(task.id, now=now)
                 return False
 
-            verdict = stall_reason(reason, now=now) or "không rõ vì sao"
+            verdict = stall_reason(reason, now=now) or STALL_UNKNOWN
             already = was_flagged
             # Is a run row still sitting on this task, unreaped? Then the hung-run reaper
             # owns the recovery, and this loop must not do it instead — see below.
@@ -183,7 +188,7 @@ class StallWatchdog:
                 task.id,
                 TaskLogKind.STALL_FLAGGED,
                 actor_kind=ActorKind.SYSTEM,
-                reason=verdict,
+                reason=stall_text_en(verdict),
             )
             await self._publish(fresh, verdict)
 
@@ -250,7 +255,11 @@ class StallWatchdog:
     # ── plumbing ─────────────────────────────────────────────────────────────────
     async def _publish(self, task: Task, verdict: str) -> None:
         """Tell the project channel. Identifiers and labels only — never the description
-        (contracts/push-events.md §4)."""
+        (contracts/push-events.md §4).
+
+        ``reason`` carries the stall **code**, not a sentence: an event is read by whatever
+        is listening, and each listener words it for its own reader (T200).
+        """
         if task.project_id is None:  # pragma: no cover - defensive
             return
         await self._bus.publish(

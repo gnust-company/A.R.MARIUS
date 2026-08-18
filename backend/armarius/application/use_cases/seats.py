@@ -6,9 +6,10 @@ Three read the roster's leader flag; the fourth matched the literal role key ``"
 which the flag does not have to imply — `add_role` deliberately skips the roster rule, so a
 leader role under a different key is reachable through the API, and then those two readings
 name different agents. A fifth reader (the wake guard) stopped at the *first* grant row
-matching the agent, without checking it was still in force: a seat is re-granted by writing
-a **new** row, so an agent put back on the leader seat has a revoked row sitting ahead of
-its live one, and that reader concluded the project's own Leader held no role at all.
+matching the agent, without checking it was still in force — back when a revoked seat left
+its row behind and an agent put back on the leader seat had a dead row sitting ahead of its
+live one. That row no longer exists (a revoke deletes it), but the lookup stays here: the
+mistake it prevents is copies of one question, not that one shape of stale data.
 
 Neither is a mistake a reader can be told to stop making. They are copies of one lookup,
 and every copy is another chance to get it wrong. So the lookup lives here, and the callers
@@ -28,9 +29,13 @@ from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.domain.entities.role import Role
 
 
-def leader_role_keys(roles: Iterable[Role]) -> set[str]:
-    """The roster keys that mark the leader seat, read off the flag rather than the name."""
-    return {role.key for role in roles if role.is_leader}
+def leader_role_ids(roles: Iterable[Role]) -> set[UUID]:
+    """The roster rows that mark the leader seat, read off the flag rather than the name.
+
+    Identities, not keys: a seat points at the role row, and a key is a label the patron
+    may edit under it.
+    """
+    return {role.id for role in roles if role.is_leader}
 
 
 async def leader_role(uow: UnitOfWork, project_id: UUID) -> Role | None:
@@ -39,16 +44,12 @@ async def leader_role(uow: UnitOfWork, project_id: UUID) -> Role | None:
 
 
 async def leader_marius_id(uow: UnitOfWork, project_id: UUID) -> UUID | None:
-    """The agent currently seated as this project's Leader, or None if the seat is empty.
-
-    Every grant is looked at, never only the first: revoked rows are kept and sorted ahead
-    of the live one, so stopping early reads history and calls it the present.
-    """
-    keys = leader_role_keys(await uow.roles.list_by_project(project_id))
-    if not keys:
+    """The agent currently seated as this project's Leader, or None if the seat is empty."""
+    ids = leader_role_ids(await uow.roles.list_by_project(project_id))
+    if not ids:
         return None
     for grant in await uow.seat_grants.list_by_project(project_id):
-        if grant.role_key in keys and grant.is_active and grant.marius_id is not None:
+        if grant.role_id in ids:
             return grant.marius_id
     return None
 

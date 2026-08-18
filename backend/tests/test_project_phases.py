@@ -14,7 +14,7 @@ import pytest
 from armarius.domain.entities.marius import Liveness
 from armarius.domain.entities.project import Project, ProjectStatus
 from armarius.domain.entities.role import Role
-from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
+from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.services.project_rules import (
     InvalidPhaseTransition,
     accepts_real_tasks,
@@ -33,8 +33,8 @@ def _roster() -> tuple[list[Role], list[SeatGrant], dict]:
         Role(key="dev", title="Dev", seats=1, description="Builds."),
     ]
     grants = [
-        SeatGrant(role_key="leader", marius_id=_ids[0], status=SeatGrantStatus.GRANTED),
-        SeatGrant(role_key="dev", marius_id=_ids[1], status=SeatGrantStatus.GRANTED),
+        SeatGrant(project_id=uuid4(), role_id=roles[0].id, marius_id=_ids[0]),
+        SeatGrant(project_id=uuid4(), role_id=roles[1].id, marius_id=_ids[1]),
     ]
     liveness = {_ids[0]: Liveness.ONLINE, _ids[1]: Liveness.ONLINE}
     return roles, grants, liveness

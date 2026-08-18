@@ -29,6 +29,7 @@ import Modal from '@/components/Modal';
 import LeaderChatWidget from '@/components/LeaderChatWidget';
 import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
+import { stallText } from '@/lib/stall';
 
 // The board's columns. *Bị chặn* earns one: a blocked task used to fall off the board
 // entirely, which is the exact failure spec 001 is built to prevent — a task nobody can
@@ -168,7 +169,7 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
         <div className="flex items-start gap-1.5 mb-2 px-2 py-1.5 rounded-sm bg-[#F5DDD6]">
           <AlertTriangle className="w-3.5 h-3.5 text-[#B84A32] flex-shrink-0 mt-0.5" />
           <span className="font-body text-body-xs text-[#B84A32]">
-            {task.stalledReason || t('board.stalled')}
+            {stallText(task.stalledReasonCode, t) || t('board.stalled')}
           </span>
         </div>
       )}

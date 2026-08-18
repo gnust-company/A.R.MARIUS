@@ -26,7 +26,7 @@ from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.onboarding import credential_file_for
 from armarius.application.use_cases.seats import (
     leader_marius_id,
-    leader_role_keys,
+    leader_role_ids,
 )
 from armarius.application.use_cases.seats import (
     leader_role as leader_role_of,
@@ -39,7 +39,6 @@ from armarius.domain.entities.leader_chat import (
 )
 from armarius.domain.entities.marius import Liveness
 from armarius.domain.entities.run import RunStatus, WakeSource
-from armarius.domain.entities.seat_grant import SeatGrantStatus
 from armarius.domain.entities.wakeup import WakeupRequest, WakeupStatus
 from armarius.domain.services.leader_chat_prompt import (
     ChatDirectoryEntry,
@@ -536,31 +535,25 @@ class LeaderChatService:
     ) -> list[ChatDirectoryEntry]:
         grants = await uow.seat_grants.list_by_project(project_id)
         role_rows = await uow.roles.list_by_project(project_id)
-        roles = {r.key: r for r in role_rows}
-        leader_keys = leader_role_keys(role_rows)
+        roles = {r.id: r for r in role_rows}
+        leader_ids = leader_role_ids(role_rows)
         entries: list[ChatDirectoryEntry] = []
         seen: set[UUID] = set()
         for g in grants:
-            if (
-                g.status != SeatGrantStatus.GRANTED
-                or g.role_key in leader_keys
-                or g.marius_id is None
-                or g.marius_id == leader_id
-                or g.marius_id in seen
-            ):
+            if g.role_id in leader_ids or g.marius_id == leader_id or g.marius_id in seen:
                 continue
             seen.add(g.marius_id)
             worker = await uow.mariuses.get(g.marius_id)
             if worker is not None:
-                # Resolve the worker's PROJECT role (SeatGrant.role_key → Role), never the
-                # empty workspace-level Marius.role. Fall back to the raw key if the role row
-                # is missing so the entry is never blank.
-                role = roles.get(g.role_key)
+                # Resolve the worker's PROJECT role (SeatGrant.role_id → Role), never the
+                # empty workspace-level Marius.role. Fall back to the key if the role row is
+                # somehow missing so the entry is never blank.
+                role = roles.get(g.role_id)
                 entries.append(
                     ChatDirectoryEntry(
                         marius_id=worker.id,
                         name=worker.name,
-                        role=(role.title if role else g.role_key),
+                        role=(role.title if role else str(g.role_id)),
                         role_description=(role.description if role else ""),
                         liveness=str(worker.liveness),
                     )

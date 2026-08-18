@@ -203,29 +203,68 @@ def provisional_drive(status: TaskStatus, *, now: datetime) -> PushReason | None
     return PushReason(kind=TaskDrive.WAKE_SCHEDULED, expires_at=expires)
 
 
-def stall_reason(reason: PushReason | None, *, now: datetime) -> str | None:
-    """Why this task counts as stalled, in words a person can act on — or None if it does not.
+# ── the stall verdict, as a code (Constitution VII, T200) ──────────────────────
+#
+# The verdict has the same two readers a refusal has, and they do not read the same
+# language. It is stored on the task, shown on the patron's board, handed to the escalation
+# ladder and put in front of an agent — so it cannot be a finished sentence in either
+# language. It is a **code**: the server renders English for records and agents from the
+# table below, the interface renders the patron's own language from its own table.
+#
+# One code per drive, and the list is closed for the same reason the wake causes are: a
+# stall nobody has worded is a stall nobody can act on.
 
-    The wording matters more than it looks. "Đình trệ" on its own sends the reader hunting
-    through four tables; naming which drive ran out, or that there was never one, points
-    them at the thing to fix.
+STALL_ORPHANED = "stall_orphaned"
+STALL_UNKNOWN = "stall_unknown"
+
+_EXPIRED_CODES: dict[TaskDrive, str] = {
+    TaskDrive.RUN_ACTIVE: "stall_run_active",
+    TaskDrive.WAKE_SCHEDULED: "stall_wake_scheduled",
+    TaskDrive.WAITING_RECOVERY: "stall_waiting_recovery",
+    TaskDrive.WAITING_EXTERNAL: "stall_waiting_external",
+    TaskDrive.WAITING_PATRON: "stall_waiting_patron",
+    TaskDrive.BLOCKED_BY_TASK: "stall_blocked_by_task",
+}
+
+# The two clock-less drives reach this table through `provisional_drive`, which always
+# attaches a clock: a wait nobody ever confirmed is exactly the dropped task the net is
+# for, so it has to be able to expire and it has to have words when it does.
+STALL_ENGLISH: dict[str, str] = {
+    STALL_ORPHANED: "nobody is working on this task and no wake is booked",
+    "stall_run_active": "the run holding this task went quiet mid-turn",
+    "stall_wake_scheduled": "this task was called for but nobody ever started",
+    "stall_waiting_recovery": "the re-wakes for this task never reached anyone",
+    "stall_waiting_external": "this task waits on something outside and is overdue",
+    "stall_waiting_patron": "this task was parked on the patron and nothing came back",
+    "stall_blocked_by_task": "this task was parked behind another task and nothing moved",
+    STALL_UNKNOWN: "this task lost its drive",
+}
+
+
+def stall_reason(reason: PushReason | None, *, now: datetime) -> str | None:
+    """Which stall this is, as a code — or None when the task is not stalled at all.
+
+    Naming *which* drive ran out, rather than saying "stalled", is what points the reader
+    at the thing to go and fix. Returning the code rather than the sentence is what lets
+    the patron and the agent be pointed at it in their own language.
     """
     if reason is None:
-        return "việc bị bỏ quên: không ai đang làm, cũng không có lịch gọi ai vào làm"
+        return STALL_ORPHANED
     if is_live(reason, now=now):
         return None
-    return _EXPIRED_WORDING.get(reason.kind, f"động cơ đẩy '{reason.kind}' đã quá hạn")
+    return _EXPIRED_CODES.get(reason.kind, STALL_UNKNOWN)
 
 
-# These strings are not log lines. They land in the task's own stalled-reason field, on the
-# board the patron reads and in the question the Leader is woken with — so they have to read
-# like a person wrote them, and they have to name the thing to go and look at.
-_EXPIRED_WORDING: dict[TaskDrive, str] = {
-    TaskDrive.RUN_ACTIVE: "người làm nhận việc rồi tắt tiếng giữa chừng",
-    TaskDrive.WAKE_SCHEDULED: "đã gọi người làm nhưng nó chưa từng bắt đầu",
-    TaskDrive.WAITING_RECOVERY: "gọi lại mấy lần đều không tới được người làm",
-    TaskDrive.WAITING_EXTERNAL: "đang chờ một thứ bên ngoài, quá hạn rồi vẫn chưa thấy",
-}
+def stall_text_en(code: str | None) -> str:
+    """The English rendering of a stall verdict — for records, logs and agents.
+
+    An unrecognised code degrades to the catch-all rather than raising: a verdict written
+    by an older build must still read as words, and losing the alarm to a KeyError would
+    be worse than losing the detail.
+    """
+    if code is None:
+        return STALL_ENGLISH[STALL_UNKNOWN]
+    return STALL_ENGLISH.get(code, STALL_ENGLISH[STALL_UNKNOWN])
 
 
 # ── xếp hàng khi nhiều đầu việc cùng cần một thợ (FR-067) ───────────────────────

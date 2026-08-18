@@ -13,7 +13,8 @@ from uuid import uuid4
 from armarius.application.use_cases.projects import ProjectService, RoleSpec
 from armarius.domain.entities.marius import InviteStatus, Liveness, Marius
 from armarius.domain.entities.project import Project, ProjectStatus
-from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
+from armarius.domain.entities.role import Role
+from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.entities.workspace import Workspace
 from armarius.shared.clock import utcnow
 
@@ -151,18 +152,23 @@ async def test_marius_invite_and_liveness_timers_round_trip(uow_factory) -> None
     assert got.turn_started_at == _T
 
 
-async def test_seat_grant_round_trip_and_revoke(uow_factory) -> None:
+async def test_seat_grant_round_trip_and_vacate(uow_factory) -> None:
+    """T199 — một ghế là một dòng sống; trả ghế là xoá dòng, không phải đổi cờ."""
     ws = await _seed_workspace(uow_factory)
+    agent = await _seed_marius(uow_factory, ws.id, Liveness.ONLINE)
     project = Project(workspace_id=ws.id, name="Apollo", slug="apollo")
     async with uow_factory() as uow:
         await uow.projects.add(project)
+        role = await uow.roles.add(
+            Role(project_id=project.id, key="leader", title="Leader", seats=1,
+                 is_leader=True)
+        )
         await uow.commit()
 
     grant = SeatGrant(
         project_id=project.id,
-        role_key="leader",
-        marius_id=uuid4(),
-        status=SeatGrantStatus.GRANTED,
+        role_id=role.id,
+        marius_id=agent.id,
         granted_at=_T,
         created_at=_T,
     )
@@ -173,13 +179,11 @@ async def test_seat_grant_round_trip_and_revoke(uow_factory) -> None:
     async with uow_factory() as uow:
         grants = await uow.seat_grants.list_by_project(project.id)
         assert len(grants) == 1
-        reloaded = grants[0]
-        assert reloaded.role_key == "leader"
-        assert reloaded.status == SeatGrantStatus.GRANTED
-        reloaded.revoke()
-        await uow.seat_grants.update(reloaded)
+        assert grants[0].role_id == role.id
+        assert grants[0].marius_id == agent.id
+        await uow.seat_grants.remove(grants[0].id)
         await uow.commit()
 
     async with uow_factory() as uow:
-        after = await uow.seat_grants.get(grant.id)
-    assert after.status == SeatGrantStatus.REVOKED
+        assert await uow.seat_grants.get(grant.id) is None
+        assert await uow.seat_grants.list_by_project(project.id) == []

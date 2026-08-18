@@ -796,6 +796,18 @@ export const en = {
   // Server refusals, built here from the cause code the API sends (FR-084a). The server
   // renders its own English for whoever reads the raw response — an agent has no interface
   // language to pick from (Constitution VII) — and this table is the patron's half.
+  // Which stall the safety net found, worded for the patron. The server stores the code
+  // and renders its own English copy for agents and records (T200, Constitution VII).
+  stall: {
+    stall_orphaned: 'Dropped: nobody is on it, and no one is scheduled to be.',
+    stall_run_active: 'Whoever picked it up went quiet mid-turn.',
+    stall_wake_scheduled: 'Someone was called for it, but never started.',
+    stall_waiting_recovery: 'The repeated calls never reached anyone.',
+    stall_waiting_external: 'Waiting on something outside, and past its date.',
+    stall_waiting_patron: 'Parked on you, and nothing has come back.',
+    stall_blocked_by_task: 'Parked behind another task that has not moved.',
+    stall_unknown: 'It lost whatever was moving it forward.',
+  },
   errors: {
     task_not_found: 'Task not found.',
     project_not_found: 'Project not found.',
@@ -842,7 +854,6 @@ export const en = {
     role_seat_held: 'A role cannot be removed while an agent holds its seat.',
     seat_grants_system_only: 'Seat grants are issued by the system only.',
     seat_revokes_system_only: 'Seat revokes are issued by the system only.',
-    seat_already_revoked: 'Cannot revoke a seat that is \'{{status}}\'.',
     last_workspace: 'You cannot delete your only workspace — create another one first.',
     plan_only_while_planning: 'A plan can only be submitted while planning (the project is \'{{status}}\').',
     no_plan_awaiting_decision: 'There is no plan awaiting a decision (the plan is \'{{status}}\').',
@@ -863,7 +874,6 @@ export const en = {
     task_reopen_not_closed: 'Only a closed task can be reopened; this one is \'{{status}}\'.',
     task_reopen_needs_reason: 'Reopening a closed task must say why.',
     task_stalled_cannot_finish: 'A task flagged as stalled cannot be moved to done — clear the flag first.',
-    task_stalled_cannot_finish_named: 'A task flagged as stalled cannot be moved to done ({{reason}}).',
     task_needs_artifact: 'A published artifact must be linked before review or done.',
     task_needs_signatures: 'A task closes only with both signatures.',
     task_needs_signatures_named: 'A task closes only with both signatures — still missing: {{missing}}.',

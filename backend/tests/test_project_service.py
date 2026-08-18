@@ -11,9 +11,9 @@ from armarius.application.use_cases.projects import (
 )
 from armarius.domain.entities.marius import Liveness, Marius
 from armarius.domain.entities.project import ProjectStatus
-from armarius.domain.entities.seat_grant import SeatGrantError, SeatGrantStatus
 from armarius.domain.entities.workspace import Workspace
 from armarius.domain.services.project_rules import InvalidProjectPlan
+from armarius.shared.errors import NotFound
 from tests.support.fakes import FakeUowFactory
 
 
@@ -79,9 +79,14 @@ async def test_system_grant_creates_active_grant() -> None:
 
     grant = await svc.grant_seat(project.id, "leader", m.id, system=True)
 
-    assert grant.status == SeatGrantStatus.GRANTED
     assert grant.marius_id == m.id
     assert grant.role_key == "leader"
+
+    # T199 — seating the same agent in the same role again is the seat it already has,
+    # not a second row that would read as a second filled seat.
+    again = await svc.grant_seat(project.id, "leader", m.id, system=True)
+    assert again.id == grant.id
+    assert len(await svc.list_seat_grants(project.id)) == 1
 
 
 async def test_project_activates_when_all_seats_online() -> None:
@@ -174,7 +179,8 @@ async def test_add_role_rejects_a_missing_description() -> None:
         await svc.add_role(project.id, RoleSpec(key="qa", title="QA", seats=1))  # no description
 
 
-async def test_revoke_seat_is_system_only_and_idempotent_guard() -> None:
+async def test_revoke_seat_is_system_only_and_leaves_nothing_behind() -> None:
+    """T199 — trả ghế là **xoá dòng**: không còn dòng chết để ai đó quên lọc."""
     factory, ws = _factory_with_workspace()
     svc = ProjectService(factory)
     project = await svc.create_project(ws.id, "Apollo", roles=_valid_roster())
@@ -184,7 +190,8 @@ async def test_revoke_seat_is_system_only_and_idempotent_guard() -> None:
     with pytest.raises(SystemOnlyOperation):
         await svc.revoke_seat(grant.id)  # non-system
 
-    revoked = await svc.revoke_seat(grant.id, system=True)
-    assert revoked.status == SeatGrantStatus.REVOKED
-    with pytest.raises(SeatGrantError):
-        await svc.revoke_seat(grant.id, system=True)  # already revoked
+    vacated = await svc.revoke_seat(grant.id, system=True)
+    assert vacated.id == grant.id
+    assert await svc.list_seat_grants(project.id) == []
+    with pytest.raises(NotFound):
+        await svc.revoke_seat(grant.id, system=True)  # the seat is gone

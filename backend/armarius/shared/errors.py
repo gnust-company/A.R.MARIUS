@@ -86,7 +86,6 @@ ENGLISH: dict[str, str] = {
     "role_seat_held": "A role cannot be removed while an agent holds its seat.",
     "seat_grants_system_only": "Seat grants are issued by the system only.",
     "seat_revokes_system_only": "Seat revokes are issued by the system only.",
-    "seat_already_revoked": "Cannot revoke a seat that is '{status}'.",
     "last_workspace": "You cannot delete your only workspace — create another one first.",
     # ── the plan and the context ──────────────────────────────────────────────
     "plan_only_while_planning": (
@@ -129,11 +128,12 @@ ENGLISH: dict[str, str] = {
     "task_move_needs_reason": "Moving to '{target}' must say why.",
     "task_reopen_not_closed": "Only a closed task can be reopened; this one is '{status}'.",
     "task_reopen_needs_reason": "Reopening a closed task must say why.",
+    # No "(because ...)" variant. The verdict became a code (T200), and a code reads as
+    # noise to the agent while its English clause reads as the wrong language to the
+    # patron — so the refusal names the flag, and the verdict stays on the task, where
+    # both readers already get it in the language they read.
     "task_stalled_cannot_finish": (
         "A task flagged as stalled cannot be moved to done — clear the flag first."
-    ),
-    "task_stalled_cannot_finish_named": (
-        "A task flagged as stalled cannot be moved to done ({reason})."
     ),
     "task_needs_artifact": "A published artifact must be linked before review or done.",
     "task_needs_signatures": "A task closes only with both signatures.",

@@ -32,7 +32,7 @@ from armarius.domain.entities.project_context import ContextApprovalStatus, Proj
 from armarius.domain.entities.push_reason import TaskPushReason
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import Run, RunEvent, RunStatus, WakeSource
-from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
+from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.skill import Skill
 from armarius.domain.entities.task import Task, TaskDrive, TaskPriority, TaskStatus
@@ -138,9 +138,8 @@ def seat_grant_to_entity(m: SeatGrantModel) -> SeatGrant:
     return SeatGrant(
         id=m.id,
         project_id=m.project_id,
-        role_key=m.role_key,
+        role_id=m.role_id,
         marius_id=m.marius_id,
-        status=SeatGrantStatus(m.status),
         granted_by_user_id=m.granted_by_user_id,
         granted_at=m.granted_at,
         created_at=m.created_at,

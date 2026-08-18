@@ -38,6 +38,7 @@ from armarius.domain.entities.task_dependency import TaskDependency
 from armarius.domain.entities.task_log import TaskLogEntry
 from armarius.domain.entities.workspace import Project, ProjectStatus, Workspace
 from armarius.domain.services.push_reason_rules import watches
+from armarius.shared.errors import NotFound
 
 
 @dataclass
@@ -396,9 +397,9 @@ class _FakeSeatGrantRepo:
     async def list_by_project(self, project_id: UUID) -> list[SeatGrant]:
         return [g for g in self._s.seat_grants.values() if g.project_id == project_id]
 
-    async def update(self, grant: SeatGrant) -> SeatGrant:
-        self._s.seat_grants[grant.id] = grant
-        return grant
+    async def remove(self, grant_id: UUID) -> None:
+        if self._s.seat_grants.pop(grant_id, None) is None:
+            raise NotFound("seat_grant_not_found")
 
 
 class _FakeApprovalRepo:

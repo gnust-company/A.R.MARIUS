@@ -19,7 +19,7 @@ from uuid import UUID
 from armarius.domain.entities.marius import Liveness
 from armarius.domain.entities.project import Project, ProjectStatus
 from armarius.domain.entities.role import Role
-from armarius.domain.entities.seat_grant import SeatGrant, SeatGrantStatus
+from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.shared.errors import CodedError
 
 
@@ -107,25 +107,25 @@ def validate_plan(roles: Iterable[Role]) -> None:
         raise InvalidProjectPlan("role_needs_a_description", roles=titles)
 
 
-def _active_grants(grants: Iterable[SeatGrant]) -> list[SeatGrant]:
-    return [g for g in grants if g.status == SeatGrantStatus.GRANTED]
-
-
 def seats_filled(roles: Iterable[Role], grants: Iterable[SeatGrant]) -> bool:
-    """True when every role has at least `seats` active grants."""
-    filled = Counter(g.role_key for g in _active_grants(grants))
-    return all(filled.get(r.key, 0) >= r.seats for r in roles)
+    """True when every role has at least `seats` agents in it.
+
+    Counted by role **identity**: the seat points at the role row, so renaming a role does
+    not empty it.
+    """
+    filled = Counter(g.role_id for g in grants)
+    return all(filled.get(r.id, 0) >= r.seats for r in roles)
 
 
 def all_seated_online(
     grants: Iterable[SeatGrant],
     liveness_by_marius: Mapping[UUID, Liveness],
 ) -> bool:
-    """True when there is at least one grant and every seated agent is ONLINE."""
-    active = _active_grants(grants)
-    if not active:
+    """True when there is at least one seat and every seated agent is ONLINE."""
+    seated = list(grants)
+    if not seated:
         return False
-    return all(liveness_by_marius.get(g.marius_id) == Liveness.ONLINE for g in active)
+    return all(liveness_by_marius.get(g.marius_id) == Liveness.ONLINE for g in seated)
 
 
 def should_activate(

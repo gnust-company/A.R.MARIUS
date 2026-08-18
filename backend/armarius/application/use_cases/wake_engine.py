@@ -22,6 +22,7 @@ from uuid import UUID
 from armarius.application.ports.adapter import AdapterRegistry, ExecContext, ExecResult
 from armarius.application.ports.event_bus import EventBus
 from armarius.application.ports.task_trace import TaskTracePublisher
+from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.ports.workspace_trace import (
     WorkspaceTracePublisher,
     announce_run_state,
@@ -40,7 +41,6 @@ from armarius.domain.entities.run import (
     RunStatus,
     WakeSource,
 )
-from armarius.domain.entities.seat_grant import SeatGrantStatus
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.task import Task, TaskStatus
 from armarius.domain.entities.wakeup import (
@@ -141,28 +141,45 @@ class WakeEngine:
         on the record and in the log instead.
         """
         await self._refuse_if_closed(task_id)
-        if not await self._cause_fits_the_recipient(marius_id, task_id, source, reason):
-            return None
         async with self._lock:
             for attempt in (0, 1):
-                folded = await self._fold_into_pending(marius_id, task_id, source, reason)
-                if folded is not None:
-                    logger.info("wake coalesced into run %s (%s)", folded, source)
-                    return folded
-                try:
-                    run_id = await self._open_run(
-                        marius_id, task_id, source, reason, continuation_attempt
+                # One transaction per attempt, and the eligibility check is inside it.
+                # Read in a transaction of its own the answer is only a snapshot: the
+                # leader seat can be revoked between the check and the insert, and the
+                # wake then goes out approved by a roster that no longer exists (T198).
+                async with self._uow() as uow:
+                    if not await self._cause_fits_the_recipient(
+                        uow, marius_id, task_id, source, reason
+                    ):
+                        # The refused wake row is the only thing this transaction wrote.
+                        await uow.commit()
+                        return None
+                    folded = await self._fold_into_pending(
+                        uow, marius_id, task_id, source, reason
                     )
-                except WakePairBusyError:
-                    if attempt == 0:
-                        continue  # someone opened a run between our read and our write
-                    raise
+                    if folded is not None:
+                        await uow.commit()
+                        logger.info("wake coalesced into run %s (%s)", folded, source)
+                        return folded
+                    try:
+                        opened = await self._open_run(
+                            uow, marius_id, task_id, source, reason, continuation_attempt
+                        )
+                        await uow.commit()
+                    except WakePairBusyError:
+                        if attempt == 0:
+                            continue  # someone opened a run between our read and our write
+                        raise
                 break
             else:  # pragma: no cover - the loop always returns or breaks
                 raise RuntimeError("wake enqueue did not settle")
 
-        self._spawn(run_id, marius_id, task_id)
-        return run_id
+        # Both of these are after the commit on purpose: one announces a run that exists,
+        # the other starts driving it.
+        run, marius = opened
+        await self.announce_run(run, marius)
+        self._spawn(run.id, marius_id, task_id)
+        return run.id
 
     async def _refuse_if_closed(self, task_id: UUID) -> None:
         """FR-005 — a closed project wakes nobody, through any door.
@@ -187,6 +204,7 @@ class WakeEngine:
 
     async def _cause_fits_the_recipient(
         self,
+        uow: UnitOfWork,
         marius_id: UUID,
         task_id: UUID,
         source: WakeSource,
@@ -198,49 +216,54 @@ class WakeEngine:
         assigned to is its worker, and whoever holds the project's leader seat is its
         Leader. One agent can be both at once, and then both sets of causes reach it.
 
+        Takes the caller's transaction rather than opening one, so the roster it approves
+        the wake against is the roster the run is inserted under. The two used to be
+        separate reads with a gap between them, and a seat revoked inside that gap let an
+        already-approved wake through (T198).
+
         A refused wake is written down as a wake — same table, its own status — because the
         thing worth catching is not the single dropped call but the pattern: a cause added
-        without deciding who it may wake shows up here as a row nobody expected.
+        without deciding who it may wake shows up here as a row nobody expected. The row is
+        left for the caller to commit, since on this path it is all the transaction has.
         """
-        async with self._uow() as uow:
-            task = await uow.tasks.get(task_id)
-            if task is None:
-                return True  # the run open below will fail on it and say so properly
-            roles: set[WakeRole] = set()
-            if task.assigned_marius_id == marius_id:
-                roles.add(WakeRole.WORKER)
-            if task.project_id is not None and await holds_the_leader_seat(
-                uow, task.project_id, marius_id
-            ):
-                roles.add(WakeRole.LEADER)
-            if may_wake(source, roles=roles):
-                return True
+        task = await uow.tasks.get(task_id)
+        if task is None:
+            return True  # the run open below will fail on it and say so properly
+        roles: set[WakeRole] = set()
+        if task.assigned_marius_id == marius_id:
+            roles.add(WakeRole.WORKER)
+        if task.project_id is not None and await holds_the_leader_seat(
+            uow, task.project_id, marius_id
+        ):
+            roles.add(WakeRole.LEADER)
+        if may_wake(source, roles=roles):
+            return True
 
-            causes = merge_reasons([], source, reason)
-            logger.warning(
-                "wake refused: %s may not wake %s on task %s (roles: %s)",
-                source,
-                marius_id,
-                task_id,
-                ", ".join(sorted(str(r) for r in roles)) or "none",
+        causes = merge_reasons([], source, reason)
+        logger.warning(
+            "wake refused: %s may not wake %s on task %s (roles: %s)",
+            source,
+            marius_id,
+            task_id,
+            ", ".join(sorted(str(r) for r in roles)) or "none",
+        )
+        await uow.wakeups.add(
+            WakeupRequest(
+                project_id=task.project_id,
+                marius_id=marius_id,
+                task_id=task_id,
+                source=source,
+                causes=causes,
+                reason=render_en(causes),
+                status=WakeupStatus.REFUSED,
+                created_at=utcnow(),
             )
-            await uow.wakeups.add(
-                WakeupRequest(
-                    project_id=task.project_id,
-                    marius_id=marius_id,
-                    task_id=task_id,
-                    source=source,
-                    causes=causes,
-                    reason=render_en(causes),
-                    status=WakeupStatus.REFUSED,
-                    created_at=utcnow(),
-                )
-            )
-            await uow.commit()
-            return False
+        )
+        return False
 
     async def _fold_into_pending(
         self,
+        uow: UnitOfWork,
         marius_id: UUID,
         task_id: UUID,
         source: WakeSource,
@@ -255,108 +278,112 @@ class WakeEngine:
         the way out but cannot finalise the run it was driving. Keying off the wake row
         would then read the pair as free, try to open a second run, and be refused by the
         index — turning an ordinary restart into an error on the next comment.
+
+        Runs in the caller's transaction: retiring a leftover row and opening the run that
+        replaces it are one decision, and a crash between them is what leaves the pair
+        wedged.
         """
-        async with self._uow() as uow:
-            run = await uow.runs.get_active_for(marius_id, task_id)
-            pending = list(await uow.wakeups.list_active_for(marius_id, task_id))
-            if run is None:
-                # No run holds the pair. Any wake row still marked pending is a leftover
-                # that nothing will ever come back to close — retire it so the pair is
-                # genuinely free rather than wedged behind a dead row.
-                for stale in pending:
-                    stale.status = WakeupStatus.ORPHANED
-                    stale.updated_at = utcnow()
-                    await uow.wakeups.update(stale)
-                if pending:
-                    await uow.commit()
-                return None
+        run = await uow.runs.get_active_for(marius_id, task_id)
+        pending = list(await uow.wakeups.list_active_for(marius_id, task_id))
+        if run is None:
+            # No run holds the pair. Any wake row still marked pending is a leftover
+            # that nothing will ever come back to close — retire it so the pair is
+            # genuinely free rather than wedged behind a dead row.
+            for stale in pending:
+                stale.status = WakeupStatus.ORPHANED
+                stale.updated_at = utcnow()
+                await uow.wakeups.update(stale)
+            return None
 
-            # Usually there is a pending wake to merge into. When there is not — the run
-            # outlived its wake row — the cause is still recorded against the run, and the
-            # re-evaluation at the end of the run is what makes sure it is not lost.
-            target = pending[0] if pending else None
-            if target is not None:
-                target.source = stronger_source(target.source, source)
-                target.causes = merge_reasons(target.causes, source, reason)
-                target.reason = render_en(target.causes)
-                target.updated_at = utcnow()
-                await uow.wakeups.update(target)
+        # Usually there is a pending wake to merge into. When there is not — the run
+        # outlived its wake row — the cause is still recorded against the run, and the
+        # re-evaluation at the end of the run is what makes sure it is not lost.
+        target = pending[0] if pending else None
+        if target is not None:
+            target.source = stronger_source(target.source, source)
+            target.causes = merge_reasons(target.causes, source, reason)
+            target.reason = render_en(target.causes)
+            target.updated_at = utcnow()
+            await uow.wakeups.update(target)
 
-            # The individual cause is kept as its own row. The merged reason says *what*
-            # the agent is owed; these rows say *when each cause arrived*, which is what
-            # tells us afterwards whether a cause made it into the prompt or missed it.
-            await uow.wakeups.add(
-                WakeupRequest(
-                    project_id=run.project_id,
-                    marius_id=marius_id,
-                    task_id=task_id,
-                    source=source,
-                    causes=merge_reasons([], source, reason),
-                    reason=render_en(merge_reasons([], source, reason)),
-                    status=WakeupStatus.COALESCED,
-                    run_id=run.id,
-                    created_at=utcnow(),
-                )
+        # The individual cause is kept as its own row. The merged reason says *what*
+        # the agent is owed; these rows say *when each cause arrived*, which is what
+        # tells us afterwards whether a cause made it into the prompt or missed it.
+        await uow.wakeups.add(
+            WakeupRequest(
+                project_id=run.project_id,
+                marius_id=marius_id,
+                task_id=task_id,
+                source=source,
+                causes=merge_reasons([], source, reason),
+                reason=render_en(merge_reasons([], source, reason)),
+                status=WakeupStatus.COALESCED,
+                run_id=run.id,
+                created_at=utcnow(),
             )
+        )
 
-            # A run that has not started yet has no prompt: fold the cause into the run
-            # itself so the packet the agent eventually reads names all of them
-            # (quickstart scenario 4 step 2). Once it is running the prompt is already out
-            # — that cause is handled by the re-evaluation when the run ends (step 3).
-            if run.status == RunStatus.QUEUED and target is not None:
-                run.wake_source = target.source
-                run.trigger_causes = list(target.causes)
-                run.trigger_detail = target.reason
-                await uow.runs.update(run)
+        # A run that has not started yet has no prompt: fold the cause into the run
+        # itself so the packet the agent eventually reads names all of them
+        # (quickstart scenario 4 step 2). Once it is running the prompt is already out
+        # — that cause is handled by the re-evaluation when the run ends (step 3).
+        if run.status == RunStatus.QUEUED and target is not None:
+            run.wake_source = target.source
+            run.trigger_causes = list(target.causes)
+            run.trigger_detail = target.reason
+            await uow.runs.update(run)
 
-            await uow.commit()
-            return run.id
+        return run.id
 
     async def _open_run(
         self,
+        uow: UnitOfWork,
         marius_id: UUID,
         task_id: UUID,
         source: WakeSource,
         reason: WakeReason | None,
         continuation_attempt: int,
-    ) -> UUID:
-        async with self._uow() as uow:
-            task = await uow.tasks.get(task_id)
-            marius = await uow.mariuses.get(marius_id)
-            if task is None or marius is None:
-                raise NotFound("task_or_agent_not_found")
-            causes = merge_reasons([], source, reason)
-            run = Run(
+    ) -> tuple[Run, Marius]:
+        """Write the wake and the run it dispatches, in the caller's transaction.
+
+        Returns both rather than the id alone because the announcement needs the agent, and
+        it is made **after** the commit — announcing a run that a rollback then erased is
+        how a board grows a card for work that never started.
+        """
+        task = await uow.tasks.get(task_id)
+        marius = await uow.mariuses.get(marius_id)
+        if task is None or marius is None:
+            raise NotFound("task_or_agent_not_found")
+        causes = merge_reasons([], source, reason)
+        run = Run(
+            project_id=task.project_id,
+            marius_id=marius_id,
+            task_id=task_id,
+            adapter_type=marius.adapter_type,
+            wake_source=source,
+            trigger_causes=causes,
+            trigger_detail=render_en(causes),
+            status=RunStatus.QUEUED,
+            continuation_attempt=continuation_attempt,
+            created_at=utcnow(),
+        )
+        # The wake goes in first: it is the row whose index arbitrates the race, and
+        # its rejection is the one the caller knows how to recover from.
+        await uow.wakeups.add(
+            WakeupRequest(
                 project_id=task.project_id,
                 marius_id=marius_id,
                 task_id=task_id,
-                adapter_type=marius.adapter_type,
-                wake_source=source,
-                trigger_causes=causes,
-                trigger_detail=render_en(causes),
-                status=RunStatus.QUEUED,
-                continuation_attempt=continuation_attempt,
+                source=source,
+                causes=causes,
+                reason=render_en(causes),
+                status=WakeupStatus.DISPATCHED,
+                run_id=run.id,
                 created_at=utcnow(),
             )
-            # The wake goes in first: it is the row whose index arbitrates the race, and
-            # its rejection is the one the caller knows how to recover from.
-            await uow.wakeups.add(
-                WakeupRequest(
-                    project_id=task.project_id,
-                    marius_id=marius_id,
-                    task_id=task_id,
-                    source=source,
-                    causes=causes,
-                    reason=render_en(causes),
-                    status=WakeupStatus.DISPATCHED,
-                    run_id=run.id,
-                    created_at=utcnow(),
-                )
-            )
-            await uow.runs.add(run)
-            await uow.commit()
-            await self.announce_run(run, marius)
-            return run.id
+        )
+        await uow.runs.add(run)
+        return run, marius
 
     def _spawn(self, run_id: UUID, marius_id: UUID, task_id: UUID) -> None:
         bg = asyncio.create_task(self._execute_run(run_id, marius_id, task_id))
@@ -817,21 +844,19 @@ class WakeEngine:
 
         Project-scoped (§3.2): the directory is the seat-holders of THIS project — resolved
         via `seat_grants.list_by_project` + `roles.list_by_project` — NOT every agent in the
-        workspace. Each agent's role comes from `SeatGrant.role_key → Role`, never the empty
+        workspace. Each agent's role comes from `SeatGrant.role_id → Role`, never the empty
         workspace-level `Marius.role`.
         """
         if project_id is None:
             return [], None
         grants = await uow.seat_grants.list_by_project(project_id)
-        roles = {r.key: r for r in await uow.roles.list_by_project(project_id)}
+        roles = {r.id: r for r in await uow.roles.list_by_project(project_id)}
         role_by_marius: dict[UUID, Role | None] = {}
         member_ids: list[UUID] = []
         for g in grants:
-            if g.status != SeatGrantStatus.GRANTED or g.marius_id is None:
-                continue
             if g.marius_id not in role_by_marius:
                 member_ids.append(g.marius_id)
-            role_by_marius[g.marius_id] = roles.get(g.role_key)
+            role_by_marius[g.marius_id] = roles.get(g.role_id)
         members = {m.id: m for m in await uow.mariuses.list_by_ids(member_ids)}
         directory = [
             (members[mid], role_by_marius.get(mid))

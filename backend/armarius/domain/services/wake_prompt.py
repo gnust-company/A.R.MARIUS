@@ -64,7 +64,7 @@ class WakeAudience(StrEnum):
 @dataclass(frozen=True)
 class DirectoryEntry:
     name: str
-    role: str  # the teammate's PROJECT role title (resolved via SeatGrant.role_key → Role)
+    role: str  # the teammate's PROJECT role title (resolved via SeatGrant.role_id → Role)
     skills: list[str]
     liveness: str
     role_description: str = ""  # what that project role does (optional)
@@ -107,7 +107,7 @@ class WakeContext:
     # task door was built for it; the Leader is the case that has to be asked for.
     audience: WakeAudience = WakeAudience.WORKER
     # The woken agent's OWN role in THIS project (title + description), resolved via its
-    # SeatGrant.role_key → Role. Empty when the agent holds no seat in the project.
+    # SeatGrant.role_id → Role. Empty when the agent holds no seat in the project.
     self_role: str = ""
     self_role_description: str = ""
     # The approved brief (FR-009). `None` when the project has none approved yet — which

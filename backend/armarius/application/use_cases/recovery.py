@@ -52,7 +52,7 @@ from armarius.domain.services.escalation import (
     backoff_seconds,
 )
 from armarius.domain.services.project_rules import ProjectClosed
-from armarius.domain.services.push_reason_rules import watches
+from armarius.domain.services.push_reason_rules import stall_text_en, watches
 from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.events.topic_bus import TopicEventBus, patron_topic
 from armarius.shared.clock import as_utc, utcnow
@@ -479,7 +479,7 @@ class RecoveryEscalator:
                 actor_kind=ActorKind.SYSTEM,
                 before=f"mức {int(before)}",
                 after=f"mức {int(ladder.level)}",
-                reason=cause,
+                reason=stall_text_en(cause),
                 detail={"attempts": ladder.attempts},
             )
 
@@ -601,7 +601,7 @@ class RecoveryEscalator:
             # the core (FR-044a, FR-059a): what was tried, and which case brought it here.
             detail=(
                 f"{task.identifier or task.id} — {task.title} has stalled.\n\n"
-                f"Why: {_STALL_CLAUSE_EN.get(_recovery_code(task), 'it lost its drive')}."
+                f"Why: {stall_text_en(cause)}."
                 "\n\n"
                 f"{situation}"
                 f"This is ask {ladder.handover_attempts} of {handover_cap}. When they run "
@@ -669,6 +669,10 @@ class RecoveryEscalator:
         # zero means *not applicable* or *not yet tried*.
         level1_applicable = task.assigned_marius_id is not None
         dossier: dict[str, object] = {
+            # The stall verdict as its code, and only here — the letter body used to repeat
+            # it as a Vietnamese clause, which meant the one fact was written twice and one
+            # of the two copies had to be prose in a language the server picked (T200). The
+            # screen renders this field in the patron's own language.
             "cause": cause,
             "level1_applicable": level1_applicable,
             "level1_attempts": ladder.attempts,
@@ -694,7 +698,7 @@ class RecoveryEscalator:
             kind=InboxItemKind.ESCALATION,
             title=f"{task.identifier or task.id} đình trệ, cần bạn quyết",
             body=(
-                f"{task.title}\n\nVì sao: {cause}\n"
+                f"{task.title}\n\n"
                 + (
                     "Đầu việc chưa có người phụ trách nên hệ không tự gọi lại lần nào "
                     f"— đã hỏi Trưởng dự án {ladder.handover_attempts} lần"
@@ -736,7 +740,7 @@ class RecoveryEscalator:
             return ""
         if task.assigned_marius_id is not None:
             for grant in await uow.seat_grants.list_by_project(task.project_id):
-                if grant.marius_id == task.assigned_marius_id and grant.is_active:
+                if grant.marius_id == task.assigned_marius_id:
                     if (grant.granted_by_user_id or "").strip():
                         return grant.granted_by_user_id or ""
         project = await uow.projects.get(task.project_id)
@@ -936,16 +940,3 @@ def _recovery_code(task: Task) -> str:
         return "recovery_orphaned"
     return _RECOVERY_CODES.get(task.drive, "recovery_unknown")
 
-
-# The same stalls again, worded for the Leader instead of for the worker: it is being told
-# what went wrong with somebody *else's* turn, so "the safety net called you back" is the
-# wrong sentence even though it is the same fact. Read off the same code, from the same
-# drive, so the two never describe different stalls.
-_STALL_CLAUSE_EN: dict[str, str] = {
-    "recovery_orphaned": "nobody is working on it and no wake is booked",
-    "recovery_run_active": "the run holding it went quiet mid-turn",
-    "recovery_wake_scheduled": "someone was called for it but never started",
-    "recovery_waiting_recovery": "the earlier re-wakes never reached anyone",
-    "recovery_waiting_external": "it is waiting on something outside and is overdue",
-    "recovery_unknown": "it lost its drive",
-}

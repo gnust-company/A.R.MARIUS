@@ -41,6 +41,7 @@ import {
 } from '@/lib/api';
 import { wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
+import { stallText } from '@/lib/stall';
 import { useAppStore } from '@/store/appStore';
 
 /** Máy chủ đặt mục theo loại; mỗi loại có biểu tượng và nhãn riêng. */
@@ -81,7 +82,8 @@ function AttemptDossier({ item }: { item: InboxItemDTO }) {
       <ul className="space-y-0.5 text-xs text-[#6B5E4E]">
         {cause && (
           <li>
-            <span className="text-[#8B6A28]">{t('inbox.dossier.cause')}:</span> {cause}
+            <span className="text-[#8B6A28]">{t('inbox.dossier.cause')}:</span>{' '}
+            {stallText(cause, t) ?? t('board.stalled')}
           </li>
         )}
         {attempts > 0 && <li>{t('inbox.dossier.attempts', { count: attempts })}</li>}
