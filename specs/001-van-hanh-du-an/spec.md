@@ -4,7 +4,8 @@
 
 **Ngày tạo**: 2026-07-30
 
-**Trạng thái**: Đã triển khai (đóng 2026-08-13, T162)
+**Trạng thái**: Đã triển khai — đóng lần đầu 2026-08-13 ở T162, mở lại cho Giai đoạn 10 (Hội tụ),
+đóng lại 2026-08-18 ở T203
 
 **Đầu vào**: Yêu cầu của người chủ: "tôi muốn align toàn bộ prj với feature dự án theo như trong
 `THIET-KE-VAN-HANH-DU-AN.md`"
@@ -971,3 +972,39 @@ phải nợ:
 
 - Phần nhiều người chủ cho một dự án hoãn sang tính năng sau (mục Làm rõ phiên 2026-08-03).
 - Cơ chế mời người vào vùng làm việc là tính năng sau, không nằm trong đặc tả này.
+
+**Đọc lại 2026-08-18**: câu "không có điểm lệch còn tồn" ở trên chỉ đúng với những gì lượt đóng ấy nhìn
+thấy. Sau nó còn hai mươi lăm việc nữa — xem mục dưới.
+
+---
+
+## Đóng lại (2026-08-18, T203)
+
+Lượt đóng 13/08 là **sớm**. Giai đoạn 10 mở sau nó và chạy tới T203, tất cả hai mươi lăm việc đều là chỗ
+mã làm khác điều đặc tả đã ghi, không việc nào là tính năng mới.
+
+**Mười ba việc đầu (T179–T191)** ra từ lượt rà lại toàn bộ 89 yêu cầu ngày 16/08. **Mười hai việc còn
+lại đến sau lượt rà đó**, từ ba nguồn mà một lượt rà đặc tả-với-mã không thể thấy trước:
+
+- **Lộ ra khi làm một việc khác trong cùng đợt.** Vá một chỗ là thấy chỗ kế bên hở cùng kiểu: T195 và
+  T196 là hệ quả của T187, T197 là hệ quả của T196, một trong ba việc T198–T200 tìm ra khi làm T194.
+- **Chỉ hiện khi dựng dịch vụ thật lên chạy.** T192, T193 và T201 — không lượt đọc mã nào thấy được,
+  phải gọi thật qua mặt giao tiếp mới lộ ra.
+- **Người rà bản vá nêu.** Hai việc trong T198–T200 (PR #206), rồi T202 và một nửa T201 (PR #209).
+- **Luật thêm vào sau.** Hiến pháp lên 1.1.0 ngày 16/08 — **sau** lượt rà cùng ngày — sinh ra T194 rồi
+  T203. Lúc rà, điều luật ấy chưa tồn tại, nên không lượt rà nào có thể kể nó vào.
+
+**Bài học ghi lại để khỏi lặp**: đầu ra của một lượt rà là **một mẫu**, không phải toàn bộ mặt phẳng. Nó
+so hai tài liệu nên chỉ thấy chỗ hai bên nói khác nhau; nó mù chỗ đặc tả chưa nói gì, chỗ chỉ hiện khi
+dịch vụ chạy thật, và luật ra đời sau nó.
+
+**Cổng đóng lần này**: 860 bài kiểm máy chủ xanh · rà mã máy chủ sạch · kiểm kiểu đúng mốc 150 · rà mã
+giao diện thoát 0 · bảng việc 203/203, không dòng nào mở.
+
+**Khác lần trước ở chỗ nào**: mỗi lớp lỗi đóng lại lần này đều kèm một bài kiểm **quét toàn bộ mã nguồn**,
+không phải một bài kiểm cho một chỗ vừa vá — `test_error_is_a_code_not_a_sentence.py` cho lời từ chối mang
+mã, `test_the_agents_packet_is_english.py` cho chữ máy chủ đọc lại vào gói tin gửi agent,
+`test_stall_verdict_is_a_code.py` cho câu tuyên đình trệ. Ba lớp ấy không sinh thêm vi phạm âm thầm được
+nữa. Lớp nào chưa có bài quét thì vẫn hở, và đó là chỗ việc mới sẽ còn ra.
+
+**Điểm lệch còn tồn**: không có. Hai phần hoãn ghi ở mục trên giữ nguyên là quyết định phạm vi.
