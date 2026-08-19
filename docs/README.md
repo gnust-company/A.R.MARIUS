@@ -7,15 +7,21 @@
 > lớn (mời agent kiểu operator-invite, Chat với Leader, liveness theo sức khoẻ gateway, gỡ commission...).
 > Chúng **không** còn khớp mã nguồn ở nhiều chỗ.
 
-## Nguồn sự thật hiện tại: thư mục [`spec/`](../spec/)
+## Nguồn sự thật hiện tại: [`.specify/`](../.specify/) + [`specs/`](../specs/)
 
-Từ ngày 18/07/2026, dự án chuyển sang **Spec Driven Development**. Nguồn sự thật có thẩm quyền, viết bằng
-**tiếng Việt**, nằm ở [`spec/`](../spec/):
+Từ ngày 30/07/2026 dự án chạy **spec-kit**. Nguồn sự thật có thẩm quyền, viết bằng **tiếng Việt**:
 
-- [spec/README.md](../spec/README.md) — quy trình + mục lục
-- [00-intent](../spec/00-intent.md) · [01-domain](../spec/01-domain.md) · [02-invite](../spec/02-invite.md) ·
-  [03-roster-wake](../spec/03-roster-wake.md) · [04-liveness](../spec/04-liveness.md) ·
-  [05-task-leaderchat](../spec/05-task-leaderchat.md) · [06-artifacts-sse](../spec/06-artifacts-sse.md) ·
-  [07-api-contract](../spec/07-api-contract.md) · [08-fe-ux](../spec/08-fe-ux.md)
+- [Hiến pháp](../.specify/memory/constitution.md) — luật không tính năng nào được phá
+- [specs/001-van-hanh-du-an/](../specs/001-van-hanh-du-an/) — đặc tả đang sống:
+  [spec.md](../specs/001-van-hanh-du-an/spec.md) · [plan.md](../specs/001-van-hanh-du-an/plan.md) ·
+  [tasks.md](../specs/001-van-hanh-du-an/tasks.md) ·
+  [data-model.md](../specs/001-van-hanh-du-an/data-model.md) ·
+  [contracts/](../specs/001-van-hanh-du-an/contracts/)
 
-Thư mục `docs/` chỉ được giữ lại để **tra cứu lịch sử thiết kế**.
+## Lượt đặc tả trước đó cũng đã đóng băng
+
+Bản đặc tả tiếng Việt đầu tiên (18/07/2026, thư mục `spec/`) **đã dỡ sang**
+[`_archive/spec-v1/`](../_archive/spec-v1/) khi chuyển sang spec-kit. Nó cũng chỉ để tra cứu lịch sử,
+giống thư mục này — đừng đọc để hiểu hành vi hiện tại.
+
+Thư mục `docs/` giữ lại để **tra cứu lịch sử thiết kế**, không hơn.

@@ -172,7 +172,7 @@ The gates are the house standard, and they refuse rather than warn:
 | Acceptance criteria | Moving the yardstick after the work has started |
 | Artifacts | Sending a task to review with nothing published to review |
 | Dependencies | Starting a task whose blocker is unfinished |
-| Two signatures | Closing on one opinion — the worker's *and* the responsible patron's are both required |
+| Two signatures | Closing on one opinion — the **Leader's** and the responsible patron's are both required. A worker never signs off its own output |
 
 ### An agent is never woken with a bare "go"
 
@@ -221,8 +221,13 @@ runtime, so you can drive the full loop — assign / `@mention` → wake → **w
 → sign — without any external agent.
 
 The seed is idempotent and opt-out: set `ARMARIUS_SEED_DEMO=false` to start every new user on
-their own empty personal workspace instead. Host ports are overridable via `FRONTEND_PORT`,
-`BACKEND_PORT`, and `ARMARIUS_API_URL` (see `docker-compose.yml`).
+their own empty personal workspace instead. It is **on for this compose stack only** — the
+backend's own default is off, so running `uvicorn` directly (below) gives you an empty
+database and no `demo@acme.dev` to log in as.
+
+Host ports are overridable via `FRONTEND_PORT` and `BACKEND_PORT`. To point the dashboard at
+an API on a different origin, set `VITE_API_BASE` — Vite bakes it in at build time, so it
+needs a `--build`, not a restart.
 
 ### Develop without Docker
 
@@ -277,8 +282,8 @@ stops. There is no scripted fallback pretending to be it.
 
 ### Run it on Hermes
 
-Pick the `hermes_gateway` adapter and Armarius calls `POST /v1/runs`, tees the SSE `/events`
-stream into the live trace, and persists `{session_id, session_key}` so each (agent, task)
+Pick the `hermes_gateway` adapter and Armarius calls `POST /v1/runs`, tees the
+`GET /v1/runs/{run_id}/events` SSE stream into the live trace, and persists `{session_id, session_key}` so each (agent, task)
 pair resumes across wakes rather than starting cold every time.
 
 ---
