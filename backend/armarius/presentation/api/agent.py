@@ -265,7 +265,7 @@ async def agent_request_major_change(
         summary=body.summary,
         detail=body.detail,
     )
-    return {"item_id": str(item.id), "status": "chờ người chủ duyệt"}
+    return {"item_id": str(item.id), "status": "awaiting_patron_approval"}
 
 
 @router.post("/tasks/{task_id}/recovery", response_model=TaskOut)
@@ -322,7 +322,7 @@ async def agent_escalate_task(
         raise NotFound("task_not_found")
     await _leader_seat(container, marius, task.project_id)
     await container.recovery.leader_gave_up(task_id, reason=body.reason)
-    return {"status": "đã chuyển lên người chủ"}
+    return {"status": "raised_to_patron"}
 
 
 @router.get("/projects/{project_id}/queue", response_model=list[TaskOut])
