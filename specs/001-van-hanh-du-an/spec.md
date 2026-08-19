@@ -5,7 +5,7 @@
 **Ngày tạo**: 2026-07-30
 
 **Trạng thái**: Đã triển khai — đóng lần đầu 2026-08-13 ở T162, mở lại cho Giai đoạn 10 (Hội tụ),
-đóng lại 2026-08-18 ở T203
+đóng lại 2026-08-18 ở T203, mở lại 2026-08-19 cho Giai đoạn 11 (T204)
 
 **Đầu vào**: Yêu cầu của người chủ: "tôi muốn align toàn bộ prj với feature dự án theo như trong
 `THIET-KE-VAN-HANH-DU-AN.md`"
@@ -1007,4 +1007,30 @@ mã, `test_the_agents_packet_is_english.py` cho chữ máy chủ đọc lại v�
 `test_stall_verdict_is_a_code.py` cho câu tuyên đình trệ. Ba lớp ấy không sinh thêm vi phạm âm thầm được
 nữa. Lớp nào chưa có bài quét thì vẫn hở, và đó là chỗ việc mới sẽ còn ra.
 
-**Điểm lệch còn tồn**: không có. Hai phần hoãn ghi ở mục trên giữ nguyên là quyết định phạm vi.
+**Điểm lệch còn tồn**: không có *trong những chỗ lượt này nhìn tới* — xem mục dưới.
+
+## Mở lại (2026-08-19, T204)
+
+Câu cuối mục trên viết: *"Lớp nào chưa có bài quét thì vẫn hở, và đó là chỗ việc mới sẽ còn ra."* Một
+ngày sau thì đúng như vậy, và chỗ hở lần này không phải mã — là **tờ hướng dẫn**.
+
+`backend/static/skills/armarius-http/SKILL.md` là thứ duy nhất một agent chạy bằng curl đọc để biết
+gọi cửa nào. Nó vẫn dạy `POST /agent/tasks/{id}/claim`, cửa đã gỡ ở T061 theo FR-072, và vẫn để câu ấy
+làm luật số một. Nó kể 6 cửa trên 25 cửa có thật, không cửa nào thuộc phần Trưởng dự án — nên một
+Trưởng dự án chạy bằng kỹ năng này không ký nổi, mà `done` thì đòi đủ hai chữ ký.
+
+**Vì sao không lượt nào bắt được**, và đây mới là chỗ đáng ghi: tệp ấy chưa bao giờ nằm trong đường
+quét của ai. T003 rà "mọi nơi gọi `claim`" ở `mcp/src/`, `frontend/src/` và
+`backend/armarius/presentation/`; tệp kỹ năng ở `backend/static/`, ngoài cả ba. Lượt hội tụ so đặc tả
+với **mã**, mà tệp này là tài liệu. Lượt quét tiếng Anh T203 soi hai ô của gói tin đánh thức, không
+soi tệp kỹ năng. Ba lượt rà, ba đường quét, và tệp ấy lọt qua cả ba vì mỗi đường đều được vẽ quanh
+*mã nguồn*.
+
+**Bài học nối vào bài học lần trước**: một lớp chỉ đóng được khi có phép quét **đi từ nguồn sự thật
+ra**, không phải đi từ danh sách chỗ đang nhìn vào. `test_the_http_skill_names_real_routes.py` đọc
+bảng route thật của app rồi soi hai chiều, nên nó bắt cả cửa bị gỡ lẫn cửa thêm mới mà không ai dạy.
+
+**Còn hở, đã biết, chưa làm**: `backend/static/skills/armarius-mcp/SKILL.md` mắc đúng bệnh — nó dạy
+`enroll`, `enrollment_code` và `claim_task`, ba thứ đã gỡ ở #97 và T061. Bộ công cụ MCP thì đúng; chỉ
+tờ hướng dẫn sai. Để riêng vì bộ kiểm của `mcp/` chạy tách khỏi máy chủ, nên phép quét tương ứng phải
+dựng ở đó.
