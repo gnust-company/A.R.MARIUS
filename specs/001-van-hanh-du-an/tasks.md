@@ -1450,3 +1450,33 @@ tồn tại không có nghĩa là luật được canh; phải kiểm bài kiể
   theo tên tệp, nên một lối ghi mới ở bất cứ đâu trong `armarius/` cũng bị soi, kể cả tệp chưa tồn
   tại. Lần chạy đỏ đầu chỉ bắt 2/3: giá trị ở `tasks.py:723` là `note or "..."`, một nút `BoolOp` mà
   phép đọc chữ chưa xử — đúng kiểu sót mà bài kiểm này sinh ra để chặn, và đã vá rồi mới nhận đủ 3/3
+
+## Giai đoạn 11: Tờ hướng dẫn agent bắt kịp mặt giao tiếp
+
+- [x] T204 Viết lại `backend/static/skills/armarius-http/SKILL.md` cho khớp mặt giao tiếp agent có
+  thật, và dựng bài quét nối tờ hướng dẫn với bảng route ở `backend/tests/`. Tệp ấy là thứ **duy nhất**
+  một agent chạy bằng curl đọc để biết gọi gì, mà nó vẫn dạy `POST /agent/tasks/{id}/claim` — cửa đã gỡ
+  ở **T061** theo FR-072 — rồi đặt luôn thành luật số một: *"claim trước khi làm"*. Agent nào làm theo
+  cũng chết ngay bước đầu, 404. Gốc nằm ở **T003**: lượt rà "mọi nơi gọi `claim`" chỉ soi `mcp/src/`,
+  `frontend/src/` và `backend/armarius/presentation/`, mà tệp kỹ năng thì nằm ở `backend/static/` —
+  ngoài cả ba đường quét, nên T061 gỡ cửa xong không ai chạm tới nó. Bộ công cụ MCP thì được sửa đúng
+  ở T061 (`request_task`, `hand_back_task`); chỉ tờ hướng dẫn bị bỏ lại. Nhưng nặng hơn cả cửa chết là
+  chỗ **thiếu**: tờ ấy kể 6 cửa trên 25 cửa có thật, không cửa nào thuộc phần Trưởng dự án, nên một
+  Trưởng dự án chạy bằng kỹ năng này **không ký nổi** và **không chấm nổi tiêu chí** — mà `done` thì
+  đòi đủ hai chữ ký cộng mọi tiêu chí đạt. Đi đường HTTP thì không đầu việc nào đóng được
+  **Xong 2026-08-19.** Bốn chỗ nói sai nữa cùng lớp, cùng một nguyên nhân — chép lại câu cũ mà không
+  tra: tờ ấy bảo tệp giấy tờ tuỳ thân có trường `project` (lời mời chỉ ghi năm trường, không có nó);
+  bảo đường dẫn tệp nằm ở mục *"Where you are"* của gói tin đánh thức (mục đó chỉ có workspace và dự
+  án — đường dẫn nằm ở phần chân trang, chỗ khác hẳn); bày `done` như trạng thái thợ tự đặt được (bảng
+  chuyển trạng thái không có đường `đang làm → xong`, FR-024); và mục *"When stuck"* chỉ đường đi bình
+  luận, trong khi `/handback` mới là cửa dựng cho đúng việc ấy — nó đánh thức Trưởng dự án và giữ đầu
+  việc không bị đếm là đã rơi, hai thứ một bình luận trơn không làm. Bản viết lại tách hai phần **thợ**
+  và **ghế Trưởng dự án**, kèm bảng chuyển trạng thái đầy đủ, chỗ nào đòi lý do, và bảng mã từ chối
+  409 hay gặp. Nhân thể đưa nốt hai câu trả lời tiếng Việt ở `presentation/api/agent.py`
+  (`change-request`, `escalate`) về mã tiếng Anh — chữ hệ thống gửi agent, Hiến pháp VII, mà lượt quét
+  T203 không với tới vì nó soi hai ô của gói tin đánh thức chứ không soi thân câu trả lời HTTP.
+  Phần đáng giá hơn cả bản viết lại là `test_the_http_skill_names_real_routes.py`: nó đọc **bảng route
+  thật của app** rồi quét hai chiều — mọi lời gọi trong tờ hướng dẫn phải trỏ tới route đang sống, và
+  mọi route `/agent/*` phải được tờ hướng dẫn nhắc tới. Chiều thứ hai mới là chiều đáng giá: chiều thứ
+  nhất chỉ bắt lúc gỡ cửa, chiều thứ hai bắt lúc **thêm cửa mà quên dạy**, tức đúng cái lỗ đã nuốt cả
+  phần Trưởng dự án. Đã chứng minh đỏ trên tờ hướng dẫn cũ: nó nêu đủ 1 cửa chết và 17 cửa bị bỏ quên
