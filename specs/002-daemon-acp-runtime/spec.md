@@ -25,7 +25,7 @@ Tính năng này đổi chặng dưới cùng: thay vì gọi vào một cổng 
 chạy trên máy của chính người mời agent**, và daemon là bên khởi chạy agent CLI ngay tại đó.
 
 **Không đổi**: bốn tác nhân, vòng đời đầu việc, các cổng chuyển trạng thái, luật động cơ đẩy, thang phục
-hồi ba mức. Đặc tả này chỉ thay **đường dây**, không thay **luật chơi**.
+hồi ba mức. Đặc tả này chỉ thay **cách Armarius nói chuyện với agent**, không thay các luật vận hành.
 
 ---
 
@@ -49,12 +49,16 @@ hồi ba mức. Đặc tả này chỉ thay **đường dây**, không thay **lu
   giới hạn số lần.** Công cụ công bố phải chịu được gọi lặp — cùng một thứ công bố hai lần không đẻ ra hai
   hiện vật; đầu việc giữ động cơ đẩy sống trong lúc chưa xong.
 - Q: Daemon lấy việc bằng cách nào, và có đụng luật đình trệ với động cơ đẩy không? → A: Daemon **xin**,
-  server **đưa**. Ba lớp tách bạch: đẩy là đường chính, poll là lưới hứng khi tin đẩy rơi, cờ đình trệ là
-  lưới cuối. Tin đẩy chỉ là tín hiệu "có việc, đi hỏi đi", KHÔNG bao giờ là lệnh chạy. Poll KHÔNG đánh dấu
+  server **đưa**. Ba lớp tách bạch: push là đường chính, poll là **fallback** khi push không tới nơi, cờ
+  đình trệ là lớp cuối. Tin đẩy chỉ là tín hiệu "có việc, đi hỏi đi", KHÔNG bao giờ là lệnh chạy. Poll KHÔNG đánh dấu
   gì về sống chết.
 - Q: Thêm trạng thái "đã có máy nhận" thì đụng gì? → A: Không thêm động cơ đẩy mới — nó nằm trong động cơ
   số 2. Nhưng động cơ số 1 phải bật **lúc máy nhận**, không phải lúc agent nhả chữ đầu tiên, và đồng hồ của
   động cơ số 2 phải đặt lại tại thời điểm ấy.
+- Q: Token thì làm thế nào? → A: **Chép nguyên Multica**, hai loại tách biệt — token của daemon do người
+  tạo lúc cài, token của lượt chạy do server tự đúc lúc trao việc. Lỗi nào Multica chưa giải thì ta cũng
+  chưa giải, **trừ** chỗ xung đột với luật của mình: token bị thu hồi phải xếp là lỗi cần người xử, không
+  được tiêu ngân sách tự phục hồi.
 
 ---
 
@@ -102,7 +106,7 @@ khỏi *đang làm*.
 
 **Why this priority**: Đây là Điều II của Hiến pháp, và là đúng cái lỗi người chủ vừa gặp khi thử nghiệm
 nền tảng khác: *"báo xong task nhưng file lưu ở local, không ai biết cả"*. Cổng chặn đã có; đợt này giữ
-nguyên cổng ấy và bảo đảm nó vẫn đứng vững khi đường dây bên dưới đổi sang daemon.
+nguyên cổng ấy và bảo đảm nó vẫn đứng vững khi cách nói chuyện với agent đổi sang daemon.
 
 **Independent Test**: Cho agent tạo một file trong thư mục làm việc rồi công bố nó. Kiểm chứng: hiện vật
 tải về được từ giao diện và nội dung khớp. Rồi cho agent **không** công bố gì mà cố chuyển trạng thái: phải
@@ -223,7 +227,8 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **Thư mục làm việc bị người dùng xoá tay** khi đầu việc còn dở.
 - **Nhiều daemon cùng đăng ký cho một agent** (người dùng cài trên hai máy). Ai nhận việc? Có nhận trùng
   không?
-- **Token của daemon bị thu hồi** khi nó đang giữ một lượt chạy.
+- **Token của daemon bị thu hồi** khi nó đang giữ một lượt chạy → đã chốt 2026-08-21: không có đường xử
+  riêng, để luật động cơ đẩy bắt (FR-014e); riêng khâu phân loại lỗi thì phải đúng (FR-014f).
 - **Nâng cấp daemon** khi đang có việc chạy dở.
 - **Máy chạy daemon là Windows** — có ràng buộc nào không làm được (ví dụ quyền tạo liên kết tệp)?
 
@@ -263,15 +268,15 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **FR-007a**: **Nhiều agent PHẢI dùng chung được một chỗ làm.** Một máy chỉ có một bản của mỗi agent CLI,
   nên không cho dùng chung thì mỗi máy chỉ đẻ được một agent cho mỗi loại CLI.
 - **FR-007b**: Khi nhiều agent dùng chung một chỗ làm, bảy thứ sau PHẢI tách riêng theo **agent**: phiên,
-  ký ức dài hạn, bộ công cụ, kỹ năng, thư mục làm việc, giấy phép gọi ngược, và danh tính kèm chỉ dẫn. Bộ
+  ký ức dài hạn, bộ công cụ, kỹ năng, thư mục làm việc, token gọi ngược, và danh tính kèm chỉ dẫn. Bộ
   công cụ và kỹ năng PHẢI bơm theo từng lượt chạy — **KHÔNG ĐƯỢC ghi vào cấu hình của agent CLI trên máy**,
   vì cấu hình đó dùng chung và thuộc về người dùng.
 - **FR-007c**: Đăng nhập và hạn mức của agent CLI là thuộc tính của **chỗ làm**, không của agent. Cạn hạn
   mức PHẢI làm **mọi agent trên chỗ làm ấy** offline cùng lúc, và PHẢI xếp vào **lỗi cần người xử** —
   KHÔNG ĐƯỢC tiêu ngân sách tự phục hồi (xem FR-032).
 - **FR-007d**: Hệ thống PHẢI bảo đảm **một lượt chạy chỉ được đúng một máy nhận**. Khi một lượt chạy bị
-  tuyên là hỏng, giấy phép của nó PHẢI bị thu hồi ngay, để một tiến trình ngủ dậy muộn không ghi thêm được
-  gì vào đầu việc.
+  tuyên là hỏng, **token của lượt chạy ấy** PHẢI bị thu hồi ngay, để một tiến trình ngủ dậy muộn không ghi
+  thêm được gì vào đầu việc.
 - **FR-008**: Hệ thống PHẢI có trần số lượt chạy đồng thời trên mỗi máy, và trần ấy PHẢI chỉnh được.
 - **FR-008a**: Khi một máy còn sống nhưng đã chạm trần, đầu việc chưa chạy được PHẢI giữ **động cơ đẩy số
   2 — đã hẹn một lần đánh thức**, với một cái hẹn thử lại cụ thể. Hệ thống KHÔNG ĐƯỢC thêm loại động cơ
@@ -280,6 +285,9 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **FR-008b**: Trạng thái "đang chờ chỗ trống" PHẢI phân biệt được với "máy chết" trên màn hình người chủ.
   Thông tin ấy đi kèm **mã lý do gọi dậy và tham số**, không phải một câu chữ lưu sẵn (Hiến pháp — Điều
   VII).
+- **FR-008d**: Trần là **cấu hình phía server** và server là bên quyết duy nhất có đưa thêm việc hay không.
+  Con số daemon báo về chỉ là **số chỗ trống hiện tại**, mang tính tham khảo; server PHẢI lấy **số nhỏ hơn**
+  giữa hai giá trị. Daemon báo sai hoặc báo cũ thì server vẫn không đưa quá trần.
 - **FR-008c**: Chuỗi hẹn thử lại vì chạm trần PHẢI có giới hạn. Quá ngưỡng đặt được mà vẫn không có chỗ
   trống thì đầu việc PHẢI nổi cờ để Trưởng dự án xử, KHÔNG ĐƯỢC hẹn lại vô tận.
 
@@ -301,6 +309,27 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   và của lượt chạy ấy.
 - **FR-014**: Thông tin xác thực cấp cho một lượt chạy PHẢI **hết hiệu lực khi lượt chạy kết thúc**, không
   dùng lại được cho lượt khác.
+- **FR-014a**: Hệ thống PHẢI có **hai loại token tách biệt**, kế thừa nguyên cách Multica làm (chốt
+  2026-08-21):
+  - **token của daemon** — con người tạo lúc nối máy vào workspace; daemon dùng cho mọi lời gọi lên server
+    (xin việc, gửi diễn biến, phát tín hiệu sống). Đây là token duy nhất người dùng chạm vào.
+  - **token của lượt chạy** — server tự đúc **đúng lúc trao việc cho máy**, trả về kèm đầu việc; daemon nhét
+    vào agent qua biến môi trường. Người dùng không bao giờ nhìn thấy và không phải cấu hình gì.
+- **FR-014b**: Token của lượt chạy PHẢI bị **thu hồi khi lượt chạy khép lại**, dù xong hay hỏng.
+- **FR-014c**: Daemon **KHÔNG ĐƯỢC** đưa token của chính nó cho agent, kể cả khi đúc token lượt chạy thất
+  bại. Đúc hỏng thì trả đầu việc về trạng thái chưa có máy nhận, KHÔNG ĐƯỢC chạy với token thay thế. Lý do:
+  token của daemon nói thay **cả cái máy** — mọi chỗ làm và mọi agent trên đó — còn token lượt chạy chỉ mở
+  đúng một đầu việc. Multica đã ngã đúng chỗ này rồi mới đặt luật (MUL-3292).
+- **FR-014d**: Token của daemon PHẢI gia hạn được. Daemon ĐƯỢC PHÉP hỏi gia hạn theo nhịp bất kỳ, và
+  **server là bên quyết** đã tới lúc gia hạn hay chưa — daemon KHÔNG ĐƯỢC tự tính hạn dùng của token mình
+  đang giữ.
+- **FR-014e**: Token của daemon bị **thu hồi giữa lúc một lượt chạy đang diễn ra** thì xử **đúng như mọi
+  kiểu agent tắt tiếng khác**: lượt chạy im, động cơ số 1 quá hạn, vòng quét nổi cờ, leo thang phục hồi.
+  KHÔNG dựng đường xử riêng — Multica cũng không có đường nào cho ca này, và luật động cơ đẩy của ta đã bắt
+  được nó mà không cần biết nguyên nhân.
+- **FR-014f**: Token bị thu hồi hoặc hết hạn PHẢI xếp vào **lỗi cần người xử**, KHÔNG ĐƯỢC tiêu ngân sách
+  tự phục hồi (FR-032). Đây là mẩu duy nhất trong cụm token mà ta phải tự giải, vì thử lại một token đã bị
+  thu hồi thì lần nào cũng hỏng.
 - **FR-015**: Daemon PHẢI truyền diễn biến của agent về Armarius **trong lúc đang chạy**, không đợi đến khi
   xong.
 - **FR-016**: Hệ thống PHẢI ghi lại đủ để **xem lại toàn bộ một lượt chạy** sau khi nó kết thúc.
@@ -355,6 +384,12 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   thấy đúng hai kết cục: lượt chạy chạy xong, hoặc agent offline và lượt chạy chết (Hiến pháp — Điều III).
 - **FR-030**: Lượt chạy im lặng quá ngưỡng PHẢI đi vào **thang phục hồi ba mức** đang có, không được xử
   bằng một đường riêng.
+- **FR-030a**: Khi một lượt chạy **kết thúc** mà đầu việc chưa đủ điều kiện rời *đang làm* (FR-019), đầu
+  việc PHẢI có ngay một động cơ đẩy sống — **không đợi vòng quét phát hiện**. FR-030 chỉ xử ca *im lặng quá
+  ngưỡng*, mà lượt chạy đã kết thúc thì không im lặng: nó **xong nhưng đầu việc kẹt**. Đây đúng là lỗ đã
+  quan sát được ở Multica (research mục 12c): lượt chạy kết thúc sạch, đầu việc vẫn nằm ở *đang làm*, và
+  không tác nhân nào được xếp lịch quay lại nhìn nó. Vòng quét của ta bắt được ca này nhưng bắt **muộn**,
+  nên nó là lớp cuối chứ không phải cách xử chính.
 - **FR-031**: Ngưỡng im lặng PHẢI đặt được **riêng cho từng loại agent CLI**, vì mỗi loại im lặng theo một
   kiểu khác nhau.
 - **FR-032**: Hệ thống PHẢI phân biệt **lỗi tạm** (đáng tự thử lại) với **lỗi cần người** (hết hạn mức, sai
@@ -381,6 +416,15 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   Daemon: brief ghi vào đúng file mà từng CLI vốn tự đọc, kỹ năng đặt vào đúng thư mục từng CLI vốn tự dò,
   công cụ bơm qua cơ chế nạp sẵn có của từng CLI. **Gemini CLI PHẢI nằm trong danh sách hỗ trợ** — Multica
   không có nó, đây là phần Armarius tự thêm.
+- **FR-039b**: Thứ kế thừa từ Multica là **cách làm**, không phải **câu chữ**. Nội dung thông điệp Armarius
+  gửi cho agent PHẢI **tự viết độc lập**. Nếu có đoạn nào giữ nguyên câu chữ của Multica thì PHẢI ghi nhận
+  nguồn theo điều kiện (c) trong license của họ — nêu trong tài liệu người dùng rằng sản phẩm xây trên
+  Multica, kèm link repo gốc. Chi tiết ràng buộc ở [research mục 13](research-multica-daemon.md).
+- **FR-039a**: "Hỗ trợ một agent CLI" nghĩa là **nó chạy qua đúng hợp đồng hỏi-khả-năng ở FR-017**, không
+  phải nó có đủ mọi khả năng. Ví dụ Gemini CLI: nếu nó không khai là nối lại được phiên thì hệ thống mở
+  phiên mới kèm câu báo theo FR-025 — và đó **vẫn tính là hỗ trợ**, không phải hỏng. Cam kết ở FR-039 giữ
+  nguyên; điều khoản này chỉ nói rõ thước đo, vì tài liệu nghiên cứu ghi Gemini CLI có ACP nhưng **chưa xác
+  minh** nó đọc file bối cảnh nào, dò kỹ năng ở đâu, và có nối lại được phiên không.
 - **FR-040**: Daemon PHẢI **thay hẳn** đường gọi agent qua cổng ngoài. Sau đợt này hệ thống chỉ còn **một**
   đường nói chuyện với agent. Đường cũ được gỡ, không giữ song song.
 - **FR-040a**: Đường cổng ngoài cũ được xử như **chưa từng tồn tại** (chốt 2026-08-21). Không luật chuyển
@@ -411,6 +455,11 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   theo FR-043a**; hai lý do khác nhau, không được hiện giống nhau.
 - **FR-048**: Trước khi rời khỏi máy người dùng, daemon PHẢI **che các giá trị bí mật** trong tham số và
   kết quả công cụ (token, khoá, biến môi trường nhạy cảm). Che PHẢI làm ở phía daemon, không phải ở server.
+- **FR-048a**: Che bí mật PHẢI áp cho **mọi kênh rời khỏi máy người dùng**, không riêng tham số và kết quả
+  công cụ: thông điệp gửi agent (FR-042), biến môi trường cấp cho lượt chạy, chữ agent sinh ra (FR-044), và
+  thông báo lỗi. Lý do: token của lượt chạy đi **vào** agent qua thông điệp và biến môi trường, nên nó ra
+  được bằng chính hai đường đó. FR-013 và FR-014 đã khoanh phạm vi và hạn dùng của token ấy nên thiệt hại
+  có trần, nhưng khoanh vùng không thay cho che.
 - **FR-049**: Với những sự kiện **được phép mang toàn văn lên server** (thông điệp gửi agent, tham số gọi
   công cụ, chữ agent sinh ra), sự kiện quá lớn PHẢI lưu theo hai phần: một phần rút gọn nằm ngay trong dòng
   sự kiện, và **toàn văn** để ở kho tách riêng, mở ra xem được theo yêu cầu. Ngưỡng cắt PHẢI đặt được. Luật
@@ -426,16 +475,28 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 
 - **FR-053**: Hệ thống PHẢI có **đúng một** đường để một đầu việc bắt đầu chạy: daemon **xin việc**, server
   **đưa**. KHÔNG ĐƯỢC có đường thứ hai nào tự khởi động một lượt chạy trên máy.
-- **FR-054**: Cú xin việc PHẢI là **một phép đổi trạng thái có điều kiện, một nhát** — chuyển đầu việc từ
-  *đang rảnh* sang *đã có máy nhận*, chỉ khi nó còn đang rảnh. Nhiều cú xin vào cùng lúc thì đúng một cú
-  nhận được việc, số còn lại về tay không. KHÔNG ĐƯỢC hiện thực bằng đọc-rồi-mới-ghi.
+- **FR-054**: Cú xin việc PHẢI là một phép **atomic compare-and-swap** ở server — *một câu lệnh duy nhất
+  vừa chọn vừa gán, và chỉ gán được đầu việc nào còn đang rảnh tại đúng lúc câu lệnh chạy*. Nhiều cú xin
+  vào cùng lúc thì đúng một cú nhận được việc, số còn lại về tay không.
+  KHÔNG ĐƯỢC hiện thực bằng **read-then-write** — tức một câu `SELECT` tìm đầu việc đang rảnh rồi một câu
+  `UPDATE` gán cho máy.
+- **FR-054b**: Người tranh nhau **không phải hai máy khác nhau**. FR-007 buộc mỗi agent vào đúng một chỗ
+  làm, nên hai máy không bao giờ nhìn thấy cùng một đầu việc. **Race condition ở đây là một máy gửi hai cú
+  xin việc**, và có đúng ba đường sinh ra nó:
+  - push tới đúng lúc poll cũng tới nhịp → hai cú gần như đồng thời
+  - gói tin trả lời mất giữa đường → daemon không biết cú đầu đã ăn chưa nên gửi lại (Multica dính đúng ca
+    này, mã sự cố MUL-4257)
+  - hai tiến trình daemon cùng sống trên một máy → lúc nâng cấp (FR-034), hoặc người dùng bật hai lần
+
+  Cả ba đều mang **cùng một tập runtime** nên cùng nhìn thấy đúng những đầu việc đó. Luật FR-054 tồn tại để
+  *một máy gửi hai lần thì chỉ ăn một lần*, không phải để hai máy khỏi tranh nhau.
 - **FR-054a**: Tính đúng-một-lần này PHẢI nằm ở **server**, KHÔNG ĐƯỢC dựa vào việc daemon tự xếp hàng.
   Lý do không phải là nghi ngờ daemon mà là ba tình huống daemon không tự giải được: gói tin trả lời rơi
   mất nên nó gửi lại mà không biết cú đầu đã ăn chưa; daemon khởi động lại làm mất hàng đợi trong bộ nhớ;
   và lúc nâng cấp có hai bản daemon cùng sống một nhịp (FR-034).
 - **FR-055**: Ba lớp đưa việc xuống PHẢI tách bạch vai:
   - **Đẩy** — đường chính, phát mỗi lần có việc mới cho một máy
-  - **Poll theo nhịp** — lưới hứng khi tin đẩy rơi mất; nhịp PHẢI đặt được
+  - **Poll theo nhịp** — **fallback** khi push không tới nơi; nhịp PHẢI đặt được
   - **Cờ đình trệ** — lưới cuối, chỉ chạm đầu việc đã mất hết động cơ đẩy sống
 - **FR-055a**: Tin đẩy xuống daemon CHỈ ĐƯỢC là tín hiệu *"có việc, đi hỏi đi"*. Nó KHÔNG ĐƯỢC là lệnh
   chạy và KHÔNG ĐƯỢC tự khởi động gì. Đây là thứ giữ cho hai tin tới cùng lúc chỉ đẻ ra một lượt chạy: tin
@@ -446,14 +507,21 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **FR-055c**: Khi xin việc, daemon PHẢI nói luôn **còn nhận thêm được mấy việc**. Server chỉ đưa tối đa
   bằng số ấy và **giữ nguyên phần còn lại ở trạng thái chưa có máy nhận**. Đây là cơ chế làm cho FR-008a
   chạy được mà server không phải tự theo dõi máy nào đang bận tới đâu.
-- **FR-055d**: Nhịp poll là **lưới hứng**, không phải đường chính. Nhịp ấy PHẢI đặt được và ĐƯỢC PHÉP thưa;
-  hệ thống KHÔNG ĐƯỢC rút nhịp poll xuống để bù cho đường đẩy hỏng — đường đẩy hỏng thì sửa đường đẩy.
+- **FR-055e**: Việc lấy **nhiều đầu việc cùng một lúc** (FR-055c) cũng PHẢI là **atomic compare-and-swap**,
+  y như lấy một cái. KHÔNG ĐƯỢC hiện thực bằng "đọc số chỗ trống → chọn N đầu việc → gán" thành nhiều bước
+  tách rời, vì như thế race condition ở FR-054b quay lại đúng chỗ vừa chặn.
+- **FR-055d**: Poll là **fallback**, không phải đường chính. Nhịp poll PHẢI đặt được và ĐƯỢC PHÉP thưa;
+  hệ thống KHÔNG ĐƯỢC rút nhịp poll xuống để bù cho push hỏng — push hỏng thì sửa push.
 - **FR-056**: Động cơ đẩy số 1 (*đang có lượt chạy*) PHẢI bật **ngay lúc máy nhận đầu việc**, KHÔNG ĐƯỢC
   đợi tới lúc agent sinh ra dòng chữ đầu tiên. Giữa hai mốc đó là quãng daemon dựng thư mục, đổ kỹ năng và
   bật CLI — bật động cơ muộn là chừa ra đúng cái khe cho vòng quét gọi dậy lần thứ hai.
 - **FR-056a**: Động cơ đẩy số 1 PHẢI có đồng hồ. Máy nhận việc rồi chết giữa lúc chuẩn bị thì quá hạn phải
   **thu hồi và trả đầu việc về trạng thái đang rảnh** để máy khác xin được. Động cơ không đồng hồ thì đầu
   việc treo vĩnh viễn ở *đang chạy* mà không có gì đang chạy.
+- **FR-056c**: Hạn ở FR-056a PHẢI được đặt **cùng lúc và có quan hệ** với mốc thời gian ở SC-002. Quãng
+  daemon dựng thư mục, đổ kỹ năng và bật CLI nằm **bên trong** mốc ấy, nên hạn thu hồi PHẢI lớn hơn thời
+  gian chuẩn bị điển hình cộng một biên dư. Đặt hạn ngắn hơn thời gian chuẩn bị thì hệ thống **cướp lại đầu
+  việc giữa lúc mọi thứ đang chạy đúng**. Hai con số KHÔNG ĐƯỢC chỉnh độc lập.
 - **FR-056b**: Đồng hồ của động cơ số 2 PHẢI được **đặt lại tại thời điểm máy nhận việc**, vì từ mốc đó
   hệ thống có bằng chứng thật (máy nào, lúc nào) thay cho một cái hẹn suông.
 - **FR-057**: Hệ thống PHẢI phân biệt được hai hỏng hóc mà hôm nay đang gộp làm một:
@@ -468,6 +536,29 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **FR-060**: Cụm này KHÔNG ĐƯỢC hiểu là mở lại đường **thợ tự nhận việc** đã gỡ ở đặc tả 001. Hai thứ
   khác tầng: đường đã gỡ là **agent thợ tự chọn mình làm việc nào**; cụm này là **khâu vận chuyển** một đầu
   việc đã được Trưởng dự án giao, đi từ server xuống máy. Người giao việc vẫn là Trưởng dự án.
+
+### Từ điển thuật ngữ
+
+Mọi thuật ngữ hệ thống dùng trong đặc tả này đều phải có mặt ở đây. Thuật ngữ có tên tiếng Anh chuẩn thì
+**giữ nguyên tiếng Anh**; không được dịch và không được đặt tên mới.
+
+| Thuật ngữ | Nghĩa |
+| --- | --- |
+| **daemon** | Chương trình chạy nền trên máy người dùng, nối máy đó vào workspace và khởi chạy agent CLI tại chỗ |
+| **agent CLI** | Chương trình dòng lệnh của một hãng (Claude Code, Codex, Gemini CLI…) mà daemon bật lên để làm việc |
+| **ACP** | Agent Client Protocol — họ giao thức nói JSON-RPC qua luồng chuẩn của tiến trình |
+| **token** | Chuỗi bí mật dùng để xác thực. Đặc tả này có hai loại: token của daemon và token của lượt chạy (FR-014a) |
+| **push** | Server chủ động gửi tín hiệu xuống daemon. Ở đây push chỉ báo *"có việc, đi hỏi đi"*, không mang việc theo và không phải lệnh chạy (FR-055a) |
+| **poll** | Daemon chủ động hỏi server theo nhịp đều. Là **fallback**, không phải đường chính (FR-055d) |
+| **fallback** | Đường dự phòng, chỉ chạy khi đường chính không tới nơi |
+| **atomic compare-and-swap** | Một câu lệnh duy nhất vừa kiểm điều kiện vừa đổi trạng thái; nhiều bên chạy cùng lúc thì đúng một bên thành công |
+| **read-then-write** | Cách viết sai: một câu đọc rồi một câu ghi. Giữa hai câu có chỗ cho bên khác chen vào |
+| **race condition** | Hai bên chạy cùng lúc và kết quả phụ thuộc bên nào nhanh hơn; ở đây là hai máy cùng nhận một đầu việc |
+| **heartbeat** | Tín hiệu sống daemon phát theo nhịp đều để server biết máy còn đó (FR-004) |
+| **workspace** | Không gian làm việc của một tổ chức; ranh giới cô lập dữ liệu (Hiến pháp — Điều I) |
+
+Các thuật ngữ riêng của dự án — **đầu việc**, **lượt chạy**, **chỗ làm**, **động cơ đẩy**, **hiện vật**,
+**phiên**, **thư mục làm việc** — định nghĩa ở phần Key Entities ngay dưới đây và ở thiết kế vận hành.
 
 ### Key Entities
 
@@ -544,7 +635,7 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   tả này không dựng kho mới.
 - **Ranh giới phiên là đầu việc**, khớp với cách hệ thống đang chạy hôm nay. Không đổi sang mức khác.
 - **Bốn tác nhân, vòng đời đầu việc, các cổng trạng thái, luật động cơ đẩy và thang phục hồi ba mức giữ
-  nguyên.** Đặc tả này chỉ đổi đường dây ở chặng dưới cùng.
+  nguyên.** Đặc tả này chỉ đổi cách Armarius nói chuyện với agent.
 - **Chưa có dữ liệu thật cần giữ.** Hệ thống chưa chạy thật với người dùng ngoài, nên đợt này được phép
   xoá sạch dữ liệu sinh ra từ đường cổng ngoài cũ thay vì viết luật chuyển đổi.
 - **Agent CLI do người dùng tự cài và tự đăng nhập.** Armarius lái chúng, không phát hành chúng và không

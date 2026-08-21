@@ -85,6 +85,39 @@ chỗ phải sửa thật.
 - **Bẫy từ ngữ**: "xin việc" ở đây **không phải** đường thợ tự nhận việc đã gỡ ở đặc tả 001 → **FR-060**.
   Bảng quy chiếu đầy đủ ở [research mục 12b](../research-multica-daemon.md).
 
+### Vòng review PR #214 — kpollz-agent duyệt, 7 góp ý, nhận cả 7
+
+Không có vấn đề chặn. Sáu góp ý nhận nguyên; góp ý 7 nhận phần chẩn đoán nhưng **không** nhận cách chữa.
+
+| # | Góp ý | Ngấm vào |
+| --- | --- | --- |
+| 1 | Trần lượt chạy có hai chủ (FR-008 vs FR-055c) | FR-008d — trần là cấu hình server, số daemon báo chỉ tham khảo, server lấy số nhỏ hơn |
+| 2 | Lấy nhiều đầu việc cùng lúc cũng phải atomic | FR-055e |
+| 3 | Hạn thu hồi chưa buộc với mốc 15 giây ở SC-002 | FR-056c |
+| 4 | Lượt chạy xong mà đầu việc kẹt — cần điều khoản, không để ngụ ý | FR-030a |
+| 5 | Câu chữ trong thông điệp gửi agent và license Multica | FR-039b |
+| 6 | Che bí mật chưa phủ thông điệp, biến môi trường, chữ agent | FR-048a |
+| 7 | Gemini CLI hứa "PHẢI hỗ trợ" trong khi research chưa xác minh | FR-039a |
+
+**Góp ý 7 — nhận chẩn đoán, đổi cách chữa.** Reviewer đề nghị hạ cam kết Gemini xuống thành có điều kiện.
+Không làm, vì người chủ đã chốt Gemini PHẢI có. Thay vào đó FR-039a **định nghĩa "hỗ trợ" nghĩa là gì**:
+chạy qua đúng hợp đồng hỏi-khả-năng ở FR-017. Gemini không nối lại được phiên thì mở phiên mới kèm câu báo,
+và đó vẫn là hỗ trợ. Cam kết giữ nguyên, chỉ nói rõ thước đo.
+
+**Góp ý 2 — nhận kết luận, bác lập luận.** Reviewer viết *"giữa hai daemon cùng poll, một lượt có thể bị
+gán trùng máy"*. Sai: FR-007 buộc mỗi agent vào đúng một chỗ làm nên hai máy không bao giờ thấy cùng một
+đầu việc. Race condition thật là **một máy gửi hai cú xin việc** — push trùng nhịp poll, gửi lại sau khi
+mất gói tin trả lời, hoặc hai tiến trình daemon cùng sống lúc nâng cấp. Đã viết đúng lại ở **FR-054b**.
+
+### Cụm token — chép nguyên Multica (chốt 2026-08-21)
+
+Hai loại token tách biệt (FR-014a→FR-014f): token của daemon do người tạo lúc cài, token của lượt chạy do
+server tự đúc lúc máy nhận việc và thu hồi khi lượt khép lại. Daemon **cấm** đưa token của chính nó cho
+agent kể cả khi đúc hỏng (Multica đã ngã, MUL-3292).
+
+Lỗi nào Multica chưa giải thì ta cũng chưa giải — **trừ** chỗ xung đột với luật của mình: token bị thu hồi
+hoặc hết hạn phải xếp là **lỗi cần người xử**, không được tiêu ngân sách tự phục hồi (FR-014f).
+
 ### Còn để bước lập kế hoạch
 
 1. Nhịp hẹn lại và ngưỡng bỏ cuộc khi chạm trần (FR-008a/c)
