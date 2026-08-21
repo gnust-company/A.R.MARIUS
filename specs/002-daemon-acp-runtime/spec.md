@@ -1,0 +1,559 @@
+# Feature Specification: Daemon tại máy người dùng và chuẩn ACP để nói chuyện với agent
+
+**Feature Branch**: `002-daemon-acp-runtime`
+
+**Created**: 2026-08-20
+
+**Status**: Draft — ba điểm phạm vi đã chốt 2026-08-21; sẵn sàng cho `/speckit-plan`
+
+**Input**: User description: "oke, du học thế đủ rồi, đến giờ kế thừa nào, tôi muốn 1 tính năng tương tự như họ trong việc giao tiếp với các agent, đó là tôi muốn mình cũng sẽ build daemon và sử dụng chuẩn ACP để giao tiếp (hình như thế)"
+
+---
+
+## Bối cảnh: vì sao mở đặc tả này
+
+Hôm nay Armarius nói chuyện với agent qua **một cổng ngoài duy nhất** — một gateway chạy sẵn ở đâu đó, và
+Armarius gửi lời gọi dậy vào đó. Hệ quả:
+
+- Thêm một loại agent mới là phải có gateway tương ứng. Thực tế chỉ có **đúng một** loại chạy được.
+- Armarius **không nhìn thấy chỗ agent làm việc**. Agent làm ở đâu, sinh ra file gì, để lại thứ gì — hệ
+  thống không biết. Đây chính là căn bệnh Điều II của Hiến pháp cấm: *"agent làm xong nhưng để kết quả ở
+  máy nó"*. Hôm nay ta chỉ **chặn** được nó ở cổng Done, chứ chưa **giúp** agent đẩy được kết quả ra.
+- Mọi thứ phụ thuộc sức khoẻ của một cổng ngoài mà ta không sở hữu.
+
+Tính năng này đổi chặng dưới cùng: thay vì gọi vào một cổng ngoài, Armarius phát việc xuống một **daemon
+chạy trên máy của chính người mời agent**, và daemon là bên khởi chạy agent CLI ngay tại đó.
+
+**Không đổi**: bốn tác nhân, vòng đời đầu việc, các cổng chuyển trạng thái, luật động cơ đẩy, thang phục
+hồi ba mức. Đặc tả này chỉ thay **đường dây**, không thay **luật chơi**.
+
+---
+
+## Clarifications
+
+### Session 2026-08-21
+
+- Q: Nội dung mà công cụ trả về cho agent (ví dụ agent đọc một file thì kết quả là toàn bộ nội dung file)
+  có được phép đi lên server Armarius không? → A: Không. Ghi **toàn văn tham số** gọi công cụ, nhưng
+  **chỉ ghi rút gọn kết quả** công cụ trả về; toàn văn kết quả ở lại trên máy người dùng.
+- Q: Khi một máy còn sống nhưng đã chạm trần số lượt chạy đồng thời, đầu việc thứ N+1 bám vào động cơ đẩy
+  nào? → A: Dùng lại **động cơ số 2 — đã hẹn một lần đánh thức**. Không thêm động cơ thứ bảy; mã lý do gọi
+  dậy mang thông tin đang chờ chỗ trống.
+- Q: Những agent đã mời theo đường cổng ngoài cũ thì ra sao sau khi đường ấy bị gỡ? → A: **Xoá sạch, coi
+  như cổng cũ chưa từng tồn tại.** Hệ thống chưa chạy thật nên không có dữ liệu cần giữ; không viết luật
+  chuyển đổi, không giữ tương thích ngược.
+- Q: Lần gọi dậy thứ hai của cùng một đầu việc dùng lại thư mục làm việc cũ hay được cấp thư mục trắng mới?
+  → A: **Dùng lại thư mục cũ.** Thư mục làm việc tính theo **đầu việc**, không theo lượt chạy — trùng đúng
+  ranh giới của phiên, vì phần lớn agent CLI gắn phiên vào chính thư mục đã mở phiên.
+- Q: Đẩy hiện vật hỏng giữa chừng thì đẩy lại được hay phải chạy lại cả lượt? → A: **Đẩy lại được, không
+  giới hạn số lần.** Công cụ công bố phải chịu được gọi lặp — cùng một thứ công bố hai lần không đẻ ra hai
+  hiện vật; đầu việc giữ động cơ đẩy sống trong lúc chưa xong.
+- Q: Daemon lấy việc bằng cách nào, và có đụng luật đình trệ với động cơ đẩy không? → A: Daemon **xin**,
+  server **đưa**. Ba lớp tách bạch: đẩy là đường chính, poll là lưới hứng khi tin đẩy rơi, cờ đình trệ là
+  lưới cuối. Tin đẩy chỉ là tín hiệu "có việc, đi hỏi đi", KHÔNG bao giờ là lệnh chạy. Poll KHÔNG đánh dấu
+  gì về sống chết.
+- Q: Thêm trạng thái "đã có máy nhận" thì đụng gì? → A: Không thêm động cơ đẩy mới — nó nằm trong động cơ
+  số 2. Nhưng động cơ số 1 phải bật **lúc máy nhận**, không phải lúc agent nhả chữ đầu tiên, và đồng hồ của
+  động cơ số 2 phải đặt lại tại thời điểm ấy.
+
+---
+
+## User Scenarios & Testing *(mandatory)*
+
+### User Story 1 - Cắm một cái máy vào workspace rồi giao được việc thật (Priority: P1)
+
+Người mời agent cài daemon lên máy của mình, đăng nhập vào workspace, và daemon tự dò xem máy đó có sẵn
+những agent CLI nào. Mỗi cái tìm được trở thành một **chỗ làm** đăng ký với Armarius. Từ lúc đó, đầu việc
+giao cho agent ấy được phát xuống máy đó, agent chạy tại chỗ, và diễn biến hiện lên màn hình theo dõi
+gần như tức thời.
+
+**Why this priority**: Không có bước này thì không có gì cả. Đây là toàn bộ giá trị mới: agent chạy **trên
+máy của người sở hữu nó**, mã nguồn và dữ liệu không rời máy, và Armarius nhìn thấy chỗ nó làm việc.
+
+**Independent Test**: Cài daemon lên một máy có sẵn một agent CLI, mời agent đó vào một dự án, tạo một đầu
+việc, giao cho nó. Kiểm chứng: đầu việc chuyển sang đang làm, diễn biến chạy hiện lên màn hình, và khi
+xong thì đầu việc rời trạng thái đang làm.
+
+**Acceptance Scenarios**:
+
+1. **Given** một máy đã cài daemon và có ít nhất một agent CLI, **When** người dùng đăng nhập daemon vào
+   workspace, **Then** mỗi agent CLI dò được xuất hiện thành một chỗ làm ở trạng thái sẵn sàng, kèm tên
+   máy để người dùng phân biệt.
+2. **Given** một agent đã có chỗ làm sẵn sàng, **When** Trưởng dự án giao cho nó một đầu việc, **Then**
+   daemon nhận việc trong vòng vài giây và khởi chạy agent CLI tương ứng.
+3. **Given** một lượt chạy đang diễn ra, **When** agent sinh ra diễn biến (gọi công cụ, viết chữ, báo
+   lỗi), **Then** diễn biến ấy hiện lên màn hình theo dõi mà người dùng không phải bấm tải lại.
+4. **Given** một agent chưa có chỗ làm nào sẵn sàng, **When** hệ thống muốn giao việc cho nó, **Then** đầu
+   việc **không** rơi vào khoảng lặng: nó đi vào đúng luồng offline đang có và người chủ thấy được lý do
+   vì sao chưa chạy.
+5. **Given** máy còn sống nhưng đã chạm trần số lượt chạy đồng thời, **When** hệ thống muốn giao thêm một
+   đầu việc xuống máy ấy, **Then** đầu việc giữ **động cơ số 2 — đã hẹn một lần đánh thức**, và màn hình
+   nói rõ nó đang chờ chỗ trống chứ không phải máy chết.
+
+---
+
+### User Story 2 - Kết quả buộc phải rời khỏi máy trước khi được coi là nộp (Priority: P2)
+
+Mỗi đầu việc có một thư mục làm việc riêng do daemon dựng, dùng chung cho mọi lượt chạy của đầu việc ấy —
+đó là chỗ **nháp**, không phải kho. Muốn thứ
+gì sống sót thì agent phải **tự công bố** nó lên kho hiện vật dùng chung bằng công cụ được cấp. Luật này
+vừa **ghi trong tờ hướng dẫn** gửi agent, vừa **chặn ở tầng công cụ**: chưa có hiện vật thì không rời được
+khỏi *đang làm*.
+
+**Why this priority**: Đây là Điều II của Hiến pháp, và là đúng cái lỗi người chủ vừa gặp khi thử nghiệm
+nền tảng khác: *"báo xong task nhưng file lưu ở local, không ai biết cả"*. Cổng chặn đã có; đợt này giữ
+nguyên cổng ấy và bảo đảm nó vẫn đứng vững khi đường dây bên dưới đổi sang daemon.
+
+**Independent Test**: Cho agent tạo một file trong thư mục làm việc rồi công bố nó. Kiểm chứng: hiện vật
+tải về được từ giao diện và nội dung khớp. Rồi cho agent **không** công bố gì mà cố chuyển trạng thái: phải
+bị chặn kèm lý do đọc được.
+
+**Acceptance Scenarios**:
+
+1. **Given** agent đã sinh ra thành phẩm trong thư mục làm việc, **When** nó công bố thành phẩm ấy bằng
+   công cụ được cấp, **Then** đầu việc ghi nhận một hiện vật tải về được từ kho dùng chung.
+2. **Given** agent chưa công bố hiện vật nào, **When** nó cố chuyển đầu việc rời khỏi *đang làm*, **Then**
+   tầng công cụ **chặn**, trả lý do đọc được, và đầu việc vẫn giữ một động cơ đẩy sống.
+3. **Given** thư mục làm việc bị thu hồi sau khi đầu việc khép lại, **When** người chủ mở lại đầu việc,
+   **Then** hiện vật đã công bố vẫn còn nguyên và tải về được.
+4. **Given** agent muốn biết mình đã tạo ra gì, **When** nó hỏi daemon, **Then** daemon liệt kê những thứ
+   đã đổi trong thư mục làm việc — chỉ để agent biết mà công bố, **không** tự công bố hộ.
+
+---
+
+### User Story 3 - Gọi dậy lần sau thì nối đúng mạch cũ của đầu việc đó (Priority: P3)
+
+Trong cùng một đầu việc, mọi lần gọi dậy đều nối lại **cùng một phiên** với agent, nên nó không phải đọc
+lại từ đầu. Sang đầu việc khác là phiên khác. Khi vì lý do nào đó không nối lại được, hệ thống **nói thẳng
+cho agent biết** rằng đây là bắt đầu lại, chứ không im lặng để nó tưởng mình vẫn nhớ.
+
+**Why this priority**: Nó biến chuỗi lượt gọi dậy rời rạc thành một mạch làm việc liên tục. Không có nó,
+mỗi lần gọi dậy agent phải dựng lại ngữ cảnh từ đầu — tốn và dễ lệch. Xếp sau P2 vì P2 là luật Hiến pháp,
+còn cái này là chất lượng.
+
+**Independent Test**: Gọi dậy hai lần trên cùng một đầu việc với hai lý do khác nhau; lần hai hỏi agent một
+câu chỉ trả lời được nếu nó nhớ lần một. Rồi ép mất phiên và lặp lại: agent phải nhận được câu báo bắt đầu
+lại.
+
+**Acceptance Scenarios**:
+
+1. **Given** một đầu việc đã có một lượt chạy xong, **When** đầu việc ấy được gọi dậy lần nữa, **Then**
+   agent nối lại đúng phiên cũ và giữ được ngữ cảnh lần trước.
+2. **Given** hai đầu việc khác nhau của cùng một agent, **When** cả hai cùng chạy, **Then** mỗi đầu việc
+   một phiên riêng, không nhìn thấy nhau.
+3. **Given** phiên cũ không nối lại được (agent CLI không hỗ trợ, phiên hỏng, hoặc đã quá hạn giữ),
+   **When** đầu việc được gọi dậy, **Then** hệ thống mở phiên mới và **kèm một câu báo bằng tiếng Anh** nói
+   rõ đây là bắt đầu lại và vì sao.
+4. **Given** chỗ làm giữ phiên cũ đã bị dựng lại (máy cài lại daemon nên thành chỗ làm mới), **When** đầu
+   việc được gọi dậy tiếp, **Then** hệ thống không giả vờ nối tiếp: nó mở phiên mới và báo như trên.
+
+---
+
+### User Story 4 - Thêm loại agent CLI mới mà không đụng tầng nghiệp vụ (Priority: P4)
+
+Người vận hành thêm được một loại agent CLI mới mà không phải sửa tầng nghiệp vụ, không phải sửa luồng
+đánh thức, không phải sửa các cổng trạng thái. Mọi khác biệt giữa các loại nằm gọn ở tầng dưới cùng.
+
+**Why this priority**: Điều III của Hiến pháp. Xếp cuối vì với một loại agent đã có thì hệ vẫn chạy được —
+nhưng nếu không dựng đúng ranh giới ngay từ đầu thì sau này gỡ rất đắt.
+
+**Independent Test**: Chạy **cùng một đầu việc** trên hai loại agent CLI khác nhau. Kiểm chứng: hình dạng
+diễn biến, cách nộp hiện vật, cách báo lỗi, và cách tính sống/chết **giống hệt nhau** ở tầng trên; và
+không có dòng mã nào ở tầng nghiệp vụ rẽ nhánh theo tên loại agent.
+
+**Acceptance Scenarios**:
+
+1. **Given** hai loại agent CLI khác nhau, **When** giao cùng một đầu việc cho mỗi loại, **Then** tầng
+   nghiệp vụ xử lý hai lượt chạy bằng đúng một đường mã.
+2. **Given** một loại agent CLI không hỗ trợ một khả năng nào đó (ví dụ không nối lại được phiên),
+   **When** hệ thống cần khả năng ấy, **Then** nó **hỏi khả năng** rồi hạ cấp có báo, chứ không đoán theo
+   tên loại agent.
+
+---
+
+### User Story 5 - Ngồi một chỗ mà thấy hết agent đang làm gì (Priority: P2)
+
+Người chủ mở một lượt chạy ra và đọc được những gì đã diễn ra: thông điệp hệ thống gửi cho agent, từng
+lần agent gọi công cụ **kèm đầy đủ tham số**, **bản rút gọn** kết quả từng công cụ trả về, chữ agent sinh
+ra, và lỗi nếu có. Xem được **trong lúc đang chạy**, và xem lại được sau khi xong. Không phải đăng nhập vào từng
+máy, không phải mò log của từng agent CLI.
+
+**Why this priority**: Đây là điều kiện cần để tin được đội agent. Không nhìn thấy agent làm gì thì không
+gỡ được lỗi, không biết nó hiểu sai chỗ nào, và mọi kết luận đều là đoán. Ngang hàng US2 vì cùng là thứ
+phải có trước khi giao việc thật.
+
+**Independent Test**: Chạy một lượt có gọi ít nhất hai công cụ. Kiểm chứng: đọc lại được đúng thông điệp đã
+gửi đi, đúng tham số của từng lần gọi, đúng kết quả trả về, đúng thứ tự; và trong lúc đang chạy thì các
+dòng ấy hiện dần lên màn hình mà không phải tải lại.
+
+**Acceptance Scenarios**:
+
+1. **Given** một lượt chạy vừa bắt đầu, **When** người chủ mở nhật ký của nó, **Then** thấy được **toàn văn
+   thông điệp** hệ thống đã gửi cho agent.
+2. **Given** agent gọi một công cụ, **When** người chủ xem nhật ký, **Then** thấy tên công cụ, **đầy đủ tham
+   số**, và **bản rút gọn kết quả trả về**, xếp đúng thứ tự đã xảy ra.
+3. **Given** một lượt chạy đang diễn ra, **When** agent sinh thêm sự kiện, **Then** sự kiện ấy hiện lên màn
+   hình đang mở mà người dùng không thao tác gì.
+4. **Given** một agent CLI không lộ tham số công cụ, **When** người chủ xem nhật ký, **Then** chỗ ấy **ghi
+   rõ là không lấy được và vì sao**, chứ không để trống như thể agent chẳng gọi gì.
+5. **Given** một công cụ trả về kết quả rất lớn, **When** người chủ xem nhật ký, **Then** màn hình hiện bản
+   rút gọn kèm **chỉ dấu là bản đầy đủ ở lại trên máy**, và màn hình không bị treo.
+6. **Given** tham số một công cụ có chứa token, **When** sự kiện ấy rời khỏi máy người dùng, **Then** giá trị
+   bí mật **đã bị che từ phía daemon**, không bao giờ tới server ở dạng nguyên bản.
+
+---
+
+### Edge Cases
+
+- **Agent offline giữa lượt chạy.** Đầu việc còn động cơ đẩy nào, bao lâu thì coi là mất, ai gỡ — chạy
+  đúng luồng offline đang có, không dựng luồng riêng.
+- **Agent online lại sau khi đứt.** Đã có luật ở mục 4.4: lượt chạy hỏng giữa chừng thì coi như chết và
+  gọi dậy lại từ hành động kế tiếp. Chuyện tầng dưới có nối lại được luồng hay không là tối ưu nội bộ.
+- **Một máy nhận nhiều đầu việc cùng lúc.** Trần bao nhiêu thì đặt được; chạm trần thì đầu việc thứ N+1
+  giữ động cơ số 2 (đã chốt 2026-08-21). Còn phải chốt ở bước lập kế hoạch: nhịp hẹn lại và ngưỡng bỏ cuộc.
+- **Hai đầu việc của cùng một agent chạy song song.** Có giẫm lên nhau ở thư mục hay ở phiên không?
+- **Agent CLI không có trên máy nữa** (bị gỡ, đổi đường dẫn) sau khi đã đăng ký chỗ làm.
+- **Agent chạy rất lâu nhưng vẫn sống.** Phân biệt thế nào với treo? Ngưỡng có được đặt riêng cho từng
+  loại agent CLI không?
+- **Agent CLI dừng vì hết hạn mức nhà cung cấp.** Đây là lỗi cần người xử, không phải lỗi tạm — có bị tự
+  gọi dậy lại vô ích không?
+- **Đẩy hiện vật thất bại giữa chừng** (mất mạng, kho đầy). Đã chốt 2026-08-21: đẩy lại được không giới
+  hạn, công cụ chịu được gọi lặp. Còn phải chốt ở bước lập kế hoạch: lấy gì làm dấu nhận dạng để biết hai
+  lần công bố là cùng một thứ.
+- **Thư mục làm việc bị người dùng xoá tay** khi đầu việc còn dở.
+- **Nhiều daemon cùng đăng ký cho một agent** (người dùng cài trên hai máy). Ai nhận việc? Có nhận trùng
+  không?
+- **Token của daemon bị thu hồi** khi nó đang giữ một lượt chạy.
+- **Nâng cấp daemon** khi đang có việc chạy dở.
+- **Máy chạy daemon là Windows** — có ràng buộc nào không làm được (ví dụ quyền tạo liên kết tệp)?
+
+---
+
+## Requirements *(mandatory)*
+
+### Nhóm A — Chỗ làm và vòng đời daemon
+
+- **FR-001**: Hệ thống PHẢI cho phép một người cài và chạy daemon trên máy của mình rồi nối nó vào đúng
+  một workspace bằng danh tính của người ấy.
+- **FR-002**: Daemon PHẢI tự dò các agent CLI có trên máy và đăng ký mỗi cái tìm được thành một **chỗ làm**
+  gắn với workspace đó.
+- **FR-003**: Mỗi chỗ làm PHẢI mang tên máy đọc được, để người dùng phân biệt được hai máy khác nhau của
+  cùng một người.
+- **FR-004**: Daemon PHẢI phát tín hiệu sống theo nhịp đều. Mất tín hiệu quá ngưỡng thì mọi chỗ làm của nó
+  chuyển sang **không sẵn sàng**.
+- **FR-005**: Khi daemon tắt có trật tự, nó PHẢI gỡ đăng ký mọi chỗ làm của mình thay vì để hệ thống chờ
+  hết ngưỡng.
+- **FR-006**: Tầng nghiệp vụ CHỈ ĐƯỢC hỏi đúng một câu — **"agent này sống hay chết?"**. Nó KHÔNG ĐƯỢC
+  biết tới khái niệm máy, runtime hay daemon (Hiến pháp — Điều III). Chuỗi máy → runtime → agent là chi
+  tiết nằm sau hợp đồng adapter.
+- **FR-006a**: Mọi mắt xích đứt trong chuỗi ấy PHẢI quy về đúng **một** kết luận cho tầng trên: *agent
+  offline*. Máy mất nhịp thì mọi agent trên máy đó offline; máy còn sống mà agent CLI bị gỡ thì chỉ những
+  agent dựa trên CLI đó offline. Hai đường, một kết luận.
+- **FR-006b**: Khi một agent bị tuyên offline, hệ thống PHẢI chạy đúng luồng offline đang có — thử lại giãn
+  dần giữ động cơ đẩy sống, rồi mới tuyên, rồi leo thang theo thang ba mức. KHÔNG ĐƯỢC dựng luồng riêng cho
+  mô hình daemon.
+- **FR-006c**: Hệ thống PHẢI hiện được **lý do** một agent offline ở mức người đọc hiểu được (máy tắt / CLI
+  bị gỡ / CLI không chạy được), để người chủ biết đường xử — nhưng lý do là **thông tin hiển thị**, không
+  phải nhánh rẽ trong tầng nghiệp vụ.
+- **FR-006d**: Armarius PHẢI tự sở hữu kết luận sống/chết. Hệ thống KHÔNG ĐƯỢC uỷ quyền kết luận ấy cho
+  nhịp tim của một runtime bên ngoài (Hiến pháp — Định vị sản phẩm).
+- **FR-007**: Một agent PHẢI được **buộc vào đúng một chỗ làm** lúc tạo, và mối buộc ấy **KHÔNG đổi được**
+  về sau. Chỗ làm chết thì agent offline; hệ thống KHÔNG tự chuyển agent sang máy khác — đổi người là quyết
+  định của Trưởng dự án ở Mức 2 (chốt 2026-08-21).
+- **FR-007a**: **Nhiều agent PHẢI dùng chung được một chỗ làm.** Một máy chỉ có một bản của mỗi agent CLI,
+  nên không cho dùng chung thì mỗi máy chỉ đẻ được một agent cho mỗi loại CLI.
+- **FR-007b**: Khi nhiều agent dùng chung một chỗ làm, bảy thứ sau PHẢI tách riêng theo **agent**: phiên,
+  ký ức dài hạn, bộ công cụ, kỹ năng, thư mục làm việc, giấy phép gọi ngược, và danh tính kèm chỉ dẫn. Bộ
+  công cụ và kỹ năng PHẢI bơm theo từng lượt chạy — **KHÔNG ĐƯỢC ghi vào cấu hình của agent CLI trên máy**,
+  vì cấu hình đó dùng chung và thuộc về người dùng.
+- **FR-007c**: Đăng nhập và hạn mức của agent CLI là thuộc tính của **chỗ làm**, không của agent. Cạn hạn
+  mức PHẢI làm **mọi agent trên chỗ làm ấy** offline cùng lúc, và PHẢI xếp vào **lỗi cần người xử** —
+  KHÔNG ĐƯỢC tiêu ngân sách tự phục hồi (xem FR-032).
+- **FR-007d**: Hệ thống PHẢI bảo đảm **một lượt chạy chỉ được đúng một máy nhận**. Khi một lượt chạy bị
+  tuyên là hỏng, giấy phép của nó PHẢI bị thu hồi ngay, để một tiến trình ngủ dậy muộn không ghi thêm được
+  gì vào đầu việc.
+- **FR-008**: Hệ thống PHẢI có trần số lượt chạy đồng thời trên mỗi máy, và trần ấy PHẢI chỉnh được.
+- **FR-008a**: Khi một máy còn sống nhưng đã chạm trần, đầu việc chưa chạy được PHẢI giữ **động cơ đẩy số
+  2 — đã hẹn một lần đánh thức**, với một cái hẹn thử lại cụ thể. Hệ thống KHÔNG ĐƯỢC thêm loại động cơ
+  đẩy thứ bảy, và KHÔNG ĐƯỢC xếp trường hợp này vào động cơ số 6, vì không có gì hỏng và nó sẽ tiêu nhầm
+  ngân sách tự phục hồi (chốt 2026-08-21).
+- **FR-008b**: Trạng thái "đang chờ chỗ trống" PHẢI phân biệt được với "máy chết" trên màn hình người chủ.
+  Thông tin ấy đi kèm **mã lý do gọi dậy và tham số**, không phải một câu chữ lưu sẵn (Hiến pháp — Điều
+  VII).
+- **FR-008c**: Chuỗi hẹn thử lại vì chạm trần PHẢI có giới hạn. Quá ngưỡng đặt được mà vẫn không có chỗ
+  trống thì đầu việc PHẢI nổi cờ để Trưởng dự án xử, KHÔNG ĐƯỢC hẹn lại vô tận.
+
+### Nhóm B — Giao việc và nói chuyện với agent
+
+- **FR-009**: Khi một lượt gọi dậy phát sinh, hệ thống PHẢI đẩy việc xuống chỗ làm phù hợp. Giao diện
+  KHÔNG ĐƯỢC hỏi-vòng để biết diễn biến (Hiến pháp — Điều IV).
+- **FR-010**: Daemon PHẢI dựng một **thư mục làm việc riêng cho từng đầu việc** và khởi chạy agent CLI
+  trong đó. Mọi lượt chạy của cùng một đầu việc PHẢI dùng lại **đúng thư mục ấy** (chốt 2026-08-21).
+- **FR-010a**: Ranh giới thư mục làm việc PHẢI trùng ranh giới phiên (FR-023), vì phần lớn agent CLI gắn
+  phiên vào chính thư mục đã mở phiên — nối lại phiên ở thư mục khác thì hoặc không tìm thấy phiên, hoặc
+  tìm thấy nhưng mọi đường dẫn agent nhớ đều trỏ vào chỗ trống.
+- **FR-010b**: Hai đầu việc khác nhau PHẢI có hai thư mục làm việc tách biệt, kể cả khi cùng một agent.
+- **FR-011**: Daemon PHẢI đưa cho agent đầy đủ những gì gói tin đánh thức hôm nay đang mang: Bối cảnh dự
+  án, mô tả đầu việc, mã lý do gọi dậy kèm tham số, và hành động kế tiếp đã lưu.
+- **FR-012**: Mọi chữ **hệ thống** sinh ra rồi gửi cho agent PHẢI bằng tiếng Anh; chữ do **người** nhập giữ
+  nguyên thứ tiếng người viết (Hiến pháp — Điều VII).
+- **FR-013**: Daemon PHẢI đưa cho agent một cách gọi ngược về Armarius, giới hạn đúng phạm vi của agent ấy
+  và của lượt chạy ấy.
+- **FR-014**: Thông tin xác thực cấp cho một lượt chạy PHẢI **hết hiệu lực khi lượt chạy kết thúc**, không
+  dùng lại được cho lượt khác.
+- **FR-015**: Daemon PHẢI truyền diễn biến của agent về Armarius **trong lúc đang chạy**, không đợi đến khi
+  xong.
+- **FR-016**: Hệ thống PHẢI ghi lại đủ để **xem lại toàn bộ một lượt chạy** sau khi nó kết thúc.
+- **FR-017**: Daemon PHẢI **hỏi khả năng** của agent CLI rồi mới dùng, và hạ cấp có báo khi khả năng ấy
+  không có — KHÔNG ĐƯỢC suy ra khả năng từ tên loại agent.
+
+### Nhóm C — Hiện vật buộc rời khỏi máy
+
+- **FR-018**: **Agent tự công bố hiện vật** bằng công cụ được cấp, đúng như hôm nay. Daemon KHÔNG tự dò và
+  KHÔNG tự đẩy thành phẩm — thư mục làm việc là chỗ nháp, không phải kho, và luồng chỉ có **một chiều**:
+  nháp → kho chung, không bao giờ đồng bộ ngược.
+- **FR-019**: Luật "chưa có hiện vật thì chưa được rời khỏi *đang làm*" PHẢI được **ghi trong tờ hướng dẫn
+  gửi agent** *và* **chặn ở tầng công cụ** — dặn không thay cho chặn (Hiến pháp — Điều II).
+- **FR-020**: Hệ thống PHẢI kiểm được rằng hiện vật đã ghi nhận là **thật sự tải về được**, không chỉ là
+  một cái tên trong cơ sở dữ liệu.
+- **FR-020a**: Daemon PHẢI cho agent **thấy được** những gì nó đã đổi trong thư mục làm việc, để agent biết
+  mình có gì mà công bố. Đây là thông tin, KHÔNG phải công bố tự động.
+- **FR-020b**: Công bố hiện vật hỏng giữa chừng PHẢI **thử lại được, không giới hạn số lần** — kể cả ở một
+  lượt chạy sau, vì thư mục làm việc sống theo đầu việc (FR-010). Hệ thống KHÔNG ĐƯỢC bắt làm lại cả lượt
+  chỉ vì cú đẩy hỏng (chốt 2026-08-21).
+- **FR-020c**: Công cụ công bố PHẢI **chịu được gọi lặp**: công bố cùng một thứ nhiều lần chỉ ra **đúng
+  một** hiện vật, không đẻ ra bản trùng, kể cả khi lần trước đã đẩy được một phần rồi mới đứt.
+- **FR-020d**: Trong lúc một cú công bố còn dở, đầu việc PHẢI giữ một động cơ đẩy sống — KHÔNG ĐƯỢC rơi vào
+  khoảng lặng ngay tại cổng Điều II.
+- **FR-021**: Thư mục làm việc PHẢI được thu hồi khi **đầu việc khép lại**, hoặc theo hạn giữ đặt được
+  tính từ lần chạm gần nhất. Hiện vật đã đẩy lên kho **KHÔNG ĐƯỢC** thu hồi theo.
+- **FR-022**: Hệ thống KHÔNG ĐƯỢC thu hồi thư mục làm việc mà **một lượt chạy đang giữ**.
+
+### Nhóm D — Phiên và mạch làm việc
+
+- **FR-023**: Mọi lượt gọi dậy trong **cùng một đầu việc** PHẢI nối lại **cùng một phiên** với agent.
+- **FR-024**: Hai đầu việc khác nhau PHẢI có hai phiên tách biệt, kể cả khi cùng một agent.
+- **FR-025**: Khi không nối lại được phiên cũ, hệ thống PHẢI mở phiên mới **và gửi cho agent một câu báo
+  bằng tiếng Anh** nói rõ đây là bắt đầu lại cùng lý do.
+- **FR-026**: Khi chỗ làm giữ phiên cũ **không còn là chỗ làm đang phục vụ agent ấy** (máy cài lại, daemon
+  đăng ký lại thành chỗ làm mới), hệ thống PHẢI mở phiên mới và báo theo FR-025 — KHÔNG ĐƯỢC giả vờ nối
+  tiếp. Lưu ý: vì FR-007 buộc mỗi agent vào đúng một chỗ làm không đổi được, một lượt gọi dậy **không thể**
+  rơi sang máy khác trong lúc mối buộc còn nguyên; điều khoản này chỉ áp cho lúc mối buộc bị dựng lại.
+- **FR-027**: Phiên PHẢI có hạn giữ đặt được. Quá hạn thì thu hồi, và lần gọi dậy sau xử theo FR-025.
+
+### Nhóm E — Hỏng hóc và lưới an toàn
+
+- **FR-028**: **Agent bị tuyên offline** giữa một lượt chạy PHẢI làm đầu việc **chuyển sang một động cơ
+  đẩy hợp lệ khác**, không bao giờ để nó mất hết động cơ mà không nổi cờ.
+- **FR-029**: Hệ thống PHẢI có khoảng ân hạn đặt được cho **agent online trở lại** trước khi coi lượt chạy
+  là hỏng.
+- **FR-029a**: Lượt chạy đã bị tuyên hỏng PHẢI xử theo luật đang có ở mục 4.4 của thiết kế vận hành: coi
+  lượt ấy đã chết, đầu việc về trạng thái bền cuối, gọi dậy lại từ **hành động kế tiếp** đã lưu. Đặc tả này
+  KHÔNG đặt luật mới cho việc đó.
+- **FR-029b**: Nếu tầng dưới hợp đồng giữ được tiến trình agent sống qua một lần đứt và nối lại được luồng
+  diễn biến, đó là **tối ưu nội bộ**, KHÔNG ĐƯỢC lộ thành trạng thái mới ở tầng nghiệp vụ. Tầng trên chỉ
+  thấy đúng hai kết cục: lượt chạy chạy xong, hoặc agent offline và lượt chạy chết (Hiến pháp — Điều III).
+- **FR-030**: Lượt chạy im lặng quá ngưỡng PHẢI đi vào **thang phục hồi ba mức** đang có, không được xử
+  bằng một đường riêng.
+- **FR-031**: Ngưỡng im lặng PHẢI đặt được **riêng cho từng loại agent CLI**, vì mỗi loại im lặng theo một
+  kiểu khác nhau.
+- **FR-032**: Hệ thống PHẢI phân biệt **lỗi tạm** (đáng tự thử lại) với **lỗi cần người** (hết hạn mức, sai
+  cấu hình, thiếu quyền). Lỗi cần người KHÔNG ĐƯỢC tiêu ngân sách tự phục hồi.
+- **FR-033**: Agent CLI đã đăng ký nhưng không còn trên máy PHẢI làm chỗ làm ấy chuyển sang không sẵn sàng
+  kèm lý do, chứ không im lặng nhận việc rồi hỏng.
+- **FR-034**: Nâng cấp daemon KHÔNG ĐƯỢC cắt ngang một lượt chạy đang diễn ra.
+
+### Nhóm F — Ranh giới kiến trúc
+
+- **FR-035**: Tầng nghiệp vụ KHÔNG ĐƯỢC rẽ nhánh theo loại agent CLI. Mọi khác biệt PHẢI nằm sau một hợp
+  đồng chung (Hiến pháp — Điều III).
+- **FR-036**: Mọi đọc/ghi qua daemon PHẢI giới hạn trong workspace của nó; chạm sang workspace khác PHẢI
+  đọc thành "không tìm thấy" (Hiến pháp — Điều I).
+- **FR-037**: Thêm một loại agent CLI mới PHẢI chỉ đụng tầng dưới cùng — không đụng luồng đánh thức, không
+  đụng các cổng trạng thái, không đụng tầng nghiệp vụ.
+- **FR-038**: Hệ thống PHẢI có phép kiểm tự động chứng minh FR-035 và FR-037, chạy trong bộ kiểm thường
+  xuyên. Gỡ mất ranh giới thì phép kiểm phải **đỏ**, không được im lặng trôi.
+
+### Nhóm G — Ba điểm đã chốt (người chủ, 2026-08-21)
+
+- **FR-039**: Hệ thống PHẢI hỗ trợ **cả hai họ giao thức**: họ ACP (nói JSON-RPC qua luồng chuẩn) và họ
+  chạy-một-phát (prompt qua tham số dòng lệnh, kết quả về theo luồng). Cơ chế giao việc kế thừa từ Multica
+  Daemon: brief ghi vào đúng file mà từng CLI vốn tự đọc, kỹ năng đặt vào đúng thư mục từng CLI vốn tự dò,
+  công cụ bơm qua cơ chế nạp sẵn có của từng CLI. **Gemini CLI PHẢI nằm trong danh sách hỗ trợ** — Multica
+  không có nó, đây là phần Armarius tự thêm.
+- **FR-040**: Daemon PHẢI **thay hẳn** đường gọi agent qua cổng ngoài. Sau đợt này hệ thống chỉ còn **một**
+  đường nói chuyện với agent. Đường cũ được gỡ, không giữ song song.
+- **FR-040a**: Đường cổng ngoài cũ được xử như **chưa từng tồn tại** (chốt 2026-08-21). Không luật chuyển
+  đổi, không tương thích ngược, không trạng thái "agent kiểu cũ". Dữ liệu sinh ra từ đường cũ bị xoá, và mọi
+  thứ chỉ tồn tại để phục vụ đường cũ bị gỡ theo thay vì để lại dạng mã chết.
+- **FR-041**: Thư mục làm việc của một đầu việc bắt đầu ở trạng thái **trắng**. Hệ thống KHÔNG lấy mã nguồn về và
+  KHÔNG quản nhánh làm việc; agent tự lo phần mã nguồn bằng thông tin đăng nhập của chính nó. Armarius là
+  nơi làm việc chung cho nhiều loại việc, không riêng việc viết mã.
+
+### Nhóm H — Tầng nhật ký đầy đủ cho một lượt chạy
+
+- **FR-042**: Hệ thống PHẢI ghi lại **toàn văn thông điệp gửi cho agent** ở mỗi lượt — cả phần brief ổn
+  định lẫn phần đổi theo từng lượt.
+- **FR-043**: Hệ thống PHẢI ghi lại **mỗi lần agent gọi công cụ**, gồm tên công cụ và **đầy đủ tham số**.
+- **FR-043a**: Kết quả công cụ trả về PHẢI chỉ ghi **bản rút gọn** (kích thước, kiểu, và phần đầu cắt theo
+  ngưỡng đặt được). **Toàn văn kết quả KHÔNG ĐƯỢC rời máy người dùng** — không lên server, không vào kho
+  phụ (chốt 2026-08-21).
+- **FR-043b**: Bản rút gọn PHẢI ghi rõ **đã bị cắt** và **cắt mất bao nhiêu**, để người đọc không tưởng đó
+  là toàn bộ kết quả.
+- **FR-044**: Hệ thống PHẢI ghi lại chữ agent sinh ra, phần suy luận nếu CLI có lộ, và mọi lỗi.
+- **FR-045**: Các sự kiện của một lượt chạy PHẢI có **thứ tự xác định** và **không trùng**, để xem lại đúng
+  trình tự đã xảy ra.
+- **FR-046**: Người dùng PHẢI xem được nhật ký này **trong lúc lượt chạy đang diễn ra**, không phải đợi
+  xong, và không phải bấm tải lại (Hiến pháp — Điều IV).
+- **FR-047**: Độ chi tiết ghi được PHỤ THUỘC khả năng từng CLI. Khi một CLI không lộ tham số hoặc kết quả
+  công cụ, hệ thống PHẢI **đánh dấu rõ là thiếu và thiếu vì sao** — KHÔNG ĐƯỢC để khoảng trống trông như
+  agent không gọi công cụ nào. Chỗ thiếu vì **CLI không lộ** phải phân biệt được với chỗ ngắn vì **bị cắt
+  theo FR-043a**; hai lý do khác nhau, không được hiện giống nhau.
+- **FR-048**: Trước khi rời khỏi máy người dùng, daemon PHẢI **che các giá trị bí mật** trong tham số và
+  kết quả công cụ (token, khoá, biến môi trường nhạy cảm). Che PHẢI làm ở phía daemon, không phải ở server.
+- **FR-049**: Với những sự kiện **được phép mang toàn văn lên server** (thông điệp gửi agent, tham số gọi
+  công cụ, chữ agent sinh ra), sự kiện quá lớn PHẢI lưu theo hai phần: một phần rút gọn nằm ngay trong dòng
+  sự kiện, và **toàn văn** để ở kho tách riêng, mở ra xem được theo yêu cầu. Ngưỡng cắt PHẢI đặt được. Luật
+  hai phần này KHÔNG áp cho kết quả công cụ — kết quả chỉ có bản rút gọn (FR-043a).
+- **FR-050**: Nhật ký đầy đủ PHẢI có hạn giữ đặt được, tách khỏi hạn giữ của thư mục làm việc.
+- **FR-051**: Đọc nhật ký của một lượt chạy PHẢI giới hạn trong workspace của người đọc; chạm sang workspace
+  khác PHẢI đọc thành "không tìm thấy" — nhật ký mang prompt và kết quả làm việc, đọc nhầm là đọc trộm việc
+  người khác (Hiến pháp — Điều I).
+- **FR-052**: Người dùng PHẢI **lọc được** nhật ký theo loại sự kiện, để tìm nhanh một lần gọi công cụ giữa
+  hàng nghìn dòng.
+
+### Nhóm I — Đường việc đi xuống máy (chốt 2026-08-21)
+
+- **FR-053**: Hệ thống PHẢI có **đúng một** đường để một đầu việc bắt đầu chạy: daemon **xin việc**, server
+  **đưa**. KHÔNG ĐƯỢC có đường thứ hai nào tự khởi động một lượt chạy trên máy.
+- **FR-054**: Cú xin việc PHẢI là **một phép đổi trạng thái có điều kiện, một nhát** — chuyển đầu việc từ
+  *đang rảnh* sang *đã có máy nhận*, chỉ khi nó còn đang rảnh. Nhiều cú xin vào cùng lúc thì đúng một cú
+  nhận được việc, số còn lại về tay không. KHÔNG ĐƯỢC hiện thực bằng đọc-rồi-mới-ghi.
+- **FR-054a**: Tính đúng-một-lần này PHẢI nằm ở **server**, KHÔNG ĐƯỢC dựa vào việc daemon tự xếp hàng.
+  Lý do không phải là nghi ngờ daemon mà là ba tình huống daemon không tự giải được: gói tin trả lời rơi
+  mất nên nó gửi lại mà không biết cú đầu đã ăn chưa; daemon khởi động lại làm mất hàng đợi trong bộ nhớ;
+  và lúc nâng cấp có hai bản daemon cùng sống một nhịp (FR-034).
+- **FR-055**: Ba lớp đưa việc xuống PHẢI tách bạch vai:
+  - **Đẩy** — đường chính, phát mỗi lần có việc mới cho một máy
+  - **Poll theo nhịp** — lưới hứng khi tin đẩy rơi mất; nhịp PHẢI đặt được
+  - **Cờ đình trệ** — lưới cuối, chỉ chạm đầu việc đã mất hết động cơ đẩy sống
+- **FR-055a**: Tin đẩy xuống daemon CHỈ ĐƯỢC là tín hiệu *"có việc, đi hỏi đi"*. Nó KHÔNG ĐƯỢC là lệnh
+  chạy và KHÔNG ĐƯỢC tự khởi động gì. Đây là thứ giữ cho hai tin tới cùng lúc chỉ đẻ ra một lượt chạy: tin
+  thừa chỉ dẫn tới một cú xin thừa, mà cú xin thừa thì nhận về tay không.
+- **FR-055b**: Cú poll của daemon **KHÔNG ĐƯỢC** ghi bất kỳ dấu hiệu sống nào cho agent. Poll chứng minh
+  liên lạc được tới máy; nó KHÔNG chứng minh agent chạy được. Trộn hai thứ này thì máy bật mà CLI đã bị gỡ
+  vẫn trông sống mãi, và luật FR-006a không thể thành hiện thực.
+- **FR-055c**: Khi xin việc, daemon PHẢI nói luôn **còn nhận thêm được mấy việc**. Server chỉ đưa tối đa
+  bằng số ấy và **giữ nguyên phần còn lại ở trạng thái chưa có máy nhận**. Đây là cơ chế làm cho FR-008a
+  chạy được mà server không phải tự theo dõi máy nào đang bận tới đâu.
+- **FR-055d**: Nhịp poll là **lưới hứng**, không phải đường chính. Nhịp ấy PHẢI đặt được và ĐƯỢC PHÉP thưa;
+  hệ thống KHÔNG ĐƯỢC rút nhịp poll xuống để bù cho đường đẩy hỏng — đường đẩy hỏng thì sửa đường đẩy.
+- **FR-056**: Động cơ đẩy số 1 (*đang có lượt chạy*) PHẢI bật **ngay lúc máy nhận đầu việc**, KHÔNG ĐƯỢC
+  đợi tới lúc agent sinh ra dòng chữ đầu tiên. Giữa hai mốc đó là quãng daemon dựng thư mục, đổ kỹ năng và
+  bật CLI — bật động cơ muộn là chừa ra đúng cái khe cho vòng quét gọi dậy lần thứ hai.
+- **FR-056a**: Động cơ đẩy số 1 PHẢI có đồng hồ. Máy nhận việc rồi chết giữa lúc chuẩn bị thì quá hạn phải
+  **thu hồi và trả đầu việc về trạng thái đang rảnh** để máy khác xin được. Động cơ không đồng hồ thì đầu
+  việc treo vĩnh viễn ở *đang chạy* mà không có gì đang chạy.
+- **FR-056b**: Đồng hồ của động cơ số 2 PHẢI được **đặt lại tại thời điểm máy nhận việc**, vì từ mốc đó
+  hệ thống có bằng chứng thật (máy nào, lúc nào) thay cho một cái hẹn suông.
+- **FR-057**: Hệ thống PHẢI phân biệt được hai hỏng hóc mà hôm nay đang gộp làm một:
+  - **chưa máy nào nhận** → agent offline, đi luồng offline đang có
+  - **máy nhận rồi nhưng chết giữa lúc chuẩn bị** → thu hồi theo FR-056a, trả đầu việc về kệ
+- **FR-058**: Đầu việc đã có máy nhận PHẢI **buộc vào đúng máy ấy**. Cú xin từ một máy khác cho đầu việc ấy
+  PHẢI đọc thành "không tìm thấy".
+- **FR-059**: Mọi lần ghi từ một lượt chạy về hệ thống PHẢI mang danh tính lượt chạy, và server PHẢI **từ
+  chối** cú ghi từ một lượt không còn sở hữu đầu việc. Đây là lưới cho trường hợp không tránh được: đồng hồ
+  hai bên lệch nhau nên một máy đã bị thu hồi vẫn tưởng mình còn giữ và vẫn bật agent lên. Chặn được cú ghi
+  thì lần chạy thừa ấy không để lại dấu vết nào.
+- **FR-060**: Cụm này KHÔNG ĐƯỢC hiểu là mở lại đường **thợ tự nhận việc** đã gỡ ở đặc tả 001. Hai thứ
+  khác tầng: đường đã gỡ là **agent thợ tự chọn mình làm việc nào**; cụm này là **khâu vận chuyển** một đầu
+  việc đã được Trưởng dự án giao, đi từ server xuống máy. Người giao việc vẫn là Trưởng dự án.
+
+### Key Entities
+
+- **Máy chạy daemon**: một máy vật lý hoặc máy ảo mà một người đã cài daemon lên và nối vào workspace.
+  Thuộc tính: tên đọc được, chủ sở hữu, workspace, trạng thái sống/chết, thời điểm phát tín hiệu gần nhất.
+- **Chỗ làm**: một cặp (agent CLI có trên máy đó × workspace). Đây là thứ nhận việc. Thuộc tính: loại agent
+  CLI, máy, trạng thái sẵn sàng, các khả năng đã hỏi được.
+- **Lượt chạy**: một lần agent được khởi chạy cho một đầu việc. Thuộc tính: đầu việc, chỗ làm, phiên,
+  trạng thái, thời điểm bắt đầu/kết thúc, lý do gọi dậy. Thư mục làm việc **không** thuộc lượt chạy — nó
+  thuộc đầu việc và được mọi lượt của đầu việc ấy dùng chung.
+- **Phiên**: mạch hội thoại giữa hệ thống và một agent, gắn với **một đầu việc**. Thuộc tính: đầu việc,
+  agent, máy giữ nó, thời điểm chạm gần nhất, còn nối lại được hay không.
+- **Đầu việc chưa có máy nhận**: đầu việc đã được xếp cho một lượt chạy nhưng **chưa máy nào cầm**. Ở
+  đường thường trạng thái này chỉ tồn tại vài phần nghìn giây. Nó kéo dài ở đúng ba tình huống, và cả ba
+  đều là vận hành bình thường chứ không phải hỏng hóc:
+  - **máy tắt** — việc giao lúc máy đang gập, nằm chờ tới khi máy bật lại (có thể hàng giờ)
+  - **máy đang bận đủ trần** — daemon xin việc nhưng báo hết chỗ, phần dư nằm lại (phút tới chục phút)
+  - **tin đẩy rơi mất** — máy đang bật và rảnh nhưng không nhận được tin, nằm chờ tới nhịp poll kế
+- **Đầu việc đã có máy nhận**: trạng thái sau khi một máy xin và được server đưa việc. Từ mốc này đầu việc
+  thuộc về đúng máy ấy, không đưa cho ai khác, và mang một hạn — quá hạn mà máy không báo đã chạy thì đầu
+  việc quay về trạng thái chưa có máy nhận.
+- **Thư mục làm việc**: thư mục hiện hành mà agent CLI được khởi chạy bên trong, gắn với **một đầu việc**
+  và dùng chung cho mọi lượt chạy của đầu việc ấy. Bắt đầu ở trạng thái **trắng** — không có mã nguồn.
+  Là chỗ nháp, có hạn giữ; chỉ thứ agent tự công bố thành hiện vật mới sống sót.
+- **Hiện vật**: dùng lại thực thể đang có — thành phẩm đã nằm trong kho dùng chung, không phải file trên
+  máy agent.
+
+---
+
+## Success Criteria *(mandatory)*
+
+### Measurable Outcomes
+
+- **SC-001**: Người mới bắt đầu, chưa từng cài, nối được máy của mình vào workspace và thấy chỗ làm sẵn
+  sàng **trong vòng 10 phút**, chỉ đọc hướng dẫn có sẵn.
+- **SC-002**: Từ lúc hệ thống quyết định gọi dậy đến lúc agent thật sự bắt đầu chạy trên máy, **95% số lần
+  dưới 15 giây**.
+- **SC-003**: Diễn biến của agent hiện lên màn hình người theo dõi **trong vòng 3 giây** kể từ khi agent
+  sinh ra nó, không cần thao tác tải lại.
+- **SC-004**: **100%** số đầu việc được đánh dấu xong đều có ít nhất một hiện vật **tải về được từ kho
+  dùng chung**. Không có ngoại lệ nào lọt qua.
+- **SC-004a**: Cắt mạng giữa một cú công bố rồi cho agent công bố lại — kết quả ra **đúng một** hiện vật,
+  không ra hai, và không phải chạy lại lượt.
+- **SC-005**: **Không có đầu việc nào** ở trạng thái chưa xong mà mất hết động cơ đẩy quá 5 phút mà không
+  nổi cờ đình trệ — kể cả khi làm agent offline đột ngột bằng cách rút phích máy đang chạy nó.
+- **SC-006**: Trong cùng một đầu việc, **95%** số lần gọi dậy sau lần đầu nối lại được phiên cũ, với điều
+  kiện cùng máy và trong hạn giữ.
+- **SC-007**: Mọi lần **không** nối lại được phiên đều gửi cho agent câu báo bắt đầu lại — **100%**, không
+  có lần nào im lặng.
+- **SC-008**: Thêm một loại agent CLI mới **không sửa một dòng nào** ở tầng nghiệp vụ, và có phép kiểm tự
+  động chứng minh điều đó.
+- **SC-009**: Một máy chạy được **ít nhất 5 lượt chạy đồng thời** mà không lượt nào bị nhận trùng và không
+  lượt nào bị nhầm là treo.
+- **SC-010**: Làm agent offline giữa một lượt chạy rồi cho online lại trong khoảng ân hạn — đầu việc
+  **không** bị mất và **không** bị chạy trùng, dù lượt chạy cũ được nối tiếp hay bị tuyên chết.
+- **SC-011**: Với một agent CLI có lộ đủ dữ liệu, **100%** số lần gọi công cụ trong một lượt chạy đều đọc
+  lại được **toàn văn tham số** và **bản rút gọn kết quả**. Không có lần gọi nào biến mất khỏi nhật ký.
+- **SC-012**: Sự kiện hiện lên màn hình người theo dõi **trong vòng 3 giây** kể từ khi agent sinh ra nó.
+- **SC-013**: Người chủ trả lời được câu *"agent đã làm gì và vì sao nó kết luận như vậy"* **chỉ bằng nhật
+  ký trên màn hình**, không cần đăng nhập vào máy nào.
+- **SC-014**: Một lượt chạy có **1000 sự kiện** vẫn mở ra và cuộn được mượt; sự kiện lớn không làm treo màn
+  hình.
+- **SC-015**: **Không có giá trị bí mật nào** lọt lên server ở dạng nguyên bản — chứng minh bằng phép kiểm
+  tự động chạy trên dữ liệu có gài sẵn token.
+
+---
+
+## Assumptions
+
+- **Mỗi người mời agent tự chạy daemon trên máy của mình.** Suy ra từ Định vị sản phẩm trong Hiến pháp
+  (*"nhiều người ở nhiều team mời agent của mình vào"*) — không có một daemon dùng chung do người vận hành
+  workspace chạy hộ.
+- **Kho hiện vật dùng chung đã có** và dùng lại được — hôm nay đã lưu được cả tệp lẫn liên kết ngoài. Đặc
+  tả này không dựng kho mới.
+- **Ranh giới phiên là đầu việc**, khớp với cách hệ thống đang chạy hôm nay. Không đổi sang mức khác.
+- **Bốn tác nhân, vòng đời đầu việc, các cổng trạng thái, luật động cơ đẩy và thang phục hồi ba mức giữ
+  nguyên.** Đặc tả này chỉ đổi đường dây ở chặng dưới cùng.
+- **Chưa có dữ liệu thật cần giữ.** Hệ thống chưa chạy thật với người dùng ngoài, nên đợt này được phép
+  xoá sạch dữ liệu sinh ra từ đường cổng ngoài cũ thay vì viết luật chuyển đổi.
+- **Agent CLI do người dùng tự cài và tự đăng nhập.** Armarius lái chúng, không phát hành chúng và không
+  giữ hộ thông tin đăng nhập của nhà cung cấp mô hình.
+- **Mã nguồn và dữ liệu không rời máy người dùng.** Chỉ diễn biến và hiện vật đã chỉ định mới đi lên
+  Armarius. Sau chốt 2026-08-21, "diễn biến" gồm toàn văn tham số gọi công cụ nhưng **chỉ bản rút gọn**
+  của kết quả công cụ. Lưu ý đánh đổi: công cụ kiểu **ghi file mang nội dung ngay trong tham số**, nên
+  chọn lựa này chặn dòng dữ liệu đọc-vào chứ không làm nhật ký sạch hoàn toàn dữ liệu.
+- **Máy chạy daemon có thể là Linux, macOS hoặc Windows.** Ràng buộc riêng của Windows (ví dụ quyền tạo
+  liên kết tệp) được ghi nhận ở phần Edge Cases và xử ở bước lập kế hoạch.
+- **Ba điểm ở Nhóm G chưa chốt** thì chưa lập kế hoạch được, vì mỗi cách chọn ra một khối lượng việc khác
+  hẳn nhau.
