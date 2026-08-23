@@ -38,7 +38,8 @@ hồi ba mức. Đặc tả này chỉ thay **cách Armarius nói chuyện với
   **chỉ ghi rút gọn kết quả** công cụ trả về; toàn văn kết quả ở lại trên máy người dùng.
 - Q: Khi một máy còn sống nhưng đã chạm trần số lượt chạy đồng thời, đầu việc thứ N+1 bám vào động cơ đẩy
   nào? → A: Dùng lại **động cơ số 2 — đã hẹn một lần đánh thức**. Không thêm động cơ thứ bảy; mã lý do gọi
-  dậy mang thông tin đang chờ chỗ trống.
+  dậy mang thông tin đang chờ chỗ trống. **⚠ ĐÃ BỊ THAY ngày 2026-08-22** — xem mục cuối phần này: động cơ
+  đúng là **số 5**, và không có timeout.
 - Q: Những agent đã mời theo đường cổng ngoài cũ thì ra sao sau khi đường ấy bị gỡ? → A: **Xoá sạch, coi
   như cổng cũ chưa từng tồn tại.** Hệ thống chưa chạy thật nên không có dữ liệu cần giữ; không viết luật
   chuyển đổi, không giữ tương thích ngược.
@@ -48,6 +49,11 @@ hồi ba mức. Đặc tả này chỉ thay **cách Armarius nói chuyện với
 - Q: Đẩy hiện vật hỏng giữa chừng thì đẩy lại được hay phải chạy lại cả lượt? → A: **Đẩy lại được, không
   giới hạn số lần.** Công cụ công bố phải chịu được gọi lặp — cùng một thứ công bố hai lần không đẻ ra hai
   hiện vật; đầu việc giữ động cơ đẩy sống trong lúc chưa xong.
+- Q: Bốn chỗ hở `/speckit-analyze` tìm ra thì xử thế nào? → A (2026-08-22): **(1)** bỏ ký ức dài hạn khỏi
+  khái niệm nền, làm y hệt Multica theo từng CLI; **(2)** *đang chờ máy rảnh* là **trạng thái hiện lên màn
+  hình, KHÔNG có timeout** — đổi từ động cơ số 2 sang **động cơ số 5**, vì thứ chặn nó đã có đồng hồ riêng;
+  **(3)** dọn thư mục làm việc **theo thời gian**, không có tin báo, đúng cách Multica; **(4)** ngưỡng im
+  lặng **10 phút**, đếm từ sự kiện gần nhất, không giới hạn tổng thời gian chạy.
 - Q: Daemon lấy việc bằng cách nào, và có đụng luật đình trệ với động cơ đẩy không? → A: Daemon **xin**,
   server **đưa**. Ba lớp tách bạch: push là đường chính, poll là **fallback** khi push không tới nơi, cờ
   đình trệ là lớp cuối. Tin đẩy chỉ là tín hiệu "có việc, đi hỏi đi", KHÔNG bao giờ là lệnh chạy. Poll KHÔNG đánh dấu
@@ -91,8 +97,9 @@ xong thì đầu việc rời trạng thái đang làm.
    việc **không** rơi vào khoảng lặng: nó đi vào đúng luồng offline đang có và người chủ thấy được lý do
    vì sao chưa chạy.
 5. **Given** máy còn sống nhưng đã chạm trần số lượt chạy đồng thời, **When** hệ thống muốn giao thêm một
-   đầu việc xuống máy ấy, **Then** đầu việc giữ **động cơ số 2 — đã hẹn một lần đánh thức**, và màn hình
-   nói rõ nó đang chờ chỗ trống chứ không phải máy chết.
+   đầu việc xuống máy ấy, **Then** đầu việc giữ **động cơ số 5 — đang bị chặn bởi việc khác**, màn hình
+   hiện **"đang chờ máy rảnh"** phân biệt rõ với máy chết, và **không có đồng hồ nào đếm ngược** — máy rảnh
+   thì poll của daemon tự nhặt.
 
 ---
 
@@ -214,7 +221,8 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **Agent online lại sau khi đứt.** Đã có luật ở mục 4.4: lượt chạy hỏng giữa chừng thì coi như chết và
   gọi dậy lại từ hành động kế tiếp. Chuyện tầng dưới có nối lại được luồng hay không là tối ưu nội bộ.
 - **Một máy nhận nhiều đầu việc cùng lúc.** Trần bao nhiêu thì đặt được; chạm trần thì đầu việc thứ N+1
-  giữ động cơ số 2 (đã chốt 2026-08-21). Còn phải chốt ở bước lập kế hoạch: nhịp hẹn lại và ngưỡng bỏ cuộc.
+  giữ **động cơ số 5** và hiện trạng thái *đang chờ máy rảnh*, **không có timeout** (chốt 2026-08-22).
+  Không cần hẹn giờ thử lại: poll của daemon là cơ chế duy nhất.
 - **Hai đầu việc của cùng một agent chạy song song.** Có giẫm lên nhau ở thư mục hay ở phiên không?
 - **Agent CLI không có trên máy nữa** (bị gỡ, đổi đường dẫn) sau khi đã đăng ký chỗ làm.
 - **Agent chạy rất lâu nhưng vẫn sống.** Phân biệt thế nào với treo? Ngưỡng có được đặt riêng cho từng
@@ -265,12 +273,20 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **FR-007**: Một agent PHẢI được **buộc vào đúng một chỗ làm** lúc tạo, và mối buộc ấy **KHÔNG đổi được**
   về sau. Chỗ làm chết thì agent offline; hệ thống KHÔNG tự chuyển agent sang máy khác — đổi người là quyết
   định của Trưởng dự án ở Mức 2 (chốt 2026-08-21).
+- **FR-007f**: Mối buộc ở FR-007 PHẢI được **ghi vào lúc tạo agent**, và luồng tạo agent PHẢI **bắt buộc
+  chọn chỗ làm** — không có đường tạo agent mà bỏ trống chỗ làm. Người dùng PHẢI chọn được chỗ làm ngay trên
+  màn hình tạo/mời agent, và danh sách chọn chỉ hiện những chỗ làm đang sẵn sàng trong workspace của họ.
+  Agent chưa buộc vào chỗ làm nào PHẢI bị coi là offline, không phải lỗi im lặng.
 - **FR-007a**: **Nhiều agent PHẢI dùng chung được một chỗ làm.** Một máy chỉ có một bản của mỗi agent CLI,
   nên không cho dùng chung thì mỗi máy chỉ đẻ được một agent cho mỗi loại CLI.
-- **FR-007b**: Khi nhiều agent dùng chung một chỗ làm, bảy thứ sau PHẢI tách riêng theo **agent**: phiên,
-  ký ức dài hạn, bộ công cụ, kỹ năng, thư mục làm việc, token gọi ngược, và danh tính kèm chỉ dẫn. Bộ
-  công cụ và kỹ năng PHẢI bơm theo từng lượt chạy — **KHÔNG ĐƯỢC ghi vào cấu hình của agent CLI trên máy**,
-  vì cấu hình đó dùng chung và thuộc về người dùng.
+- **FR-007b**: Khi nhiều agent dùng chung một chỗ làm, **sáu** thứ sau PHẢI tách riêng theo **agent**:
+  phiên, bộ công cụ, kỹ năng, thư mục làm việc, token gọi ngược, và danh tính kèm chỉ dẫn. Bộ công cụ và
+  kỹ năng PHẢI bơm theo từng lượt chạy — **KHÔNG ĐƯỢC ghi vào cấu hình của agent CLI trên máy**, vì cấu
+  hình đó dùng chung và thuộc về người dùng.
+- **FR-007e**: **Ký ức dài hạn của agent KHÔNG phải khái niệm nền của Armarius** (chốt 2026-08-22). Nó chỉ
+  tồn tại ở CLI nào tự có tính năng ấy, nên xử **y hệt Multica**: để trong thư mục nhà giả mà daemon dựng
+  cho chính CLI đó, liên kết ra một kho sống lâu hơn thư mục làm việc, và dọn theo hạn giữ riêng. Armarius
+  KHÔNG dựng kho ký ức chung cho mọi loại CLI.
 - **FR-007c**: Đăng nhập và hạn mức của agent CLI là thuộc tính của **chỗ làm**, không của agent. Cạn hạn
   mức PHẢI làm **mọi agent trên chỗ làm ấy** offline cùng lúc, và PHẢI xếp vào **lỗi cần người xử** —
   KHÔNG ĐƯỢC tiêu ngân sách tự phục hồi (xem FR-032).
@@ -279,17 +295,21 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   thêm được gì vào đầu việc.
 - **FR-008**: Hệ thống PHẢI có trần số lượt chạy đồng thời trên mỗi máy, và trần ấy PHẢI chỉnh được.
 - **FR-008a**: Khi một máy còn sống nhưng đã chạm trần, đầu việc chưa chạy được PHẢI giữ **động cơ đẩy số
-  2 — đã hẹn một lần đánh thức**, với một cái hẹn thử lại cụ thể. Hệ thống KHÔNG ĐƯỢC thêm loại động cơ
-  đẩy thứ bảy, và KHÔNG ĐƯỢC xếp trường hợp này vào động cơ số 6, vì không có gì hỏng và nó sẽ tiêu nhầm
-  ngân sách tự phục hồi (chốt 2026-08-21).
-- **FR-008b**: Trạng thái "đang chờ chỗ trống" PHẢI phân biệt được với "máy chết" trên màn hình người chủ.
-  Thông tin ấy đi kèm **mã lý do gọi dậy và tham số**, không phải một câu chữ lưu sẵn (Hiến pháp — Điều
-  VII).
+  5 — đang bị chặn bởi việc khác** (sửa 2026-08-22; trước đó ghi là động cơ số 2). Thứ chặn nó là chính
+  những lượt chạy đang chiếm chỗ trên máy ấy, và **mỗi lượt đó đã có đồng hồ riêng**.
+  Hệ thống KHÔNG ĐƯỢC thêm động cơ đẩy thứ bảy, và KHÔNG ĐƯỢC xếp vào động cơ số 6 vì không có gì hỏng.
+- **FR-008b**: Trạng thái **"đang chờ máy rảnh"** PHẢI hiện lên màn hình người chủ và PHẢI phân biệt được
+  với "máy chết". Thông tin ấy lưu bằng **mã kèm tham số**, không phải câu chữ lưu sẵn (Hiến pháp — Điều
+  VII). Đây là trạng thái vận hành bình thường, không phải cảnh báo.
+- **FR-008e**: Trạng thái *đang chờ máy rảnh* **KHÔNG có đồng hồ và KHÔNG bị tính giờ**. Đây là ngoại lệ
+  hợp lệ của luật đồng hồ, cùng lý do đã ghi cho động cơ số 5: *thứ chặn nó có động cơ đẩy riêng, và nếu
+  thứ ấy kẹt thì chuông reo ở đó, chỗ có người xử được*. Gắn thêm đồng hồ ở đây là đo lại một thứ đã được
+  đo. Multica cũng không đặt hạn cho đầu việc đang chờ chỗ trống (chốt 2026-08-22).
 - **FR-008d**: Trần là **cấu hình phía server** và server là bên quyết duy nhất có đưa thêm việc hay không.
   Con số daemon báo về chỉ là **số chỗ trống hiện tại**, mang tính tham khảo; server PHẢI lấy **số nhỏ hơn**
   giữa hai giá trị. Daemon báo sai hoặc báo cũ thì server vẫn không đưa quá trần.
-- **FR-008c**: Chuỗi hẹn thử lại vì chạm trần PHẢI có giới hạn. Quá ngưỡng đặt được mà vẫn không có chỗ
-  trống thì đầu việc PHẢI nổi cờ để Trưởng dự án xử, KHÔNG ĐƯỢC hẹn lại vô tận.
+- **FR-008c**: Hệ thống KHÔNG hẹn giờ thử lại cho ca chạm trần. **Poll của daemon là cơ chế duy nhất** —
+  máy rảnh thì tự xin, không cần ai đánh thức (chốt 2026-08-22).
 
 ### Nhóm B — Giao việc và nói chuyện với agent
 
@@ -303,10 +323,32 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **FR-010b**: Hai đầu việc khác nhau PHẢI có hai thư mục làm việc tách biệt, kể cả khi cùng một agent.
 - **FR-011**: Daemon PHẢI đưa cho agent đầy đủ những gì gói tin đánh thức hôm nay đang mang: Bối cảnh dự
   án, mô tả đầu việc, mã lý do gọi dậy kèm tham số, và hành động kế tiếp đã lưu.
+- **FR-011a**: Thông điệp ở FR-011 PHẢI được **server dựng** và đi xuống trong chính gói nhận việc. Daemon
+  KHÔNG dựng nội dung — nó chỉ đặt thông điệp vào đúng tệp bối cảnh mà từng CLI vốn tự đọc. Lý do: nội dung
+  dựng từ vai trò trong dự án (Hiến pháp — Điều V) và phải bằng tiếng Anh (Điều VII); cả hai luật ấy sống ở
+  server, không sống ở máy người dùng.
+- **FR-011b**: **Kỹ năng kế thừa hoàn toàn flow của Multica** (chốt 2026-08-23):
+  - Kỹ năng đi xuống **trong cùng gói nhận việc**, không phải agent tự gọi về lấy.
+  - Daemon ghi kỹ năng vào **đúng thư mục kỹ năng native của từng CLI** — bảng ánh xạ ở
+    [research §11](research.md).
+  - Kỹ năng PHẢI là **tệp thật, ghi mới ở mỗi lượt chạy**. KHÔNG ĐƯỢC liên kết ra một kho dùng chung, vì
+    liên kết như vậy làm kỹ năng của agent này lộ sang agent khác đang dùng chung chỗ làm (FR-007b).
+  - Đây là chỗ Multica cố ý làm khác với những thứ khác trong thư mục nhà giả: đăng nhập, cấu hình và ký ức
+    dùng liên kết, riêng kỹ năng ghi tệp thật.
+- **FR-011c**: Đường **agent tự gọi về lấy kỹ năng rồi tự ghi** KHÔNG còn là đường cài kỹ năng. Vòng xác
+  nhận đã cài xong — thứ còn dở dang từ đợt trước — được đóng lại thay vì hoàn thiện, vì daemon ghi tệp
+  trực tiếp thì không còn gì để xác nhận.
 - **FR-012**: Mọi chữ **hệ thống** sinh ra rồi gửi cho agent PHẢI bằng tiếng Anh; chữ do **người** nhập giữ
   nguyên thứ tiếng người viết (Hiến pháp — Điều VII).
+- **FR-012a**: Hệ thống PHẢI **ghi lại toàn văn thông điệp gửi cho agent** ở mỗi lượt chạy (FR-042).
+  **Server ghi tại thời điểm trả gói nhận việc**, vì đó là nơi thông điệp được dựng — daemon không ghi lại
+  thứ nó chỉ chuyển tay.
 - **FR-013**: Daemon PHẢI đưa cho agent một cách gọi ngược về Armarius, giới hạn đúng phạm vi của agent ấy
   và của lượt chạy ấy.
+- **FR-013a**: Bộ công cụ gọi ngược PHẢI được bơm **theo từng lượt chạy**, qua chính cơ chế nạp công cụ mà
+  từng CLI vốn có, và PHẢI mang **token của lượt chạy** chứ không phải token của daemon (FR-014c). Cùng luật
+  với kỹ năng ở FR-011b: **KHÔNG ĐƯỢC ghi vào cấu hình dùng chung của CLI trên máy**, vì cấu hình ấy thuộc
+  về người dùng và dùng chung cho mọi agent trên chỗ làm đó.
 - **FR-014**: Thông tin xác thực cấp cho một lượt chạy PHẢI **hết hiệu lực khi lượt chạy kết thúc**, không
   dùng lại được cho lượt khác.
 - **FR-014a**: Hệ thống PHẢI có **hai loại token tách biệt**, kế thừa nguyên cách Multica làm (chốt
@@ -354,8 +396,10 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   một** hiện vật, không đẻ ra bản trùng, kể cả khi lần trước đã đẩy được một phần rồi mới đứt.
 - **FR-020d**: Trong lúc một cú công bố còn dở, đầu việc PHẢI giữ một động cơ đẩy sống — KHÔNG ĐƯỢC rơi vào
   khoảng lặng ngay tại cổng Điều II.
-- **FR-021**: Thư mục làm việc PHẢI được thu hồi khi **đầu việc khép lại**, hoặc theo hạn giữ đặt được
-  tính từ lần chạm gần nhất. Hiện vật đã đẩy lên kho **KHÔNG ĐƯỢC** thu hồi theo.
+- **FR-021**: Thư mục làm việc PHẢI được thu hồi **theo thời gian**, do daemon tự quét định kỳ — hệ thống
+  KHÔNG gửi tin báo "đầu việc đã khép lại" xuống daemon (chốt 2026-08-22, theo đúng cách Multica làm).
+  Daemon tự hỏi trạng thái đầu việc trong lúc quét. Điều kiện xoá: đầu việc **đã xong hoặc đã huỷ** *và*
+  đã im quá hạn giữ đặt được. Hiện vật đã đẩy lên kho **KHÔNG ĐƯỢC** thu hồi theo.
 - **FR-022**: Hệ thống KHÔNG ĐƯỢC thu hồi thư mục làm việc mà **một lượt chạy đang giữ**.
 
 ### Nhóm D — Phiên và mạch làm việc
@@ -390,8 +434,12 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   quan sát được ở Multica (research mục 12c): lượt chạy kết thúc sạch, đầu việc vẫn nằm ở *đang làm*, và
   không tác nhân nào được xếp lịch quay lại nhìn nó. Vòng quét của ta bắt được ca này nhưng bắt **muộn**,
   nên nó là lớp cuối chứ không phải cách xử chính.
-- **FR-031**: Ngưỡng im lặng PHẢI đặt được **riêng cho từng loại agent CLI**, vì mỗi loại im lặng theo một
-  kiểu khác nhau.
+- **FR-031**: Hệ thống KHÔNG giới hạn **tổng thời gian** một lượt chạy. Thứ bắt treo là **ngưỡng im lặng**
+  — thời gian tính từ **sự kiện gần nhất** agent nhả ra. Mặc định **10 phút** (chốt 2026-08-22, khớp con số
+  Multica dùng cho Codex và OpenCode).
+- **FR-031a**: Ngưỡng im lặng đặt được **riêng cho từng loại agent CLI**, nhưng giá trị riêng ấy **chỉ được
+  siết chặt hơn, KHÔNG được nới rộng hơn** ngưỡng nền. Cấu hình của một CLI không được phép tắt lưới an
+  toàn chung — luật này chép của Multica.
 - **FR-032**: Hệ thống PHẢI phân biệt **lỗi tạm** (đáng tự thử lại) với **lỗi cần người** (hết hạn mức, sai
   cấu hình, thiếu quyền). Lỗi cần người KHÔNG ĐƯỢC tiêu ngân sách tự phục hồi.
 - **FR-033**: Agent CLI đã đăng ký nhưng không còn trên máy PHẢI làm chỗ làm ấy chuyển sang không sẵn sàng
