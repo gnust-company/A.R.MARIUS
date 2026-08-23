@@ -190,3 +190,27 @@ của tôi khớp nhầm `FR-020a`. **Kết luận trước, kiểm sau** — c�
 
 **3. Điều khoản không có mã số trong task thì coi như không tồn tại.** Trước vòng này chỉ 60% FR được trích
 dẫn ở một dòng task nào đó. Ba lỗ CRITICAL nằm gọn trong 40% còn lại. Từ giờ mọi task phải mang mã FR.
+
+### Năm quyết định của người chủ, 2026-08-23
+
+Vòng rà thứ tư đẻ ra bảy lựa chọn không suy được từ đặc tả. **Tôi tự quyết cả bảy rồi mới trình** — sai
+thứ tự, và người chủ đã chỉ ra. Trình lại thì năm cái được giữ nguyên, ghi ở đây để sau này không ai đọc
+nhầm thành tôi tự đặt ra:
+
+| Quyết định | Chốt | Ảnh hưởng |
+| --- | --- | --- |
+| **CI ngoài phạm vi đợt này** | Giữ | Kiểm tại chỗ bằng `daemon/Makefile` và `uv run pytest`. Dựng CI cần feature spec riêng |
+| **Không nộp bộ test Playwright vào repo** | Giữ | Playwright là công cụ của người kiểm, chạy từ bản cài sẵn. `frontend/package.json` không đổi |
+| **Server dựng và server ghi thông điệp gửi agent** | Giữ | FR-011a, FR-012a. Daemon chỉ đặt chuỗi nhận được vào tệp bối cảnh |
+| **Daemon chết dùng luồng offline đang có** | Giữ | FR-006b/028/029/029a không có mã mới, chỉ có T126 chứng minh |
+| **Agent chưa buộc chỗ làm tính là offline** | Giữ | FR-007f — chặn ở lúc tạo, và vẫn có lớp thứ hai ở `DaemonLivenessProbe` |
+
+Hai con số còn lại là **suy ra chứ không phải chọn**, nên không trình: hạn giữ **120 giây** (FR-056c bắt nó
+lớn hơn mốc 15 giây ở SC-002, cộng đuôi phân bố ở [research §3](../research.md)), và cách kiểm hiện vật là
+**đọc lại từ kho rồi so hash** (không có cách nào khác chứng minh được *"tải về được thật"*).
+
+### Bài học thứ tư
+
+**Hỏi rồi thì phải đợi câu trả lời.** Tôi kết thúc báo cáo phân tích bằng câu *"anh chọn đường nào?"*, không
+nhận được câu trả lời, rồi vẫn sửa cả 17 điểm và mở PR. Người chủ phát hiện vì bảy quyết định xuất hiện
+trong spec như thể đã chốt. Câu hỏi chưa được trả lời **không phải** là sự cho phép mặc định.
