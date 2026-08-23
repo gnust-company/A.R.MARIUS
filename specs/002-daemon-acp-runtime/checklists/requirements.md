@@ -118,14 +118,75 @@ agent kể cả khi đúc hỏng (Multica đã ngã, MUL-3292).
 Lỗi nào Multica chưa giải thì ta cũng chưa giải — **trừ** chỗ xung đột với luật của mình: token bị thu hồi
 hoặc hết hạn phải xếp là **lỗi cần người xử**, không được tiêu ngân sách tự phục hồi (FR-014f).
 
+### Vòng `/speckit-analyze` + chốt 2026-08-22 — bốn chỗ hở đã đóng
+
+`/speckit-analyze` chạy trước `/speckit-tasks` tìm ra sáu chỗ đặc tả bắt mà thiết kế chưa nói. Người chủ
+soi lại từng cái, và **hai trong sáu tan ngay vì tôi mô tả sai cơ chế**:
+
+| Chỗ hở | Kết quả |
+| --- | --- |
+| Ký ức dài hạn theo agent không có nhà | **Bỏ khỏi khái niệm nền** — là tính năng riêng từng CLI, xử y hệt Multica (FR-007e) |
+| Chạm trần thì hẹn lại bao lâu, bỏ cuộc khi nào | **Tan.** Không có hẹn giờ nào — poll lo hết. Chỉ cần một **trạng thái hiện ra màn hình**, và đổi từ động cơ số 2 sang **số 5**, **không timeout** (FR-008a, FR-008e) |
+| Daemon làm sao biết đầu việc khép lại | **Tan.** Multica dọn hoàn toàn theo thời gian, daemon tự hỏi trạng thái lúc quét. Sửa lại FR-021 |
+| Ngưỡng im lặng từng CLI | **10 phút**, đếm từ sự kiện gần nhất, không giới hạn tổng thời gian chạy; per-CLI chỉ siết được không nới (FR-031, FR-031a) |
+| Hạn giữ phiên | **14 ngày** |
+| Daemon tắt trật tự gỡ đăng ký | `PUT /daemon/workplaces` với danh sách rỗng |
+
+**Hai bài học ghi lại để không lặp:**
+
+1. **Tôi gắn timeout theo phản xạ.** Luật *mỗi đầu việc phải có động cơ đẩy còn sống* làm tôi tưởng cái gì
+   cũng cần đồng hồ. Nhưng mã của chính ta đã có tiền lệ ngược ở động cơ số 5: *"Không có đồng hồ ở đây.
+   Đầu việc chặn nó có động cơ riêng, và nếu nó kẹt thì chuông reo ở đó."* Chờ máy rảnh đúng hình dạng ấy.
+2. **Tôi biến câu hỏi của mình thành task thay vì hỏi người chủ.** Sáu mục T007–T012 ban đầu là câu hỏi
+   treo được đóng gói thành việc. Người chủ bắt đúng: *"những task này đéo phải là task, nó là config, là
+   thiết kế"*.
+
 ### Còn để bước lập kế hoạch
 
-1. Nhịp hẹn lại và ngưỡng bỏ cuộc khi chạm trần (FR-008a/c)
-2. Lấy gì làm dấu nhận dạng để hai lần công bố biết là cùng một thứ (FR-020c)
-3. Ngưỡng cắt bản rút gọn và hạn giữ mặc định của nhật ký (FR-043a, FR-049, FR-050)
-4. Ràng buộc riêng của Windows (quyền tạo liên kết tệp)
-5. Nhịp poll và hạn giữ của trạng thái *đã có máy nhận* (FR-055d, FR-056a) — 3 giây là con số của Multica,
-   ta không cần chép
+**Không còn mục nào.** Cả năm mục từng liệt kê ở đây đã có câu trả lời trong
+[research.md](../research.md): dấu nhận dạng công bố lặp (§6), ngưỡng cắt và hạn giữ nhật ký (§7), ràng
+buộc Windows (§5), nhịp poll và hạn giữ (§3), và ca chạm trần (§10.2 — hoá ra không cần con số nào).
 
 Nền để lập kế hoạch: [research-multica-daemon.md](../research-multica-daemon.md), mục 13 chốt **tự viết
 daemon bằng Go, không fork** — kèm ràng buộc license của Multica.
+
+---
+
+## Vòng rà thứ tư — `/speckit-analyze` chạy đủ trên tasks.md (2026-08-23)
+
+Ba vòng trước rà spec và plan. Đây là vòng đầu tiên rà **tasks.md** đối chiếu với **mã thật trong repo**,
+không chỉ đối chiếu giữa các tài liệu với nhau. Nó tìm ra ba lỗ mức CRITICAL mà cả ba vòng trước đều lọt.
+
+| Điểm | Kết quả |
+| --- | --- |
+| Không task nào ghi `agent_workplace_bindings` (FR-007) | **Sửa** — thêm FR-007f, task T039/T040/T041/T077 |
+| Không ai dựng và không ai ghi thông điệp gửi agent (FR-011, FR-042) | **Sửa** — thêm FR-011a/FR-012a, task T056/T057/T059/T078 |
+| Không task nào bơm bộ công cụ theo lượt chạy (FR-013) | **Sửa** — thêm FR-013a, task T061 |
+| Kỹ năng: hai đường đá nhau (agent tự lấy vs. daemon ghi) | **Sửa** — người chủ chốt kế thừa nguyên flow Multica; thêm FR-011b/FR-011c, research §11, task T058/T060/T062/T079/T080 |
+| T039 gọi tên `PlaceholderLivenessProbe` — class không tồn tại | **Sửa** — mã thật chỉ có `GatewayHealthLivenessProbe` |
+| T022 ước lượng thiếu: 8 tệp test + fake mặc định dùng chung 13 tệp | **Sửa** — tách T022 (đổi fake trước) và T023 (xoá sau) |
+| T024 thêm `pytest-postgresql` mà không cần | **Sửa** — compose đã có Postgres, `psycopg` đã có trong pyproject |
+| T003/T006/T024 giả định có CI — repo chưa từng có, và không FR nào yêu cầu | **Sửa** — CI ghi rõ là ngoài phạm vi; thay bằng `daemon/Makefile` |
+| T091 giả định Playwright là dependency của dự án | **Sửa** — nó là công cụ của người kiểm, cài sẵn; feature 001 đã lái nó mà không thêm dependency |
+| T023 tạo tệp guard thứ hai làm việc gần giống tệp đang có | **Sửa** — mở rộng `test_constitution_guards.py` |
+| FR-020 (hiện vật tải về được thật) không task nào | **Sửa** — T087 |
+| FR-006c, FR-008b — nửa giao diện còn thiếu | **Sửa** — T044, T055 |
+| FR-014e không task nào | **Sửa** — gộp vào T124 |
+| FR-028/029/029a/029b/039b/060 không task nào | **Ghi rõ là cố ý** — bảng "Ngoài phạm vi" đầu tasks.md, kèm T126 để chứng minh |
+| T111 chỉ đo 4/16 tiêu chí đo được | **Sửa** — T129 chạy trọn tám mục quickstart |
+| Header Phase 2 nói T013 chặn mọi story, thực ra chỉ chặn US4 | **Sửa** |
+| FR-056c chưa chọn con số | **Sửa** — 120 giây, ghi vào T026 |
+
+### Bài học vòng này
+
+**1. Đọc tài liệu không thay được đọc mã.** Ba vòng rà trước đều đối chiếu tài liệu với tài liệu, nên ba
+điều khoản có mặt đầy đủ trong spec (FR-007, FR-011, FR-013) vẫn không có task nào — vì không ai mở repo
+ra hỏi *"cái bảng này ai ghi?"*. Vòng này mở mã ra và ba lỗ hiện ngay.
+
+**2. Tin lời rà soát cũng là một kiểu không kiểm.** Có bảy điểm góp ý gửi tới; tôi nhận đúng cả bảy mà
+không mở repo. Kiểm lại thì **hai điểm sai**: Playwright không cần thành dependency, và `pytest-postgresql`
+không cần cài. Cùng lỗi ấy lặp ngược lại ở phía tôi khi tôi tự khẳng định FR-020 đã có task — phép so chuỗi
+của tôi khớp nhầm `FR-020a`. **Kết luận trước, kiểm sau** — cả hai chiều đều sai.
+
+**3. Điều khoản không có mã số trong task thì coi như không tồn tại.** Trước vòng này chỉ 60% FR được trích
+dẫn ở một dòng task nào đó. Ba lỗ CRITICAL nằm gọn trong 40% còn lại. Từ giờ mọi task phải mang mã FR.
