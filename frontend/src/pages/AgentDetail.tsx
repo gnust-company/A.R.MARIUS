@@ -59,7 +59,6 @@ const RUN_STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 };
 
 const ADAPTER_ICON: Record<string, typeof Globe> = {
-  hermes_gateway: Globe,
   openclaw_gateway: Settings,
   claude_local: Code,
   echo: Terminal,

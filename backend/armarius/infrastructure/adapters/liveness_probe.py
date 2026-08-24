@@ -3,7 +3,7 @@
 When a Marius goes quiet past T1 the `LivenessEngine` fires one bounded probe (LLD §10).
 Instead of *waking the agent* (which spends tokens on an LLM turn), we ask its **gateway**
 whether it is still healthy via the adapter's `test_environment(adapter_config)`. A healthy
-gateway (Hermes/OpenClaw) is a cheap, no-token proxy for "the agent is still reachable",
+gateway is a cheap, no-token proxy for "the agent is still reachable",
 which keeps an idle-but-alive agent ONLINE instead of falsely decaying it to OFFLINE.
 
 Model: a signal (`/agent/me`, a task reply) *establishes* presence; this gateway-health
@@ -33,7 +33,7 @@ class GatewayHealthLivenessProbe(LivenessProbe):
     """Probe that reports an agent's gateway health via the adapter registry.
 
     Probes to the *same* gateway (identical adapter type + config) within
-    ``cache_ttl_seconds`` are de-duplicated, so N agents behind one Hermes cost one
+    ``cache_ttl_seconds`` are de-duplicated, so N agents behind one gateway cost one
     health call per cycle, not N. The TTL is kept below the FSM's probe window (T2) so a
     single agent's 3-miss cadence is never distorted — only the concurrent burst collapses.
     """

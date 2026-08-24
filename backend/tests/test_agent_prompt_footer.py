@@ -6,23 +6,30 @@ skill-install and onboarding prompts so the agent always knows where its token l
 
 from __future__ import annotations
 
+from armarius.application.ports.adapter import (
+    AdapterCapabilities,
+    Diagnostics,
+    ExecContext,
+    ExecResult,
+    MariusAdapter,
+)
 from armarius.application.use_cases.onboarding import (
     build_invite_prompt,
     build_skill_install_prompt,
     credential_file_for,
 )
 from armarius.domain.entities.marius import Marius
+from armarius.domain.entities.run import RunStatus
 from armarius.domain.entities.skill import Skill
 from armarius.domain.services.agent_prompt import agent_prompt_footer
 from armarius.infrastructure.adapters.echo import EchoAdapter
-from armarius.infrastructure.adapters.hermes_gateway import HermesGatewayAdapter
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 
 _SECRET = "arm_secret_should_never_appear_in_a_footer"
 
 
 def _marius() -> Marius:
-    return Marius(name="Marin", role="Backend", adapter_type="hermes_gateway", agent_token=_SECRET)
+    return Marius(name="Marin", role="Backend", adapter_type="echo", agent_token=_SECRET)
 
 
 def _skill() -> Skill:
@@ -37,7 +44,7 @@ def test_footer_is_a_soft_token_free_hint():
     # Token-free by design: it points at the file, never re-embeds the secret.
     assert _SECRET not in footer
     # A soft HINT, not an order: nudges reading once + reusing, mentions `cat`, and is
-    # runtime-neutral (no Bearer tutorial, no Hermes-specific dedup line) (#108).
+    # runtime-neutral (no Bearer tutorial, no runtime-specific dedup line) (#108).
     assert "ARMARIUS HINT" in footer
     assert "cat" in footer
     assert "Authorization: Bearer" not in footer
@@ -77,6 +84,28 @@ def test_invite_prompt_carries_token_location_footer():
     assert "/agent/enroll" not in prompt
 
 
+class _ToolCallingAdapter(MariusAdapter):
+    """A second runtime that installs skills by calling a tool rather than writing files.
+
+    Defined here rather than imported: the point of the test below is that *two* runtimes
+    give *two* answers, and it must keep making that point no matter which real adapters
+    happen to be registered this month.
+    """
+
+    type = "tool_calling"
+    capabilities = AdapterCapabilities(resumable=True, streaming=False, transport="http")
+    skill_install_steps = (
+        "Install skills using the skill_manage tool:",
+        "  • Call skill_manage with the slug and the file tree fetched below",
+    )
+
+    async def execute(self, ctx: ExecContext) -> ExecResult:  # pragma: no cover - unused
+        return ExecResult(status=RunStatus.COMPLETED)
+
+    async def test_environment(self, config: dict) -> Diagnostics:  # pragma: no cover - unused
+        return Diagnostics(ok=True)
+
+
 # ── the install steps come from the adapter, not from a branch (T157, FR-083) ────
 
 
@@ -89,17 +118,17 @@ def test_the_install_steps_come_from_the_adapter_that_will_run_the_agent():
     (Hiến pháp III).
     """
     registry = InMemoryAdapterRegistry()
-    registry.register(HermesGatewayAdapter())
+    registry.register(_ToolCallingAdapter())
     registry.register(EchoAdapter())
     skills = [_skill()]
 
-    on_hermes = build_invite_prompt(
-        Marius(name="Marin", role="Backend", adapter_type="hermes_gateway"),
+    on_tool_calling = build_invite_prompt(
+        Marius(name="Marin", role="Backend", adapter_type="tool_calling"),
         "https://api.test",
         skills=skills,
         adapters=registry,
     )
-    assert "skill_manage" in on_hermes
+    assert "skill_manage" in on_tool_calling
 
     on_echo = build_invite_prompt(
         Marius(name="Echo-2", role="Backend", adapter_type="echo"),

@@ -37,7 +37,6 @@ from armarius.application.use_cases.workspace_agent import WorkspaceAgentService
 from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.domain.entities.project import ProjectThresholds
 from armarius.infrastructure.adapters.echo import EchoAdapter
-from armarius.infrastructure.adapters.hermes_gateway import HermesGatewayAdapter
 from armarius.infrastructure.adapters.liveness_probe import GatewayHealthLivenessProbe
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
@@ -113,7 +112,6 @@ def build_container() -> Container:
     control_bus = TopicEventBus()
 
     registry = InMemoryAdapterRegistry()
-    registry.register(HermesGatewayAdapter())
     registry.register(EchoAdapter())
 
     store: ArtifactStore

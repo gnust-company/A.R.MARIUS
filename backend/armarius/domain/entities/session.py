@@ -19,7 +19,7 @@ class AgentTaskSession:
     marius_id: UUID | None = None
     adapter_type: str = ""
     task_id: UUID | None = None
-    # Native handle (e.g. Hermes {session_id, session_key}) — opaque to the domain.
+    # Native handle (e.g. {session_id, session_key}) — opaque to the domain.
     session_params_json: dict = field(default_factory=dict)
     session_display_id: str | None = None
     last_run_id: UUID | None = None

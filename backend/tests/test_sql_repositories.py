@@ -120,7 +120,7 @@ async def test_marius_invite_and_liveness_timers_round_trip(uow_factory) -> None
     ws = await _seed_workspace(uow_factory)
     m = Marius(
         workspace_id=ws.id,
-        name="Hermes",
+        name="Marin",
         role="Backend",
         agent_token="arm_secrettoken",
         invite_status=InviteStatus.APPROVED,

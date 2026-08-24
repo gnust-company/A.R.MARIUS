@@ -23,7 +23,7 @@ async def invite_agent(
     ws_id: str,
     h: dict,
     *,
-    name: str = "Hermes",
+    name: str = "Marin",
     adapter_type: str = "echo",
     gateway_url: str = GATEWAY_URL,
     api_key: str = GATEWAY_KEY,
@@ -65,7 +65,7 @@ async def invite_and_online(
     ws_id: str,
     h: dict,
     *,
-    name: str = "Hermes",
+    name: str = "Marin",
     is_workspace_agent: bool = False,
     skill_ids: list[str] | None = None,
 ) -> tuple[str, str]:

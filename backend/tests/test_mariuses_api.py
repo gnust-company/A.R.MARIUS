@@ -13,6 +13,14 @@ from uuid import UUID, uuid4
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from armarius.application.ports.adapter import (
+    AdapterCapabilities,
+    Diagnostics,
+    ExecContext,
+    ExecResult,
+    MariusAdapter,
+)
+from armarius.domain.entities.run import RunStatus
 from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.infrastructure.database.models import RunModel
 from armarius.main import app
@@ -60,17 +68,36 @@ async def test_agent_me_after_invite_marks_online() -> None:
     assert me.json()["marius"]["liveness"] == "online"
 
 
+class _UnreachableAdapter(MariusAdapter):
+    """A registered runtime whose gateway never answers the probe.
+
+    The app's own echo runtime reports healthy unconditionally, so proving the 422 needs a
+    runtime that can actually fail. Registering one here keeps the check about *the API's
+    answer to a failed probe* rather than about any particular runtime.
+    """
+
+    type = "unreachable"
+    capabilities = AdapterCapabilities(resumable=True, streaming=False, transport="http")
+
+    async def execute(self, ctx: ExecContext) -> ExecResult:  # pragma: no cover - unused
+        return ExecResult(status=RunStatus.COMPLETED)
+
+    async def test_environment(self, config: dict) -> Diagnostics:
+        return Diagnostics(ok=False, detail="no probe endpoint responded")
+
+
 async def test_invite_with_unreachable_gateway_is_422() -> None:
-    """A hermes_gateway whose probe fails (closed port) is rejected before persisting."""
+    """A runtime whose probe fails is rejected before anything is persisted."""
     async with await _client() as c:
         token, ws_id = await _register(c, "badgw@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
+        app.state.container.registry.register(_UnreachableAdapter())
         r = await c.post(
             f"/v1/workspaces/{ws_id}/mariuses",
             headers=h,
             json={
-                "name": "Hermes",
-                "adapter_type": "hermes_gateway",
+                "name": "Unreachable",
+                "adapter_type": "unreachable",
                 "gateway_url": "http://127.0.0.1:1",  # closed port → probe fails
                 "api_key": "k",
             },
@@ -86,7 +113,7 @@ async def test_invite_with_unknown_adapter_is_400() -> None:
             f"/v1/workspaces/{ws_id}/mariuses",
             headers=h,
             json={
-                "name": "Hermes",
+                "name": "Nobody",
                 "adapter_type": "no-such-runtime",
                 "gateway_url": GATEWAY_URL,
                 "api_key": GATEWAY_KEY,

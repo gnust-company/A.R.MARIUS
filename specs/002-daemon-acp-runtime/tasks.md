@@ -37,7 +37,7 @@ lựa chọn.
 - [ ] T002 [P] Tạo khung lệnh `daemon/cmd/armarius-daemon/main.go` với ba lệnh con: `login`, `start`, `status`
 - [ ] T003 [P] Cấu hình `daemon/.golangci.yml`
 - [ ] T004 [P] Cấu hình `.goreleaser.yml` ở gốc để đóng gói daemon cho linux/darwin/windows
-- [ ] T005 Tạo thư mục `backend/armarius/infrastructure/daemon/` với `__init__.py`
+- [x] T005 Tạo thư mục `backend/armarius/infrastructure/daemon/` với `__init__.py`
 - [ ] T006 [P] Viết `daemon/Makefile` với một mục tiêu `check` chạy `go vet` + `golangci-lint run` + `go test ./...` — đây là cách kiểm của đợt này, **không có CI**
 
 ---
@@ -65,16 +65,16 @@ Chi tiết và lý do ở [research.md §10](research.md).
 
 ### Schema và migration
 
-- [ ] T014 Tạo model ORM sáu bảng mới trong `backend/armarius/infrastructure/daemon/models.py`: `machines`, `workplaces`, `run_claims`, `agent_workplace_bindings`, `daemon_link_codes`, `run_event_blobs`
-- [ ] T015 Thêm cột `accepted_at` vào `Run` trong `backend/armarius/domain/entities/run.py` — **đúng một cột, trung lập runtime**, không thêm `machine_id` (Hiến pháp Điều III)
-- [ ] T016 Thêm bốn cột vào model `run_events` trong `backend/armarius/infrastructure/database/models.py`: `truncated`, `original_byte_size`, `omission_reason`, `redacted` (FR-043b, FR-047)
-- [ ] T017 Thêm `logical_name` và `content_hash` cùng ràng buộc duy nhất `(task_id, logical_name, content_hash)` vào model `artifacts` trong `backend/armarius/infrastructure/database/models.py` (FR-020c)
-- [ ] T018 Viết migration trong `backend/armarius/infrastructure/alembic/versions/` tạo sáu bảng, thêm các cột trên, và thêm chỉ mục `(run_id, type)` cho `run_events` (FR-052) cùng chỉ mục riêng `(workplace_id) WHERE machine_id IS NULL` cho `run_claims` (FR-054)
-- [ ] T019 Trong cùng tệp migration ở `backend/armarius/infrastructure/alembic/versions/`: **xoá dữ liệu** mọi agent có `adapter_type = 'hermes_gateway'` cùng lượt chạy, phiên và yêu cầu gọi dậy treo theo (FR-040a)
-- [ ] T020 Gỡ mặc định `"hermes_gateway"` khỏi `backend/armarius/domain/entities/marius.py`, `backend/armarius/presentation/schemas.py` và `backend/armarius/application/use_cases/enrollment.py` (FR-040)
-- [ ] T021 Xoá `backend/armarius/infrastructure/adapters/hermes_gateway.py` và dòng nối nó trong `backend/armarius/presentation/container.py` (FR-040)
-- [ ] T022 **Đổi trước khi xoá**: sửa `type = "hermes_gateway"` ở `backend/tests/support/fakes.py:700` sang loại mặc định mới. **13 tệp test dùng chung fake này** — đổi mặc định trước thì T023 mới không làm đỏ hàng loạt
-- [ ] T023 Xoá `backend/tests/test_hermes_adapter.py` và `backend/tests/test_gateway_health_probe.py`; dọn phần tham chiếu hermes còn lại trong `test_onboarding_api.py`, `test_onboarding_service.py`, `test_invite_service.py`, `test_agent_prompt_footer.py`, `test_mariuses_api.py`
+- [x] T014 Tạo model ORM sáu bảng mới trong `backend/armarius/infrastructure/daemon/models.py`: `machines`, `workplaces`, `run_claims`, `agent_workplace_bindings`, `daemon_link_codes`, `run_event_blobs`
+- [x] T015 Thêm cột `accepted_at` vào `Run` trong `backend/armarius/domain/entities/run.py` — **đúng một cột, trung lập runtime**, không thêm `machine_id` (Hiến pháp Điều III)
+- [x] T016 Thêm bốn cột vào model `run_events` trong `backend/armarius/infrastructure/database/models.py`: `truncated`, `original_byte_size`, `omission_reason`, `redacted` (FR-043b, FR-047)
+- [x] T017 Thêm `logical_name` và `content_hash` cùng ràng buộc duy nhất `(task_id, logical_name, content_hash)` vào model `artifacts` trong `backend/armarius/infrastructure/database/models.py` (FR-020c)
+- [x] T018 Viết migration trong `backend/armarius/infrastructure/alembic/versions/` tạo sáu bảng, thêm các cột trên, và thêm chỉ mục `(run_id, type)` cho `run_events` (FR-052) cùng chỉ mục riêng `(workplace_id) WHERE machine_id IS NULL` cho `run_claims` (FR-054)
+- [x] T019 Viết **migration mới** trong `backend/armarius/infrastructure/alembic/versions/` (revision `d8a3b6c41e57`): **xoá dữ liệu** mọi agent có `adapter_type = 'hermes_gateway'` cùng lượt chạy, phiên và yêu cầu gọi dậy treo theo (FR-040a). *Sửa 2026-08-24: câu gốc ghi "trong cùng tệp migration" với T018, nhưng luật một PR không quá 5 task đã tách T018 sang PR #216 và nó đã merge. Alembic chỉ chạy mỗi revision đúng một lần, nên sửa tệp đã merge thì phần xoá dữ liệu vĩnh viễn không chạy trên máy nào đã `upgrade head`. Phải là revision riêng.*
+- [x] T020 Gỡ mặc định `"hermes_gateway"` khỏi `backend/armarius/domain/entities/marius.py`, `backend/armarius/presentation/schemas.py` và `backend/armarius/application/use_cases/enrollment.py` (FR-040)
+- [x] T021 Xoá `backend/armarius/infrastructure/adapters/hermes_gateway.py` và dòng nối nó trong `backend/armarius/presentation/container.py` (FR-040)
+- [x] T022 **Đổi trước khi xoá**: sửa `type = "hermes_gateway"` ở `backend/tests/support/fakes.py:700` sang loại mặc định mới. **13 tệp test dùng chung fake này** — đổi mặc định trước thì T023 mới không làm đỏ hàng loạt
+- [x] T023 Xoá `backend/tests/test_hermes_adapter.py`; dọn phần tham chiếu hermes còn lại trong `test_onboarding_api.py`, `test_onboarding_service.py`, `test_invite_service.py`, `test_agent_prompt_footer.py`, `test_mariuses_api.py`. *Sửa 2026-08-24: câu gốc bảo xoá luôn `test_gateway_health_probe.py`, nhưng tệp ấy **không kiểm adapter hermes** — nó kiểm `GatewayHealthLivenessProbe`, thứ vẫn còn trong mã cho tới T043 và vẫn đang chạy thật. Xoá bây giờ là bỏ 132 dòng che một đoạn mã còn sống. Chuyển việc xoá nó xuống T043, chỗ chính probe ấy bị thay.*
 
 ### Ranh giới kiến trúc — dựng trước, không dựng sau
 
@@ -121,7 +121,7 @@ thấy nó chạy thật.
 ### Sống chết — sau port đã có, không đụng tầng nghiệp vụ
 
 - [ ] T042 [US1] Thêm `DaemonLivenessProbe` vào `backend/armarius/infrastructure/adapters/liveness_probe.py` — trả lời từ `machines` + `workplaces` + `agent_workplace_bindings`; agent chưa buộc chỗ làm nào thì **offline**; **không ping agent**, và **cú poll của daemon không được tính là dấu hiệu sống** (FR-006, FR-006a, FR-006d, FR-007f, FR-055b)
-- [ ] T043 [US1] Thay `GatewayHealthLivenessProbe` bằng `DaemonLivenessProbe` trong `backend/armarius/infrastructure/adapters/liveness_probe.py` và sửa dòng nối ở `backend/armarius/presentation/container.py:138`. **Lưu ý**: `PlaceholderLivenessProbe` đã bị thay từ đợt trước; trong mã hiện chỉ còn `GatewayHealthLivenessProbe` (FR-040)
+- [ ] T043 [US1] Thay `GatewayHealthLivenessProbe` bằng `DaemonLivenessProbe` trong `backend/armarius/infrastructure/adapters/liveness_probe.py`, sửa dòng nối ở `backend/armarius/presentation/container.py`, và **xoá `backend/tests/test_gateway_health_probe.py`** (chuyển từ T023 xuống — tệp ấy kiểm probe cũ, phải sống tới đúng lúc probe cũ chết). **Lưu ý**: `PlaceholderLivenessProbe` đã bị thay từ đợt trước; trong mã hiện chỉ còn `GatewayHealthLivenessProbe` (FR-040)
 - [ ] T044 [P] [US1] Hiện **lý do agent offline ở mức người đọc hiểu** (máy tắt / CLI bị gỡ / cạn hạn mức / chưa buộc chỗ làm) trên màn hình agent trong `frontend/src/pages/`, kèm chuỗi tiếng Việt ở `frontend/src/i18n/vi.ts` (FR-006c, FR-007c)
 
 ### Nhận việc — cửa duy nhất

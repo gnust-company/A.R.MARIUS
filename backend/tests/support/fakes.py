@@ -689,7 +689,7 @@ def _onboarding_id(ctx):
 
 
 class FakeAdapter(MariusAdapter):
-    """Stands in for a real runtime (e.g. Hermes) when driving onboarding in tests.
+    """Stands in for a real runtime when driving onboarding in tests.
 
     Each ``execute`` runs one scripted WA callback queued in ``drivers`` (an async
     ``(session_id) -> None``), then returns the scripted ``status`` — or raises, to simulate an
@@ -697,7 +697,7 @@ class FakeAdapter(MariusAdapter):
     (``agent_post_question`` / ``agent_post_complete``) to mimic a live Workspace Agent.
     """
 
-    type = "hermes_gateway"
+    type = "fake"
     capabilities = AdapterCapabilities(resumable=True, streaming=False, transport="fake")
 
     def __init__(

@@ -23,7 +23,7 @@ T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
 class _CountingAdapter(MariusAdapter):
     """A gateway whose ``test_environment`` verdict is scripted and whose calls are counted."""
 
-    type = "hermes_gateway"
+    type = "stub_gateway"
     capabilities = AdapterCapabilities(resumable=True, streaming=False, transport="http")
 
     def __init__(self, *, ok: bool = True, raises: BaseException | None = None) -> None:
@@ -58,8 +58,8 @@ def _registry(adapter: MariusAdapter) -> InMemoryAdapterRegistry:
 def _marius(api_key: str = "k") -> Marius:
     return Marius(
         name="Marin",
-        adapter_type="hermes_gateway",
-        adapter_config={"base_url": "http://hermes:8642", "api_key": api_key},
+        adapter_type="stub_gateway",
+        adapter_config={"base_url": "http://gateway.test:8642", "api_key": api_key},
     )
 
 
@@ -79,7 +79,7 @@ async def test_probe_false_when_gateway_unhealthy() -> None:
 
 
 async def test_probe_false_when_adapter_unknown() -> None:
-    # Empty registry → no adapter for "hermes_gateway": cannot verify ⇒ miss.
+    # Empty registry → no adapter for "stub_gateway": cannot verify ⇒ miss.
     probe = GatewayHealthLivenessProbe(InMemoryAdapterRegistry())
 
     assert await probe.probe(_marius()) is False

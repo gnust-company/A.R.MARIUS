@@ -2,7 +2,7 @@
 
 The recency+probe model has NO heartbeat endpoint: when a Marius goes quiet past T1 the
 `LivenessEngine` asks this port to poke the agent's runtime once. An implementation wraps
-the adapter (e.g. a cheap Hermes ping); it must be bounded and return a plain bool —
+the adapter (e.g. a cheap gateway ping); it must be bounded and return a plain bool —
 `True` = the agent answered (a signal), `False` = no answer (counts as a miss).
 """
 
