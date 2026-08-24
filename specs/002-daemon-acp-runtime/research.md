@@ -315,6 +315,36 @@ Chưa biết bốn thứ, và mỗi thứ đổi một phần thiết kế khác
 `gemini --experimental-acp`, ghi lại bốn câu trả lời trên vào chính tệp này, **rồi mới** viết mã. Không
 được vừa dò vừa code — dò sai thì phải viết lại cả tầng dựng môi trường cho nó.
 
+### 9.1 Đọc thẳng từ mã nguồn `google-gemini/gemini-cli@main`, 2026-08-24 — **CHƯA chạy thật**
+
+Người chủ 2026-08-24: máy phát triển **không cài được `gemini`** vì tài khoản không đủ quyền, nhưng có máy
+khác cài được. Nên T013 tách làm hai nửa — nửa tra cứu ghi ở đây, nửa chạy thật làm bằng
+`daemon/scripts/probe-gemini-acp.mjs`.
+
+> **Đọc bảng này phải nhớ**: nó đọc từ **mã nguồn và tài liệu**, không phải từ một lần chạy. Bản `gemini`
+> cài trên máy kia có thể khác nhánh `main`. Chưa được coi là đã trả lời cho tới khi script chạy xong và
+> đối chiếu khớp.
+
+| Câu hỏi | Trả lời (đọc từ mã) | Nguồn |
+| --- | --- | --- |
+| Đọc tệp bối cảnh nào | **`GEMINI.md`**, xếp tầng: `~/.gemini/GEMINI.md` dùng cho mọi dự án, cộng `GEMINI.md` ở thư mục làm việc và các thư mục cha. Nối hết lại rồi gửi kèm **mọi** lượt prompt | tài liệu `docs/cli/gemini-md.md` |
+| Dò kỹ năng ở thư mục nào | **`~/.gemini/skills/`** (cá nhân) và **`.gemini/skills/`** (dự án, tính từ gốc repo). Một kỹ năng là một thư mục có `SKILL.md`. Đầu phiên nó quét, nhét **tên + mô tả** vào system prompt, rồi gọi công cụ `activate_skill` khi thấy hợp | tài liệu `docs/cli/skills.md` |
+| Có khai nối lại phiên không | **CÓ** — `agentCapabilities.loadSession: true`, và `session/load` có hiện thực thật, không phải khai suông | `packages/cli/src/acp/acpRpcDispatcher.ts:91-93`, `acpSessionManager.ts:164` |
+| Có lộ tham số và kết quả gọi công cụ không | **Tham số: KHÔNG. Kết quả: một phần.** `tool_call` và `tool_call_update` chỉ mang `toolCallId`, `status`, `title`, `content`, `locations`, `kind` — **không có `rawInput`**, nên tham số gọi công cụ không rời khỏi CLI. `content` dựng từ `toolResult.returnDisplay`, tức bản **để hiển thị** chứ không phải kết quả thô; và `toToolCallContent` trả `null` khi tool không có `returnDisplay`, nên có tool **không sinh nội dung kết quả nào** | `acpSession.ts:820-845`, `acpUtils.ts:47-83` |
+
+**Hệ quả nếu lần chạy thật xác nhận đúng:**
+
+- **Nối lại phiên: được.** Không phải rơi về FR-025. Lưu ý issue #15502 báo `loadSession: false` — đó là bản
+  cũ; mã hiện tại đã đổi. Đây đúng là lý do phải chạy thật thay vì tin một issue trên mạng.
+- **Nhật ký của Gemini phải đánh dấu `not_exposed_by_cli` cho phần tham số** gọi công cụ (FR-047), và
+  SC-011 không áp trọn cho nó.
+- Kết quả công cụ **có** nhưng là bản hiển thị. **Chưa hỏi người chủ**: bản hiển thị có tính là *kết quả*
+  theo FR-043b không, hay cũng phải đánh dấu là không lộ.
+
+**Câu hỏi thứ năm, không có trong bảng gốc nhưng daemon không tránh được**: `gemini` có đòi đăng nhập tương
+tác khi bị **một chương trình khác** khởi chạy (stdin không phải terminal) không? Issue #12042 báo đúng ca
+này, và daemon **luôn** chạy nó theo kiểu đó. Script hỏi luôn câu này.
+
 ---
 
 ## 11. Kỹ năng và thông điệp — kế thừa nguyên flow Multica (chốt 2026-08-23)

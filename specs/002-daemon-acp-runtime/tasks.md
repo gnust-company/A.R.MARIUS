@@ -62,7 +62,7 @@ Chi tiết và lý do ở [research.md §10](research.md).
 
 ### Nghiên cứu Gemini CLI — chặn riêng US4
 
-- [ ] T013 Cài `gemini`, chạy `gemini --experimental-acp`, ghi **bốn câu trả lời** vào `research.md` §9: đọc tệp bối cảnh nào, dò kỹ năng ở thư mục nào, có khai nối lại phiên không, có lộ tham số và kết quả gọi công cụ không. Điền hai ô **chưa xác minh** trong bảng ở [research §11.1](research.md). **Không được viết mã Gemini trước khi task này xong** (FR-039a)
+- [ ] T013 Cài `gemini`, chạy `gemini --experimental-acp`, ghi **bốn câu trả lời** vào `research.md` §9: đọc tệp bối cảnh nào, dò kỹ năng ở thư mục nào, có khai nối lại phiên không, có lộ tham số và kết quả gọi công cụ không. Điền hai ô **chưa xác minh** trong bảng ở [research §11.1](research.md). **Không được viết mã Gemini trước khi task này xong** (FR-039a). *Sửa 2026-08-24: máy phát triển không cài được `gemini` (người chủ: tài khoản không đủ quyền), nên T013 tách hai nửa. **Nửa tra cứu — xong**: đọc thẳng mã nguồn `gemini-cli@main`, bốn câu trả lời cùng trích dẫn tệp:dòng nằm ở [research §9.1](research.md), kèm một câu hỏi thứ năm về đăng nhập khi bị chương trình khác khởi chạy. **Nửa chạy thật — chưa**: `daemon/scripts/probe-gemini-acp.mjs`, người chủ chạy ở máy có `gemini` rồi gửi `gemini-acp-probe.log` và `.json` về. Tick T013 khi đối chiếu kết quả chạy thật với §9.1 xong. Đọc mã KHÔNG thay được chạy thật: issue #15502 trên mạng báo `loadSession: false` trong khi mã hiện tại là `true`.*
 
 ### Schema và migration
 
