@@ -111,6 +111,7 @@ thấy nó chạy thật.
 - [ ] T036 [US1] Thêm `PUT /daemon/workplaces` và `POST /daemon/heartbeat` vào `backend/armarius/presentation/api/daemon.py`; chỗ làm mang **tên máy đọc được** qua `machines.display_name` (FR-002, FR-003, FR-004)
 - [ ] T037 [US1] Viết `backend/armarius/infrastructure/daemon/workplaces.py` — đồng bộ chỗ làm; CLI mất thì chuyển `not_ready(cli_removed)`, **không xoá** vì agent đang buộc vào đó (FR-033)
 - [ ] T038 [P] [US1] Viết `daemon/internal/supervisor/heartbeat.go` — phát nhịp 15 giây kèm số chỗ trống hiện tại (FR-004, FR-055c)
+- [ ] T038a [US1] Dựng ruột cho lệnh `status`: viết `daemon/internal/client/status.go`, nối vào `daemon/cmd/armarius-daemon/main.go`, và cho `start` ghi ra một tệp trạng thái nhỏ khi lên để `status` biết daemon còn sống không. In ra: workspace đã nối, các agent CLI dò được (dùng lại T033) kèm chỗ làm nào sẵn sàng, và tiến trình daemon còn chạy hay không; kèm cờ `-json` (FR-005a). *Thêm 2026-08-24: T002 khai ba lệnh con nhưng chỉ `login` (T030) và `start` (T038, T052, T054) có task dựng ruột — `status` thì không, và cũng không FR nào đòi nó. Lỗ này có từ bản `tasks.md` gốc (commit `7a590f2`), do chính cơ chế "lệnh chưa dựng thì báo lỗi kèm số task còn nợ" của PR #218 phơi ra. Người chủ chốt giữ lệnh này 2026-08-24, kèm FR-005a làm chỗ dựa.*
 
 ### Buộc agent vào chỗ làm — lỗ nghiệp vụ, không có nó thì cả chuỗi đứt
 
@@ -303,6 +304,7 @@ Phase 8 Polish
 - T045 chặn T046, T047, T048 — có cửa nhận việc rồi mới có route
 - T025 chặn T072 — không có Postgres thật thì test nhận việc vô nghĩa
 - T039 chặn T042 — chưa ghi được mối buộc agent↔chỗ làm thì `DaemonLivenessProbe` không có gì để đọc
+- T030 và T033 chặn T038a — `status` đọc tệp cấu hình mà `login` ghi ra, và dùng lại phần dò CLI
 - T056 chặn T057 và T059 · T058 chặn T060 và T079 — dựng thông điệp và gói kỹ năng trước, ghi lại và đặt vào chỗ sau
 - T062 chặn T125 — gỡ route rồi mới sửa tờ hướng dẫn cho khớp
 

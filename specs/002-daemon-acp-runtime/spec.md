@@ -256,6 +256,13 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   chuyển sang **không sẵn sàng**.
 - **FR-005**: Khi daemon tắt có trật tự, nó PHẢI gỡ đăng ký mọi chỗ làm của mình thay vì để hệ thống chờ
   hết ngưỡng.
+- **FR-005a**: Daemon PHẢI trả lời được **ngay tại cái máy đang chạy nó** câu hỏi *"máy này đang ở tình
+  trạng nào"*: đã nối vào workspace nào, dò được những agent CLI nào và chỗ làm nào đang sẵn sàng, và
+  **có tiến trình daemon nào đang sống trên máy này hay không**. Câu trả lời PHẢI có cả dạng đọc bằng mắt
+  và dạng máy đọc được. Lý do điều khoản này tồn tại: màn hình Máy trên giao diện web chỉ nói được là máy
+  **im lặng** — nó không tách được máy tắt, daemon chết, token hết hạn hay CLI bị gỡ, vì cả bốn ca đều
+  biểu hiện y hệt nhau: không còn gì gửi lên nữa. Chỉ một câu hỏi đặt tại chỗ mới phân biệt được (bổ sung
+  2026-08-24; Multica có đúng cụm này ở `multica daemon status`).
 - **FR-006**: Tầng nghiệp vụ CHỈ ĐƯỢC hỏi đúng một câu — **"agent này sống hay chết?"**. Nó KHÔNG ĐƯỢC
   biết tới khái niệm máy, runtime hay daemon (Hiến pháp — Điều III). Chuỗi máy → runtime → agent là chi
   tiết nằm sau hợp đồng adapter.
