@@ -407,6 +407,12 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   KHÔNG gửi tin báo "đầu việc đã khép lại" xuống daemon (chốt 2026-08-22, theo đúng cách Multica làm).
   Daemon tự hỏi trạng thái đầu việc trong lúc quét. Điều kiện xoá: đầu việc **đã xong hoặc đã huỷ** *và*
   đã im quá hạn giữ đặt được. Hiện vật đã đẩy lên kho **KHÔNG ĐƯỢC** thu hồi theo.
+- **FR-021a**: Thư mục làm việc mà server **không nhận ra thuộc đầu việc nào** PHẢI có đường thu hồi riêng,
+  hạn dài hơn hẳn hạn ở FR-021. Lý do phải có điều khoản này: bộ dọn KHÔNG ĐƯỢC đoán — nó chỉ xoá khi
+  **biết** đầu việc đã khép lại — nên một thư mục mà server không kể tên sẽ nằm lại **vĩnh viễn** trên máy
+  người dùng. Đây đúng ca Multica đã gặp và xử bằng nhánh riêng *"không có sổ ghi + 72 giờ → xoá"*. Hạn
+  riêng phải dài hơn vì đây là ca **đoán**, không phải ca **biết** (bổ sung 2026-08-24, phát hiện lúc dựng
+  T009).
 - **FR-022**: Hệ thống KHÔNG ĐƯỢC thu hồi thư mục làm việc mà **một lượt chạy đang giữ**.
 
 ### Nhóm D — Phiên và mạch làm việc
