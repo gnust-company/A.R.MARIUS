@@ -156,7 +156,7 @@ func runStatus(_ context.Context, args []string, out io.Writer) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	return notImplemented("status", "T033, T042")
+	return notImplemented("status", "T038a")
 }
 
 // newFlagSet builds a flag set that reports errors to out and never calls os.Exit, so that a
