@@ -373,6 +373,13 @@ class RunModel(Base):
 
 class RunEventModel(Base):
     __tablename__ = "run_events"
+    __table_args__ = (
+        # Feature 002: reading a run's log filtered by event kind is a supported query, so
+        # it gets an index. Declared here rather than only in the migration — `create_all`
+        # builds from this metadata, and an index the metadata does not know about is
+        # missing from every test database and proposed for deletion by autogenerate.
+        Index("ix_run_events_run_id_type", "run_id", "type"),
+    )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     run_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("runs.id"), index=True)
     seq: Mapped[int] = mapped_column(Integer, default=0)
