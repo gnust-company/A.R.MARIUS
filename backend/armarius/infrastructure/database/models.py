@@ -362,6 +362,9 @@ class RunModel(Base):
     error: Mapped[str | None] = mapped_column(Text)
     next_action: Mapped[str | None] = mapped_column(Text)
     continuation_attempt: Mapped[int] = mapped_column(Integer, default=0)
+    # Feature 002 / Constitution III: a runtime took this run. Deliberately says nothing
+    # about *which* machine — that lives in `run_claims`, below the adapter contract.
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_output_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -375,11 +378,29 @@ class RunEventModel(Base):
     seq: Mapped[int] = mapped_column(Integer, default=0)
     type: Mapped[str] = mapped_column(String(60))
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Feature 002 — the trace of what was left out, so the UI can say *why* rather than
+    # showing a gap. `omission_reason` separates the two causes that look alike on screen
+    # but are not: "truncated_by_policy" (over the size threshold) and "not_exposed_by_cli"
+    # (the CLI never revealed the data). `redacted` means the daemon masked a secret before
+    # sending — masking happens on the user's machine, never here.
+    truncated: Mapped[bool] = mapped_column(Boolean, default=False)
+    original_byte_size: Mapped[int | None] = mapped_column(Integer)
+    omission_reason: Mapped[str | None] = mapped_column(String(40))
+    redacted: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ArtifactModel(Base):
     __tablename__ = "artifacts"
+    __table_args__ = (
+        # Feature 002: publishing is retried freely — a push that dies mid-upload is
+        # simply called again, possibly in a later run. Same task, same logical name,
+        # same bytes is the *same* artifact. Same name with different bytes is a new
+        # version, so the hash has to be part of the key.
+        UniqueConstraint(
+            "task_id", "logical_name", "content_hash", name="uq_artifact_task_name_hash"
+        ),
+    )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     project_id: Mapped[UUID | None] = mapped_column(Uuid)
     task_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tasks.id"), index=True)
@@ -388,6 +409,9 @@ class ArtifactModel(Base):
     kind: Mapped[str] = mapped_column(String(40), default="file")
     uri: Mapped[str] = mapped_column(Text)
     content_sha256: Mapped[str | None] = mapped_column(String(64))
+    # The name the agent chose, and the hash the dedup key is built on.
+    logical_name: Mapped[str] = mapped_column(String(300), default="")
+    content_hash: Mapped[str] = mapped_column(String(64), default="")
     size_bytes: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -651,3 +675,8 @@ class TaskPushReasonModel(Base):
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# Feature 002: the daemon runtime's tables share this metadata, so `create_all` and
+# Alembic autogenerate both see them. Bottom import — `daemon.models` needs `Base` above.
+from armarius.infrastructure.daemon import models as daemon_models  # noqa: E402,F401

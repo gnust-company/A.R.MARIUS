@@ -82,6 +82,9 @@ class Run:
     error: str | None = None
     next_action: str | None = None
     continuation_attempt: int = 0
+    # A runtime accepted this run. Says nothing about which one, and must not: the domain
+    # layer has no concept of a machine (Constitution III).
+    accepted_at: datetime | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
     last_output_at: datetime | None = None

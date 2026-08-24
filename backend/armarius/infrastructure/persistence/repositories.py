@@ -1393,6 +1393,7 @@ class SqlRunRepository(RunRepository):
                 error=run.error,
                 next_action=run.next_action,
                 continuation_attempt=run.continuation_attempt,
+                accepted_at=run.accepted_at,
                 started_at=run.started_at,
                 finished_at=run.finished_at,
                 last_output_at=run.last_output_at,
@@ -1430,6 +1431,7 @@ class SqlRunRepository(RunRepository):
         m.error = run.error
         m.next_action = run.next_action
         m.continuation_attempt = run.continuation_attempt
+        m.accepted_at = run.accepted_at
         m.started_at = run.started_at
         m.finished_at = run.finished_at
         m.last_output_at = run.last_output_at

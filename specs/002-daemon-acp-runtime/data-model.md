@@ -76,8 +76,17 @@ Phục vụ device flow ở [research §1](research.md).
 | `workspace_id` | UUID, FK \| null | Điền lúc người dùng duyệt |
 | `approved_by_user_id` | UUID \| null | |
 | `machine_id` | UUID \| null | Điền lúc cấp token |
+| `reported_platform` | text | Daemon khai lúc `link/start` |
+| `reported_daemon_version` | text | Daemon khai lúc `link/start` |
+| `reported_hostname` | text | Daemon khai lúc `link/start`; thành `machines.display_name` lúc duyệt |
 | `expires_at` | timestamptz | **10 phút** |
 | `consumed_at` | timestamptz \| null | Dùng một lần, không dùng lại |
+
+**Ba cột `reported_*` bổ sung 2026-08-24 lúc hiện thực T014.** Hợp đồng
+[`POST /daemon/link/start`](contracts/daemon-api.md) nhận `platform`, `daemon_version` và `hostname`, nhưng
+hàng `machines` chỉ ra đời **sau khi người dùng duyệt**. Giữa hai mốc ấy không còn hàng nào khác để chứa ba
+giá trị này, nên chúng phải sống ở đây. Thiếu chúng thì màn hình duyệt không nói được người dùng đang duyệt
+máy nào.
 
 ---
 
