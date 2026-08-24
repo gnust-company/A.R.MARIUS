@@ -11,8 +11,10 @@ adding one to host three assertions would cost more than it guards. If a runner 
 arrives, these three move.
 
   * III — Trung lập adapter (FR-083)   → no runtime branching in domain/ or application/
+  * III — Trung lập adapter (FR-035/037) → those layers never learn *where* work runs either
   * IV — Đẩy, không hỏi-vòng (FR-080)  → no refetch timer in the UI
   * VI — Tiếng Việt cho người dùng (FR-084) → diacritics kept; nothing hardcoded outside i18n
+  * FR-060                             → the worker self-claim route stays gone
 """
 
 from __future__ import annotations
@@ -105,6 +107,116 @@ def test_the_business_layers_never_branch_on_which_runtime_it_is() -> None:
     assert not offenders, (
         "Tầng nghiệp vụ không được nhánh mã theo loại agent (FR-083, Hiến pháp III).\n"
         "Đưa phần khác nhau xuống sau hợp đồng `MariusAdapter`:\n  " + "\n  ".join(offenders)
+    )
+
+
+# ── III. Ranh giới nơi việc chạy (FR-035, FR-037, SC-008) ───────────────────────
+
+# The same principle as the check above, one level out. That one stops the business layers
+# asking *which kind of agent* this is; this one stops them learning *where* the work runs.
+#
+# Both words matter for the same reason. A use case that knows a task runs on a machine
+# under a daemon is a use case that has to be reopened the day work runs somewhere else,
+# by someone who has to reconstruct what each branch was protecting. The place work runs
+# belongs to infrastructure; what reaches the business layers is a slot that is free or a
+# slot that is taken, and it reads the same whichever side of the wire filled it in.
+#
+# What this buys, concretely, is SC-008: adding a new kind of agent CLI touches the bottom
+# layer and nothing else — and the proof is a check that runs with the suite rather than a
+# claim in a design document.
+_ELSEWHERE_WORDS = frozenset(
+    {
+        "daemon",
+        "daemons",
+        "machine",
+        "machines",
+        "runtime",
+        "runtimes",
+        "workplace",
+        "workplaces",
+    }
+)
+
+# Python's own names, which cannot be renamed and mean nothing about where work runs.
+_NOT_OURS = frozenset({"RuntimeError", "RuntimeWarning"})
+
+# Splits an identifier into its words, both conventions at once, so `machine_id` and
+# `MachineAdapter` are both caught while `RuntimeError`-shaped names stay intact for the
+# allow-list above to handle.
+_IDENT_WORD = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z]*|[a-z]+|\d+")
+
+
+def _identifier_words(name: str) -> set[str]:
+    return {w.lower() for w in _IDENT_WORD.findall(name)}
+
+
+def _names_in(path: Path) -> list[tuple[int, str]]:
+    """Every identifier in the file, with its line. Comments and strings never produce a
+    NAME token, so an explanation of the rule cannot trip the rule."""
+    text = path.read_text(encoding="utf-8")
+    return [
+        (tok.start[0], tok.string)
+        for tok in tokenize.generate_tokens(io.StringIO(text).readline)
+        if tok.type == tokenize.NAME
+    ]
+
+
+def test_the_business_layers_never_learn_where_the_work_runs() -> None:
+    offenders: list[str] = []
+    for path in _sources(BACKEND / "armarius" / "domain", BACKEND / "armarius" / "application"):
+        for line_no, name in _names_in(path):
+            if name in _NOT_OURS:
+                continue
+            if _identifier_words(name) & _ELSEWHERE_WORDS:
+                offenders.append(f"{path.relative_to(BACKEND)}:{line_no}  {name}")
+    assert not offenders, (
+        "Tầng nghiệp vụ không được biết việc chạy ở đâu (FR-035, FR-037, SC-008,\n"
+        "Hiến pháp III). Đặt tên theo thứ tầng này thật sự cần — một chỗ chạy còn trống\n"
+        "hay đã bị chiếm — rồi để hạ tầng trả lời:\n  " + "\n  ".join(offenders)
+    )
+
+
+# ── FR-060. Thợ vẫn không được tự nhận việc ─────────────────────────────────────
+
+# Removed in spec 001 and it stays removed: a worker does not take work, it asks, and the
+# Leader — the only one who can see the whole board — decides.
+#
+# `POST /daemon/runs/claim` is not this route and is not checked here. That one is the
+# transport for a task the Leader has **already** assigned, carrying it from the server
+# down to wherever it will run; the assignee it names never changes. The two live in
+# different files because they are different things (FR-060), and the check is scoped to
+# the agent-facing router for exactly that reason.
+
+_AGENT_ROUTER = BACKEND / "armarius" / "presentation" / "api" / "agent.py"
+
+# Shape 1: the route comes back under its own name.
+_CLAIM_ROUTE = re.compile(
+    r"@router\.(?:post|put|patch)\(\s*[\"'][^\"']*(?:claim|take)", re.IGNORECASE
+)
+
+# Shape 2: the route comes back under an innocent name and calls the assignment use case
+# directly. Note this does not match `request_assignment`, which is the sanctioned "ask the
+# Leader" path and assigns nobody.
+_ASSIGNS_DIRECTLY = re.compile(r"\.assign(?:_within)?\s*\(")
+
+# Shape 3: a handler names the caller as the assignee of its own work. This is the one that
+# matters most — it is what "self-claim" means, whatever the route is called.
+_NAMES_ITSELF = re.compile(r"assign\w*\s*=\s*marius\.id")
+
+
+def test_a_worker_still_cannot_take_work_for_itself() -> None:
+    offenders: list[str] = []
+    for i, raw in enumerate(_AGENT_ROUTER.read_text(encoding="utf-8").splitlines(), 1):
+        # Route paths are string literals, so this shape has to be read off the raw line;
+        # skipping whole-line comments keeps a note *about* the rule from tripping it.
+        if not raw.lstrip().startswith("#") and _CLAIM_ROUTE.search(raw):
+            offenders.append(f"agent.py:{i}  {raw.strip()}")
+    for i, line in enumerate(_python_code_lines(_AGENT_ROUTER), 1):
+        if _ASSIGNS_DIRECTLY.search(line) or _NAMES_ITSELF.search(line):
+            offenders.append(f"agent.py:{i}  {line.strip()}")
+    assert not offenders, (
+        "Thợ không được tự nhận việc (FR-060). Người giao việc vẫn là Trưởng dự án —\n"
+        "đường đúng là hỏi rồi chờ quyết, xem `request_task`:\n  " + "\n  ".join(offenders)
     )
 
 
