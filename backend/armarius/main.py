@@ -15,6 +15,7 @@ from armarius.infrastructure.database.migrations import ensure_schema
 from armarius.presentation.api import (
     agent,
     auth,
+    daemon,
     events,
     health,
     inbox,
@@ -94,6 +95,8 @@ def create_app() -> FastAPI:
     app.include_router(tasks.router)
     app.include_router(trace.router)
     app.include_router(agent.router)
+    app.include_router(daemon.router)
+    app.include_router(daemon.people_router)
 
     # Mount static files for skills, etc.
     static_dir = Path(__file__).parent.parent / "static"

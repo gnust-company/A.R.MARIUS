@@ -42,6 +42,13 @@ ENGLISH: dict[str, str] = {
     "onboarding_session_not_found": "Onboarding session not found.",
     "no_active_onboarding_session": "No onboarding session is open.",
     "run_not_found": "Run not found.",
+    "machine_not_found": "Machine not found.",
+    # The three ways a link code is dead. They are separate codes, not one code with a
+    # reason parameter, because the screen says something different for each: retype it,
+    # start again, or you already linked this machine.
+    "daemon_link_code_not_found": "No such link code.",
+    "daemon_link_code_expired": "That link code has expired.",
+    "daemon_link_code_already_used": "That link code has already been used.",
     "plan_not_found": "Plan not found.",
     "skill_not_linked": "Skill '{slug}' is not linked to you.",
     "onboarding_session_has_no_workspace": "This onboarding session has no workspace.",
@@ -50,6 +57,7 @@ ENGLISH: dict[str, str] = {
     # ── who is calling ────────────────────────────────────────────────────────
     "missing_bearer_token": "Missing bearer token.",
     "invalid_agent_token": "Invalid agent token.",
+    "invalid_machine_token": "Invalid or expired machine token.",
     "invalid_access_token": "Invalid or expired access token.",
     "invalid_refresh_token": "Invalid refresh token.",
     "invalid_credentials": "Invalid email or password.",
@@ -58,6 +66,8 @@ ENGLISH: dict[str, str] = {
     "email_already_registered": "Email already registered.",
     # ── the project's own state ───────────────────────────────────────────────
     "project_closed": "This project is closed — its history is read-only.",
+    "daemon_link_code_already_approved": "That link code has already been approved.",
+    "daemon_link_code_unavailable": "Could not allocate a link code; please try again.",
     "project_closed_no_wake": (
         "This project is closed — its agents are not woken any more."
     ),

@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     # reachable origin when agents run on other machines (e.g. https://armarius.example.com).
     public_base_url: str = "http://localhost:8080"
 
+    # Public URL of the web interface a *person* opens. Distinct from `public_base_url`,
+    # which is the API agents call: the machine-linking answer has to tell someone where
+    # to go and press approve, and that address is the interface, not the API.
+    web_base_url: str = "http://localhost:3000"
+
     # Shared Artifact Store backend: "local" (filesystem) or "minio" (S3, ARCHITECTURE §7).
     artifact_store_backend: str = "local"
     artifact_store_root: str = "./artifacts_store"
@@ -118,6 +123,25 @@ class Settings(BaseSettings):
     # How many review rejections on one task before the Leader is pulled in to re-examine
     # the brief and the acceptance criteria (FR-042).
     rejection_round_cap: int = 3
+
+    # --- Machines running the daemon (spec 002) --------------------------------
+    # How long the short code printed by `armarius-daemon login` stays valid. Ten
+    # minutes is the whole window a person has to walk from their terminal to a browser
+    # and press approve; long enough to do it unhurried, short enough that a code read
+    # off someone's screen is worthless by the time it is typed in (FR-001).
+    daemon_link_code_ttl_seconds: int = 600
+    # How often the waiting daemon should ask again. Handed to it in the answer rather
+    # than compiled in, so the pace stays the server's to change.
+    daemon_link_poll_interval_seconds: int = 5
+    # How long a machine's token is good for once issued.
+    daemon_token_ttl_days: int = 90
+    # How much life has to be left before a renewal request is granted. The daemon may
+    # ask at any rhythm it likes and the server answers *not yet* until the token falls
+    # inside this window — FR-014d puts the decision here precisely so a machine never
+    # computes its own expiry. Two weeks is comfortably longer than any plausible
+    # outage, so a machine that was switched off for a fortnight still comes back to a
+    # token it can renew rather than one it has to re-link.
+    daemon_token_renew_within_days: int = 14
 
     # Demo seed ("Acme Web Platform" scenario). OFF by default — real users get
     # their own empty workspace on register. Set ARMARIUS_SEED_DEMO=true to repopulate

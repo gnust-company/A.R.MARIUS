@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -104,7 +105,6 @@ func TestLoginRefusesToRunWithoutAServer(t *testing.T) {
 // running `armarius-daemon start` has to learn that the daemon did not come up.
 func TestUnbuiltSubcommandsFailLoudly(t *testing.T) {
 	cases := [][]string{
-		{"login", "-server", "https://armarius.example.com"},
 		{"start"},
 		{"status"},
 	}
@@ -118,6 +118,22 @@ func TestUnbuiltSubcommandsFailLoudly(t *testing.T) {
 				t.Errorf("the error does not say where the missing work is tracked: %v", err)
 			}
 		})
+	}
+}
+
+// `login` is built (T030), so it must no longer answer with the not-built-yet notice. Given a
+// server that does not resolve it has to fail on the call itself — proof that it got as far as
+// trying, rather than stopping at the door.
+func TestLoginActuallyGoesAndTalksToTheServer(t *testing.T) {
+	_, _, err := dispatch(t, "login", "-server", "https://armarius.invalid", "-config", filepath.Join(t.TempDir(), "daemon.json"))
+	if err == nil {
+		t.Fatal("login reported success against a server that does not exist")
+	}
+	if strings.Contains(err.Error(), "tasks.md") {
+		t.Errorf("login still reports itself as unbuilt: %v", err)
+	}
+	if !strings.Contains(err.Error(), "/daemon/link/start") {
+		t.Errorf("login failed somewhere other than the call it exists to make: %v", err)
 	}
 }
 

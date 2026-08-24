@@ -64,6 +64,13 @@ _NEEDS_NO_GUARD: dict[tuple[str, str], str] = {
     ("POST", "/v1/workspaces/{workspace_id}/skills/manual"): "tầng trên dự án",
     ("PUT", "/v1/workspaces/{workspace_id}/skills/{skill_id}"): "tầng trên dự án",
     ("DELETE", "/v1/workspaces/{workspace_id}/skills/{skill_id}"): "tầng trên dự án",
+    # Nối máy vào workspace và giữ token của máy: cùng một tầng trên dự án, và còn cao hơn
+    # nữa — lúc gọi hai lối đầu thì máy chưa thuộc về workspace nào, nên chẳng có dự án nào
+    # để mà hỏi. Một dự án đóng lại không được ngăn người ta cắm thêm máy.
+    ("POST", "/daemon/link/start"): "tầng trên dự án",
+    ("POST", "/daemon/link/poll"): "tầng trên dự án",
+    ("POST", "/daemon/token/renew"): "tầng trên dự án",
+    ("POST", "/v1/machines/link/{code}/approve"): "tầng trên dự án",
     # The two inbox doors: the guard is enforced **inside** rather than at the door,
     # because one path carries both an action that writes into the project and one that
     # only tidies the patron's own inbox — and which it is lives in the request body, read

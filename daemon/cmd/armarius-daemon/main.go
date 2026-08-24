@@ -24,7 +24,10 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
+
+	"github.com/gnust-company/armarius-daemon/internal/client"
 )
 
 // Stamped by the linker when a release is cut; see .goreleaser.yml at the repository root.
@@ -126,16 +129,24 @@ func emit(w io.Writer, format string, args ...any) {
 	_, _ = fmt.Fprintf(w, format, args...)
 }
 
-func runLogin(_ context.Context, args []string, out io.Writer) error {
+func runLogin(ctx context.Context, args []string, out io.Writer) error {
 	fs := newFlagSet("login", out)
 	server := fs.String("server", "", "base URL of the Armarius server this machine belongs to")
+	config := fs.String("config", defaultConfigPath(), "where to write this machine's token")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *server == "" {
 		return errors.New("login: -server is required")
 	}
-	return notImplemented("login", "T030")
+	_, err := client.Login(ctx, client.LoginOptions{
+		Server:     *server,
+		ConfigPath: *config,
+		Platform:   runtime.GOOS,
+		Version:    version,
+		Out:        out,
+	})
+	return err
 }
 
 func runStart(_ context.Context, args []string, out io.Writer) error {
