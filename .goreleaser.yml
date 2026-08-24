@@ -1,0 +1,70 @@
+# How a release of the daemon is cut.
+#
+# The daemon is the one piece of Armarius that does not run on our infrastructure — it runs on
+# other people's laptops and servers, on whatever operating system they already have. So it ships
+# as a plain self-contained binary per platform: nothing to install first, no runtime to match,
+# no container to run. That is why this file exists at all.
+#
+# This config lives at the repository root while the Go module lives in daemon/, because a
+# release is a property of the repository, not of one directory inside it. `dir:` below is what
+# bridges the two.
+version: 2
+
+project_name: armarius-daemon
+
+before:
+  hooks:
+    - go -C daemon mod tidy
+
+builds:
+  - id: armarius-daemon
+    dir: daemon
+    main: ./cmd/armarius-daemon
+    binary: armarius-daemon
+    env:
+      # No cgo: the binary has to run on a machine we know nothing about, including one whose C
+      # library is older than the one that built it.
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      # Keep the build machine's directory layout out of the shipped binary.
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: armarius-daemon
+    ids:
+      - armarius-daemon
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      # Windows has no tar in the places people unpack downloads.
+      - goos: windows
+        formats:
+          - zip
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'

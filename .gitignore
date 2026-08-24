@@ -14,3 +14,7 @@ backend/*.db-shm
 backend/*.db-wal
 backend/artifacts_store/
 .codegraph/
+
+# Build output of the Go daemon (binaries and release archives, never source)
+daemon/bin/
+dist/

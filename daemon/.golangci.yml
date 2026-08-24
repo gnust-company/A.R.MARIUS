@@ -1,0 +1,60 @@
+# How the daemon's Go code is held to a standard.
+#
+# There is no CI in this repository yet (see specs/002-daemon-acp-runtime/plan.md), so this file
+# plus `make check` is the whole gate. Everything enabled beyond the standard set was picked for
+# something this particular program actually does: it talks HTTP for hours on end, it launches
+# other people's binaries, and it holds a machine token on someone's own laptop.
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    # A daemon that leaks one response body per poll leaks all day.
+    - bodyclose
+    # Errors travel a long way here — from a CLI's stderr up to a task on someone's screen —
+    # so comparisons and wrapping have to be right.
+    - errorlint
+    # Writes the machine token, sets file permissions, runs os/exec. Exactly its remit.
+    - gosec
+    - misspell
+    # Every outbound request must carry the context that SIGTERM cancels, or shutdown hangs.
+    - noctx
+    - revive
+    - unconvert
+
+  settings:
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+        - name: indent-error-flow
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: var-declaration
+        - name: var-naming
+
+  exclusions:
+    generated: lax
+    rules:
+      # Tests reach for fixed paths, throwaway credentials and unchecked helpers on purpose.
+      - path: _test\.go
+        linters:
+          - gosec
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/gnust-company/armarius-daemon
