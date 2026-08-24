@@ -97,10 +97,10 @@ thấy nó chạy thật.
 
 ### Nối máy vào workspace
 
-- [ ] T027 [P] [US1] Viết `backend/armarius/infrastructure/daemon/enrollment.py` — sinh mã, duyệt, cấp token, tất cả dùng một lần và hết hạn sau 10 phút (FR-001)
-- [ ] T028 [US1] Thêm `POST /daemon/link/start` và `POST /daemon/link/poll` vào `backend/armarius/presentation/api/daemon.py` (FR-001)
-- [ ] T029 [US1] Thêm `POST /daemon/token/renew` vào `backend/armarius/presentation/api/daemon.py` — **server quyết** đã tới lúc gia hạn chưa (FR-014a, FR-014d)
-- [ ] T030 [P] [US1] Viết `daemon/internal/client/enroll.go` — lệnh `login`, in mã, hỏi lại theo nhịp, lưu token vào `~/.armarius/daemon.json` với quyền `0600` (FR-001)
+- [x] T027 [P] [US1] Viết `backend/armarius/infrastructure/daemon/enrollment.py` — sinh mã, duyệt, cấp token, tất cả dùng một lần và hết hạn sau 10 phút (FR-001) — **xong 2026-08-24**: token đúc **lúc trao**, không phải lúc duyệt, nên `consumed_at` đúng nghĩa và bí mật chỉ sinh ra đúng khoảnh khắc đưa được thẳng cho máy giữ nó; server chỉ giữ hash
+- [x] T028 [US1] Thêm `POST /daemon/link/start` và `POST /daemon/link/poll` vào `backend/armarius/presentation/api/daemon.py` (FR-001) — **xong 2026-08-24**, kèm **hai lối cho người duyệt** mà cả hợp đồng lẫn danh sách này đều chưa có: `GET /v1/machines/link/{code}` và `POST /v1/machines/link/{code}/approve`. Không có chúng thì màn hình ở T031 không gọi được vào đâu, mà máy thì không tự nhận mình vào workspace được. Đã ghi vào [hợp đồng](contracts/daemon-api.md) §1
+- [x] T029 [US1] Thêm `POST /daemon/token/renew` vào `backend/armarius/presentation/api/daemon.py` — **server quyết** đã tới lúc gia hạn chưa (FR-014a, FR-014d) — **xong 2026-08-24**: hạn 90 ngày, chỉ gia hạn khi còn dưới 14 ngày; gia hạn **giữ nguyên chuỗi bí mật**, chỉ dời hạn, để máy không phải ghi lại token giữa một lần chạy không ai trông
+- [x] T030 [P] [US1] Viết `daemon/internal/client/enroll.go` — lệnh `login`, in mã, hỏi lại theo nhịp, lưu token vào `~/.armarius/daemon.json` với quyền `0600` (FR-001) — **xong 2026-08-24**: ghi bằng cách **trộn vào** tệp cũ chứ không đè, vì tệp ấy dùng chung với năm con số của T026; tệp có sẵn mà đang lỏng thì bị siết lại `0600` chứ không tin
 - [ ] T031 [P] [US1] Viết màn hình duyệt mã `frontend/src/pages/LinkMachine.tsx` và thêm route `/link` (FR-001)
 - [ ] T032 [P] [US1] Thêm chuỗi tiếng Việt đủ dấu cho màn hình duyệt vào `frontend/src/i18n/vi.ts` (Điều VI)
 
@@ -169,7 +169,7 @@ thấy nó chạy thật.
 
 ### Test cho US1
 
-- [ ] T071 [P] [US1] `backend/tests/test_daemon_enrollment.py` — device flow, mã hết hạn, mã dùng một lần (FR-001)
+- [x] T071 [P] [US1] `backend/tests/test_daemon_enrollment.py` — device flow, mã hết hạn, mã dùng một lần (FR-001) — **xong 2026-08-24**: 12 test chạy qua app thật; cộng `daemon/internal/client/enroll_test.go` cho nửa bên máy
 - [ ] T072 [US1] `backend/tests/test_run_claim_atomic.py` — **chạy trên Postgres thật**; hai cú xin đồng thời chỉ một cú nhận được việc, và 5 lượt chạy đồng thời trên một máy không lượt nào bị nhận hai lần (FR-054, FR-054b, SC-009)
 - [ ] T073 [P] [US1] `backend/tests/test_daemon_claim_batch.py` — lấy nhiều đầu việc cùng lúc vẫn atomic (FR-055e)
 - [ ] T074 [P] [US1] `backend/tests/test_claim_expiry_returns_run.py` — quá hạn giữ thì đầu việc quay về trạng thái chưa ai nhận (FR-056a)
@@ -276,6 +276,7 @@ vật, cách báo lỗi và cách tính sống chết giống hệt nhau ở t�
 - [ ] T124 [P] Trong `backend/armarius/application/use_cases/recovery.py`: phân biệt **lỗi tạm** với **lỗi cần người xử**; token lượt chạy bị thu hồi, token daemon bị thu hồi giữa lượt chạy, và cạn hạn mức đều xếp vào loại sau, không tiêu ngân sách tự phục hồi (FR-014e, FR-014f, FR-032, FR-007c)
 - [ ] T125 [P] Cập nhật `backend/static/skills/armarius-mcp/SKILL.md` — gỡ các lệnh đã bị xoá (`enroll`, `enrollment_code`, `claim_task`) còn sót từ đợt trước, và gỡ mọi lệnh dạy agent tự cài kỹ năng (FR-011c)
 - [ ] T126 [P] `backend/tests/test_daemon_death_reuses_the_offline_flow.py` — giết daemon giữa lượt chạy: agent chuyển offline qua `DaemonLivenessProbe`, rồi **luồng offline đang có** tiếp quản đúng như trước, kể cả khoảng ân hạn. Đây là phép chứng minh cho FR-006b, FR-028, FR-029, FR-029a — thứ được cố ý **không viết mã mới** (SC-005, SC-010)
+- [ ] T126a [P] Chặn dò mã nối máy: đặt trần số lần gọi `GET /v1/machines/link/{code}` và `POST /v1/machines/link/{code}/approve` cho mỗi người dùng, và trần số lần gọi `POST /daemon/link/poll` cho mỗi mã, trong `backend/armarius/presentation/api/daemon.py`. **Ghi lúc hiện thực T028 (2026-08-24)**: mã dài 8 ký tự trên bảng chữ 32 ký tự và sống 10 phút, nên đoán mò là không thực tế — nhưng chuẩn device flow (RFC 8628 §5.2) đòi trần này, và nay chưa có chỗ nào trong dự án làm được việc chặn tần suất, nên nó là một mẩu hạ tầng phải dựng chứ không phải một dòng thêm vào (FR-001)
 - [ ] T127 [P] Viết `daemon/README.md` — hướng dẫn cài ba nền tảng, câu về Developer Mode trên Windows để bật symbolic link, và câu ghi nhận sản phẩm xây trên Multica kèm link repo gốc (FR-039b)
 - [ ] T128 Chạy `cd mcp && uv run pytest` trên bộ test riêng ở `mcp/tests/` — bắt buộc vì đợt này đổi schema backend
 - [ ] T129 Chạy **trọn bộ tám mục** của [quickstart.md](quickstart.md) trên dịch vụ thật, ghi lại số đo cho **cả 16 tiêu chí** SC-001…SC-015 — không chỉ bốn cái. Mục §5 phủ SC-011/SC-013/SC-014/SC-015, mục §6 phủ SC-005/SC-010, mục §7 phủ SC-009, mục §9 phủ phần kỹ năng

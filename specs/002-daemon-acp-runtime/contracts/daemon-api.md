@@ -34,6 +34,36 @@ Daemon hỏi lại mỗi `interval` giây cho tới khi người dùng duyệt.
 
 `token` chỉ hiện **đúng một lần**; server chỉ giữ hash.
 
+### `GET /v1/machines/link/{code}` — người duyệt xem đang duyệt máy nào
+
+Không phải lối của daemon: **người** gọi, xác thực bằng phiên đăng nhập thường. Bổ sung
+2026-08-24 lúc hiện thực T028 — màn hình duyệt ở T031 phải gọi được vào đâu đó, mà cả hợp đồng
+lẫn tasks.md đều chưa có lối nào cho nó.
+
+```json
+← 200 { "code": "KQ7F-M2XD", "hostname": "gnust-thinkpad", "platform": "linux",
+        "daemon_version": "0.1.0", "expires_at": "2026-08-24T…" }
+← 404   ← mã không có, hết hạn, hoặc đã dùng rồi
+```
+
+Ba giá trị `hostname`/`platform`/`daemon_version` là **lời máy tự khai**, không phải danh tính đã
+kiểm chứng. Màn hình phải nói rõ như vậy.
+
+Chỉ người đã đăng nhập mới gọi được: mã ngắn nên đoán mãi cũng ra, và đây đúng là lối sẽ xác nhận
+cho kẻ đoán biết là họ đoán trúng.
+
+### `POST /v1/machines/link/{code}/approve` — người duyệt
+
+```json
+→ { "workspace_id": "…" }
+← 200 { "code": "KQ7F-M2XD", "hostname": "gnust-thinkpad", … }
+← 404   ← mã chết, **hoặc** workspace không phải của người gọi (Điều I)
+← 409   ← đã có người duyệt mã này rồi
+```
+
+Đây là **chỗ duy nhất** một cái máy được nhận vào workspace. Không có lối nào khác, và không có
+đường nào cho máy tự nhận mình vào.
+
 ### `POST /daemon/token/renew`
 
 ```json
