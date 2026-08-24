@@ -52,12 +52,13 @@ lựa chọn.
 
 Chi tiết và lý do ở [research.md §10](research.md).
 
-- [ ] T007 [P] Bỏ ký ức dài hạn khỏi khái niệm nền: **không** dựng kho chung. Xử lý theo từng CLI trong `daemon/internal/execenv/home.go` — liên kết ra kho sống lâu hơn thư mục làm việc, đúng cách Multica làm cho Hermes (FR-007e)
+- [x] T007 [P] Bỏ ký ức dài hạn khỏi khái niệm nền: **không** dựng kho chung. Xử lý theo từng CLI trong `daemon/internal/execenv/home.go` — liên kết ra kho sống lâu hơn thư mục làm việc, đúng cách Multica làm cho Hermes (FR-007e)
 - [ ] T008 Thêm trạng thái **"đang chờ máy rảnh"** vào `backend/armarius/domain/services/push_reason_rules.py` — dùng **động cơ số 5**, **không đồng hồ, không tính giờ** (FR-008a, FR-008e, FR-008c)
-- [ ] T009 [P] Viết `daemon/internal/execenv/gc.go` — quét định kỳ, tự hỏi trạng thái đầu việc, xoá khi đầu việc **xong hoặc huỷ** và đã im **24 giờ**; thư mục đang có lượt chạy thì không đụng (FR-021)
+- [x] T009 [P] Viết `daemon/internal/execenv/gc.go` — quét định kỳ, tự hỏi trạng thái đầu việc, xoá khi đầu việc **xong hoặc huỷ** và đã im **24 giờ**; thư mục đang có lượt chạy thì không đụng (FR-021)
+- [ ] T009a Thêm nhánh thu hồi thư mục **không ai nhận** vào `daemon/internal/execenv/gc.go` — thư mục mà server không kể tên trong lượt hỏi thì xoá sau **72 giờ** kể từ lần sửa gần nhất, tách hẳn khỏi hạn 24 giờ của FR-021 (FR-021a). *Thêm 2026-08-24: T009 chỉ xoá khi **biết** đầu việc đã khép lại, nên thư mục orphan nằm lại vĩnh viễn — lỗ này lộ ra lúc chạy thử T009 trên đĩa thật. Con số 72 giờ lấy theo nhánh sẵn có của Multica (research §10.3), người chủ đổi được.*
 - [x] T010 [P] Viết `daemon/internal/supervisor/watchdog.go` — ngưỡng im lặng nền **10 phút** đếm từ sự kiện gần nhất, **không** giới hạn tổng thời gian chạy (FR-031)
 - [x] T011 [P] Trong `daemon/internal/supervisor/watchdog.go`: cho phép từng CLI đặt ngưỡng riêng nhưng **chỉ siết chặt hơn, không nới rộng** ngưỡng nền (FR-031a)
-- [ ] T012 [P] Đặt hạn giữ phiên **14 ngày** trong `daemon/internal/execenv/gc.go` (FR-027)
+- [x] T012 [P] Đặt hạn giữ phiên **14 ngày** trong `daemon/internal/execenv/gc.go` (FR-027)
 
 ### Nghiên cứu Gemini CLI — chặn riêng US4
 
