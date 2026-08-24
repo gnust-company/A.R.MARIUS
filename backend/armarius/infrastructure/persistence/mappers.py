@@ -303,6 +303,7 @@ def run_to_entity(m: RunModel) -> Run:
         error=m.error,
         next_action=m.next_action,
         continuation_attempt=m.continuation_attempt,
+        accepted_at=m.accepted_at,
         started_at=m.started_at,
         finished_at=m.finished_at,
         last_output_at=m.last_output_at,
