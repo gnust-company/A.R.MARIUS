@@ -105,7 +105,9 @@ class DaemonLinkCodeModel(Base):
     __table_args__ = (UniqueConstraint("code", name="uq_daemon_link_code"),)
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    code: Mapped[str] = mapped_column(String(20), index=True)
+    # No `index=True`: the unique constraint below already is a unique index on `code`,
+    # which is what every lookup here goes through.
+    code: Mapped[str] = mapped_column(String(20))
     workspace_id: Mapped[UUID | None] = mapped_column(
         Uuid, ForeignKey("workspaces.id"), index=True
     )
@@ -127,6 +129,11 @@ class RunClaimModel(Base):
     Invariant: a run is either free (`machine_id IS NULL`) or held by exactly one machine
     with a live deadline — never both. The partial index below is what makes the claim
     statement cheap; it is the only index the hot compare-and-swap path needs.
+
+    Known and accepted: because that index is partial, a query for *every* claim of one
+    workplace scans the table. Nothing on a hot path does that, and the delete-a-workplace
+    case does not arise — a CLI that disappears from the machine becomes
+    `not_ready(cli_removed)`, never a deleted row, because agents are bound to it.
     """
 
     __tablename__ = "run_claims"

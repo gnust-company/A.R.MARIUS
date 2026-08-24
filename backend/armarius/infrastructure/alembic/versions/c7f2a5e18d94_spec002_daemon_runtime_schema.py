@@ -96,7 +96,6 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
         sa.UniqueConstraint("code", name="uq_daemon_link_code"),
     )
-    op.create_index("ix_daemon_link_codes_code", "daemon_link_codes", ["code"])
     op.create_index("ix_daemon_link_codes_workspace_id", "daemon_link_codes", ["workspace_id"])
 
     op.create_table(
