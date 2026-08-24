@@ -33,12 +33,12 @@ lựa chọn.
 
 **Purpose**: dựng khung cho chương trình Go mới và chỗ ngồi của phần backend mới.
 
-- [ ] T001 Tạo thư mục `daemon/` với `go.mod` (module `github.com/gnust-company/armarius-daemon`, Go 1.23+)
-- [ ] T002 [P] Tạo khung lệnh `daemon/cmd/armarius-daemon/main.go` với ba lệnh con: `login`, `start`, `status`
-- [ ] T003 [P] Cấu hình `daemon/.golangci.yml`
-- [ ] T004 [P] Cấu hình `.goreleaser.yml` ở gốc để đóng gói daemon cho linux/darwin/windows
+- [x] T001 Tạo thư mục `daemon/` với `go.mod` (module `github.com/gnust-company/armarius-daemon`, Go 1.23+)
+- [x] T002 [P] Tạo khung lệnh `daemon/cmd/armarius-daemon/main.go` với ba lệnh con: `login`, `start`, `status`
+- [x] T003 [P] Cấu hình `daemon/.golangci.yml`
+- [x] T004 [P] Cấu hình `.goreleaser.yml` ở gốc để đóng gói daemon cho linux/darwin/windows
 - [x] T005 Tạo thư mục `backend/armarius/infrastructure/daemon/` với `__init__.py`
-- [ ] T006 [P] Viết `daemon/Makefile` với một mục tiêu `check` chạy `go vet` + `golangci-lint run` + `go test ./...` — đây là cách kiểm của đợt này, **không có CI**
+- [x] T006 [P] Viết `daemon/Makefile` với một mục tiêu `check` chạy `go vet` + `golangci-lint run` + `go test ./...` — đây là cách kiểm của đợt này, **không có CI**
 
 ---
 
