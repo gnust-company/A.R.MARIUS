@@ -129,8 +129,10 @@ thấy nó chạy thật.
 ### Nhận việc — cửa duy nhất
 
 - [ ] T045 [US1] Viết `backend/armarius/infrastructure/daemon/claim.py` — `atomic compare-and-swap` một câu theo [research §4](research.md); ghi `run_claims.claimed_at` và `runs.accepted_at` **trong cùng một giao dịch**. Tính đúng-một-lần nằm ở đây, **không** dựa vào daemon tự xếp hàng (FR-053, FR-054, FR-054a, FR-054b)
-- [ ] T046 [US1] Thêm `POST /daemon/runs/claim` vào `backend/armarius/presentation/api/daemon.py` — server lấy **số nhỏ hơn** giữa trần và số chỗ trống daemon báo (FR-008, FR-008d, FR-055c)
-- [ ] T046a [US1] Nối trạng thái *đang chờ máy rảnh* vào thật: thêm một cổng ở `backend/armarius/application/ports/` trả lời "những lượt chạy nào đang chiếm hết chỗ mà đầu việc này cần", hiện thực ở `backend/armarius/infrastructure/daemon/`, rồi điền `slots_taken_by` trong `PushReasonService.snapshot()` tại `backend/armarius/application/use_cases/push_reason.py` (FR-008a, FR-008b, FR-008d). *Thêm 2026-08-24: T008 dựng xong luật nhưng **không ai điền dữ liệu vào**, nên trạng thái ấy chưa bao giờ xuất hiện thật; T055 vẽ màn hình lại cần nó. Tên cổng và tên phương thức **không được** mang chữ `daemon`/`machine`/`runtime`/`workplace` — T024 canh đúng chỗ này.*
+- [ ] T046 [US1] Thêm `POST /daemon/runs/claim` vào `backend/armarius/presentation/api/daemon.py`, và cùng lúc **nối trọn hành vi khi máy đầy** — một task, vì nửa vời thì không ra hành vi nào cả (FR-008, FR-008a, FR-008b, FR-008c, FR-008d, FR-008e, FR-055c):
+  1. Server lấy **số nhỏ hơn** giữa trần và số chỗ trống daemon báo; phần vượt trần **giữ nguyên ở trạng thái chưa ai nhận**, không huỷ, không xếp lại, không hẹn giờ thử lại.
+  2. Thêm một cổng ở `backend/armarius/application/ports/` trả lời "những lượt chạy nào đang chiếm hết chỗ mà đầu việc này cần", hiện thực ở `backend/armarius/infrastructure/daemon/`, rồi điền `slots_taken_by` trong `PushReasonService.snapshot()` — nếu không, đầu việc chờ 10 phút là lưới an toàn tưởng nó rơi và reo chuông nhầm. Tên cổng và tên phương thức **không được** mang chữ `daemon`/`machine`/`runtime`/`workplace` — T024 canh đúng chỗ này.
+  3. Lượt hỏi tiếp theo của daemon, khi đã có chỗ trống, **phải lấy được đúng đầu việc đang chờ ấy** — đây mới là bằng chứng hành vi, không phải hai mục trên.
 - [ ] T047 [US1] Thêm `POST /daemon/runs/{run_id}/start` — trả **404** nếu lượt chạy không còn thuộc máy này; đầu việc đã có máy nhận thì buộc vào đúng máy ấy (FR-007d, FR-058, FR-059)
 - [ ] T048 [US1] Viết `DaemonAdapter` trong `backend/armarius/infrastructure/adapters/daemon_adapter.py` — `dispatch()` **chỉ đánh dấu run có thể nhận rồi trả về ngay**, không gọi ra máy (FR-009)
 - [ ] T049 [US1] Sửa `infer_drive` trong `backend/armarius/domain/services/push_reason_rules.py` — động cơ số 1 bật từ `accepted_at`, **không đợi** `run_last_output_at` (FR-056)
@@ -176,6 +178,7 @@ thấy nó chạy thật.
 - [ ] T077 [P] [US1] `backend/tests/test_agent_must_bind_to_a_workplace.py` — tạo agent không chỗ làm bị từ chối; mối buộc không đổi được sau khi tạo; agent chưa buộc thì offline (FR-007, FR-007f)
 - [ ] T078 [P] [US1] `backend/tests/test_wake_message_is_recorded_at_claim.py` — toàn văn thông điệp có mặt trong `run_events` ngay sau cú nhận việc, không đợi daemon báo về (FR-012a, FR-042)
 - [ ] T079 [P] [US1] `backend/tests/test_claim_carries_skills.py` — gói nhận việc mang đủ kỹ năng của agent ấy và **chỉ** của agent ấy; đường dẫn thoát ra ngoài bị từ chối (FR-011b, FR-007b)
+- [ ] T079a [US1] `backend/tests/test_full_machine_just_waits.py` — **chạy trên Postgres thật**, viết đúng hành vi người chủ đòi và không viết gì khác: trần 5, đang chạy đủ 5, đầu việc thứ 6 tới. Nó **không** bị huỷ, **không** bị hẹn giờ thử lại, **không** bị lưới an toàn tuyên đình trệ dù để trôi quá ngưỡng 10 phút, và mang trạng thái *đang chờ tới lượt* phân biệt được với *máy chết*. Rồi cho một lượt chạy kết thúc và để daemon hỏi lại theo nhịp poll bình thường — **đúng đầu việc thứ 6 ấy phải được lấy đi**, không cần ai đánh thức nó (FR-008, FR-008a, FR-008b, FR-008c, FR-008d, FR-008e)
 - [ ] T080 [P] [US1] `daemon/internal/execenv/skills_test.go` — kỹ năng ghi ra **tệp thật** chứ không phải liên kết, và **ghi mới** ở lượt chạy thứ hai (FR-011b)
 - [ ] T081 [P] [US1] `daemon/internal/discovery/capabilities_test.go` — khả năng lấy từ hỏi thật, không từ tên loại (FR-017)
 - [ ] T082 [P] [US1] `daemon/internal/execenv/linkprobe_test.go` — không tạo được liên kết bắt buộc thì báo không sẵn sàng, **không âm thầm chép** ([research §5](research.md))
@@ -305,7 +308,7 @@ Phase 8 Polish
 - T009 chặn T091 · T011 chặn T119 · T012 chặn T111 — phần dọn và phần watchdog phải có trước khi nối vào luồng chạy
 - T045 chặn T046, T047, T048 — có cửa nhận việc rồi mới có route
 - T025 chặn T072 — không có Postgres thật thì test nhận việc vô nghĩa
-- T008 và T046 chặn T046a · T046a chặn T055 — có luật rồi mới có dữ liệu, có dữ liệu rồi mới vẽ được
+- T008 chặn T046 · T046 chặn T055 — có luật rồi mới có dữ liệu, có dữ liệu rồi mới vẽ được
 - T039 chặn T042 — chưa ghi được mối buộc agent↔chỗ làm thì `DaemonLivenessProbe` không có gì để đọc
 - T030 và T033 chặn T038a — `status` đọc tệp cấu hình mà `login` ghi ra, và dùng lại phần dò CLI
 - T056 chặn T057 và T059 · T058 chặn T060 và T079 — dựng thông điệp và gói kỹ năng trước, ghi lại và đặt vào chỗ sau
@@ -318,7 +321,7 @@ Phase 8 Polish
 | Setup | T002, T003, T004, T006 |
 | Phần Go và phần Python của US1 | T030/T033/T035/T038/T052/T054 song song với T027/T028/T036/T045 |
 | Ba nhánh của gói việc | T059 thông điệp · T060 kỹ năng · T061 bộ công cụ — khác tệp, chạy được ngay sau T056/T058 |
-| Toàn bộ test của US1 | T071, T073, T074, T075, T076, T077, T078, T079, T080, T081, T082 |
+| Toàn bộ test của US1 | T071, T073, T074, T075, T076, T077, T078, T079, T079a, T080, T081, T082 |
 | US2 và US5 | hai phase chạy song song sau khi US1 xong |
 | Giao diện | T031, T041, T044, T055, T069, T102 song song với phần backend tương ứng |
 
