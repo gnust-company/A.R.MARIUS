@@ -55,8 +55,8 @@ Chi tiết và lý do ở [research.md §10](research.md).
 - [ ] T007 [P] Bỏ ký ức dài hạn khỏi khái niệm nền: **không** dựng kho chung. Xử lý theo từng CLI trong `daemon/internal/execenv/home.go` — liên kết ra kho sống lâu hơn thư mục làm việc, đúng cách Multica làm cho Hermes (FR-007e)
 - [ ] T008 Thêm trạng thái **"đang chờ máy rảnh"** vào `backend/armarius/domain/services/push_reason_rules.py` — dùng **động cơ số 5**, **không đồng hồ, không tính giờ** (FR-008a, FR-008e, FR-008c)
 - [ ] T009 [P] Viết `daemon/internal/execenv/gc.go` — quét định kỳ, tự hỏi trạng thái đầu việc, xoá khi đầu việc **xong hoặc huỷ** và đã im **24 giờ**; thư mục đang có lượt chạy thì không đụng (FR-021)
-- [ ] T010 [P] Viết `daemon/internal/supervisor/watchdog.go` — ngưỡng im lặng nền **10 phút** đếm từ sự kiện gần nhất, **không** giới hạn tổng thời gian chạy (FR-031)
-- [ ] T011 [P] Trong `daemon/internal/supervisor/watchdog.go`: cho phép từng CLI đặt ngưỡng riêng nhưng **chỉ siết chặt hơn, không nới rộng** ngưỡng nền (FR-031a)
+- [x] T010 [P] Viết `daemon/internal/supervisor/watchdog.go` — ngưỡng im lặng nền **10 phút** đếm từ sự kiện gần nhất, **không** giới hạn tổng thời gian chạy (FR-031)
+- [x] T011 [P] Trong `daemon/internal/supervisor/watchdog.go`: cho phép từng CLI đặt ngưỡng riêng nhưng **chỉ siết chặt hơn, không nới rộng** ngưỡng nền (FR-031a)
 - [ ] T012 [P] Đặt hạn giữ phiên **14 ngày** trong `daemon/internal/execenv/gc.go` (FR-027)
 
 ### Nghiên cứu Gemini CLI — chặn riêng US4
@@ -80,7 +80,7 @@ Chi tiết và lý do ở [research.md §10](research.md).
 
 - [ ] T024 **Mở rộng tệp guard đang có** `backend/tests/test_constitution_guards.py` — thêm phép quét cấm chuỗi `daemon`, `machine`, `runtime`, `workplace` xuất hiện trong `application/use_cases/` và `domain/`, và cấm route tự nhận việc quay lại. Đặt cạnh `test_the_business_layers_never_branch_on_which_runtime_it_is` **đang có ở dòng 99**, không tạo tệp thứ hai làm việc gần giống (FR-035, FR-037, FR-038, FR-060, SC-008)
 - [ ] T025 Trỏ test phần nhận việc vào **Postgres của `docker-compose.yml`** (`postgres:16-alpine` đã có sẵn) bằng một fixture riêng trong `backend/tests/conftest.py` đọc `TEST_DATABASE_URL`; `psycopg[binary]` đã nằm trong `backend/pyproject.toml` nhóm `postgres` nên **không thêm dependency**. SQLite không có `SKIP LOCKED` nên test nhận việc chạy trên nó là vô nghĩa
-- [ ] T026 [P] Thêm `daemon/internal/config/config.go` đọc năm con số đặt được: nhịp poll, nhịp heartbeat, hạn giữ sau khi nhận việc, ngưỡng cắt nhật ký, trần đồng thời. Hạn giữ PHẢI lớn hơn mốc 15 giây ở SC-002 (FR-056c) — chốt **120 giây** theo [research §3](research.md)
+- [x] T026 [P] Thêm `daemon/internal/config/config.go` đọc năm con số đặt được: nhịp poll, nhịp heartbeat, hạn giữ sau khi nhận việc, ngưỡng cắt nhật ký, trần đồng thời. Hạn giữ PHẢI lớn hơn mốc 15 giây ở SC-002 (FR-056c) — chốt **120 giây** theo [research §3](research.md)
 
 **Checkpoint**: schema xong, đường cũ đã gỡ sạch. Mọi user story bắt đầu được.
 
