@@ -18,8 +18,10 @@ booked a wake or parked on a patron — they say so, and the sweep only compares
 
 **Not every drive has a clock.** A wait on a patron ends when the patron answers, chased by
 the three-tier reminder ladder (FR-065); a wait on another task ends when that task moves,
-and *that* task has a drive row of its own. Inventing a deadline for either would create a
-second alarm competing with the one already watching, and the two would disagree.
+and *that* task has a drive row of its own; a wait for a free slot ends when one of the runs
+holding those slots finishes, and every one of those runs is being watched already
+(FR-008e). Inventing a deadline for any of them would create a second alarm competing with
+the one already watching, and the two would disagree.
 """
 
 from __future__ import annotations
@@ -75,6 +77,14 @@ class DriveSnapshot:
     external_due_at: datetime | None
     # When the next delivery retry is due, while a wake is failing to reach the agent.
     recovery_retry_at: datetime | None
+    # The runs already holding every slot this task could start in. Non-empty means the
+    # task is ready to go and there is simply nowhere to put it yet.
+    #
+    # Defaulted rather than required because only the placement path can answer it; every
+    # other caller is honestly saying "slots are not what is holding this one up". The
+    # default is also the safe answer: an empty list yields no drive at all, so a caller
+    # that forgets gets an alarm, not silence.
+    slots_taken_by: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -91,6 +101,30 @@ class PushReason:
     # item, the run. Kept as text because the six kinds reference four different tables and
     # a typed foreign key to "one of four things" is a worse lie than a label.
     ref: str | None = None
+    # Which of the situations this kind covers, when it covers more than one. Only drive #5
+    # needs it today — see the two codes below. None means the shape is not settled yet,
+    # which is exactly what a provisional drive is.
+    code: str | None = None
+
+
+# ── the two shapes of drive #5 (FR-008a, FR-008b) ────────────────────────────────
+#
+# Two different waits share drive #5. One is *behind another task*: somebody else's work
+# has to land first. The other is *behind a queue with no room*: this task is ready, and
+# every slot it could start in is already running something else. Neither is a fault and
+# neither carries a clock, but they are not the same thing to the person reading the board
+# — one is answered by chasing a task, the other by waiting for a slot — so the drive has
+# to say which it is.
+#
+# FR-008a puts the second one here rather than inventing a seventh drive, and rules out
+# filing it under drive #6: nothing has gone wrong.
+#
+# A code, not a sentence. The same fact is shown to the patron in their own language and
+# handed to an agent in English, and a stored sentence can only ever be one of the two
+# (Constitution VII).
+
+BLOCKED_ON_TASK = "blocked_on_task"
+BLOCKED_ON_CAPACITY = "blocked_on_capacity"
 
 
 def watches(status: TaskStatus) -> bool:
@@ -138,7 +172,30 @@ def infer_drive(
             + _REAPER_HEAD_START,
         )
 
-    # 2. A delivery retry is in flight. FR-063 says this explicitly must not count as
+    # 2. Every slot this task could start in is taken. No clock, deliberately: what it is
+    #    waiting on is the runs named in `ref`, and every one of those carries a drive with
+    #    a deadline of its own — so when the queue itself seizes up, the alarm rings on
+    #    those runs, where there is something to actually do about it. A second deadline
+    #    here would be measuring the same jam twice, and the two would disagree (FR-008a,
+    #    FR-008e).
+    #
+    #    That is also why an empty list is not this drive. With no run named, nothing else
+    #    is carrying a clock either, and an un-clocked drive over an empty list would drop
+    #    the task out of the net's reach permanently.
+    #
+    #    It outranks every clocked drive below it because none of them can open a run while
+    #    there is nowhere to put it: the wake sits booked, the delivery retry lands on a
+    #    full queue, and ten minutes later the net calls an ordinary wait a stall. There is
+    #    no retry timer for this case by design — the ask comes back when a slot frees up,
+    #    and nothing else is going to move it (FR-008c).
+    if snap.slots_taken_by:
+        return PushReason(
+            kind=TaskDrive.BLOCKED_BY_TASK,
+            code=BLOCKED_ON_CAPACITY,
+            ref=", ".join(snap.slots_taken_by),
+        )
+
+    # 3. A delivery retry is in flight. FR-063 says this explicitly must not count as
     #    stalled — the system is already doing something about it. Ranked above the waits
     #    below because it is the one with a clock ticking on it right now.
     if snap.recovery_retry_at is not None and snap.recovery_retry_at > now:
@@ -146,24 +203,26 @@ def infer_drive(
             kind=TaskDrive.WAITING_RECOVERY, expires_at=snap.recovery_retry_at
         )
 
-    # 3. A wake is booked and has not opened a run yet.
+    # 4. A wake is booked and has not opened a run yet.
     if snap.wake_booked_at is not None:
         return PushReason(
             kind=TaskDrive.WAKE_SCHEDULED, expires_at=snap.wake_booked_at + _WAKE_GRACE
         )
 
-    # 4. Parked on a human. No clock here — the reminder ladder chases it (FR-065).
+    # 5. Parked on a human. No clock here — the reminder ladder chases it (FR-065).
     if snap.patron_item_pending:
         return PushReason(kind=TaskDrive.WAITING_PATRON)
 
-    # 5. Parked on another task. No clock here either — that task has a drive of its own,
+    # 6. Parked on another task. No clock here either — that task has a drive of its own,
     #    and if *it* stalls, the alarm rings there, where someone can act on it.
     if snap.unmet_blockers:
         return PushReason(
-            kind=TaskDrive.BLOCKED_BY_TASK, ref=", ".join(snap.unmet_blockers)
+            kind=TaskDrive.BLOCKED_BY_TASK,
+            code=BLOCKED_ON_TASK,
+            ref=", ".join(snap.unmet_blockers),
         )
 
-    # 6. Parked until a date. Once that date passes with nothing having happened, the wait
+    # 7. Parked until a date. Once that date passes with nothing having happened, the wait
     #    stops being a wait: the drive comes back expired rather than absent, so the record
     #    can still say *what* it was waiting for.
     if snap.external_due_at is not None:
@@ -194,6 +253,9 @@ def provisional_drive(status: TaskStatus, *, now: datetime) -> PushReason | None
     if status not in WATCHED_STATUSES:
         return None
     expires = now + _PROVISIONAL_GRACE
+    # No `code` on the blocked placeholder: which of the two shapes of drive #5 this is
+    # depends on lookups that have not run yet, and guessing one of them would put a wrong
+    # answer on the board for the ten minutes before the real one arrives.
     if status is TaskStatus.BLOCKED:
         return PushReason(kind=TaskDrive.BLOCKED_BY_TASK, expires_at=expires)
     if status is TaskStatus.IN_PROGRESS:

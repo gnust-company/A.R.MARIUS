@@ -27,6 +27,12 @@ services:
 
   db:
     image: postgres:16-alpine
+    # Published so tests that need a real Postgres can reach it from the host (T025):
+    # exactly-once claiming rests on `SELECT … FOR UPDATE SKIP LOCKED`, which SQLite has
+    # no equivalent of. Not 5432 — that one is usually already taken on a dev box, and the
+    # point of a default is that it works without being edited first.
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-armarius}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-armarius}

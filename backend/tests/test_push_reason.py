@@ -17,6 +17,8 @@ import pytest
 
 from armarius.domain.entities.task import TaskDrive, TaskStatus
 from armarius.domain.services.push_reason_rules import (
+    BLOCKED_ON_CAPACITY,
+    BLOCKED_ON_TASK,
     DriveSnapshot,
     infer_drive,
     is_live,
@@ -40,6 +42,7 @@ def snap(**over: object) -> DriveSnapshot:
         "unmet_blockers": (),
         "external_due_at": None,
         "recovery_retry_at": None,
+        "slots_taken_by": (),
     }
     base.update(over)
     return DriveSnapshot(**base)  # type: ignore[arg-type]
@@ -163,13 +166,20 @@ def test_a_drive_past_its_expiry_is_not_live() -> None:
 
 
 @pytest.mark.parametrize(
-    "kind_setup", [{"patron_item_pending": True}, {"unmet_blockers": ("X-1",)}]
+    "kind_setup",
+    [
+        {"patron_item_pending": True},
+        {"unmet_blockers": ("X-1",)},
+        {"slots_taken_by": ("run-a",)},
+    ],
 )
 def test_waits_owned_by_someone_else_have_no_clock(kind_setup: dict[str, object]) -> None:
-    """Two drives deliberately never expire on a clock: a patron wait is chased by the
-    three-tier reminder ladder (FR-065), and a blocked-by wait ends when the blocking task
-    moves — and *that* task has a row of its own. Giving either an arbitrary deadline would
-    invent a second, competing alarm for something already watched."""
+    """Three waits deliberately never expire on a clock: a patron wait is chased by the
+    three-tier reminder ladder (FR-065); a blocked-by wait ends when the blocking task
+    moves — and *that* task has a row of its own; a wait for a free slot ends when one of
+    the runs holding those slots finishes, and each of those is watched already (FR-008e).
+    Giving any of them an arbitrary deadline would invent a second, competing alarm for
+    something already watched."""
     s = snap(status=TaskStatus.BLOCKED, **kind_setup)  # type: ignore[arg-type]
     reason = infer_drive(s, now=T0, hang_suspect_seconds=SUSPECT, hang_grace_seconds=GRACE)
     assert reason is not None
@@ -226,6 +236,7 @@ def test_every_watched_task_is_either_driven_or_stalled_and_the_verdict_is_the_r
             True,
         ),
         ("chờ hành động phục hồi", snap(recovery_retry_at=T0 + timedelta(seconds=90)), True),
+        ("chờ tới lượt vì hết chỗ chạy", snap(slots_taken_by=("run-a", "run-b")), True),
         ("đang làm mà không ai hẹn quay lại", snap(), False),
         ("chờ làm mà không ai hẹn quay lại", snap(status=TaskStatus.TODO), False),
         (
@@ -249,3 +260,100 @@ def test_every_watched_task_is_either_driven_or_stalled_and_the_verdict_is_the_r
         assert driven is expected_driven, (
             f"'{label}': đáng lẽ {wanted}, nhưng luật trả về {reason}"
         )
+
+
+# ── chờ tới lượt vì hết chỗ chạy (FR-008a, FR-008c, FR-008e) ────────────────────
+
+
+def test_no_room_to_start_is_the_drive() -> None:
+    """FR-008a: ready, alive, and nowhere to put it is drive #5 — not a seventh kind, and
+    not drive #6, because nothing has gone wrong."""
+    reason = infer_drive(
+        snap(slots_taken_by=("run-a", "run-b")),
+        now=T0,
+        hang_suspect_seconds=SUSPECT,
+        hang_grace_seconds=GRACE,
+    )
+    assert reason is not None
+    assert reason.kind is TaskDrive.BLOCKED_BY_TASK
+    assert reason.code == BLOCKED_ON_CAPACITY
+    assert reason.expires_at is None, "FR-008e: cái chờ này không có đồng hồ"
+
+
+def test_the_two_waits_that_share_drive_five_are_told_apart() -> None:
+    """Same drive, two situations. A board that cannot tell them apart cannot act on
+    either: one is answered by chasing a task, the other by waiting for a slot (FR-008b)."""
+    behind_task = infer_drive(
+        snap(status=TaskStatus.BLOCKED, unmet_blockers=("CALC-3",)),
+        now=T0,
+        hang_suspect_seconds=SUSPECT,
+        hang_grace_seconds=GRACE,
+    )
+    behind_slot = infer_drive(
+        snap(slots_taken_by=("run-a",)),
+        now=T0,
+        hang_suspect_seconds=SUSPECT,
+        hang_grace_seconds=GRACE,
+    )
+    assert behind_task is not None and behind_slot is not None
+    assert behind_task.kind is behind_slot.kind
+    assert behind_task.code == BLOCKED_ON_TASK
+    assert behind_slot.code == BLOCKED_ON_CAPACITY
+
+
+def test_no_room_names_the_runs_holding_the_slots() -> None:
+    """The reason this wait is allowed to have no clock is that the things it waits on each
+    have one. Naming them is what makes that checkable rather than a claim in a comment."""
+    reason = infer_drive(
+        snap(slots_taken_by=("run-a", "run-b")),
+        now=T0,
+        hang_suspect_seconds=SUSPECT,
+        hang_grace_seconds=GRACE,
+    )
+    assert reason is not None and reason.ref is not None
+    assert "run-a" in reason.ref and "run-b" in reason.ref
+
+
+@pytest.mark.parametrize(
+    "also",
+    [
+        {"wake_booked_at": T0 - timedelta(minutes=30)},
+        {"recovery_retry_at": T0 + timedelta(seconds=90)},
+        {"patron_item_pending": True},
+    ],
+)
+def test_no_room_outranks_every_clock_that_cannot_start_a_run(also: dict[str, object]) -> None:
+    """The whole point of ranking this one high (FR-008c).
+
+    A wake booked half an hour ago is well past its ten-minute grace; left as the drive it
+    would report a task that is queued and perfectly fine as *stalled*. Nothing below can
+    open a run while every slot is taken, so letting any of those clocks own the task means
+    raising an alarm about an event that was structurally prevented from happening.
+    """
+    reason = infer_drive(
+        snap(slots_taken_by=("run-a",), **also),  # type: ignore[arg-type]
+        now=T0,
+        hang_suspect_seconds=SUSPECT,
+        hang_grace_seconds=GRACE,
+    )
+    assert reason is not None
+    assert reason.code == BLOCKED_ON_CAPACITY
+    assert is_live(reason, now=T0) is True
+    assert stall_reason(reason, now=T0) is None
+
+
+def test_a_live_run_still_outranks_no_room() -> None:
+    """A task that already has a slot is running in it. The capacity wait sits *under* the
+    live run, never over it — otherwise a working task would read as queued."""
+    s = snap(run_last_output_at=T0 - timedelta(seconds=30), slots_taken_by=("run-a",))
+    assert drive_of(s) is TaskDrive.RUN_ACTIVE
+
+
+def test_no_room_with_nothing_named_is_not_a_wait_at_all() -> None:
+    """The guard that keeps this drive from becoming a hole.
+
+    An un-clocked drive is only safe because something else is carrying the clock. With no
+    run named, nothing is — and a task wearing that drive would never be reachable by the
+    net again. So an empty list yields no drive, the alarm goes up, and someone finds out.
+    """
+    assert drive_of(snap(slots_taken_by=())) is None
