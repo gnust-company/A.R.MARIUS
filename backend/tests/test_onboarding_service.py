@@ -98,7 +98,7 @@ async def _ensure_then_online(onboarding: OnboardingService, ws_id) -> None:
             workspace_id=ws_id,
             name="Workspace Agent",
             role=WORKSPACE_AGENT_ROLE,
-            adapter_type="hermes_gateway",  # matches the FakeAdapter registered in _services
+            adapter_type="fake",  # matches the FakeAdapter registered in _services
             liveness=Liveness.ONLINE,
             invite_status=InviteStatus.APPROVED,
             agent_token="arm_wa",

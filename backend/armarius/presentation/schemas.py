@@ -308,7 +308,7 @@ class RegisterMariusIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     skills: list[str] = Field(default_factory=list)
     skill_ids: list[str] = Field(default_factory=list)
-    adapter_type: str = "hermes_gateway"
+    adapter_type: str = Field(min_length=1)
     # Operator-invite (issue #63): the agent's gateway address + key, captured at invite
     # time and stored as Marius.adapter_config = {"base_url", "api_key"}. The key is a
     # secret — it never appears in any outbound schema (MariusOut omits adapter_config).

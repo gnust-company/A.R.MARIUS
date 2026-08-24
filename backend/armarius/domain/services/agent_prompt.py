@@ -5,7 +5,7 @@ hint attached to the end of every message the system pushes to an agent — invi
 install, onboarding, task wake, leader chat — pointing at the on-disk credential file.
 It is a SOFT hint, not an order: it tells the agent where its token lives and to read it
 once (when it does not already have it in hand) and reuse it, rather than re-reading every
-step (re-reading bites runtimes that dedup identical reads — e.g. Hermes ``read_file``
+step (re-reading bites runtimes that dedup identical reads — some cache ``read_file``
 returns "File unchanged", which a weak model mistakes for "file missing"). Token-free by
 design and runtime-neutral: no runtime-specific behaviour belongs in this shared footer.
 

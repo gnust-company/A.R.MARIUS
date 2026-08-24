@@ -46,8 +46,8 @@ class InviteError(CodedError):
 class Marius:
     """An agent identity bound to a runtime adapter.
 
-    `adapter_config` carries connection details (e.g. Hermes gateway base_url +
-    api key) captured from the operator at invite time. `agent_token` is the bearer the
+    `adapter_config` carries whatever connection details that runtime needs, captured
+    from the operator at invite time. `agent_token` is the bearer the
     agent uses to call back into the Armarius agent-facing API (whoami/comment/publish) —
     minted at invite time and embedded in the pushed setup prompt (issue #63).
     """
@@ -64,7 +64,9 @@ class Marius:
     # ("pending" pushed & awaiting the agent's confirm | "installed" confirmed | "failed"
     # push rejected). The agent confirms via POST /agent/skills/{slug}/installed.
     skill_installs: dict[str, str] = field(default_factory=dict)
-    adapter_type: str = "hermes_gateway"
+    # No default: which runtime an agent runs on is a decision the caller must make,
+    # never one this entity quietly makes for it (FR-040a).
+    adapter_type: str = ""
     adapter_config: dict = field(default_factory=dict)
     owner_user_id: str | None = None
     agent_token: str | None = None

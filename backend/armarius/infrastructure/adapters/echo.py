@@ -1,6 +1,6 @@
 """Echo adapter — a fake runtime for local demos and tests.
 
-Emits a Hermes-shaped event sequence (run.started → assistant.delta → tool.* →
+Emits a gateway-shaped event sequence (run.started → assistant.delta → tool.* →
 assistant.completed → run.completed) so the live trace, session store and wake loop
 can be exercised end-to-end without a real gateway. Selected by adapter_type "echo".
 """

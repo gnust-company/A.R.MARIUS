@@ -259,7 +259,7 @@ export const en = {
     agentNamePlaceholder: 'e.g., Echo-2',
     skills: 'Skills',
     gatewayUrl: 'Gateway URL',
-    gatewayUrlPlaceholder: 'http://hermes.local:8642',
+    gatewayUrlPlaceholder: 'http://gateway.local:8642',
     apiKey: 'API Key',
     apiKeyPlaceholder: '••••••••',
     apiKeyHint:
@@ -304,7 +304,6 @@ export const en = {
       workspace: 'Workspace',
     },
     adapters: {
-      hermes_gateway: { label: 'Hermes Gateway', desc: 'External gateway with full protocol support' },
       openclaw_gateway: { label: 'OpenClaw Gateway', desc: 'Open-source adapter for custom integrations' },
       claude_local: { label: 'Claude Code (Local)', desc: 'Local Claude Code execution environment' },
       echo: { label: 'Echo', desc: 'Simple echo adapter for testing' },

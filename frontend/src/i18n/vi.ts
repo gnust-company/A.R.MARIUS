@@ -259,7 +259,7 @@ export const vi = {
     agentNamePlaceholder: 'VD: Echo-2',
     skills: 'Kỹ năng',
     gatewayUrl: 'Địa chỉ Gateway',
-    gatewayUrlPlaceholder: 'http://hermes.local:8642',
+    gatewayUrlPlaceholder: 'http://gateway.local:8642',
     apiKey: 'Khóa API',
     apiKeyPlaceholder: '••••••••',
     apiKeyHint:
@@ -304,7 +304,6 @@ export const vi = {
       workspace: 'Không gian',
     },
     adapters: {
-      hermes_gateway: { label: 'Hermes Gateway', desc: 'Cổng kết nối bên ngoài với đầy đủ giao thức' },
       openclaw_gateway: { label: 'OpenClaw Gateway', desc: 'Adapter mã nguồn mở cho tích hợp tùy chỉnh' },
       claude_local: { label: 'Claude Code (Local)', desc: 'Môi trường chạy Claude Code cục bộ' },
       echo: { label: 'Echo', desc: 'Adapter echo đơn giản để kiểm thử' },

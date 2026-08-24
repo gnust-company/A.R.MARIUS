@@ -3,7 +3,7 @@
 // The message list is rendered through assistant-ui (useExternalStoreRuntime +
 // ThreadPrimitive/MessagePrimitive) so we inherit battle-tested chat mechanics —
 // auto-scrolling viewport, message bubbles, and Markdown rendering with a smooth
-// streaming animation — instead of hand-rolling them. The existing Hermes-backed
+// streaming animation — instead of hand-rolling them. The existing gateway-backed
 // data layer (getLeaderChat / sendLeaderChatMessage / the leader-chat SSE channel)
 // is unchanged: we feed those messages into the external-store runtime and the
 // runtime renders whatever we give it.

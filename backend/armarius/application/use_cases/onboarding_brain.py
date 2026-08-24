@@ -1,7 +1,7 @@
 """Onboarding guide — the prompt injected into a real Workspace Agent (#61, v3).
 
 There is NO scripted brain here. Project setup is the Workspace Agent's job: the agent is a
-real runtime behind Hermes that must be **online and wake-able**. On ``start``/``answer`` the
+real runtime that must be **online and wake-able**. On ``start``/``answer`` the
 ``OnboardingService`` wakes it through its adapter with the guide prompt below; the guided agent
 interviews the Patron ONE question at a time and posts each question (or its final draft) back
 through the agent-facing callbacks in ``presentation/api/agent.py``. If the agent is not online,

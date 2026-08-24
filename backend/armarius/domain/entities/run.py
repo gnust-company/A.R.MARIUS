@@ -93,7 +93,7 @@ class Run:
 
 @dataclass
 class RunEvent:
-    """A single traced event teed from the adapter stream (e.g. Hermes SSE)."""
+    """A single traced event teed from the adapter stream."""
 
     id: UUID = field(default_factory=uuid4)
     run_id: UUID | None = None

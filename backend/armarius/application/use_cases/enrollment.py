@@ -4,7 +4,7 @@ The operator enters the agent's gateway URL + api_key when inviting; that IS the
 so the service mints the `agent_token` immediately, persists the agent as APPROVED, and the
 route pushes a one-time setup prompt to the agent via its adapter (no manual copy-paste, no
 enroll/approve gate). `adapter_config` is populated at the source — that is what lets a
-later wake (`HermesGatewayAdapter.execute` → `POST {base_url}/v1/runs`) actually reach the
+later wake (`MariusAdapter.execute`) actually reach the
 agent, and what lets the agent authenticate its callbacks.
 
 `push_setup` sends (or re-sends) the setup prompt. A failed send is NOT fatal: the row is
@@ -73,11 +73,11 @@ class InviteService:
         workspace_id: UUID,
         name: str,
         *,
+        adapter_type: str,
         gateway_url: str,
         api_key: str,
         skills: list[str] | None = None,
         skill_ids: list[str] | None = None,
-        adapter_type: str = "hermes_gateway",
         owner_user_id: str | None = None,
     ) -> Marius:
         """Create an APPROVED Marius wired to the operator's gateway, token already minted.

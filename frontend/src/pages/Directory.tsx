@@ -19,7 +19,6 @@ import {
   AlertTriangle,
   Settings,
   Code,
-  Globe,
   Terminal,
   Pencil,
   Trash2,
@@ -72,7 +71,6 @@ const STATUS_CONFIG: Record<
 // ─── Adapter Options ─────────────────────────────────────────────────────────
 
 const ADAPTER_OPTIONS = [
-  { value: 'hermes_gateway', label: 'Hermes Gateway', desc: 'External gateway with full protocol support', icon: Globe },
   { value: 'openclaw_gateway', label: 'OpenClaw Gateway', desc: 'Open-source adapter for custom integrations', icon: Settings },
   { value: 'claude_local', label: 'Claude Code (Local)', desc: 'Local Claude Code execution environment', icon: Code },
   { value: 'echo', label: 'Echo', desc: 'Simple echo adapter for testing', icon: Terminal },
@@ -373,7 +371,7 @@ export default function Directory() {
 
   // ── Invite Modal State ─────────────────────────────────────────────────────
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
-  const [adapterType, setAdapterType] = useState('hermes_gateway');
+  const [adapterType, setAdapterType] = useState('echo');
   const [agentName, setAgentName] = useState('');
   const [gatewayUrl, setGatewayUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -426,7 +424,7 @@ export default function Directory() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const resetInviteForm = () => {
-    setAdapterType('hermes_gateway');
+    setAdapterType('echo');
     setAgentName('');
     setGatewayUrl('');
     setApiKey('');

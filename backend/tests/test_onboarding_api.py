@@ -48,7 +48,7 @@ async def _online_wa(ws_id: str) -> None:
             workspace_id=ws_uuid,
             name="Workspace Agent",
             role="Workspace Agent",
-            adapter_type="hermes_gateway",
+            adapter_type="fake",
             liveness=Liveness.ONLINE,
             invite_status=InviteStatus.APPROVED,
             agent_token="arm_wa",
@@ -62,9 +62,9 @@ async def _online_wa(ws_id: str) -> None:
 
 
 def _wire_agent(drivers: list) -> FakeAdapter:
-    """Swap the app's hermes_gateway adapter for a fake that scripts the WA's turns."""
+    """Swap the app's fake adapter for one that scripts the WA's turns."""
     fake = FakeAdapter(drivers=drivers)
-    app.state.container.registry._adapters["hermes_gateway"] = fake  # type: ignore[attr-defined]
+    app.state.container.registry._adapters["fake"] = fake  # type: ignore[attr-defined]
     return fake
 
 
