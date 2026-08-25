@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -101,35 +102,54 @@ func TestLoginRefusesToRunWithoutAServer(t *testing.T) {
 	}
 }
 
-// Until the real behaviour lands, a subcommand must fail rather than exit cleanly. A supervisor
-// running `armarius-daemon start` has to learn that the daemon did not come up.
-func TestUnbuiltSubcommandsFailLoudly(t *testing.T) {
-	cases := [][]string{
-		{"status"},
+// Every subcommand this program declares is now built, so none of them may still answer with
+// the not-built-yet notice. The check is over the declared list rather than a written-out one,
+// so a fourth subcommand added later without its behaviour is caught here.
+func TestNoSubcommandStillReportsItselfUnbuilt(t *testing.T) {
+	for _, c := range commands {
+		if strings.Contains(c.summary, "not built") {
+			t.Errorf("%s still describes itself as unbuilt", c.name)
+		}
 	}
-	for _, args := range cases {
-		t.Run(args[0], func(t *testing.T) {
-			_, _, err := dispatch(t, args...)
-			if err == nil {
-				t.Fatalf("%v reported success while doing nothing", args)
-			}
-			if !strings.Contains(err.Error(), "tasks.md") {
-				t.Errorf("the error does not say where the missing work is tracked: %v", err)
-			}
-		})
+}
+
+// `status` answers rather than fails. A machine nobody has linked is a state to report, not an
+// error: reporting it is the entire job (FR-005a).
+func TestStatusAnswersOnAMachineThatWasNeverLinked(t *testing.T) {
+	out, _, err := dispatch(t, "status", "-config", filepath.Join(t.TempDir(), "daemon.json"))
+	if err != nil {
+		t.Fatalf("status failed instead of answering: %v", err)
+	}
+	if !strings.Contains(out, "not linked") {
+		t.Errorf("status did not say the machine is not linked:\n%s", out)
+	}
+	if !strings.Contains(out, "not running") {
+		t.Errorf("status did not say whether a daemon is running:\n%s", out)
+	}
+}
+
+// The machine-readable half of FR-005a. It has to parse, and it has to carry the same answers
+// the person-readable half gives.
+func TestStatusAlsoAnswersInAFormAMachineCanRead(t *testing.T) {
+	out, _, err := dispatch(t, "status", "-json", "-config", filepath.Join(t.TempDir(), "daemon.json"))
+	if err != nil {
+		t.Fatalf("status -json failed: %v", err)
+	}
+	var answered map[string]any
+	if err := json.Unmarshal([]byte(out), &answered); err != nil {
+		t.Fatalf("status -json did not print JSON: %v\n%s", err, out)
+	}
+	if answered["linked"] != false || answered["daemon_running"] != false {
+		t.Errorf("the JSON disagrees with the text: %v", answered)
 	}
 }
 
 // `start` is built as far as registering this machine and beating (T033–T038). Pointed at a
-// config file that holds no token, it must refuse there rather than at the door: proof that it
-// got past the not-built-yet notice and into the work.
+// config file that holds no token, it must refuse on the missing token rather than at the door.
 func TestStartRefusesAMachineThatWasNeverLinked(t *testing.T) {
 	_, _, err := dispatch(t, "start", "-config", filepath.Join(t.TempDir(), "daemon.json"))
 	if err == nil {
 		t.Fatal("start reported success on a machine with no token")
-	}
-	if strings.Contains(err.Error(), "tasks.md") {
-		t.Errorf("start still answers with the not-built-yet notice: %v", err)
 	}
 	if !strings.Contains(err.Error(), "login") {
 		t.Errorf("the error does not tell the operator to link the machine first: %v", err)
@@ -143,9 +163,6 @@ func TestLoginActuallyGoesAndTalksToTheServer(t *testing.T) {
 	_, _, err := dispatch(t, "login", "-server", "https://armarius.invalid", "-config", filepath.Join(t.TempDir(), "daemon.json"))
 	if err == nil {
 		t.Fatal("login reported success against a server that does not exist")
-	}
-	if strings.Contains(err.Error(), "tasks.md") {
-		t.Errorf("login still reports itself as unbuilt: %v", err)
 	}
 	if !strings.Contains(err.Error(), "/daemon/link/start") {
 		t.Errorf("login failed somewhere other than the call it exists to make: %v", err)
