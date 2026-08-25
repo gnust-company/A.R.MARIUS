@@ -5,6 +5,7 @@ import Layout from './components/Layout'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Workspaces from './pages/Workspaces'
+import LinkMachine from './pages/LinkMachine'
 import Projects from './pages/Projects'
 import CreateProject from './pages/CreateProject'
 import ProjectBoard from './pages/ProjectBoard'
@@ -81,6 +82,11 @@ export default function App() {
       <Route element={<RequireAuth />}>
         {/* Workspaces launcher — no sidebar */}
         <Route path="/workspaces" element={<Workspaces />} />
+
+        {/* Approving a machine into a workspace. Outside /w/:workspaceId on purpose: at the
+            moment the code is typed the machine belongs to no workspace, and picking which
+            one it joins is the whole decision being made here. */}
+        <Route path="/link" element={<LinkMachine />} />
 
         {/* All in-workspace pages carry the workspace id on the URL (/w/:workspaceId/…)
             so a hard refresh restores the right workspace + its skills. */}
