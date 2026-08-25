@@ -327,15 +327,21 @@ def test_the_two_languages_carry_the_same_keys() -> None:
     assert en_keys - vi_keys == set(), f"thiếu bên tiếng Việt: {sorted(en_keys - vi_keys)}"
 
 
-# The screens spec 001 built or rewrote. Every string a patron reads on these has to come
+# The screens this rule is enforced on. Every string a patron reads on these has to come
 # from i18n; a literal here is a string the Vietnamese file can never reach.
-_SPEC_001_SCREENS = (
+#
+# It is a list rather than "every .tsx" because the older screens predate the rule and are
+# not all clean yet. Anything built or rewritten from spec 001 onwards goes on it — a new
+# screen that is not listed is a hole in the guard, not an exemption.
+_SCREENS_UNDER_THE_RULE = (
     "App.tsx",
     "components/LeaderChatPanel.tsx",
     "components/StatusChip.tsx",
     "components/TopBar.tsx",
     "pages/CollaborationRoom.tsx",
     "pages/Inbox.tsx",
+    # spec 002 — approving a machine into a workspace (T031).
+    "pages/LinkMachine.tsx",
     "pages/ProjectBoard.tsx",
     "pages/ProjectPlan.tsx",
     "pages/Projects.tsx",
@@ -345,9 +351,9 @@ _SPEC_001_SCREENS = (
 _QUOTED = re.compile(r"'((?:[^'\\\n]|\\.)*)'|\"((?:[^\"\\\n]|\\.)*)\"")
 
 
-def test_no_vietnamese_is_hardcoded_into_the_spec_001_screens() -> None:
+def test_no_vietnamese_is_hardcoded_into_the_screens_under_the_rule() -> None:
     offenders: list[str] = []
-    for rel in _SPEC_001_SCREENS:
+    for rel in _SCREENS_UNDER_THE_RULE:
         path = FRONTEND / rel
         for i, line in enumerate(_ts_code_lines(path), 1):
             for m in _QUOTED.finditer(line):

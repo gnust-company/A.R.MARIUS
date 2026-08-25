@@ -379,6 +379,36 @@ export async function deleteWorkspace(workspaceId: string): Promise<void> {
   return del(`/v1/workspaces/${workspaceId}`)
 }
 
+// ── Machines (spec 002) ────────────────────────────────────────────────────────────────
+
+/** A machine waiting to be let into a workspace.
+ *
+ *  `hostname`, `platform` and `daemon_version` are what the machine *said about itself* at
+ *  the start of the link — not a verified identity. They exist so a person can recognise
+ *  their own box, and the screen has to say so. */
+export interface PendingMachineLinkDTO {
+  code: string
+  hostname: string
+  platform: string
+  daemon_version: string
+  expires_at: string | null
+}
+
+export async function getMachineLink(code: string): Promise<PendingMachineLinkDTO> {
+  return get<PendingMachineLinkDTO>(`/v1/machines/link/${encodeURIComponent(code)}`)
+}
+
+/** Let the machine in. This is the only door a machine ever enters a workspace through —
+ *  there is no path by which one admits itself. */
+export async function approveMachineLink(
+  code: string,
+  workspaceId: string,
+): Promise<PendingMachineLinkDTO> {
+  return post<PendingMachineLinkDTO>(`/v1/machines/link/${encodeURIComponent(code)}/approve`, {
+    workspace_id: workspaceId,
+  })
+}
+
 // ── Projects ───────────────────────────────────────────────────────────────────────────
 
 export interface CreateProjectBody {
