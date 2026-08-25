@@ -181,6 +181,9 @@ async def test_two_polls_at_once_still_mint_exactly_one_token() -> None:
     the check. Exactly one may come away with a token: a second one would belong to a
     machine row nobody ever heartbeats for, which shows up on the board as a dead machine
     the operator never installed.
+
+    Same caveat as its twin above: on SQLite this catches the bug only when the two calls
+    happen to overlap. `test_daemon_enrollment_races.py` is where it is actually proved.
     """
     async with _client() as c:
         user, workspace = await _register(c, "link-race@example.com")
@@ -234,6 +237,50 @@ async def test_a_code_nobody_issued_answers_the_same_way_an_expired_one_does() -
         dead = await c.post("/daemon/link/poll", json={"code": "ZZZZ-ZZZZ"})
         assert dead.status_code == 410
         assert dead.json()["status"] == "expired"
+
+
+async def test_two_approvals_at_once_still_leave_exactly_one_approver() -> None:
+    """The same race as the double poll, on the door before it.
+
+    A double-click, a client retry, or two people who both know the code put two approvals
+    in flight, and both read *nobody has approved yet* before either writes. Letting the
+    later commit win in silence is the worst shape this can take: the first approver is told
+    it worked while their machine quietly joins somebody else's workspace.
+
+    The sequential test below cannot see this at all — it awaits one call before starting the
+    next, which is the one ordering where the check is still true when the write lands.
+
+    This one sees it only sometimes: SQLite serialises writers, so whether the two calls
+    really overlap depends on where their coroutines yield. Kept because it can only go red
+    when the bug is real, but the proof is `test_daemon_enrollment_races.py`, which stages
+    the same race on a Postgres that cannot dodge it.
+    """
+    async with _client() as c:
+        first_user, first_ws = await _register(c, "link-race-approve-a@example.com")
+        second_user, second_ws = await _register(c, "link-race-approve-b@example.com")
+        started = await _start(c)
+
+        async def attempt(user: str, workspace: str) -> tuple[str, int]:
+            r = await c.post(
+                f"/v1/machines/link/{started['code']}/approve",
+                json={"workspace_id": workspace},
+                headers=_auth(user),
+            )
+            return workspace, r.status_code
+
+        both = await asyncio.gather(
+            attempt(first_user, first_ws), attempt(second_user, second_ws)
+        )
+        won = [ws for ws, status in both if status == 200]
+        refused = [ws for ws, status in both if status == 409]
+        assert len(won) == 1, both
+        assert len(refused) == 1, both
+
+        # And the machine lands in the workspace of whoever was told they approved it —
+        # never in the other one.
+        issued = await c.post("/daemon/link/poll", json={"code": started["code"]})
+        assert issued.status_code == 200, issued.text
+        assert issued.json()["workspace_id"] == won[0]
 
 
 async def test_approving_twice_is_refused_rather_than_quietly_ignored() -> None:

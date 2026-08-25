@@ -28,9 +28,10 @@ import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -237,13 +238,16 @@ class DaemonEnrollmentService:
             # belonging to a machine row nobody will ever heartbeat for. `WHERE consumed_at
             # IS NULL` collapses that to one winner on either engine — no row locking, no
             # dialect that has to support it.
-            spent = await session.execute(
-                update(DaemonLinkCodeModel)
-                .where(
-                    DaemonLinkCodeModel.id == row.id,
-                    DaemonLinkCodeModel.consumed_at.is_(None),
-                )
-                .values(machine_id=machine.id, consumed_at=now)
+            spent = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(DaemonLinkCodeModel)
+                    .where(
+                        DaemonLinkCodeModel.id == row.id,
+                        DaemonLinkCodeModel.consumed_at.is_(None),
+                    )
+                    .values(machine_id=machine.id, consumed_at=now),
+                ),
             )
             if spent.rowcount != 1:
                 await session.rollback()
@@ -277,14 +281,35 @@ class DaemonEnrollmentService:
 
         Approving twice is refused rather than ignored: the second approver would be handing
         a machine they cannot see to a workspace they did not choose.
+
+        Claiming the code is a conditional update for the same reason spending it is. A
+        double-click, a client retry, or two people who both know the code put two approvals
+        in flight, and both read *nobody has approved yet* before either writes. Assigning
+        the fields would let the later commit win in silence: the first approver is told 200
+        while their machine goes to somebody else's workspace. `WHERE approved_by_user_id IS
+        NULL` makes exactly one of them the approver and the other a refusal.
         """
         now = self._clock()
         async with self._sessions()() as session:
             row = await self._live_code(session, code, now)
-            if row.approved_by_user_id is not None:
+            claimed = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(DaemonLinkCodeModel)
+                    .where(
+                        DaemonLinkCodeModel.id == row.id,
+                        # Unapproved implies unspent: nothing consumes a code that no one
+                        # has approved, so this single condition covers both.
+                        DaemonLinkCodeModel.approved_by_user_id.is_(None),
+                    )
+                    .values(
+                        workspace_id=workspace_id, approved_by_user_id=approved_by_user_id
+                    ),
+                ),
+            )
+            if claimed.rowcount != 1:
+                await session.rollback()
                 raise Conflict("daemon_link_code_already_approved")
-            row.workspace_id = workspace_id
-            row.approved_by_user_id = approved_by_user_id
             await session.commit()
             return PendingLink(
                 code=row.code,
@@ -329,6 +354,12 @@ class DaemonEnrollmentService:
         Renewal deliberately keeps the same secret and only moves its expiry. Rotating the
         string would mean the reply carries a new token that the machine must persist before
         the old one dies — a write that can fail, on a path that runs unattended.
+
+        This is the one read-then-write here that does *not* need the conditional update the
+        other two use. Two renewals racing both compute the same `now + ttl` and write it;
+        whichever lands second leaves the row saying what the first one meant. There is no
+        invariant for the loser to break, because there is no loser — unlike approving or
+        spending a code, where the whole point is that exactly one caller may win.
         """
         now = self._clock()
         async with self._sessions()() as session:
