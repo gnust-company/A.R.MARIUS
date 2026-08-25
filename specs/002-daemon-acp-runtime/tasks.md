@@ -121,6 +121,30 @@ thấy nó chạy thật.
 - [x] T041 [P] [US1] Thêm ô chọn chỗ làm vào màn hình tạo/mời agent trong `frontend/src/pages/` và chuỗi tiếng Việt vào `frontend/src/i18n/vi.ts` — danh sách chỉ hiện chỗ làm sẵn sàng, không cho tạo khi bỏ trống (FR-007f, Điều VI) — **xong 2026-08-25** ở `pages/Directory.tsx`. Danh sách đọc **lúc mở biểu mẫu**, không giữ trong kho chung: một bản sao cũ chỉ dẫn người ta chọn nhầm. Đúng **một** chỗ làm thì chọn sẵn — một lựa chọn duy nhất không phải là lựa chọn; **từ hai trở lên thì để trống**, vì chọn hộ ở đây là chọn hộ cái máy mà agent sẽ sống suốt đời. Chưa nối máy nào thì không phải ô rỗng mà là câu nói rõ phải làm gì. **Hơn câu chữ gốc một chỗ**: biểu mẫu này trước giờ **nuốt mọi lời từ chối** của server (`void doInvite()` bỏ rơi promise hỏng), nên hai mã từ chối T039 vừa dựng sẽ không ai đọc được — người dùng chỉ thấy cái nút không làm gì. Nay dựng câu từ mã bằng `errorText`, thứ các màn khác đã dùng
 - [ ] T039a Xử `MariusService.register` trong `backend/armarius/application/use_cases/mariuses.py` — **đường tạo agent thứ hai**, không lối gọi nào ngoài đời chạm tới nó, chỉ hơn hai chục tệp test dùng làm đồ dựng cảnh. *Thêm 2026-08-25 lúc làm T039: câu chữ của FR-007f là "không có đường tạo agent mà bỏ trống chỗ làm", mà đây đúng là một đường tạo agent. Hai điều làm nó **chưa** thành lỗ đang chảy: nó không nằm sau route nào, và chính FR-007f đã định nghĩa sẵn nghĩa của agent chưa buộc chỗ làm — **ngoại tuyến**, không phải lỗi im lặng. Nhưng nó là mã chết ở tầng sản phẩm, và ngày ai đó nối một route vào thì luật thủng mà không ai thấy. Hai lối ra: bắt nó đòi chỗ làm như `invite`, hoặc dời hẳn xuống `backend/tests/support/`. Không gộp vào PR của T039–T041 vì nó động vào hơn hai chục tệp test cho một chuyện khác hẳn — **người chủ chọn lối**.*
 
+### Tạo agent kiểu Multica — bỏ hẳn gateway (chốt 2026-08-25)
+
+Cả nhóm này là hệ quả của một quyết định: **thay luồng mời agent bằng đúng mô hình agent của Multica** —
+đặt tên, viết instructions, gắn skill, chọn chỗ làm. Bốn thứ của đường gateway cũ (gateway url, api key,
+probe trước khi tạo, setup prompt sau khi tạo) và **agent token sống lâu** đều chỉ tồn tại để phục vụ
+đường ấy, nên FR-040a bảo gỡ theo. Đợt gỡ Hermes trước (T019–T023) mới gỡ adapter và dữ liệu, **chưa chạm
+tới luồng tạo agent** — đây là chỗ vá lỗ đó.
+
+- [ ] T039b Gỡ `gateway_url` và `api_key` khỏi `RegisterMariusIn` trong `backend/armarius/presentation/schemas.py` và khỏi `InviteService.invite` trong `backend/armarius/application/use_cases/enrollment.py`; bỏ luôn cú probe `test_environment` trước khi tạo và `GatewayUnreachable`. Đổi tên `InviteService` → `AgentService` và `invite` → `create` cho khớp việc nó đang làm (FR-007g, FR-040a)
+- [ ] T039c Gỡ cú đẩy setup prompt: bỏ `push_setup`, `build_invite_prompt` và `build_skill_install_prompt` cùng hai chỗ gọi chúng ở `backend/armarius/presentation/api/workspaces.py`; bỏ `send_status` khỏi response và khỏi giao diện. Skill nay đi xuống trong gói nhận việc (FR-011b), nên không còn gì để đẩy (FR-007g, FR-011c)
+- [ ] T039d Gỡ **agent token sống lâu**: bỏ `agent_token`, `invite_status`, `approved_at` khỏi `backend/armarius/domain/entities/marius.py` và cột tương ứng, kèm migration xoá cột. FR-014a chốt hệ thống chỉ có hai token — của daemon và của lượt chạy — nên token thứ ba là mã chết. **Chặn**: phải xong T049 (token lượt chạy) trước, vì `/agent/*` hiện xác thực bằng chính token này (FR-007g, FR-014a)
+- [ ] T039e Thêm `instructions` và `description` vào `backend/armarius/domain/entities/marius.py`, schema, và migration. `instructions` đi xuống agent **mỗi lượt chạy** trong gói nhận việc; `description` **không bao giờ** vào prompt (FR-007i, FR-007j)
+- [ ] T039f Thêm luật **tên agent không trùng trong workspace**: unique index `(workspace_id, name)` kèm migration, và error code riêng khi trùng (FR-007h)
+- [ ] T039g Thêm `model` và `thinking_level` vào agent; danh sách chọn lấy từ `workplaces.capabilities` (FR-017), CLI nào tự quản model thì không trả về lựa chọn nào. Bỏ trống thì dùng mặc định của chính CLI (FR-007k)
+- [ ] T039h Dựng lại màn hình thêm agent ở `frontend/src/pages/Directory.tsx`: bỏ ô gateway url, ô api key và ô chọn loại adapter; thêm ô instructions, ô description, ô chọn model và thinking level. Đổi chữ "Mời Agent" thành "Thêm Agent" ở `frontend/src/i18n/vi.ts` và `en.ts`. Ô chọn chỗ làm giữ nguyên như T041 đã dựng (FR-007g, FR-007i, FR-007j, FR-007k, Điều VI)
+- [ ] T039i Đưa `instructions` của agent vào gói nhận việc tại `backend/armarius/infrastructure/daemon/claim.py`, cạnh bối cảnh dự án của FR-011. **Chặn**: sau T045 (FR-007i, FR-011, FR-011a)
+- [ ] T039j Chặn luồng tạo agent sinh thêm role: khi thêm agent vào dự án thì thêm thẳng agent, không qua role. **Không gỡ** bảng role/ghế ở đợt này — việc ấy đụng lõi đặc tả 001 và có đặc tả riêng (FR-007l)
+
+### Test cho nhóm tạo agent
+
+- [ ] T082c [P] `backend/tests/test_create_agent.py` — tạo agent chỉ cần tên + chỗ làm; trùng tên trong cùng workspace bị từ chối; trùng tên ở workspace khác thì được; `description` không xuất hiện trong prompt gửi agent; `instructions` có mặt trong gói nhận việc (FR-007g, FR-007h, FR-007i, FR-007j)
+- [ ] T082d [P] Mở rộng `backend/tests/test_constitution_guards.py` — quét cấm chuỗi `gateway_url`, `api_key`, `push_setup`, `agent_token` quay lại trong `application/` và `presentation/`, và cấm role theo dự án quay lại luồng tạo agent (FR-007g, FR-007l, FR-040a)
+
+
 ### Sống chết — sau port đã có, không đụng tầng nghiệp vụ
 
 - [ ] T042 [US1] Thêm `DaemonLivenessProbe` vào `backend/armarius/infrastructure/adapters/liveness_probe.py` — trả lời từ `machines` + `workplaces` + `agent_workplace_bindings`; agent chưa buộc chỗ làm nào thì **offline**; **không ping agent**, và **cú poll của daemon không được tính là dấu hiệu sống** (FR-006, FR-006a, FR-006d, FR-007f, FR-055b)
@@ -135,6 +159,8 @@ thấy nó chạy thật.
   2. Thêm một cổng ở `backend/armarius/application/ports/` trả lời "những lượt chạy nào đang chiếm hết chỗ mà đầu việc này cần", hiện thực ở `backend/armarius/infrastructure/daemon/`, rồi điền `slots_taken_by` trong `PushReasonService.snapshot()` — nếu không, đầu việc chờ 10 phút là lưới an toàn tưởng nó rơi và reo chuông nhầm. Tên cổng và tên phương thức **không được** mang chữ `daemon`/`machine`/`runtime`/`workplace` — T024 canh đúng chỗ này.
   3. Lượt hỏi tiếp theo của daemon, khi đã có chỗ trống, **phải lấy được đúng đầu việc đang chờ ấy** — đây mới là bằng chứng hành vi, không phải hai mục trên.
 - [ ] T047 [US1] Thêm `POST /daemon/runs/{run_id}/start` — trả **404** nếu lượt chạy không còn thuộc máy này; đầu việc đã có máy nhận thì buộc vào đúng máy ấy (FR-007d, FR-058, FR-059)
+- [ ] T048a [US1] Dựng lại phần dưới của màn hình **"Thiết lập bằng Tác nhân"** trên đường daemon, giữ nguyên phần người dùng thấy. Hôm nay `backend/armarius/application/use_cases/onboarding_session.py` gọi `adapter.execute` rồi **đứng đợi** câu trả lời; daemon không có kiểu gọi-rồi-đợi. Người dùng vẫn chat với Tác nhân Không gian đúng như cũ — hỏi một câu, trả lời, hỏi câu tiếp, cuối cùng ra dự án và đội hình (FR-040b). **Chặn**: sau T048
+- [ ] T048b [US1] Rà **mọi luồng còn lại đang gọi agent qua gateway** và chuyển sang đường daemon mà không đổi hành vi ở tầng người dùng; liệt kê từng luồng kèm chỗ gọi trong PR (FR-040b)
 - [ ] T048 [US1] Viết `DaemonAdapter` trong `backend/armarius/infrastructure/adapters/daemon_adapter.py` — `dispatch()` **chỉ đánh dấu run có thể nhận rồi trả về ngay**, không gọi ra máy (FR-009)
 - [ ] T049 [US1] Sửa `infer_drive` trong `backend/armarius/domain/services/push_reason_rules.py` — động cơ số 1 bật từ `accepted_at`, **không đợi** `run_last_output_at` (FR-056)
 - [ ] T050 [US1] Thêm đồng hồ cho động cơ số 1 và đường thu hồi khi quá hạn trong `backend/armarius/infrastructure/daemon/claim.py` (FR-056a, FR-056c)
@@ -176,7 +202,7 @@ thấy nó chạy thật.
 - [ ] T074 [P] [US1] `backend/tests/test_claim_expiry_returns_run.py` — quá hạn giữ thì đầu việc quay về trạng thái chưa ai nhận (FR-056a)
 - [ ] T075 [P] [US1] `backend/tests/test_daemon_tenant_isolation.py` — mọi route `/daemon/*` chạm workspace khác trả **404** (Điều I, FR-036)
 - [ ] T076 [P] [US1] `backend/tests/test_poll_is_not_a_liveness_signal.py` — máy bật mà CLI bị gỡ thì agent vẫn phải offline (FR-055b, FR-006a)
-- [ ] T077 [P] [US1] `backend/tests/test_agent_must_bind_to_a_workplace.py` — tạo agent không chỗ làm bị từ chối; mối buộc không đổi được sau khi tạo; agent chưa buộc thì offline (FR-007, FR-007f)
+- [x] T077 [P] [US1] Tạo agent không chỗ làm bị từ chối; mối buộc không đổi được sau khi tạo; agent chưa buộc thì offline (FR-007, FR-007f) — **xong 2026-08-25 trong `backend/tests/test_agent_workplace_binding.py`** (T082b). *Gộp 2026-08-25: lúc làm T039 tôi không thấy dòng này nên viết một tệp test thứ hai cùng nội dung. Giữ một tệp, không giữ hai. Vế "agent chưa buộc thì offline" vẫn chờ T042 — chưa có `DaemonLivenessProbe` thì chưa kiểm được, đã ghi trong T042.*
 - [ ] T078 [P] [US1] `backend/tests/test_wake_message_is_recorded_at_claim.py` — toàn văn thông điệp có mặt trong `run_events` ngay sau cú nhận việc, không đợi daemon báo về (FR-012a, FR-042)
 - [ ] T079 [P] [US1] `backend/tests/test_claim_carries_skills.py` — gói nhận việc mang đủ kỹ năng của agent ấy và **chỉ** của agent ấy; đường dẫn thoát ra ngoài bị từ chối (FR-011b, FR-007b)
 - [ ] T079a [US1] `backend/tests/test_full_machine_just_waits.py` — **chạy trên Postgres thật**, viết đúng hành vi người chủ đòi và không viết gì khác: trần 5, đang chạy đủ 5, đầu việc thứ 6 tới. Nó **không** bị huỷ, **không** bị hẹn giờ thử lại, **không** bị lưới an toàn tuyên đình trệ dù để trôi quá ngưỡng 10 phút, và mang trạng thái *đang chờ tới lượt* phân biệt được với *máy chết*. Rồi cho một lượt chạy kết thúc và để daemon hỏi lại theo nhịp poll bình thường — **đúng đầu việc thứ 6 ấy phải được lấy đi**, không cần ai đánh thức nó (FR-008, FR-008a, FR-008b, FR-008c, FR-008d, FR-008e)
@@ -311,6 +337,9 @@ Phase 8 Polish
 - T022 chặn T023 — đổi fake mặc định **trước**, xoá test **sau**; ngược lại là 13 tệp test đỏ cùng lúc
 - T009 chặn T091 · T011 chặn T119 · T012 chặn T111 — phần dọn và phần watchdog phải có trước khi nối vào luồng chạy
 - T045 chặn T046, T047, T048 — có cửa nhận việc rồi mới có route
+- T049 chặn T039d — `/agent/*` đang xác thực bằng chính agent token sống lâu; gỡ nó trước khi token lượt chạy chạy được là khoá cửa của agent
+- T045 chặn T039i — chưa có gói nhận việc thì instructions không có chỗ để đi xuống
+- T048 chặn T048a — màn hình "Thiết lập bằng Tác nhân" phải có `DaemonAdapter` rồi mới nối lại được
 - T025 chặn T072 — không có Postgres thật thì test nhận việc vô nghĩa
 - T008 chặn T046 · T046 chặn T055 — có luật rồi mới có dữ liệu, có dữ liệu rồi mới vẽ được
 - T039 chặn T042 — chưa ghi được mối buộc agent↔chỗ làm thì `DaemonLivenessProbe` không có gì để đọc
@@ -325,7 +354,7 @@ Phase 8 Polish
 | Setup | T002, T003, T004, T006 |
 | Phần Go và phần Python của US1 | T030/T033/T035/T038/T052/T054 song song với T027/T028/T036/T045 |
 | Ba nhánh của gói việc | T059 thông điệp · T060 kỹ năng · T061 bộ công cụ — khác tệp, chạy được ngay sau T056/T058 |
-| Toàn bộ test của US1 | T071, T072, T073, T074, T075, T076, T077, T078, T079, T079a, T080, T081, T082, T082a, T082b |
+| Toàn bộ test của US1 | T071, T072, T073, T074, T075, T076, T077, T078, T079, T079a, T080, T081, T082, T082a, T082b, T082c, T082d |
 | US2 và US5 | hai phase chạy song song sau khi US1 xong |
 | Giao diện | T031, T041, T044, T055, T069, T102 song song với phần backend tương ứng |
 

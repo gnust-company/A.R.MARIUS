@@ -1,5 +1,25 @@
 <!--
 Sync Impact Report
+- Phiên bản: 1.1.0 → 2.0.0
+- Loại bump: MAJOR — **định nghĩa lại** Nguyên tắc V. Điều cũ bắt ngữ cảnh agent đi theo một cái
+  ghế vai trò trong dự án; điều mới đặt cách cư xử của agent lên chính agent, ở chỗ **chỉ dẫn**
+  viết lúc tạo nó. Đây là đảo chiều, không phải mở rộng.
+- Nguyên tắc sửa: **V. Góc nhìn dự án → V. Chỉ dẫn thuộc về agent, bối cảnh thuộc về dự án.**
+  Người chủ chốt ngày 2026-08-25. Lý do người chủ đưa: vai theo dự án **làm loãng kỹ năng**, và
+  một khi chỉ dẫn đã nằm trên agent thì cái ghế vai trò chỉ còn là chỗ chép lại cùng một nội
+  dung lần thứ hai — hai bản chép của một sự thật thì sớm muộn lệch nhau. Mô hình agent của
+  Multica được lấy làm chuẩn kế thừa: agent giữ danh tính lâu dài, chỉ dẫn và năng lực; muốn hai
+  cách cư xử thì tạo hai agent, vì agent vốn rẻ.
+- **Giữ nguyên**: khái niệm **Trưởng dự án**. Nó không phải một ghế trong bộ vai trò mà là vị trí
+  điều phối của từng dự án, và toàn bộ cách vận hành treo lên nó.
+- **Giữ nguyên**: nửa sau của điều cũ — agent làm việc trong dự án nào chỉ được nhận bối cảnh của
+  dự án đó. Đảo chiều nằm ở *cách cư xử*, không nằm ở *bối cảnh*.
+- Phần sửa kèm: **Định vị sản phẩm** — bỏ chữ "bộ vai trò" cho khớp Nguyên tắc V mới.
+- Phần thêm: không có. Phần bớt: không có. TODO: không có.
+-->
+
+<!--
+Sync Impact Report
 - Phiên bản: 1.0.1 → 1.1.0
 - Loại bump: MINOR — thêm một nguyên tắc mới (VII), không sửa và không bỏ nguyên tắc nào.
 - Phần thêm: **VII. Gói tin gửi agent dùng tiếng Anh.** Điều VI đã đặt luật cho chữ hiển thị với
@@ -60,11 +80,21 @@ Trạng thái và sự kiện PHẢI được đẩy về trình duyệt qua kê
 
 Lý do: hỏi-vòng tốn tài nguyên và chậm; đẩy cho khả năng theo dõi theo thời gian thực.
 
-### V. Góc nhìn dự án
-Khi làm việc trong một dự án, ngữ cảnh của agent (vai trò, đồng đội, wake, prompt) PHẢI theo vai trò trong
-dự án đó — KHÔNG ĐƯỢC dùng thuộc tính ở tầng workspace.
+### V. Chỉ dẫn thuộc về agent, bối cảnh thuộc về dự án
+**Cách cư xử** của một agent — nó là ai, chịu trách nhiệm gì, được sửa gì, giao kết quả ra sao — PHẢI đến
+từ **chỉ dẫn viết lúc tạo agent**, sống ở tầng workspace và không đổi theo dự án. Hệ thống KHÔNG ĐƯỢC dựng
+vai trò riêng cho từng dự án để chép lại cùng nội dung ấy lần thứ hai.
 
-Lý do: cùng một agent có thể giữ vai khác nhau giữa các dự án; ngữ cảnh phải bám đúng dự án đang làm.
+**Bối cảnh công việc** — đang ở dự án nào, đầu việc nào, ai là đồng đội, vì sao bị gọi dậy — PHẢI đến từ
+chính dự án đang làm. Một agent làm việc ở dự án này KHÔNG ĐƯỢC nhận bối cảnh của dự án khác.
+
+Mỗi dự án vẫn có một **Trưởng dự án**. Đó là vị trí điều phối của dự án, không phải một ghế trong bộ vai
+trò đã bỏ.
+
+Lý do: chỉ dẫn nằm trên agent thì **agent là đơn vị chuyên môn hoá**, và mỗi cách cư xử có đúng một chỗ để
+đọc và một chỗ để sửa. Một cái ghế vai trò đặt song song sẽ giữ bản chép thứ hai của cùng một sự thật —
+hai bản chép thì sớm muộn lệch nhau, và người đọc không biết bản nào thắng. Cần hai cách cư xử thì tạo hai
+agent: agent chỉ là tên, chỉ dẫn, kỹ năng và chỗ làm, nên nó rẻ.
 
 ### VI. Tiếng Việt cho người dùng
 Mọi chuỗi hiển thị với người dùng PHẢI đi qua cơ chế i18n (Việt/Anh). Tiếng Việt hiển thị PHẢI đủ dấu —
@@ -90,9 +120,9 @@ Armarius là nơi làm việc dùng chung: nhiều người ở nhiều team m�
 hỏi/đáp các bên, cộng tác ngang hàng, đẩy kết quả vào kho chung — còn con người chỉ giám sát và phê duyệt.
 Khẩu hiệu: **"Bạn giao việc. Chúng cộng tác. Bạn theo dõi."**
 
-Armarius KHÔNG phải công cụ vận hành cả công ty: không có CEO/Goal/sơ đồ tổ chức, chỉ có **Dự án** và bộ
-vai trò. Armarius tự sở hữu vòng đánh thức (wake) và cơ chế sống/chết (liveness) — không phụ thuộc heartbeat
-của runtime ngoài.
+Armarius KHÔNG phải công cụ vận hành cả công ty: không có CEO/Goal/sơ đồ tổ chức, chỉ có **Dự án**, các
+agent được thêm vào dự án, và một **Trưởng dự án** cho mỗi dự án. Armarius tự sở hữu vòng đánh thức (wake)
+và cơ chế sống/chết (liveness) — không phụ thuộc heartbeat của runtime ngoài.
 
 ## Governance
 
@@ -107,4 +137,4 @@ của runtime ngoài.
   Nguyên tắc: **đặc tả đi trước, mã theo sau và phải chứng minh khớp đặc tả.**
 - Mọi PR PHẢI xác nhận tuân Hiến pháp; thay đổi phức tạp PHẢI giải trình lý do.
 
-**Version**: 1.1.0 | **Ratified**: 2026-07-29 | **Last Amended**: 2026-08-16
+**Version**: 2.0.0 | **Ratified**: 2026-07-29 | **Last Amended**: 2026-08-25
