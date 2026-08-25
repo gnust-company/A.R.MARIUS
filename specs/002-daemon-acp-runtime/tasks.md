@@ -97,7 +97,7 @@ thấy nó chạy thật.
 
 ### Nối máy vào workspace
 
-- [x] T027 [P] [US1] Viết `backend/armarius/infrastructure/daemon/enrollment.py` — sinh mã, duyệt, cấp token, tất cả dùng một lần và hết hạn sau 10 phút (FR-001) — **xong 2026-08-24**: token đúc **lúc trao**, không phải lúc duyệt, nên `consumed_at` đúng nghĩa và bí mật chỉ sinh ra đúng khoảnh khắc đưa được thẳng cho máy giữ nó; server chỉ giữ hash
+- [x] T027 [P] [US1] Viết `backend/armarius/infrastructure/daemon/enrollment.py` — sinh mã, duyệt, cấp token, tất cả dùng một lần và hết hạn sau 10 phút (FR-001) — **xong 2026-08-24**: token đúc **lúc trao**, không phải lúc duyệt, nên `consumed_at` đúng nghĩa và bí mật chỉ sinh ra đúng khoảnh khắc đưa được thẳng cho máy giữ nó; server chỉ giữ hash. **Sửa sau review (2026-08-25)**: `approve_link` có đúng cái lỗ tranh nhau mà `poll_link` đã vá — đọc "chưa ai duyệt" rồi mới ghi, hai lượt duyệt cùng lúc thì cả hai cùng ghi và người ghi sau thắng trong im lặng. Nay cả hai chỗ đều ghi **có điều kiện** và kiểm số dòng
 - [x] T028 [US1] Thêm `POST /daemon/link/start` và `POST /daemon/link/poll` vào `backend/armarius/presentation/api/daemon.py` (FR-001) — **xong 2026-08-24**, kèm **hai lối cho người duyệt** mà cả hợp đồng lẫn danh sách này đều chưa có: `GET /v1/machines/link/{code}` và `POST /v1/machines/link/{code}/approve`. Không có chúng thì màn hình ở T031 không gọi được vào đâu, mà máy thì không tự nhận mình vào workspace được. Đã ghi vào [hợp đồng](contracts/daemon-api.md) §1
 - [x] T029 [US1] Thêm `POST /daemon/token/renew` vào `backend/armarius/presentation/api/daemon.py` — **server quyết** đã tới lúc gia hạn chưa (FR-014a, FR-014d) — **xong 2026-08-24**: hạn 90 ngày, chỉ gia hạn khi còn dưới 14 ngày; gia hạn **giữ nguyên chuỗi bí mật**, chỉ dời hạn, để máy không phải ghi lại token giữa một lần chạy không ai trông
 - [x] T030 [P] [US1] Viết `daemon/internal/client/enroll.go` — lệnh `login`, in mã, hỏi lại theo nhịp, lưu token vào `~/.armarius/daemon.json` với quyền `0600` (FR-001) — **xong 2026-08-24**: ghi bằng cách **trộn vào** tệp cũ chứ không đè, vì tệp ấy dùng chung với năm con số của T026; tệp có sẵn mà đang lỏng thì bị siết lại `0600` chứ không tin
@@ -169,7 +169,7 @@ thấy nó chạy thật.
 
 ### Test cho US1
 
-- [x] T071 [P] [US1] `backend/tests/test_daemon_enrollment.py` — device flow, mã hết hạn, mã dùng một lần (FR-001) — **xong 2026-08-24**: 12 test chạy qua app thật; cộng `daemon/internal/client/enroll_test.go` cho nửa bên máy
+- [x] T071 [P] [US1] `backend/tests/test_daemon_enrollment.py` — device flow, mã hết hạn, mã dùng một lần (FR-001) — **xong 2026-08-24**: 15 test chạy qua app thật, cộng `daemon/internal/client/enroll_test.go` cho nửa bên máy. **Bổ sung sau review (2026-08-25)**: `backend/tests/test_daemon_enrollment_races.py` — hai chỗ tranh nhau (hai lượt duyệt, hai lượt hỏi) dựng trên **Postgres thật**, vì trên SQLite chúng lúc bắt được lỗi lúc không, tuỳ hai lời gọi có chồng nhau hay không — đo thật, không phỏng đoán
 - [ ] T072 [US1] `backend/tests/test_run_claim_atomic.py` — **chạy trên Postgres thật**; hai cú xin đồng thời chỉ một cú nhận được việc, và 5 lượt chạy đồng thời trên một máy không lượt nào bị nhận hai lần (FR-054, FR-054b, SC-009)
 - [ ] T073 [P] [US1] `backend/tests/test_daemon_claim_batch.py` — lấy nhiều đầu việc cùng lúc vẫn atomic (FR-055e)
 - [ ] T074 [P] [US1] `backend/tests/test_claim_expiry_returns_run.py` — quá hạn giữ thì đầu việc quay về trạng thái chưa ai nhận (FR-056a)
@@ -322,7 +322,7 @@ Phase 8 Polish
 | Setup | T002, T003, T004, T006 |
 | Phần Go và phần Python của US1 | T030/T033/T035/T038/T052/T054 song song với T027/T028/T036/T045 |
 | Ba nhánh của gói việc | T059 thông điệp · T060 kỹ năng · T061 bộ công cụ — khác tệp, chạy được ngay sau T056/T058 |
-| Toàn bộ test của US1 | T071, T073, T074, T075, T076, T077, T078, T079, T079a, T080, T081, T082 |
+| Toàn bộ test của US1 | T071, T072, T073, T074, T075, T076, T077, T078, T079, T079a, T080, T081, T082 |
 | US2 và US5 | hai phase chạy song song sau khi US1 xong |
 | Giao diện | T031, T041, T044, T055, T069, T102 song song với phần backend tương ứng |
 
