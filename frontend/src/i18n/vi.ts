@@ -733,6 +733,15 @@ export const vi = {
       liveness: 'Liveness',
       lastSeen: 'Lần cuối thấy',
     },
+    offlineReason: {
+      label: 'Chỗ làm',
+      not_placed: 'Agent chưa được đặt vào chỗ làm nào.',
+      machine_unreachable: 'Máy giữ chỗ làm này đã ngừng báo nhịp — nhiều khả năng máy đang tắt hoặc mất mạng.',
+      cli_removed: 'Agent CLI của chỗ làm này không còn trên máy nữa. Cài lại rồi chỗ làm tự sẵn sàng trở lại.',
+      link_unsupported: 'Máy này không tạo được liên kết bắt buộc, nên không chỗ làm nào trên đó nhận việc được.',
+      placement_not_ready: 'Chỗ làm của agent đang đóng.',
+      unknown: 'Chỗ làm của agent đang đóng, chưa rõ lý do.',
+    },
     linkSkills: {
       add: 'Liên kết kỹ năng',
       title: 'Liên kết kỹ năng cho {{name}}',

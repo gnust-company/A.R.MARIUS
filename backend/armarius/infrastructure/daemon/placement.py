@@ -9,6 +9,8 @@ second kind of place arrive later without reopening a single use case (Constitut
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping, Sequence
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
@@ -18,17 +20,31 @@ from armarius.domain.entities.placement import Placement
 from armarius.domain.repositories.repositories import PlacementRepository
 from armarius.infrastructure.daemon.models import (
     AgentWorkplaceBindingModel,
+    MachineModel,
     WorkplaceModel,
 )
 from armarius.shared.clock import utcnow
+from armarius.shared.config import settings
 from armarius.shared.errors import Conflict
+
+# Why the place an agent was put cannot take work. Codes, never sentences — the screen
+# builds the sentence (Constitution VI + VII). This one is the module's own; the rest
+# arrive already written on the workplace row (`cli_removed`, `link_unsupported`), and
+# the two that need no knowledge of machines at all live in the domain beside `Placement`.
+REASON_MACHINE_UNREACHABLE = "machine_unreachable"
 
 
 class SqlPlacementRepository(PlacementRepository):
     """`workplaces` read as placements, `agent_workplace_bindings` written once."""
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        clock: Callable[[], datetime] = utcnow,
+    ) -> None:
         self._s = session
+        self._clock = clock
 
     async def get(self, workspace_id: UUID, placement_id: UUID) -> Placement | None:
         row = (
@@ -70,3 +86,80 @@ class SqlPlacementRepository(PlacementRepository):
             )
         )
         await self._s.flush()
+
+    async def placed_at(self, marius_ids: Sequence[UUID]) -> Mapping[UUID, Placement]:
+        """One query for the whole roster: where each agent sits, and whether it can work.
+
+        Three things have to be true at once for an agent to have somewhere to work, and
+        they fail independently: it was put somewhere at all, that CLI is still installed
+        there, and the machine holding it is still beating. Every one of those failures
+        comes back as the same verdict — *not ready* — because that is all the layer above
+        is allowed to care about (FR-006, FR-006a). The reason rides along beside the
+        verdict for the screen alone (FR-006c).
+
+        The join is an outer one on `machines` on purpose. An inner join would silently
+        drop an agent whose machine row went missing, and a dropped row reads to the caller
+        as *never placed* — the one wrong answer that looks like a right one.
+        """
+        wanted = list(dict.fromkeys(marius_ids))
+        if not wanted:
+            return {}
+
+        rows = (
+            await self._s.execute(
+                select(
+                    AgentWorkplaceBindingModel.marius_id,
+                    AgentWorkplaceBindingModel.workspace_id,
+                    WorkplaceModel.id,
+                    WorkplaceModel.ready,
+                    WorkplaceModel.not_ready_reason,
+                    MachineModel.last_heartbeat_at,
+                )
+                .join(
+                    WorkplaceModel,
+                    WorkplaceModel.id == AgentWorkplaceBindingModel.workplace_id,
+                )
+                .outerjoin(MachineModel, MachineModel.id == WorkplaceModel.machine_id)
+                .where(AgentWorkplaceBindingModel.marius_id.in_(wanted))
+            )
+        ).all()
+
+        cutoff = self._clock() - timedelta(
+            seconds=settings.machine_unreachable_after_seconds
+        )
+        placed: dict[UUID, Placement] = {}
+        for marius_id, workspace_id, placement_id, ready, reason, beat in rows:
+            # A recorded reason wins over a quiet machine, and that order is deliberate.
+            # `cli_removed` was written by a sweep that actually ran on that machine while
+            # it was up, so it is a measured fact; the machine being quiet now is the
+            # newer event but the vaguer one. Whoever reads this has to reinstall the CLI
+            # either way, and telling them only that the machine is off would send them to
+            # boot it and find nothing changed.
+            if not ready:
+                placed[marius_id] = Placement(
+                    id=placement_id,
+                    workspace_id=workspace_id,
+                    ready=False,
+                    not_ready_reason=reason,
+                )
+                continue
+            alive = beat is not None and _at_least(beat) > cutoff
+            placed[marius_id] = Placement(
+                id=placement_id,
+                workspace_id=workspace_id,
+                ready=alive,
+                not_ready_reason=None if alive else REASON_MACHINE_UNREACHABLE,
+            )
+        return placed
+
+
+def _at_least(moment: datetime) -> datetime:
+    """Timestamps read back from SQLite come home without a timezone; Postgres keeps one.
+
+    Comparing the two raises rather than answering wrong, which is the good failure mode,
+    but it fails in the watchdog rather than in a test — so the naive one is read as UTC
+    here, which is the only thing it has ever meant on the way in.
+    """
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=UTC)
+    return moment

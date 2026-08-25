@@ -153,6 +153,17 @@ class DaemonWorkplaceService:
                 if machine_row is not None:
                     machine_row.symlink_capable = symlink_capable
                     machine_row.updated_at = now
+                    # A machine that is talking to us is a machine that is there. Reachability
+                    # is not the property of one route — it is what any authenticated call
+                    # from that machine demonstrates, and reading it off the beat alone would
+                    # leave a daemon that is mid-sweep, or whose beat loop has not started
+                    # yet, looking dead while it is plainly in the middle of a sentence.
+                    #
+                    # This is still not a liveness signal for any *agent* on the machine, and
+                    # that line is the one FR-055b draws. Reaching the machine says nothing
+                    # about whether a CLI on it can run — which is exactly the question the
+                    # rest of this call answers, separately, from what the machine reported.
+                    machine_row.last_heartbeat_at = now
                 machine_name = machine_row.display_name if machine_row else ""
 
                 # A machine that cannot link the pieces of a CLI's home that have to be linked

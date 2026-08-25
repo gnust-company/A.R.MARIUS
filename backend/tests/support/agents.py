@@ -45,6 +45,10 @@ async def ready_workplace(
             display_name=machine_name,
             token_hash=f"test-{uuid4().hex}",
             symlink_capable=True,
+            # Beating as of now. Without this the fixture would be a machine that has never
+            # once been heard from, which is a real state with a real meaning — every agent
+            # on it offline (FR-006a) — and not the state any caller of this helper wants.
+            last_heartbeat_at=now,
             created_at=now,
         )
         workplace = WorkplaceModel(

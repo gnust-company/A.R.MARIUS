@@ -730,6 +730,15 @@ export const en = {
       liveness: 'Liveness',
       lastSeen: 'Last seen',
     },
+    offlineReason: {
+      label: 'Workplace',
+      not_placed: 'This agent has not been placed anywhere to work.',
+      machine_unreachable: 'The machine holding this workplace has stopped beating — it is most likely powered off or off the network.',
+      cli_removed: "This workplace's agent CLI is no longer on the machine. Reinstall it and the workplace becomes ready again.",
+      link_unsupported: 'This machine cannot create the links a run requires, so no workplace on it can take work.',
+      placement_not_ready: "The agent's workplace is closed.",
+      unknown: "The agent's workplace is closed, for a reason it did not record.",
+    },
     linkSkills: {
       add: 'Link skills',
       title: 'Link skills to {{name}}',

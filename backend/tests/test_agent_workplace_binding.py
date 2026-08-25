@@ -27,6 +27,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from armarius.domain.repositories.repositories import PlacementRepository
+from armarius.infrastructure.daemon.liveness import DaemonLivenessProbe
 from armarius.infrastructure.daemon.models import (
     AgentWorkplaceBindingModel,
     MachineModel,
@@ -205,7 +206,10 @@ def test_nothing_in_the_port_can_move_an_agent() -> None:
         for name, _ in inspect.getmembers(PlacementRepository, inspect.isfunction)
         if not name.startswith("_")
     }
-    assert offered == {"get", "attach"}, (
+    # `placed_at` is on the list on purpose and it reads only: it answers where an agent
+    # already is, which is the question liveness asks every tick. Nothing in it writes, so
+    # it cannot become the move FR-007 forbids.
+    assert offered == {"get", "attach", "placed_at"}, (
         "PlacementRepository grew a method. If it moves an agent between workplaces it "
         "breaks FR-007; if it does not, add it here on purpose."
     )
@@ -350,3 +354,50 @@ async def test_deleting_a_workspace_takes_its_machines_with_it() -> None:
             ).scalars().all(),
         }
     assert all(not rows for rows in left_over.values()), left_over
+
+
+# ── an agent with nowhere to work is offline, not an error ───────────────────
+
+
+async def test_an_agent_with_no_workplace_is_offline_rather_than_a_silent_nothing() -> None:
+    """The other half of T077, which needed `DaemonLivenessProbe` (T042) to be checkable.
+
+    The create path cannot produce this state any more — that is what the tests above are
+    for. What can produce it is everything else: a row that predates the rule, a restore
+    from a partial backup, a hand-edited database. FR-007f says the answer in that case is
+    already decided, and it is not an exception: the agent is offline, with a reason a
+    person can read.
+    """
+    async with _client() as c:
+        h, ws = await _patron(c, "bind-orphan@armarius.dev")
+        workplace = await ready_workplace(ws)
+        agent = await invite_agent(c, ws, h, name="Marin", workplace_id=workplace)
+
+        async with app.state.container.uow_factory() as uow:
+            marius = await uow.mariuses.get(UUID(agent["id"]))
+        assert marius is not None
+        assert await DaemonLivenessProbe(app.state.container.uow_factory).probe(marius)
+
+        # Take the attachment away underneath it.
+        async with get_sessionmaker()() as s:
+            row = await s.get(AgentWorkplaceBindingModel, UUID(agent["id"]))
+            assert row is not None
+            await s.delete(row)
+            await s.commit()
+
+        assert not await DaemonLivenessProbe(app.state.container.uow_factory).probe(marius)
+
+        shown = (await c.get(f"/v1/workspaces/{ws}/mariuses", headers=h)).json()[0]
+        assert shown["offline_reason"] == "not_placed"
+
+
+async def test_a_placed_agent_carries_no_reason_at_all() -> None:
+    """There is no code for *fine*. A caller that had to tell a well code from an ill one
+    would be doing the branching FR-006c exists to keep out of the layers above."""
+    async with _client() as c:
+        h, ws = await _patron(c, "bind-noreason@armarius.dev")
+        workplace = await ready_workplace(ws)
+        await invite_agent(c, ws, h, name="Marin", workplace_id=workplace)
+
+        shown = (await c.get(f"/v1/workspaces/{ws}/mariuses", headers=h)).json()[0]
+        assert shown["offline_reason"] is None

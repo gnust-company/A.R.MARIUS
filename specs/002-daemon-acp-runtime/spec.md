@@ -278,6 +278,13 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   cùng một người.
 - **FR-004**: Daemon PHẢI phát tín hiệu sống theo nhịp đều. Mất tín hiệu quá ngưỡng thì mọi chỗ làm của nó
   chuyển sang **không sẵn sàng**.
+- **FR-004a**: Tín hiệu sống của máy là **liên lạc được với máy ấy**, không phải một lối gọi cụ thể nào.
+  **Mọi** lời gọi `/daemon/*` mà máy thực hiện thành công PHẢI được tính là một lần liên lạc — không riêng
+  nhịp. Ngưỡng im lặng là **ba nhịp lỡ**. *Viết ra 2026-08-25 lúc hiện thực T042: đọc mỗi cột nhịp thì một
+  cái máy đang khai chỗ làm — tức là đang nói chuyện với server ngay lúc ấy — vẫn bị coi là đã chết, vì
+  vòng phát nhịp của nó chưa kịp chạy vòng đầu. Đây đúng bài học đã ghi một tầng trên cho `/agent/*`.*
+  Điều này **không** mâu thuẫn FR-055b: liên lạc được tới máy vẫn không chứng minh gì về agent CLI trên máy
+  ấy, và không lối nào được ghi dấu hiệu sống cho **agent** từ một cú gọi của máy.
 - **FR-005**: Khi daemon tắt có trật tự, nó PHẢI gỡ đăng ký mọi chỗ làm của mình thay vì để hệ thống chờ
   hết ngưỡng.
 - **FR-005a**: Daemon PHẢI trả lời được **ngay tại cái máy đang chạy nó** câu hỏi *"máy này đang ở tình

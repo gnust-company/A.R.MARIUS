@@ -378,6 +378,16 @@ class MariusOut(_Out):
     skill_installs: dict[str, str] = Field(default_factory=dict)
     adapter_type: str
     liveness: str
+    # Why this agent has nowhere to work, when it has nowhere to work (FR-006c). A code,
+    # never a sentence — two audiences read this in two languages and only the screen knows
+    # which one it is talking to (Constitution VI + VII).
+    #
+    # `null` is not the same as "online". Liveness is decided on a clock and this is decided
+    # on the state of a place, so an agent can be online with a reason attached — the place
+    # shut a second ago and the clock has not caught up. The screen shows the reason beside
+    # whatever the status says rather than instead of it; anything that tried to derive one
+    # of the two from the other would be inventing an agreement neither field promises.
+    offline_reason: str | None = None
     # Invite lifecycle (operator-invite: invited → approved). `adapter_config` and
     # `agent_token` are deliberately omitted — they are secrets, never serialized out.
     invite_status: str | None = None

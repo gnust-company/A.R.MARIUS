@@ -652,3 +652,23 @@ class PlacementRepository(ABC):
     @abstractmethod
     async def attach(self, marius_id: UUID, workspace_id: UUID, placement_id: UUID) -> None:
         """Put an agent at a placement, once. Refuses an agent that already has one."""
+
+    @abstractmethod
+    async def placed_at(self, marius_ids: Sequence[UUID]) -> Mapping[UUID, Placement]:
+        """Where each of these agents was put, as the place stands **right now**.
+
+        Different question from `get`, and the difference is the whole point. `get` answers
+        whether a placement is configured to take work — the question asked once, when
+        somebody is choosing where to put a new agent. This one answers whether it can take
+        work at this moment, which folds in everything that can go wrong after the choice
+        was made. A placement that was open yesterday and is shut today comes back shut.
+
+        An id missing from the answer was never placed at all. That is not an error and
+        not an empty success: an agent with nowhere to work is offline, which is a state
+        with a defined meaning rather than a silence (FR-007f).
+
+        Asked in bulk because the two callers ask about a whole roster at once, and because
+        the verdict and the reason must be computed in the same breath — a screen saying
+        why an agent is offline while the engine still calls it online is worse than either
+        answer alone (FR-006a, FR-006c).
+        """
