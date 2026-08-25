@@ -475,7 +475,6 @@ interface AppStoreState {
   listWorkplaces: () => Promise<WorkplaceChoice[]>
   inviteNewAgent: (input: {
     name: string
-    adapterType: string
     /** What the agent is told to be. Goes down with every run (FR-007i). */
     instructions: string
     /** What the team calls it. Never reaches the agent (FR-007j). */
@@ -585,7 +584,6 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
   inviteNewAgent: async ({
     name,
-    adapterType,
     instructions,
     description,
     workplaceId,
@@ -605,7 +603,6 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       description,
       skills: skillNames,
       skill_ids: skillIds,
-      adapter_type: adapterType,
       workplace_id: workplaceId,
       is_workspace_agent: isWorkspaceAgent ?? false,
     })

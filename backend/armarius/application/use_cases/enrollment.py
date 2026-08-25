@@ -25,9 +25,9 @@ from collections.abc import Callable
 from uuid import UUID
 
 from armarius.application.use_cases.types import UowFactory
-from armarius.domain.entities.marius import Marius
+from armarius.domain.entities.marius import Marius, NameTaken
 from armarius.shared.clock import utcnow
-from armarius.shared.errors import BadRequest, Conflict, NotFound
+from armarius.shared.errors import BadRequest, NotFound
 
 
 class PlacementNotReady(BadRequest):
@@ -36,10 +36,6 @@ class PlacementNotReady(BadRequest):
     Kept apart from *not found* on purpose: one means look again, the other means fix the
     thing you already picked, and only the person on the other end can tell those apart.
     """
-
-
-class NameTaken(Conflict):
-    """Another agent in this workspace already answers to that name (FR-007h)."""
 
 
 def _default_token() -> str:

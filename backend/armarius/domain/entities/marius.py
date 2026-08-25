@@ -17,7 +17,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from armarius.shared.errors import CodedError
+from armarius.shared.errors import CodedError, Conflict
 
 
 class Liveness(StrEnum):
@@ -40,6 +40,16 @@ class InviteStatus(StrEnum):
 
 class InviteError(CodedError):
     """Raised on an illegal invite-lifecycle transition (LLD §3.4)."""
+
+
+class NameTaken(Conflict):
+    """Another agent in this workspace already answers to that name (FR-007h).
+
+    Lives here rather than beside the use case because two layers have to raise the very
+    same refusal: the use case, which looks before it writes so the common case reads well,
+    and the mapper, which is where the database — the only thing that actually decides —
+    says no. A refusal split across two classes is a refusal the caller has to handle twice.
+    """
 
 
 @dataclass
