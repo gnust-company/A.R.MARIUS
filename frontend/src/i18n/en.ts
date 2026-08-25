@@ -865,6 +865,7 @@ export const en = {
     user_inactive: 'This user account is inactive.',
     email_already_registered: 'Email already registered.',
     daemon_link_code_already_approved: 'That link code has already been approved by someone.',
+    workplace_reported_twice: 'Agent CLI \'{{cli_kind}}\' was reported twice in one sync.',
     daemon_link_code_unavailable: 'Could not allocate a link code just now. Please try again.',
     project_closed: 'This project is closed — its history is read-only.',
     project_closed_no_wake: 'This project is closed — its agents are not woken any more.',

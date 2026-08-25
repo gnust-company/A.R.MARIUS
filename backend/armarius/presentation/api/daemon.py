@@ -25,10 +25,11 @@ from fastapi import APIRouter, Depends, Header, Response
 from pydantic import BaseModel, Field
 
 from armarius.infrastructure.daemon.enrollment import MachineIdentity
+from armarius.infrastructure.daemon.workplaces import ReportedWorkplace
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
 from armarius.shared.config import settings
-from armarius.shared.errors import NotFound, Unauthorized
+from armarius.shared.errors import Conflict, NotFound, Unauthorized
 
 router = APIRouter(prefix="/daemon", tags=["daemon"])
 # The person's side of the same handshake. Separate router because it is a different
@@ -116,6 +117,58 @@ class RenewOut(BaseModel):
     expires_at: str | None = None
 
 
+class WorkplaceIn(BaseModel):
+    """One agent CLI as the machine found it.
+
+    `capabilities` is what the CLI answered when it was asked, never what its kind implies
+    (FR-017). It is carried as an open object because the daemon knows what it asked and the
+    server does not need to: the server stores the answer and hands it back to the layers that
+    do. A capability the daemon could not ask about travels inside it, marked.
+    """
+
+    cli_kind: str = Field(min_length=1, max_length=40)
+    cli_version: str = Field(default="", max_length=40)
+    protocol_family: str = Field(default="", max_length=20)
+    capabilities: dict[str, object] = Field(default_factory=dict)
+
+
+class WorkplacesIn(BaseModel):
+    """The machine's whole list, every time — not a difference.
+
+    Sending everything is what makes a *missing* CLI visible at all: there is no message for
+    "gemini is gone", only a list that no longer mentions it.
+    """
+
+    workplaces: list[WorkplaceIn] = Field(default_factory=list, max_length=50)
+    # Whether this machine can make a real symbolic link, established by making one at startup
+    # rather than guessed from the operating system (research.md §5).
+    symlink_capable: bool = False
+
+
+class WorkplaceOut(BaseModel):
+    id: UUID
+    cli_kind: str
+    ready: bool
+    not_ready_reason: str | None = None
+    # The machine's readable name, so the same CLI on two of a person's machines is two
+    # distinguishable workplaces (FR-003).
+    machine_name: str
+
+
+class WorkplacesOut(BaseModel):
+    workplaces: list[WorkplaceOut]
+
+
+class HeartbeatIn(BaseModel):
+    free_slots: int = Field(default=0, ge=0, le=10_000)
+    running: list[UUID] = Field(default_factory=list, max_length=10_000)
+
+
+class HeartbeatOut(BaseModel):
+    pending_work: bool
+    cancel: list[UUID]
+
+
 # ── the machine's half ────────────────────────────────────────────────────────
 
 
@@ -168,6 +221,63 @@ async def renew_token(machine: CurrentMachine, container: ContainerDep) -> Renew
         renewed=renewal.renewed,
         expires_at=renewal.expires_at.isoformat() if renewal.expires_at else None,
     )
+
+
+@router.put("/workplaces", response_model=WorkplacesOut)
+async def sync_workplaces(
+    body: WorkplacesIn, machine: CurrentMachine, container: ContainerDep
+) -> WorkplacesOut:
+    """Register what this machine can run right now (FR-002, FR-003, FR-033).
+
+    Scoped to the calling machine by its own token, so there is no machine id in the path and
+    no way to describe someone else's machine.
+    """
+    seen: set[str] = set()
+    for one in body.workplaces:
+        if one.cli_kind in seen:
+            raise Conflict("workplace_reported_twice", cli_kind=one.cli_kind)
+        seen.add(one.cli_kind)
+
+    synced = await container.daemon_workplaces.sync(
+        machine,
+        reported=[
+            ReportedWorkplace(
+                cli_kind=one.cli_kind,
+                cli_version=one.cli_version,
+                protocol_family=one.protocol_family,
+                capabilities=one.capabilities,
+            )
+            for one in body.workplaces
+        ],
+        symlink_capable=body.symlink_capable,
+    )
+    return WorkplacesOut(
+        workplaces=[
+            WorkplaceOut(
+                id=row.id,
+                cli_kind=row.cli_kind,
+                ready=row.ready,
+                not_ready_reason=row.not_ready_reason,
+                machine_name=row.machine_name,
+            )
+            for row in synced
+        ]
+    )
+
+
+@router.post("/heartbeat", response_model=HeartbeatOut)
+async def heartbeat(
+    body: HeartbeatIn, machine: CurrentMachine, container: ContainerDep
+) -> HeartbeatOut:
+    """Say this machine is still here, and hear what to do next (FR-004).
+
+    `pending_work` is a nudge to go and ask, never an instruction to run something (FR-055a) —
+    which is what keeps two nudges arriving at once from producing two runs.
+    """
+    beat = await container.daemon_workplaces.heartbeat(
+        machine, free_slots=body.free_slots, running=body.running
+    )
+    return HeartbeatOut(pending_work=beat.pending_work, cancel=list(beat.cancel))
 
 
 # ── the person's half ─────────────────────────────────────────────────────────

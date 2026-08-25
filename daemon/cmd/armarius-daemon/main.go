@@ -10,9 +10,8 @@
 //	start   stay up: announce the CLIs found here, ask for work, run it, report back
 //	status  say what this machine currently knows about itself, then exit
 //
-// The subcommands are declared here. The behaviour behind each one arrives with the tasks named
-// in specs/002-daemon-acp-runtime/tasks.md, and until then each one fails loudly rather than
-// pretending to have done its job.
+// `login` and `start` are built. `status` is not, and until it is it fails loudly rather than
+// pretending to have done its job — the task that builds it is named in the refusal.
 package main
 
 import (
@@ -28,6 +27,10 @@ import (
 	"syscall"
 
 	"github.com/gnust-company/armarius-daemon/internal/client"
+	"github.com/gnust-company/armarius-daemon/internal/config"
+	"github.com/gnust-company/armarius-daemon/internal/discovery"
+	"github.com/gnust-company/armarius-daemon/internal/execenv"
+	"github.com/gnust-company/armarius-daemon/internal/supervisor"
 )
 
 // Stamped by the linker when a release is cut; see .goreleaser.yml at the repository root.
@@ -149,16 +152,96 @@ func runLogin(ctx context.Context, args []string, out io.Writer) error {
 	return err
 }
 
-func runStart(_ context.Context, args []string, out io.Writer) error {
+// runStart brings this machine online: it works out what it can run, tells the server, and
+// keeps saying it is there until it is stopped.
+//
+// Asking for work is not here yet — that is the claim loop and the push channel, T052 and T054
+// in specs/002-daemon-acp-runtime/tasks.md. Until they land, a machine that runs this is a
+// machine the server can see and hand nothing to, which is a real and safe state: work with
+// nowhere to go simply waits, which is what FR-008a asks for anyway.
+func runStart(ctx context.Context, args []string, out io.Writer) error {
 	fs := newFlagSet("start", out)
-	config := fs.String("config", defaultConfigPath(), "path to this machine's daemon configuration")
+	configPath := fs.String("config", defaultConfigPath(), "path to this machine's daemon configuration")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *config == "" {
+	if *configPath == "" {
 		return errors.New("start: -config must not be empty")
 	}
-	return notImplemented("start", "T038, T052, T054")
+
+	settings, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	creds, err := client.LoadCredentials(*configPath)
+	if err != nil {
+		return err
+	}
+	session := client.Session{Server: creds.Server, Token: creds.Token}
+
+	// What this machine can link is established by linking, once, on the disk the daemon's own
+	// state lives on — the same filesystem every agent home will be built on (research §5).
+	links := execenv.ProbeLinks(ctx, filepath.Dir(*configPath), execenv.LinkOptions{})
+	if !links.SymlinkCapable() {
+		emit(out, "This machine cannot create symbolic links, so its workplaces will be registered as not ready.\n")
+	}
+
+	swept := discovery.Discover(ctx, discovery.Options{})
+	for _, broken := range swept.Skipped {
+		// A CLI that is installed and will not run is the difference between a machine with two
+		// workplaces and one with three, and the operator is the only one who can fix it.
+		emit(out, "Skipping %s at %s (%s): %v\n", broken.Kind, broken.Path, broken.Reason, broken.Err)
+	}
+
+	reported := make([]client.WorkplaceReport, 0, len(swept.Found))
+	for _, found := range swept.Found {
+		reported = append(reported, client.WorkplaceReport{
+			CLIKind:        string(found.Kind),
+			CLIVersion:     found.Version,
+			ProtocolFamily: string(found.Family),
+			Capabilities:   discovery.Probe(ctx, found, discovery.Options{}),
+		})
+	}
+
+	registered, err := session.SyncWorkplaces(ctx, client.WorkplacesRequest{
+		Workplaces:     reported,
+		SymlinkCapable: links.SymlinkCapable(),
+	})
+	if err != nil {
+		return err
+	}
+	for _, workplace := range registered.Workplaces {
+		state := "ready"
+		if !workplace.Ready {
+			state = "not ready (" + workplace.NotReadyReason + ")"
+		}
+		emit(out, "%s on %s: %s\n", workplace.CLIKind, workplace.MachineName, state)
+	}
+
+	emit(out, "Beating every %s. Stop with Ctrl-C.\n", settings.HeartbeatInterval)
+	return supervisor.RunHeartbeat(ctx, supervisor.HeartbeatOptions{
+		Interval: settings.HeartbeatInterval.Duration(),
+		State: func() supervisor.Beat {
+			// Nothing runs on this machine yet, so every slot is free. The count is read here
+			// on every beat rather than captured once, which is what will keep it true the
+			// moment the claim loop starts holding runs.
+			return supervisor.Beat{FreeSlots: settings.MaxConcurrentRuns}
+		},
+		Send: func(ctx context.Context, beat supervisor.Beat) (supervisor.Reply, error) {
+			answered, err := session.Beat(ctx, client.BeatRequest{
+				FreeSlots: beat.FreeSlots,
+				Running:   beat.Running,
+			})
+			if err != nil {
+				return supervisor.Reply{}, err
+			}
+			return supervisor.Reply{
+				PendingWork: answered.PendingWork,
+				Cancel:      answered.Cancel,
+			}, nil
+		},
+		Report: func(err error) { emit(out, "heartbeat: %v\n", err) },
+	})
 }
 
 func runStatus(_ context.Context, args []string, out io.Writer) error {

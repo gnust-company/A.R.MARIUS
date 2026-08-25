@@ -68,6 +68,11 @@ ENGLISH: dict[str, str] = {
     "project_closed": "This project is closed — its history is read-only.",
     "daemon_link_code_already_approved": "That link code has already been approved.",
     "daemon_link_code_unavailable": "Could not allocate a link code; please try again.",
+    # A machine sweeps its own PATH and cannot find the same CLI twice, so a repeated
+    # kind in one report is a broken caller rather than a machine with two of something.
+    # Refused rather than collapsed, because collapsing it would decide on the caller's
+    # behalf which of two disagreeing entries was meant.
+    "workplace_reported_twice": "Agent CLI '{cli_kind}' was reported twice in one sync.",
     "project_closed_no_wake": (
         "This project is closed — its agents are not woken any more."
     ),
