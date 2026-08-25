@@ -74,6 +74,11 @@ from armarius.domain.repositories.repositories import (
 )
 from armarius.domain.services.push_reason_rules import WATCHED_STATUSES
 from armarius.domain.services.wake_reason import to_payload as causes_to_payload
+from armarius.infrastructure.daemon.cleanup import (
+    forget_agent,
+    forget_claims_of_runs,
+    forget_workspace,
+)
 from armarius.infrastructure.database.models import (
     ArtifactModel,
     ChecklistItemModel,
@@ -279,6 +284,7 @@ class SqlWorkspaceRepository(WorkspaceRepository):
                 )
             ).scalars().all()
             if run_ids:
+                await forget_claims_of_runs(self._s, run_ids)
                 await self._s.execute(
                     delete(RunEventModel).where(RunEventModel.run_id.in_(run_ids))
                 )
@@ -330,6 +336,10 @@ class SqlWorkspaceRepository(WorkspaceRepository):
             await self._s.execute(
                 delete(SeatGrantModel).where(SeatGrantModel.marius_id.in_(marius_ids))
             )
+        # The machines enrolled here, the workplaces on them, and which agent was attached
+        # to which — all of it before the agents go, because that is the direction the keys
+        # point in.
+        await forget_workspace(self._s, workspace_id)
         await self._s.execute(
             delete(MariusModel).where(MariusModel.workspace_id == workspace_id)
         )
@@ -876,10 +886,12 @@ class SqlMariusRepository(MariusRepository):
             )
         ).scalars().all()
         if run_ids:
+            await forget_claims_of_runs(self._s, run_ids)
             await self._s.execute(
                 delete(RunEventModel).where(RunEventModel.run_id.in_(run_ids))
             )
             await self._s.execute(delete(RunModel).where(RunModel.id.in_(run_ids)))
+        await forget_agent(self._s, marius_id)
         await self._s.execute(
             delete(SessionModel).where(SessionModel.marius_id == marius_id)
         )

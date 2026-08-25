@@ -24,13 +24,14 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
-import type { Marius, AgentStatus } from '@/store/appStore';
+import type { Marius, AgentStatus, WorkplaceChoice } from '@/store/appStore';
 import VellumPanel from '@/components/VellumPanel';
 import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import PageTitle from '@/components/PageTitle';
 import { cn, wsHref } from '@/lib/utils';
+import { errorText } from '@/lib/errors';
 import { useTranslation } from 'react-i18next';
 
 // ─── Animation Variants ──────────────────────────────────────────────────────
@@ -345,6 +346,7 @@ export default function Directory() {
   const mariuses = useAppStore((s) => s.mariuses);
   const skills = useAppStore((s) => s.skills);
   const inviteNewAgent = useAppStore((s) => s.inviteNewAgent);
+  const listWorkplaces = useAppStore((s) => s.listWorkplaces);
   const updateMarius = useAppStore((s) => s.updateMarius);
   const deleteMarius = useAppStore((s) => s.deleteMarius);
   const designateWorkspaceAgent = useAppStore((s) => s.designateWorkspaceAgent);
@@ -375,6 +377,17 @@ export default function Directory() {
   const [agentName, setAgentName] = useState('');
   const [gatewayUrl, setGatewayUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
+  // Where the new agent will work. Read when the form opens rather than held in the store:
+  // an agent is attached to one workplace for life (FR-007), so this list has to be the one
+  // that is true at the moment of choosing, not one cached from an earlier visit.
+  const [workplaces, setWorkplaces] = useState<WorkplaceChoice[]>([]);
+  const [workplaceId, setWorkplaceId] = useState('');
+  const [workplacesLoading, setWorkplacesLoading] = useState(false);
+  // Why a refused invite was refused. The workplace list was true when this form opened;
+  // a CLI uninstalled a minute later makes the chosen one stale, and the server says so in
+  // a coded refusal. Swallowing it would leave the person clicking a button that does
+  // nothing and says nothing.
+  const [inviteError, setInviteError] = useState('');
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const [makeWorkspaceAgent, setMakeWorkspaceAgent] = useState(false);
   const [inviteSwapConfirmOpen, setInviteSwapConfirmOpen] = useState(false);
@@ -428,6 +441,9 @@ export default function Directory() {
     setAgentName('');
     setGatewayUrl('');
     setApiKey('');
+    setWorkplaces([]);
+    setWorkplaceId('');
+    setInviteError('');
     setSelectedSkillIds([]);
     setMakeWorkspaceAgent(false);
     setSendStatus(null);
@@ -436,12 +452,24 @@ export default function Directory() {
   const handleOpenInvite = () => {
     resetInviteForm();
     setInviteModalOpen(true);
+    setWorkplacesLoading(true);
+    listWorkplaces()
+      .then((rows) => {
+        setWorkplaces(rows);
+        // One workplace is not a choice, so make it rather than ask for it. More than one
+        // stays blank: picking for the patron is picking which of their machines this agent
+        // lives on for good, and that is not a decision to make on their behalf.
+        setWorkplaceId(rows.length === 1 ? rows[0].id : '');
+      })
+      .catch(() => setWorkplaces([]))
+      .finally(() => setWorkplacesLoading(false));
   };
 
   const doInvite = async () => {
-    if (!agentName.trim() || !gatewayUrl.trim() || !apiKey.trim() || sending) return;
+    if (!agentName.trim() || !gatewayUrl.trim() || !apiKey.trim() || !workplaceId || sending) return;
     setSending(true);
     setSendStatus(null);
+    setInviteError('');
     try {
       // Operator-invite (#63): the backend probes the gateway, mints the token at invite
       // time, and pushes the setup prompt to the agent. The token never comes back; we
@@ -451,6 +479,7 @@ export default function Directory() {
         adapterType,
         gatewayUrl: gatewayUrl.trim(),
         apiKey: apiKey.trim(),
+        workplaceId,
         skillIds: selectedSkillIds,
         isWorkspaceAgent: makeWorkspaceAgent,
       });
@@ -462,9 +491,11 @@ export default function Directory() {
     } catch (e) {
       // Same cleanup on both paths instead of a `finally`: the React Compiler cannot
       // lower `finally` and gives up on the whole component when it meets one. The
-      // rethrow keeps a failed invite exactly as loud as it was.
+      // refusal is worded from its code, so the person reads why in their own language
+      // rather than watching a button do nothing (FR-084a).
       setSending(false);
-      throw e;
+      setInviteError(errorText(e, t));
+      return;
     }
     setSending(false);
   };
@@ -754,6 +785,47 @@ export default function Directory() {
                 />
               </div>
 
+              {/* Where this agent will work (FR-007f). Required: the attachment is made once
+                  here and never again, so there is no "decide later". */}
+              <div>
+                <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
+                  {t('directory.workplace')} <span className="text-[#C25E3A]">*</span>
+                </label>
+                {workplacesLoading ? (
+                  <p className="text-[13px] text-[#A89880]">{t('directory.workplaceLoading')}</p>
+                ) : workplaces.length === 0 ? (
+                  // Not an error state — nothing is broken, there is simply nowhere to put an
+                  // agent yet. Say what to do about it rather than leaving an empty box.
+                  <div className="rounded-md border border-[#E3D7BC] bg-[#F7F0E0] p-3">
+                    <p className="text-[13px] text-[#2A2318]">{t('directory.workplaceNone')}</p>
+                    <p className="mt-1 text-[11px] text-[#A89880]">
+                      {t('directory.workplaceNoneHint')}
+                    </p>
+                  </div>
+                ) : (
+                  <select
+                    value={workplaceId}
+                    onChange={(e) => setWorkplaceId(e.target.value)}
+                    className={cn(
+                      'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
+                      'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+                      'transition-all'
+                    )}
+                  >
+                    <option value="">{t('directory.workplacePlaceholder')}</option>
+                    {workplaces.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {t('directory.workplaceOption', {
+                          cliKind: w.cliKind,
+                          machineName: w.machineName,
+                        })}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <p className="mt-1 text-[11px] text-[#A89880]">{t('directory.workplaceHint')}</p>
+              </div>
+
               {/* Gateway URL + API key (operator-invite, #63) */}
               <div className="grid grid-cols-1 gap-4">
                 <div>
@@ -860,6 +932,15 @@ export default function Directory() {
                 </p>
               )}
 
+              {/* The server's refusal, worded from its own code. Not the same thing as
+                  `send_failed`: that one means the agent exists and its prompt did not
+                  land; this one means no agent was created at all. */}
+              {inviteError && (
+                <p className="flex items-start gap-1.5 px-3 py-2 rounded-md bg-[#F3D9D0] text-[12px] text-[#8A3B22] border border-[#E3C0B2]">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> {inviteError}
+                </p>
+              )}
+
               {/* Footer buttons */}
               <div className="flex justify-end gap-3 pt-2">
                 <button
@@ -870,10 +951,12 @@ export default function Directory() {
                 </button>
                 <button
                   onClick={handleInvite}
-                  disabled={!agentName.trim() || !gatewayUrl.trim() || !apiKey.trim() || sending}
+                  disabled={
+                    !agentName.trim() || !gatewayUrl.trim() || !apiKey.trim() || !workplaceId || sending
+                  }
                   className={cn(
                     'inline-flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-all',
-                    agentName.trim() && gatewayUrl.trim() && apiKey.trim() && !sending
+                    agentName.trim() && gatewayUrl.trim() && apiKey.trim() && workplaceId && !sending
                       ? 'bg-[#C25E3A] text-white hover:bg-[#D97B5A]'
                       : 'bg-[#E3D7BC] text-[#A89880] cursor-not-allowed'
                   )}

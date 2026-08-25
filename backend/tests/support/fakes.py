@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from types import TracebackType
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from armarius.application.ports.adapter import (
     AdapterCapabilities,
@@ -28,6 +28,7 @@ from armarius.domain.entities.inbox_item import InboxItem, InboxItemStatus
 from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.onboarding import OnboardingSession
+from armarius.domain.entities.placement import Placement
 from armarius.domain.entities.push_reason import TaskPushReason
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.run import ACTIVE_RUN_STATUSES, Run, RunStatus
@@ -38,7 +39,7 @@ from armarius.domain.entities.task_dependency import TaskDependency
 from armarius.domain.entities.task_log import TaskLogEntry
 from armarius.domain.entities.workspace import Project, ProjectStatus, Workspace
 from armarius.domain.services.push_reason_rules import watches
-from armarius.shared.errors import NotFound
+from armarius.shared.errors import Conflict, NotFound
 
 
 @dataclass
@@ -59,6 +60,8 @@ class _Store:
     approvals: list[Approval] = field(default_factory=list)
     auto_approvals: dict[tuple[UUID, str], AutoApproval] = field(default_factory=dict)
     mariuses: dict[UUID, Marius] = field(default_factory=dict)
+    placements: dict[UUID, Placement] = field(default_factory=dict)
+    attachments: dict[UUID, UUID] = field(default_factory=dict)
     skills: dict[UUID, Skill] = field(default_factory=dict)
 
 
@@ -604,6 +607,48 @@ class _FakeInboxRepo:
         return items
 
 
+class _FakePlacementRepo:
+    """Where agents are put to work, in memory.
+
+    Insert-only, exactly like the real one: there is no method here that moves an agent,
+    because FR-007 says nothing may, and a fake that allows what production forbids is a
+    fake that lets a test pass on behaviour the system does not have.
+    """
+
+    def __init__(self, store: _Store) -> None:
+        self._s = store
+
+    async def get(self, workspace_id: UUID, placement_id: UUID) -> Placement | None:
+        found = self._s.placements.get(placement_id)
+        if found is None or found.workspace_id != workspace_id:
+            return None
+        return found
+
+    async def attach(self, marius_id: UUID, workspace_id: UUID, placement_id: UUID) -> None:
+        if marius_id in self._s.attachments:
+            raise Conflict("agent_already_placed")
+        self._s.attachments[marius_id] = placement_id
+
+
+def a_placement(store_owner, workspace_id: UUID, *, ready: bool = True,
+                not_ready_reason: str | None = None) -> Placement:
+    """Put one placement in a fake store and hand it back.
+
+    `store_owner` is a `FakeUowFactory` (or anything with a `.store`). Every agent has to be
+    attached to one at creation (FR-007f), so a test that wants an agent needs one of these
+    first — which is the point, not an inconvenience: the requirement says there is no such
+    thing as an agent that has not been placed.
+    """
+    placement = Placement(
+        id=uuid4(),
+        workspace_id=workspace_id,
+        ready=ready,
+        not_ready_reason=not_ready_reason,
+    )
+    store_owner.store.placements[placement.id] = placement
+    return placement
+
+
 class FakeUnitOfWork(UnitOfWork):
     """A UoW backed by an in-memory store. Only the repos the Sprint-2 use cases need."""
 
@@ -628,6 +673,7 @@ class FakeUnitOfWork(UnitOfWork):
         self.approvals = _FakeApprovalRepo(s)  # type: ignore[assignment]
         self.auto_approvals = _FakeAutoApprovalRepo(s)  # type: ignore[assignment]
         self.mariuses = _FakeMariusRepo(s)  # type: ignore[assignment]
+        self.placements = _FakePlacementRepo(s)  # type: ignore[assignment]
         self.skills = _FakeSkillRepo(s)  # type: ignore[assignment]
         return self
 

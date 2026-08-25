@@ -21,6 +21,7 @@ from armarius.domain.repositories.repositories import (
     MariusRepository,
     OnboardingRepository,
     OrchestrationSweepRepository,
+    PlacementRepository,
     PlanRepository,
     ProjectContextRepository,
     ProjectRepository,
@@ -48,6 +49,7 @@ class UnitOfWork(ABC):
     projects: ProjectRepository
     project_contexts: ProjectContextRepository
     plans: PlanRepository
+    placements: PlacementRepository
     roles: RoleRepository
     seat_grants: SeatGrantRepository
     approvals: ApprovalRepository

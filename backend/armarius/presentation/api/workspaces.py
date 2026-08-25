@@ -29,6 +29,7 @@ from armarius.presentation.schemas import (
     UpdateMariusIn,
     UpdateSkillIn,
     UpdateWorkspaceIn,
+    WorkplaceChoiceOut,
     WorkspaceOut,
 )
 from armarius.shared.config import settings
@@ -83,6 +84,33 @@ async def _require_owned_workspace(container, user, workspace_id: UUID):
     return ws
 
 
+@router.get(
+    "/workspaces/{workspace_id}/workplaces",
+    response_model=list[WorkplaceChoiceOut],
+)
+async def list_workplaces(
+    workspace_id: UUID, container: ContainerDep, user: CurrentUser
+) -> list[WorkplaceChoiceOut]:
+    """The workplaces a new agent may be put on, in this workspace only (FR-007f).
+
+    Owner-scoped through the same check every other workspace door uses, so a workspace
+    that is not the caller's reads exactly like one that does not exist (Constitution I).
+
+    An empty list is a real answer, not an error: it means this person has linked no machine
+    yet, or every machine they linked has nothing runnable on it. The screen says so and
+    points at linking a machine — refusing here would only turn a thing they can fix into an
+    error they cannot read.
+    """
+    await _require_owned_workspace(container, user, workspace_id)
+    offered = await container.daemon_workplaces.list_ready(workspace_id)
+    return [
+        WorkplaceChoiceOut(
+            id=one.id, cli_kind=one.cli_kind, machine_name=one.machine_name
+        )
+        for one in offered
+    ]
+
+
 @router.post(
     "/workspaces/{workspace_id}/mariuses",
     response_model=MariusCreatedOut,
@@ -106,6 +134,11 @@ async def invite_marius(
         body.name,
         gateway_url=body.gateway_url,
         api_key=body.api_key,
+        # The workplace the operator picked becomes, one layer down, a *placement*: the
+        # business layer is not allowed to know that where an agent works is a CLI on a
+        # machine (Constitution III). This line is where that translation happens, and it
+        # is the only place it happens.
+        placement_id=body.workplace_id,
         skills=body.skills,
         skill_ids=body.skill_ids,
         adapter_type=body.adapter_type,

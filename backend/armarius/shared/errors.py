@@ -43,6 +43,10 @@ ENGLISH: dict[str, str] = {
     "no_active_onboarding_session": "No onboarding session is open.",
     "run_not_found": "Run not found.",
     "machine_not_found": "Machine not found.",
+    # The business layer calls this a *placement* because it is forbidden to know it is a
+    # workplace on a machine (Constitution III); the sentence says "workplace" because that
+    # is the word on the screen the person is looking at. Same thing, two audiences.
+    "placement_not_found": "Workplace not found.",
     # The three ways a link code is dead. They are separate codes, not one code with a
     # reason parameter, because the screen says something different for each: retype it,
     # start again, or you already linked this machine.
@@ -73,6 +77,13 @@ ENGLISH: dict[str, str] = {
     # Refused rather than collapsed, because collapsing it would decide on the caller's
     # behalf which of two disagreeing entries was meant.
     "workplace_reported_twice": "Agent CLI '{cli_kind}' was reported twice in one sync.",
+    # Picked from a list that was right when the page loaded and has since stopped being
+    # true — the CLI was uninstalled, or the machine turned out not to support links. The
+    # reason travels as a code so the screen can say which of those it was.
+    "placement_not_ready": "That workplace is not ready for work ({reason}).",
+    # An agent is attached to exactly one workplace for life (FR-007). Reaching this means
+    # something tried to attach a second one, which is the move that requirement forbids.
+    "agent_already_placed": "That agent is already attached to a workplace.",
     "project_closed_no_wake": (
         "This project is closed — its agents are not woken any more."
     ),

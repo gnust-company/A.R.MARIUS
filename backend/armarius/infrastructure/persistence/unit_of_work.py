@@ -7,6 +7,7 @@ from types import TracebackType
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from armarius.application.ports.unit_of_work import UnitOfWork
+from armarius.infrastructure.daemon.placement import SqlPlacementRepository
 from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.infrastructure.persistence.repositories import (
     SqlApprovalRepository,
@@ -54,6 +55,7 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         self.projects = SqlProjectRepository(s)
         self.project_contexts = SqlProjectContextRepository(s)
         self.plans = SqlPlanRepository(s)
+        self.placements = SqlPlacementRepository(s)
         self.roles = SqlRoleRepository(s)
         self.seat_grants = SqlSeatGrantRepository(s)
         self.approvals = SqlApprovalRepository(s)

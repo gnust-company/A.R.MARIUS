@@ -73,6 +73,15 @@ class SyncedWorkplace:
 
 
 @dataclass(frozen=True)
+class OfferedWorkplace:
+    """One workplace as the person choosing where to put an agent sees it."""
+
+    id: UUID
+    cli_kind: str
+    machine_name: str
+
+
+@dataclass(frozen=True)
 class Heartbeat:
     """The answer to one beat."""
 
@@ -260,6 +269,34 @@ class DaemonWorkplaceService:
                 await session.rollback()
                 raise
         return Heartbeat(pending_work=pending, cancel=cancel)
+
+    async def list_ready(self, workspace_id: UUID) -> list[OfferedWorkplace]:
+        """Every workplace in one workspace that can take an agent right now (FR-007f).
+
+        Only the ready ones. Offering a workplace whose CLI has been uninstalled would let
+        somebody create an agent that is offline from its first second — and because the
+        attachment can never be changed (FR-007), the only way out of that would be to
+        delete the agent and start again.
+
+        The machine's name rides along because a person picking between `claude_code` on
+        two of their own machines has nothing else to tell them apart (FR-003).
+        """
+        async with self._sessions()() as session:
+            found = await session.execute(
+                select(WorkplaceModel, MachineModel.display_name)
+                .join(MachineModel, MachineModel.id == WorkplaceModel.machine_id)
+                .where(
+                    WorkplaceModel.workspace_id == workspace_id,
+                    WorkplaceModel.ready.is_(True),
+                )
+                .order_by(MachineModel.display_name, WorkplaceModel.cli_kind)
+            )
+            return [
+                OfferedWorkplace(
+                    id=row.id, cli_kind=row.cli_kind, machine_name=machine_name or ""
+                )
+                for row, machine_name in found.all()
+            ]
 
     async def _workplaces_of(
         self, session: AsyncSession, machine: MachineIdentity

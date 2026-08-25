@@ -129,6 +129,35 @@ giá trị (FR-008d).
 > **Heartbeat KHÔNG phải bằng chứng agent chạy được.** Nó chứng minh liên lạc tới máy. Chỗ làm có sẵn sàng
 > hay không là chuyện khác, và `PUT /daemon/workplaces` mới trả lời (FR-055b).
 
+### `GET /v1/workspaces/{workspace_id}/workplaces` — người chọn chỗ đặt agent
+
+**Bổ sung 2026-08-25 lúc hiện thực T040.** Đây là lối của **người**, không phải của máy: nó nằm dưới
+`/v1/…` và dùng thẻ đăng nhập, không dùng token máy. Không gian làm việc không phải của người gọi trả
+`404` y hệt không gian không tồn tại (Điều I).
+
+```json
+← 200 [ { "id": "…", "cli_kind": "claude_code", "machine_name": "gnust-thinkpad" } ]
+```
+
+**Chỉ liệt kê chỗ làm đang sẵn sàng**, nên không có cờ `ready` để vẽ: một chỗ làm không nhận được việc thì
+không có lý do gì nằm trong danh sách mà mục đích duy nhất là để chọn (FR-007f). Danh sách **rỗng là câu
+trả lời thật**, không phải lỗi — nghĩa là người này chưa nối máy nào, hoặc máy đã nối chưa có agent CLI
+nào chạy được.
+
+### `POST /v1/workspaces/{workspace_id}/mariuses` — thêm trường bắt buộc
+
+**Sửa 2026-08-25 lúc hiện thực T039–T040.** Thân yêu cầu tạo agent nay **bắt buộc** có `workplace_id`.
+Thiếu nó là `422`; chỉ ra chỗ làm của không gian khác hoặc chỗ làm không tồn tại đều là
+`404 placement_not_found` (Điều I); chỉ ra chỗ làm của chính mình nhưng không sẵn sàng là
+`400 placement_not_ready` kèm tham số `reason` mang đúng mã ở `workplaces.not_ready_reason`.
+
+Mối buộc ghi vào `agent_workplace_bindings` **trong cùng giao dịch tạo agent**, nên không có khoảnh khắc
+nào tồn tại một agent chưa có chỗ làm (FR-007, FR-007f).
+
+> Mã lỗi nói `placement` chứ không nói `workplace` là **cố ý**: tầng nghiệp vụ ném nó, mà tầng ấy bị cấm
+> biết chỗ làm là một agent CLI trên một cái máy (Điều III). Câu chữ hiện lên màn hình vẫn là "chỗ làm" —
+> cùng một thứ, hai người đọc.
+
 ---
 
 ## 3. Nhận việc — cửa duy nhất

@@ -25,6 +25,7 @@ from armarius.infrastructure.database.models import (
 )
 from armarius.main import app
 from armarius.presentation.container import build_container
+from tests.support.agents import ready_workplace
 
 
 async def _count(model, col, val) -> int:
@@ -102,7 +103,8 @@ async def test_delete_workspace_removes_it_and_cascades():
             f"/v1/workspaces/{ws_id}/mariuses",
             headers=h,
             json={"name": "Aide", "skills": [], "skill_ids": [],
-                  "adapter_type": "echo", "gateway_url": "http://gateway.test", "api_key": "k"},
+                  "adapter_type": "echo", "gateway_url": "http://gateway.test", "api_key": "k",
+                  "workplace_id": await ready_workplace(ws_id)},
         )
 
         deleted = await c.delete(f"/v1/workspaces/{ws_id}", headers=h)
@@ -123,7 +125,8 @@ async def test_delete_workspace_cascades_runtime_rows():
         agent = await c.post(
             f"/v1/workspaces/{ws_id}/mariuses", headers=h,
             json={"name": "Runner", "skills": [], "skill_ids": [],
-                  "adapter_type": "echo", "gateway_url": "http://gateway.test", "api_key": "k"},
+                  "adapter_type": "echo", "gateway_url": "http://gateway.test", "api_key": "k",
+                  "workplace_id": await ready_workplace(ws_id)},
         )
         marius_id = UUID(agent.json()["id"])
 
@@ -168,7 +171,8 @@ async def test_delete_marius_cascades_runtime_rows():
         agent = await c.post(
             f"/v1/workspaces/{ws_id}/mariuses", headers=h,
             json={"name": "Runner", "skills": [], "skill_ids": [],
-                  "adapter_type": "echo", "gateway_url": "http://gateway.test", "api_key": "k"},
+                  "adapter_type": "echo", "gateway_url": "http://gateway.test", "api_key": "k",
+                  "workplace_id": await ready_workplace(ws_id)},
         )
         marius_id = UUID(agent.json()["id"])
 
@@ -290,7 +294,8 @@ async def test_delete_marius():
             f"/v1/workspaces/{ws_id}/mariuses",
             headers=h,
             json={"name": "Temp", "skills": [], "skill_ids": [],
-                  "adapter_type": "echo", "gateway_url": "http://gateway.test", "api_key": "k"},
+                  "adapter_type": "echo", "gateway_url": "http://gateway.test", "api_key": "k",
+                  "workplace_id": await ready_workplace(ws_id)},
         )
         marius_id = created.json()["id"]
         gone = await c.delete(f"/v1/workspaces/{ws_id}/mariuses/{marius_id}", headers=h)
@@ -314,6 +319,7 @@ async def test_delete_workspace_agent_vacates_the_seat():
                 "name": "Host", "skills": [], "skill_ids": [],
                 "adapter_type": "echo", "gateway_url": "http://gateway.test",
                 "api_key": "k", "is_workspace_agent": True,
+                "workplace_id": await ready_workplace(ws_id),
             },
         )
         marius_id = created.json()["id"]

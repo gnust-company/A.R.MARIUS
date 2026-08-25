@@ -7,6 +7,12 @@ enroll/approve gate). `adapter_config` is populated at the source — that is wh
 later wake (`MariusAdapter.execute`) actually reach the
 agent, and what lets the agent authenticate its callbacks.
 
+Inviting also **places** the agent (FR-007, FR-007f). Every agent works in exactly one
+place, picked by the person doing the inviting and fixed from then on, so the attachment is
+written in the same transaction as the agent itself — there is no window in which an agent
+exists with nowhere to work. Nothing in here knows what a place actually is; that lives
+behind `PlacementRepository` (Constitution III).
+
 `push_setup` sends (or re-sends) the setup prompt. A failed send is NOT fatal: the row is
 already approved, so the operator can retry. The route surfaces `send_status` so the UI can
 offer a Retry. The send itself runs outside the persistence UoW, mirroring the onboarding
@@ -50,6 +56,14 @@ class UnknownAdapter(BadRequest):
     """The operator selected an adapter type no registry knows about."""
 
 
+class PlacementNotReady(BadRequest):
+    """The chosen placement exists in this workspace but cannot take work right now.
+
+    Kept apart from *not found* on purpose: one means look again, the other means fix the
+    thing you already picked, and only the person on the other end can tell those apart.
+    """
+
+
 def _default_token() -> str:
     return f"arm_{secrets.token_urlsafe(32)}"
 
@@ -76,6 +90,7 @@ class InviteService:
         adapter_type: str,
         gateway_url: str,
         api_key: str,
+        placement_id: UUID,
         skills: list[str] | None = None,
         skill_ids: list[str] | None = None,
         owner_user_id: str | None = None,
@@ -85,6 +100,12 @@ class InviteService:
         The gateway is probed before anything is persisted: a bad URL/key raises
         `GatewayUnreachable` (→ 422) and nothing is written. On success the agent is live
         (APPROVED) and ready to receive its setup prompt via `push_setup`.
+
+        `placement_id` is required and has no default (FR-007, FR-007f). An agent works in
+        exactly one place, chosen here and never again, so there is no such thing as an
+        agent that has not been placed yet — the attachment is written inside the very
+        transaction that creates the agent, and either both land or neither does. A default
+        would quietly reintroduce the state this requirement exists to abolish.
 
         Role is deliberately NOT taken here — it is a project-roster concept, assigned later
         (e.g. by Workspace Agent designation). A freshly invited agent has no role (#63).
@@ -101,6 +122,17 @@ class InviteService:
         async with self._uow() as uow:
             if await uow.workspaces.get(workspace_id) is None:
                 raise NotFound("workspace_not_found")
+            # Checked before the agent is built rather than after: an agent that exists for
+            # a moment and is then rolled back still burned a name and a token, and on a
+            # failure path nobody watches, "rolled back" is a promise rather than a fact.
+            placement = await uow.placements.get(workspace_id, placement_id)
+            if placement is None:
+                raise NotFound("placement_not_found")
+            if not placement.ready:
+                raise PlacementNotReady(
+                    "placement_not_ready",
+                    reason=placement.not_ready_reason or "unknown",
+                )
             marius = Marius(
                 workspace_id=workspace_id,
                 name=name,
@@ -116,6 +148,7 @@ class InviteService:
             )
             marius.activate(self._mint_token(), now)
             created = await uow.mariuses.add(marius)
+            await uow.placements.attach(created.id, workspace_id, placement.id)
             await uow.commit()
             return created
 

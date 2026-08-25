@@ -452,6 +452,19 @@ export async function listMariuses(workspaceId: string): Promise<MariusDTO[]> {
   return get<MariusDTO[]>(`/v1/workspaces/${workspaceId}/mariuses`)
 }
 
+/** A workplace an agent may be put on — one agent CLI on one of the patron's machines.
+ *  Only ready ones are ever returned, so there is nothing to filter here (FR-007f). */
+export interface WorkplaceChoiceDTO {
+  id: string
+  cli_kind: string
+  /** The machine's own name. Without it, the same CLI on two machines is two identical rows. */
+  machine_name: string
+}
+
+export async function listWorkplaces(workspaceId: string): Promise<WorkplaceChoiceDTO[]> {
+  return get<WorkplaceChoiceDTO[]>(`/v1/workspaces/${workspaceId}/workplaces`)
+}
+
 export interface InviteMariusBody {
   name: string
   skills?: string[]
@@ -460,6 +473,9 @@ export interface InviteMariusBody {
   /** The agent's gateway address + key (operator-invite, #63) — stored as adapter_config. */
   gateway_url: string
   api_key: string
+  /** Where this agent will work. Required and fixed for life — an agent is never moved
+   *  to another workplace afterwards (FR-007, FR-007f). */
+  workplace_id: string
   /** Seat the newcomer as Workspace Agent on invite; a sitting host is demoted (#32). */
   is_workspace_agent?: boolean
 }
