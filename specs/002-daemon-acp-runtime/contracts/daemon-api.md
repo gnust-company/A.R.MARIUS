@@ -86,16 +86,33 @@ Daemon gửi toàn bộ những gì nó dò được. Server đồng bộ: cái 
 
 ```json
 → { "workplaces": [
-      { "cli_kind": "gemini", "cli_version": "0.4.1", "protocol_family": "acp",
-        "capabilities": { "resumable": true, "exposes_tool_args": true, "exposes_tool_result": false } },
-      { "cli_kind": "claude_code", "cli_version": "2.1.0", "protocol_family": "one_shot",
+      { "cli_kind": "gemini", "cli_version": "0.56.0", "protocol_family": "acp",
+        "capabilities": { "resumable": false, "exposes_tool_args": false, "exposes_tool_result": false,
+                          "unanswered": [ { "capability": "resumable", "reason": "no_probe_for_family" }, … ] } },
+      { "cli_kind": "claude_code", "cli_version": "2.1.226", "protocol_family": "one_shot",
         "capabilities": { "resumable": true, "exposes_tool_args": true, "exposes_tool_result": true } }
     ],
     "symlink_capable": true }
-← 200 { "workplaces": [ { "id": "…", "cli_kind": "gemini", "ready": true }, … ] }
+← 200 { "workplaces": [ { "id": "…", "cli_kind": "gemini", "ready": true,
+                          "not_ready_reason": null, "machine_name": "gnust-thinkpad" }, … ] }
 ```
 
 `capabilities` là kết quả **hỏi khả năng thật** (FR-017), không được suy từ tên loại CLI.
+
+**`unanswered` — bổ sung 2026-08-25 lúc hiện thực T034.** Ba khoá boolean là *câu trả lời*; khoá thứ tư
+này là danh sách những khả năng **không hỏi được**, mỗi mục một mã lý do (`no_probe_for_family` khi daemon
+chưa nói được giao thức của họ ấy — đường ACP dựng ở T066; `probe_failed` khi CLI được hỏi mà không đáp).
+Vắng mặt hoặc rỗng nghĩa là hỏi đủ. Không có nó thì "hỏi rồi, CLI bảo không có" và "chưa hỏi được" đọc
+giống hệt nhau, mà FR-017 cấm đúng chuyện đó — một phỏng đoán đã ghi vào cơ sở dữ liệu không còn phân biệt
+được với một câu trả lời.
+
+**`machine_name`** là `machines.display_name`, để cùng một CLI trên hai máy của một người là hai chỗ làm
+phân biệt được bằng mắt (FR-003). **`not_ready_reason`** là mã: `cli_removed` (CLI không còn trên máy —
+FR-033) hoặc `link_unsupported` (máy không tạo được liên kết bắt buộc — [research §5](../research.md)).
+
+Lối này **từ chối `409 workplace_reported_twice`** khi một `cli_kind` xuất hiện hai lần trong cùng một
+thân yêu cầu: một cái máy quét một `PATH` không thể tìm thấy cùng một CLI hai lần, nên đây là bên gọi
+hỏng, và gộp hai mục mâu thuẫn lại là quyết định thay cho bên gọi.
 
 ### `POST /daemon/heartbeat`
 

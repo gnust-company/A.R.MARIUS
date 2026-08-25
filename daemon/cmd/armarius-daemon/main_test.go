@@ -105,7 +105,6 @@ func TestLoginRefusesToRunWithoutAServer(t *testing.T) {
 // running `armarius-daemon start` has to learn that the daemon did not come up.
 func TestUnbuiltSubcommandsFailLoudly(t *testing.T) {
 	cases := [][]string{
-		{"start"},
 		{"status"},
 	}
 	for _, args := range cases {
@@ -118,6 +117,22 @@ func TestUnbuiltSubcommandsFailLoudly(t *testing.T) {
 				t.Errorf("the error does not say where the missing work is tracked: %v", err)
 			}
 		})
+	}
+}
+
+// `start` is built as far as registering this machine and beating (T033–T038). Pointed at a
+// config file that holds no token, it must refuse there rather than at the door: proof that it
+// got past the not-built-yet notice and into the work.
+func TestStartRefusesAMachineThatWasNeverLinked(t *testing.T) {
+	_, _, err := dispatch(t, "start", "-config", filepath.Join(t.TempDir(), "daemon.json"))
+	if err == nil {
+		t.Fatal("start reported success on a machine with no token")
+	}
+	if strings.Contains(err.Error(), "tasks.md") {
+		t.Errorf("start still answers with the not-built-yet notice: %v", err)
+	}
+	if !strings.Contains(err.Error(), "login") {
+		t.Errorf("the error does not tell the operator to link the machine first: %v", err)
 	}
 }
 

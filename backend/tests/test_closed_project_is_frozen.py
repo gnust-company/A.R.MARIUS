@@ -71,6 +71,10 @@ _NEEDS_NO_GUARD: dict[tuple[str, str], str] = {
     ("POST", "/daemon/link/poll"): "tầng trên dự án",
     ("POST", "/daemon/token/renew"): "tầng trên dự án",
     ("POST", "/v1/machines/link/{code}/approve"): "tầng trên dự án",
+    # Chỗ làm và nhịp sống của máy: thuộc về cái máy và không gian làm việc, không
+    # thuộc dự án nào. Một dự án đóng lại không được làm máy tưởng mình mất kết nối.
+    ("PUT", "/daemon/workplaces"): "tầng trên dự án",
+    ("POST", "/daemon/heartbeat"): "tầng trên dự án",
     # The two inbox doors: the guard is enforced **inside** rather than at the door,
     # because one path carries both an action that writes into the project and one that
     # only tidies the patron's own inbox — and which it is lives in the request body, read

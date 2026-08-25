@@ -341,6 +341,19 @@ khác cài được. Nên T013 tách làm hai nửa — nửa tra cứu ghi ở 
 - Kết quả công cụ **có** nhưng là bản hiển thị. **Chưa hỏi người chủ**: bản hiển thị có tính là *kết quả*
   theo FR-043b không, hay cũng phải đánh dấu là không lộ.
 
+**Ghi 2026-08-25, đo trên máy phát triển lúc làm T033:** `gemini` **có** trên máy này, bản `0.56.0`, và
+`gemini --version` chạy được. Hai điều đọc thẳng từ `gemini --help` của chính bản ấy:
+
+- **Cờ đã đổi tên.** `--acp` là cờ hiện tại; `--experimental-acp` vẫn còn nhưng bản trợ giúp ghi rõ
+  *"deprecated, use --acp instead"*. Cả đặc tả (FR-039) lẫn mục 9 ở trên đều đang chép tên cũ. Mã nào bật
+  ACP phải dùng `--acp`, giữ tên cũ làm đường lui.
+- Nó cũng khai `-r, --resume`, `--session-file`, `--session-id`, `--list-sessions` và
+  `-o, --output-format` có `stream-json` — tức ngoài ACP nó còn một đường chạy-một-phát. Đợt này không
+  dùng đường ấy: chọn họ giao thức là việc của T116/T117, sau khi T013 chạy thật.
+
+Cái này **không tick được T013**: bốn câu hỏi của T013 hỏi về *phiên ACP đang chạy*, không hỏi về bản trợ
+giúp, và `gemini --acp` cần đăng nhập thì mới bắt tay được. Nửa chạy thật vẫn chờ `probe-gemini-acp.mjs`.
+
 **Câu hỏi thứ năm, không có trong bảng gốc nhưng daemon không tránh được**: `gemini` có đòi đăng nhập tương
 tác khi bị **một chương trình khác** khởi chạy (stdin không phải terminal) không? Issue #12042 báo đúng ca
 này, và daemon **luôn** chạy nó theo kiểu đó. Script hỏi luôn câu này.

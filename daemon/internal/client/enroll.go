@@ -6,7 +6,6 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -199,40 +198,10 @@ func pollLink(ctx context.Context, opts LoginOptions, code string) (linkPollResp
 	return out, status, nil
 }
 
-// post sends one JSON request and decodes the JSON answer, returning the status alongside it.
+// post sends one JSON request to the server this machine is trying to link to. No token: at
+// this point in the flow there is none to send.
 func (o LoginOptions) post(ctx context.Context, path string, body, into any) (int, error) {
-	payload, err := json.Marshal(body)
-	if err != nil {
-		return 0, fmt.Errorf("encoding the request to %s: %w", path, err)
-	}
-	url := strings.TrimRight(o.Server, "/") + path
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
-	if err != nil {
-		return 0, fmt.Errorf("building the request to %s: %w", url, err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := o.HTTPClient.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("calling %s: %w", url, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return resp.StatusCode, fmt.Errorf("reading the answer from %s: %w", url, err)
-	}
-	if len(raw) > 0 {
-		// A body that will not decode is worth reporting only when the status was otherwise
-		// fine; on an error status the status itself is the news.
-		if decodeErr := json.Unmarshal(raw, into); decodeErr != nil && resp.StatusCode < 400 {
-			return resp.StatusCode, fmt.Errorf("the answer from %s was not JSON: %w", url, decodeErr)
-		}
-	}
-	if resp.StatusCode >= 400 {
-		return resp.StatusCode, fmt.Errorf("%s answered %s", url, resp.Status)
-	}
-	return resp.StatusCode, nil
+	return sendJSON(ctx, o.HTTPClient, http.MethodPost, endpoint(o.Server, path), "", body, into)
 }
 
 // SaveCredentials writes the token into the machine's config file without disturbing anything
