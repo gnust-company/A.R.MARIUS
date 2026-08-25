@@ -476,7 +476,8 @@ export interface InviteMariusBody {
   description?: string
   skills?: string[]
   skill_ids?: string[]
-  adapter_type?: string
+  /** Which tool runs this agent is not asked here: it follows from the workplace, and a
+   *  runtime named on the wire could be one nothing can run (FR-007g1). */
   /** Where this agent will work. Required and fixed for life — an agent is never moved
    *  to another workplace afterwards (FR-007, FR-007f). */
   workplace_id: string

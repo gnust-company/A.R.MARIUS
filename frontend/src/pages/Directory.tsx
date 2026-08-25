@@ -458,7 +458,6 @@ export default function Directory() {
       // nothing is pushed, so there is no send to wait on or report.
       await inviteNewAgent({
         name: agentName.trim(),
-        adapterType: 'echo',
         instructions: instructions.trim(),
         description: agentDescription.trim(),
         workplaceId,

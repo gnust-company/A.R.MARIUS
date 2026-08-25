@@ -422,3 +422,34 @@ def test_creating_an_agent_does_not_give_it_a_role() -> None:
         "án (Hiến pháp V, FR-007l). Luồng tạo agent không được đẻ ra vai trò:\n  "
         + "\n  ".join(offenders)
     )
+
+
+# ── FR-007f. Đúng một chỗ dựng ra một agent ─────────────────────────────────────
+
+# T039a existed because a second way to make an agent had been sitting in `application/`
+# long enough for nobody to see it any more. The rule it broke was written down; what was
+# missing was anything that would notice when the rule stopped being true.
+#
+# The two guards above ban *words*. This one bans a *shape*: whatever it is called and
+# wherever it is put, building a `Marius` outside the one create path is the second path
+# again. The exception list is one file, so adding a second one has to be a decision.
+_MAY_BUILD_AN_AGENT = {"application/use_cases/enrollment.py"}
+_BUILDS_AN_AGENT = re.compile(r"(?<![\w.])Marius\s*\(")
+
+
+def test_only_one_place_in_the_product_builds_an_agent() -> None:
+    offenders: list[str] = []
+    for path in _sources(
+        BACKEND / "armarius" / "application", BACKEND / "armarius" / "presentation"
+    ):
+        where = str(path.relative_to(BACKEND / "armarius"))
+        if where in _MAY_BUILD_AN_AGENT:
+            continue
+        for line_no, line in enumerate(_python_code_lines(path), 1):
+            if _BUILDS_AN_AGENT.search(line):
+                offenders.append(f"{path.relative_to(BACKEND)}:{line_no}  {line.strip()}")
+    assert not offenders, (
+        "Chỉ có đúng một đường tạo agent, và nó ở `enrollment.py` (FR-007f). Một chỗ dựng\n"
+        "`Marius` ở nơi khác là đường thứ hai — đúng thứ T039a vừa gỡ đi, và lần trước nó\n"
+        "nằm đó cả tháng không ai thấy:\n  " + "\n  ".join(offenders)
+    )

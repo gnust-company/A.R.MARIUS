@@ -20,7 +20,7 @@ from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.inbox_item import InboxItem, InboxItemStatus
 from armarius.domain.entities.label import Label
 from armarius.domain.entities.leader_chat import ProjectLeaderConversation
-from armarius.domain.entities.marius import Marius
+from armarius.domain.entities.marius import Marius, NameTaken
 from armarius.domain.entities.onboarding import OnboardingSession
 from armarius.domain.entities.orchestration_sweep import OrchestrationSweep
 from armarius.domain.entities.plan import Plan
@@ -818,7 +818,15 @@ class SqlMariusRepository(MariusRepository):
                 updated_at=marius.updated_at,
             )
         )
-        await self._s.flush()
+        try:
+            await self._s.flush()
+        except IntegrityError as exc:
+            # One name answers for one agent inside a workspace (FR-007h). The use case looks
+            # first, but looking and writing are two moments: two creates racing each other
+            # both see a free name and only one of them gets it. The database is what actually
+            # decides, so its refusal has to come back out as the same refusal the caller
+            # would have got a moment earlier — not as a 500.
+            raise NameTaken("agent_name_taken", name=marius.name) from exc
         return marius
 
     async def get(self, marius_id: UUID) -> Marius | None:

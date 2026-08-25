@@ -1,8 +1,9 @@
-"""Contract-conformance — Mariuses operator-invite (issue #63, API_CONTRACT §4.1).
+"""Contract-conformance — adding an agent (API_CONTRACT §4.1, FR-007g).
 
-The invite takes the agent's gateway URL + api_key, mints the token at invite time (no
-enroll/approve), and pushes a setup prompt over that gateway. The response carries
-``send_status`` and NEVER the token — it is a secret the agent alone receives.
+Creating an agent takes a name and a workplace. Nothing is dialled out to and nothing is
+pushed down: the machine the agent runs on asks for work rather than being called, so there
+is no address to collect, nothing to probe, and no send to report. The agent's token is
+still minted — `/agent/*` has nothing else to authenticate with yet — and is never returned.
 """
 
 from __future__ import annotations

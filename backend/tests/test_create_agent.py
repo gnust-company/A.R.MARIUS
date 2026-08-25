@@ -7,17 +7,16 @@ there is no gateway to probe, no key to store, and no prompt pushed at anybody.
 
 from __future__ import annotations
 
+from uuid import UUID, uuid4
+
 import pytest
 
-from armarius.application.use_cases.enrollment import (
-    AgentService,
-    NameTaken,
-    PlacementNotReady,
-)
-from armarius.domain.entities.marius import InviteStatus
+from armarius.application.use_cases.enrollment import AgentService, PlacementNotReady
+from armarius.domain.entities.marius import InviteStatus, Marius, NameTaken
 from armarius.domain.entities.placement import Placement
 from armarius.domain.entities.workspace import Workspace
-from armarius.shared.errors import NotFound
+from armarius.shared.clock import utcnow
+from armarius.shared.errors import Conflict, NotFound
 from tests.support.fakes import FakeUowFactory, a_placement
 
 
@@ -157,3 +156,69 @@ async def test_the_agent_is_live_the_moment_it_is_made() -> None:
     # There is no approval step and nothing to wait for: the person adding the agent is the
     # one who would have approved it.
     assert marius.invite_status == InviteStatus.APPROVED
+
+
+# ── The name rule under a race ─────────────────────────────────────────────────
+
+async def test_two_creates_racing_for_one_name_still_get_the_same_refusal() -> None:
+    """Looking and writing are two moments, and the world can change between them.
+
+    `create` checks the name before it builds anything, which is what makes the ordinary
+    case read well. It is not what makes the rule true: two requests arriving together both
+    look at a workspace where the name is free, and both go on to write. Only one can win —
+    the database decides that — and the loser must come back with the refusal it would have
+    got a moment earlier, not with a 500 from a constraint nobody caught.
+    """
+    from armarius.domain.entities.workspace import Workspace as WorkspaceEntity
+    from armarius.infrastructure.database.engine import init_db
+    from armarius.infrastructure.database.models import UserModel
+    from armarius.main import app
+    from armarius.presentation.container import build_container
+    from tests.support.agents import ready_workplace
+
+    await init_db()
+    app.state.container = build_container()
+    uow_factory = app.state.container.uow_factory
+
+    owner_id = uuid4()
+    async with uow_factory() as uow:
+        session = uow._session  # noqa: SLF001 — the tests' own back door, as in app_db
+        session.add(
+            UserModel(
+                id=owner_id,
+                email=f"{owner_id}@race.test",
+                username=str(owner_id),
+                full_name="Patron",
+                hashed_password="x",
+                created_at=utcnow(),
+                updated_at=utcnow(),
+            )
+        )
+        await session.flush()
+        workspace = await uow.workspaces.add(
+            WorkspaceEntity(name="Race", slug="race", owner_user_id=str(owner_id))
+        )
+        await uow.commit()
+    place = await ready_workplace(workspace.id)
+
+    svc = AgentService(uow_factory)
+    first = await svc.create(workspace.id, "Marin", placement_id=UUID(place))
+
+    # The second create is given a workspace it has *already* looked at as empty: skipping
+    # the use case's own lookup is the only way to stand where the loser of a race stands.
+    async with uow_factory() as uow:
+        marius = Marius(
+            workspace_id=workspace.id,
+            name="Marin",
+            created_at=utcnow(),
+            updated_at=utcnow(),
+        )
+        with pytest.raises(NameTaken) as caught:
+            await uow.mariuses.add(marius)
+
+    assert caught.value.code == "agent_name_taken"
+    # It is a Conflict, so the route answers 409 — the same answer the early check gives.
+    assert isinstance(caught.value, Conflict)
+    async with uow_factory() as uow:
+        assert len(await uow.mariuses.list_by_workspace(workspace.id)) == 1
+    assert first.name == "Marin"
