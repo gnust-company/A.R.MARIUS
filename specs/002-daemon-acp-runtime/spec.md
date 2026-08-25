@@ -323,6 +323,12 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   gửi setup prompt sau khi tạo, và KHÔNG mint token riêng cho agent — FR-014a đã chốt hệ thống chỉ có hai
   loại token, của daemon và của lượt chạy. Đây là hệ quả trực tiếp của FR-040a: bốn thứ ấy chỉ tồn tại để
   phục vụ đường gateway cũ.
+- **FR-007g1**: Luồng tạo agent PHẢI **không nhận runtime từ người gọi**. Công cụ nào chạy một agent là hệ
+  quả của **chỗ làm** người ta đã chọn — thứ họ nhìn thấy và cân nhắc được — chứ không phải một ô chọn riêng
+  họ không có cách nào trả lời cho đúng. Giá trị runtime đến từ request bị **bỏ qua**, không phải bị từ chối
+  bằng lỗi: nó vốn không phải thứ đường này nhận. Lý do phải viết thành điều khoản: một runtime đặt từ ngoài
+  vào có thể là runtime không máy nào chạy nổi, và agent dựng quanh nó là agent không bao giờ chạy được lượt
+  nào (bổ sung 2026-08-25, phát hiện lúc gỡ ô chọn adapter ở T039h).
 - **FR-007h**: Tên agent PHẢI **không trùng trong cùng một workspace**. Trùng tên thì người giao việc không
   biết mình đang gọi ai.
 - **FR-007i**: Agent PHẢI có **instructions** — chữ do người chủ agent viết lúc tạo, mô tả nó là ai, chịu

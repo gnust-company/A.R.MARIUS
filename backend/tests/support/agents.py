@@ -1,21 +1,17 @@
-"""HTTP-level helpers for the operator-invite flow (issue #63).
+"""Helpers for making agents in tests.
 
-Inviting an agent now mints the token at invite time and pushes a setup prompt over the
-agent's gateway — the token is **never** returned by the API (it is a secret). Tests that
-need to act as the agent (e.g. call ``/agent/me`` to flip it ONLINE) read the token back
-from the repo via ``agent_token_for``.
+Creating an agent takes a name and a workplace and nothing else (FR-007g). The agent's own
+token is still minted — `/agent/*` has nothing else to authenticate with until T039d — but
+it is never returned by the API and never pushed anywhere, so tests that need to act as the
+agent read it back from the database via ``agent_token_for``.
 """
 
 from __future__ import annotations
 
+import secrets
 from uuid import UUID
 
 from httpx import AsyncClient
-
-# A gateway the echo adapter is happy with (its test_environment is always ok). The values
-# are placeholders — the echo runtime ignores them; they just have to be non-empty.
-GATEWAY_URL = "http://gateway.test"
-GATEWAY_KEY = "test-key"
 
 
 async def ready_workplace(
@@ -72,25 +68,25 @@ async def invite_agent(
     *,
     name: str = "Marin",
     adapter_type: str = "echo",
-    gateway_url: str = GATEWAY_URL,
-    api_key: str = GATEWAY_KEY,
     workplace_id: str | None = None,
     is_workspace_agent: bool = False,
+    instructions: str = "",
+    description: str = "",
     skills: list[str] | None = None,
     skill_ids: list[str] | None = None,
 ) -> dict:
-    """Invite an agent with operator-supplied gateway creds → APPROVED + setup pushed.
+    """Add an agent over HTTP: a name and a workplace, which is all it takes (FR-007g).
 
     A workplace is created for the workspace when none is named, because an agent cannot be
     created without one (FR-007f) and most callers here care about the agent, not where it
     works.
 
-    Role is intentionally not taken — it is a project-roster concept (#63)."""
+    No role is taken. How an agent behaves comes from its instructions (Constitution V)."""
     body: dict = {
         "name": name,
         "adapter_type": adapter_type,
-        "gateway_url": gateway_url,
-        "api_key": api_key,
+        "instructions": instructions,
+        "description": description,
         "workplace_id": workplace_id or await ready_workplace(ws_id),
         "is_workspace_agent": is_workspace_agent,
     }
@@ -139,3 +135,113 @@ async def invite_and_online(
     me = await c.get("/agent/me", headers={"Authorization": f"Bearer {token}"})
     assert me.status_code == 200, me.text
     return mid, token
+
+
+async def make_agent(
+    uow_factory,
+    *,
+    workspace_id: UUID,
+    name: str,
+    role: str = "",
+    skills: list[str] | None = None,
+    adapter_type: str = "echo",
+    adapter_config: dict | None = None,
+    skill_ids: list[str] | None = None,
+    owner_user_id: str | None = None,
+):
+    """An agent that exists in the database, placed, without going through HTTP.
+
+    This used to be ``MariusService.register`` — a second way to create an agent, sitting in
+    the application layer where no route reached it. Only tests ever called it, and because
+    it predated FR-007f it created agents with nowhere to work: the one shape the product is
+    not allowed to produce. Keeping it there meant the rule held only on the path somebody
+    happened to be looking at, and the day a route was wired to the other path it would have
+    broken silently. It lives here now, where being test scaffolding is the honest
+    description of it, and the product has exactly one way to make an agent.
+
+    It still places what it creates. A fixture that skips the placement would hand every test
+    a state the product cannot reach, and tests built on impossible states stop being
+    evidence about the product.
+    """
+    from uuid import uuid4
+
+    from armarius.domain.entities.marius import Marius
+    from armarius.infrastructure.daemon.models import MachineModel, WorkplaceModel
+    from armarius.infrastructure.database.models import UserModel
+    from armarius.shared.clock import utcnow
+    from armarius.shared.errors import NotFound
+
+    now = utcnow()
+    async with uow_factory() as uow:
+        workspace = await uow.workspaces.get(workspace_id)
+        if workspace is None:
+            raise NotFound("workspace_not_found")
+
+        session = uow._session  # noqa: SLF001 — the tests' own back door, as in app_db
+        assert session is not None
+
+        # A machine belongs to a person. Service-level tests build their workspace directly
+        # rather than by registering, so there may be no person yet; give them one instead of
+        # making the column nullable, which would weaken the schema to suit a fixture.
+        owner_id = _as_uuid(workspace.owner_user_id)
+        if owner_id is None:
+            owner_id = uuid4()
+            session.add(
+                UserModel(
+                    id=owner_id,
+                    email=f"{owner_id}@fixture.test",
+                    username=str(owner_id),
+                    full_name="Fixture Patron",
+                    hashed_password="x",
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            await session.flush()
+
+        machine = MachineModel(
+            id=uuid4(),
+            workspace_id=workspace_id,
+            owner_user_id=owner_id,
+            display_name=f"box-for-{name}",
+            token_hash=f"test-{uuid4().hex}",
+            symlink_capable=True,
+            created_at=now,
+        )
+        workplace = WorkplaceModel(
+            id=uuid4(),
+            workspace_id=workspace_id,
+            machine_id=machine.id,
+            cli_kind="claude_code",
+            ready=True,
+            created_at=now,
+        )
+        session.add(machine)
+        session.add(workplace)
+        await session.flush()
+
+        marius = Marius(
+            workspace_id=workspace_id,
+            name=name,
+            role=role,
+            skills=skills or [],
+            skill_ids=skill_ids or [],
+            adapter_type=adapter_type,
+            adapter_config=adapter_config or {},
+            owner_user_id=owner_user_id,
+            agent_token=f"arm_{secrets.token_urlsafe(32)}",
+        )
+        created = await uow.mariuses.add(marius)
+        await uow.placements.attach(created.id, workspace_id, workplace.id)
+        await uow.commit()
+        return created
+
+
+def _as_uuid(value) -> UUID | None:
+    """The value if it is a usable id, None if there is nothing there to use."""
+    if value is None:
+        return None
+    try:
+        return UUID(str(value))
+    except (ValueError, AttributeError, TypeError):
+        return None

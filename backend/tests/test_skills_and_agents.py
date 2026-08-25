@@ -71,7 +71,7 @@ async def test_register_without_username_derives_handle():
     assert r.json()["user"]["username"] == "mariusfan"
 
 
-async def test_provision_agent_links_skill_and_pushes_setup():
+async def test_creating_an_agent_links_its_skills():
     async with await _client() as c:
         token, ws_id = await _register(c, "prov@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
@@ -86,11 +86,10 @@ async def test_provision_agent_links_skill_and_pushes_setup():
             skills=["api"],
             skill_ids=[skill_id],
         )
-    # The linked skill is persisted on the agent.
+    # The linked skill is persisted on the agent. It reaches the machine with the work that
+    # needs it (FR-011b), not through a push at creation time.
     assert data["skill_ids"] == [skill_id]
-    # Operator-invite (#63): approved at invite time, setup pushed, token never leaked.
     assert data["invite_status"] == "approved"
-    assert data["send_status"] == "sent"
     assert "agent_token" not in data
     assert "invite" not in data
 
@@ -296,10 +295,9 @@ async def test_seed_prunes_delisted_builtin_skills():
     assert any(s["name"] == "Keeper" for s in after)  # manual skill untouched
 
 
-async def test_install_skills_links_and_pushes_install_prompt():
-    """Issue #74: after an agent is invited, the patron can link MORE skills and the
-    system pushes a one-time install prompt. New links merge (de-duped); the push is
-    best-effort and returns send_status."""
+async def test_linking_more_skills_merges_them():
+    """Issue #74: the patron can link more skills to an agent afterwards. New links merge,
+    de-duped and in order. Nothing is pushed — the skill travels down with the work."""
     async with await _client() as c:
         token, ws_id = await _register(c, "install@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
@@ -325,16 +323,15 @@ async def test_install_skills_links_and_pushes_install_prompt():
     # The new link is merged in (both skills now linked, order preserved, no dupes).
     assert out["skill_ids"] == [http_id, mcp_id]
     assert out["installed"] == ["armarius-mcp"]  # only the newly linked slug
-    # The echo runtime accepts the push.
-    assert out["send_status"] == "sent"
     marin = next(m for m in listed if m["id"] == mid)
     assert marin["skills"] == ["Armarius HTTP API", "Armarius MCP"], marin["skills"]
 
 
-async def test_install_skills_repushes_already_linked():
-    """Re-installing a skill the agent already has does NOT duplicate the link, but DOES
-    re-push it — so a FIXED/updated skill reaches the agent — and marks it `pending` (#74/#105).
-    (The old behaviour dropped already-linked slugs, so a corrected skill never propagated.)"""
+async def test_relinking_a_skill_the_agent_already_has_does_not_duplicate_it():
+    """Naming a skill that is already linked leaves one link, and puts it back to `pending`.
+
+    That second half matters: it is how a corrected skill reaches an agent again. The old
+    behaviour dropped already-linked slugs, so a fix never propagated (#74/#105)."""
     async with await _client() as c:
         token, ws_id = await _register(c, "idem@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
@@ -353,8 +350,7 @@ async def test_install_skills_repushes_already_linked():
     assert r.status_code == 200, r.text
     out = r.json()
     assert out["skill_ids"] == [http_id]  # no duplicate link
-    assert out["installed"] == ["armarius-http"]  # re-pushed even though already linked
-    assert out["send_status"] == "sent"
+    assert out["installed"] == ["armarius-http"]  # named again even though already linked
     marin = next(m for m in listed if m["id"] == mid)
     assert marin["skill_installs"] == {"armarius-http": "pending"}  # awaiting the agent's confirm
 

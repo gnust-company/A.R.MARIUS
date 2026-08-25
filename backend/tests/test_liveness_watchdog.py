@@ -10,6 +10,7 @@ from armarius.application.use_cases.liveness_watchdog import LivenessWatchdog
 from armarius.domain.entities.marius import Liveness, Marius
 from armarius.domain.entities.workspace import Workspace
 from armarius.domain.services.liveness_fsm import LivenessConfig
+from tests.support.agents import make_agent
 from tests.support.fakes import FakeLivenessProbe, FakeUowFactory
 
 CFG = LivenessConfig()
@@ -63,7 +64,6 @@ async def test_background_loop_starts_and_stops_cleanly() -> None:
 
 import pytest  # noqa: E402
 
-from armarius.application.use_cases.mariuses import MariusService  # noqa: E402
 from armarius.application.use_cases.projects import ProjectService  # noqa: E402
 from armarius.application.use_cases.push_reason import PushReasonService  # noqa: E402
 from armarius.application.use_cases.task_log import TaskLogService  # noqa: E402
@@ -107,7 +107,7 @@ async def _hung_world(uow_factory, *, silent_for: timedelta, now: datetime):
     ws = await workspaces.create_workspace("WS")
     project = await workspaces.create_project(ws.id, "P")
     await force_phase(uow_factory, project.id)
-    alice = await MariusService(uow_factory).register(
+    alice = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Alice", role="Backend", skills=[],
         adapter_type="echo", adapter_config={},
     )

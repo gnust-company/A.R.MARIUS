@@ -22,7 +22,6 @@ from armarius.application.ports.adapter import (
 )
 from armarius.application.use_cases.leader_chat import LeaderChatService
 from armarius.application.use_cases.liveness import LivenessEngine
-from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.projects import ProjectService, RoleSpec
 from armarius.application.use_cases.runs import RunQueryService
 from armarius.application.use_cases.tasks import TaskService
@@ -42,6 +41,7 @@ from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.events.topic_bus import TopicEventBus
 from armarius.shared.clock import utcnow
+from tests.support.agents import make_agent
 from tests.support.fakes import FakeLivenessProbe
 from tests.support.projects import force_phase
 
@@ -101,8 +101,8 @@ async def _settle_runs(runs: RunQueryService, task_id, *, want_marius=None, atte
     return await runs.list_by_task(task_id)
 
 
-async def _register_leader(mariuses, projects, ws, project, *, online_via=None):
-    leader = await mariuses.register(
+async def _register_leader(uow_factory, projects, ws, project, *, online_via=None):
+    leader = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Lead", role="Leader",
         skills=[], adapter_type="echo", adapter_config={},
     )
@@ -115,14 +115,13 @@ async def _register_leader(mariuses, projects, ws, project, *, online_via=None):
 async def test_send_streams_leader_reply_into_transcript(uow_factory) -> None:
     bus = TopicEventBus()
     workspaces = WorkspaceService(uow_factory)
-    mariuses = MariusService(uow_factory)
     projects = ProjectService(uow_factory)
     liveness = LivenessEngine(uow_factory, FakeLivenessProbe(True))
     chat = _chat_service(uow_factory, bus)
 
     ws = await workspaces.create_workspace("WS")
     project = await projects.create_project(ws.id, "Apollo", roles=_roster())
-    await _register_leader(mariuses, projects, ws, project, online_via=liveness)
+    await _register_leader(uow_factory, projects, ws, project, online_via=liveness)
 
     view = await chat.send(project_id=project.id, message="How's the project going?")
     assert view.conversation.state == ChatState.THINKING
@@ -143,13 +142,12 @@ async def test_send_streams_leader_reply_into_transcript(uow_factory) -> None:
 async def test_offline_leader_disables_chat(uow_factory) -> None:
     bus = TopicEventBus()
     workspaces = WorkspaceService(uow_factory)
-    mariuses = MariusService(uow_factory)
     projects = ProjectService(uow_factory)
     chat = _chat_service(uow_factory, bus)
 
     ws = await workspaces.create_workspace("WS")
     project = await projects.create_project(ws.id, "Apollo", roles=_roster())
-    await _register_leader(mariuses, projects, ws, project)  # left OFFLINE
+    await _register_leader(uow_factory, projects, ws, project)  # left OFFLINE
 
     view = await chat.get_or_open(project.id)
     assert view.leader_online is False
@@ -160,14 +158,13 @@ async def test_offline_leader_disables_chat(uow_factory) -> None:
 async def test_turn_taking_rejects_concurrent_send(uow_factory) -> None:
     bus = TopicEventBus()
     workspaces = WorkspaceService(uow_factory)
-    mariuses = MariusService(uow_factory)
     projects = ProjectService(uow_factory)
     liveness = LivenessEngine(uow_factory, FakeLivenessProbe(True))
     chat = _chat_service(uow_factory, bus, step_delay=0.1)  # keep the turn in flight
 
     ws = await workspaces.create_workspace("WS")
     project = await projects.create_project(ws.id, "Apollo", roles=_roster())
-    await _register_leader(mariuses, projects, ws, project, online_via=liveness)
+    await _register_leader(uow_factory, projects, ws, project, online_via=liveness)
 
     await chat.send(project_id=project.id, message="first")
     with pytest.raises(LeaderChatError):
@@ -178,14 +175,13 @@ async def test_turn_taking_rejects_concurrent_send(uow_factory) -> None:
 async def test_proposed_task_approve_flips_todo_and_wakes(uow_factory) -> None:
     wake = _wake_engine(uow_factory)
     workspaces = WorkspaceService(uow_factory)
-    mariuses = MariusService(uow_factory)
     projects = ProjectService(uow_factory)
     tasks = TaskService(uow_factory, wake)
     runs = RunQueryService(uow_factory)
 
     ws = await workspaces.create_workspace("WS")
     project = await projects.create_project(ws.id, "Apollo", roles=_roster())
-    worker = await mariuses.register(
+    worker = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Dev", role="Backend",
         skills=[], adapter_type="echo", adapter_config={},
     )
@@ -271,10 +267,9 @@ async def test_a_wake_that_could_not_be_delivered_does_not_mark_the_leader_alive
     )
     workspaces = WorkspaceService(uow_factory)
     projects = ProjectService(uow_factory)
-    mariuses = MariusService(uow_factory)
     ws = await workspaces.create_workspace("WS")
     project = await projects.create_project(ws.id, "Apollo", roles=_roster())
-    leader = await mariuses.register(
+    leader = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Lead", role="Leader",
         skills=[], adapter_type="unreachable", adapter_config={},
     )
@@ -350,11 +345,10 @@ async def test_the_leader_is_told_the_approved_brief_not_the_raw_project_columns
     )
     workspaces = WorkspaceService(uow_factory)
     projects = ProjectService(uow_factory)
-    mariuses = MariusService(uow_factory)
 
     ws = await workspaces.create_workspace("WS")
     project = await projects.create_project(ws.id, "Apollo", roles=_roster())
-    leader = await mariuses.register(
+    leader = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Lead", role="Leader",
         skills=[], adapter_type="capturing", adapter_config={},
     )

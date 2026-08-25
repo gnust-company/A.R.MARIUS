@@ -122,10 +122,21 @@ class SeatGrantModel(Base):
 
 class MariusModel(Base):
     __tablename__ = "mariuses"
+    __table_args__ = (
+        # One name, one agent, inside a workspace (FR-007h). Enforced here rather than only
+        # in the use case: a check the application does is a check that holds for whoever
+        # remembered to run it.
+        UniqueConstraint("workspace_id", "name", name="uq_mariuses_workspace_name"),
+    )
+
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     workspace_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("workspaces.id"), index=True)
     name: Mapped[str] = mapped_column(String(200))
     role: Mapped[str] = mapped_column(String(120), default="")
+    # Sent to the agent on every run (FR-007i).
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    # Shown to the team, never sent to the agent (FR-007j).
+    description: Mapped[str] = mapped_column(Text, default="")
     skills: Mapped[list] = mapped_column(JSON, default=list)
     adapter_type: Mapped[str] = mapped_column(String(80))
     adapter_config: Mapped[dict] = mapped_column(JSON, default=dict)

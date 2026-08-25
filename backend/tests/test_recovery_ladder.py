@@ -18,7 +18,6 @@ from uuid import UUID
 import pytest
 
 from armarius.application.use_cases.inbox import InboxService
-from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.push_reason import PushReasonService
 from armarius.application.use_cases.recovery import (
@@ -45,6 +44,7 @@ from armarius.domain.services.escalation import EscalationLevel
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.events.topic_bus import TopicEventBus, patron_topic
+from tests.support.agents import make_agent
 from tests.support.projects import force_phase
 
 T0 = datetime(2026, 8, 6, 10, 0, 0, tzinfo=UTC)
@@ -91,7 +91,7 @@ async def _world(uow_factory, *, patron: str = "patron-1"):
     tried to patch it in place would be asserting against a write path that does not exist.
     """
     ws = await WorkspaceService(uow_factory).create_workspace("WS")
-    alice = await MariusService(uow_factory).register(
+    alice = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Alice", role="Backend", skills=[],
         adapter_type="echo", adapter_config={},
     )
@@ -1294,7 +1294,7 @@ async def test_the_answer_moves_the_task_and_closes_the_letter_together(
     uow_factory,
 ) -> None:
     ws, project, alice = await _world(uow_factory)
-    bob = await MariusService(uow_factory).register(
+    bob = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Bob", role="Backend", skills=[],
         adapter_type="echo", adapter_config={},
     )
@@ -1337,7 +1337,7 @@ async def test_answering_the_same_letter_twice_does_nothing_the_second_time(
     letter is what makes a repeat a no-op.
     """
     ws, project, alice = await _world(uow_factory)
-    bob = await MariusService(uow_factory).register(
+    bob = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Bob", role="Backend", skills=[],
         adapter_type="echo", adapter_config={},
     )

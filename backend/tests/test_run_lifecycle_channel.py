@@ -19,7 +19,6 @@ from datetime import UTC, datetime, timedelta
 from armarius.application.ports.workspace_trace import EVENT_RUN_STATE_CHANGED
 from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.liveness_watchdog import LivenessWatchdog
-from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.runs import RunQueryService
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.wake_engine import WakeEngine
@@ -31,6 +30,7 @@ from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.events.topic_bus import TopicEventBus
 from armarius.infrastructure.events.workspace_trace import ControlBusWorkspaceTrace
+from tests.support.agents import make_agent
 from tests.support.fakes import FakeLivenessProbe
 from tests.support.projects import force_phase
 
@@ -64,7 +64,7 @@ async def _world(uow_factory, bus: TopicEventBus):
         run_timeout_seconds=30,
         workspace_trace=ControlBusWorkspaceTrace(bus),
     )
-    alice = await MariusService(uow_factory).register(
+    alice = await make_agent(uow_factory, 
         workspace_id=ws.id,
         name="Alice",
         role="Backend",

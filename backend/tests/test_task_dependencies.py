@@ -22,6 +22,7 @@ from armarius.domain.entities.task_dependency import TaskDependencyError
 from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
+from tests.support.agents import make_agent
 from tests.support.projects import force_phase
 
 
@@ -117,9 +118,8 @@ async def test_approve_proposed_respects_gate(uow_factory) -> None:
 
 async def test_assign_leaves_blocked_task_in_backlog(uow_factory) -> None:
     projects, tasks, workspaces = _services(uow_factory)
-    mariuses = MariusService(uow_factory)
     ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
-    alice = await mariuses.register(
+    alice = await make_agent(uow_factory, 
         workspace_id=ws.id,
         name="Alice",
         role="Worker",
@@ -423,8 +423,8 @@ def _cleared_wakes(wakes: _RecordingWakes) -> list[dict]:
     return [c for c in wakes.calls if c["source"] is WakeSource.DEPENDENCY_CLEARED]
 
 
-async def _worker(mariuses, workspace_id, name="Alice"):
-    return await mariuses.register(
+async def _worker(uow_factory, workspace_id, name="Alice"):
+    return await make_agent(uow_factory, 
         workspace_id=workspace_id,
         name=name,
         role="Worker",
@@ -440,7 +440,7 @@ async def test_the_freed_task_calls_the_worker_holding_it(uow_factory) -> None:
         uow_factory
     )
     ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
-    alice = await _worker(mariuses, ws.id)
+    alice = await _worker(uow_factory, ws.id)
     blocker = await tasks.create(project_id=project.id, title="blocker", description="mô tả")
     blocked = await tasks.create(
         project_id=project.id, title="blocked", description="mô tả đủ để giao"
@@ -484,7 +484,7 @@ async def test_a_task_still_waiting_on_someone_else_is_not_called(uow_factory) -
         uow_factory
     )
     ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
-    alice = await _worker(mariuses, ws.id)
+    alice = await _worker(uow_factory, ws.id)
     first = await tasks.create(project_id=project.id, title="một", description="mô tả")
     second = await tasks.create(project_id=project.id, title="hai", description="mô tả")
     blocked = await tasks.create(
@@ -510,7 +510,7 @@ async def test_a_draft_that_stops_waiting_is_still_not_work(uow_factory) -> None
         uow_factory
     )
     ws, project = await _make_project(projects, workspaces, uow_factory=uow_factory)
-    alice = await _worker(mariuses, ws.id)
+    alice = await _worker(uow_factory, ws.id)
     blocker = await tasks.create(project_id=project.id, title="blocker", description="mô tả")
     draft = await tasks.create(
         project_id=project.id,

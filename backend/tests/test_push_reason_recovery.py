@@ -17,7 +17,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.push_reason import PushReasonService
 from armarius.application.use_cases.stall_watchdog import StallWatchdog
@@ -36,6 +35,7 @@ from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import as_utc
+from tests.support.agents import make_agent
 from tests.support.projects import force_phase
 
 T0 = datetime(2026, 8, 6, 12, 0, 0, tzinfo=UTC)
@@ -77,11 +77,10 @@ def _watchdog(uow_factory, *, ladder=None, bus=None) -> StallWatchdog:
 
 async def _world(uow_factory):
     workspaces = WorkspaceService(uow_factory)
-    mariuses = MariusService(uow_factory)
     ws = await workspaces.create_workspace("WS")
     project = await workspaces.create_project(ws.id, "P")
     await force_phase(uow_factory, project.id)
-    alice = await mariuses.register(
+    alice = await make_agent(uow_factory, 
         workspace_id=ws.id,
         name="Alice",
         role="Backend",

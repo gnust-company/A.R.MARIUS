@@ -13,20 +13,10 @@ from uuid import UUID, uuid4
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from armarius.application.ports.adapter import (
-    AdapterCapabilities,
-    Diagnostics,
-    ExecContext,
-    ExecResult,
-    MariusAdapter,
-)
-from armarius.domain.entities.run import RunStatus
 from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.infrastructure.database.models import RunModel
 from armarius.main import app
 from tests.support.agents import (
-    GATEWAY_KEY,
-    GATEWAY_URL,
     agent_token_for,
     invite_agent,
     ready_workplace,
@@ -48,17 +38,19 @@ async def _register(c: AsyncClient, email: str) -> tuple[str, str]:
     return token, ws.json()[0]["id"]
 
 
-async def test_invite_returns_send_status_and_never_the_token() -> None:
+async def test_creating_an_agent_never_returns_its_token_and_reports_no_send() -> None:
     async with await _client() as c:
         token, ws_id = await _register(c, "inv@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
         data = await invite_agent(c, ws_id, h)
 
-    assert data["invite_status"] == "approved"  # approved at invite time (#63)
-    assert data["send_status"] == "sent"  # the setup prompt reached the echo runtime
+    assert data["invite_status"] == "approved"  # there is no approval step to wait for
     # The token is a secret — it must not leak through the API.
     assert "agent_token" not in data
     assert "invite" not in data
+    # And there is no send to report on: nothing was dialled out to, nothing was pushed
+    # down. A field saying otherwise would be describing an act that no longer happens.
+    assert "send_status" not in data
 
 
 async def test_agent_me_after_invite_marks_online() -> None:
@@ -74,45 +66,13 @@ async def test_agent_me_after_invite_marks_online() -> None:
     assert me.json()["marius"]["liveness"] == "online"
 
 
-class _UnreachableAdapter(MariusAdapter):
-    """A registered runtime whose gateway never answers the probe.
+async def test_the_caller_does_not_get_to_choose_a_runtime() -> None:
+    """Which tool runs an agent follows from where it works, not from the request body.
 
-    The app's own echo runtime reports healthy unconditionally, so proving the 422 needs a
-    runtime that can actually fail. Registering one here keeps the check about *the API's
-    answer to a failed probe* rather than about any particular runtime.
+    A runtime named on the wire is a runtime nothing on this machine may be able to run, and
+    an agent created around one is an agent that can never take a turn. The field is not
+    refused with an error — it is simply not a thing this route accepts.
     """
-
-    type = "unreachable"
-    capabilities = AdapterCapabilities(resumable=True, streaming=False, transport="http")
-
-    async def execute(self, ctx: ExecContext) -> ExecResult:  # pragma: no cover - unused
-        return ExecResult(status=RunStatus.COMPLETED)
-
-    async def test_environment(self, config: dict) -> Diagnostics:
-        return Diagnostics(ok=False, detail="no probe endpoint responded")
-
-
-async def test_invite_with_unreachable_gateway_is_422() -> None:
-    """A runtime whose probe fails is rejected before anything is persisted."""
-    async with await _client() as c:
-        token, ws_id = await _register(c, "badgw@armarius.dev")
-        h = {"Authorization": f"Bearer {token}"}
-        app.state.container.registry.register(_UnreachableAdapter())
-        r = await c.post(
-            f"/v1/workspaces/{ws_id}/mariuses",
-            headers=h,
-            json={
-                "name": "Unreachable",
-                "adapter_type": "unreachable",
-                "gateway_url": "http://127.0.0.1:1",  # closed port → probe fails
-                "api_key": "k",
-                "workplace_id": await ready_workplace(ws_id),
-            },
-        )
-    assert r.status_code == 422, r.text
-
-
-async def test_invite_with_unknown_adapter_is_400() -> None:
     async with await _client() as c:
         token, ws_id = await _register(c, "noadapter@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
@@ -122,12 +82,27 @@ async def test_invite_with_unknown_adapter_is_400() -> None:
             json={
                 "name": "Nobody",
                 "adapter_type": "no-such-runtime",
-                "gateway_url": GATEWAY_URL,
-                "api_key": GATEWAY_KEY,
                 "workplace_id": await ready_workplace(ws_id),
             },
         )
-    assert r.status_code == 400, r.text
+    assert r.status_code == 201, r.text
+    assert r.json()["adapter_type"] != "no-such-runtime"
+
+
+async def test_two_agents_in_one_workspace_cannot_share_a_name() -> None:
+    async with await _client() as c:
+        token, ws_id = await _register(c, "twins@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        await invite_agent(c, ws_id, h, name="Marin")
+
+        clash = await c.post(
+            f"/v1/workspaces/{ws_id}/mariuses",
+            headers=h,
+            json={"name": "Marin", "workplace_id": await ready_workplace(ws_id)},
+        )
+    # 409, not 422: the request is perfectly well formed, the world is what refuses it.
+    assert clash.status_code == 409, clash.text
+    assert clash.json()["code"] == "agent_name_taken"
 
 
 async def _seed_run(marius_id: str, *, created_at: datetime, status: str = "completed") -> UUID:
@@ -214,8 +189,6 @@ async def test_cross_workspace_invite_is_404(missing: str) -> None:
             json={
                 "name": "X",
                 "adapter_type": "echo",
-                "gateway_url": GATEWAY_URL,
-                "api_key": GATEWAY_KEY,
                 "workplace_id": await ready_workplace(ws_a),
             },
         )

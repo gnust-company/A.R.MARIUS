@@ -119,7 +119,6 @@ async def _invite(c: AsyncClient, ws_id: str, h: dict, name: str) -> str:
         headers=h,
         json={
             "name": name, "adapter_type": "echo",
-            "gateway_url": "http://gateway.test", "api_key": "k",
             "workplace_id": await ready_workplace(ws_id),
         },
     )
@@ -141,11 +140,9 @@ async def test_workspace_stream_frames_a_control_event() -> None:
     ev = events[0]
     assert ev["event"] == "marius.status_changed"
     assert int(ev["id"]) > 0
-    assert json.loads(ev["data"]) == {
-        "marius_id": mid,
-        "status": "approved",
-        "send_status": "sent",
-    }
+    # No `send_status`: creating an agent sends nothing anywhere, so the control-plane
+    # event has nothing to report about a send (FR-007g).
+    assert json.loads(ev["data"]) == {"marius_id": mid, "status": "approved"}
 
 
 async def test_workspace_stream_resumes_from_last_event_id() -> None:

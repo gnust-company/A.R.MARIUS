@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 
-from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.projects import ProjectService, RoleSpec
 from armarius.application.use_cases.runs import RunQueryService
 from armarius.application.use_cases.tasks import TaskService
@@ -16,6 +15,7 @@ from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.events.task_trace import ControlBusTaskTrace
 from armarius.infrastructure.events.topic_bus import TopicEventBus
+from tests.support.agents import make_agent
 from tests.support.projects import force_phase
 
 
@@ -59,14 +59,13 @@ async def _wait_for_completion(runs: RunQueryService, task_id, attempts: int = 4
 async def test_assignment_wakes_agent_runs_and_persists_session(uow_factory) -> None:
     wake = _wake_engine(uow_factory)
     workspaces = WorkspaceService(uow_factory)
-    mariuses = MariusService(uow_factory)
     tasks = TaskService(uow_factory, wake)
     runs = RunQueryService(uow_factory)
 
     ws = await workspaces.create_workspace("WS")
     project = await workspaces.create_project(ws.id, "P")
     await force_phase(uow_factory, project.id)  # FR-003 — wake routing is the subject here
-    alice = await mariuses.register(
+    alice = await make_agent(uow_factory, 
         workspace_id=ws.id,
         name="Alice",
         role="Frontend",
@@ -106,7 +105,6 @@ async def test_wake_directory_is_project_scoped_with_project_roles(uow_factory) 
     (issue #87 / spec 03 §3.1, §3.2)."""
     wake = _wake_engine(uow_factory)
     workspaces = WorkspaceService(uow_factory)
-    mariuses = MariusService(uow_factory)
     projects = ProjectService(uow_factory)
 
     ws = await workspaces.create_workspace("WS")
@@ -124,7 +122,7 @@ async def test_wake_directory_is_project_scoped_with_project_roles(uow_factory) 
     async def reg(name: str):
         # role="" on purpose: the workspace-level role is empty, so a correct directory
         # MUST come from the project roster, not this field.
-        return await mariuses.register(
+        return await make_agent(uow_factory, 
             workspace_id=ws.id, name=name, role="", skills=[],
             adapter_type="echo", adapter_config={},
         )
@@ -155,7 +153,6 @@ async def test_wake_directory_is_project_scoped_with_project_roles(uow_factory) 
 async def test_mention_wakes_the_mentioned_agent(uow_factory) -> None:
     wake = _wake_engine(uow_factory)
     workspaces = WorkspaceService(uow_factory)
-    mariuses = MariusService(uow_factory)
     tasks = TaskService(uow_factory, wake)
     threads = ThreadService(uow_factory, wake)
     runs = RunQueryService(uow_factory)
@@ -163,7 +160,7 @@ async def test_mention_wakes_the_mentioned_agent(uow_factory) -> None:
     ws = await workspaces.create_workspace("WS")
     project = await workspaces.create_project(ws.id, "P")
     await force_phase(uow_factory, project.id)  # FR-003 — wake routing is the subject here
-    bob = await mariuses.register(
+    bob = await make_agent(uow_factory, 
         workspace_id=ws.id,
         name="Bob",
         role="Design",
@@ -189,14 +186,13 @@ async def test_run_trace_tees_to_per_task_sse_channel(uow_factory) -> None:
     control_bus = TopicEventBus()
     wake = _wake_engine(uow_factory, task_trace=ControlBusTaskTrace(control_bus))
     workspaces = WorkspaceService(uow_factory)
-    mariuses = MariusService(uow_factory)
     tasks = TaskService(uow_factory, wake)
     runs = RunQueryService(uow_factory)
 
     ws = await workspaces.create_workspace("WS")
     project = await workspaces.create_project(ws.id, "P")
     await force_phase(uow_factory, project.id)  # FR-003 — wake routing is the subject here
-    cara = await mariuses.register(
+    cara = await make_agent(uow_factory, 
         workspace_id=ws.id,
         name="Cara",
         role="Backend",
@@ -255,7 +251,6 @@ async def test_a_plain_comment_wakes_the_worker_who_owns_the_task(uow_factory) -
     """
     wake = _wake_engine(uow_factory)
     workspaces = WorkspaceService(uow_factory)
-    mariuses = MariusService(uow_factory)
     tasks = TaskService(uow_factory, wake)
     threads = ThreadService(uow_factory, wake)
     runs = RunQueryService(uow_factory)
@@ -263,7 +258,7 @@ async def test_a_plain_comment_wakes_the_worker_who_owns_the_task(uow_factory) -
     ws = await workspaces.create_workspace("WS")
     project = await workspaces.create_project(ws.id, "P")
     await force_phase(uow_factory, project.id)
-    dana = await mariuses.register(
+    dana = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Dana", role="Backend", skills=[],
         adapter_type="echo", adapter_config={},
     )
@@ -295,7 +290,6 @@ async def test_a_comment_does_not_wake_a_worker_with_nothing_at_stake(uow_factor
     holds a seat but not this task has nothing waiting on them."""
     wake = _wake_engine(uow_factory)
     workspaces = WorkspaceService(uow_factory)
-    mariuses = MariusService(uow_factory)
     tasks = TaskService(uow_factory, wake)
     threads = ThreadService(uow_factory, wake)
     runs = RunQueryService(uow_factory)
@@ -304,7 +298,7 @@ async def test_a_comment_does_not_wake_a_worker_with_nothing_at_stake(uow_factor
     project = await workspaces.create_project(ws.id, "P")
     await force_phase(uow_factory, project.id)
     dana, eve = [
-        await mariuses.register(
+        await make_agent(uow_factory, 
             workspace_id=ws.id, name=n, role="Backend", skills=[],
             adapter_type="echo", adapter_config={},
         )

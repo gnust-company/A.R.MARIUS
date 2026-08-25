@@ -19,7 +19,6 @@ from uuid import UUID
 
 import pytest
 
-from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.projects import ProjectService, RoleSpec
 from armarius.application.use_cases.seats import leader_marius_id
 from armarius.application.use_cases.tasks import TaskService
@@ -32,6 +31,7 @@ from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.persistence.repositories import SqlRunRepository
 from armarius.shared.errors import NotFound
+from tests.support.agents import make_agent
 from tests.support.projects import force_phase
 
 pytestmark = pytest.mark.asyncio
@@ -50,7 +50,7 @@ async def _world(uow_factory):  # noqa: ANN001, ANN202
     ws = await WorkspaceService(uow_factory).create_workspace("WS")
     projects = ProjectService(uow_factory)
     project = await projects.create_project(ws.id, "Apollo", roles=_roster())
-    agent = await MariusService(uow_factory).register(
+    agent = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Leader", role="Backend", skills=[],
         adapter_type="echo", adapter_config={},
     )

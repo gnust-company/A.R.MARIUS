@@ -18,7 +18,6 @@ from sqlalchemy import select
 
 from armarius.application.use_cases.leader_chat import LeaderChatService
 from armarius.application.use_cases.liveness import LivenessEngine
-from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.application.use_cases.workspaces import WorkspaceService
@@ -35,6 +34,7 @@ from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.events.topic_bus import TopicEventBus
 from armarius.infrastructure.persistence.mappers import wakeup_to_entity
 from armarius.shared.clock import utcnow
+from tests.support.agents import make_agent
 from tests.support.fakes import FakeLivenessProbe
 from tests.support.projects import force_phase
 
@@ -61,13 +61,12 @@ def _chat(uow_factory) -> LeaderChatService:  # noqa: ANN001 - the fixture's own
 async def _world(uow_factory):  # noqa: ANN001, ANN202
     """Một dự án đang vận hành: một Trưởng dự án có ghế, một thợ giữ đầu việc."""
     workspaces = WorkspaceService(uow_factory)
-    mariuses = MariusService(uow_factory)
     ws = await workspaces.create_workspace("WS")
     project = await workspaces.create_project(ws.id, "P")
     await force_phase(uow_factory, project.id)
 
     async def _agent(name: str):  # noqa: ANN202
-        return await mariuses.register(
+        return await make_agent(uow_factory, 
             workspace_id=ws.id,
             name=name,
             role="Backend",
@@ -332,12 +331,11 @@ async def test_somebody_with_no_part_in_the_work_is_refused(uow_factory) -> None
     """FR-049 ở dạng sắc nhất: người không giữ đầu việc và cũng không dẫn dự án thì không
     có gì đang chờ họ, nên chỉ lời gọi gọi thẳng tên mới lọt."""
     project, _leader, _worker, task = await _world(uow_factory)
-    mariuses = MariusService(uow_factory)
     async with uow_factory() as uow:
         loaded = await uow.projects.get(project.id)
         assert loaded is not None
         workspace_id = loaded.workspace_id
-    bystander = await mariuses.register(
+    bystander = await make_agent(uow_factory, 
         workspace_id=workspace_id,
         name="Ngoài cuộc",
         role="Backend",

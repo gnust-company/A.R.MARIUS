@@ -31,8 +31,10 @@ async def _seed_workspace(factory) -> Workspace:
     return ws
 
 
-async def _seed_marius(factory, ws_id, liveness: Liveness) -> Marius:
-    m = Marius(workspace_id=ws_id, name="Agent", role="Worker", liveness=liveness)
+async def _seed_marius(factory, ws_id, liveness: Liveness, name: str = "Agent") -> Marius:
+    # The name has to be given when a test seeds two of these: one name answers for one agent
+    # inside a workspace, and the database is what says so (FR-007h).
+    m = Marius(workspace_id=ws_id, name=name, role="Worker", liveness=liveness)
     async with factory() as uow:
         await uow.mariuses.add(m)
         await uow.commit()
@@ -67,8 +69,8 @@ async def test_activation_flip_persists_to_db(uow_factory) -> None:
     ws = await _seed_workspace(uow_factory)
     svc = ProjectService(uow_factory)
     project = await svc.create_project(ws.id, "Apollo", roles=_valid_roster())
-    leader = await _seed_marius(uow_factory, ws.id, Liveness.ONLINE)
-    worker = await _seed_marius(uow_factory, ws.id, Liveness.ONLINE)
+    leader = await _seed_marius(uow_factory, ws.id, Liveness.ONLINE, name="Lead")
+    worker = await _seed_marius(uow_factory, ws.id, Liveness.ONLINE, name="Worker")
 
     await svc.grant_seat(project.id, "leader", leader.id, system=True)
     async with uow_factory() as uow:

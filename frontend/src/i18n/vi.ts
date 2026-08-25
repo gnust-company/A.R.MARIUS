@@ -251,7 +251,7 @@ export const vi = {
     title: 'Danh bạ',
     pageTitle: 'Các Agent',
     agentsInWorkspace: '{{count}} agent trong không gian',
-    inviteAgent: 'Mời Agent',
+    inviteAgent: 'Thêm Agent',
     invitePrompt: 'Prompt Mời',
     emptyTitle: 'Chưa có agent',
     emptyDescription: 'Mời agent vào không gian làm việc để bắt đầu hợp tác',
@@ -285,19 +285,17 @@ export const vi = {
     workplaceHint: 'Agent sẽ làm việc ở đây suốt đời và không đổi được về sau. Chỗ làm chết thì agent ngoại tuyến, hệ thống không tự chuyển sang máy khác.',
     workplaceNone: 'Chưa có chỗ làm nào sẵn sàng.',
     workplaceNoneHint: 'Hãy chạy daemon trên máy của bạn rồi nối máy đó vào không gian làm việc này. Khi máy báo có agent CLI chạy được, chỗ làm sẽ hiện ở đây.',
-    gatewayUrl: 'Địa chỉ Gateway',
-    gatewayUrlPlaceholder: 'http://gateway.local:8642',
-    apiKey: 'Khóa API',
-    apiKeyPlaceholder: '••••••••',
-    apiKeyHint:
-      'Được gửi cho agent một lần để xác thực các callback — không bao giờ lưu hay hiển thị lại.',
-    invite: 'Gửi lời mời',
+    instructions: 'Chỉ dẫn',
+    instructionsPlaceholder:
+      'Ví dụ: Luôn viết test trước khi viết code. Không sửa file cấu hình khi chưa hỏi.',
+    instructionsHint:
+      'Agent nhận đoạn này ở mỗi lượt chạy, nên nó không bao giờ quên. Đây là toàn bộ cách agent cư xử — không có vai trò riêng theo từng dự án chồng lên nữa.',
+    agentDescription: 'Mô tả',
+    agentDescriptionPlaceholder: 'Ví dụ: Người giữ cho cả nhóm không bỏ qua test.',
+    agentDescriptionHint: 'Chỉ hiện cho người trong nhóm đọc. Không bao giờ gửi xuống agent.',
+    invite: 'Thêm agent',
     send: {
-      sending: 'Đang gửi…',
-      sent: 'Đã gửi prompt thiết lập — agent sẽ hiển thị trực tuyến khi nó báo hiệu.',
-      sendFailed:
-        'Đã thêm agent nhưng prompt thiết lập chưa gửi được. Hãy kiểm tra gateway và thử lại.',
-      retry: 'Gửi lại',
+      sending: 'Đang thêm…',
     },
     actions: {
       approve: 'Phê duyệt',
@@ -854,6 +852,7 @@ export const vi = {
     run_not_found: 'Không tìm thấy lượt chạy.',
     machine_not_found: 'Không tìm thấy máy.',
     placement_not_found: 'Không tìm thấy chỗ làm.',
+    agent_name_taken: 'Trong không gian này đã có agent tên "{{name}}". Đặt tên khác đi.',
     daemon_link_code_not_found: 'Không có mã nối máy này. Xem lại mã rồi nhập lại.',
     daemon_link_code_expired: 'Mã nối máy đã hết hạn. Chạy lại `armarius-daemon login` để lấy mã mới.',
     daemon_link_code_already_used: 'Mã nối máy này đã dùng rồi. Chạy lại `armarius-daemon login` để lấy mã mới.',

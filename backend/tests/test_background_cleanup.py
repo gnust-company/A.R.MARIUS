@@ -26,7 +26,6 @@ from armarius.application.ports.workspace_trace import WorkspaceTracePublisher
 from armarius.application.use_cases.leader_chat import LeaderChatService
 from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.liveness_watchdog import LivenessWatchdog
-from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.projects import ProjectService, RoleSpec
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.wake_engine import WakeEngine, _describe
@@ -44,6 +43,7 @@ from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.events.topic_bus import TopicEventBus
 from armarius.shared.background import settle
+from tests.support.agents import make_agent
 from tests.support.fakes import FakeLivenessProbe
 from tests.support.projects import force_phase
 
@@ -103,7 +103,7 @@ async def _world(uow_factory):  # noqa: ANN201
     ws = await workspaces.create_workspace("WS")
     project = await workspaces.create_project(ws.id, "P")
     await force_phase(uow_factory, project.id)
-    alice = await MariusService(uow_factory).register(
+    alice = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Alice", role="Backend",
         skills=[], adapter_type="echo", adapter_config={},
     )
@@ -393,7 +393,7 @@ async def test_a_leader_chat_turn_that_loses_the_write_race_still_ends(uow_facto
             RoleSpec(key="backend", title="Backend", seats=1, description="Owns the API."),
         ],
     )
-    leader = await MariusService(uow_factory).register(
+    leader = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Lead", role="Leader",
         skills=[], adapter_type="echo", adapter_config={},
     )

@@ -20,7 +20,6 @@ from armarius.application.use_cases.approvals import (
     NotReadyForSignatureError,
     ResponsiblePatronUnknown,
 )
-from armarius.application.use_cases.enrollment import GatewayUnreachable
 from armarius.application.use_cases.onboarding_session import (
     OnboardingBusy,
     WorkspaceAgentUnavailable,
@@ -133,9 +132,6 @@ _ROUTING: tuple[tuple[type[Exception], int, str], ...] = (
     (TaskDependencyError, 422, "self-loop, duplicate, cross-project, or cycle"),
     (InvalidProjectPlan, 422, "hard roster composition rule (API_CONTRACT §3.1)"),
     (InvalidProjectKey, 422, "KEY malformed (2–10 uppercase, starts with a letter)"),
-    # The operator-supplied gateway failed its reachability probe (issue #63): well formed,
-    # but the target is not live.
-    (GatewayUnreachable, 422, "the gateway did not answer its probe"),
     (SystemOnlyOperation, 403, "this door is the system's, not a caller's"),
     (Forbidden, 403, "the caller is known and may not do this"),
 )

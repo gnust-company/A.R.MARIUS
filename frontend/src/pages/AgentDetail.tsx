@@ -229,14 +229,15 @@ export default function AgentDetail() {
   const [runs, setRuns] = useState<RunDTO[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Post-invite skill install (#74): (re)install skills on a connected agent + push a one-time
-  // install prompt. send_status confirms only that the gateway accepted the dispatch; the agent
-  // then confirms each install out-of-band (POST /agent/skills/{slug}/installed), flipping the
-  // per-skill badge pending → installed. State is carried on agent.skillInstalls (slug → status).
+  // Linking skills to an agent (#74). Nothing is pushed at the agent: a skill travels down
+  // with the work that needs it (FR-011b), so linking is the whole of the act. The agent
+  // confirms each install out of band (POST /agent/skills/{slug}/installed), flipping the
+  // per-skill badge pending → installed. State is carried on agent.skillInstalls.
   const [linkSkillsOpen, setLinkSkillsOpen] = useState(false);
   const [selectedNewIds, setSelectedNewIds] = useState<string[]>([]);
   const [installing, setInstalling] = useState(false);
-  const [installStatus, setInstallStatus] = useState<'sent' | 'send_failed' | null>(null);
+  const [linkFailed, setLinkFailed] = useState(false);
+  const [linked, setLinked] = useState(false);
 
   // Push, not poll (Constitution IV, FR-080). This screen watches an *agent*, and until
   // T167 no channel spoke about agents — so it re-asked the server every fifteen seconds,
@@ -302,26 +303,25 @@ export default function AgentDetail() {
 
   const openLinkSkills = () => {
     setSelectedNewIds([]);
-    setInstallStatus(null);
+    setLinkFailed(false);
+    setLinked(false);
     setLinkSkillsOpen(true);
   };
 
   const handleInstallSkills = async () => {
     if (!agent || selectedNewIds.length === 0 || installing) return;
     setInstalling(true);
-    setInstallStatus(null);
+    setLinkFailed(false);
     try {
-      const { sendStatus } = await installAgentSkills(agent.id, selectedNewIds);
-      setInstallStatus(sendStatus);
-      if (sendStatus === 'sent') {
-        setTimeout(() => {
-          setLinkSkillsOpen(false);
-          setSelectedNewIds([]);
-          setInstallStatus(null);
-        }, 900);
-      }
+      await installAgentSkills(agent.id, selectedNewIds);
+      setLinked(true);
+      setTimeout(() => {
+        setLinkSkillsOpen(false);
+        setSelectedNewIds([]);
+        setLinked(false);
+      }, 900);
     } catch {
-      setInstallStatus('send_failed');
+      setLinkFailed(true);
     }
     setInstalling(false);
   };
@@ -402,13 +402,6 @@ export default function AgentDetail() {
               <Field label={t('agentDetail.field.workspaceAgent')}>
                 {agent?.isWorkspaceAgent ? t('common.yes') : t('common.no')}
               </Field>
-              {agent?.gatewayUrl && (
-                <div className="col-span-2">
-                  <Field label={t('agentDetail.field.gateway')}>
-                    <span className="font-mono text-[12px] break-all">{agent.gatewayUrl}</span>
-                  </Field>
-                </div>
-              )}
               <div className="col-span-2">
                 <Field label={t('agentDetail.field.id')}>
                   <span className="font-mono text-[12px] break-all text-[#6B5E4E]">{id}</span>
@@ -560,7 +553,7 @@ export default function AgentDetail() {
               )}
             >
               {installing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              {installStatus === 'send_failed'
+              {linkFailed
                 ? t('agentDetail.linkSkills.retry')
                 : installing
                   ? t('agentDetail.linkSkills.sending')
@@ -601,12 +594,12 @@ export default function AgentDetail() {
             })}
           </div>
         )}
-        {installStatus === 'sent' && (
+        {linked && (
           <p className="mt-4 flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#D8EADD] text-[12px] text-[#2A6E3A]">
             <CheckCircle2 className="w-3.5 h-3.5" /> {t('agentDetail.linkSkills.sent')}
           </p>
         )}
-        {installStatus === 'send_failed' && (
+        {linkFailed && (
           <p className="mt-4 flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#F3D9D0] text-[12px] text-[#8A3B22] border border-[#E3C0B2]">
             <AlertTriangle className="w-3.5 h-3.5" /> {t('agentDetail.linkSkills.sendFailed')}
           </p>

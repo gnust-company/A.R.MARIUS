@@ -6,11 +6,6 @@ from uuid import UUID
 
 from fastapi import APIRouter
 
-from armarius.application.use_cases.onboarding import (
-    build_invite_prompt,
-    build_skill_install_prompt,
-)
-from armarius.presentation.api.agent import effective_skills
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
@@ -32,7 +27,6 @@ from armarius.presentation.schemas import (
     WorkplaceChoiceOut,
     WorkspaceOut,
 )
-from armarius.shared.config import settings
 from armarius.shared.errors import CodedError, NotFound
 
 router = APIRouter(prefix="/v1", tags=["workspaces"])
@@ -116,58 +110,45 @@ async def list_workplaces(
     response_model=MariusCreatedOut,
     status_code=201,
 )
-async def invite_marius(
+async def create_marius(
     workspace_id: UUID,
     body: RegisterMariusIn,
     container: ContainerDep,
     user: CurrentUser,
 ) -> MariusCreatedOut:
-    """Invite a Marius — operator-driven (issue #63). The operator supplies the agent's
-    gateway URL + api_key; Armarius mints the token, persists an APPROVED agent, and pushes
-    a one-time setup prompt to the agent over that gateway. No copy-paste, no approve step.
+    """Add an agent to the workspace (FR-007g).
 
-    `send_status` is ``"sent"`` when the prompt reached the agent, ``"send_failed"`` when it
-    did not (the agent is still live — the operator can retry)."""
+    A name, what it is told to be, what it can do, and where it works. Nothing is dialled
+    out to and nothing is pushed down: the machine the agent runs on comes and asks for
+    work, so there is no setup step for this route to perform (FR-040a)."""
     await _require_owned_workspace(container, user, workspace_id)
-    marius = await container.invite.invite(
+    marius = await container.agents.create(
         workspace_id,
         body.name,
-        gateway_url=body.gateway_url,
-        api_key=body.api_key,
-        # The workplace the operator picked becomes, one layer down, a *placement*: the
+        # The workplace the person picked becomes, one layer down, a *placement*: the
         # business layer is not allowed to know that where an agent works is a CLI on a
         # machine (Constitution III). This line is where that translation happens, and it
         # is the only place it happens.
         placement_id=body.workplace_id,
+        instructions=body.instructions,
+        description=body.description,
         skills=body.skills,
         skill_ids=body.skill_ids,
-        adapter_type=body.adapter_type,
         owner_user_id=str(user.id),
     )
     if body.is_workspace_agent:
         # Seat the newcomer as host right away (#32) — an existing host is demoted to
-        # a plain agent. Done before the prompt is built so it shows the role.
+        # a plain agent.
         await container.workspace_agent.designate(workspace_id, marius.id)
         marius = await container.mariuses.get(marius.id) or marius
-    # Inviting an agent is a connection step only (#43): it names no project and must
+    # Adding an agent is a connection step only (#43): it names no project and must
     # not conjure one. The patron commissions the first project explicitly (#49).
-    ws = await container.workspaces.get_workspace(workspace_id)
-    prompt = build_invite_prompt(
-        marius,
-        settings.public_api_url,
-        workspace_name=ws.name if ws else "the workspace",
-        skills=await effective_skills(container, marius),
-        adapters=container.registry,
-    )
-    send_status = await container.invite.push_setup(marius.id, prompt=prompt)
     await container.control_bus.publish(
         f"ws:{workspace_id}",
         "marius.status_changed",
-        {"marius_id": str(marius.id), "status": "approved", "send_status": send_status},
+        {"marius_id": str(marius.id), "status": "approved"},
     )
-    return MariusCreatedOut.model_validate(marius).model_copy(
-        update={"send_status": send_status}
-    )
+    return MariusCreatedOut.model_validate(marius)
 
 
 @router.get("/workspaces/{workspace_id}/mariuses", response_model=list[MariusOut])
@@ -282,12 +263,13 @@ async def install_skills(
     container: ContainerDep,
     user: CurrentUser,
 ) -> InstallSkillsOut:
-    """Link additional skills to an already-invited agent and push an install prompt (issue #74).
+    """Link additional skills to an agent (issue #74, FR-011c).
 
     The skill_ids are merged into the agent's existing links (de-duped, order preserved).
-    A one-time skill-install prompt is then pushed to the agent over its gateway so it
-    fetches and installs the newly linked skills. ``send_status`` is best-effort — the
-    links are persisted regardless, and a failed push can be retried by calling again.
+    Nothing is pushed: a skill travels down with the work it is needed for, inside the claim
+    packet the daemon fetches (FR-011b). Linking one is therefore the whole of the act — the
+    agent installs it on its next run and confirms out of band via
+    ``POST /agent/skills/{slug}/installed``.
     """
     await _require_owned_workspace(container, user, workspace_id)
     marius = await container.mariuses.get(marius_id)
@@ -312,38 +294,23 @@ async def install_skills(
         marius_id, skill_ids=merged, skills=merged_names
     )
 
-    ws = await container.workspaces.get_workspace(workspace_id)
-    prompt = build_skill_install_prompt(
-        marius,
-        settings.public_api_url,
-        workspace_name=ws.name if ws else "the workspace",
-        skills=requested_skills,
-        adapters=container.registry,
-    )
-    send_status = await container.invite.push_setup(marius_id, prompt=prompt)
-
-    # Mark each pushed skill "pending" (gateway accepted the push) or "failed" (push rejected).
-    # The agent flips a slug to "installed" out-of-band via POST /agent/skills/{slug}/installed.
-    pushed_state = "pending" if send_status == "sent" else "failed"
+    # "pending" means linked and not yet confirmed installed. There is no "failed" on this
+    # path any more: nothing is attempted here that could fail, so a state saying otherwise
+    # would be describing an act that no longer happens.
     if pushed_slugs:
         marius = await container.mariuses.set_skill_installs(
-            marius_id, {slug: pushed_state for slug in pushed_slugs}
+            marius_id, {slug: "pending" for slug in pushed_slugs}
         )
 
     await container.control_bus.publish(
         f"ws:{workspace_id}",
         "marius.skills_updated",
-        {
-            "marius_id": str(marius_id),
-            "installed": pushed_slugs,
-            "send_status": send_status,
-        },
+        {"marius_id": str(marius_id), "installed": pushed_slugs},
     )
     return InstallSkillsOut(
         marius_id=marius.id,
         skill_ids=merged,
         installed=pushed_slugs,
-        send_status=send_status,
     )
 
 

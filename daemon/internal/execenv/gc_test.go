@@ -67,6 +67,28 @@ func (w world) session(t *testing.T, cli, taskID string, age time.Duration) stri
 	return path
 }
 
+// age backdates a whole tree, the way a directory nobody has touched for days looks on disk.
+// Children are stamped before their parents: writing a child updates the parent's own timestamp.
+func age(t *testing.T, root string, by time.Duration) {
+	t.Helper()
+	when := time.Now().Add(-by)
+	var paths []string
+	if err := filepath.WalkDir(root, func(path string, _ os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		paths = append(paths, path)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for i := len(paths) - 1; i >= 0; i-- {
+		if err := os.Chtimes(paths[i], when, when); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func (w world) collector(tasks TaskStates, runs RunHolder) Collector {
 	return Collector{WorkRoot: w.workRoot, StateRoot: w.stateRoot, Tasks: tasks, Runs: runs}
 }
@@ -290,5 +312,124 @@ func TestRemoveRefusesToLeaveItsOwnRoot(t *testing.T) {
 	}
 	if _, err := os.Stat(outside); err != nil {
 		t.Fatal("a directory outside the root was deleted")
+	}
+}
+
+// FR-021a. Without this branch a directory the server cannot account for stays on the user's disk
+// forever: the FR-021 path only removes what it was told had closed, and it will never be told.
+func TestADirectoryTheServerDoesNotKnowGoesOnceItIsCold(t *testing.T) {
+	w := newWorld(t)
+	now := time.Now()
+
+	cold := w.workDir(t, "task-deleted-long-ago")
+	age(t, cold, 80*time.Hour)
+	warm := w.workDir(t, "task-deleted-recently")
+	age(t, warm, 70*time.Hour)
+
+	// The server answers about neither: both tasks are gone from it entirely.
+	report, err := w.collector(&fakeTasks{states: map[string]TaskState{}}, fakeRuns{}).
+		Sweep(context.Background(), now)
+	if err != nil {
+		t.Fatalf("Sweep returned an error: %v", err)
+	}
+
+	if _, err := os.Stat(cold); !os.IsNotExist(err) {
+		t.Error("a directory nobody has claimed for 80 hours was kept")
+	}
+	if !contains(report.Removed, cold) {
+		t.Errorf("the removal was not reported: %+v", report.Removed)
+	}
+
+	if _, err := os.Stat(warm); err != nil {
+		t.Error("a directory was removed 70 hours in, before the 72 hour retention")
+	}
+	if reason, kept := reasonFor(report, warm); !kept || !strings.Contains(reason, "does not know") {
+		t.Errorf("wrong reason for keeping it: %q", reason)
+	}
+}
+
+// The two clocks must not be the same clock. Acting on what the server said is a different kind of
+// act from acting on what it did not say, so the second one waits longer.
+func TestTheOrphanClockIsNotTheClosedTaskClock(t *testing.T) {
+	w := newWorld(t)
+	now := time.Now()
+
+	closed := w.workDir(t, "task-closed")
+	orphan := w.workDir(t, "task-unknown")
+	age(t, orphan, 25*time.Hour) // past the 24h of FR-021, nowhere near the 72h of FR-021a
+
+	tasks := &fakeTasks{states: map[string]TaskState{
+		"task-closed": {Closed: true, LastActivity: now.Add(-25 * time.Hour)},
+	}}
+	report, err := w.collector(tasks, fakeRuns{}).Sweep(context.Background(), now)
+	if err != nil {
+		t.Fatalf("Sweep returned an error: %v", err)
+	}
+
+	if _, err := os.Stat(closed); !os.IsNotExist(err) {
+		t.Error("a task the server said closed 25 hours ago kept its directory")
+	}
+	if _, err := os.Stat(orphan); err != nil {
+		t.Error("an unaccounted-for directory was removed on the 24 hour clock")
+	}
+	if reason, _ := reasonFor(report, orphan); !strings.Contains(reason, "does not know") {
+		t.Errorf("wrong reason for keeping the unaccounted-for directory: %q", reason)
+	}
+}
+
+// A directory's own timestamp does not move when a file deep inside it is written, so the shallow
+// answer alone would delete a tree somebody is still working in.
+func TestAFreshFileDeepInsideSavesAnOtherwiseColdDirectory(t *testing.T) {
+	w := newWorld(t)
+	now := time.Now()
+
+	dir := w.workDir(t, "task-unknown")
+	age(t, dir, 90*time.Hour)
+	// Somebody edited one file this morning. Nothing was added or removed, so the directory's own
+	// timestamp still reads 90 hours old.
+	deep := filepath.Join(dir, "repo", "src", "main.go")
+	recent := now.Add(-time.Hour)
+	if err := os.Chtimes(deep, recent, recent); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := w.collector(&fakeTasks{states: map[string]TaskState{}}, fakeRuns{}).
+		Sweep(context.Background(), now)
+	if err != nil {
+		t.Fatalf("Sweep returned an error: %v", err)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatal("a directory holding a file written an hour ago was removed")
+	}
+	if reason, kept := reasonFor(report, dir); !kept || !strings.Contains(reason, "does not know") {
+		t.Errorf("wrong reason for keeping it: %q", reason)
+	}
+}
+
+// FR-022 outranks FR-021a: a run holding the directory is not asked about, so an orphan that is
+// somehow live is never a candidate in the first place.
+func TestAColdOrphanARunIsHoldingIsStillNeverTouched(t *testing.T) {
+	w := newWorld(t)
+	now := time.Now()
+
+	dir := w.workDir(t, "task-unknown")
+	age(t, dir, 200*time.Hour)
+
+	tasks := &fakeTasks{states: map[string]TaskState{}}
+	report, err := w.collector(tasks, fakeRuns{held: map[string]bool{dir: true}}).
+		Sweep(context.Background(), now)
+	if err != nil {
+		t.Fatalf("Sweep returned an error: %v", err)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatal("a directory a run was holding was removed because the server did not know it")
+	}
+	if reason, _ := reasonFor(report, dir); !strings.Contains(reason, "holding") {
+		t.Errorf("wrong reason: %q", reason)
+	}
+	for _, ask := range tasks.asked {
+		if contains(ask, "task-unknown") {
+			t.Error("the server was asked about a task whose directory a run is holding")
+		}
 	}
 }

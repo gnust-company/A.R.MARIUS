@@ -1,8 +1,14 @@
-"""Marius (agent) use cases — register an agent and read the directory (§3.1)."""
+"""Marius (agent) use cases — read and edit the directory (§3.1).
+
+Creating an agent is deliberately NOT here. There is exactly one way to make an agent — the
+create path behind the route — and a second one in this layer would be a rule that holds only
+on whichever path somebody happens to be looking at (FR-007f). The fixture the tests used to
+get from here lives in `tests/support/agents.py`, where being scaffolding is the honest name
+for it.
+"""
 
 from __future__ import annotations
 
-import secrets
 from collections.abc import Sequence
 from uuid import UUID
 
@@ -15,36 +21,6 @@ from armarius.shared.errors import NotFound
 class MariusService:
     def __init__(self, uow_factory: UowFactory) -> None:
         self._uow = uow_factory
-
-    async def register(
-        self,
-        *,
-        workspace_id: UUID,
-        name: str,
-        role: str,
-        skills: list[str],
-        adapter_type: str,
-        adapter_config: dict,
-        skill_ids: list[str] | None = None,
-        owner_user_id: str | None = None,
-    ) -> Marius:
-        async with self._uow() as uow:
-            if await uow.workspaces.get(workspace_id) is None:
-                raise NotFound("workspace_not_found")
-            marius = Marius(
-                workspace_id=workspace_id,
-                name=name,
-                role=role,
-                skills=skills,
-                skill_ids=skill_ids or [],
-                adapter_type=adapter_type,
-                adapter_config=adapter_config,
-                owner_user_id=owner_user_id,
-                agent_token=f"arm_{secrets.token_urlsafe(32)}",
-            )
-            created = await uow.mariuses.add(marius)
-            await uow.commit()
-            return created
 
     async def update(
         self,

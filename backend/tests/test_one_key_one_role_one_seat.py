@@ -17,12 +17,12 @@ from __future__ import annotations
 
 import pytest
 
-from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.projects import ProjectService, RoleSpec
 from armarius.application.use_cases.seats import leader_marius_id
 from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.domain.services import project_rules
 from armarius.shared.errors import BadRequest
+from tests.support.agents import make_agent
 
 pytestmark = pytest.mark.asyncio
 
@@ -38,7 +38,7 @@ def _roster(**extra: object) -> list[RoleSpec]:
 
 
 async def _agent(uow_factory, ws_id, name: str):  # noqa: ANN001, ANN202
-    return await MariusService(uow_factory).register(
+    return await make_agent(uow_factory, 
         workspace_id=ws_id, name=name, role="Backend", skills=[],
         adapter_type="echo", adapter_config={},
     )

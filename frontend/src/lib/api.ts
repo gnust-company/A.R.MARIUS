@@ -212,7 +212,11 @@ export interface MariusDTO {
   role: string
   skills: string[]
   skill_ids: string[]
-  /** Per-skill install state (post-invite loop #74): slug → pending|installed|failed. */
+  /** What the agent is told to be. Sent to it on every run (FR-007i). */
+  instructions?: string
+  /** What the team calls it. Never sent to the agent (FR-007j). */
+  description?: string
+  /** Per-skill install state (#74): slug → pending|installed. */
   skill_installs?: Record<string, string>
   adapter_type: string
   liveness: string
@@ -222,12 +226,11 @@ export interface MariusDTO {
   created_at?: string | null
 }
 
-// POST /workspaces/{id}/mariuses response (backend `MariusCreatedOut`). Under operator-invite
-// (#63) the token is minted at invite time and pushed to the agent over its gateway — it is
-// NEVER returned (a secret). `send_status` tells the UI whether the setup prompt landed.
-export interface MariusCreatedDTO extends MariusDTO {
-  send_status: 'sent' | 'send_failed'
-}
+// POST /workspaces/{id}/mariuses response (backend `MariusCreatedOut`). The agent's token is
+// never returned — it is a secret, and nothing on this side has any use for it. There is no
+// send to report either: the machine the agent runs on asks for work rather than being
+// called, so creating one sends nothing anywhere (FR-007g).
+export type MariusCreatedDTO = MariusDTO
 
 export interface LabelDTO {
   id: string
@@ -467,16 +470,17 @@ export async function listWorkplaces(workspaceId: string): Promise<WorkplaceChoi
 
 export interface InviteMariusBody {
   name: string
+  /** What the agent is told to be. Goes down with every run (FR-007i). */
+  instructions?: string
+  /** What the team calls it among themselves. Never reaches the agent (FR-007j). */
+  description?: string
   skills?: string[]
   skill_ids?: string[]
   adapter_type?: string
-  /** The agent's gateway address + key (operator-invite, #63) — stored as adapter_config. */
-  gateway_url: string
-  api_key: string
   /** Where this agent will work. Required and fixed for life — an agent is never moved
    *  to another workplace afterwards (FR-007, FR-007f). */
   workplace_id: string
-  /** Seat the newcomer as Workspace Agent on invite; a sitting host is demoted (#32). */
+  /** Seat the newcomer as Workspace Agent on creation; a sitting host is demoted (#32). */
   is_workspace_agent?: boolean
 }
 
@@ -513,18 +517,16 @@ export async function deleteMarius(workspaceId: string, mariusId: string): Promi
   return del(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}`)
 }
 
-/** Result of linking more skills to an already-invited agent + pushing an install prompt (#74). */
+/** Result of linking more skills to an agent (#74, FR-011c). */
 export interface InstallSkillsDTO {
   marius_id: string
-  /** The full merged skill-id list after the install (de-duped). */
+  /** The full merged skill-id list after the link (de-duped). */
   skill_ids: string[]
-  /** Slugs of the newly linked skills (the ones the install prompt covers). */
+  /** Slugs of the newly linked skills. The agent installs them on its next run. */
   installed: string[]
-  /** Best-effort push status: "sent" | "send_failed". */
-  send_status: string
 }
 
-/** Link additional skills to an invited agent and push a one-time install prompt (#74). */
+/** Link additional skills to an agent. Nothing is pushed — they travel with the work. */
 export async function installSkills(
   workspaceId: string,
   mariusId: string,

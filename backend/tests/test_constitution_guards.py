@@ -364,3 +364,61 @@ def test_no_vietnamese_is_hardcoded_into_the_screens_under_the_rule() -> None:
         "Chuỗi hiển thị phải đi qua cơ chế đa ngôn ngữ (FR-084, Hiến pháp VI).\n"
         "Đưa vào `i18n/vi.ts` + `i18n/en.ts` rồi gọi qua `t()`:\n  " + "\n  ".join(offenders)
     )
+
+
+# ── FR-007g, FR-040a. Cổng ngoài không quay lại đường tạo agent ──────────────────
+
+# The gateway path is gone and is meant to stay gone (FR-040a). What makes that hard to
+# hold is that every piece of it was individually reasonable: an address to reach the agent
+# at, a key to authenticate with, a probe to check both, a prompt to hand the agent its
+# token. Any one of them can be reintroduced by somebody solving a real problem, and the
+# result is a second way to reach an agent — which is the thing the daemon exists to
+# replace, not to sit beside.
+#
+# Scoped to `application/` and `presentation/` because that is where a create path lives.
+# `infrastructure/` is not checked: an adapter that speaks HTTP to something legitimately
+# has a base URL, and banning the word there would ban the layer's actual job.
+_GATEWAY_WORDS = re.compile(
+    r"\b(gateway_url|api_key|push_setup|build_invite_prompt|build_skill_install_prompt"
+    r"|send_status|GatewayUnreachable)\b"
+)
+
+
+def test_the_outside_gateway_does_not_come_back() -> None:
+    offenders: list[str] = []
+    for path in _sources(
+        BACKEND / "armarius" / "application", BACKEND / "armarius" / "presentation"
+    ):
+        for line_no, line in enumerate(_python_code_lines(path), 1):
+            found = _GATEWAY_WORDS.search(line)
+            if found:
+                offenders.append(
+                    f"{path.relative_to(BACKEND)}:{line_no}  {found.group(0)}"
+                )
+    assert not offenders, (
+        "Đường cổng ngoài đã gỡ và phải ở yên như thế (FR-007g, FR-040a). Daemon chạy\n"
+        "ngay trên máy người dùng và tự hỏi xin việc, nên không còn địa chỉ nào để gọi,\n"
+        "không có gì để dò, và không có cú đẩy nào để báo cáo:\n  " + "\n  ".join(offenders)
+    )
+
+
+# ── FR-007l. Vai trò theo dự án không mọc lại ở luồng tạo agent ─────────────────
+
+# Constitution V: how an agent behaves comes from the instructions written when it was
+# created, and from nothing else. A create path that also mints a role would put a second
+# personality on top of the first, which is the arrangement that decision replaced.
+_CREATE_PATH = BACKEND / "armarius" / "application" / "use_cases" / "enrollment.py"
+_ROLE_WORDS = re.compile(r"\brole\b|\bseat\b", re.IGNORECASE)
+
+
+def test_creating_an_agent_does_not_give_it_a_role() -> None:
+    offenders = [
+        f"{_CREATE_PATH.relative_to(BACKEND)}:{line_no}  {line.strip()}"
+        for line_no, line in enumerate(_python_code_lines(_CREATE_PATH), 1)
+        if _ROLE_WORDS.search(line)
+    ]
+    assert not offenders, (
+        "Cách cư xử của agent đến từ chỉ dẫn viết lúc tạo, không từ một cái ghế trong dự\n"
+        "án (Hiến pháp V, FR-007l). Luồng tạo agent không được đẻ ra vai trò:\n  "
+        + "\n  ".join(offenders)
+    )
