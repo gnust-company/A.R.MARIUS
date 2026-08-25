@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     run_timeout_seconds: int = 900
     # Liveness watchdog cadence — how often the background loop advances every Marius.
     liveness_watchdog_interval_seconds: float = 30.0
+    # How long a machine may go without a beat before every agent on it counts as offline
+    # (FR-006a). The daemon beats every 15 seconds (contracts/daemon-api.md), so this is
+    # three missed beats. The window is fixed here rather than read back from whatever the
+    # daemon was configured with, for a simple reason: a machine that has stopped beating
+    # is exactly the machine that can no longer be asked how often it meant to.
+    machine_unreachable_after_seconds: float = 45.0
 
     # --- Autonomous project operation (spec 001) -------------------------------
     # System-wide FLOOR for every timing threshold the safety net and the orchestrator

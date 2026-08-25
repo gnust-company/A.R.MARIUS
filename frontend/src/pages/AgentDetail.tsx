@@ -475,6 +475,36 @@ export default function AgentDetail() {
                   {agent?.lastSeen ? rel(agent.lastSeen) : t('agentDetail.never')}
                 </span>
               </div>
+              {/* Why, not just whether (FR-006c). Every way an agent can be unreachable —
+                  never placed, its CLI uninstalled, its machine switched off — reaches the
+                  business layers as the one word "offline"; this is the only place the
+                  difference is allowed to show, because this is the only place it helps.
+                  The server sends a code and the sentence is built here, so the same state
+                  reads in whichever language the person set (Hiến pháp VI + VII). An
+                  unrecognised code still gets a sentence rather than a raw key: a screen
+                  that leaks `agentDetail.offlineReason.x` is a screen that told them
+                  nothing.
+
+                  The row is labelled for the *place*, not for the verdict, and that is not
+                  cosmetic. Liveness is decided on a clock and this is decided on the state
+                  of a place, so there is a real window — the workplace shut a moment ago,
+                  the three-probe decay has not run yet — where the agent still reads
+                  online. Labelling this "why offline" would have printed a contradiction
+                  on screen during exactly the window when the person could still act on
+                  it. Named for the place, the same sentence is a warning before the fall
+                  and the explanation after it. */}
+              {agent?.offlineReason && (
+                <div className="flex items-start justify-between gap-4 pt-3 border-t border-[#E3D7BC]">
+                  <span className="text-[#6B5E4E] shrink-0">
+                    {t('agentDetail.offlineReason.label')}
+                  </span>
+                  <span className="text-[#8A3B22] text-right">
+                    {t('agentDetail.offlineReason.' + agent.offlineReason, {
+                      defaultValue: t('agentDetail.offlineReason.unknown'),
+                    })}
+                  </span>
+                </div>
+              )}
             </div>
           </VellumPanel>
         </div>

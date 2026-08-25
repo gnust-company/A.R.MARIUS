@@ -129,6 +129,11 @@ giá trị (FR-008d).
 > **Heartbeat KHÔNG phải bằng chứng agent chạy được.** Nó chứng minh liên lạc tới máy. Chỗ làm có sẵn sàng
 > hay không là chuyện khác, và `PUT /daemon/workplaces` mới trả lời (FR-055b).
 
+> **Nhịp không phải lối duy nhất chứng minh máy còn đó** (FR-004a, bổ sung 2026-08-25). `PUT
+> /daemon/workplaces` cũng ghi lại lần liên lạc gần nhất, vì một cái máy đang khai chỗ làm là một cái máy
+> đang nói chuyện. Nếu chỉ đọc mỗi cột nhịp thì daemon vừa khởi động — đã nối, đã khai xong, chưa kịp phát
+> nhịp vòng đầu — sẽ bị đọc là đã chết.
+
 ### `GET /v1/workspaces/{workspace_id}/workplaces` — người chọn chỗ đặt agent
 
 **Bổ sung 2026-08-25 lúc hiện thực T040.** Đây là lối của **người**, không phải của máy: nó nằm dưới

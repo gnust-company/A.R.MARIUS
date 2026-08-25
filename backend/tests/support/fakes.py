@@ -629,6 +629,25 @@ class _FakePlacementRepo:
             raise Conflict("agent_already_placed")
         self._s.attachments[marius_id] = placement_id
 
+    async def placed_at(self, marius_ids: Sequence[UUID]) -> dict[UUID, Placement]:
+        """Where each of these sits, as the place stands now.
+
+        The real one folds in whether the machine underneath is still beating; nothing in
+        memory has a machine, so a placement here is exactly as ready as the test made it.
+        That gap is deliberate and it is why the unreachable-machine case is tested against
+        a real database instead of this — a fake that invented a heartbeat would prove the
+        fake works.
+        """
+        placed: dict[UUID, Placement] = {}
+        for marius_id in marius_ids:
+            placement_id = self._s.attachments.get(marius_id)
+            if placement_id is None:
+                continue
+            found = self._s.placements.get(placement_id)
+            if found is not None:
+                placed[marius_id] = found
+        return placed
+
 
 def a_placement(store_owner, workspace_id: UUID, *, ready: bool = True,
                 not_ready_reason: str | None = None) -> Placement:

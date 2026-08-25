@@ -20,6 +20,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
+# An agent that was never put anywhere. Stated here rather than wherever the absence is
+# noticed, because it is the one not-ready reason this layer can name on its own: no
+# knowledge of what a place is goes into knowing an agent has none (FR-007f).
+NOT_PLACED = "not_placed"
+
+# The place is shut and said nothing about why. Rare, and kept as a code anyway — a screen
+# that shows an agent offline with a blank space beside it is the failure FR-006c names.
+PLACEMENT_NOT_READY = "placement_not_ready"
+
 
 @dataclass(frozen=True)
 class Placement:

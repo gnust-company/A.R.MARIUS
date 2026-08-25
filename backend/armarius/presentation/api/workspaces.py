@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from uuid import UUID
 
 from fastapi import APIRouter
 
+from armarius.domain.entities.marius import Marius
 from armarius.presentation.api.auth import CurrentUser
+from armarius.presentation.container import Container
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
     CreateLabelIn,
@@ -105,6 +108,23 @@ async def list_workplaces(
     ]
 
 
+async def _with_offline_reason(
+    container: Container, mariuses: Sequence[Marius]
+) -> list[MariusOut]:
+    """Render agents for the screen, each carrying why it has nowhere to work (FR-006c).
+
+    Every route that hands an agent to a person goes through here, rather than only the
+    one the roster happens to load from today. The screen keeps agents in a single store
+    and writes back whatever the last call returned, so a route that skipped this would
+    quietly blank the reason out the next time somebody renamed an agent.
+    """
+    reasons = await container.mariuses.offline_reasons([m.id for m in mariuses])
+    return [
+        MariusOut.model_validate(m).model_copy(update={"offline_reason": reasons.get(m.id)})
+        for m in mariuses
+    ]
+
+
 @router.post(
     "/workspaces/{workspace_id}/mariuses",
     response_model=MariusCreatedOut,
@@ -148,7 +168,8 @@ async def create_marius(
         "marius.status_changed",
         {"marius_id": str(marius.id), "status": "approved"},
     )
-    return MariusCreatedOut.model_validate(marius)
+    rendered = (await _with_offline_reason(container, [marius]))[0]
+    return MariusCreatedOut.model_validate(rendered.model_dump())
 
 
 @router.get("/workspaces/{workspace_id}/mariuses", response_model=list[MariusOut])
@@ -157,7 +178,7 @@ async def list_directory(
 ) -> list[MariusOut]:
     await _require_owned_workspace(container, user, workspace_id)
     items = await container.mariuses.list_directory(workspace_id)
-    return [MariusOut.model_validate(m) for m in items]
+    return await _with_offline_reason(container, items)
 
 
 @router.get(
@@ -230,7 +251,7 @@ async def update_marius(
         adapter_type=body.adapter_type,
         adapter_config=body.adapter_config,
     )
-    return MariusOut.model_validate(marius)
+    return (await _with_offline_reason(container, [marius]))[0]
 
 
 @router.post(
@@ -249,7 +270,7 @@ async def designate_workspace_agent(
         "workspace_agent.designated",
         {"marius_id": str(marius_id)},
     )
-    return MariusOut.model_validate(marius)
+    return (await _with_offline_reason(container, [marius]))[0]
 
 
 @router.post(

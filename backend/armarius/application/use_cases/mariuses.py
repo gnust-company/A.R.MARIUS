@@ -14,6 +14,7 @@ from uuid import UUID
 
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.marius import Marius
+from armarius.domain.entities.placement import NOT_PLACED, PLACEMENT_NOT_READY
 from armarius.shared.clock import utcnow
 from armarius.shared.errors import NotFound
 
@@ -102,3 +103,29 @@ class MariusService:
     async def list_directory(self, workspace_id: UUID) -> Sequence[Marius]:
         async with self._uow() as uow:
             return await uow.mariuses.list_by_workspace(workspace_id)
+
+    async def offline_reasons(self, marius_ids: Sequence[UUID]) -> dict[UUID, str]:
+        """Why each of these agents has nowhere to work. For the screen, and only that.
+
+        This layer is not allowed to branch on the answer and does not: it collects codes
+        and hands them on. The verdict *offline* was already decided elsewhere, off the
+        same read, and nothing here can disagree with it — which is the whole reason the
+        reason is fetched rather than reconstructed (FR-006c).
+
+        An agent whose place is open is simply absent from the result. There is no code
+        for "fine", because a caller that has to tell a well-agent's code from an
+        ill-agent's code is a caller doing the branching this rule exists to prevent.
+        """
+        wanted = list(marius_ids)
+        if not wanted:
+            return {}
+        async with self._uow() as uow:
+            placed = await uow.placements.placed_at(wanted)
+        reasons: dict[UUID, str] = {}
+        for marius_id in wanted:
+            placement = placed.get(marius_id)
+            if placement is None:
+                reasons[marius_id] = NOT_PLACED
+            elif not placement.ready:
+                reasons[marius_id] = placement.not_ready_reason or PLACEMENT_NOT_READY
+        return reasons

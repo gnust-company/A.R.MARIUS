@@ -135,6 +135,8 @@ export interface Marius {
   model?: string
   isWorkspaceAgent?: boolean
   lastSeen?: string
+  /** Code for why this agent has nowhere to work (FR-006c). Undefined when it does. */
+  offlineReason?: string
   roleKey?: string
 }
 

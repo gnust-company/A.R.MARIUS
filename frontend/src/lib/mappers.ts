@@ -218,6 +218,7 @@ export function mariusToVM(dto: MariusDTO): Marius {
     skills: dto.skills,
     skillInstalls: dto.skill_installs ?? {},
     adapterType: dto.adapter_type,
+    offlineReason: dto.offline_reason ?? undefined,
     lastSeen: dto.last_seen_at ?? undefined,
   }
 }

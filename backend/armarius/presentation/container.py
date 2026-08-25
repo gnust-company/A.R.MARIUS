@@ -37,9 +37,9 @@ from armarius.application.use_cases.workspace_agent import WorkspaceAgentService
 from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.domain.entities.project import ProjectThresholds
 from armarius.infrastructure.adapters.echo import EchoAdapter
-from armarius.infrastructure.adapters.liveness_probe import GatewayHealthLivenessProbe
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.daemon.enrollment import DaemonEnrollmentService
+from armarius.infrastructure.daemon.liveness import DaemonLivenessProbe
 from armarius.infrastructure.daemon.workplaces import DaemonWorkplaceService
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.events.task_trace import ControlBusTaskTrace
@@ -137,7 +137,7 @@ def build_container() -> Container:
     # wake path (spec 001), so ProjectService and PlanService both take it.
     liveness_for_chat = LivenessEngine(
         uow_factory,
-        GatewayHealthLivenessProbe(registry),
+        DaemonLivenessProbe(uow_factory),
         workspace_trace=ControlBusWorkspaceTrace(control_bus),
     )
 
