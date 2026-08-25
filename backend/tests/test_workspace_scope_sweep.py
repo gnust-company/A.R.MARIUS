@@ -36,7 +36,7 @@ from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.database.engine import init_db
 from armarius.main import app
 from armarius.presentation.container import build_container
-from tests.support.agents import GATEWAY_KEY, GATEWAY_URL, ready_workplace
+from tests.support.agents import ready_workplace
 
 _HTTP_METHODS = ("get", "post", "put", "patch", "delete")
 
@@ -93,8 +93,6 @@ async def _seed(c: AsyncClient, h: dict, ws_id: str) -> dict[str, str]:
             "skills": [],
             "skill_ids": [],
             "adapter_type": "echo",
-            "gateway_url": GATEWAY_URL,
-            "api_key": GATEWAY_KEY,
             "workplace_id": await ready_workplace(ws_id),
         },
     )
@@ -333,7 +331,6 @@ async def test_a_seat_cannot_hold_an_agent_from_another_workspace():
             f"/v1/workspaces/{ws_a}/mariuses",
             headers=h,
             json={"name": "Alpha", "skills": [], "skill_ids": [], "adapter_type": "echo",
-                  "gateway_url": GATEWAY_URL, "api_key": GATEWAY_KEY,
                   "workplace_id": await ready_workplace(ws_a)},
         )
         assert agent.status_code == 201, agent.text
@@ -378,7 +375,6 @@ async def test_deleting_a_workspace_clears_seats_its_agents_still_hold():
             f"/v1/workspaces/{ws_a}/mariuses",
             headers=h,
             json={"name": "Alpha", "skills": [], "skill_ids": [], "adapter_type": "echo",
-                  "gateway_url": GATEWAY_URL, "api_key": GATEWAY_KEY,
                   "workplace_id": await ready_workplace(ws_a)},
         )
         assert agent.status_code == 201, agent.text

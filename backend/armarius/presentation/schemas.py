@@ -305,20 +305,29 @@ class AgentSkillBundleOut(_Out):
 
 # ----------------------------------------------------------------------- marius
 class RegisterMariusIn(BaseModel):
+    """Everything it takes to make an agent (FR-007g).
+
+    There is no gateway address and no key here any more. Those existed because Armarius
+    used to reach an agent by calling somebody else's server; the daemon runs on the user's
+    own machine and asks for work instead, so there is nothing left to address (FR-040a).
+    """
+
     name: str = Field(min_length=1, max_length=200)
+    # What the agent is told to be, sent down on every run (FR-007i).
+    instructions: str = Field(default="", max_length=20000)
+    # What the team calls it. Never sent to the agent (FR-007j).
+    description: str = Field(default="", max_length=2000)
     skills: list[str] = Field(default_factory=list)
     skill_ids: list[str] = Field(default_factory=list)
-    adapter_type: str = Field(min_length=1)
-    # Operator-invite (issue #63): the agent's gateway address + key, captured at invite
-    # time and stored as Marius.adapter_config = {"base_url", "api_key"}. The key is a
-    # secret — it never appears in any outbound schema (MariusOut omits adapter_config).
-    gateway_url: str = Field(min_length=1)
-    api_key: str = Field(min_length=1)
+    # There is deliberately no runtime field here. Which tool carries an agent's turn follows
+    # from the workplace it is put on — a thing the person can see and reason about — not from
+    # a separate menu they have no way to answer well. A caller sending one is ignored rather
+    # than obeyed: a value from the wire could name a runtime nothing can run.
     # Where this agent will work. Required, with no default (FR-007f): an agent is attached
     # to one workplace for life, so the choice cannot be postponed and there is no such
     # thing as leaving it blank. Missing it is refused here, before any agent exists.
     workplace_id: UUID
-    # Seat this Marius as the workspace's host on invite (#32); a sitting host is
+    # Seat this Marius as the workspace's host on creation (#32); a sitting host is
     # demoted to a plain agent (kept, not revoked).
     is_workspace_agent: bool = False
 
@@ -344,12 +353,16 @@ class InstallSkillsIn(BaseModel):
 
 
 class InstallSkillsOut(_Out):
-    """Result of a post-invite skill install push (issue #74)."""
+    """Result of linking skills to an agent (issue #74, FR-011c).
+
+    Nothing is pushed any more. Skills travel down with the work, inside the claim packet
+    (FR-011b), so linking one here is the whole of the act — the agent picks it up on its
+    next run and confirms it out of band.
+    """
 
     marius_id: UUID
     skill_ids: list[str] = Field(default_factory=list)
-    installed: list[str] = Field(default_factory=list)  # slugs pushed this call (now "pending")
-    send_status: str = "send_failed"
+    installed: list[str] = Field(default_factory=list)  # slugs linked this call (now "pending")
 
 
 class MariusOut(_Out):
@@ -357,6 +370,8 @@ class MariusOut(_Out):
     workspace_id: UUID | None = None
     name: str
     role: str
+    instructions: str = ""
+    description: str = ""
     skills: list[str]
     skill_ids: list[str] = Field(default_factory=list)
     # Per-skill install state (post-invite loop #74): slug → pending|installed|failed.
@@ -385,9 +400,8 @@ class WorkplaceChoiceOut(_Out):
 
 
 class MariusCreatedOut(MariusOut):
-    # Whether the pushed setup prompt reached the agent (issue #63). "send_failed" is not
-    # an error — the agent is already live; the operator can retry the push.
-    send_status: str = "send_failed"
+    """The agent that was just created. Identical to MariusOut — there is no send to report
+    on any more, because nothing is sent (FR-007g)."""
 
 
 class MetaOut(BaseModel):

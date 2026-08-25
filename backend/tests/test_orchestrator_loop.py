@@ -21,7 +21,6 @@ from uuid import UUID
 
 import pytest
 
-from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.orchestrator import OrchestrationLoop
 from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.tasks import TaskService
@@ -38,6 +37,7 @@ from armarius.domain.entities.task import TaskStatus
 from armarius.domain.services.orchestration_cadence import SnagKind
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
+from tests.support.agents import make_agent
 from tests.support.projects import force_phase
 
 T0 = datetime(2026, 8, 5, 12, 0, 0, tzinfo=UTC)
@@ -83,11 +83,10 @@ class RecordingNotifier:
 async def _world(uow_factory):
     """A project past the planning gate with one agent and nothing wrong with it."""
     workspaces = WorkspaceService(uow_factory)
-    mariuses = MariusService(uow_factory)
     ws = await workspaces.create_workspace("WS")
     project = await workspaces.create_project(ws.id, "P")
     await force_phase(uow_factory, project.id)
-    alice = await mariuses.register(
+    alice = await make_agent(uow_factory, 
         workspace_id=ws.id,
         name="Alice",
         role="Backend",

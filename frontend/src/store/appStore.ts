@@ -132,8 +132,6 @@ export interface Marius {
   /** Per-skill install state (post-invite loop #74): slug → pending|installed|failed. */
   skillInstalls?: Record<string, string>
   adapterType?: string
-  /** The agent's gateway URL (operator-invite, #63) — shown in details; the key is never kept. */
-  gatewayUrl?: string
   model?: string
   isWorkspaceAgent?: boolean
   lastSeen?: string
@@ -470,7 +468,7 @@ interface AppStoreState {
   // Actions
   /** Invite a new agent into the active workspace (operator-invite, #63): the backend mints
    * the token at invite time and pushes the setup prompt to the agent's gateway. Returns the
-   * new agent + whether the push landed (`send_status`) — the token is never exposed. */
+   * new agent. The token is never exposed, and nothing is pushed anywhere (FR-007g). */
   /** The workplaces a new agent may be put on, in the active workspace (FR-007f).
    *  Deliberately not kept in the store: it is read when the invite form opens and is
    *  stale the moment a machine goes down, so a copy living on would only mislead. */
@@ -478,20 +476,22 @@ interface AppStoreState {
   inviteNewAgent: (input: {
     name: string
     adapterType: string
-    gatewayUrl: string
-    apiKey: string
+    /** What the agent is told to be. Goes down with every run (FR-007i). */
+    instructions: string
+    /** What the team calls it. Never reaches the agent (FR-007j). */
+    description: string
     /** Where this agent works — chosen once, never changed afterwards (FR-007). */
     workplaceId: string
     skillIds: string[]
     /** Seat the newcomer as Workspace Agent; a sitting host is demoted, kept (#32). */
     isWorkspaceAgent?: boolean
-  }) => Promise<{ agent: Marius; sendStatus: 'sent' | 'send_failed' }>
-  /** Link additional skills to an already-invited agent and push a one-time install prompt
-   *  (#74). Returns the send_status of the push (best-effort — the links persist regardless). */
+  }) => Promise<{ agent: Marius }>
+  /** Link additional skills to an agent (#74). Nothing is pushed: a skill travels down with
+   *  the work that needs it, and the agent installs it on its next run (FR-011b). */
   installAgentSkills: (
     mariusId: string,
     skillIds: string[],
-  ) => Promise<{ installedSlugs: string[]; sendStatus: 'sent' | 'send_failed' }>
+  ) => Promise<{ installedSlugs: string[] }>
   /** Hand the Workspace Agent seat to this Marius (real endpoint in API mode, #32). */
   designateWorkspaceAgent: (mariusId: string) => Promise<void>
   /** Internal: stamp WA flags + the workspace pointer after a designation (#32). */
@@ -586,8 +586,8 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   inviteNewAgent: async ({
     name,
     adapterType,
-    gatewayUrl,
-    apiKey,
+    instructions,
+    description,
     workplaceId,
     skillIds,
     isWorkspaceAgent,
@@ -597,32 +597,29 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       .skills.filter((s) => skillIds.includes(s.id))
       .map((s) => s.name)
 
-    // Operator-invite (#63): the backend probes the gateway, mints the token at invite time,
-    // and pushes the setup prompt. Send skill_ids — that is what the prompt resolves for the
-    // install step. The api_key is sent once and never persisted client-side. Role is NOT set
-    // at invite — it is a project-roster concept, assigned later (#63).
+    // A name, what it is told to be, and where it works (FR-007g). No role is set here —
+    // how an agent behaves comes from its instructions, not from a seat (Constitution V).
     const dto = await api.inviteMarius(workspaceId, {
       name,
+      instructions,
+      description,
       skills: skillNames,
       skill_ids: skillIds,
       adapter_type: adapterType,
-      gateway_url: gatewayUrl,
-      api_key: apiKey,
       workplace_id: workplaceId,
       is_workspace_agent: isWorkspaceAgent ?? false,
     })
     const agent: Marius = {
       ...mariusToVM(dto),
-      // A newly invited agent is live (approved) but not yet online — it flips to ONLINE
-      // once it calls /agent/me with the token the setup prompt handed it.
+      // A new agent is live but not yet online: it counts as online once the machine it
+      // was put on reports in, which is not something this call waits for.
       status: 'offline',
       displayName: name,
-      gatewayUrl: gatewayUrl,
       isWorkspaceAgent: isWorkspaceAgent === true,
     }
     set({ mariuses: [...get().mariuses, agent] })
     if (isWorkspaceAgent) get().applyDesignation(workspaceId, agent.id)
-    return { agent, sendStatus: dto.send_status }
+    return { agent }
   },
 
   installAgentSkills: async (mariusId, skillIds) => {
@@ -633,10 +630,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     // reflect the freshly linked names — instead of guessing id→name from a skills
     // list that may not be loaded on the page the call was made from.
     await get().hydrateWorkspace(workspaceId).catch(() => {})
-    return {
-      installedSlugs: dto.installed,
-      sendStatus: dto.send_status === 'sent' ? 'sent' : 'send_failed',
-    }
+    return { installedSlugs: dto.installed }
   },
 
   applyDesignation: (workspaceId: string, mariusId: string) => {

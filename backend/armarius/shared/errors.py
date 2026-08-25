@@ -84,6 +84,9 @@ ENGLISH: dict[str, str] = {
     # An agent is attached to exactly one workplace for life (FR-007). Reaching this means
     # something tried to attach a second one, which is the move that requirement forbids.
     "agent_already_placed": "That agent is already attached to a workplace.",
+    # One name answers for one agent inside a workspace (FR-007h). Two of them leaves
+    # nobody — patron or Leader — able to say which one they meant.
+    "agent_name_taken": "An agent called '{name}' is already in this workspace.",
     "project_closed_no_wake": (
         "This project is closed — its agents are not woken any more."
     ),

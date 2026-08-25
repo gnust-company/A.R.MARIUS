@@ -28,7 +28,6 @@ from armarius.application.ports.adapter import (
     ExecResult,
     MariusAdapter,
 )
-from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.application.use_cases.workspaces import WorkspaceService
@@ -44,6 +43,7 @@ from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.database.models import WakeupModel
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.shared.clock import utcnow
+from tests.support.agents import make_agent
 from tests.support.projects import force_phase
 
 
@@ -84,11 +84,10 @@ def _engine(uow_factory, adapter: MariusAdapter) -> WakeEngine:
 async def _world(uow_factory):
     """A project past the planning gate, one agent, and the task in that agent's hands."""
     workspaces = WorkspaceService(uow_factory)
-    mariuses = MariusService(uow_factory)
     ws = await workspaces.create_workspace("WS")
     project = await workspaces.create_project(ws.id, "P")
     await force_phase(uow_factory, project.id)
-    alice = await mariuses.register(
+    alice = await make_agent(uow_factory, 
         workspace_id=ws.id,
         name="Alice",
         role="Backend",

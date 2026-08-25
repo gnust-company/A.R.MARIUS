@@ -251,7 +251,7 @@ export const en = {
     title: 'Directory',
     pageTitle: 'Agents',
     agentsInWorkspace: '{{count}} agents in workspace',
-    inviteAgent: 'Invite Agent',
+    inviteAgent: 'Add Agent',
     invitePrompt: 'Invite Prompt',
     emptyTitle: 'No agents yet',
     emptyDescription: 'Invite agents to your workspace to start collaborating',
@@ -285,19 +285,17 @@ export const en = {
     workplaceHint: 'The agent works here for life and cannot be moved later. If the workplace stops working the agent goes offline; nothing reassigns it to another machine.',
     workplaceNone: 'No workplace is ready yet.',
     workplaceNoneHint: 'Run the daemon on your machine and link it to this workspace. Once it reports an agent CLI it can run, the workplace appears here.',
-    gatewayUrl: 'Gateway URL',
-    gatewayUrlPlaceholder: 'http://gateway.local:8642',
-    apiKey: 'API Key',
-    apiKeyPlaceholder: '••••••••',
-    apiKeyHint:
-      'Sent to the agent once to authenticate its callbacks — never stored or shown again.',
-    invite: 'Send Invite',
+    instructions: 'Instructions',
+    instructionsPlaceholder:
+      'e.g. Always write the test first. Never edit config files without asking.',
+    instructionsHint:
+      'The agent receives this on every run, so it cannot forget it. This is the whole of how it behaves — no per-project role is layered on top any more.',
+    agentDescription: 'Description',
+    agentDescriptionPlaceholder: 'e.g. The one who keeps us honest about tests.',
+    agentDescriptionHint: 'Shown to your team only. Never sent to the agent.',
+    invite: 'Add agent',
     send: {
-      sending: 'Sending…',
-      sent: 'Setup prompt sent — the agent shows online once it checks in.',
-      sendFailed:
-        'The agent was added but its setup prompt did not land. Check the gateway and retry.',
-      retry: 'Retry Send',
+      sending: 'Adding…',
     },
     actions: {
       approve: 'Approve',
@@ -852,6 +850,7 @@ export const en = {
     run_not_found: 'Run not found.',
     machine_not_found: 'Machine not found.',
     placement_not_found: 'Workplace not found.',
+    agent_name_taken: 'An agent called "{{name}}" is already in this workspace. Pick another name.',
     daemon_link_code_not_found: 'No such link code. Check the code and try again.',
     daemon_link_code_expired: 'That link code has expired. Run `armarius-daemon login` again for a new one.',
     daemon_link_code_already_used: 'That link code has already been used. Run `armarius-daemon login` again for a new one.',

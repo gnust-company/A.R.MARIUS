@@ -12,7 +12,6 @@ phép tra, và mỗi bản là một cơ hội sai. Bài này giữ cho phép tr
 
 from __future__ import annotations
 
-from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.seats import (
     holds_the_leader_seat,
     leader_marius_id,
@@ -21,15 +20,15 @@ from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.shared.clock import utcnow
+from tests.support.agents import make_agent
 
 
 async def _seated(uow_factory, *, role_key: str):  # noqa: ANN001, ANN202
     """Một dự án có ghế trưởng mang tên `role_key`, và một agent đang ngồi ghế đó."""
     workspaces = WorkspaceService(uow_factory)
-    mariuses = MariusService(uow_factory)
     ws = await workspaces.create_workspace("WS")
     project = await workspaces.create_project(ws.id, "P")
-    leader = await mariuses.register(
+    leader = await make_agent(uow_factory, 
         workspace_id=ws.id,
         name="Leader",
         role="Backend",

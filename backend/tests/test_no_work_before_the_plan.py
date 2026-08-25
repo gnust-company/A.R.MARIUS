@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import pytest
 
-from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.projects import ProjectService, RoleSpec
 from armarius.application.use_cases.tasks import ProjectNotReadyForTasks, TaskService
 from armarius.application.use_cases.wake_engine import WakeEngine
@@ -27,6 +26,7 @@ from armarius.domain.entities.project import ProjectStatus
 from armarius.domain.entities.task import TaskStatus
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
+from tests.support.agents import make_agent
 from tests.support.projects import force_phase
 
 _LIVE = (ProjectStatus.OPERATING, ProjectStatus.MAINTAINING)
@@ -45,7 +45,6 @@ async def _stage(uow_factory, phase: ProjectStatus):
     tả — tức là mọi cổng khác đều mở, chỉ còn cổng giai đoạn."""
     workspaces = WorkspaceService(uow_factory)
     projects = ProjectService(uow_factory)
-    mariuses = MariusService(uow_factory)
     tasks = TaskService(
         uow_factory,
         WakeEngine(uow_factory, InMemoryAdapterRegistry(), InMemoryEventBus()),
@@ -53,7 +52,7 @@ async def _stage(uow_factory, phase: ProjectStatus):
 
     ws = await workspaces.create_workspace("WS")
     project = await projects.create_project(ws.id, "Apollo", roles=_roster())
-    worker = await mariuses.register(
+    worker = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Alice", role="Dev",
         skills=[], adapter_type="echo", adapter_config={},
     )

@@ -113,6 +113,7 @@ from armarius.domain.entities.artifact import Artifact, ArtifactKind  # noqa: E4
 from armarius.domain.entities.role import Role  # noqa: E402
 from armarius.domain.entities.seat_grant import SeatGrant  # noqa: E402
 from armarius.domain.entities.task_log import TaskLogKind  # noqa: E402
+from tests.support.agents import make_agent  # noqa: E402
 
 
 class VanishedStore:
@@ -134,7 +135,6 @@ class IntactStore:
 
 
 async def _task_in_review_with_a_stored_artifact(uow_factory):
-    from armarius.application.use_cases.mariuses import MariusService
     from armarius.application.use_cases.tasks import TaskService
     from armarius.application.use_cases.wake_engine import WakeEngine
     from armarius.application.use_cases.workspaces import WorkspaceService
@@ -146,7 +146,7 @@ async def _task_in_review_with_a_stored_artifact(uow_factory):
     ws = await workspaces.create_workspace("WS")
     project = await workspaces.create_project(ws.id, "P")
     await force_phase(uow_factory, project.id)
-    alice = await MariusService(uow_factory).register(
+    alice = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Alice", role="Backend", skills=[],
         adapter_type="echo", adapter_config={},
     )

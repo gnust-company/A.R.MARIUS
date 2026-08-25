@@ -17,7 +17,6 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from armarius.application.use_cases.mariuses import MariusService
 from armarius.application.use_cases.projects import ProjectService, RoleSpec
 from armarius.application.use_cases.task_log import TaskLogService
 from armarius.application.use_cases.tasks import TaskService, TitleRequiredError
@@ -29,6 +28,7 @@ from armarius.domain.entities.task import TaskPriority, TaskStatus
 from armarius.domain.entities.task_log import TaskLogKind
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
+from tests.support.agents import make_agent
 from tests.support.projects import force_phase
 
 _DEADLINE = datetime(2026, 9, 1, 12, 0, 0)
@@ -204,14 +204,13 @@ async def _staged_with_a_worker_on_it(uow_factory):
     cầu là sửa dưới chân một người đang làm dở."""
     workspaces = WorkspaceService(uow_factory)
     projects = ProjectService(uow_factory)
-    mariuses = MariusService(uow_factory)
     wakes = _RecordedWakes()
     tasks = TaskService(uow_factory, wakes, task_logs=TaskLogService(uow_factory))  # type: ignore[arg-type]
 
     ws = await workspaces.create_workspace("WS")
     project = await projects.create_project(ws.id, "Apollo", roles=_roster())
     await force_phase(uow_factory, project.id, ProjectStatus.OPERATING)
-    worker = await mariuses.register(
+    worker = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Alice", role="Dev",
         skills=[], adapter_type="echo", adapter_config={},
     )

@@ -55,7 +55,16 @@ class Marius:
     id: UUID = field(default_factory=uuid4)
     workspace_id: UUID | None = None
     name: str = ""
+    # Unique within the workspace (FR-007h). Two agents answering to the same name in the
+    # same place leaves nobody — patron or Leader — able to say which one they meant.
     role: str = ""
+    # What this agent is told to be, sent to it on every single run (FR-007i). It is the
+    # whole of how an agent behaves: there is no per-project role adding to it or
+    # overriding it (Constitution V).
+    instructions: str = ""
+    # What the humans call this agent among themselves (FR-007j). It never reaches the
+    # agent — a line meant for the team would otherwise quietly become an instruction.
+    description: str = ""
     skills: list[str] = field(default_factory=list)
     # IDs of Skill Shop skills linked to this Marius (drives per-skill install steps
     # in the invitation prompt). Stored as strings to stay ORM/transport-friendly.

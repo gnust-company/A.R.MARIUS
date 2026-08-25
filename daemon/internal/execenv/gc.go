@@ -23,6 +23,12 @@ const (
 	// DefaultSessionRetention is how long a session is kept before the next wake has to start a
 	// new one (FR-027). Fourteen days, per research §3.
 	DefaultSessionRetention = 14 * 24 * time.Hour
+
+	// DefaultOrphanRetention is how long a working directory the server no longer accounts for
+	// survives (FR-021a). Deliberately far longer than DefaultWorkDirRetention: that one acts on
+	// something the server stated, this one acts on the absence of a statement, and an absence is
+	// the weaker evidence of the two. Seventy-two hours, per research §10.3.
+	DefaultOrphanRetention = 72 * time.Hour
 )
 
 // TaskState is what the server says about one task while a sweep is running.
@@ -61,6 +67,7 @@ type Collector struct {
 	// Zero values fall back to the defaults above.
 	WorkDirRetention time.Duration
 	SessionRetention time.Duration
+	OrphanRetention  time.Duration
 }
 
 // Kept is one directory the sweep chose to leave alone, and why. Every decision is recorded, not
@@ -89,6 +96,13 @@ func (c Collector) sessionRetention() time.Duration {
 		return c.SessionRetention
 	}
 	return DefaultSessionRetention
+}
+
+func (c Collector) orphanRetention() time.Duration {
+	if c.OrphanRetention > 0 {
+		return c.OrphanRetention
+	}
+	return DefaultOrphanRetention
 }
 
 // Sweep looks once at everything on disk and reclaims what has aged out.
@@ -151,10 +165,17 @@ func (c Collector) sweepWorkDirs(ctx context.Context, now time.Time, report *Rep
 		state, known := states[taskID]
 		switch {
 		case !known:
-			// Never guess. A directory whose task the server cannot account for might belong to
-			// a task we simply failed to ask about; deleting it on a hunch destroys work that
-			// cannot be recovered, while keeping it costs disk we can reclaim any time.
-			report.Kept = append(report.Kept, Kept{path, "the server does not know this task"})
+			// The server has no task by this name. Usually that means the task, its project or
+			// its whole workspace was deleted while this machine was not looking; it can also
+			// mean the run died before the server ever recorded the task. Either way nothing
+			// will ever claim this directory again, so the FR-021 path — which only acts on a
+			// task it was *told* had closed — would hold it forever (FR-021a).
+			//
+			// This is still the branch that acts without being told, so it gets the longer
+			// clock and it asks the disk for a second opinion before destroying anything.
+			if err := c.reclaimIfCold(now, path, report); err != nil {
+				return err
+			}
 		case !state.Closed:
 			report.Kept = append(report.Kept, Kept{path, "the task is still open"})
 		case now.Sub(state.LastActivity) < c.workDirRetention():
@@ -170,6 +191,73 @@ func (c Collector) sweepWorkDirs(ctx context.Context, now time.Time, report *Rep
 		}
 	}
 	return nil
+}
+
+// reclaimIfCold removes a directory the server no longer accounts for, but only once nothing
+// inside it has been written for the orphan retention.
+//
+// The two questions are asked in this order on purpose. A directory's own timestamp moves when an
+// entry is added or removed directly inside it, and not when a file deep in the tree is written,
+// so it alone would be a dangerous thing to delete on. It is a fine thing to *keep* on, though:
+// if even the shallow answer says the directory was touched recently, it is certainly in use and
+// no walk is needed. The full walk therefore runs only on the path that ends in RemoveAll, which
+// is exactly where the extra I/O is worth paying for.
+func (c Collector) reclaimIfCold(now time.Time, path string, report *Report) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("inspecting %s: %w", path, err)
+	}
+	keep := func(age time.Duration) {
+		report.Kept = append(report.Kept, Kept{
+			path,
+			fmt.Sprintf("the server does not know this task, but it was written to %s ago",
+				age.Round(time.Minute)),
+		})
+	}
+
+	if age := now.Sub(info.ModTime()); age < c.orphanRetention() {
+		keep(age)
+		return nil
+	}
+
+	newest, err := newestModTime(path)
+	if err != nil {
+		return fmt.Errorf("inspecting the contents of %s: %w", path, err)
+	}
+	if age := now.Sub(newest); age < c.orphanRetention() {
+		keep(age)
+		return nil
+	}
+
+	if err := c.remove(c.WorkRoot, path); err != nil {
+		return err
+	}
+	report.Removed = append(report.Removed, path)
+	return nil
+}
+
+// newestModTime is the most recent modification time anywhere under root, root itself included.
+func newestModTime(root string) (time.Time, error) {
+	var newest time.Time
+	err := filepath.WalkDir(root, func(_ string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			// A file that vanished mid-walk cannot be the newest thing here, and it is not a
+			// reason to abandon a sweep that runs unattended.
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if info.ModTime().After(newest) {
+			newest = info.ModTime()
+		}
+		return nil
+	})
+	return newest, err
 }
 
 func (c Collector) sweepSessions(now time.Time, report *Report) error {

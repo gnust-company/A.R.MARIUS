@@ -17,9 +17,6 @@ import {
   Activity,
   Zap,
   AlertTriangle,
-  Settings,
-  Code,
-  Terminal,
   Pencil,
   Trash2,
 } from 'lucide-react';
@@ -69,13 +66,9 @@ const STATUS_CONFIG: Record<
   revoked: { color: '#8B7A6A', pulse: false, label: 'Revoked', icon: WifiOff },
 };
 
-// ─── Adapter Options ─────────────────────────────────────────────────────────
-
-const ADAPTER_OPTIONS = [
-  { value: 'openclaw_gateway', label: 'OpenClaw Gateway', desc: 'Open-source adapter for custom integrations', icon: Settings },
-  { value: 'claude_local', label: 'Claude Code (Local)', desc: 'Local Claude Code execution environment', icon: Code },
-  { value: 'echo', label: 'Echo', desc: 'Simple echo adapter for testing', icon: Terminal },
-];
+// There is no adapter picker any more. It offered three choices of which only one was ever
+// registered, and the real answer — which tool runs this agent — follows from the workplace
+// the person picks, which is a thing they can actually see and reason about (FR-007g).
 
 // ─── Component: Status Dot ───────────────────────────────────────────────────
 
@@ -319,11 +312,6 @@ function AgentCard({
                   <p>
                     <span className="text-[#A89880]">{t('directory.details.adapter')}:</span> {agent.adapterType || '—'}
                   </p>
-                  {agent.gatewayUrl && (
-                    <p className="break-all">
-                      <span className="text-[#A89880]">{t('directory.gatewayUrl')}:</span> {agent.gatewayUrl}
-                    </p>
-                  )}
                   <p>
                     <span className="text-[#A89880]">{t('directory.details.workspace')}:</span> {agent.workspaceId}
                   </p>
@@ -373,10 +361,11 @@ export default function Directory() {
 
   // ── Invite Modal State ─────────────────────────────────────────────────────
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
-  const [adapterType, setAdapterType] = useState('echo');
   const [agentName, setAgentName] = useState('');
-  const [gatewayUrl, setGatewayUrl] = useState('');
-  const [apiKey, setApiKey] = useState('');
+  // What the agent is told to be, and what the team calls it. Two boxes rather than one
+  // because only the first is ever sent to the agent (FR-007i, FR-007j).
+  const [instructions, setInstructions] = useState('');
+  const [agentDescription, setAgentDescription] = useState('');
   // Where the new agent will work. Read when the form opens rather than held in the store:
   // an agent is attached to one workplace for life (FR-007), so this list has to be the one
   // that is true at the moment of choosing, not one cached from an earlier visit.
@@ -392,9 +381,6 @@ export default function Directory() {
   const [makeWorkspaceAgent, setMakeWorkspaceAgent] = useState(false);
   const [inviteSwapConfirmOpen, setInviteSwapConfirmOpen] = useState(false);
   const [sending, setSending] = useState(false);
-  // Whether the setup prompt reached the agent (issue #63). Cleared each open; the form
-  // stays open on `send_failed` so the operator can fix the gateway and retry.
-  const [sendStatus, setSendStatus] = useState<'sent' | 'send_failed' | null>(null);
 
   // ── Filter Agents ──────────────────────────────────────────────────────────
   const filteredAgents = useMemo(() => {
@@ -437,16 +423,14 @@ export default function Directory() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const resetInviteForm = () => {
-    setAdapterType('echo');
     setAgentName('');
-    setGatewayUrl('');
-    setApiKey('');
+    setInstructions('');
+    setAgentDescription('');
     setWorkplaces([]);
     setWorkplaceId('');
     setInviteError('');
     setSelectedSkillIds([]);
     setMakeWorkspaceAgent(false);
-    setSendStatus(null);
   };
 
   const handleOpenInvite = () => {
@@ -466,28 +450,22 @@ export default function Directory() {
   };
 
   const doInvite = async () => {
-    if (!agentName.trim() || !gatewayUrl.trim() || !apiKey.trim() || !workplaceId || sending) return;
+    if (!agentName.trim() || !workplaceId || sending) return;
     setSending(true);
-    setSendStatus(null);
     setInviteError('');
     try {
-      // Operator-invite (#63): the backend probes the gateway, mints the token at invite
-      // time, and pushes the setup prompt to the agent. The token never comes back; we
-      // surface `send_status` so the UI can confirm or offer a retry.
-      const { sendStatus: status } = await inviteNewAgent({
+      // A name and a workplace is the whole of it (FR-007g). Nothing is dialled out to and
+      // nothing is pushed, so there is no send to wait on or report.
+      await inviteNewAgent({
         name: agentName.trim(),
-        adapterType,
-        gatewayUrl: gatewayUrl.trim(),
-        apiKey: apiKey.trim(),
+        adapterType: 'echo',
+        instructions: instructions.trim(),
+        description: agentDescription.trim(),
         workplaceId,
         skillIds: selectedSkillIds,
         isWorkspaceAgent: makeWorkspaceAgent,
       });
-      setSendStatus(status);
-      if (status === 'sent') {
-        // The setup prompt landed \u2014 close after a beat so the success state reads.
-        setTimeout(() => setInviteModalOpen(false), 900);
-      }
+      setInviteModalOpen(false);
     } catch (e) {
       // Same cleanup on both paths instead of a `finally`: the React Compiler cannot
       // lower `finally` and gives up on the whole component when it meets one. The
@@ -723,49 +701,6 @@ export default function Directory() {
         maxWidth="max-w-xl"
       >
         <div className="space-y-5">
-              {/* Adapter Type */}
-              <div>
-                <label className="block text-[13px] font-medium text-[#2A2318] mb-2">
-                  {t('directory.adapterType')} <span className="text-[#C25E3A]">*</span>
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {ADAPTER_OPTIONS.map((opt) => {
-                    const Icon = opt.icon;
-                    const selected = adapterType === opt.value;
-                    return (
-                      <button
-                        key={opt.value}
-                        onClick={() => setAdapterType(opt.value)}
-                        className={cn(
-                          'flex items-start gap-3 p-3 rounded-md border text-left transition-all',
-                          selected
-                            ? 'border-[#C25E3A] bg-[#C25E3A]/5'
-                            : 'border-[#E3D7BC] hover:bg-[#EDE4CE]'
-                        )}
-                      >
-                        <Icon
-                          className={cn(
-                            'w-5 h-5 flex-shrink-0 mt-0.5',
-                            selected ? 'text-[#C25E3A]' : 'text-[#6B5E4E]'
-                          )}
-                        />
-                        <div>
-                          <p
-                            className={cn(
-                              'text-[13px] font-medium',
-                              selected ? 'text-[#C25E3A]' : 'text-[#2A2318]'
-                            )}
-                          >
-                            {t('directory.adapters.' + opt.value + '.label')}
-                          </p>
-                          <p className="text-[11px] text-[#A89880]">{t('directory.adapters.' + opt.value + '.desc')}</p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
               {/* Agent Name */}
               <div>
                 <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
@@ -826,44 +761,47 @@ export default function Directory() {
                 <p className="mt-1 text-[11px] text-[#A89880]">{t('directory.workplaceHint')}</p>
               </div>
 
-              {/* Gateway URL + API key (operator-invite, #63) */}
-              <div className="grid grid-cols-1 gap-4">
-                <div>
-                  <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
-                    {t('directory.gatewayUrl')} <span className="text-[#C25E3A]">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={gatewayUrl}
-                    onChange={(e) => setGatewayUrl(e.target.value)}
-                    placeholder={t('directory.gatewayUrlPlaceholder')}
-                    className={cn(
-                      'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
-                      'placeholder:text-[#A89880]',
-                      'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
-                      'transition-all'
-                    )}
-                  />
-                </div>
-                <div>
-                  <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
-                    {t('directory.apiKey')} <span className="text-[#C25E3A]">*</span>
-                  </label>
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder={t('directory.apiKeyPlaceholder')}
-                    autoComplete="off"
-                    className={cn(
-                      'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
-                      'placeholder:text-[#A89880]',
-                      'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
-                      'transition-all'
-                    )}
-                  />
-                  <p className="mt-1 text-[11px] text-[#A89880]">{t('directory.apiKeyHint')}</p>
-                </div>
+              {/* What the agent is told to be (FR-007i). This is the whole of how it
+                  behaves: there is no per-project role adding to it later. */}
+              <div>
+                <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
+                  {t('directory.instructions')}
+                </label>
+                <textarea
+                  value={instructions}
+                  onChange={(e) => setInstructions(e.target.value)}
+                  rows={5}
+                  placeholder={t('directory.instructionsPlaceholder')}
+                  className={cn(
+                    'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
+                    'placeholder:text-[#A89880] resize-y',
+                    'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+                    'transition-all'
+                  )}
+                />
+                <p className="mt-1 text-[11px] text-[#A89880]">{t('directory.instructionsHint')}</p>
+              </div>
+
+              {/* What the team calls it. Never sent to the agent (FR-007j). */}
+              <div>
+                <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
+                  {t('directory.agentDescription')}
+                </label>
+                <input
+                  type="text"
+                  value={agentDescription}
+                  onChange={(e) => setAgentDescription(e.target.value)}
+                  placeholder={t('directory.agentDescriptionPlaceholder')}
+                  className={cn(
+                    'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
+                    'placeholder:text-[#A89880]',
+                    'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+                    'transition-all'
+                  )}
+                />
+                <p className="mt-1 text-[11px] text-[#A89880]">
+                  {t('directory.agentDescriptionHint')}
+                </p>
               </div>
 
               {/* Workspace Agent seat (#32) */}
@@ -920,21 +858,10 @@ export default function Directory() {
                 </div>
               </div>
 
-              {/* Send status (issue #63) */}
-              {sendStatus === 'sent' && (
-                <p className="flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#D8EADD] text-[12px] text-[#2A6E3A]">
-                  <Check className="w-3.5 h-3.5" /> {t('directory.send.sent')}
-                </p>
-              )}
-              {sendStatus === 'send_failed' && (
-                <p className="flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#F3D9D0] text-[12px] text-[#8A3B22] border border-[#E3C0B2]">
-                  <AlertTriangle className="w-3.5 h-3.5" /> {t('directory.send.sendFailed')}
-                </p>
-              )}
-
-              {/* The server's refusal, worded from its own code. Not the same thing as
-                  `send_failed`: that one means the agent exists and its prompt did not
-                  land; this one means no agent was created at all. */}
+              {/* The server's refusal, worded from its own code — a name already taken, a
+                  workplace that stopped being able to take work between opening this form
+                  and submitting it. Swallowing it would leave the person clicking a button
+                  that does nothing and says nothing. */}
               {inviteError && (
                 <p className="flex items-start gap-1.5 px-3 py-2 rounded-md bg-[#F3D9D0] text-[12px] text-[#8A3B22] border border-[#E3C0B2]">
                   <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> {inviteError}
@@ -952,21 +879,17 @@ export default function Directory() {
                 <button
                   onClick={handleInvite}
                   disabled={
-                    !agentName.trim() || !gatewayUrl.trim() || !apiKey.trim() || !workplaceId || sending
+                    !agentName.trim() || !workplaceId || sending
                   }
                   className={cn(
                     'inline-flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-all',
-                    agentName.trim() && gatewayUrl.trim() && apiKey.trim() && workplaceId && !sending
+                    agentName.trim() && workplaceId && !sending
                       ? 'bg-[#C25E3A] text-white hover:bg-[#D97B5A]'
                       : 'bg-[#E3D7BC] text-[#A89880] cursor-not-allowed'
                   )}
                 >
                   {sending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  {sendStatus === 'send_failed'
-                    ? t('directory.send.retry')
-                    : sending
-                      ? t('directory.send.sending')
-                      : t('directory.invite')}
+                  {sending ? t('directory.send.sending') : t('directory.invite')}
                 </button>
               </div>
         </div>

@@ -796,6 +796,8 @@ class SqlMariusRepository(MariusRepository):
                 workspace_id=marius.workspace_id,
                 name=marius.name,
                 role=marius.role,
+                instructions=marius.instructions,
+                description=marius.description,
                 skills=list(marius.skills),
                 adapter_type=marius.adapter_type,
                 adapter_config=dict(marius.adapter_config),
@@ -853,6 +855,8 @@ class SqlMariusRepository(MariusRepository):
             raise NotFound("agent_not_found")
         m.name = marius.name
         m.role = marius.role
+        m.instructions = marius.instructions
+        m.description = marius.description
         m.skills = list(marius.skills)
         m.skill_ids = [str(x) for x in marius.skill_ids]
         m.skill_installs = dict(marius.skill_installs)

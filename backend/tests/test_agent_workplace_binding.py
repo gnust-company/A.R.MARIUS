@@ -35,8 +35,6 @@ from armarius.infrastructure.daemon.models import (
 from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.main import app
 from tests.support.agents import (
-    GATEWAY_KEY,
-    GATEWAY_URL,
     invite_agent,
     ready_workplace,
 )
@@ -102,8 +100,6 @@ async def test_an_invite_with_no_workplace_is_refused_and_creates_nothing() -> N
             {
                 "name": "Nowhere",
                 "adapter_type": "echo",
-                "gateway_url": GATEWAY_URL,
-                "api_key": GATEWAY_KEY,
             },
         )
         assert status == 422, "an agent with no workplace was accepted"
@@ -126,8 +122,6 @@ async def test_another_workspaces_workplace_reads_as_not_there() -> None:
             {
                 "name": "Trespasser",
                 "adapter_type": "echo",
-                "gateway_url": GATEWAY_URL,
-                "api_key": GATEWAY_KEY,
                 "workplace_id": theirs,
             },
         )
@@ -142,8 +136,6 @@ async def test_another_workspaces_workplace_reads_as_not_there() -> None:
             {
                 "name": "Ghost",
                 "adapter_type": "echo",
-                "gateway_url": GATEWAY_URL,
-                "api_key": GATEWAY_KEY,
                 "workplace_id": str(uuid4()),
             },
         )
@@ -172,8 +164,6 @@ async def test_a_workplace_that_cannot_work_is_refused_with_its_reason() -> None
             {
                 "name": "Stillborn",
                 "adapter_type": "echo",
-                "gateway_url": GATEWAY_URL,
-                "api_key": GATEWAY_KEY,
                 "workplace_id": workplace,
             },
         )
