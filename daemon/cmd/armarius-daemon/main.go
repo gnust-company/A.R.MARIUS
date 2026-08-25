@@ -10,8 +10,8 @@
 //	start   stay up: announce the CLIs found here, ask for work, run it, report back
 //	status  say what this machine currently knows about itself, then exit
 //
-// `login` and `start` are built. `status` is not, and until it is it fails loudly rather than
-// pretending to have done its job — the task that builds it is named in the refusal.
+// All three are built. `start` does not yet ask for work — that is the claim loop and the push
+// channel, T052 and T054 in specs/002-daemon-acp-runtime/tasks.md.
 package main
 
 import (
@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"syscall"
+	"time"
 
 	"github.com/gnust-company/armarius-daemon/internal/client"
 	"github.com/gnust-company/armarius-daemon/internal/config"
@@ -218,6 +219,23 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 		emit(out, "%s on %s: %s\n", workplace.CLIKind, workplace.MachineName, state)
 	}
 
+	// From here on this machine has a running daemon, and `status` has to be able to say so
+	// without asking the server — which is the whole point of it (FR-005a). The state file is
+	// written now and refreshed on every beat, so a daemon whose token expired stops looking
+	// identical to a healthy one.
+	statePath := client.StatePath(*configPath)
+	state := client.RunState{
+		PID:        os.Getpid(),
+		StartedAt:  time.Now(),
+		Workplaces: registered.Workplaces,
+	}
+	if err := client.SaveState(statePath, state); err != nil {
+		return err
+	}
+	// Removed on the way out, so a file still present with no process behind it means one
+	// specific thing: the daemon was killed rather than stopped.
+	defer client.RemoveState(statePath)
+
 	emit(out, "Beating every %s. Stop with Ctrl-C.\n", settings.HeartbeatInterval)
 	return supervisor.RunHeartbeat(ctx, supervisor.HeartbeatOptions{
 		Interval: settings.HeartbeatInterval.Duration(),
@@ -233,6 +251,18 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 				Running:   beat.Running,
 			})
 			if err != nil {
+				state.LastBeatError = err.Error()
+			} else {
+				state.LastBeatOKAt = time.Now()
+				state.LastBeatError = ""
+			}
+			// A state file that cannot be written is not worth ending a healthy daemon over:
+			// the machine is doing its job, and the only thing lost is this machine's own
+			// account of it.
+			if saveErr := client.SaveState(statePath, state); saveErr != nil {
+				emit(out, "could not record this machine's state: %v\n", saveErr)
+			}
+			if err != nil {
 				return supervisor.Reply{}, err
 			}
 			return supervisor.Reply{
@@ -244,13 +274,27 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 	})
 }
 
-func runStatus(_ context.Context, args []string, out io.Writer) error {
+// runStatus answers, here on this machine, what state this machine is in (FR-005a).
+//
+// It exits 0 whether or not a daemon is running: "nothing is running here" is the answer to
+// the question, not a failure to answer it. What went wrong, if anything, is in the answer.
+func runStatus(ctx context.Context, args []string, out io.Writer) error {
 	fs := newFlagSet("status", out)
-	fs.Bool("json", false, "print the answer as JSON rather than for a person to read")
+	configPath := fs.String("config", defaultConfigPath(), "path to this machine's daemon configuration")
+	asJSON := fs.Bool("json", false, "print the answer as JSON rather than for a person to read")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	return notImplemented("status", "T038a")
+
+	status, err := client.Report(ctx, client.StatusOptions{ConfigPath: *configPath})
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return status.WriteJSON(out)
+	}
+	status.WriteText(out, time.Now())
+	return nil
 }
 
 // newFlagSet builds a flag set that reports errors to out and never calls os.Exit, so that a
@@ -270,11 +314,4 @@ func defaultConfigPath() string {
 		return filepath.Join(".armarius", "daemon.json")
 	}
 	return filepath.Join(home, ".armarius", "daemon.json")
-}
-
-// notImplemented reports a subcommand that is declared but not yet built, naming the tasks that
-// will build it. It is an error rather than a friendly notice on purpose: a supervisor that runs
-// `armarius-daemon start` has to see a non-zero exit instead of believing the daemon came up.
-func notImplemented(name, tasks string) error {
-	return fmt.Errorf("%s is not built yet — see %s in specs/002-daemon-acp-runtime/tasks.md", name, tasks)
 }
