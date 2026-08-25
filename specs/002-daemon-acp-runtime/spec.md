@@ -66,6 +66,30 @@ hồi ba mức. Đặc tả này chỉ thay **cách Armarius nói chuyện với
   chưa giải, **trừ** chỗ xung đột với luật của mình: token bị thu hồi phải xếp là lỗi cần người xử, không
   được tiêu ngân sách tự phục hồi.
 
+### Session 2026-08-25
+
+Người chủ chốt sau khi đối chiếu trực tiếp với mô hình agent của Multica (`multica-ai/multica`, tài liệu
+`apps/docs/content/docs/agents-create.mdx` và kiểu dữ liệu `packages/core/types/agent.ts`).
+
+- Q: Luồng thêm agent hiện tại bắt nhập gateway url + api key rồi gửi lời mời. Giữ hay bỏ? → A: **Bỏ
+  hẳn.** Thay bằng **đúng mô hình agent của Multica**: đặt tên, viết instructions, gắn skill, chọn chỗ làm.
+  Chỉ thế thôi. Không probe gateway, không setup prompt, không mint agent token lúc tạo.
+- Q: Hai agent trùng tên trong một workspace thì sao? → A: **Cấm trùng.** Trước nay không kiểm chỉ vì
+  không điều khoản nào nói, mà "trong một workspace có hai agent cùng tên thì biết gọi ai".
+- Q: Có cho chọn model và thinking level như Multica không? → A: **Có.** Đã có daemon giống Multica thì
+  phải chọn được.
+- Q: Multica cho buộc lại agent sang runtime khác khi runtime cũ chết; FR-007 của ta nói mối buộc không
+  đổi được. Theo ai? → A: **Tạm giữ nguyên không đổi được.** Chỉ thêm agent, không đổi chỗ làm của agent
+  đã có. Tính tiếp sau.
+- Q: Bỏ role theo dự án, chỉ giữ agent ở tầng workspace có đủ instructions và skill, rồi thêm thẳng agent
+  vào dự án — được không? → A: **Được, làm luôn.** Role theo dự án **làm loãng skill**, và khi instructions
+  đã nằm trên agent thì role chỉ là chỗ chép lại. **Hiến pháp sửa theo** — Điều V viết lại, lên phiên bản
+  2.0.0 ngày 2026-08-25. **Giữ nguyên Trưởng dự án.**
+- Q: Màn hình "Thiết lập bằng Tác nhân" đang gọi Tác nhân Không gian qua gateway rồi đứng đợi trả lời; bỏ
+  gateway thì nó gãy. Xử sao? → A: **Làm lại phần bên dưới, giữ nguyên phần người dùng thấy.** Người chủ
+  nói thẳng: *"lúc đó tao chat với workspace agent, chấm hết"*. Đây là luật chung cho cả đợt, không riêng
+  màn hình này — xem FR-040b.
+
 ---
 
 ## User Scenarios & Testing *(mandatory)*
@@ -294,6 +318,32 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   tồn tại ở CLI nào tự có tính năng ấy, nên xử **y hệt Multica**: để trong thư mục nhà giả mà daemon dựng
   cho chính CLI đó, liên kết ra một kho sống lâu hơn thư mục làm việc, và dọn theo hạn giữ riêng. Armarius
   KHÔNG dựng kho ký ức chung cho mọi loại CLI.
+- **FR-007g**: Luồng tạo agent PHẢI **bỏ hẳn gateway url và api key**. Tạo một agent chỉ cần **tên** và
+  **chỗ làm**; mọi thứ khác có mặc định và sửa được sau. Hệ thống KHÔNG probe gateway trước khi tạo, KHÔNG
+  gửi setup prompt sau khi tạo, và KHÔNG mint token riêng cho agent — FR-014a đã chốt hệ thống chỉ có hai
+  loại token, của daemon và của lượt chạy. Đây là hệ quả trực tiếp của FR-040a: bốn thứ ấy chỉ tồn tại để
+  phục vụ đường gateway cũ.
+- **FR-007h**: Tên agent PHẢI **không trùng trong cùng một workspace**. Trùng tên thì người giao việc không
+  biết mình đang gọi ai.
+- **FR-007i**: Agent PHẢI có **instructions** — chữ do người chủ agent viết lúc tạo, mô tả nó là ai, chịu
+  trách nhiệm gì, được sửa gì, giao kết quả ra sao. Instructions PHẢI đi xuống agent ở **mỗi lượt chạy**,
+  trong chính gói nhận việc, cùng đường với bối cảnh dự án ở FR-011. Đây là chỗ **duy nhất** định nghĩa cách
+  cư xử của agent (Hiến pháp — Điều V, phiên bản 2.0.0).
+- **FR-007j**: Agent PHẢI có **description** — một dòng giới thiệu cho người trong workspace đọc. Nó
+  **KHÔNG ĐƯỢC** đi vào prompt gửi agent. Tách khỏi instructions vì hai thứ có hai người đọc khác nhau; gộp
+  lại thì mọi câu viết cho đồng nghiệp đọc đều tốn chỗ trong prompt.
+- **FR-007k**: Người dùng PHẢI chọn được **model** và **thinking level** cho từng agent. Danh sách chọn PHẢI
+  lấy từ **khả năng thật của chỗ làm** theo FR-017, KHÔNG được lấy từ bảng chép cứng theo tên CLI. Agent CLI
+  nào tự quản model thì **không hiện ô chọn**. Bỏ trống thì dùng mặc định của chính CLI đó.
+- **FR-007l**: **Bỏ role theo dự án.** Cách cư xử của agent đến từ instructions ở FR-007i, không từ một ghế
+  role trong dự án. Thêm agent vào dự án là thêm thẳng agent, không qua role. **Giữ nguyên Trưởng dự án** —
+  đó là vị trí điều phối của từng dự án, không phải một ghế trong bộ role đã bỏ (Hiến pháp 2.0.0 — Điều V).
+  - Lý do người chủ đưa: role theo dự án **làm loãng skill**, và khi instructions đã nằm trên agent thì role
+    chỉ là bản chép thứ hai của cùng một nội dung.
+  - Cần hai cách cư xử khác nhau thì **tạo hai agent** — agent chỉ là tên, instructions, skill và chỗ làm.
+  - **Phạm vi ở đặc tả này**: chỉ chốt luật và bảo đảm luồng tạo agent mới không sinh thêm role. Việc gỡ
+    bảng role, ghế, và những chỗ đang đọc chúng (chữ ký duyệt, thang phục hồi, màn hình đội hình) đụng vào
+    phần lõi của đặc tả 001 nên tách sang **đặc tả riêng**; đặc tả này không gỡ.
 - **FR-007c**: Đăng nhập và hạn mức của agent CLI là thuộc tính của **chỗ làm**, không của agent. Cạn hạn
   mức PHẢI làm **mọi agent trên chỗ làm ấy** offline cùng lúc, và PHẢI xếp vào **lỗi cần người xử** —
   KHÔNG ĐƯỢC tiêu ngân sách tự phục hồi (xem FR-032).
@@ -491,6 +541,16 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **FR-040a**: Đường cổng ngoài cũ được xử như **chưa từng tồn tại** (chốt 2026-08-21). Không luật chuyển
   đổi, không tương thích ngược, không trạng thái "agent kiểu cũ". Dữ liệu sinh ra từ đường cũ bị xoá, và mọi
   thứ chỉ tồn tại để phục vụ đường cũ bị gỡ theo thay vì để lại dạng mã chết.
+- **FR-040b**: Đợt này chỉ được đổi **cách Armarius nói chuyện với agent**. Mọi hành vi ở **tầng người
+  dùng giữ nguyên** — cùng màn hình, cùng thao tác, cùng kết quả. Chuyển từ gateway sang daemon nghĩa là
+  tầng liên lạc viết lại sạch, KHÔNG phải nghiệp vụ viết lại (người chủ chốt 2026-08-25).
+  - Ca cụ thể đang gãy: màn hình **"Thiết lập bằng Tác nhân"**. Hôm nay nó gọi Tác nhân Không gian qua
+    gateway của agent đó rồi **đứng đợi** câu trả lời để hỏi câu tiếp. Bỏ gateway thì không còn địa chỉ để
+    gọi, và daemon không có kiểu gọi-rồi-đợi: server treo việc lên, máy rảnh lúc nào lấy lúc ấy.
+  - Bắt buộc: người dùng vẫn **chat với Tác nhân Không gian** đúng như cũ — hỏi một câu, trả lời, hỏi câu
+    tiếp, cuối cùng ra dự án và đội hình. Phần dưới dựng lại trên đường daemon.
+  - Điều khoản này áp cho **mọi** luồng khác cũng đang gọi qua gateway, không riêng màn hình trên. Luồng nào
+    tầng dưới đổi mà tầng người dùng đổi theo thì luồng đó sai.
 - **FR-041**: Thư mục làm việc của một đầu việc bắt đầu ở trạng thái **trắng**. Hệ thống KHÔNG lấy mã nguồn về và
   KHÔNG quản nhánh làm việc; agent tự lo phần mã nguồn bằng thông tin đăng nhập của chính nó. Armarius là
   nơi làm việc chung cho nhiều loại việc, không riêng việc viết mã.
