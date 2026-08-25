@@ -19,6 +19,7 @@ from armarius.domain.entities.leader_chat import ProjectLeaderConversation
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.onboarding import OnboardingSession
 from armarius.domain.entities.orchestration_sweep import OrchestrationSweep
+from armarius.domain.entities.placement import Placement
 from armarius.domain.entities.plan import Plan
 from armarius.domain.entities.project_context import ProjectContext
 from armarius.domain.entities.push_reason import TaskPushReason
@@ -629,3 +630,25 @@ class PlanRepository(ABC):
 
     @abstractmethod
     async def latest_version(self, project_id: UUID) -> int: ...
+
+
+class PlacementRepository(ABC):
+    """Where agents are put to work, and which agent was put where (FR-007, FR-007f).
+
+    There is no method here that moves an agent, and that absence is the rule rather than an
+    oversight: FR-007 says the attachment is fixed for life, and a port with a `move` on it
+    is a port someone will eventually call. The one way to change where an agent works is to
+    retire it and create another — a decision that belongs to a person.
+    """
+
+    @abstractmethod
+    async def get(self, workspace_id: UUID, placement_id: UUID) -> Placement | None:
+        """One placement, or None when it is not there **or not this workspace's**.
+
+        The two collapse on purpose. Telling them apart would let a caller confirm that an
+        id exists somewhere they cannot see (Constitution I).
+        """
+
+    @abstractmethod
+    async def attach(self, marius_id: UUID, workspace_id: UUID, placement_id: UUID) -> None:
+        """Put an agent at a placement, once. Refuses an agent that already has one."""

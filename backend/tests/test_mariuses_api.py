@@ -24,7 +24,13 @@ from armarius.domain.entities.run import RunStatus
 from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.infrastructure.database.models import RunModel
 from armarius.main import app
-from tests.support.agents import GATEWAY_KEY, GATEWAY_URL, agent_token_for, invite_agent
+from tests.support.agents import (
+    GATEWAY_KEY,
+    GATEWAY_URL,
+    agent_token_for,
+    invite_agent,
+    ready_workplace,
+)
 
 
 async def _client() -> AsyncClient:
@@ -100,6 +106,7 @@ async def test_invite_with_unreachable_gateway_is_422() -> None:
                 "adapter_type": "unreachable",
                 "gateway_url": "http://127.0.0.1:1",  # closed port → probe fails
                 "api_key": "k",
+                "workplace_id": await ready_workplace(ws_id),
             },
         )
     assert r.status_code == 422, r.text
@@ -117,6 +124,7 @@ async def test_invite_with_unknown_adapter_is_400() -> None:
                 "adapter_type": "no-such-runtime",
                 "gateway_url": GATEWAY_URL,
                 "api_key": GATEWAY_KEY,
+                "workplace_id": await ready_workplace(ws_id),
             },
         )
     assert r.status_code == 400, r.text
@@ -208,6 +216,7 @@ async def test_cross_workspace_invite_is_404(missing: str) -> None:
                 "adapter_type": "echo",
                 "gateway_url": GATEWAY_URL,
                 "api_key": GATEWAY_KEY,
+                "workplace_id": await ready_workplace(ws_a),
             },
         )
     assert r.status_code == 404, r.text

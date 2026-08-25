@@ -10,7 +10,7 @@ from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.database.engine import init_db
 from armarius.main import app
 from armarius.presentation.container import build_container
-from tests.support.agents import GATEWAY_KEY, GATEWAY_URL
+from tests.support.agents import GATEWAY_KEY, GATEWAY_URL, ready_workplace
 
 
 @pytest.fixture(autouse=True)
@@ -51,6 +51,7 @@ async def _invite(c: AsyncClient, h: dict, ws_id: str, name: str, **extra) -> di
             "adapter_type": "echo",
             "gateway_url": GATEWAY_URL,
             "api_key": GATEWAY_KEY,
+            "workplace_id": await ready_workplace(ws_id),
             **extra,
         },
     )

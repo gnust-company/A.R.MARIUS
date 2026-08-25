@@ -11,6 +11,7 @@ from __future__ import annotations
 from httpx import ASGITransport, AsyncClient
 
 from armarius.main import app
+from tests.support.agents import ready_workplace
 
 
 async def _client() -> AsyncClient:
@@ -39,7 +40,8 @@ async def _project_with_seated_leader(c: AsyncClient, ws_id: str, h: dict) -> st
         f"/v1/workspaces/{ws_id}/mariuses",
         headers=h,
         json={"name": "Lead", "adapter_type": "echo",
-              "gateway_url": "http://gateway.test", "api_key": "k"},
+              "gateway_url": "http://gateway.test", "api_key": "k",
+              "workplace_id": await ready_workplace(ws_id)},
     )
     await c.post(
         f"/v1/projects/{pid}/grant",

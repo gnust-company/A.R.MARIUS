@@ -17,17 +17,35 @@ from armarius.application.use_cases.enrollment import (
     UnknownAdapter,
 )
 from armarius.domain.entities.marius import InviteStatus
+from armarius.domain.entities.placement import Placement
 from armarius.domain.entities.run import RunStatus
 from armarius.domain.entities.workspace import Workspace
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
-from tests.support.fakes import FakeAdapter, FakeUowFactory
+from tests.support.fakes import FakeAdapter, FakeUowFactory, a_placement
 
 
-def _factory_with_workspace() -> tuple[FakeUowFactory, Workspace]:
+def _factory_with_workspace() -> tuple[FakeUowFactory, Workspace, Placement]:
+    """A workspace with somewhere to put an agent.
+
+    The placement comes with it because an agent cannot be created without one (FR-007f) —
+    every test here would otherwise have to say so itself.
+    """
     factory = FakeUowFactory()
     ws = Workspace(name="Studio", slug="studio", owner_user_id="u1")
     factory.store.workspaces[ws.id] = ws
-    return factory, ws
+    return factory, ws, a_placement(factory, ws.id)
+
+
+async def _invite(svc: InviteService, ws: Workspace, place: Placement, name: str = "Marin"):
+    """The one call every test here makes. Named arguments in one place, not nine."""
+    return await svc.invite(
+        ws.id,
+        name,
+        adapter_type="fake",
+        gateway_url="http://x",
+        api_key="k",
+        placement_id=place.id,
+    )
 
 
 def _registry(adapter: MariusAdapter) -> InMemoryAdapterRegistry:
@@ -74,7 +92,7 @@ class _DispatchOnlyAdapter(MariusAdapter):
 
 
 async def test_invite_creates_approved_marius_with_token_and_adapter_config() -> None:
-    factory, ws = _factory_with_workspace()
+    factory, ws, place = _factory_with_workspace()
     svc = InviteService(factory, registry=_registry(FakeAdapter()))
 
     m = await svc.invite(
@@ -83,6 +101,7 @@ async def test_invite_creates_approved_marius_with_token_and_adapter_config() ->
         adapter_type="fake",
         gateway_url="http://gateway.test:8642",
         api_key="k",
+        placement_id=place.id,
     )
 
     assert m.invite_status == InviteStatus.APPROVED
@@ -92,40 +111,47 @@ async def test_invite_creates_approved_marius_with_token_and_adapter_config() ->
 
 
 async def test_invite_validates_gateway_before_persisting() -> None:
-    factory, ws = _factory_with_workspace()
+    factory, ws, place = _factory_with_workspace()
     svc = InviteService(factory, registry=_registry(_FailProbeAdapter()))
 
     with pytest.raises(GatewayUnreachable):
-        await svc.invite(ws.id, "Marin", adapter_type="fake", gateway_url="http://x", api_key="k")
+        await _invite(svc, ws, place)
 
     # Nothing was written — the probe gated persistence.
     assert not factory.store.mariuses
 
 
 async def test_invite_rejects_unknown_adapter_type() -> None:
-    factory, ws = _factory_with_workspace()
+    factory, ws, place = _factory_with_workspace()
     # Empty registry → no adapter for "fake".
     svc = InviteService(factory, registry=InMemoryAdapterRegistry())
 
     with pytest.raises(UnknownAdapter):
-        await svc.invite(ws.id, "Marin", adapter_type="fake", gateway_url="http://x", api_key="k")
+        await _invite(svc, ws, place)
 
 
 async def test_invite_rejects_unknown_workspace() -> None:
     from uuid import uuid4
 
-    factory, _ws = _factory_with_workspace()
+    factory, _ws, place = _factory_with_workspace()
     svc = InviteService(factory, registry=_registry(FakeAdapter()))
 
     with pytest.raises(LookupError):
-        await svc.invite(uuid4(), "Marin", adapter_type="fake", gateway_url="http://x", api_key="k")
+        await svc.invite(
+            uuid4(),
+            "Marin",
+            adapter_type="fake",
+            gateway_url="http://x",
+            api_key="k",
+            placement_id=place.id,
+        )
 
 
 async def test_push_setup_sent_on_completed() -> None:
-    factory, ws = _factory_with_workspace()
+    factory, ws, place = _factory_with_workspace()
     adapter = FakeAdapter()  # execute → COMPLETED
     svc = InviteService(factory, registry=_registry(adapter))
-    m = await svc.invite(ws.id, "Marin", adapter_type="fake", gateway_url="http://x", api_key="k")
+    m = await _invite(svc, ws, place)
 
     status = await svc.push_setup(m.id, prompt="setup")
 
@@ -137,10 +163,10 @@ async def test_push_setup_hands_off_via_dispatch_without_awaiting_the_run() -> N
     """A gateway that ACCEPTED the run (RUNNING) is already "sent": push_setup must not
     block on the whole agent turn. It dispatches once and never calls execute (which here
     would report FAILED) — guarding against a regression to the old blocking behaviour."""
-    factory, ws = _factory_with_workspace()
+    factory, ws, place = _factory_with_workspace()
     adapter = _DispatchOnlyAdapter()
     svc = InviteService(factory, registry=_registry(adapter))
-    m = await svc.invite(ws.id, "Marin", adapter_type="fake", gateway_url="http://x", api_key="k")
+    m = await _invite(svc, ws, place)
 
     status = await svc.push_setup(m.id, prompt="setup")
 
@@ -150,27 +176,27 @@ async def test_push_setup_hands_off_via_dispatch_without_awaiting_the_run() -> N
 
 
 async def test_push_setup_send_failed_when_run_not_completed() -> None:
-    factory, ws = _factory_with_workspace()
+    factory, ws, place = _factory_with_workspace()
     adapter = FakeAdapter(status=RunStatus.FAILED)
     svc = InviteService(factory, registry=_registry(adapter))
-    m = await svc.invite(ws.id, "Marin", adapter_type="fake", gateway_url="http://x", api_key="k")
+    m = await _invite(svc, ws, place)
 
     assert await svc.push_setup(m.id, prompt="setup") == "send_failed"
 
 
 async def test_push_setup_send_failed_when_adapter_raises() -> None:
-    factory, ws = _factory_with_workspace()
+    factory, ws, place = _factory_with_workspace()
     adapter = FakeAdapter(raise_on_execute=RuntimeError("runtime down"))
     svc = InviteService(factory, registry=_registry(adapter))
-    m = await svc.invite(ws.id, "Marin", adapter_type="fake", gateway_url="http://x", api_key="k")
+    m = await _invite(svc, ws, place)
 
     assert await svc.push_setup(m.id, prompt="setup") == "send_failed"
 
 
 async def test_push_setup_send_failed_when_adapter_unknown() -> None:
-    factory, ws = _factory_with_workspace()
+    factory, ws, place = _factory_with_workspace()
     svc = InviteService(factory, registry=_registry(FakeAdapter()))
-    m = await svc.invite(ws.id, "Marin", adapter_type="fake", gateway_url="http://x", api_key="k")
+    m = await _invite(svc, ws, place)
     # The agent's adapter type is no longer registered (e.g. registry reconfigured).
     svc._registry = InMemoryAdapterRegistry()  # type: ignore[method-assign]
 
@@ -180,7 +206,7 @@ async def test_push_setup_send_failed_when_adapter_unknown() -> None:
 async def test_push_setup_unknown_marius_is_not_found() -> None:
     from uuid import uuid4
 
-    factory, _ws = _factory_with_workspace()
+    factory, _ws, place = _factory_with_workspace()
     svc = InviteService(factory, registry=_registry(FakeAdapter()))
 
     with pytest.raises(LookupError):
@@ -189,10 +215,10 @@ async def test_push_setup_unknown_marius_is_not_found() -> None:
 
 async def test_push_setup_can_retry_after_a_failure() -> None:
     """A failed push is not fatal — calling again re-sends (the row stayed approved)."""
-    factory, ws = _factory_with_workspace()
+    factory, ws, place = _factory_with_workspace()
     adapter = FakeAdapter(raise_on_execute=RuntimeError("down"))
     svc = InviteService(factory, registry=_registry(adapter))
-    m = await svc.invite(ws.id, "Marin", adapter_type="fake", gateway_url="http://x", api_key="k")
+    m = await _invite(svc, ws, place)
 
     assert await svc.push_setup(m.id, prompt="setup") == "send_failed"
     # Runtime recovers on retry.

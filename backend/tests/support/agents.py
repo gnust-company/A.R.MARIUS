@@ -18,6 +18,53 @@ GATEWAY_URL = "http://gateway.test"
 GATEWAY_KEY = "test-key"
 
 
+async def ready_workplace(
+    ws_id: str | UUID, *, cli_kind: str = "claude_code", machine_name: str = "test-box"
+) -> str:
+    """A linked machine with one ready workplace on it, written straight to the database.
+
+    Every agent must be attached to a workplace at creation (FR-007f), so a test that wants
+    an agent needs one of these first. The device flow that normally produces it is four
+    round trips and is itself covered elsewhere; replaying it in every test that merely
+    needs *an agent to exist* would make those tests about machine enrolment instead of
+    about what they are actually checking.
+    """
+    from uuid import uuid4
+
+    from armarius.infrastructure.daemon.models import MachineModel, WorkplaceModel
+    from armarius.main import app
+    from armarius.shared.clock import utcnow
+
+    workspace_id = UUID(str(ws_id))
+    now = utcnow()
+    async with app.state.container.uow_factory() as uow:
+        workspace = await uow.workspaces.get(workspace_id)
+        assert workspace is not None, "no such workspace"
+        session = uow._session  # noqa: SLF001 — the tests' own back door, as in app_db
+        assert session is not None
+        machine = MachineModel(
+            id=uuid4(),
+            workspace_id=workspace_id,
+            owner_user_id=UUID(str(workspace.owner_user_id)),
+            display_name=machine_name,
+            token_hash=f"test-{uuid4().hex}",
+            symlink_capable=True,
+            created_at=now,
+        )
+        workplace = WorkplaceModel(
+            id=uuid4(),
+            workspace_id=workspace_id,
+            machine_id=machine.id,
+            cli_kind=cli_kind,
+            ready=True,
+            created_at=now,
+        )
+        session.add(machine)
+        session.add(workplace)
+        await uow.commit()
+    return str(workplace.id)
+
+
 async def invite_agent(
     c: AsyncClient,
     ws_id: str,
@@ -27,11 +74,16 @@ async def invite_agent(
     adapter_type: str = "echo",
     gateway_url: str = GATEWAY_URL,
     api_key: str = GATEWAY_KEY,
+    workplace_id: str | None = None,
     is_workspace_agent: bool = False,
     skills: list[str] | None = None,
     skill_ids: list[str] | None = None,
 ) -> dict:
     """Invite an agent with operator-supplied gateway creds → APPROVED + setup pushed.
+
+    A workplace is created for the workspace when none is named, because an agent cannot be
+    created without one (FR-007f) and most callers here care about the agent, not where it
+    works.
 
     Role is intentionally not taken — it is a project-roster concept (#63)."""
     body: dict = {
@@ -39,6 +91,7 @@ async def invite_agent(
         "adapter_type": adapter_type,
         "gateway_url": gateway_url,
         "api_key": api_key,
+        "workplace_id": workplace_id or await ready_workplace(ws_id),
         "is_workspace_agent": is_workspace_agent,
     }
     if skills is not None:

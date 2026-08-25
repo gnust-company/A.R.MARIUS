@@ -314,6 +314,10 @@ class RegisterMariusIn(BaseModel):
     # secret — it never appears in any outbound schema (MariusOut omits adapter_config).
     gateway_url: str = Field(min_length=1)
     api_key: str = Field(min_length=1)
+    # Where this agent will work. Required, with no default (FR-007f): an agent is attached
+    # to one workplace for life, so the choice cannot be postponed and there is no such
+    # thing as leaving it blank. Missing it is refused here, before any agent exists.
+    workplace_id: UUID
     # Seat this Marius as the workspace's host on invite (#32); a sitting host is
     # demoted to a plain agent (kept, not revoked).
     is_workspace_agent: bool = False
@@ -364,6 +368,20 @@ class MariusOut(_Out):
     invite_status: str | None = None
     last_seen_at: datetime | None = None
     created_at: datetime | None = None
+
+
+class WorkplaceChoiceOut(_Out):
+    """One workplace the person may put an agent on (FR-007f).
+
+    Only ready ones are ever listed, so there is no `ready` flag to render: a workplace that
+    cannot take work has no business being on a list whose only purpose is choosing one.
+    """
+
+    id: UUID
+    cli_kind: str
+    # The machine's own readable name — the only thing separating the same CLI on two of
+    # the person's machines (FR-003).
+    machine_name: str
 
 
 class MariusCreatedOut(MariusOut):

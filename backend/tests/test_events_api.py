@@ -13,6 +13,7 @@ from httpx import ASGITransport, AsyncClient
 
 from armarius.infrastructure.events.topic_bus import TopicEventBus
 from armarius.main import app
+from tests.support.agents import ready_workplace
 from tests.support.projects import force_operating
 
 
@@ -119,6 +120,7 @@ async def _invite(c: AsyncClient, ws_id: str, h: dict, name: str) -> str:
         json={
             "name": name, "adapter_type": "echo",
             "gateway_url": "http://gateway.test", "api_key": "k",
+            "workplace_id": await ready_workplace(ws_id),
         },
     )
     return r.json()["id"]

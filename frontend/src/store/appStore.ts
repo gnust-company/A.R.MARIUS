@@ -110,6 +110,14 @@ function saveActiveWorkspace(id: string | null): void {
 
 export type AgentStatus = 'idle' | 'working' | 'offline' | 'invited' | 'revoked' | 'online' | 'pending'
 
+/** One place an agent can be put to work — an agent CLI on one of the patron's machines.
+ *  The screen only ever sees the ready ones, so there is no state to render here. */
+export interface WorkplaceChoice {
+  id: string
+  cliKind: string
+  machineName: string
+}
+
 export interface Marius {
   id: string
   name: string
@@ -463,11 +471,17 @@ interface AppStoreState {
   /** Invite a new agent into the active workspace (operator-invite, #63): the backend mints
    * the token at invite time and pushes the setup prompt to the agent's gateway. Returns the
    * new agent + whether the push landed (`send_status`) — the token is never exposed. */
+  /** The workplaces a new agent may be put on, in the active workspace (FR-007f).
+   *  Deliberately not kept in the store: it is read when the invite form opens and is
+   *  stale the moment a machine goes down, so a copy living on would only mislead. */
+  listWorkplaces: () => Promise<WorkplaceChoice[]>
   inviteNewAgent: (input: {
     name: string
     adapterType: string
     gatewayUrl: string
     apiKey: string
+    /** Where this agent works — chosen once, never changed afterwards (FR-007). */
+    workplaceId: string
     skillIds: string[]
     /** Seat the newcomer as Workspace Agent; a sitting host is demoted, kept (#32). */
     isWorkspaceAgent?: boolean
@@ -563,7 +577,21 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   sseConnected: false,
   sidebarCollapsed: false,
 
-  inviteNewAgent: async ({ name, adapterType, gatewayUrl, apiKey, skillIds, isWorkspaceAgent }) => {
+  listWorkplaces: async () => {
+    const workspaceId = get().activeWorkspaceId || 'w1'
+    const rows = await api.listWorkplaces(workspaceId)
+    return rows.map((r) => ({ id: r.id, cliKind: r.cli_kind, machineName: r.machine_name }))
+  },
+
+  inviteNewAgent: async ({
+    name,
+    adapterType,
+    gatewayUrl,
+    apiKey,
+    workplaceId,
+    skillIds,
+    isWorkspaceAgent,
+  }) => {
     const workspaceId = get().activeWorkspaceId || 'w1'
     const skillNames = get()
       .skills.filter((s) => skillIds.includes(s.id))
@@ -580,6 +608,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       adapter_type: adapterType,
       gateway_url: gatewayUrl,
       api_key: apiKey,
+      workplace_id: workplaceId,
       is_workspace_agent: isWorkspaceAgent ?? false,
     })
     const agent: Marius = {
