@@ -10,6 +10,7 @@ from armarius.application.use_cases.liveness_watchdog import LivenessWatchdog
 from armarius.domain.entities.marius import Liveness, Marius
 from armarius.domain.entities.workspace import Workspace
 from armarius.domain.services.liveness_fsm import LivenessConfig
+from armarius.shared.config import settings
 from tests.support.agents import make_agent
 from tests.support.fakes import FakeLivenessProbe, FakeUowFactory
 
@@ -148,7 +149,11 @@ def _reaper(uow_factory, wakes) -> LivenessWatchdog:
         hang_grace_seconds=GRACE,
         wakes=wakes,
         task_log=TaskLogService(uow_factory),
-        push_reasons=PushReasonService(uow_factory, ProjectService(uow_factory, _THRESHOLDS)),
+        push_reasons=PushReasonService(
+            uow_factory,
+            ProjectService(uow_factory, _THRESHOLDS),
+            accept_grace_seconds=settings.run_claim_hold_seconds,
+        ),
     )
 
 

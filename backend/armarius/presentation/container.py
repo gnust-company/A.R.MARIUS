@@ -36,8 +36,10 @@ from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.application.use_cases.workspace_agent import WorkspaceAgentService
 from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.domain.entities.project import ProjectThresholds
+from armarius.infrastructure.adapters.daemon_adapter import DaemonAdapter
 from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
+from armarius.infrastructure.daemon.claim import DaemonClaimService
 from armarius.infrastructure.daemon.enrollment import DaemonEnrollmentService
 from armarius.infrastructure.daemon.liveness import DaemonLivenessProbe
 from armarius.infrastructure.daemon.workplaces import DaemonWorkplaceService
@@ -85,6 +87,7 @@ class Container:
     auth: AuthService
     skills: SkillService
     jwt_service: JWTService
+    daemon_claims: DaemonClaimService
     daemon_enrollment: DaemonEnrollmentService
     daemon_workplaces: DaemonWorkplaceService
     uow_factory: object
@@ -188,7 +191,21 @@ def build_container() -> Container:
     # The single writer of `task.drive` (FR-056). Built before the task service because
     # every status change settles its drive through this one object — two writers is how
     # a field comes to mean two different things.
-    push_reasons = PushReasonService(uow_factory, projects)
+    push_reasons = PushReasonService(
+        uow_factory,
+        projects,
+        # One number wearing two hats, and this is the only place that can keep it one:
+        # it is both how long a machine keeps work it has taken and how long the drive
+        # on that work lives. FR-056c forbids tuning the two apart, so neither side owns
+        # a default of its own — they are handed the same setting here.
+        accept_grace_seconds=settings.run_claim_hold_seconds,
+    )
+    # The one door work goes out through (FR-053). Built after `push_reasons` because
+    # it hands back what it takes away: a machine that loses its grip leaves a task
+    # whose board still says a run is live on it, and the board should be told in
+    # seconds rather than at the next sweep.
+    claims = DaemonClaimService(on_release=push_reasons.refresh)
+    registry.register(DaemonAdapter(claims))
     # Tasks and approvals are built here rather than inline below: the approval service
     # closes a task through the task service, so it needs the same instance the API uses.
     tasks = TaskService(
@@ -319,6 +336,7 @@ def build_container() -> Container:
         auth=AuthService(uow_factory, workspaces, jwt_service, password_service),
         skills=skills,
         jwt_service=jwt_service,
+        daemon_claims=claims,
         daemon_enrollment=DaemonEnrollmentService(),
         daemon_workplaces=DaemonWorkplaceService(),
         uow_factory=uow_factory,

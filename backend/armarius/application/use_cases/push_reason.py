@@ -47,10 +47,16 @@ class PushReasonService:
         projects: ProjectService,
         *,
         clock: Callable[[], datetime] = utcnow,
+        accept_grace_seconds: int,
     ) -> None:
         self._uow = uow_factory
         self._projects = projects
         self._clock = clock
+        # How long work stays *accepted but not yet started* before the drive on it dies.
+        # Handed in rather than read here: it is the same number the hold on the work is
+        # written with, and FR-056c forbids the two being tuned apart. The one place that
+        # can guarantee they are the same number is the place that wires both.
+        self._accept_grace = accept_grace_seconds
 
     # ── reading ──────────────────────────────────────────────────────────────────
     async def snapshot(
@@ -62,18 +68,43 @@ class PushReasonService:
         than per sweep.
         """
         runs = await uow.runs.list_by_task(task.id)
-        # The newest sign of life across every live run on this task. A run with no
-        # timestamps at all is skipped rather than dated to the epoch — an undated run
-        # is not evidence of work, and treating it as ancient would flag a task the
-        # instant a run row was inserted but not yet started.
+        # The newest sign of life across every live run on this task. *Work has happened* is
+        # the only thing this measures, so a run that has neither spoken nor started
+        # contributes nothing — it is not evidence of work, it is a run waiting to become
+        # one.
+        #
+        # This used to fall back to the moment the row was inserted, to stop a freshly
+        # written run from reading as a task nobody was moving. That fallback is no longer
+        # needed and is now actively wrong: *somebody has the work* has a field of its own
+        # below (FR-056), which covers the same gap honestly. Kept, it would also swallow the
+        # case underneath it — a run waiting for a free slot would report itself as a live
+        # run, and the task would never be seen waiting for room at all (FR-008a).
         run_marks = [
             stamp
             for r in runs
             if r.status in ACTIVE_RUN_STATUSES
-            and (stamp := as_utc(r.last_output_at or r.started_at or r.created_at))
-            is not None
+            and (stamp := as_utc(r.last_output_at or r.started_at)) is not None
         ]
         live_run_output = max(run_marks) if run_marks else None
+
+        # When a runtime took the newest live run. Read separately from the marks above
+        # because it answers a different question: those say *work has been happening*, this
+        # says *somebody has the work*, and between the two lies the whole of getting ready
+        # (FR-056). A run with no timestamps at all is skipped up there for good reason; the
+        # same run may still have been accepted a second ago, and dropping that would leave
+        # the task looking unclaimed while a machine is setting it up.
+        accept_marks = [
+            stamp
+            for r in runs
+            if r.status in ACTIVE_RUN_STATUSES
+            and (stamp := as_utc(r.accepted_at)) is not None
+        ]
+        accepted = max(accept_marks) if accept_marks else None
+
+        # Both queue answers in one read: what is filling every slot this task could start
+        # in, and when its work was last taken. Asked apart they are two readings of one
+        # queue at two moments, and the drive and its deadline could then disagree.
+        queued = await uow.queue.position_of(task.id)
 
         pending_wakes = await uow.wakeups.list_pending_for_task(task.id)
         # Oldest pending wake: if several are queued, the one that has been waiting
@@ -90,6 +121,9 @@ class PushReasonService:
             task_id=task.id,
             status=task.status,
             run_last_output_at=live_run_output,
+            run_accepted_at=accepted,
+            slots_taken_by=queued.runs_filling_every_slot,
+            last_taken_at=queued.last_taken_at,
             wake_booked_at=wake_booked,
             patron_item_pending=any(
                 i.status is InboxItemStatus.PENDING for i in inbox
@@ -153,6 +187,7 @@ class PushReasonService:
             now=now,
             hang_suspect_seconds=thresholds.hang_suspect_seconds if thresholds else 600,
             hang_grace_seconds=thresholds.hang_grace_seconds if thresholds else 120,
+            accept_grace_seconds=self._accept_grace,
         )
 
         task.drive = reason.kind if reason else None

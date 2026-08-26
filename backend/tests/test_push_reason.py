@@ -29,6 +29,7 @@ from armarius.domain.services.push_reason_rules import (
 T0 = datetime(2026, 3, 1, 9, 0, 0, tzinfo=UTC)
 SUSPECT = 600  # ngưỡng nghi treo, giây
 GRACE = 120  # cửa sổ ân hạn, giây
+HOLD = 120  # hạn giữ sau khi máy nhận việc, giây
 
 
 def snap(**over: object) -> DriveSnapshot:
@@ -43,13 +44,21 @@ def snap(**over: object) -> DriveSnapshot:
         "external_due_at": None,
         "recovery_retry_at": None,
         "slots_taken_by": (),
+        "run_accepted_at": None,
+        "last_taken_at": None,
     }
     base.update(over)
     return DriveSnapshot(**base)  # type: ignore[arg-type]
 
 
 def drive_of(s: DriveSnapshot) -> TaskDrive | None:
-    reason = infer_drive(s, now=T0, hang_suspect_seconds=SUSPECT, hang_grace_seconds=GRACE)
+    reason = infer_drive(
+        s,
+        now=T0,
+        hang_suspect_seconds=SUSPECT,
+        hang_grace_seconds=GRACE,
+        accept_grace_seconds=HOLD,
+    )
     return reason.kind if reason else None
 
 
@@ -102,7 +111,13 @@ def test_a_task_waiting_on_a_date_already_past_is_not_driven_but_still_says_why(
     because the alarm can then name *what* the task was waiting for instead of shrugging.
     """
     s = snap(status=TaskStatus.BLOCKED, external_due_at=T0 - timedelta(hours=1))
-    reason = infer_drive(s, now=T0, hang_suspect_seconds=SUSPECT, hang_grace_seconds=GRACE)
+    reason = infer_drive(
+        s,
+        now=T0,
+        hang_suspect_seconds=SUSPECT,
+        hang_grace_seconds=GRACE,
+        accept_grace_seconds=HOLD,
+    )
     assert reason is not None and reason.kind is TaskDrive.WAITING_EXTERNAL
     assert is_live(reason, now=T0) is False
     assert stall_reason(reason, now=T0), "đình trệ mà không nói được vì sao"
@@ -146,6 +161,7 @@ def test_a_live_run_outlives_the_reapers_own_deadline() -> None:
         now=T0,
         hang_suspect_seconds=SUSPECT,
         hang_grace_seconds=GRACE,
+        accept_grace_seconds=HOLD,
     )
     assert reason is not None
     assert reason.expires_at is not None
@@ -160,6 +176,7 @@ def test_a_drive_past_its_expiry_is_not_live() -> None:
         now=T0,
         hang_suspect_seconds=SUSPECT,
         hang_grace_seconds=GRACE,
+        accept_grace_seconds=HOLD,
     )
     assert reason is not None, "vẫn suy ra được loại — nhưng nó đã quá hạn"
     assert is_live(reason, now=T0) is False
@@ -181,7 +198,13 @@ def test_waits_owned_by_someone_else_have_no_clock(kind_setup: dict[str, object]
     Giving any of them an arbitrary deadline would invent a second, competing alarm for
     something already watched."""
     s = snap(status=TaskStatus.BLOCKED, **kind_setup)  # type: ignore[arg-type]
-    reason = infer_drive(s, now=T0, hang_suspect_seconds=SUSPECT, hang_grace_seconds=GRACE)
+    reason = infer_drive(
+        s,
+        now=T0,
+        hang_suspect_seconds=SUSPECT,
+        hang_grace_seconds=GRACE,
+        accept_grace_seconds=HOLD,
+    )
     assert reason is not None
     assert reason.expires_at is None
     assert is_live(reason, now=T0 + timedelta(days=30)) is True
@@ -253,7 +276,11 @@ def test_every_watched_task_is_either_driven_or_stalled_and_the_verdict_is_the_r
     for label, s, expected_driven in board:
         assert watches(s.status), "bài kiểm này chỉ nói về đầu việc đang được canh"
         reason = infer_drive(
-            s, now=T0, hang_suspect_seconds=SUSPECT, hang_grace_seconds=GRACE
+            s,
+            now=T0,
+            hang_suspect_seconds=SUSPECT,
+            hang_grace_seconds=GRACE,
+            accept_grace_seconds=HOLD,
         )
         driven = reason is not None and is_live(reason, now=T0)
         wanted = "còn động cơ đẩy" if expected_driven else "phải nổi cờ đình trệ"
@@ -273,6 +300,7 @@ def test_no_room_to_start_is_the_drive() -> None:
         now=T0,
         hang_suspect_seconds=SUSPECT,
         hang_grace_seconds=GRACE,
+        accept_grace_seconds=HOLD,
     )
     assert reason is not None
     assert reason.kind is TaskDrive.BLOCKED_BY_TASK
@@ -288,12 +316,14 @@ def test_the_two_waits_that_share_drive_five_are_told_apart() -> None:
         now=T0,
         hang_suspect_seconds=SUSPECT,
         hang_grace_seconds=GRACE,
+        accept_grace_seconds=HOLD,
     )
     behind_slot = infer_drive(
         snap(slots_taken_by=("run-a",)),
         now=T0,
         hang_suspect_seconds=SUSPECT,
         hang_grace_seconds=GRACE,
+        accept_grace_seconds=HOLD,
     )
     assert behind_task is not None and behind_slot is not None
     assert behind_task.kind is behind_slot.kind
@@ -309,6 +339,7 @@ def test_no_room_names_the_runs_holding_the_slots() -> None:
         now=T0,
         hang_suspect_seconds=SUSPECT,
         hang_grace_seconds=GRACE,
+        accept_grace_seconds=HOLD,
     )
     assert reason is not None and reason.ref is not None
     assert "run-a" in reason.ref and "run-b" in reason.ref
@@ -335,6 +366,7 @@ def test_no_room_outranks_every_clock_that_cannot_start_a_run(also: dict[str, ob
         now=T0,
         hang_suspect_seconds=SUSPECT,
         hang_grace_seconds=GRACE,
+        accept_grace_seconds=HOLD,
     )
     assert reason is not None
     assert reason.code == BLOCKED_ON_CAPACITY

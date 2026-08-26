@@ -85,6 +85,19 @@ class DriveSnapshot:
     # default is also the safe answer: an empty list yields no drive at all, so a caller
     # that forgets gets an alarm, not silence.
     slots_taken_by: tuple[str, ...] = ()
+    # When something took this task's live run. Set the moment the work is accepted,
+    # which is well before the agent exists, let alone says anything — see drive #1.
+    #
+    # Defaulted for the same reason `slots_taken_by` is: only the path that hands work
+    # out can answer it, and None is the honest answer everywhere else. The default is
+    # also the safe one — without it the rules fall back to the wake clock, which is
+    # the behaviour that was there before.
+    run_accepted_at: datetime | None = None
+    # The last time anything took this task's work, **including** a time it took it and
+    # then gave it back. Not the same question as `run_accepted_at`, which is only about
+    # a hold that still stands; this one outlives the hold, and it is what the wake clock
+    # re-anchors on (FR-056b).
+    last_taken_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -143,6 +156,7 @@ def infer_drive(
     now: datetime,
     hang_suspect_seconds: int,
     hang_grace_seconds: int,
+    accept_grace_seconds: int,
 ) -> PushReason | None:
     """The one drive on this task, or None when nothing is going to move it.
 
@@ -170,6 +184,29 @@ def infer_drive(
             expires_at=snap.run_last_output_at
             + timedelta(seconds=hang_suspect_seconds + hang_grace_seconds)
             + _REAPER_HEAD_START,
+        )
+
+    # 1b. Something has taken the work but the agent has not said anything yet. This is
+    #     still drive #1, and it starts **the moment the work was accepted** rather than at
+    #     the first line of output (FR-056). In between sits the whole of getting ready — a
+    #     working directory, the skills, a cold CLI starting up — and for those seconds the
+    #     task used to carry no live drive at all. A sweep landing in that gap read a task
+    #     that was being set up as a task nobody had picked up, and woke it a second time.
+    #
+    #     Its deadline is what separates this from a run that is merely slow to speak:
+    #     `accept_grace_seconds` is the same number the hold on the work is written with, so
+    #     the drive dies at the same moment the hold does and the work goes back on the
+    #     shelf (FR-056a, FR-056c). One number, deliberately — two would drift, and then
+    #     either the drive outlives the hold (a task shown as running with nothing running)
+    #     or the hold outlives the drive (an alarm about work being set up correctly).
+    #
+    #     This is also the half of FR-057 that was missing: *nobody has taken it* and
+    #     *something took it and died while getting ready* are two different failures, and
+    #     until now both looked like a wake that never became a run.
+    if snap.run_accepted_at is not None:
+        return PushReason(
+            kind=TaskDrive.RUN_ACTIVE,
+            expires_at=snap.run_accepted_at + timedelta(seconds=accept_grace_seconds),
         )
 
     # 2. Every slot this task could start in is taken. No clock, deliberately: what it is
@@ -203,10 +240,21 @@ def infer_drive(
             kind=TaskDrive.WAITING_RECOVERY, expires_at=snap.recovery_retry_at
         )
 
-    # 4. A wake is booked and has not opened a run yet.
+    # 4. A wake is booked and nothing has taken it yet. This is the other half of FR-057:
+    #    reached only when no runtime is holding the work, which is the honest reading of
+    #    *nobody has picked this up*.
+    #
+    #    The clock runs from the last time anything took the work, when that is later than
+    #    the booking (FR-056b). A task that was taken and given back has been waiting since
+    #    it was given back — measuring from the original booking would declare it dropped at
+    #    the very moment it is most ready to be picked up again. A booking is a promise, an
+    #    accept is evidence, and evidence wins.
     if snap.wake_booked_at is not None:
+        anchored_at = snap.wake_booked_at
+        if snap.last_taken_at is not None and snap.last_taken_at > anchored_at:
+            anchored_at = snap.last_taken_at
         return PushReason(
-            kind=TaskDrive.WAKE_SCHEDULED, expires_at=snap.wake_booked_at + _WAKE_GRACE
+            kind=TaskDrive.WAKE_SCHEDULED, expires_at=anchored_at + _WAKE_GRACE
         )
 
     # 5. Parked on a human. No clock here — the reminder ladder chases it (FR-065).

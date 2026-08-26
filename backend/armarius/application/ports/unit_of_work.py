@@ -9,6 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from types import TracebackType
 
+from armarius.application.ports.queue_view import QueueView
 from armarius.domain.repositories.repositories import (
     ApprovalRepository,
     ArtifactRepository,
@@ -50,6 +51,7 @@ class UnitOfWork(ABC):
     project_contexts: ProjectContextRepository
     plans: PlanRepository
     placements: PlacementRepository
+    queue: QueueView
     roles: RoleRepository
     seat_grants: SeatGrantRepository
     approvals: ApprovalRepository
