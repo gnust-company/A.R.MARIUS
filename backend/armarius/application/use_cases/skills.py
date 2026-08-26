@@ -24,6 +24,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from uuid import UUID
 
+from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.skill import Skill
 from armarius.shared.clock import utcnow
@@ -163,9 +164,48 @@ class SkillService:
             for sk in await uow.skills.list_by_workspace(workspace_id):
                 if sk.source == "builtin" and sk.slug not in builtin_slugs:
                     await uow.skills.remove(sk.id)
+                    await self._forget_everywhere(uow, workspace_id, sk)
                     changed = True
             if changed:
                 await uow.commit()
+
+    async def _forget_everywhere(
+        self, uow: UnitOfWork, workspace_id: UUID, gone: Skill
+    ) -> None:
+        """Take a deleted skill out of everything that still names it.
+
+        Deleting the row is only half of deleting the skill. What is left behind is a link
+        on an agent — an id in a list, a name in the list beside it, a line in the install
+        record — pointing at nothing. Nothing crashes: whoever resolves those ids drops the
+        ones it cannot find, which is exactly why this rots quietly instead of being noticed.
+        What it costs is that the two lists stop agreeing about how many skills an agent has,
+        and the record keeps claiming an agent installed something that no longer exists.
+
+        The names are rebuilt from what is actually left rather than filtered in place, so
+        the two lists cannot drift apart even a little: one is derived from the other, here,
+        in the same write.
+        """
+        doomed = str(gone.id)
+        for marius in await uow.mariuses.list_by_workspace(workspace_id):
+            if doomed not in marius.skill_ids and gone.slug not in marius.skill_installs:
+                continue
+            marius.skill_ids = [s for s in marius.skill_ids if s != doomed]
+            kept = await uow.skills.list_by_ids([UUID(s) for s in marius.skill_ids])
+            by_id = {str(sk.id): sk.name for sk in kept}
+            marius.skills = [by_id[s] for s in marius.skill_ids if s in by_id]
+            marius.skill_installs = {
+                slug: state
+                for slug, state in marius.skill_installs.items()
+                if slug != gone.slug
+            }
+            await uow.mariuses.update(marius)
+
+        for project in await uow.projects.list_by_workspace(workspace_id):
+            for role in await uow.roles.list_by_project(project.id):
+                if doomed not in role.skill_ids:
+                    continue
+                role.skill_ids = [s for s in role.skill_ids if s != doomed]
+                await uow.roles.update(role)
 
     # --------------------------------------------------------------------- queries
     async def list_skills(self, workspace_id: UUID) -> Sequence[Skill]:
@@ -253,6 +293,8 @@ class SkillService:
             if skill.source == "builtin":
                 raise BadRequest("builtin_skill_undeletable")
             await uow.skills.remove(skill_id)
+            if skill.workspace_id is not None:
+                await self._forget_everywhere(uow, skill.workspace_id, skill)
             await uow.commit()
 
     async def resolve(self, skill_ids: list[str]) -> Sequence[Skill]:
