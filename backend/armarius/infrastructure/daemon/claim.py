@@ -38,6 +38,7 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from armarius.domain.entities.project import ProjectStatus
@@ -111,6 +112,10 @@ class DaemonClaimService:
         the machine finds this the next time it asks, and the ask is the only way a run
         starts (FR-053). Called twice for the same run, the second call changes nothing —
         a re-offer of work already taken would hand the same run out twice.
+
+        The read cannot rule out a second call arriving between it and the write, so the
+        primary key is what actually settles it: whichever caller lands first owns the row,
+        and the other is told so by the database and returns just as quietly.
         """
         async with self._sessions()() as session:
             existing = await session.get(RunClaimModel, run_id)
@@ -123,7 +128,10 @@ class DaemonClaimService:
                     workplace_id=workplace_id,
                 )
             )
-            await session.commit()
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
 
     # ── taking it off ────────────────────────────────────────────────────────────
 

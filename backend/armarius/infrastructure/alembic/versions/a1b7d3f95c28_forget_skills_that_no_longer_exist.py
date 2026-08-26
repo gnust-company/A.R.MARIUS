@@ -66,23 +66,30 @@ def upgrade() -> None:
     bind = op.get_bind()
 
     skills = {
-        str(row.id): (str(row.name), str(row.slug))
-        for row in bind.execute(sa.text("SELECT id, name, slug FROM skills"))
+        str(row.id): str(row.name)
+        for row in bind.execute(sa.text("SELECT id, name FROM skills"))
     }
-    live_slugs = {slug for _, slug in skills.values()}
+    # A slug is unique inside a workspace, not across the install: two workspaces may each
+    # hold a skill called "test", and they are different skills. So the live slugs have to be
+    # counted per workspace and matched against an agent's own workspace — a single global
+    # set would let a slug still alive next door keep a dead entry here.
+    live_slugs: dict[str, set[str]] = {}
+    for row in bind.execute(sa.text("SELECT workspace_id, slug FROM skills")):
+        live_slugs.setdefault(str(row.workspace_id), set()).add(str(row.slug))
 
     for row in bind.execute(
-        sa.text("SELECT id, skill_ids, skills, skill_installs FROM mariuses")
+        sa.text("SELECT id, workspace_id, skill_ids, skills, skill_installs FROM mariuses")
     ):
         linked = _as_list(row.skill_ids)
         kept = [s for s in linked if s in skills]
         # The names are rebuilt from the ids that survived rather than filtered alongside
         # them. Filtering both would keep whatever disagreement was already there; deriving
         # one from the other cannot.
-        names = [skills[s][0] for s in kept]
+        names = [skills[s] for s in kept]
+        mine = live_slugs.get(str(row.workspace_id), set())
         installs = _as_dict(row.skill_installs)
         pruned_installs = {
-            slug: state for slug, state in installs.items() if slug in live_slugs
+            slug: state for slug, state in installs.items() if slug in mine
         }
         if (
             kept == linked
