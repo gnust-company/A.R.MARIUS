@@ -203,6 +203,8 @@ LIVE = uuid.uuid4()
 DEAD = uuid.uuid4()
 AGENT = uuid.uuid4()
 ROLE = uuid.uuid4()
+NEIGHBOUR_SKILL = uuid.uuid4()
+NEIGHBOUR_AGENT = uuid.uuid4()
 
 
 def _seed(db_file: Path) -> None:
@@ -266,6 +268,60 @@ def _seed(db_file: Path) -> None:
                     "(:i, :p, 'backend', 'Backend', 1, 0, 'Lo máy chủ.', :ids)"
                 ),
                 {"i": str(ROLE), "p": str(project), "ids": json.dumps([str(DEAD)])},
+            )
+    finally:
+        engine.dispose()
+
+
+def _seed_neighbour(db_file: Path) -> None:
+    """Một workspace thứ hai, có một kỹ năng **còn sống** trùng slug với cái đã chết ở kia.
+
+    Slug chỉ duy nhất trong một workspace. Hai nơi cùng đặt tên "armarius-mcp" là hai kỹ
+    năng khác nhau, và cái còn sống ở đây không được phép giữ cho cái đã chết ở bên kia
+    khỏi bị dọn.
+    """
+    engine = create_engine(f"sqlite:///{db_file}")
+    workspace, user = uuid.uuid4(), uuid.uuid4()
+    try:
+        with engine.begin() as cx:
+            cx.execute(
+                text(
+                    "INSERT INTO users (id, email, username, full_name, "
+                    "hashed_password, role, is_active, is_verified) "
+                    "VALUES (:i, 'next@example.com', 'next', 'Next', 'x', "
+                    "'patron', 1, 1)"
+                ),
+                {"i": str(user)},
+            )
+            cx.execute(
+                text(
+                    "INSERT INTO workspaces (id, name, slug, owner_user_id) "
+                    "VALUES (:i, 'WS2', 'ws2', :u)"
+                ),
+                {"i": str(workspace), "u": str(user)},
+            )
+            cx.execute(
+                text(
+                    "INSERT INTO skills (id, workspace_id, slug, name, description, "
+                    "source, source_url, files) VALUES "
+                    "(:i, :w, 'armarius-mcp', 'Armarius MCP', '', 'manual', '', '{}')"
+                ),
+                {"i": str(NEIGHBOUR_SKILL), "w": str(workspace)},
+            )
+            cx.execute(
+                text(
+                    "INSERT INTO mariuses (id, workspace_id, name, role, skills, "
+                    "skill_ids, skill_installs, adapter_type, adapter_config, liveness) "
+                    "VALUES (:i, :w, 'Hàng xóm', '', :names, :ids, :installs, 'echo', "
+                    "'{}', 'offline')"
+                ),
+                {
+                    "i": str(NEIGHBOUR_AGENT),
+                    "w": str(workspace),
+                    "names": json.dumps(["Armarius MCP"]),
+                    "ids": json.dumps([str(NEIGHBOUR_SKILL)]),
+                    "installs": json.dumps({"armarius-mcp": "installed"}),
+                },
             )
     finally:
         engine.dispose()
@@ -347,3 +403,42 @@ def test_the_upgrade_leaves_a_workspace_that_was_already_clean_alone(
     assert json.loads(agent[1]) == ["Armarius HTTP API"]
     assert json.loads(agent[2]) == {"armarius-http": "installed"}
     assert json.loads(role[0]) == []
+
+
+def test_a_live_slug_next_door_does_not_save_a_dead_one_here(tmp_path: Path) -> None:
+    """Sổ đã-cài ghi bằng slug, mà slug chỉ duy nhất trong một workspace.
+
+    Gộp slug của cả hệ thống thành một rổ rồi lấy đó mà lọc là đọc nhầm phạm vi: một kỹ
+    năng còn sống ở workspace bên cạnh sẽ giữ nguyên cái mục mồ côi ở đây — đúng thứ bản
+    di trú này sinh ra để dọn. Nên phải soi từng workspace, và soi bằng workspace của
+    chính agent đó.
+    """
+    db_file = tmp_path / "same-slug-two-workspaces.db"
+    _alembic(db_file, BEFORE)
+    _seed(db_file)
+    _seed_neighbour(db_file)
+
+    _alembic(db_file, "head")
+
+    agent, _ = _rows(db_file)
+    assert json.loads(agent[2]) == {"armarius-http": "installed"}, (
+        "mục mồ côi vẫn còn — một slug trùng tên ở workspace khác đã che nó lại"
+    )
+
+    engine = create_engine(f"sqlite:///{db_file}")
+    try:
+        with engine.begin() as cx:
+            neighbour = cx.execute(
+                text(
+                    "SELECT skill_ids, skills, skill_installs FROM mariuses "
+                    "WHERE id = :i"
+                ),
+                {"i": str(NEIGHBOUR_AGENT)},
+            ).one()
+    finally:
+        engine.dispose()
+    assert json.loads(neighbour[0]) == [str(NEIGHBOUR_SKILL)]
+    assert json.loads(neighbour[1]) == ["Armarius MCP"]
+    assert json.loads(neighbour[2]) == {"armarius-mcp": "installed"}, (
+        "kỹ năng còn sống của workspace bên cạnh bị dọn nhầm"
+    )

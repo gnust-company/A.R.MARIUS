@@ -231,3 +231,52 @@ async def test_the_ceiling_holds_even_when_every_ask_arrives_together(
 
     granted = [g.run_id for answer in answers for g in answer]
     assert len(granted) <= 2, f"trần là 2 mà máy cầm {len(granted)}"
+
+
+async def test_offering_the_same_run_twice_at_once_leaves_one_row(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    """Đặt việc lên kệ hai lần cùng lúc chỉ được ra một dòng, và không được nổ.
+
+    Chỗ đặt việc đọc trước rồi mới ghi, mà giữa hai bước ấy có khe. Khoá chính là thứ
+    thật sự phân xử: ai tới trước giữ dòng, người tới sau được cơ sở dữ liệu nói cho biết
+    và lui ra lặng lẽ — chứ không phải ném lỗi lên đường gửi việc.
+    """
+    machine, workplace_id, _ = await _one_machine(sessions, waiting=0, ceiling=4)
+    service = DaemonClaimService(sessions)
+    run_id = uuid4()
+    async with sessions() as session:
+        session.add(
+            RunModel(
+                id=run_id,
+                marius_id=uuid4(),
+                adapter_type="daemon",
+                status=RunStatus.QUEUED.value,
+                created_at=utcnow(),
+            )
+        )
+        await session.commit()
+
+    await asyncio.gather(
+        *[
+            service.offer(
+                run_id=run_id,
+                workspace_id=machine.workspace_id,
+                workplace_id=workplace_id,
+            )
+            for _ in range(4)
+        ]
+    )
+
+    async with sessions() as session:
+        rows = await session.scalar(
+            select(func.count())
+            .select_from(RunClaimModel)
+            .where(RunClaimModel.run_id == run_id)
+        )
+    assert rows == 1, f"một lượt chạy mà có {rows} dòng trên kệ"
+
+    granted = await service.claim(machine, workplace_ids=[workplace_id], free_slots=4)
+    assert [g.run_id for g in granted] == [run_id], (
+        "đặt trùng làm việc biến mất khỏi kệ hoặc được phát ra hai lần"
+    )

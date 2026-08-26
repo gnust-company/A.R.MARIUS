@@ -1030,7 +1030,8 @@ soi tệp kỹ năng. Ba lượt rà, ba đường quét, và tệp ấy lọt q
 ra**, không phải đi từ danh sách chỗ đang nhìn vào. `test_the_http_skill_names_real_routes.py` đọc
 bảng route thật của app rồi soi hai chiều, nên nó bắt cả cửa bị gỡ lẫn cửa thêm mới mà không ai dạy.
 
-**Còn hở, đã biết, chưa làm**: `backend/static/skills/armarius-mcp/SKILL.md` mắc đúng bệnh — nó dạy
-`enroll`, `enrollment_code` và `claim_task`, ba thứ đã gỡ ở #97 và T061. Bộ công cụ MCP thì đúng; chỉ
-tờ hướng dẫn sai. Để riêng vì bộ kiểm của `mcp/` chạy tách khỏi máy chủ, nên phép quét tương ứng phải
-dựng ở đó.
+**Lỗ hổng ấy đã đóng theo một đường khác (2026-08-26, T125/T128)**: tờ hướng dẫn
+`backend/static/skills/armarius-mcp/SKILL.md` dạy `enroll`, `enrollment_code` và `claim_task` — ba thứ
+đã gỡ ở #97 và T061 — nhưng thay vì vá tờ giấy, cả đường MCP bị bỏ: daemon tại máy người dùng
+(spec 002) thay chỗ nó, nên gói `mcp/`, kỹ năng gieo sẵn `armarius-mcp` và tờ hướng dẫn ấy đều đã bị
+xoá. Không còn tệp nào để quét.
