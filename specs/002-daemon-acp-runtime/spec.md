@@ -419,6 +419,13 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   từng CLI vốn có, và PHẢI mang **token của lượt chạy** chứ không phải token của daemon (FR-014c). Cùng luật
   với kỹ năng ở FR-011b: **KHÔNG ĐƯỢC ghi vào cấu hình dùng chung của CLI trên máy**, vì cấu hình ấy thuộc
   về người dùng và dùng chung cho mọi agent trên chỗ làm đó.
+- **FR-013b**: Khi agent dừng giữa lượt để **xin phép** làm một việc, daemon **KHÔNG ĐƯỢC** cho phép thay
+  người chủ. Nó cầm thông tin xác thực của một cái máy, không cầm quyền phán của người chủ, nên câu trả lời
+  duy nhất nó được phép đưa là **từ chối**, kèm một mã ghi lại đúng thứ agent muốn làm. Lý do viết thành
+  điều khoản: lượt chạy diễn ra khi không ai ngồi đó, nên nói "được" hộ là gắn một lời chấp thuận không ai
+  đưa vào mọi lượt chạy về sau; còn im lặng thì agent treo tới lúc ngưỡng im lặng cắt, và bản ghi không nói
+  được vì sao. Một đường xin phép thật — hỏi ai, hỏi ở đâu, đợi bao lâu — là việc chưa thiết kế; điều khoản
+  này là luật cho tới khi có nó (bổ sung 2026-08-26, phát hiện lúc dựng họ ACP ở T066).
 - **FR-014**: Thông tin xác thực cấp cho một lượt chạy PHẢI **hết hiệu lực khi lượt chạy kết thúc**, không
   dùng lại được cho lượt khác.
 - **FR-014a**: Hệ thống PHẢI có **hai loại token tách biệt**, kế thừa nguyên cách Multica làm (chốt
