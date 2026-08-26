@@ -21,7 +21,7 @@ func buildSpec(t *testing.T, cli string) Spec {
 }
 
 func TestAHomeIsBuiltWhereItWasAskedFor(t *testing.T) {
-	spec := buildSpec(t, "claude")
+	spec := buildSpec(t, "claude_code")
 	home, err := Build(spec)
 	if err != nil {
 		t.Fatalf("Build returned an error: %v", err)
@@ -37,7 +37,7 @@ func TestAHomeIsBuiltWhereItWasAskedFor(t *testing.T) {
 // What outlives the run is linked out, never copied: a copy of a session database absorbs the
 // run's writes into a file the next run throws away.
 func TestWhatOutlivesTheRunIsALinkNotACopy(t *testing.T) {
-	spec := buildSpec(t, "claude")
+	spec := buildSpec(t, "claude_code")
 	home, err := Build(spec)
 	if err != nil {
 		t.Fatalf("Build returned an error: %v", err)
@@ -56,7 +56,7 @@ func TestWhatOutlivesTheRunIsALinkNotACopy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not read the link: %v", err)
 	}
-	want, err := StorePath(spec.StateRoot, "claude", PerTask, spec.AgentID, spec.TaskID)
+	want, err := StorePath(spec.StateRoot, "claude_code", PerTask, spec.AgentID, spec.TaskID)
 	if err != nil {
 		t.Fatalf("StorePath returned an error: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestOperatorFilesThatExistAreLinkedIn(t *testing.T) {
 
 // A link that cannot be made is an error. It must never become a copy behind the operator's back.
 func TestALinkThatCannotBeMadeIsAnErrorNotAQuietCopy(t *testing.T) {
-	spec := buildSpec(t, "claude")
+	spec := buildSpec(t, "claude_code")
 	blocked := filepath.Join(spec.Home, ".armarius", "sessions")
 	if err := os.MkdirAll(filepath.Dir(blocked), 0o700); err != nil {
 		t.Fatal(err)
@@ -204,7 +204,7 @@ func TestAStoreNeedsSomethingToBeKeyedBy(t *testing.T) {
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, err := StorePath("/state", "claude", c.lt, c.agentID, c.taskID); err == nil {
+			if _, err := StorePath("/state", "claude_code", c.lt, c.agentID, c.taskID); err == nil {
 				t.Fatalf("%s was given a store path", name)
 			}
 		})

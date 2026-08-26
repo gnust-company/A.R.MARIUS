@@ -188,6 +188,17 @@ class ClaimIn(BaseModel):
     max: int = Field(default=1, ge=0, le=1_000)
 
 
+class SkillOut(BaseModel):
+    """One skill, whole: the directory to make and everything to put in it (FR-011b).
+
+    Sent with the work rather than fetched afterwards, and sent as contents rather than as
+    links, so the agent is equipped before it reads its first line.
+    """
+
+    name: str
+    files: dict[str, str]
+
+
 class GrantedRunOut(BaseModel):
     run_id: UUID
     task_id: UUID | None
@@ -196,6 +207,11 @@ class GrantedRunOut(BaseModel):
     # is kept, and it dies with the run (FR-014, FR-014a).
     run_token: str
     claim_expires_at: datetime
+    # The message the agent reads, assembled on this side and in English (FR-011a,
+    # Constitution VII). The machine writes it into the file its CLI already reads; it does
+    # not compose any of it, and it does not send it back.
+    prompt: str = ""
+    skills: list[SkillOut] = Field(default_factory=list)
 
 
 class ClaimOut(BaseModel):
@@ -340,6 +356,8 @@ async def claim_runs(
                 workplace_id=g.workplace_id,
                 run_token=g.run_token,
                 claim_expires_at=g.claim_expires_at,
+                prompt=g.prompt,
+                skills=[SkillOut(name=b.name, files=b.files) for b in g.skills],
             )
             for g in granted
         ]

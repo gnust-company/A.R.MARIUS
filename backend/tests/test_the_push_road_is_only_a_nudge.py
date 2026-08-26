@@ -29,10 +29,12 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from armarius.application.ports.adapter import ExecContext
+from armarius.domain.entities.project import ProjectStatus
 from armarius.domain.entities.run import RunStatus
+from armarius.domain.entities.task import TaskStatus
 from armarius.infrastructure.daemon.models import MachineModel
 from armarius.infrastructure.database.engine import get_sessionmaker
-from armarius.infrastructure.database.models import RunModel
+from armarius.infrastructure.database.models import ProjectModel, RunModel, TaskModel
 from armarius.main import app
 from armarius.shared.clock import utcnow
 from tests.support.agents import invite_agent
@@ -145,13 +147,40 @@ async def _listening(c: AsyncClient, box: LinkedMachine) -> AsyncIterator[Road]:
 
 
 async def _offer(box: LinkedMachine, *, agent_id: str) -> UUID:
-    """Put one run on the shelf the way the system does — through the adapter (FR-053)."""
+    """Put one run on the shelf the way the system does — through the adapter (FR-053).
+
+    With a real task behind it, because the door now hands the agent its message as well as
+    the work, and it will not hand over a run it has nothing to say about (FR-011).
+    """
     run_id = uuid4()
+    project_id, task_id = uuid4(), uuid4()
     async with get_sessionmaker()() as session:
+        session.add(
+            ProjectModel(
+                id=project_id,
+                workspace_id=UUID(box.workspace_id),
+                name="Apollo",
+                slug=f"apollo-{project_id.hex[:6]}",
+                key=project_id.hex[:6].upper(),
+                status=ProjectStatus.OPERATING.value,
+                created_at=utcnow(),
+            )
+        )
+        session.add(
+            TaskModel(
+                id=task_id,
+                project_id=project_id,
+                title="Ship the thing",
+                status=TaskStatus.TODO.value,
+                assigned_marius_id=UUID(agent_id),
+                created_at=utcnow(),
+            )
+        )
         session.add(
             RunModel(
                 id=run_id,
                 marius_id=UUID(agent_id),
+                task_id=task_id,
                 adapter_type="daemon",
                 status=RunStatus.QUEUED.value,
                 created_at=utcnow(),
@@ -164,6 +193,7 @@ async def _offer(box: LinkedMachine, *, agent_id: str) -> UUID:
             prompt="",
             adapter_config={},
             marius_id=UUID(agent_id),
+            task_id=task_id,
             run_id=run_id,
         )
     )

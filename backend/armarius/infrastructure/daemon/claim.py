@@ -24,6 +24,15 @@ asking machine's own call and is re-offered to it in the same breath, and the sw
 only ever concerns a machine that has gone quiet — which is why the hold ran out. Nudging a
 machine that is not listening buys nothing; when it comes back, it asks.
 
+**Why the message is written here.** A run leaves the shelf dressed: the message the agent
+will read is assembled at this moment and recorded at this moment, and the machine is handed
+a copy rather than asked to send one back (FR-011a, FR-012a). Recording it anywhere later
+means the one case where the record matters most — a machine that took work and was never
+heard from again — is the one case with nothing written down. A run that cannot be dressed
+is put straight back on the shelf instead of being handed over half-ready: a machine holding
+a run with no message would sit on the slot until its grip ran out, and then hand back
+exactly what it was given.
+
 **Why the token is minted after.** FR-054 is about the swap, and only the swap. Once
 `machine_id` is ours no other caller can touch the row, so writing the run's token into it is
 an ordinary write to something we already own — and it has to be a per-row write, because one
@@ -40,14 +49,15 @@ import contextlib
 import hashlib
 import secrets
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from armarius.application.ports.work_packet import SkillBundle, WorkPacket
 from armarius.domain.entities.project import ProjectStatus
 from armarius.domain.entities.run import RunStatus
 from armarius.infrastructure.daemon.enrollment import MachineIdentity
@@ -57,7 +67,7 @@ from armarius.infrastructure.daemon.models import (
     WorkplaceModel,
 )
 from armarius.infrastructure.database.engine import get_sessionmaker
-from armarius.infrastructure.database.models import ProjectModel, RunModel
+from armarius.infrastructure.database.models import ProjectModel, RunEventModel, RunModel
 from armarius.shared.clock import as_utc, utcnow
 from armarius.shared.config import settings
 from armarius.shared.errors import NotFound
@@ -66,6 +76,12 @@ from armarius.shared.logging import get_logger
 logger = get_logger(__name__)
 
 _TOKEN_PREFIX = "armr_run_"
+
+# The durable record of what an agent was told (FR-012a, FR-042). Its own event type rather
+# than a field on the lifecycle event beside it: this is the one thing in a run's log that
+# was written before the agent existed, and folding it into an event about the run starting
+# would make it look like something the run produced.
+PROMPT_EVENT = "run.prompt"
 
 # The run statuses that actually occupy a slot on a machine.
 _HOLDING_STATUSES = (RunStatus.QUEUED.value, RunStatus.RUNNING.value)
@@ -85,6 +101,14 @@ class GrantedRun:
     workplace_id: UUID
     run_token: str
     claim_expires_at: datetime
+    # What the agent is to read, in English, assembled on this side (FR-011a). Empty only
+    # where nothing composes packets at all, which is a service wired for the shelf and
+    # nothing else; whoever receives an empty one must refuse the run rather than start an
+    # agent in front of a blank page.
+    prompt: str = ""
+    # The agent's own skills, whole, so nothing has to be fetched before it can begin
+    # (FR-011b).
+    skills: tuple[SkillBundle, ...] = ()
 
 
 class DaemonClaimService:
@@ -97,6 +121,7 @@ class DaemonClaimService:
         clock: Callable[[], datetime] = utcnow,
         on_release: Callable[[UUID], Awaitable[None]] | None = None,
         on_offer: Callable[[UUID, UUID], Awaitable[None]] | None = None,
+        compose: Callable[[UUID], Awaitable[WorkPacket | None]] | None = None,
     ) -> None:
         self._sessionmaker = sessionmaker
         self._clock = clock
@@ -109,6 +134,10 @@ class DaemonClaimService:
         # sent. A callback for the same reason as above — and because a nudge that fails to
         # go out must not be able to undo work that has already been shelved.
         self._on_offer = on_offer
+        # Asked what one run's agent should be given. A callback for the same reason as the
+        # two above: assembling that message reads a project's brief and an agent's own
+        # instructions, and nothing down here may reach up for those (Constitution III).
+        self._compose = compose
         self._task: asyncio.Task[None] | None = None
 
     def _sessions(self) -> async_sessionmaker[AsyncSession]:
@@ -212,7 +241,12 @@ class DaemonClaimService:
             await session.commit()
 
         await self._announce(released)
-        return granted
+        # Outside the swap on purpose. Dressing a run reads half a dozen other tables, and
+        # doing it under the machine's lock would hold every other ask from that machine for
+        # the length of the read. Out here the swap has already committed, so the worst a
+        # slow or failing dress can do is give a run back — never hand the same one out
+        # twice.
+        return await self._dress(granted)
 
     async def _workplaces_of(
         self,
@@ -384,6 +418,106 @@ class DaemonClaimService:
                 )
             )
         return granted
+
+    # ── dressing it ──────────────────────────────────────────────────────────────
+
+    async def _dress(self, granted: Sequence[GrantedRun]) -> list[GrantedRun]:
+        """Give each run its message and its skills, and write the message down.
+
+        Composing and recording are one step with one outcome, because a run is only
+        properly handed over when both have happened: a machine holding a message nobody
+        recorded leaves the log unable to answer *what was this agent told*, which is the
+        first question asked of a run that went wrong (FR-042).
+        """
+        if self._compose is None:
+            return list(granted)
+        dressed: list[GrantedRun] = []
+        for run in granted:
+            packet = await self._packet_for(run.run_id)
+            if packet is None:
+                await self._give_back(run.run_id)
+                continue
+            dressed.append(
+                replace(run, prompt=packet.prompt, skills=tuple(packet.skills))
+            )
+        return dressed
+
+    async def _packet_for(self, run_id: UUID) -> WorkPacket | None:
+        """One run's packet, written down on the way past. None if either half failed.
+
+        Swallowing the failure and answering None rather than raising: from here there is
+        exactly one thing to do about a run that cannot be dressed, whatever went wrong
+        with it, and that is to put it back. Letting the exception out would take the whole
+        ask down with it — including the other runs in the same answer, which are fine.
+        """
+        if self._compose is None:
+            return None
+        try:
+            packet = await self._compose(run_id)
+        except Exception:
+            logger.exception("could not make up the packet for run %s", run_id)
+            return None
+        if packet is None:
+            logger.warning("there is nothing to say to an agent about run %s", run_id)
+            return None
+        try:
+            await self._record(run_id, packet.prompt)
+        except Exception:
+            logger.exception("could not write down the message sent for run %s", run_id)
+            return None
+        return packet
+
+    async def _record(self, run_id: UUID, prompt: str) -> None:
+        """Keep the message, whole, as the run's first event (FR-012a, FR-042).
+
+        Written from here rather than sent back by whoever runs the agent: this side built
+        the text, so it already has it, and asking for it back would make the record depend
+        on a machine still being reachable at exactly the moment it may not be.
+
+        The size is recorded beside it even though nothing is cut yet. When the split into
+        a preview and a full copy arrives (FR-049), the runs written before it should still
+        be able to say how big they were.
+        """
+        async with self._sessions()() as session:
+            highest = await session.scalar(
+                select(func.max(RunEventModel.seq)).where(RunEventModel.run_id == run_id)
+            )
+            session.add(
+                RunEventModel(
+                    id=uuid4(),
+                    run_id=run_id,
+                    seq=(highest or 0) + 1,
+                    type=PROMPT_EVENT,
+                    payload={"prompt": prompt},
+                    original_byte_size=len(prompt.encode("utf-8")),
+                    created_at=self._clock(),
+                )
+            )
+            await session.commit()
+
+    async def _give_back(self, run_id: UUID) -> None:
+        """Put one run back exactly as it was before this ask found it.
+
+        The token goes with it, for the same reason expiry takes it: the machine was told a
+        string, and the string must stop opening anything the moment the run stops being
+        that machine's. `accepted_at` goes too — it answers *is a runtime holding this right
+        now*, and after this nobody is.
+        """
+        async with self._sessions()() as session:
+            await session.execute(
+                update(RunClaimModel)
+                .where(RunClaimModel.run_id == run_id)
+                .values(machine_id=None, claim_expires_at=None, run_token_hash=None)
+                .execution_options(synchronize_session=False)
+            )
+            await session.execute(
+                update(RunModel)
+                .where(RunModel.id == run_id, RunModel.status == RunStatus.QUEUED.value)
+                .values(accepted_at=None)
+                .execution_options(synchronize_session=False)
+            )
+            await session.commit()
+        await self._announce([run_id])
 
     # ── saying it started ────────────────────────────────────────────────────────
 

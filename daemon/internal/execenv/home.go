@@ -73,7 +73,11 @@ var layouts = map[string][]Entry{
 	// Claude Code reads its brief from CLAUDE.md and its skills from .claude/skills, both inside
 	// the working directory rather than the home. What it needs from home is the operator's own
 	// credentials.
-	"claude": {
+	//
+	// Keyed by the name the server uses in `workplaces.cli_kind`, which is the name the daemon is
+	// told when it is handed work. A shorter name here would mean a lookup that fails at the one
+	// moment it matters — a run arriving for a CLI whose home was declared under another spelling.
+	"claude_code": {
 		{Path: ".claude.json", Lifetime: Operator, Source: ".claude.json"},
 		{Path: ".claude", Lifetime: Operator, Source: ".claude"},
 		{Path: ".armarius/sessions", Lifetime: PerTask},

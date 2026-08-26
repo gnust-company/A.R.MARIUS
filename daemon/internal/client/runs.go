@@ -31,6 +31,25 @@ type GrantedRun struct {
 	// ClaimExpiresAt is when this machine loses the run if it has not reported it started.
 	// The window covers setting up — a working directory, the skills, a cold CLI (FR-056a).
 	ClaimExpiresAt time.Time `json:"claim_expires_at"`
+	// Prompt is what the agent reads, assembled on the server and in English (FR-011a,
+	// Constitution VII). The daemon composes none of it and sends none of it back: it writes
+	// this string into the file its CLI already opens, and the server has already recorded
+	// the copy it built (FR-012a).
+	Prompt string `json:"prompt"`
+	// Skills are this agent's own skills, whole. They come with the work rather than being
+	// fetched afterwards, so that by the time the agent reads its first line everything it
+	// was granted is already on disk (FR-011b).
+	Skills []GrantedSkill `json:"skills"`
+}
+
+// GrantedSkill is one skill as it arrives: a directory name and everything that goes in it.
+//
+// Files maps a path relative to that directory to its contents. Relative on purpose — the
+// daemon decides which directory this CLI reads skills from, and a path that could climb out
+// of it would be a path that could write anywhere on the machine.
+type GrantedSkill struct {
+	Name  string            `json:"name"`
+	Files map[string]string `json:"files"`
 }
 
 // ClaimResponse is what came back. An empty list is the ordinary answer.
