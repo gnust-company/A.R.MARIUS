@@ -50,11 +50,8 @@ async def test_personal_workspace_has_builtin_skill():
     assert skills.status_code == 200
     body = skills.json()
     assert any(s["slug"] == "armarius-http" for s in body)
-    assert any(s["slug"] == "armarius-mcp" for s in body)
     builtin = next(s for s in body if s["slug"] == "armarius-http")
     assert builtin["source"] == "builtin"
-    mcp_builtin = next(s for s in body if s["slug"] == "armarius-mcp")
-    assert mcp_builtin["source"] == "builtin"
 
 
 async def test_register_without_username_derives_handle():
@@ -178,9 +175,8 @@ async def test_custom_skill_is_workspace_scoped():
         hb = {"Authorization": f"Bearer {token_b}"}
         b_skills = (await c.get(f"/v1/workspaces/{ws_b}/skills", headers=hb)).json()
     assert not any(s["slug"] == "secret-sauce" for s in b_skills)
-    # ...but B still has both built-ins
+    # ...but B still has the built-in
     assert any(s["slug"] == "armarius-http" for s in b_skills)
-    assert any(s["slug"] == "armarius-mcp" for s in b_skills)
 
 
 async def test_agent_can_fetch_linked_skill_bundle():
@@ -245,18 +241,25 @@ async def test_builtin_content_refreshes_unless_owner_edited():
             stale = await uow.skills.get_by_slug(UUID(ws_id), "armarius-http")
             stale.files = {"SKILL.md": "old shipped copy"}
             await uow.skills.update(stale)
-            # ...and one the owner edited by hand (update_files stamps updated_at).
-            edited = await uow.skills.get_by_slug(UUID(ws_id), "armarius-mcp")
+            await uow.commit()
+
+        skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
+        refreshed = next(s for s in skills if s["slug"] == "armarius-http")
+        assert refreshed["files"]["SKILL.md"] != "old shipped copy"
+
+        # Now the owner edits the same skill by hand. `update_files` stamps `updated_at`,
+        # and that stamp is the whole difference: a shipped copy never has one, so it is
+        # what tells "we changed this upstream" apart from "the owner changed this here".
+        async with make_uow() as uow:
+            edited = await uow.skills.get_by_slug(UUID(ws_id), "armarius-http")
             edited.files = {"SKILL.md": "owner's custom copy"}
             edited.updated_at = utcnow()
             await uow.skills.update(edited)
             await uow.commit()
 
         skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
-    http_skill = next(s for s in skills if s["slug"] == "armarius-http")
-    mcp_skill = next(s for s in skills if s["slug"] == "armarius-mcp")
-    assert http_skill["files"]["SKILL.md"] != "old shipped copy"  # refreshed
-    assert mcp_skill["files"]["SKILL.md"] == "owner's custom copy"  # preserved
+    kept = next(s for s in skills if s["slug"] == "armarius-http")
+    assert kept["files"]["SKILL.md"] == "owner's custom copy"  # preserved
 
 
 async def test_seed_prunes_delisted_builtin_skills():
@@ -291,7 +294,7 @@ async def test_seed_prunes_delisted_builtin_skills():
         after = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
     slugs = {s["slug"] for s in after}
     assert "armarius-onboarder" not in slugs, slugs  # de-listed builtin pruned
-    assert "armarius-http" in slugs and "armarius-mcp" in slugs  # real builtins survive
+    assert "armarius-http" in slugs  # a real builtin survives
     assert any(s["name"] == "Keeper" for s in after)  # manual skill untouched
 
 
@@ -303,7 +306,17 @@ async def test_linking_more_skills_merges_them():
         h = {"Authorization": f"Bearer {token}"}
         skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
         http_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
-        mcp_id = next(s["id"] for s in skills if s["slug"] == "armarius-mcp")
+        # A second skill to link afterwards. The owner's own rather than a second builtin:
+        # this test is about merging links, and tying it to how many skills happen to ship
+        # would make it fail the next time that list changes.
+        second = await c.post(
+            f"/v1/workspaces/{ws_id}/skills/manual",
+            headers=h,
+            json={"name": "Bảng màu", "description": "owner's own"},
+        )
+        assert second.status_code == 201, second.text
+        second_id = second.json()["id"]
+        second_slug = second.json()["slug"]
 
         # Invite with one skill already linked.
         data = await invite_agent(c, ws_id, h, name="Marin", skill_ids=[http_id])
@@ -313,7 +326,7 @@ async def test_linking_more_skills_merges_them():
         r = await c.post(
             f"/v1/workspaces/{ws_id}/mariuses/{mid}/install-skills",
             headers=h,
-            json={"skill_ids": [mcp_id]},
+            json={"skill_ids": [second_id]},
         )
         # Marius.skills (display NAMES) must mirror skill_ids so the UI pills reflect the
         # link — a regression here means the pill never appears post-invite (#74).
@@ -321,10 +334,10 @@ async def test_linking_more_skills_merges_them():
     assert r.status_code == 200, r.text
     out = r.json()
     # The new link is merged in (both skills now linked, order preserved, no dupes).
-    assert out["skill_ids"] == [http_id, mcp_id]
-    assert out["installed"] == ["armarius-mcp"]  # only the newly linked slug
+    assert out["skill_ids"] == [http_id, second_id]
+    assert out["installed"] == [second_slug]  # only the newly linked slug
     marin = next(m for m in listed if m["id"] == mid)
-    assert marin["skills"] == ["Armarius HTTP API", "Armarius MCP"], marin["skills"]
+    assert marin["skills"] == ["Armarius HTTP API", "Bảng màu"], marin["skills"]
 
 
 async def test_relinking_a_skill_the_agent_already_has_does_not_duplicate_it():

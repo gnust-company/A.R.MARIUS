@@ -60,7 +60,7 @@ diện — **công cụ của người kiểm, cài sẵn trên máy**; KHÔNG t
 test vào repo, đúng cách feature 001 đã làm ở T051/T077).
 
 **Không có CI**: repo chưa có `.github/workflows` hay cấu hình CI nào, và không FR nào của đặc tả này yêu
-cầu. Đợt này kiểm tại chỗ: `daemon/make check`, `uv run pytest` ở `backend/` và `mcp/`. Dựng CI là khối
+cầu. Đợt này kiểm tại chỗ: `daemon/make check` và `uv run pytest` ở `backend/`. *(Sửa 2026-08-26: package `mcp/` đã xoá — xem T125.)* Dựng CI là khối
 việc riêng, cần FR riêng.
 
 **Target Platform**: Backend Linux/Docker. Daemon **Linux, macOS, Windows**.
