@@ -31,23 +31,20 @@ from armarius.shared.errors import BadRequest, NotFound
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 BUILTIN_SKILL_FILE = BACKEND_ROOT / "static" / "skills" / "armarius-http" / "SKILL.md"
-BUILTIN_MCP_SKILL_FILE = BACKEND_ROOT / "static" / "skills" / "armarius-mcp" / "SKILL.md"
 
-# The built-in skills seeded into every workspace. `armarius-mcp` is the preferred path
-# (typed MCP tools — the agent never curls); `armarius-http` stays as a curl fallback for
-# runtimes that can't host an MCP server.
+# The built-in skills seeded into every workspace.
+#
+# `armarius-mcp` used to sit above this one and was described as the preferred path. It was
+# removed on 2026-08-26 along with the package it pointed at. Both halves of it had stopped
+# being true: it authenticated with the agent's long-lived token, which FR-014a leaves no
+# room for, and it asked the agent to install a tool server into its own machine-wide
+# configuration, which FR-013a forbids outright. A skill that teaches an agent to do a thing
+# the system will refuse is worse than no skill.
+#
+# The callback toolset itself is not gone as an idea — it comes back per run, injected by the
+# daemon and carrying that run's own token (FR-013, FR-013a, T061). It is simply not
+# something an agent installs for itself any more.
 BUILTIN_SKILLS: list[dict] = [
-    {
-        "slug": "armarius-mcp",
-        "name": "Armarius MCP",
-        "description": (
-            "Work the Armarius workspace through typed MCP tools — enroll, claim tasks, "
-            "comment & @mention, update status, publish artifacts. No curl."
-        ),
-        "source": "builtin",
-        "source_url": "/static/skills/armarius-mcp/SKILL.md",
-        "file": BUILTIN_MCP_SKILL_FILE,
-    },
     {
         "slug": "armarius-http",
         "name": "Armarius HTTP API",

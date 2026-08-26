@@ -203,10 +203,9 @@ cả hai, soi hai thư mục làm việc — không cái nào thấy kỹ năng 
 
 ```bash
 cd backend  && uv run pytest                # 96 tệp hiện có + ~18 tệp mới
-cd backend  && TEST_DATABASE_URL=postgresql+psycopg://armarius:armarius@localhost:5432/armarius \
-               uv run pytest tests/test_run_claim_atomic.py    # BẮT BUỘC trên Postgres thật
+cd backend  && TEST_DATABASE_URL=postgresql+psycopg://armarius:armarius@localhost:5434/armarius_test \
+               uv run pytest tests/test_run_claim_races.py     # BẮT BUỘC trên Postgres thật
 cd daemon   && make check                   # go vet + golangci-lint + go test
-cd mcp      && uv run pytest                # BẮT BUỘC nếu đổi schema plan hoặc backend
 cd frontend && npm run build
 ```
 
