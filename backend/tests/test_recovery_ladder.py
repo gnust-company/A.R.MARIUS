@@ -44,6 +44,7 @@ from armarius.domain.services.escalation import EscalationLevel
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.events.topic_bus import TopicEventBus, patron_topic
+from armarius.shared.config import settings
 from tests.support.agents import make_agent
 from tests.support.projects import force_phase
 
@@ -140,7 +141,11 @@ def _escalator(uow_factory, *, wakes, notifier, bus) -> RecoveryEscalator:
         task_log=TaskLogService(uow_factory),
         control_bus=bus,
         leader_notifier=notifier,
-        push_reasons=PushReasonService(uow_factory, ProjectService(uow_factory, THRESHOLDS)),
+        push_reasons=PushReasonService(
+            uow_factory,
+            ProjectService(uow_factory, THRESHOLDS),
+            accept_grace_seconds=settings.run_claim_hold_seconds,
+        ),
     )
 
 
@@ -567,7 +572,11 @@ def _fallout(uow_factory, *, notifier, bus) -> OfflineFalloutService:
         uow_factory,
         inbox=InboxService(uow_factory, bus),
         task_log=TaskLogService(uow_factory),
-        push_reasons=PushReasonService(uow_factory, ProjectService(uow_factory, THRESHOLDS)),
+        push_reasons=PushReasonService(
+            uow_factory,
+            ProjectService(uow_factory, THRESHOLDS),
+            accept_grace_seconds=settings.run_claim_hold_seconds,
+        ),
         leader_notifier=notifier,
     )
 
@@ -1003,7 +1012,11 @@ async def test_a_resolved_outage_notice_can_be_raised_again(uow_factory) -> None
 def _watchdog(uow_factory, *, ladder, bus, at):
     return StallWatchdog(
         uow_factory,
-        PushReasonService(uow_factory, ProjectService(uow_factory, THRESHOLDS)),
+        PushReasonService(
+            uow_factory,
+            ProjectService(uow_factory, THRESHOLDS),
+            accept_grace_seconds=settings.run_claim_hold_seconds,
+        ),
         task_log=TaskLogService(uow_factory),
         control_bus=bus,
         ladder=ladder,
@@ -1250,7 +1263,9 @@ def _tasks_for(uow_factory, wakes):
         wakes,
         task_logs=TaskLogService(uow_factory),
         push_reasons=PushReasonService(
-            uow_factory, ProjectService(uow_factory, THRESHOLDS)
+            uow_factory,
+            ProjectService(uow_factory, THRESHOLDS),
+            accept_grace_seconds=settings.run_claim_hold_seconds,
         ),
     )
 
@@ -1265,7 +1280,9 @@ def _answering_escalator(uow_factory, *, wakes, bus, tasks):
         control_bus=bus,
         leader_notifier=RecordingNotifier(),
         push_reasons=PushReasonService(
-            uow_factory, ProjectService(uow_factory, THRESHOLDS)
+            uow_factory,
+            ProjectService(uow_factory, THRESHOLDS),
+            accept_grace_seconds=settings.run_claim_hold_seconds,
         ),
         tasks=tasks,
     )

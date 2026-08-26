@@ -149,6 +149,22 @@ class Settings(BaseSettings):
     # token it can renew rather than one it has to re-link.
     daemon_token_renew_within_days: int = 14
 
+    # How long a machine keeps a run it has taken before the run goes back on the
+    # shelf (FR-056a, FR-056c, research §3). One number with two jobs on purpose: it is
+    # the deadline written onto the hold, and it is the life of drive #1 between the
+    # moment a runtime takes the work and the moment the agent produces its first line.
+    # Split in two they would drift, and a hold shorter than the drive would take work
+    # back from a machine that is doing everything right.
+    #
+    # 120 seconds is many times the 2-5 seconds of laying out a working directory,
+    # writing the skills and starting a CLI. Being generous costs nothing: each agent is
+    # bound to one place (FR-007), so expiry is not about handing the work to somebody
+    # else — it is about work ceasing to be *taken* by a machine that has died.
+    run_claim_hold_seconds: int = 120
+    # How often the sweep looks for holds that ran out. Well under the hold above, so a
+    # dead machine's grip is measured in one hold plus a little, not in two.
+    run_claim_reap_interval_seconds: float = 30.0
+
     # Demo seed ("Acme Web Platform" scenario). OFF by default — real users get
     # their own empty workspace on register. Set ARMARIUS_SEED_DEMO=true to repopulate
     # the demo story (e.g. for a fresh showcase instance). The seed registers the demo

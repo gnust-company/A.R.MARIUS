@@ -127,8 +127,8 @@ Mọi thứ dính tới máy sống ở đây, sau hợp đồng adapter. Tầng
 | `workspace_id` | UUID, FK | Điều I |
 | `workplace_id` | UUID, FK → `workplaces` | Chỗ làm được xếp |
 | `machine_id` | UUID, FK → `machines` \| null | **NULL = chưa máy nào nhận.** Đây là cột quyết định ở FR-054 |
-| `claimed_at` | timestamptz \| null | |
-| `claim_expires_at` | timestamptz \| null | Mặc định `claimed_at + 120s` (FR-056a) |
+| `claimed_at` | timestamptz \| null | Lần gần nhất **có gì đó nhận** đầu việc này. **Không xoá lúc thu hồi**: đây là chuyện đã xảy ra, và là bằng chứng duy nhất còn lại để đồng hồ động cơ số 2 đặt lại đúng chỗ (FR-056b) |
+| `claim_expires_at` | timestamptz \| null | Mặc định `claimed_at + 120s` (FR-056a). **Về rỗng khi lượt chạy bắt đầu**: hạn này bấm giờ quãng *chuẩn bị*, agent lên rồi thì ngưỡng im lặng canh tiếp — để nó chạy tiếp là cướp lại lượt chạy khoẻ sau hai phút |
 | `run_token_hash` | text \| null | Hash token của lượt chạy (FR-014a) |
 
 **Chỉ mục**: `(workplace_id) WHERE machine_id IS NULL` — chỉ mục cú xin việc chạy trên, phải hẹp để câu lệnh
@@ -145,15 +145,24 @@ chưa ai nhận (machine_id NULL, runs.accepted_at NULL)
    ├── máy xin và được đưa ──→ đã có máy nhận (machine_id đặt, accepted_at đặt, hạn đặt)
    │                             │
    │                             ├── daemon báo đã chạy ──→ running
+   │                             │     machine_id giữ nguyên, claim_expires_at về NULL
    │                             │
    │                             └── quá claim_expires_at ──→ về lại chưa ai nhận      ← FR-056a
-   │                                     machine_id về NULL, runs.accepted_at về NULL
+   │                                     machine_id, claim_expires_at, run_token_hash về NULL
+   │                                     runs.accepted_at về NULL — claimed_at thì KHÔNG
    │
 running ──→ completed | failed | timed_out | stopped
 ```
 
-**Bất biến**: một lượt chạy **hoặc** `machine_id IS NULL` (đang rảnh) **hoặc** có đúng một máy giữ kèm hạn
-còn hiệu lực. Không bao giờ vừa rảnh vừa có chủ.
+**Bất biến**: một lượt chạy **hoặc** `machine_id IS NULL` (đang rảnh) **hoặc** có đúng một máy giữ. Không
+bao giờ vừa rảnh vừa có chủ. Hạn giữ chỉ có mặt trong quãng chuẩn bị: `machine_id` đặt kèm
+`claim_expires_at` rỗng nghĩa là **đang chạy**, không phải mối giữ hỏng.
+
+**Thu hồi token cùng lúc thu hồi việc** (FR-007d): `run_token_hash` về NULL trong đúng câu lệnh trả việc
+về kệ. Không thì cái máy ngủ dậy muộn vẫn cầm chuỗi mở được đúng đầu việc vừa trao cho lượt giữ mới.
+
+**Chỗ nào tính là chiếm một chỗ trên máy**: hàng có `machine_id` **và** lượt chạy còn ở `queued`/`running`.
+Đếm theo hàng thay vì theo lượt chạy thì một cái máy đầy dần lên vĩnh viễn bằng việc đã xong từ lâu.
 
 ---
 

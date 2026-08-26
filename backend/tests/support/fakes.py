@@ -20,6 +20,7 @@ from armarius.application.ports.adapter import (
     MariusAdapter,
 )
 from armarius.application.ports.liveness_probe import LivenessProbe
+from armarius.application.ports.queue_view import QueuePosition, QueueView
 from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.domain.entities.approval import Approval
 from armarius.domain.entities.auto_approval import AutoApproval
@@ -607,6 +608,21 @@ class _FakeInboxRepo:
         return items
 
 
+class _FakeQueueView(QueueView):
+    """Nothing in this store runs anywhere, so nothing here can fill a slot.
+
+    The empty answer is the right one rather than a stand-in: these fakes exist to exercise
+    rules that must hold whether or not work runs in any particular place. What happens when
+    a place *is* full is a fact about real rows, and it is tested against a real database.
+    """
+
+    def __init__(self, s: _Store) -> None:
+        self._s = s
+
+    async def position_of(self, task_id: UUID) -> QueuePosition:
+        return QueuePosition()
+
+
 class _FakePlacementRepo:
     """Where agents are put to work, in memory.
 
@@ -693,6 +709,7 @@ class FakeUnitOfWork(UnitOfWork):
         self.auto_approvals = _FakeAutoApprovalRepo(s)  # type: ignore[assignment]
         self.mariuses = _FakeMariusRepo(s)  # type: ignore[assignment]
         self.placements = _FakePlacementRepo(s)  # type: ignore[assignment]
+        self.queue = _FakeQueueView(s)  # type: ignore[assignment]
         self.skills = _FakeSkillRepo(s)  # type: ignore[assignment]
         return self
 

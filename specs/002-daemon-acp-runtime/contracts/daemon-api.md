@@ -185,8 +185,21 @@ nào tồn tại một agent chưa có chỗ làm (FR-007, FR-007f).
 ← 200 { "runs": [] }                        ← không có việc; đây là câu trả lời thường gặp nhất
 ```
 
+**Đã dựng tới đâu (2026-08-26, T045–T047)**: `run_id`, `task_id`, `workplace_id`, `run_token`,
+`claim_expires_at`. Bốn trường còn lại của gói việc — `session`, `prompt`, `skills`, `callback_base` —
+**chưa có** và cố ý chưa trả về rỗng: một `prompt` rỗng thì daemon vẫn ghi ra tệp bối cảnh, và một tệp
+bối cảnh rỗng đọc y hệt một tệp bối cảnh đúng. Chúng tới cùng nhóm dựng gói việc (T056–T062) và T039i.
+
 **Bắt buộc ở phía server**: một câu lệnh `atomic compare-and-swap` (xem [research §4](../research.md)).
 Cấm `read-then-write`.
+
+**Trần đồng thời khoá theo từng máy**: trước khi đếm chỗ trống, server giữ độc quyền đúng hàng của cái
+máy đang hỏi. Không có nó thì bốn cú xin cùng lúc đều đọc thấy máy còn rỗng và mỗi cú lấy trọn phần của
+mình — máy trần 2 ôm 8 việc. Khoá theo máy nên hai máy khác nhau không bao giờ chờ nhau.
+
+**Đầu việc của dự án đã đóng không được trao**: bộ lọc nằm trong chính câu lệnh lấy việc, không ở cửa.
+Một cú xin không nói về dự án nào cả — nó là một cái máy hỏi về mọi thứ nó đang chứa — nên chặn cả cú
+xin vì một đầu việc thuộc dự án đã đóng là đóng băng luôn phần việc không liên quan trên cùng máy ấy.
 
 **Bắt buộc ở phía daemon**: đúc `run_token` hỏng thì **trả đầu việc về** — cấm chạy bằng token của daemon
 (FR-014c).
@@ -216,7 +229,17 @@ Daemon báo đã dựng xong môi trường và agent bắt đầu chạy.
 ← 404 {}     ← lượt chạy không còn thuộc máy này (hạn giữ đã hết) — daemon PHẢI dừng và dọn
 ```
 
-`404` ở đây chính là lưới ở FR-059: một máy đã bị thu hồi mà ngủ dậy muộn thì **không ghi được gì**.
+`404` ở đây chính là lưới ở FR-059: một máy đã bị thu hồi mà ngủ dậy muộn thì **không ghi được gì**. Hạn
+giữ đã trôi qua là đủ để trả `404`, **không đợi** vòng quét dọn hàng — nếu đợi thì trong quãng tối đa một
+vòng quét, máy vẫn bật được agent lên trên đầu việc mà vòng quét sắp trả về kệ, và đầu việc ấy đi ra lần
+thứ hai.
+
+Gọi lại lần nữa **không phải lỗi**: gói tin trả lời rơi mất là một trong ba đường sinh ra race ở FR-054b,
+nên máy phải lặp lại được mà không bị đuổi đi dọn một lượt chạy đang khoẻ.
+
+**Lúc này đồng hồ giữ việc dừng lại, còn mối giữ thì không.** FR-056a bấm giờ quãng *chuẩn bị*; agent lên
+rồi thì có thứ thật để canh — lượt chạy im lặng — nên `claim_expires_at` về rỗng và máy giữ tiếp. Để đồng
+hồ chạy tiếp là cướp lại một lượt chạy khoẻ sau đúng hai phút.
 
 ---
 

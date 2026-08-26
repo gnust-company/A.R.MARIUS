@@ -35,6 +35,7 @@ from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import as_utc
+from armarius.shared.config import settings
 from tests.support.agents import make_agent
 from tests.support.projects import force_phase
 
@@ -66,7 +67,11 @@ class RecordingLadder:
 def _watchdog(uow_factory, *, ladder=None, bus=None) -> StallWatchdog:
     return StallWatchdog(
         uow_factory,
-        PushReasonService(uow_factory, ProjectService(uow_factory, THRESHOLDS)),
+        PushReasonService(
+            uow_factory,
+            ProjectService(uow_factory, THRESHOLDS),
+            accept_grace_seconds=settings.run_claim_hold_seconds,
+        ),
         task_log=TaskLogService(uow_factory),
         control_bus=bus or TopicEventBus(),
         ladder=ladder,

@@ -18,6 +18,7 @@ answers *pending* until one has acted.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -169,6 +170,37 @@ class HeartbeatOut(BaseModel):
     cancel: list[UUID]
 
 
+class ClaimIn(BaseModel):
+    """What a machine says when it comes asking for work.
+
+    `max` is the machine's own count of what it can take right now, and it is advice: the
+    server takes the smaller of it and the ceiling it holds for that machine (FR-008d). So a
+    machine reporting a wrong or stale number cannot be flooded, and cannot talk its way
+    past the ceiling either.
+    """
+
+    workplace_ids: list[UUID] = Field(default_factory=list, max_length=1_000)
+    max: int = Field(default=1, ge=0, le=1_000)
+
+
+class GrantedRunOut(BaseModel):
+    run_id: UUID
+    task_id: UUID | None
+    workplace_id: UUID
+    # The one moment this string exists outside the machine that will use it. Only its hash
+    # is kept, and it dies with the run (FR-014, FR-014a).
+    run_token: str
+    claim_expires_at: datetime
+
+
+class ClaimOut(BaseModel):
+    runs: list[GrantedRunOut]
+
+
+class StartIn(BaseModel):
+    session_handle: str = ""
+
+
 # ── the machine's half ────────────────────────────────────────────────────────
 
 
@@ -278,6 +310,50 @@ async def heartbeat(
         machine, free_slots=body.free_slots, running=body.running
     )
     return HeartbeatOut(pending_work=beat.pending_work, cancel=list(beat.cancel))
+
+
+@router.post("/runs/claim", response_model=ClaimOut)
+async def claim_runs(
+    body: ClaimIn, machine: CurrentMachine, container: ContainerDep
+) -> ClaimOut:
+    """The only way a run begins (FR-053, FR-054).
+
+    An empty list is the ordinary answer and carries no complaint: most asks land on an
+    empty shelf, which is exactly what lets the asking rhythm stay slow (FR-055d). Work the
+    machine has no room for is left where it is — not cancelled, not re-queued, not booked
+    for a retry. It comes back the next time the machine asks with room, and that is the
+    whole of the retry mechanism (FR-008c).
+    """
+    granted = await container.daemon_claims.claim(
+        machine, workplace_ids=body.workplace_ids, free_slots=body.max
+    )
+    return ClaimOut(
+        runs=[
+            GrantedRunOut(
+                run_id=g.run_id,
+                task_id=g.task_id,
+                workplace_id=g.workplace_id,
+                run_token=g.run_token,
+                claim_expires_at=g.claim_expires_at,
+            )
+            for g in granted
+        ]
+    )
+
+
+@router.post("/runs/{run_id}/start")
+async def start_run(
+    run_id: UUID, body: StartIn, machine: CurrentMachine, container: ContainerDep
+) -> dict[str, object]:
+    """The machine says the agent is up. 404 means *stop and clean up* (FR-058, FR-059).
+
+    A machine whose hold ran out while it was setting up gets the same answer as one asking
+    about a run that never existed, and it is the right answer to both: whatever it has
+    started is no longer this system's run, and the only useful thing left to do with it is
+    put it down.
+    """
+    await container.daemon_claims.start(machine, run_id)
+    return {}
 
 
 # ── the person's half ─────────────────────────────────────────────────────────
