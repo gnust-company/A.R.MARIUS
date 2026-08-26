@@ -386,6 +386,7 @@ class ApprovalService:
         reason_now = provisional_drive(task.status, now=now)
         task.drive = reason_now.kind if reason_now else None
         task.drive_expires_at = reason_now.expires_at if reason_now else None
+        task.drive_code = reason_now.code if reason_now else None
         task.updated_at = now
         await uow.tasks.update(task)
         await self._resolve_pending_acceptance(uow, task.id)
@@ -596,6 +597,7 @@ class ApprovalService:
         provisional = provisional_drive(task.status, now=now)
         task.drive = provisional.kind if provisional else None
         task.drive_expires_at = provisional.expires_at if provisional else None
+        task.drive_code = provisional.code if provisional else None
         task.updated_at = now
         await uow.tasks.update(task)
         if self._logs is not None:

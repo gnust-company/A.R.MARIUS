@@ -484,6 +484,9 @@ export const vi = {
     planningBanner: 'Kế hoạch chưa được duyệt — dự án chưa nhận đầu việc thật. Xem bản Trưởng dự án trình và quyết.',
     goToPlan: 'Xem kế hoạch',
     stalled: 'Đình trệ — hệ thống đánh rơi đầu việc này',
+    // Hai cái chờ bình thường, không phải cảnh báo (FR-008b). Cái hỏng đã có ô đỏ riêng.
+    waitingForMachine: 'Đang chờ máy rảnh',
+    nobodyHasTakenIt: 'Chưa ai nhận việc',
     reachedByWorking: 'Tới đây bằng cách làm, không tạo thẳng.',
     addTask: 'Thêm Nhiệm vụ',
     addTaskTitle: 'Tạo Nhiệm vụ Mới',

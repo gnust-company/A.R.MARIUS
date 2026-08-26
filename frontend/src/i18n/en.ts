@@ -483,6 +483,9 @@ export const en = {
     planningBanner: 'The plan is not approved yet — this project takes no real tasks. Read what the Leader submitted and decide.',
     goToPlan: 'Open the plan',
     stalled: 'Stalled — the system dropped this task',
+    // Two ordinary waits, not warnings (FR-008b). What is broken has its own red block.
+    waitingForMachine: 'Waiting for a free machine',
+    nobodyHasTakenIt: 'Nobody has taken it yet',
     reachedByWorking: 'Reached by working, not created here.',
     addTask: 'Add Task',
     addTaskTitle: 'Create New Task',

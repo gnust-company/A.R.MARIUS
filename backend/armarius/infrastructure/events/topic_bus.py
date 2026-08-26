@@ -7,8 +7,12 @@ Two server→browser streams ride this bus, distinguished only by topic string:
 Each event carries a process-monotonic ``seq`` used as the SSE event id, and every topic
 keeps a bounded replay buffer so a reconnecting client can resume from ``Last-Event-ID``
 (re-delivering everything it missed, then live-tailing). Single-process Phase-0: the seam
-to swap for Redis pub/sub is this class; the stream endpoints stay the same. Web-App-only —
-agents never read SSE.
+to swap for Redis pub/sub is this class; the stream endpoints stay the same.
+
+A third stream rides it since spec 002 — one machine's push channel, topic ``machine:{id}``.
+It is the same bus and a different contract: what travels on it is a nudge, not news, so the
+endpoint reading it deliberately ignores the replay buffer. Agents still never read SSE; a
+machine running the daemon is not an agent.
 """
 
 from __future__ import annotations
@@ -35,6 +39,16 @@ class StreamEvent:
 def project_topic(project_id: object) -> str:
     """Project board channel — phase changes, task status, stall flags."""
     return f"project:{project_id}"
+
+
+def machine_topic(machine_id: object) -> str:
+    """One machine's push channel — *there is work, go and ask*, and nothing else.
+
+    Keyed by machine rather than by workspace: a nudge is only worth sending to the machine
+    that can act on it, and a workspace-wide one would wake every machine in it to ask about
+    work only one of them can be given (FR-007, FR-055a).
+    """
+    return f"machine:{machine_id}"
 
 
 def patron_topic(user_id: object) -> str:

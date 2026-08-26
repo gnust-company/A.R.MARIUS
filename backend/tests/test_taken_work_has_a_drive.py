@@ -16,10 +16,12 @@ Three things are settled here, and they are the same idea from three sides:
     (FR-057) — and after the work is handed back, the waiting is counted from the hand-back
     rather than from a booking that is now ancient history (FR-056b).
 
-The last section is a different question with a different answer: a task that is ready and
-has nowhere to start is **waiting**, not dropped, and what it is waiting on is named
-(FR-008a). That one cannot be proved on a snapshot built by hand, because the whole claim is
-that the queue is read from real rows — so it runs against a database.
+The last two sections are a different question with a different answer: a task that is
+ready and has nowhere to start is **waiting**, not dropped, and what it is waiting on is
+named (FR-008a). That cannot be proved on a snapshot built by hand, because the whole claim
+is that the queue is read from real rows — so it runs against a database. And the *shape* of
+that wait has to survive onto the task itself, or the board can only ever render both shapes
+of drive #5 as one sentence (FR-008b, T055).
 """
 
 from __future__ import annotations
@@ -39,6 +41,7 @@ from armarius.domain.entities.run import Run, RunStatus, WakeSource
 from armarius.domain.entities.task import TaskDrive, TaskStatus
 from armarius.domain.services.push_reason_rules import (
     BLOCKED_ON_CAPACITY,
+    BLOCKED_ON_TASK,
     DriveSnapshot,
     infer_drive,
     is_live,
@@ -437,3 +440,128 @@ async def test_the_snapshot_reads_the_moment_the_work_was_taken(uow_factory) -> 
 
     assert seen.run_accepted_at == T0
     assert seen.last_taken_at == T0
+
+
+# ── 4. the shape of the wait survives onto the task (FR-008b, T055) ───────────
+#
+# `blocked_by_task` covers two waits that are answered differently. *Behind another task* is
+# answered by going and chasing that task; *waiting for a free machine* is answered by
+# leaving it alone, because nothing is wrong. The rule has told them apart since spec 001 —
+# but the task carried only the drive's kind, so the difference was computed and dropped, and
+# the board could not name the state FR-008b asks for by name.
+
+
+async def _on_the_board(uow_factory, task_id) -> None:
+    """Move a task out of the backlog.
+
+    The safety net has no opinion about a shelved task, and neither does the drive: a task
+    nobody has scheduled is not one the system dropped. So every question about *what is
+    moving this* only starts being asked once the task is on the board.
+    """
+    async with uow_factory() as uow:
+        task = await uow.tasks.get(task_id)
+        assert task is not None
+        task.status = TaskStatus.TODO
+        await uow.tasks.update(task)
+        await uow.commit()
+
+
+async def _refresh(uow_factory, task_id):
+    """Settle one task's drive the way the system does, and read the task back."""
+    service = PushReasonService(
+        uow_factory,
+        ProjectService(uow_factory, THRESHOLDS),
+        accept_grace_seconds=HOLD,
+    )
+    async with uow_factory() as uow:
+        task = await uow.tasks.get(task_id)
+        assert task is not None
+        await service.refresh_in(uow, task, now=utcnow())
+        await uow.commit()
+    async with uow_factory() as uow:
+        return await uow.tasks.get(task_id)
+
+
+async def _jam(uow_factory):
+    """One machine allowed a single run, with that run held and a second one waiting."""
+    ws, project, agent, workplace_id, machine_id = await _world(uow_factory)
+    await _ceiling(uow_factory, machine_id, 1)
+    busy = await _task(uow_factory, project.id, title="Việc đang chạy")
+    waiting = await _task(uow_factory, project.id, title="Việc đang đợi")
+    occupier = await _run_waiting_at(
+        uow_factory,
+        ws_id=ws.id,
+        project_id=project.id,
+        marius_id=agent.id,
+        task_id=busy.id,
+        workplace_id=workplace_id,
+    )
+    await _held_by(uow_factory, occupier, machine_id)
+    await _run_waiting_at(
+        uow_factory,
+        ws_id=ws.id,
+        project_id=project.id,
+        marius_id=agent.id,
+        task_id=waiting.id,
+        workplace_id=workplace_id,
+    )
+    await _on_the_board(uow_factory, waiting.id)
+    return project, waiting, occupier, machine_id
+
+
+async def test_waiting_for_a_free_machine_is_written_onto_the_task(uow_factory) -> None:
+    _project, waiting, _occupier, _machine = await _jam(uow_factory)
+
+    task = await _refresh(uow_factory, waiting.id)
+
+    assert task is not None
+    assert task.drive is TaskDrive.BLOCKED_BY_TASK
+    assert task.drive_code == BLOCKED_ON_CAPACITY, (
+        "đầu việc đang chờ máy rảnh mà trên bảng không đọc ra được nó đang chờ gì"
+    )
+    assert task.drive_expires_at is None, "chờ chỗ trống thì không đeo đồng hồ (FR-008e)"
+
+
+async def test_the_two_waits_are_told_apart_on_the_task_itself(uow_factory) -> None:
+    """Cùng một loại động cơ, hai cái chờ khác hẳn nhau.
+
+    Chờ một đầu việc khác thì đi giục bên kia; chờ máy rảnh thì để yên, vì không có gì
+    hỏng. Cùng hiện ra một câu là dạy người đọc bảng đi làm sai việc.
+    """
+    ws, project, _agent, _workplace, _machine = await _world(uow_factory)
+    blocker = await _task(uow_factory, project.id, title="Việc chặn")
+    waiting = await _task(uow_factory, project.id, title="Việc bị chặn")
+    tasks = TaskService(
+        uow_factory,
+        WakeEngine(
+            uow_factory,
+            InMemoryAdapterRegistry(),
+            InMemoryEventBus(),
+            run_timeout_seconds=30,
+        ),
+    )
+    await tasks.add_dependency(waiting.id, blocker.id)
+    await _on_the_board(uow_factory, waiting.id)
+
+    task = await _refresh(uow_factory, waiting.id)
+
+    assert task is not None
+    assert task.drive is TaskDrive.BLOCKED_BY_TASK
+    assert task.drive_code == BLOCKED_ON_TASK, task.drive_code
+
+
+async def test_the_shape_goes_away_with_the_wait(uow_factory) -> None:
+    """Cái chờ hết thì hình dạng của nó cũng phải hết.
+
+    Động cơ số 5 không có đồng hồ, nên không có gì tự đến sửa một cái nhãn cũ nằm lại: nó
+    sẽ ở đó tới hết đời đầu việc, và bảng sẽ trả lời một câu hỏi không còn ai hỏi.
+    """
+    _project, waiting, occupier, machine_id = await _jam(uow_factory)
+    settled = await _refresh(uow_factory, waiting.id)
+    assert settled is not None and settled.drive_code == BLOCKED_ON_CAPACITY
+
+    await _ceiling(uow_factory, machine_id, 4)  # the jam clears
+    task = await _refresh(uow_factory, waiting.id)
+
+    assert task is not None
+    assert task.drive_code is None, task.drive_code

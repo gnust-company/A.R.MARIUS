@@ -473,6 +473,7 @@ class PlanService:
                 )
                 task.drive = None
                 task.drive_expires_at = None
+                task.drive_code = None
                 task.updated_at = utcnow()
                 await uow.tasks.update(task)
                 settled.append(task.id)

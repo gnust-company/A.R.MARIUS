@@ -513,6 +513,10 @@ class RecoveryEscalator:
                 return
             task.drive = TaskDrive.WAITING_RECOVERY
             task.drive_expires_at = until
+            # This kind has one shape, so there is nothing to say — and leaving the last
+            # drive's shape behind would let the board keep answering a question that is
+            # no longer being asked.
+            task.drive_code = None
             await uow.tasks.update(task)
             await uow.commit()
 
