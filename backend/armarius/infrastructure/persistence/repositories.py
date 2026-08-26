@@ -968,6 +968,7 @@ class SqlTaskRepository(TaskRepository):
                 plan_item_id=task.plan_item_id,
                 drive=str(task.drive) if task.drive else None,
                 drive_expires_at=task.drive_expires_at,
+                drive_code=task.drive_code,
                 stalled=task.stalled,
                 stalled_reason=task.stalled_reason,
                 assigned_marius_id=task.assigned_marius_id,
@@ -1012,6 +1013,7 @@ class SqlTaskRepository(TaskRepository):
         m.plan_item_id = task.plan_item_id
         m.drive = str(task.drive) if task.drive else None
         m.drive_expires_at = task.drive_expires_at
+        m.drive_code = task.drive_code
         m.stalled = task.stalled
         m.stalled_reason = task.stalled_reason
         m.assigned_marius_id = task.assigned_marius_id

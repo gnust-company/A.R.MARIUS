@@ -186,6 +186,9 @@ export interface Task {
   planItemId?: string
   /** What is going to move it forward (FR-056). */
   drive?: string
+  /** Which shape of that drive, worded on screen by `driveText` — `blocked_by_task` covers
+   *  waiting behind another task and waiting for a free machine (FR-008a, FR-008b). */
+  driveCode?: string
   /** The safety net dropped a flag: every door into `done` is sealed (FR-058). */
   stalled?: boolean
   /** Which stall it is, as a code — worded on screen by `stallText` (T200). */

@@ -170,6 +170,7 @@ class PushReasonService:
             # Closed, drafted or shelved: no drive, no alarm, and no leftover ladder.
             task.drive = None
             task.drive_expires_at = None
+            task.drive_code = None
             task.stalled = False
             task.stalled_reason = None
             await uow.tasks.update(task)
@@ -192,6 +193,7 @@ class PushReasonService:
 
         task.drive = reason.kind if reason else None
         task.drive_expires_at = reason.expires_at if reason else None
+        task.drive_code = reason.code if reason else None
         if reason is not None and is_live(reason, now=now):
             task.stalled = False
             task.stalled_reason = None

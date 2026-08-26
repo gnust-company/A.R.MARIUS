@@ -1567,3 +1567,4 @@ def _mark_provisional(task: Task, now: datetime) -> None:
     reason = provisional_drive(task.status, now=now)
     task.drive = reason.kind if reason else None
     task.drive_expires_at = reason.expires_at if reason else None
+    task.drive_code = reason.code if reason else None

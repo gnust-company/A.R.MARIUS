@@ -272,6 +272,9 @@ export interface TaskDTO {
   plan_item_id?: string | null
   /** What is going to move this task forward (FR-056); null on a closed task. */
   drive?: string | null
+  /** Which shape of that drive, when the kind covers more than one. `blocked_by_task` is
+   *  two different waits — behind another task, or behind a busy machine (FR-008a). */
+  drive_code?: string | null
   /** The system dropped this task — every door into `done` is sealed (FR-058). */
   stalled?: boolean
   /** The server's English rendering of the stall verdict — for agents and raw readers. */

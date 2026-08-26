@@ -18,15 +18,20 @@ answers *pending* until one has acted.
 
 from __future__ import annotations
 
+import asyncio
+import json
+from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Response
+from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel, Field
+from sse_starlette.sse import EventSourceResponse
 
 from armarius.infrastructure.daemon.enrollment import MachineIdentity
 from armarius.infrastructure.daemon.workplaces import ReportedWorkplace
+from armarius.infrastructure.events.topic_bus import machine_topic
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
 from armarius.shared.config import settings
@@ -354,6 +359,54 @@ async def start_run(
     """
     await container.daemon_claims.start(machine, run_id)
     return {}
+
+
+# ── the push road ─────────────────────────────────────────────────────────────
+
+
+@router.get("/events")
+async def machine_events(
+    request: Request, machine: CurrentMachine, container: ContainerDep
+) -> EventSourceResponse:
+    """The road a nudge travels down (FR-055, FR-055a).
+
+    What goes down here is a **signal**, never work and never an instruction: *there is
+    something for you, come and ask*. The machine answers it by calling the same claim door
+    it calls on its own rhythm, which is what keeps two nudges arriving together from
+    producing two runs — the second ask simply finds an empty shelf.
+
+    **No replay, on purpose.** Every other stream in this system hands a reconnecting client
+    what it missed, because those carry news and a gap in news is a gap in the record. A
+    nudge is not news; it is only true at the moment it is sent. A machine that reconnects
+    asks for work as part of reconnecting, so a backlog of old nudges would buy nothing and
+    cost one pointless ask each. Losing this connection entirely loses nothing either — the
+    asking rhythm is the fallback, and it is why the rhythm exists (FR-055d).
+
+    It also writes **nothing** about liveness. Holding this connection open proves the
+    machine can be reached; it says nothing about whether an agent CLI on it still runs, and
+    letting the two blur is exactly how a machine with its CLI uninstalled would look
+    healthy forever (FR-055b).
+    """
+    queue, unregister = container.control_bus.register(
+        machine_topic(machine.machine_id)
+    )
+
+    async def generator() -> AsyncIterator[dict[str, str]]:
+        try:
+            while True:
+                # A short timeout rather than a plain wait, so a machine that went away
+                # while the topic was quiet is noticed instead of holding a slot forever.
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=1.0)
+                except TimeoutError:
+                    if await request.is_disconnected():
+                        break
+                    continue
+                yield {"event": event.type, "data": json.dumps(event.data)}
+        finally:
+            unregister()
+
+    return EventSourceResponse(generator())
 
 
 # ── the person's half ─────────────────────────────────────────────────────────

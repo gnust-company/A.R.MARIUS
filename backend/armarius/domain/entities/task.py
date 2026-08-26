@@ -240,6 +240,14 @@ class Task:
     # never "expired". The stall sweep reads exactly these two fields, which is why they sit
     # on the task rather than beside the ladder state.
     drive_expires_at: datetime | None = None
+    # Which *shape* of that drive this is, when the kind covers more than one. Only drive
+    # #5 needs it today: waiting behind another task and waiting for a free slot are the
+    # same kind and not the same wait, and the person reading the board answers them
+    # differently — one by chasing a task, the other by leaving it alone (FR-008a, FR-008b).
+    #
+    # A code, never a sentence. The same fact is put in front of a patron in their own
+    # language and handed to an agent in English (Constitution VII).
+    drive_code: str | None = None
     # Raised by the safety net when a task loses every live drive (FR-058). Not a status:
     # it is an alarm that the system dropped this task, and it seals every door into done.
     stalled: bool = False

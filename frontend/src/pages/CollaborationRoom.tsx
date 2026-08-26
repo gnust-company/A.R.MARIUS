@@ -23,6 +23,8 @@ import {
   Star,
   MessageSquare,
   XCircle,
+  Hourglass,
+  CircleDashed,
 } from 'lucide-react';
 import { ApiError, listTaskApprovals, signTaskApproval, type ApprovalDTO } from '@/lib/api';
 import {
@@ -37,6 +39,7 @@ import { subscribeProjectEvents } from '@/lib/sse';
 import { cn, wsHref } from '@/lib/utils';
 import { blockedReasonKey, needsReason, type TaskPhase } from '@/lib/taskRules';
 import { errorText } from '@/lib/errors';
+import { WAITING_FOR_A_MACHINE, waitKind, waitText } from '@/lib/drive';
 
 /** Bốn trường người chủ sửa được trên màn, ở dạng chuỗi mà ô nhập dùng. */
 interface TaskEditDraft {
@@ -302,6 +305,8 @@ export default function CollaborationRoom() {
   // kept reporting it — a status control showing the wrong status is worse than none. The
   // store already updates optimistically, so the box follows a change without help.
   const statusValue: Task['status'] = task?.status ?? 'todo';
+  // Which ordinary wait this task is in, if any (FR-008b).
+  const waiting = task ? waitKind(task) : undefined;
   const [isTraceActive, setIsTraceActive] = useState(true);
   const [showAddArtifactModal, setShowAddArtifactModal] = useState(false);
   const [artifactForm, setArtifactForm] = useState({ name: '', url: '', type: 'file' as 'file' | 'link' });
@@ -712,6 +717,19 @@ export default function CollaborationRoom() {
               <label className="block font-body text-body-xs font-semibold text-ink-light uppercase tracking-wider mb-1.5">
                 {t('collaborationRoom.statusLabel')}
               </label>
+              {/* The wait the status alone cannot say. *Todo* covers both "nobody has come
+                  for it" and "it is ready and every machine is busy", and the second one is
+                  not a fault — so it is stated quietly, with no clock (FR-008b, FR-008e). */}
+              {waiting && (
+                <div className="flex items-center gap-1.5 mb-1.5 text-ink-muted">
+                  {waiting === WAITING_FOR_A_MACHINE ? (
+                    <Hourglass className="w-3.5 h-3.5 flex-shrink-0" />
+                  ) : (
+                    <CircleDashed className="w-3.5 h-3.5 flex-shrink-0" />
+                  )}
+                  <span className="font-body text-body-xs">{waitText(waiting, t)}</span>
+                </div>
+              )}
               <select
                 value={statusValue}
                 onChange={(e) => handleStatusChange(e.target.value)}

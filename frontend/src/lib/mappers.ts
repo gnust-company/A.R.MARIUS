@@ -238,6 +238,7 @@ export function taskToVM(dto: TaskDTO): Task {
     statusReason: dto.status_reason ?? undefined,
     planItemId: dto.plan_item_id ?? undefined,
     drive: dto.drive ?? undefined,
+    driveCode: dto.drive_code ?? undefined,
     stalled: dto.stalled ?? false,
     stalledReasonCode: dto.stalled_reason_code ?? undefined,
     definitionOfDone: dto.definition_of_done ?? undefined,

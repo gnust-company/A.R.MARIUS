@@ -197,6 +197,7 @@ def task_to_entity(m: TaskModel) -> Task:
         plan_item_id=m.plan_item_id,
         drive=TaskDrive(m.drive) if m.drive else None,
         drive_expires_at=m.drive_expires_at,
+        drive_code=m.drive_code,
         stalled=bool(m.stalled),
         stalled_reason=m.stalled_reason,
         assigned_marius_id=m.assigned_marius_id,

@@ -184,6 +184,10 @@ class TaskModel(Base):
     # hot path. NULL means the drive has no clock — a patron wait or a blocked-by wait,
     # both of which are already chased by something else (see `push_reason_rules`).
     drive_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Which shape of the drive this is, when its kind covers more than one (FR-008b). Not
+    # indexed: the sweep reads `drive` and `drive_expires_at`, never this — it exists for
+    # whoever is *reading* the task, not for whoever is watching it.
+    drive_code: Mapped[str | None] = mapped_column(String(30))
     stalled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     stalled_reason: Mapped[str | None] = mapped_column(Text)
     assigned_marius_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)

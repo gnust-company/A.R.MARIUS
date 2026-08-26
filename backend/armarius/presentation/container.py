@@ -7,6 +7,7 @@ concrete infrastructure implementations.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from uuid import UUID
 
 from armarius.application.ports.artifact_store import ArtifactStore
 from armarius.application.ports.event_bus import EventBus
@@ -45,7 +46,7 @@ from armarius.infrastructure.daemon.liveness import DaemonLivenessProbe
 from armarius.infrastructure.daemon.workplaces import DaemonWorkplaceService
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.events.task_trace import ControlBusTaskTrace
-from armarius.infrastructure.events.topic_bus import TopicEventBus
+from armarius.infrastructure.events.topic_bus import TopicEventBus, machine_topic
 from armarius.infrastructure.events.workspace_trace import ControlBusWorkspaceTrace
 from armarius.infrastructure.persistence.unit_of_work import make_uow
 from armarius.infrastructure.security.jwt import JWTService
@@ -204,7 +205,23 @@ def build_container() -> Container:
     # it hands back what it takes away: a machine that loses its grip leaves a task
     # whose board still says a run is live on it, and the board should be told in
     # seconds rather than at the next sweep.
-    claims = DaemonClaimService(on_release=push_reasons.refresh)
+    async def nudge_machine(machine_id: UUID, workplace_id: UUID) -> None:
+        """The push road (FR-055a): a signal, carrying no work and ordering nothing.
+
+        Riding the same bus the browser streams ride, on a topic keyed to the one machine
+        that can act on it. What the machine does with it is call the claim door — the same
+        door it calls on its own rhythm — so a nudge that arrives twice costs one extra ask
+        and nothing more.
+        """
+        await control_bus.publish(
+            machine_topic(machine_id),
+            "pending_work",
+            {"workplace_id": str(workplace_id)},
+        )
+
+    claims = DaemonClaimService(
+        on_release=push_reasons.refresh, on_offer=nudge_machine
+    )
     registry.register(DaemonAdapter(claims))
     # Tasks and approvals are built here rather than inline below: the approval service
     # closes a task through the task service, so it needs the same instance the API uses.

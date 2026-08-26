@@ -501,6 +501,10 @@ class TaskOut(_Out):
     # scope, what is moving it, whether the system dropped it, and who has signed off.
     plan_item_id: UUID | None = None
     drive: str | None = None
+    # Which shape of that drive this is, when the kind covers more than one. `blocked_by_task`
+    # is two different waits — behind another task, or behind a queue with no free machine —
+    # and the screen has to tell them apart (FR-008a, FR-008b).
+    drive_code: str | None = None
     stalled: bool = False
     # The stall verdict has the same two readers a refusal has: `stalled_reason` is the
     # server's English rendering, for an agent or anyone reading the raw response;

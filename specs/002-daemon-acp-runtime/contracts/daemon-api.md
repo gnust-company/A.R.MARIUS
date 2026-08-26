@@ -283,7 +283,9 @@ ngay lập tức, không đợi vòng quét (FR-030a).
 
 ### `GET /daemon/events` — SSE
 
-Daemon giữ mở. Server đẩy xuống khi có việc mới cho máy này.
+Daemon giữ mở, xác thực bằng token của máy như mọi cửa `/daemon/*` khác. Server đẩy xuống khi có việc mới
+cho **máy này** — kênh khoá theo máy, không phải theo workspace: vẫy một máy không lấy được việc ấy là bắt
+nó đi hỏi một câu chỉ có thể về tay không.
 
 ```
 event: pending_work
@@ -291,6 +293,19 @@ data: {"workplace_id":"wp-1"}
 ```
 
 **Tin này chỉ là tín hiệu.** Nó không mang việc và không phải lệnh chạy (FR-055a). Daemon nhận được thì đi
-gọi `POST /daemon/runs/claim` — đúng cái cửa nó vẫn gọi theo nhịp poll.
+gọi `POST /daemon/runs/claim` — đúng cái cửa nó vẫn gọi theo nhịp poll. Phía daemon **không đọc phần thân
+tin**: nó vốn hỏi về mọi chỗ làm nó đang giữ, nên thứ duy nhất tin này nói được có ích là *có*. Đọc một
+lượt chạy ra khỏi đó là lúc một tín hiệu lặng lẽ biến thành một mệnh lệnh.
 
-Mất kết nối này **không mất việc**: nhịp poll 5 giây là fallback (FR-055d).
+**Không phát lại.** Mọi luồng SSE khác trong hệ thống trả cho khách phần đã bỏ lỡ theo `Last-Event-ID`, vì
+chúng mang tin tức. Đường này không: một cái vẫy tay chỉ đúng vào lúc vẫy. Máy nối lại là đã đi hỏi rồi,
+nên phát lại chồng cũ chỉ đẻ ra những lượt hỏi về tay không. Vì thế khung tin ở đây **không có `id:`**.
+
+**Không phải dấu hiệu sống.** Giữ đường này mở chứng minh liên lạc được tới máy; nó không chứng minh agent
+CLI trên máy còn chạy được, và tuyệt đối không ghi nhịp tim (FR-055b).
+
+Server gửi keep-alive dạng chú thích SSE (`: ping - <thời điểm>`) để proxy không cắt kết nối đang rảnh.
+Chú thích không phải sự kiện: daemon bỏ qua, và không đi hỏi vì nó.
+
+Mất kết nối này **không mất việc**: nhịp poll 5 giây là fallback (FR-055d). Nhịp nối lại của đường đẩy
+giãn dần 1 → 60 giây, và nó **chỉ là nhịp của đường đẩy** — nhịp đi hỏi không bao giờ bị rút ngắn để bù.

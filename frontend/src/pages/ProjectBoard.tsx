@@ -18,6 +18,8 @@ import {
   GripVertical,
   Trash2,
   Radar,
+  Hourglass,
+  CircleDashed,
 } from 'lucide-react';
 import { EMPTY_CARD_COUNTS, useAppStore, type TaskStatus, type Task } from '@/store/appStore';
 import { CREATABLE_PHASES, type TaskPhase } from '@/lib/taskRules';
@@ -30,6 +32,7 @@ import LeaderChatWidget from '@/components/LeaderChatWidget';
 import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
 import { stallText } from '@/lib/stall';
+import { WAITING_FOR_A_MACHINE, waitKind, waitText } from '@/lib/drive';
 
 // The board's columns. *Bị chặn* earns one: a blocked task used to fall off the board
 // entirely, which is the exact failure spec 001 is built to prevent — a task nobody can
@@ -96,6 +99,9 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
   // there was no loaded value to refresh (T177). Both loaders now fill `cardCounts`.
   const counts = task.cardCounts ?? EMPTY_CARD_COUNTS;
   const assigneeAgent = task.assigneeId ? mariuses.find((m) => m.id === task.assigneeId) : undefined;
+  // Which ordinary wait this card is in, if any — waiting for a free machine and waiting
+  // for anyone to pick it up are two different states and get two different lines (FR-008b).
+  const waiting = waitKind(task);
 
   return (
     <motion.div
@@ -177,6 +183,19 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
         <p className="mb-2 font-body text-body-xs text-ink-muted italic line-clamp-2">
           {task.statusReason}
         </p>
+      )}
+      {/* And below that, the ordinary waits. Deliberately quiet — no alarm colour, no
+          clock: a task waiting for a free machine is the system working, and the thing
+          holding the machine is already being watched on its own (FR-008b, FR-008e). */}
+      {waiting && (
+        <div className="flex items-center gap-1.5 mb-2 text-ink-muted">
+          {waiting === WAITING_FOR_A_MACHINE ? (
+            <Hourglass className="w-3.5 h-3.5 flex-shrink-0" />
+          ) : (
+            <CircleDashed className="w-3.5 h-3.5 flex-shrink-0" />
+          )}
+          <span className="font-body text-body-xs">{waitText(waiting, t)}</span>
+        </div>
       )}
 
       {/* Assignee avatar (single owner per task) */}

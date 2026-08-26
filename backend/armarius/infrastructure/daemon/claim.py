@@ -17,6 +17,13 @@ second ask reads the same row as free, and both asks come back holding it. Putti
 and the write in one statement closes the gap: the second ask matches nothing and comes back
 empty-handed, which is exactly what an ask with nothing to do should look like.
 
+**Why only *offer* sends a nudge.** Putting work on the shelf is the one moment a machine
+that is up has something new it does not know about, so that is where the push road is used
+(FR-055). Handing work *back* is not such a moment: the in-ask release happens inside the
+asking machine's own call and is re-offered to it in the same breath, and the sweep's release
+only ever concerns a machine that has gone quiet — which is why the hold ran out. Nudging a
+machine that is not listening buys nothing; when it comes back, it asks.
+
 **Why the token is minted after.** FR-054 is about the swap, and only the swap. Once
 `machine_id` is ours no other caller can touch the row, so writing the run's token into it is
 an ordinary write to something we already own — and it has to be a per-row write, because one
@@ -89,6 +96,7 @@ class DaemonClaimService:
         *,
         clock: Callable[[], datetime] = utcnow,
         on_release: Callable[[UUID], Awaitable[None]] | None = None,
+        on_offer: Callable[[UUID, UUID], Awaitable[None]] | None = None,
     ) -> None:
         self._sessionmaker = sessionmaker
         self._clock = clock
@@ -96,6 +104,11 @@ class DaemonClaimService:
         # without waiting for the next sweep. A callback rather than a call into the
         # business layer: nothing under `daemon/` may reach upwards (Constitution III).
         self._on_release = on_release
+        # Told which machine has something new waiting, and at which workplace. This is the
+        # push road (FR-055): the machine is nudged to come and ask, and nothing else is
+        # sent. A callback for the same reason as above — and because a nudge that fails to
+        # go out must not be able to undo work that has already been shelved.
+        self._on_offer = on_offer
         self._task: asyncio.Task[None] | None = None
 
     def _sessions(self) -> async_sessionmaker[AsyncSession]:
@@ -131,7 +144,32 @@ class DaemonClaimService:
             try:
                 await session.commit()
             except IntegrityError:
+                # Somebody else's insert won. The shelf is in the state this call wanted it
+                # in, and they will have sent the nudge that goes with it.
                 await session.rollback()
+                return
+            workplace = await session.get(WorkplaceModel, workplace_id)
+            machine_id = workplace.machine_id if workplace is not None else None
+
+        # Outside the transaction: the work is on the shelf whatever happens next, and a
+        # nudge is only ever an invitation to come and look at it.
+        if machine_id is not None:
+            await self._nudge(machine_id, workplace_id)
+
+    async def _nudge(self, machine_id: UUID, workplace_id: UUID) -> None:
+        """Tell one machine there is something to come and ask for (FR-055a).
+
+        Failure here is deliberately swallowed. The nudge is the fast road, not the only
+        one: a machine that never hears it asks on its own rhythm a few seconds later and
+        finds the same work (FR-055d). Letting a broken push road throw would turn a slower
+        start into a lost run.
+        """
+        if self._on_offer is None:
+            return
+        try:
+            await self._on_offer(machine_id, workplace_id)
+        except Exception:  # pragma: no cover - the shelf is already correct
+            logger.exception("could not nudge machine %s about new work", machine_id)
 
     # ── taking it off ────────────────────────────────────────────────────────────
 
