@@ -50,6 +50,38 @@ func TestClaimRunsAsksUnderTheMachineTokenAndCarriesBothNumbers(t *testing.T) {
 	}
 }
 
+// The work packet: everything the agent needs, handed over in the same answer as the work.
+// It is fetched nowhere else — an agent that had to go and collect its own skills could start
+// reading before they arrived, and the first thing it did would be the one thing it was not
+// equipped for (FR-011, FR-011b).
+func TestTheWorkComesWithItsMessageAndItsSkills(t *testing.T) {
+	server, _ := serverThatAnswers(t, `{"runs":[{
+		"run_id":"11111111-1111-1111-1111-111111111111",
+		"task_id":"22222222-2222-2222-2222-222222222222",
+		"workplace_id":"33333333-3333-3333-3333-333333333333",
+		"run_token":"armr_run_secret",
+		"claim_expires_at":"2026-08-26T10:02:00Z",
+		"prompt":"You are Marin, the release engineer.",
+		"skills":[{"name":"cookbook","files":{"SKILL.md":"# Cookbook","ref/stock.md":"Simmer."}}]}]}`, 200)
+	session := Session{Server: server.URL, Token: "armd_secret"}
+
+	got, err := session.ClaimRuns(context.Background(), ClaimRequest{Max: 1})
+	if err != nil {
+		t.Fatalf("claiming: %v", err)
+	}
+
+	run := got.Runs[0]
+	if run.Prompt != "You are Marin, the release engineer." {
+		t.Fatalf("the message did not survive the wire: %q", run.Prompt)
+	}
+	if len(run.Skills) != 1 || run.Skills[0].Name != "cookbook" {
+		t.Fatalf("the skills did not survive the wire: %+v", run.Skills)
+	}
+	if len(run.Skills[0].Files) != 2 || run.Skills[0].Files["ref/stock.md"] != "Simmer." {
+		t.Fatalf("a skill arrived without all of its files: %+v", run.Skills[0].Files)
+	}
+}
+
 // The ordinary answer, and the one this loop gets most of the time. An empty shelf is not a
 // failure and must not be reported as one, or a machine asking every five seconds would spend
 // its life logging errors about nothing being wrong.

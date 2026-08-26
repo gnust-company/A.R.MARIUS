@@ -145,6 +145,10 @@ def build_container() -> Container:
         workspace_trace=ControlBusWorkspaceTrace(control_bus),
     )
 
+    # Built before the wake engine: the engine hands an agent its skills as part of the
+    # packet it composes, so it needs the one object that knows what a skill is.
+    skills = SkillService(uow_factory)
+
     wake_engine = WakeEngine(
         uow_factory,
         registry,
@@ -153,9 +157,9 @@ def build_container() -> Container:
         max_continuation_attempts=settings.wake_max_continuation_attempts,
         task_trace=ControlBusTaskTrace(control_bus),
         workspace_trace=ControlBusWorkspaceTrace(control_bus),
+        skills=skills,
     )
 
-    skills = SkillService(uow_factory)
     workspaces = WorkspaceService(uow_factory, skills)
 
     # The reminder ladder reads each project's own tiers (FR-065), but the full project
@@ -220,7 +224,12 @@ def build_container() -> Container:
         )
 
     claims = DaemonClaimService(
-        on_release=push_reasons.refresh, on_offer=nudge_machine
+        on_release=push_reasons.refresh,
+        on_offer=nudge_machine,
+        # The message and the skills are made up here, on the way out. The door itself only
+        # knows a run changed hands; what that run is *about* comes from the layer that
+        # knows the project, the agent and why it was woken (FR-011a, Constitution III).
+        compose=wake_engine.compose_packet,
     )
     registry.register(DaemonAdapter(claims))
     # Tasks and approvals are built here rather than inline below: the approval service

@@ -32,13 +32,14 @@ from sqlalchemy import select, update
 from armarius.application.ports.adapter import ExecContext
 from armarius.domain.entities.project import ProjectStatus
 from armarius.domain.entities.run import RunStatus
+from armarius.domain.entities.task import TaskStatus
 from armarius.infrastructure.daemon.models import (
     MachineModel,
     RunClaimModel,
     WorkplaceModel,
 )
 from armarius.infrastructure.database.engine import get_sessionmaker
-from armarius.infrastructure.database.models import ProjectModel, RunModel
+from armarius.infrastructure.database.models import ProjectModel, RunModel, TaskModel
 from armarius.main import app
 from armarius.shared.clock import utcnow
 from tests.support.agents import invite_agent
@@ -164,6 +165,35 @@ async def _close(project_id: UUID) -> None:
         await session.commit()
 
 
+async def _task(box: Box, project_id: UUID | None) -> UUID:
+    """One real task for a run to be about.
+
+    Every run that reaches this shelf is a wake on some task, and since the door began
+    handing the agent its message the difference matters: a run about nothing has nothing
+    to say to an agent, and the door refuses to hand one over (FR-011).
+    """
+    # A task always belongs to a project, so one is made when the caller did not name one.
+    # The run's own project stays as the caller left it: what the closed-project filter
+    # reads is the run, and giving it a project here would quietly change what it sees.
+    if project_id is None:
+        project_id = await _project(box, closed=False)
+    task_id = uuid4()
+    async with get_sessionmaker()() as session:
+        session.add(
+            TaskModel(
+                id=task_id,
+                project_id=project_id,
+                title="Ship the thing",
+                description="Whatever the patron asked for.",
+                status=TaskStatus.TODO.value,
+                assigned_marius_id=UUID(box.marius_id),
+                created_at=utcnow(),
+            )
+        )
+        await session.commit()
+    return task_id
+
+
 async def _offer(
     box: Box, *, task_id: UUID | None = None, project_id: UUID | None = None
 ) -> UUID:
@@ -173,6 +203,8 @@ async def _offer(
     goes through `DaemonAdapter.dispatch`, which is the only thing that ever writes them.
     """
     run_id = uuid4()
+    if task_id is None:
+        task_id = await _task(box, project_id)
     async with get_sessionmaker()() as session:
         session.add(
             RunModel(

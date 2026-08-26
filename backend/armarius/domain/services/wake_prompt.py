@@ -13,6 +13,13 @@ Those four settle the three things any agent must know before it does anything a
 it is here, where the project is going, and why it is awake right now. Miss one and the
 agent guesses, and a guessing agent is a wrong agent.
 
+Constitution 2.0.0 adds a part in front of those four: the agent's **own instructions**,
+written once when it was created. Behaviour used to be described by a role seat inside each
+project, so the same sentences were kept twice and the two copies drifted; now the seat is
+gone as the source and the instructions ride every packet. It is deliberately first — an
+agent that reads what it is before it reads what it has to do interprets the rest as itself
+rather than as a stranger.
+
 FR-044a supplies the rest **per call type** rather than one shape for everyone. This module
 builds the packets that leave by the task door, where the extras are the task and the
 thread on it; a worker additionally gets its recorded next action and how to hand work
@@ -119,6 +126,17 @@ class WakeContext:
     workspace_name: str = ""
     project_name: str = ""
     credential_file: str | None = None
+    # What the patron wrote when they created this agent: who it is, what it answers for,
+    # what it may change, how it hands work in. The ONLY place an agent's behaviour is
+    # defined (FR-007i, Constitution V) — which is why it rides every packet rather than
+    # being set up once somewhere and trusted to still be there.
+    instructions: str = ""
+    # Whether the packet ends with the hint naming the agent's credential file. True on
+    # the road where the agent reads its token off disk. False where the run's credential
+    # is handed to the process itself and there is no file to point at (FR-014c): a hint
+    # naming a file that is not there costs the agent a wasted read and teaches it to
+    # distrust the packet.
+    credential_hint: bool = True
 
 
 def _value(text: str | None) -> str:
@@ -140,6 +158,18 @@ def _core(ctx: WakeContext, lines: list[str]) -> None:
             lines.append(ctx.self_role_description.strip())
     else:
         lines.append(f"You are {ctx.marius_name}, an agent collaborating inside Armarius.")
+    lines.append("")
+
+    # Behaviour comes from here and from nowhere else (Constitution V). Rendered even when
+    # empty, by the same rule as every other part: a section that simply vanishes cannot be
+    # told apart from one that failed to render, and the agent fills that gap with a guess
+    # (FR-045).
+    lines.append("## Your instructions")
+    lines.append(
+        "Written by your patron when you were created. This is who you are and how you "
+        "work; it holds on every project and every task, and nothing below overrides it."
+    )
+    lines.append(_value(ctx.instructions))
     lines.append("")
 
     if ctx.workspace_name or ctx.project_name:
@@ -252,10 +282,15 @@ def build_wake_prompt(ctx: WakeContext) -> str:
     lines: list[str] = []
     _core(ctx, lines)
     _task_extras(ctx, lines)
-    # Every system→agent message ends with the SAME token-location footer so even a weak
-    # model always knows where its token lives — unconditional, identical to the invite,
-    # skill-install and onboarding prompts (#80). No task-wake ever goes out without it.
-    return "\n".join(lines) + agent_prompt_footer(ctx.credential_file)
+    body = "\n".join(lines)
+    if not ctx.credential_hint:
+        # The one road that ends here: the credential arrives with the process, so there is
+        # no file to name and naming one anyway would be a lie the agent acts on.
+        return body
+    # Every other system→agent message ends with the SAME token-location footer so even a
+    # weak model always knows where its token lives — identical to the invite, skill-install
+    # and onboarding prompts (#80).
+    return body + agent_prompt_footer(ctx.credential_file)
 
 
 # ── the orchestration-cadence extra (FR-044a, FR-054) ────────────────────────────

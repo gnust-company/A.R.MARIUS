@@ -23,12 +23,14 @@ from armarius.application.ports.adapter import AdapterRegistry, ExecContext, Exe
 from armarius.application.ports.event_bus import EventBus
 from armarius.application.ports.task_trace import TaskTracePublisher
 from armarius.application.ports.unit_of_work import UnitOfWork
+from armarius.application.ports.work_packet import SkillBundle, WorkPacket
 from armarius.application.ports.workspace_trace import (
     WorkspaceTracePublisher,
     announce_run_state,
 )
 from armarius.application.use_cases.onboarding import credential_file_for
 from armarius.application.use_cases.seats import holds_the_leader_seat
+from armarius.application.use_cases.skills import SkillService
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.marius import Liveness, Marius
@@ -97,10 +99,16 @@ class WakeEngine:
         max_continuation_attempts: int = 3,
         task_trace: TaskTracePublisher | None = None,
         workspace_trace: WorkspaceTracePublisher | None = None,
+        skills: SkillService | None = None,
     ) -> None:
         self._uow = uow_factory
         self._registry = registry
         self._bus = event_bus
+        # Only `compose_packet` needs it — the road that hands the whole packet over at
+        # once. Optional so the engine can still be built for the paths that never compose
+        # one; an engine without it composes a packet with no skills in it, which is the
+        # truth about an engine that was not given any way to find them.
+        self._skills = skills
         # Optional per-task tee: mirrors run events onto the `task:{id}` SSE channel (§8.1).
         self._task_trace = task_trace
         # Optional workspace-wide tee: announces the run's *lifecycle* (not its content) so a
@@ -543,6 +551,123 @@ class WakeEngine:
                     marius_id=marius_id, task_id=task_id, source=w.source, reason=cause
                 )
 
+    # ------------------------------------------------------- the message and the packet
+
+    async def _assemble(
+        self,
+        uow: UnitOfWork,
+        run: Run,
+        task: Task,
+        marius: Marius,
+        *,
+        credential_hint: bool,
+    ) -> str:
+        """Gather what this wake has to say and write it out, in English (Constitution VII).
+
+        One assembler for both roads, and that is the whole reason it is a method rather
+        than a paragraph inside the run loop. The message is built from the agent's own
+        instructions, the project's approved brief and the reason it was woken — three
+        rules that live on this side and cannot be checked on the far one (FR-011a). Two
+        assemblers would mean two answers to *what was this agent told*, and the answer
+        would depend on which road the run happened to take.
+        """
+        directory, self_role = await self._project_directory(uow, task.project_id, marius)
+        new_messages = await self._new_messages(uow, task, marius)
+        workspace = await uow.workspaces.get(marius.workspace_id)
+        project = await uow.projects.get(task.project_id) if task.project_id else None
+        # FR-009: only the APPROVED version rides the packet. A brief still under
+        # review is a proposal — acting on it would make the approval gate cosmetic.
+        brief = (
+            await uow.project_contexts.get_approved(task.project_id)
+            if task.project_id
+            else None
+        )
+
+        # Which set of extras this packet carries (FR-044a). Read off the work, the way
+        # the cause guard reads it: whoever holds the task is its worker. An agent
+        # wearing both hats gets the worker packet — it is the one doing the job.
+        audience = (
+            WakeAudience.WORKER
+            if task.assigned_marius_id == marius.id
+            else WakeAudience.LEADER
+        )
+        return build_wake_prompt(
+            _wake_context(
+                run,
+                marius,
+                task,
+                directory,
+                self_role,
+                new_messages,
+                workspace,
+                project,
+                brief,
+                audience,
+                credential_hint=credential_hint,
+            )
+        )
+
+    async def compose_packet(self, run_id: UUID) -> WorkPacket | None:
+        """Everything one run needs handed over in a single piece (FR-011, FR-011b).
+
+        Called at the moment the work changes hands, not when it was queued: the message
+        names the task's newest comments and its recorded next action, and a message built
+        an hour early would describe a task nobody has since touched. `None` means this run
+        cannot be described — no task, no agent, nothing to say — and a run nobody can
+        describe is a run nobody can do.
+
+        The skills come whole rather than as a list to fetch. An agent that has to go and
+        collect them can start reading before they arrive, and then the first thing it does
+        is the one thing it was not equipped for (FR-011c).
+
+        No credential hint rides this packet: the run's credential is handed to the process
+        itself, so there is no file to name (FR-014c).
+        """
+        async with self._uow() as uow:
+            run = await uow.runs.get(run_id)
+            if run is None:
+                return None
+            task = await uow.tasks.get(run.task_id) if run.task_id else None
+            marius = await uow.mariuses.get(run.marius_id) if run.marius_id else None
+            if task is None or marius is None:
+                return None
+            prompt = await self._assemble(uow, run, task, marius, credential_hint=False)
+
+        return WorkPacket(prompt=prompt, skills=await self._bundles(marius))
+
+    async def _bundles(self, marius: Marius) -> tuple[SkillBundle, ...]:
+        """This agent's granted skills, whole, and **only** this agent's (FR-007b).
+
+        Read off the agent rather than off the workplace it sits at. Several agents share
+        one workplace, so a skill list gathered from the machine would be every agent's
+        skills at once — which is the leak the per-run write exists to prevent, arriving
+        one layer earlier where the write cannot see it.
+
+        A path that could climb out of its own skill directory is refused, and the skill it
+        belongs to is refused with it: the file tree of a skill can be edited by hand or
+        pulled from a repository, so this is data from outside, and a half-written skill is
+        worse than an absent one — the agent would read a SKILL.md whose companion files
+        were silently dropped.
+        """
+        if self._skills is None:
+            return ()
+        bundles: list[SkillBundle] = []
+        for skill in await self._skills.resolve(list(marius.skill_ids)):
+            if not _is_safe_segment(skill.slug):
+                logger.warning("skill %s has an unusable directory name", skill.id)
+                continue
+            files = {k: v for k, v in (skill.files or {}).items() if isinstance(v, str)}
+            if not files:
+                # An empty directory teaches an agent nothing and reads, to whoever opens
+                # it, as a skill that failed to arrive.
+                logger.warning("skill %s has no files to send", skill.id)
+                continue
+            if not all(_stays_inside(path) for path in files):
+                logger.warning("skill %s has a path that leaves its own directory", skill.id)
+                continue
+            bundles.append(SkillBundle(name=skill.slug, files=files))
+        return tuple(bundles)
+
     async def _do_execute_run(self, run_id: UUID) -> None:
         async with self._uow() as uow:
             run = await uow.runs.get(run_id)
@@ -554,40 +679,7 @@ class WakeEngine:
                 return
 
             session = await uow.sessions.get_for(marius.id, marius.adapter_type, task.id)
-            directory, self_role = await self._project_directory(uow, task.project_id, marius)
-            new_messages = await self._new_messages(uow, task, marius)
-            workspace = await uow.workspaces.get(marius.workspace_id)
-            project = await uow.projects.get(task.project_id)
-            # FR-009: only the APPROVED version rides the packet. A brief still under
-            # review is a proposal — acting on it would make the approval gate cosmetic.
-            brief = (
-                await uow.project_contexts.get_approved(task.project_id)
-                if task.project_id
-                else None
-            )
-
-            # Which set of extras this packet carries (FR-044a). Read off the work, the way
-            # the cause guard reads it: whoever holds the task is its worker. An agent
-            # wearing both hats gets the worker packet — it is the one doing the job.
-            audience = (
-                WakeAudience.WORKER
-                if task.assigned_marius_id == marius.id
-                else WakeAudience.LEADER
-            )
-            prompt = build_wake_prompt(
-                _wake_context(
-                    run,
-                    marius,
-                    task,
-                    directory,
-                    self_role,
-                    new_messages,
-                    workspace,
-                    project,
-                    brief,
-                    audience,
-                )
-            )
+            prompt = await self._assemble(uow, run, task, marius, credential_hint=True)
 
             # Keep the exact packet that went out. Until now nothing recorded what an
             # agent was actually told, so "why did it do that?" could only ever be
@@ -891,6 +983,8 @@ def _wake_context(
     project: Project | None = None,
     brief: ProjectContext | None = None,
     audience: WakeAudience = WakeAudience.WORKER,
+    *,
+    credential_hint: bool = True,
 ) -> WakeContext:
     dir_entries = [
         DirectoryEntry(
@@ -938,7 +1032,33 @@ def _wake_context(
         ),
         workspace_name=workspace.name if workspace else "",
         project_name=project.name if project else "",
+        instructions=marius.instructions,
+        credential_hint=credential_hint,
         credential_file=(
             credential_file_for(marius, workspace.name) if workspace else None
         ),
     )
+
+
+# ── what may be written where (FR-011b) ──────────────────────────────────────────
+
+_UNSAFE = {"", ".", ".."}
+
+
+def _is_safe_segment(name: str) -> bool:
+    """Whether `name` can be one directory, and only ever one directory."""
+    return name not in _UNSAFE and "/" not in name and "\\" not in name and ":" not in name
+
+
+def _stays_inside(path: str) -> bool:
+    """Whether a skill file's relative path can only land inside its own directory.
+
+    Checked segment by segment rather than by cleaning the string: cleaning answers *where
+    would this end up*, which is the right question only if the answer is then compared
+    against the root, and that comparison is the step everybody forgets. Asking whether any
+    single step could climb, or start from the top, has no such second half.
+    """
+    if path.startswith("/") or path.startswith("\\") or ":" in path:
+        return False
+    parts = path.replace("\\", "/").split("/")
+    return bool(parts) and all(_is_safe_segment(part) for part in parts)

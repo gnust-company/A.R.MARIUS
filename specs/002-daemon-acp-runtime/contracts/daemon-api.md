@@ -185,10 +185,16 @@ nào tồn tại một agent chưa có chỗ làm (FR-007, FR-007f).
 ← 200 { "runs": [] }                        ← không có việc; đây là câu trả lời thường gặp nhất
 ```
 
-**Đã dựng tới đâu (2026-08-26, T045–T047)**: `run_id`, `task_id`, `workplace_id`, `run_token`,
-`claim_expires_at`. Bốn trường còn lại của gói việc — `session`, `prompt`, `skills`, `callback_base` —
-**chưa có** và cố ý chưa trả về rỗng: một `prompt` rỗng thì daemon vẫn ghi ra tệp bối cảnh, và một tệp
-bối cảnh rỗng đọc y hệt một tệp bối cảnh đúng. Chúng tới cùng nhóm dựng gói việc (T056–T062) và T039i.
+**Đã dựng tới đâu (2026-08-26, T045–T047 rồi T056–T058)**: `run_id`, `task_id`, `workplace_id`,
+`run_token`, `claim_expires_at`, `prompt`, `skills`. Còn thiếu `session` (T039i) và `callback_base`
+(T061). Chúng **không** trả về rỗng: một `prompt` rỗng thì daemon vẫn ghi ra tệp bối cảnh, và một tệp
+bối cảnh rỗng đọc y hệt một tệp bối cảnh đúng.
+
+**Việc không dựng nổi gói thì không được trao đi.** Server dựng thông điệp *sau* khi đổi chủ xong —
+dựng nó đọc thêm nửa tá bảng khác, mà làm việc ấy trong lúc còn giữ khoá của cái máy thì mọi cú xin
+khác của chính máy ấy phải đợi hết quãng đọc. Nhưng nếu dựng hỏng, hoặc ghi lại hỏng, thì lượt chạy
+**quay lại kệ ngay** kèm thu hồi token, chứ không đi xuống dạng nửa vời: máy cầm một lượt chạy không có
+chữ nào sẽ ôm chỗ ấy tới lúc hết hạn giữ rồi trả lại đúng thứ nó vừa nhận.
 
 **Bắt buộc ở phía server**: một câu lệnh `atomic compare-and-swap` (xem [research §4](../research.md)).
 Cấm `read-then-write`.
@@ -217,7 +223,11 @@ KHÔNG liên kết ra kho dùng chung, vì nhiều agent dùng chung một chỗ
 ```
 
 `files` là bản đồ *đường dẫn tương đối → nội dung*. Đường dẫn PHẢI nằm trong thư mục kỹ năng; server từ chối
-gói có đường dẫn thoát ra ngoài.
+**cả gói** có đường dẫn thoát ra ngoài — bỏ lẻ một tệp thì agent đọc một `SKILL.md` mà những tệp nó nhắc
+tới đã lặng lẽ biến mất, tệ hơn là không có kỹ năng ấy. Daemon kiểm lại một lần nữa lúc ghi: kiểm ở server
+giữ cho mọi gói sạch, kiểm ở daemon mới là thứ làm lời hứa ấy đúng trên một cái máy thật.
+
+Thứ tự trong danh sách là **thứ tự người chủ cấp**, không xáo lại.
 
 ### `POST /daemon/runs/{run_id}/start`
 
