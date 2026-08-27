@@ -334,6 +334,7 @@ def artifact_to_entity(m: ArtifactModel) -> Artifact:
         kind=m.kind,
         uri=m.uri,
         content_sha256=m.content_sha256,
+        content_hash=m.content_hash,
         size_bytes=m.size_bytes,
         created_at=m.created_at,
     )

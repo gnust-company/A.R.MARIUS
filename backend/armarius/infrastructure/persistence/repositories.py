@@ -1593,12 +1593,39 @@ class SqlArtifactRepository(ArtifactRepository):
                 kind=artifact.kind,
                 uri=artifact.uri,
                 content_sha256=artifact.content_sha256,
+                # The agent-chosen name is the logical name — one name, two columns,
+                # because `name` predates the dedup key and the wire reads it.
+                logical_name=artifact.name,
+                content_hash=artifact.content_hash,
                 size_bytes=artifact.size_bytes,
                 created_at=artifact.created_at,
             )
         )
         await self._s.flush()
         return artifact
+
+    async def find_by_dedup_key(
+        self, task_id: UUID, logical_name: str, content_hash: str
+    ) -> Artifact | None:
+        row = (
+            await self._s.execute(
+                select(ArtifactModel).where(
+                    ArtifactModel.task_id == task_id,
+                    ArtifactModel.logical_name == logical_name,
+                    ArtifactModel.content_hash == content_hash,
+                )
+            )
+        ).scalars().first()
+        return mappers.artifact_to_entity(row) if row is not None else None
+
+    async def count_named(self, task_id: UUID, logical_name: str) -> int:
+        result = await self._s.execute(
+            select(func.count()).select_from(ArtifactModel).where(
+                ArtifactModel.task_id == task_id,
+                ArtifactModel.logical_name == logical_name,
+            )
+        )
+        return int(result.scalar_one())
 
     async def list_by_task(self, task_id: UUID) -> Sequence[Artifact]:
         rows = (

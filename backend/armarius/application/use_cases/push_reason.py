@@ -25,7 +25,7 @@ from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.inbox_item import InboxItemStatus
 from armarius.domain.entities.run import ACTIVE_RUN_STATUSES
-from armarius.domain.entities.task import Task, TaskDrive
+from armarius.domain.entities.task import Task, TaskDrive, TaskStatus
 from armarius.domain.services.push_reason_rules import (
     DriveSnapshot,
     PushReason,
@@ -85,6 +85,24 @@ class PushReasonService:
             if r.status in ACTIVE_RUN_STATUSES
             and (stamp := as_utc(r.last_output_at or r.started_at)) is not None
         ]
+        # An artifact landing is work happening, read on the same clock as run output
+        # (FR-020d). It speaks only while the task is still *in progress*: that is where
+        # the Done gate stands, and the window this covers is a publish in flight with the
+        # run already quiet — without the mark, the sweep would read the task sitting
+        # exactly at the gate as a task nobody is moving. Once the task leaves for review
+        # the artifact has done its job, and letting it speak there would shout over the
+        # drive that is actually carrying the task — the wait on the patron.
+        if task.status is TaskStatus.IN_PROGRESS:
+            newest_artifact = max(
+                (
+                    stamp
+                    for a in await uow.artifacts.list_by_task(task.id)
+                    if (stamp := as_utc(a.created_at)) is not None
+                ),
+                default=None,
+            )
+            if newest_artifact is not None:
+                run_marks.append(newest_artifact)
         live_run_output = max(run_marks) if run_marks else None
 
         # When a runtime took the newest live run. Read separately from the marks above

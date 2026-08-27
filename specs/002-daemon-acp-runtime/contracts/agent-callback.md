@@ -22,6 +22,10 @@ lại, trả việc. Đặc tả này **không thêm quyền nào cho agent** v�
 
 ### `POST /agent/artifacts` — thêm tính chịu được gọi lặp
 
+> Đường dẫn thật khi hiện thực (T084): `POST /agent/tasks/{task_id}/artifact` — đường đã
+> có từ trước, giữ nguyên để không đổi bề mặt agent đang dùng; `task_id` đi trong đường
+> dẫn thay vì thân tin. Ngữ nghĩa dưới đây không đổi.
+
 ```json
 → { "task_id": "…", "logical_name": "report.pdf", "content": "<base64 | multipart>" }
 ← 201 { "artifact_id": "…", "created": true  }    ← lần đầu

@@ -369,7 +369,12 @@ def build_container() -> Container:
         ),
         task_logs=TaskLogService(uow_factory),
         threads=ThreadService(uow_factory, wake_engine, control_bus=control_bus),
-        artifacts=ArtifactService(uow_factory, store, control_bus=control_bus),
+        artifacts=ArtifactService(
+            uow_factory,
+            store,
+            control_bus=control_bus,
+            drive_refresh=push_reasons.refresh,
+        ),
         artifact_store=store,
         runs=RunQueryService(uow_factory),
         auth=AuthService(uow_factory, workspaces, jwt_service, password_service),

@@ -422,6 +422,15 @@ class ArtifactRepository(ABC):
     @abstractmethod
     async def list_by_task(self, task_id: UUID) -> Sequence[Artifact]: ...
     @abstractmethod
+    async def find_by_dedup_key(
+        self, task_id: UUID, logical_name: str, content_hash: str
+    ) -> Artifact | None:
+        """The row a retried publish should land on instead of duplicating (FR-020c)."""
+    @abstractmethod
+    async def count_named(self, task_id: UUID, logical_name: str) -> int:
+        """How many versions of this name the task already holds — the next version's
+        number is this plus one."""
+    @abstractmethod
     async def count_by_task(self, task_id: UUID) -> int: ...
     @abstractmethod
     async def count_by_project(self, project_id: UUID) -> Mapping[UUID, int]: ...

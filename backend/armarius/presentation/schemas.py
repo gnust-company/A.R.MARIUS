@@ -665,6 +665,15 @@ class ArtifactOut(_Out):
         return self
 
 
+class AgentArtifactOut(ArtifactOut):
+    """The publish call's answer (contracts/agent-callback.md): the artifact, plus the
+    two things the artifact alone cannot say — whether this call created it or merely
+    found it already there (FR-020c), and which version of its name it is."""
+
+    created: bool = True
+    version: int = 1
+
+
 # -------------------------------------------------------------------------- run
 class WakeIn(BaseModel):
     marius_id: UUID

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 
 from armarius.application.use_cases.onboarding_brain import _slug
 from armarius.application.use_cases.plans import PlanItemSpec
@@ -23,6 +23,7 @@ from armarius.presentation.container import Container
 from armarius.presentation.deps import ContainerDep, CurrentMarius
 from armarius.presentation.schemas import (
     AgentArtifactIn,
+    AgentArtifactOut,
     AgentAssignmentRequestIn,
     AgentCommentIn,
     AgentCreateTaskIn,
@@ -444,12 +445,22 @@ async def set_next_action(
     return TaskOut.model_validate(task)
 
 
-@router.post("/tasks/{task_id}/artifact", response_model=ArtifactOut, status_code=201)
+@router.post("/tasks/{task_id}/artifact", response_model=AgentArtifactOut, status_code=201)
 async def publish_artifact(
-    task_id: UUID, body: AgentArtifactIn, marius: CurrentMarius, container: ContainerDep
-) -> ArtifactOut:
+    task_id: UUID,
+    body: AgentArtifactIn,
+    response: Response,
+    marius: CurrentMarius,
+    container: ContainerDep,
+) -> AgentArtifactOut:
+    """Publish, or find what a retried publish already landed (FR-020c).
+
+    201 the first time, 200 with ``created=false`` when the very same bytes under the
+    very same name are already recorded — the caller cannot tell its first attempt
+    succeeded (the reply died on the wire), and it must not have to.
+    """
     await _task_in_caller_workspace(container, marius, task_id)
-    artifact = await container.artifacts.publish(
+    outcome = await container.artifacts.publish(
         task_id=task_id,
         name=body.name,
         kind=body.kind,
@@ -461,7 +472,12 @@ async def publish_artifact(
         uri=body.uri,
         marius_id=marius.id,
     )
-    return ArtifactOut.model_validate(artifact)
+    if not outcome.created:
+        response.status_code = 200
+    out = AgentArtifactOut.model_validate(outcome.artifact)
+    out.created = outcome.created
+    out.version = outcome.version
+    return out
 
 
 # ── Leader: context, plan, phase proposal (spec 001, contracts/agent-surface.md §2) ───

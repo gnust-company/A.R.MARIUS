@@ -998,6 +998,7 @@ export const en = {
     workspace_agent_runtime_missing: 'The Workspace Agent runtime \'{{adapter}}\' is not available.',
     artifact_link_needs_uri: 'A link artifact needs a URI.',
     artifact_needs_content: 'A {{kind}} artifact needs its content.',
+    artifact_store_unreadable: 'The artifact store did not keep the bytes it was given. Nothing was recorded — publish it again.',
     skill_md_not_found: 'No SKILL.md found at that URL. Point at a folder or repository containing one.',
     builtin_skill_undeletable: 'Built-in skills cannot be deleted.',
     not_a_github_url: 'That does not look like a GitHub URL.',
