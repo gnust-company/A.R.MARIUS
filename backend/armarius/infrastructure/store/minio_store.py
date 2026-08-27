@@ -77,6 +77,24 @@ class MinioArtifactStore(ArtifactStore):
         await asyncio.to_thread(_put)
         return StoredObject(uri=key, sha256=sha, size_bytes=len(data))
 
+    async def read_bytes(self, uri: str) -> bytes:
+        """Fetch the object back from the bucket (FR-020).
+
+        Unlike `exists`, a failure here propagates: the publish path asks this *before*
+        recording the artifact, where a store that cannot prove the write must fail the
+        publish, not be waved through.
+        """
+
+        def _get() -> bytes:
+            response = self._client.get_object(self._bucket, uri)
+            try:
+                return response.read()
+            finally:
+                response.close()
+                response.release_conn()
+
+        return bytes(await asyncio.to_thread(_get))
+
     async def exists(self, uri: str) -> bool:
         """Whether the object behind this key is still in the bucket (FR-069).
 

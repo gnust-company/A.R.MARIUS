@@ -320,7 +320,7 @@ async def publish_artifact(
     task_id: UUID, body: PublishArtifactIn, container: ContainerDep, user: CurrentUser
 ) -> ArtifactOut:
     await own_task(container, user, task_id)
-    artifact = await container.artifacts.publish(
+    outcome = await container.artifacts.publish(
         task_id=task_id,
         name=body.name,
         kind=body.kind,
@@ -331,7 +331,7 @@ async def publish_artifact(
         ),
         uri=body.uri,
     )
-    return ArtifactOut.model_validate(artifact)
+    return ArtifactOut.model_validate(outcome.artifact)
 
 
 @router.post("/tasks/{task_id}/wake", response_model=RunStartedOut, status_code=202)

@@ -1000,6 +1000,7 @@ export const vi = {
     workspace_agent_runtime_missing: 'Không có nền chạy \'{{adapter}}\' cho Agent không gian làm việc.',
     artifact_link_needs_uri: 'Thành phẩm dạng liên kết thì phải có địa chỉ.',
     artifact_needs_content: 'Thành phẩm dạng {{kind}} thì phải kèm nội dung.',
+    artifact_store_unreadable: 'Kho chung không giữ được nội dung vừa gửi. Chưa có gì được ghi nhận — hãy công bố lại.',
     skill_md_not_found: 'Không thấy tệp SKILL.md ở địa chỉ đó. Trỏ vào một thư mục hoặc kho mã có chứa nó.',
     builtin_skill_undeletable: 'Kỹ năng dựng sẵn thì không xoá được.',
     not_a_github_url: 'Địa chỉ này không giống địa chỉ GitHub.',

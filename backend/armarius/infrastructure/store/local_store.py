@@ -32,6 +32,18 @@ class LocalArtifactStore(ArtifactStore):
         dest.write_bytes(data)
         return StoredObject(uri=str(rel), sha256=sha, size_bytes=len(data))
 
+    async def read_bytes(self, uri: str) -> bytes:
+        """Read back what `save_bytes` wrote, under the same guard as `exists` (FR-020).
+
+        A key that walks out of the root is not read at all — it raises rather than
+        reaching onto the host filesystem.
+        """
+        candidate = (self._root / uri).resolve()
+        root = self._root.resolve()
+        if not uri or not candidate.is_relative_to(root):
+            raise FileNotFoundError(uri)
+        return candidate.read_bytes()
+
     async def exists(self, uri: str) -> bool:
         """Whether the file behind this key is still on disk (FR-069).
 

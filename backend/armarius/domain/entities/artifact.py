@@ -35,5 +35,10 @@ class Artifact:
     kind: str = ArtifactKind.FILE  # file | link
     uri: str = ""  # bucket key (file) or external URL (link)
     content_sha256: str | None = None
+    # The dedup fingerprint (research §6): the content hash for a file, the hash of the
+    # URL for a link. Same task + same name + same fingerprint is the *same* artifact —
+    # the retry after a dropped upload lands here instead of fathering a duplicate
+    # (FR-020c).
+    content_hash: str = ""
     size_bytes: int | None = None
     created_at: datetime | None = None

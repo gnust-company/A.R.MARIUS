@@ -278,6 +278,13 @@ ENGLISH: dict[str, str] = {
     # ── artifacts and skills ──────────────────────────────────────────────────
     "artifact_link_needs_uri": "A link artifact needs a URI.",
     "artifact_needs_content": "A {kind} artifact needs its content.",
+    # The store could not hand back the bytes it was just given, so nothing was recorded
+    # — the publish never happened and the caller should simply send it again (FR-020,
+    # FR-020b). 502: the failure is the store's, not the request's.
+    "artifact_store_unreadable": (
+        "The artifact store did not keep the bytes it was given. Nothing was recorded — "
+        "publish it again."
+    ),
     "skill_md_not_found": (
         "No SKILL.md found at that URL. Point at a folder or repository containing one."
     ),
@@ -364,3 +371,13 @@ class Unauthorized(CodedError):
 
 class Conflict(CodedError):
     """The call is well formed; the state it lands in refuses it — 409."""
+
+
+class ArtifactStoreUnreliable(CodedError):
+    """The store failed the publish it was in the middle of — 502, and retryable.
+
+    Deliberately not a `Conflict`: nothing about the task's state refused the call, the
+    *store* did not keep what it was given (FR-020). A 5xx tells the caller — a daemon
+    retrying a dropped upload (FR-020b) — that trying again is the right move, where a
+    4xx would tell it to stop.
+    """

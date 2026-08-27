@@ -68,7 +68,14 @@ from armarius.domain.services.project_rules import (
     ProjectClosed,
 )
 from armarius.domain.services.wake_policy import WakeCauseRefused
-from armarius.shared.errors import CodedError, Conflict, Forbidden, NotFound, Unauthorized
+from armarius.shared.errors import (
+    ArtifactStoreUnreliable,
+    CodedError,
+    Conflict,
+    Forbidden,
+    NotFound,
+    Unauthorized,
+)
 
 # ── who answers with what ─────────────────────────────────────────────────────
 #
@@ -126,6 +133,9 @@ _ROUTING: tuple[tuple[type[Exception], int, str], ...] = (
     (WorkspaceAgentUnavailable, 409, "the Workspace Agent is not there to interview with"),
     (EscalationAnswerInvalid, 409, "this escalation does not take that action"),
     (Conflict, 409, "a coded refusal that is about state and nothing more specific fits"),
+    # 502 — the artifact store failed the publish mid-write; the caller did nothing wrong
+    # and should send it again (FR-020, FR-020b).
+    (ArtifactStoreUnreliable, 502, "the store did not keep what it was given"),
     # 422 — the request was well formed as far as the wire is concerned, but what it asks
     # for cannot be made into a thing that exists.
     (TitleRequiredError, 422, "FR-070a — an edit may clear a deadline, never the name"),

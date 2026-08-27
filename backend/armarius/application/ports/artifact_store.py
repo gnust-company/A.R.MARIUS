@@ -23,6 +23,15 @@ class ArtifactStore(ABC):
     async def save_bytes(self, project_id: UUID, name: str, data: bytes) -> StoredObject:
         """Persist raw bytes under the project namespace and return a store reference."""
 
+    @abstractmethod
+    async def read_bytes(self, uri: str) -> bytes:
+        """Fetch back the bytes behind a reference this store handed out (FR-020).
+
+        Asked right after a write, before the artifact row is recorded: a store that
+        cannot return what it was just given has not stored anything, and the publish
+        must fail rather than leave a row claiming otherwise.
+        """
+
     async def ensure_ready(self) -> None:  # noqa: B027 — optional hook, default no-op
         """Provision whatever the store needs (a directory, a bucket). Default: no-op."""
 
