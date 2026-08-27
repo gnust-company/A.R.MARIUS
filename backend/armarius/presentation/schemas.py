@@ -372,6 +372,42 @@ class MariusOut(_Out):
     created_at: datetime | None = None
 
 
+class ResidentAgentOut(_Out):
+    """One agent living at a workplace, as the machines screen shows it."""
+
+    id: UUID
+    name: str
+
+
+class MachineWorkplaceOut(_Out):
+    """One agent CLI on one machine — what it is, whether it can work, and who is on it."""
+
+    id: UUID
+    cli_kind: str
+    cli_version: str = ""
+    ready: bool
+    # A code, never a sentence: the screen renders the patron's language from it, and the
+    # same fact goes to an agent in English (Constitution VI, Constitution VII).
+    not_ready_reason: str | None = None
+    # Everyone attached here, including when this workplace has gone not-ready — that is
+    # the question a person actually asks when it turns red: who is stranded (FR-007a).
+    agents: list[ResidentAgentOut] = Field(default_factory=list)
+
+
+class MachineOut(_Out):
+    """One machine the patron has linked (FR-003, FR-033)."""
+
+    id: UUID
+    display_name: str
+    platform: str = ""
+    daemon_version: str = ""
+    last_heartbeat_at: datetime | None = None
+    # Whether it is answering right now, decided by the same rule that decides whether an
+    # agent on it is online — one rule, so the two screens can never contradict each other.
+    reachable: bool
+    workplaces: list[MachineWorkplaceOut] = Field(default_factory=list)
+
+
 class WorkplaceChoiceOut(_Out):
     """One workplace the person may put an agent on (FR-007f).
 
