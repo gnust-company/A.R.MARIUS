@@ -56,13 +56,20 @@ func WriteContextFile(cli, workDir, message string) (string, error) {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return "", fmt.Errorf("clearing the previous brief for %s: %w", cli, err)
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // the path is this table's, joined onto a directory this process made
 	if err != nil {
 		return "", fmt.Errorf("creating the brief for %s: %w", cli, err)
 	}
-	defer f.Close()
 	if _, err := f.WriteString(message); err != nil {
+		_ = f.Close()
 		return "", fmt.Errorf("writing the brief for %s: %w", cli, err)
+	}
+	// Closed here rather than deferred, and its error is the caller's. A write that only fails
+	// on close — a disk noticing it is full at the last moment — would otherwise be reported as
+	// a brief written perfectly, and the agent would begin on half of its instructions with
+	// nothing anywhere saying so.
+	if err := f.Close(); err != nil {
+		return "", fmt.Errorf("finishing the brief for %s: %w", cli, err)
 	}
 	return path, nil
 }

@@ -396,8 +396,10 @@ class RunEventModel(Base):
         # Feature 002: a run's events are numbered on the machine that produced them and sent
         # up in batches, which is what lets that machine keep working without a round trip per
         # event. This index is what makes a re-sent batch harmless — the numbers it carries are
-        # numbers already held, so nothing is written twice (FR-045). Sequence zero belongs to
-        # the message the agent was given, written before the agent existed.
+        # numbers already held, so nothing is written twice (FR-045). The message the agent was
+        # given is written here first and takes the next free number, and the machine is told in
+        # the work packet where to start — above it. A run handed out twice has two such
+        # messages, which is why neither number is fixed.
         Index("uq_run_events_run_seq", "run_id", "seq", unique=True),
     )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)

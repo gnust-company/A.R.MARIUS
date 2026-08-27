@@ -231,11 +231,12 @@ class StartIn(BaseModel):
 class EventIn(BaseModel):
     """One thing a machine says happened during a run (FR-015, FR-045).
 
-    `seq` is assigned on the machine, in the order the agent produced things, and it starts
-    at 1: zero belongs to the message the agent was given, which was written down here before
-    the agent existed. Numbering on that side is what lets a machine send events as it makes
-    them without a round trip each to agree on the next number, and it is what makes a
-    re-sent batch harmless — a number already written is left alone.
+    `seq` is assigned on the machine, in the order the agent produced things, starting from
+    the `first_seq` it was handed with the work — above whatever was already written for this
+    run, which is at least the message the agent was given. Numbering on that side is what
+    lets a machine send events as it makes them without a round trip each to agree on the next
+    number, and it is what makes a re-sent batch harmless: a number already written is left
+    alone.
     """
 
     seq: int = Field(ge=1, le=1_000_000)

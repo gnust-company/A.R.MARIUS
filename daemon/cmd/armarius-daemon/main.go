@@ -245,8 +245,13 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 	// workplace the server knows about but this daemon cannot drive is left out, and the ask
 	// loop below never asks for work there — see runtime.Supported.
 	places := workplacesOnThisMachine(registered.Workplaces, swept.Found)
+	// Said only for the CLIs this build genuinely cannot drive, and not for a workplace that
+	// simply is not ready: one is a gap in this program, the other is a machine reporting
+	// honestly about itself, and telling the operator the wrong one sends them to fix the wrong
+	// thing.
 	for _, workplace := range registered.Workplaces {
-		if _, canRun := places[workplace.ID]; !canRun && workplace.Ready {
+		_, canRun := places[workplace.ID]
+		if !canRun && workplace.Ready && !runtime.Supported(workplace.CLIKind) {
 			emit(out, "Not asking for work on %s: this build cannot drive it yet.\n", workplace.CLIKind)
 		}
 	}

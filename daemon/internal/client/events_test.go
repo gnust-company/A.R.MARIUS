@@ -55,7 +55,7 @@ func serverThatStreams(t *testing.T, status int) *sseServer {
 			}
 		}
 	}))
-	t.Cleanup(s.Server.Close)
+	t.Cleanup(s.Close)
 	return s
 }
 

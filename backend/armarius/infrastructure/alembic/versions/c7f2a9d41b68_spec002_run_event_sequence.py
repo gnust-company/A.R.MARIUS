@@ -6,9 +6,11 @@ round trip per event to agree on the next number — and it is only safe because
 index: a batch whose reply went missing is simply sent again, and the numbers it carries are
 numbers the store already holds, so nothing is written twice (FR-045).
 
-The message an agent was given keeps sequence zero, which is why the numbering above starts
-at one. It is the one entry in a run's log written before the agent existed, so it sits
-before everything the agent produced, and it leaves the whole of 1..N to the machine.
+Neither end of that numbering is a constant. The message an agent was given is written here
+first and takes the next free number — one, on a run handed out for the first time — and the
+machine is told to start just above it. A run put back on the shelf and handed out again gets
+a message composed afresh, written at a higher number still, so *where the machine starts* is
+something the server says in the work packet rather than something either side assumes.
 
 Revision ID: c7f2a9d41b68
 Revises: b3e8a52c9d17

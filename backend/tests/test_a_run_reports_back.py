@@ -414,6 +414,62 @@ async def test_a_finished_run_leaves_the_task_with_something_pushing_it() -> Non
         assert booked, "lượt chạy xong mà không có gì được xếp lịch quay lại nhìn đầu việc"
 
 
+async def test_a_started_run_can_never_be_handed_out_a_second_time() -> None:
+    """Cái lưới duy nhất giữ cho hai daemon cùng danh tính không giẫm lên nhau (FR-054b).
+
+    Ca người review nêu: lúc nâng cấp có hai daemon cùng sống một lúc, **cùng một `machine_id`**.
+    Daemon cũ gọi `finish` sau khi daemon mới đã nhận lại lượt chạy ấy thì sẽ xoá mối giữ của
+    daemon mới — lượt chạy về kệ trong khi vẫn đang chạy. Bản thân `finish` không chặn được, vì
+    hai bên trình cùng một token của cùng một cái máy: mọi phép so danh tính đều thấy khớp.
+
+    Cái chặn nằm ở chỗ khác, và là **hai thứ rời nhau**, nên bài này ghim cả hai:
+
+      1. `start` gỡ hẳn đồng hồ giữ, mà vòng thu hồi chỉ đụng vào hàng **còn** đồng hồ.
+      2. Câu lệnh lấy việc chỉ nhặt lượt chạy đang `queued`, mà một lượt đã bật agent thì
+         `running`.
+
+    Mỗi cái một mình là đủ; đó chính là lý do phải ghim cả hai. Bảo vệ kiểu này là bảo vệ tình
+    cờ — nó đúng hôm nay vì hai chỗ chẳng liên quan tình cờ hợp nhau, và nó tan ngày ai đó sửa
+    một trong hai vì lý do khác. Ghim bằng bài kiểm chứ không thêm lưới ở `finish`: thêm lưới là
+    viết mã cho một đường không tới được, còn bài này đỏ đúng vào ngày đường ấy mở ra.
+    """
+    async with _client() as c:
+        held = await _held(c, "upgrade-overlap@armarius.dev")
+        started = await c.post(
+            f"/daemon/runs/{held.run_id}/start",
+            json={"session_handle": ""},
+            headers=held.headers,
+        )
+        assert started.status_code == 200, started.text
+
+        # (1) Đồng hồ giữ đã tắt hẳn, nên không có gì để vòng thu hồi bắt được.
+        assert (await _claim_row(held.run_id)).claim_expires_at is None, (
+            "lượt chạy đã bật agent mà vẫn còn đồng hồ giữ — vòng thu hồi sẽ nhả nó ra"
+        )
+
+        # (2) Và ngay cả khi mối giữ *bị* nhả bằng cách nào đó, lượt chạy vẫn không được trao
+        #     lại: nó đang `running`, mà cửa lấy việc chỉ nhặt `queued`. Dựng thẳng cái trạng
+        #     thái tệ nhất ấy ra để đo, thay vì tin rằng nó không xảy ra được.
+        async with get_sessionmaker()() as session:
+            await session.execute(
+                update(RunClaimModel)
+                .where(RunClaimModel.run_id == UUID(held.run_id))
+                .values(machine_id=None, claim_expires_at=None, run_token_hash=None)
+            )
+            await session.commit()
+
+        asked = await c.post(
+            "/daemon/runs/claim",
+            json={"workplace_ids": [held.machine.workplace_id], "max": 5},
+            headers=held.headers,
+        )
+
+    assert asked.json()["runs"] == [], (
+        "lượt chạy đang chạy lại được trao lần nữa; từ đó `finish` của daemon cũ sẽ xoá mối "
+        "giữ của daemon mới và đẩy một lượt chạy sống về kệ"
+    )
+
+
 async def test_another_machine_cannot_close_this_ones_run() -> None:
     async with _client() as c:
         held = await _held(c, "close-mine@armarius.dev")
