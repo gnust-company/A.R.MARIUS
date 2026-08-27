@@ -172,7 +172,7 @@ echo '`+doneLine+`'`)
 		t.Fatalf("tham số gọi công cụ không đi đủ: %v", started.Payload["args"])
 	}
 
-	finished := only(t, events, EventToolFinished)
+	finished := only(t, events, EventToolCompleted)
 	written, err := json.Marshal(finished.Payload)
 	if err != nil {
 		t.Fatalf("đọc lại phần thân: %v", err)
@@ -191,7 +191,7 @@ echo '`+doneLine+`'`)
 		t.Fatalf("chạy một lượt: %v", err)
 	}
 
-	if said := only(t, events, EventAgentMessage); said.Payload["text"] != "ok" {
+	if said := only(t, events, EventAssistantMessage); said.Payload["text"] != "ok" {
 		t.Fatalf("chữ agent nói: %v", said.Payload["text"])
 	}
 	if out.Usage["output_tokens"] == nil {

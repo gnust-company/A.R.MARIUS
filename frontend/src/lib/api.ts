@@ -217,7 +217,6 @@ export interface MariusDTO {
   /** What the team calls it. Never sent to the agent (FR-007j). */
   description?: string
   /** Per-skill install state (#74): slug → pending|installed. */
-  skill_installs?: Record<string, string>
   adapter_type: string
   liveness: string
   /** Why this agent has nowhere to work, when it has nowhere to work (FR-006c). A code —

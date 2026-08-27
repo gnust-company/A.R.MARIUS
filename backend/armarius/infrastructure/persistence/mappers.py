@@ -156,7 +156,6 @@ def marius_to_entity(m: MariusModel) -> Marius:
         description=m.description or "",
         skills=list(m.skills or []),
         skill_ids=[str(x) for x in (m.skill_ids or [])],
-        skill_installs={str(k): str(v) for k, v in (m.skill_installs or {}).items()},
         adapter_type=m.adapter_type,
         adapter_config=dict(m.adapter_config or {}),
         owner_user_id=m.owner_user_id,

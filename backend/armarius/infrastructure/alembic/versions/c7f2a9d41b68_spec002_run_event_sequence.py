@@ -1,0 +1,44 @@
+"""spec002: one event per (run, seq)
+
+A run's events are numbered on the machine that produced them, in the order the agent
+produced them, and sent up in batches. That is what lets a machine keep working without a
+round trip per event to agree on the next number — and it is only safe because of this
+index: a batch whose reply went missing is simply sent again, and the numbers it carries are
+numbers the store already holds, so nothing is written twice (FR-045).
+
+Neither end of that numbering is a constant. The message an agent was given is written here
+first and takes the next free number — one, on a run handed out for the first time — and the
+machine is told to start just above it. A run put back on the shelf and handed out again gets
+a message composed afresh, written at a higher number still, so *where the machine starts* is
+something the server says in the work packet rather than something either side assumes.
+
+Revision ID: c7f2a9d41b68
+Revises: b3e8a52c9d17
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+from alembic import op
+
+revision: str = "c7f2a9d41b68"
+down_revision: str | Sequence[str] | None = "b3e8a52c9d17"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
+
+def upgrade() -> None:
+    # Deliberately not tolerant of duplicates. Two rows sharing a number would mean a run
+    # whose log cannot be put back in order, and quietly keeping one of them would hide
+    # exactly the fault this index exists to make impossible.
+    op.create_index(
+        "uq_run_events_run_seq",
+        "run_events",
+        ["run_id", "seq"],
+        unique=True,
+    )
+
+
+def downgrade() -> None:
+    op.drop_index("uq_run_events_run_seq", table_name="run_events")

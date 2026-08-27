@@ -48,20 +48,27 @@ type Event struct {
 
 // The events both families produce.
 //
+// **These are the names the rest of the system already writes down.** A run's events are stored
+// under their type and read back by the screen that replays the run (FR-016, FR-046), and that
+// reader was here first. A second vocabulary for the same five facts would not be a naming
+// preference — it would be runs through this road showing up blank on a screen that renders
+// every other run perfectly, which is the kind of fault that looks like an empty task rather
+// than like a bug. One name per fact, chosen from the side that has the readers.
+//
 // Tool results are deliberately absent from this list in content: a tool's full output must
 // never leave the machine (FR-043a), and the summarised form — how big it was, what type, the
 // opening bytes, how much was cut — is built by the layer that owns the threshold
 // (specs/002-daemon-acp-runtime/tasks.md T095). What is emitted here says a tool finished and
 // whether it failed, which is true, cheap, and impossible to leak through.
 const (
-	// EventAgentMessage is text the agent produced (FR-044).
-	EventAgentMessage = "agent.message"
-	// EventAgentThinking is the agent's reasoning, for the CLIs that expose any (FR-044).
-	EventAgentThinking = "agent.thinking"
+	// EventAssistantMessage is text the agent produced (FR-044).
+	EventAssistantMessage = "assistant.message"
+	// EventAssistantThinking is the agent's reasoning, for the CLIs that expose any (FR-044).
+	EventAssistantThinking = "assistant.thinking"
 	// EventToolStarted names a tool the agent called, with its arguments in full (FR-043).
 	EventToolStarted = "tool.started"
-	// EventToolFinished says that call ended, and whether it ended badly.
-	EventToolFinished = "tool.finished"
+	// EventToolCompleted says that call ended, and whether it ended badly.
+	EventToolCompleted = "tool.completed"
 	// EventRunError is anything that went wrong (FR-044).
 	EventRunError = "run.error"
 )
@@ -91,4 +98,24 @@ type Emit func(Event)
 // returns no error at all, because running it worked exactly as intended.
 type Runtime interface {
 	Run(ctx context.Context, req Request, emit Emit) (Outcome, error)
+}
+
+// Supported answers whether this daemon can actually drive a CLI of this kind.
+//
+// Not the same question as *is it installed* — that one is discovery's, and its answer is what
+// the machine reports as a workplace (FR-002). This one is about what has been written here,
+// and today the honest answer for Gemini CLI is no: its invocation may not be written before it
+// has been probed (FR-039a, task T013).
+//
+// It matters because of what a machine does with the answer. Asking for work at a workplace
+// this daemon cannot drive wins a run that fails during setup, and a run that fails during
+// setup goes back on the shelf and is offered to the same machine again (FR-007, FR-056a) —
+// forever, a slot at a time. Not asking leaves the task where it is, which is visibly stuck
+// rather than invisibly churning.
+func Supported(cli string) bool {
+	if _, oneShot := oneShots[cli]; oneShot {
+		return true
+	}
+	_, acp := acpFlags[cli]
+	return acp
 }

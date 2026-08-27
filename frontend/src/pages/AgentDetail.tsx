@@ -229,10 +229,11 @@ export default function AgentDetail() {
   const [runs, setRuns] = useState<RunDTO[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Linking skills to an agent (#74). Nothing is pushed at the agent: a skill travels down
-  // with the work that needs it (FR-011b), so linking is the whole of the act. The agent
-  // confirms each install out of band (POST /agent/skills/{slug}/installed), flipping the
-  // per-skill badge pending → installed. State is carried on agent.skillInstalls.
+  // Linking skills to an agent. Nothing is pushed at the agent and nothing is confirmed back:
+  // a skill travels down with the work that needs it and is written onto the machine that
+  // runs the agent, every run (FR-011b). Linking is the whole of the act, which is why these
+  // pills carry no install state any more — there is no moment at which a linked skill is not
+  // yet installed (FR-011c).
   const [linkSkillsOpen, setLinkSkillsOpen] = useState(false);
   const [selectedNewIds, setSelectedNewIds] = useState<string[]>([]);
   const [installing, setInstalling] = useState(false);
@@ -282,14 +283,6 @@ export default function AgentDetail() {
   const displayName = agent?.displayName || agent?.name || t('agentDetail.agentFallback');
   const AdapterIcon = ADAPTER_ICON[agent?.adapterType || ''] || Globe;
   const linkedSkillNames = agent?.skills || [];
-
-  // Per-skill install state (#74) is keyed by slug; the linked pills show it by name.
-  const skillInstalls = agent?.skillInstalls ?? {};
-  const slugByName = new Map(allSkills.map((s) => [s.name, s.slug]));
-  const installStateOf = (name: string): string | undefined => {
-    const slug = slugByName.get(name);
-    return slug ? skillInstalls[slug] : undefined;
-  };
 
   // The picker offers EVERY workspace skill — a linked one can be re-selected to re-push an
   // updated copy of its files (#74/#105), not only newly-linked skills.
@@ -424,26 +417,14 @@ export default function AgentDetail() {
               </div>
               {linkedSkillNames.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5">
-                  {linkedSkillNames.map((s) => {
-                    const st = installStateOf(s);
-                    return (
-                      <span
-                        key={s}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#E3D7BC] text-[#6B5E4E]"
-                      >
-                        {s}
-                        {st === 'installed' && (
-                          <CheckCircle2 className="w-3 h-3 text-[#2A6E3A]" aria-label={t('agentDetail.installState.installed')} />
-                        )}
-                        {st === 'pending' && (
-                          <Loader2 className="w-3 h-3 animate-spin text-[#B8860B]" aria-label={t('agentDetail.installState.pending')} />
-                        )}
-                        {st === 'failed' && (
-                          <AlertTriangle className="w-3 h-3 text-[#8A3B22]" aria-label={t('agentDetail.installState.failed')} />
-                        )}
-                      </span>
-                    );
-                  })}
+                  {linkedSkillNames.map((s) => (
+                    <span
+                      key={s}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#E3D7BC] text-[#6B5E4E]"
+                    >
+                      {s}
+                    </span>
+                  ))}
                 </div>
               ) : (
                 <p className="text-[12px] text-[#A89880]">{t('agentDetail.noSkills')}</p>

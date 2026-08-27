@@ -282,27 +282,6 @@ class UpdateSkillIn(BaseModel):
     files: dict[str, str] = Field(default_factory=dict)
 
 
-# ----------------------------------------------------------------- agent skills
-class AgentSkillSummary(_Out):
-    """One skill linked to the calling agent — enough to know it exists and how big it
-    is. Fetch its full file tree from GET /agent/skills/{slug}."""
-
-    slug: str
-    name: str
-    description: str = ""
-    file_count: int
-
-
-class AgentSkillBundleOut(_Out):
-    """A linked skill's complete file tree (path → content) so the agent can write each
-    file under its runtime's skills directory."""
-
-    slug: str
-    name: str
-    description: str = ""
-    files: dict[str, str] = Field(default_factory=dict)
-
-
 # ----------------------------------------------------------------------- marius
 class RegisterMariusIn(BaseModel):
     """Everything it takes to make an agent (FR-007g).
@@ -374,8 +353,6 @@ class MariusOut(_Out):
     description: str = ""
     skills: list[str]
     skill_ids: list[str] = Field(default_factory=list)
-    # Per-skill install state (post-invite loop #74): slug → pending|installed|failed.
-    skill_installs: dict[str, str] = Field(default_factory=dict)
     adapter_type: str
     liveness: str
     # Why this agent has nowhere to work, when it has nowhere to work (FR-006c). A code,

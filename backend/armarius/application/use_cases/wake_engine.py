@@ -452,6 +452,64 @@ class WakeEngine:
             lambda: self._maybe_self_wake(run_id),
         )
 
+    async def conclude_run(
+        self,
+        run_id: UUID,
+        *,
+        status: RunStatus,
+        error: str | None = None,
+        usage: dict | None = None,
+    ) -> None:
+        """Close a run that was carried out somewhere this process cannot watch (FR-030a).
+
+        The same ending as a run driven in-process, reached from the other direction. A run on
+        somebody's machine produces no return value here — the machine reports it — so this is
+        where the tail of ``_execute_run`` is reused rather than written a second time. Two
+        endings would be two answers to *what happens after a run*, and the follow-up wake is
+        precisely the half that would go missing from the second one.
+
+        **The follow-up wake is the point.** A run ending is not the same as a task being
+        finished with, and FR-030a names the hole exactly: a run ends cleanly, the task is still
+        in progress, and nothing is scheduled to look at it again. The sweep catches that, but
+        late — it is the backstop, not the answer. ``_maybe_self_wake`` is the answer, and it
+        runs here for the same reason it runs after an in-process turn.
+
+        Reporting twice is not an error. A machine whose reply went missing calls again, and the
+        second call finds the run already closed and leaves it alone — repeating the finalise
+        would spend a continuation attempt the first call already spent.
+        """
+        async with self._uow() as uow:
+            run = await uow.runs.get(run_id)
+            if run is None or run.status not in ACTIVE_RUN_STATUSES:
+                return
+            task = await uow.tasks.get(run.task_id) if run.task_id else None
+            marius = await uow.mariuses.get(run.marius_id) if run.marius_id else None
+            if task is None or marius is None:
+                return
+            session = await uow.sessions.get_for(marius.id, marius.adapter_type, task.id)
+            marius_id, task_id = marius.id, task.id
+            await self._finalise(
+                uow,
+                run,
+                task,
+                marius,
+                session,
+                ExecResult(status=status, error=error, usage=usage or {}),
+            )
+
+        # After the finalise and in this order, exactly as an in-process run ends: the pair is
+        # handed back first because both of the calls after it may enqueue, and enqueueing
+        # against a pair this run still holds folds the new wake into the turn that just ended.
+        await self._release_pair(run_id, cause=error)
+        await settle(
+            f"re-wake run {run_id} for the causes it absorbed",
+            lambda: self._rewake_for_absorbed_causes(run_id, marius_id, task_id),
+        )
+        await settle(
+            f"decide the follow-up wake after run {run_id}",
+            lambda: self._maybe_self_wake(run_id),
+        )
+
     async def _release_pair(self, run_id: UUID, *, cause: str | None = None) -> None:
         """Hand the (agent, task) pair back, retrying a lost write race.
 

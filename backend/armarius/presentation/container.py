@@ -149,13 +149,18 @@ def build_container() -> Container:
     # packet it composes, so it needs the one object that knows what a skill is.
     skills = SkillService(uow_factory)
 
+    # One publisher for the per-task channel, shared: a run carried out in this process and a
+    # run carried out on somebody's machine both appear on the same channel, so a screen
+    # watching a task does not have to know which road its run took (FR-046, Constitution III).
+    task_trace = ControlBusTaskTrace(control_bus)
+
     wake_engine = WakeEngine(
         uow_factory,
         registry,
         event_bus,
         run_timeout_seconds=settings.run_timeout_seconds,
         max_continuation_attempts=settings.wake_max_continuation_attempts,
-        task_trace=ControlBusTaskTrace(control_bus),
+        task_trace=task_trace,
         workspace_trace=ControlBusWorkspaceTrace(control_bus),
         skills=skills,
     )
@@ -230,6 +235,14 @@ def build_container() -> Container:
         # knows a run changed hands; what that run is *about* comes from the layer that
         # knows the project, the agent and why it was woken (FR-011a, Constitution III).
         compose=wake_engine.compose_packet,
+        # Each event put in front of anyone watching the task, on the same channel the
+        # in-process path uses (FR-046). One channel, so a run carried out on somebody's
+        # machine and a run carried out here are watched the same way.
+        on_recorded=task_trace.publish,
+        # And the end of a run handed to the layer that decides what a task does next — the
+        # follow-up wake above all, which is what stops a finished run leaving a task with
+        # nothing scheduled to look at it again (FR-030a).
+        on_finish=wake_engine.conclude_run,
     )
     registry.register(DaemonAdapter(claims))
     # Tasks and approvals are built here rather than inline below: the approval service

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os/exec"
+	"sync"
 )
 
 // acpProtocolVersion is the version of the Agent Client Protocol this daemon speaks.
@@ -50,31 +50,45 @@ func (ACP) Run(ctx context.Context, req Request, emit Emit) (Outcome, error) {
 		return Outcome{}, fmt.Errorf("running %s needs the task's working directory", req.CLI)
 	}
 
-	cmd := exec.CommandContext(ctx, req.Binary, flags...) //nolint:gosec // the path is what discovery found on this machine
-	cmd.Dir = req.WorkDir
-	cmd.Env = req.Env
+	cmd := newProcess(ctx, req, flags)
 
 	toAgent, err := cmd.StdinPipe()
 	if err != nil {
 		return Outcome{}, fmt.Errorf("speaking to %s: %w", req.CLI, err)
 	}
-	fromAgent, err := cmd.StdoutPipe()
+	// The same pipes the one-shot family owns, for the same reason: an ACP peer starts
+	// programs too, and one of them holding this pipe open is what would make waiting for the
+	// CLI a wait with no end (see `pipes`).
+	streams, err := plumb(cmd)
 	if err != nil {
 		return Outcome{}, fmt.Errorf("listening to %s: %w", req.CLI, err)
 	}
-	var complaints tail
-	cmd.Stderr = &complaints
 
 	if err := cmd.Start(); err != nil {
+		streams.takeAway()
+		streams.handedOver()
 		return Outcome{}, fmt.Errorf("starting %s: %w", req.CLI, err)
 	}
+	streams.handedOver()
 
-	out, talkErr := Converse(ctx, toAgent, fromAgent, req, emit)
+	var (
+		reading    sync.WaitGroup
+		complaints tail
+	)
+	reading.Add(1)
+	go func() {
+		defer reading.Done()
+		_, _ = io.Copy(&complaints, streams.errs)
+	}()
+
+	out, talkErr := Converse(ctx, toAgent, streams.out, req, emit)
 	// Closing our end is how an ACP peer is told the conversation is over; it then exits by
 	// itself. Ending the process instead would be indistinguishable, from its side, from the
 	// machine dying — and some of these CLIs write their session out on the way down.
 	_ = toAgent.Close()
 	waitErr := cmd.Wait()
+	reap(cmd)
+	streams.drain(&reading)
 
 	if talkErr != nil {
 		return out, fmt.Errorf("%s: %w%s", req.CLI, talkErr, complaints.suffix())
@@ -293,11 +307,11 @@ func (c *acpConn) notified(msg rpcMessage) {
 	switch update.Update.Kind {
 	case "agent_message_chunk":
 		if update.Update.Content.Text != "" {
-			c.emit(Event{Type: EventAgentMessage, Payload: map[string]any{"text": update.Update.Content.Text}})
+			c.emit(Event{Type: EventAssistantMessage, Payload: map[string]any{"text": update.Update.Content.Text}})
 		}
 	case "agent_thought_chunk":
 		if update.Update.Content.Text != "" {
-			c.emit(Event{Type: EventAgentThinking, Payload: map[string]any{"text": update.Update.Content.Text}})
+			c.emit(Event{Type: EventAssistantThinking, Payload: map[string]any{"text": update.Update.Content.Text}})
 		}
 	case "tool_call":
 		payload := map[string]any{"call": update.Update.ToolCallID, "name": update.Update.Title}
@@ -311,7 +325,7 @@ func (c *acpConn) notified(msg rpcMessage) {
 	case "tool_call_update":
 		switch update.Update.Status {
 		case "completed", "failed":
-			c.emit(Event{Type: EventToolFinished, Payload: map[string]any{
+			c.emit(Event{Type: EventToolCompleted, Payload: map[string]any{
 				"call":   update.Update.ToolCallID,
 				"failed": update.Update.Status == "failed",
 			}})
@@ -325,9 +339,9 @@ func (c *acpConn) notified(msg rpcMessage) {
 // person watching, and this daemon was given a machine's credentials, not a patron's judgement.
 // Answering *yes* on their behalf would make every unattended run carry an approval nobody gave;
 // answering *no* costs the agent one tool call and puts a code in the record saying exactly what
-// it wanted. Which of those is right for an unattended run is a product decision that has not
-// been made yet — task T131 in specs/002-daemon-acp-runtime/tasks.md — and until it is, the
-// refusal is the answer that cannot do damage.
+// it wanted. Refusing is the rule rather than a placeholder (FR-013b): this system does not
+// promise an approval road, and if one is ever wanted it will arrive as a requirement of its
+// own rather than as the missing half of this.
 func (c *acpConn) answer(msg rpcMessage) error {
 	if msg.Method == "session/request_permission" {
 		c.emit(Event{Type: EventRunError, Payload: map[string]any{"code": "permission_refused_nobody_to_ask"}})

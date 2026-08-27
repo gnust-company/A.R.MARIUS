@@ -785,11 +785,6 @@ export const vi = {
       reinstallHint: 'Đã liên kết — chọn để đẩy lại bản mới nhất',
       linkedTag: 'đã liên kết',
     },
-    installState: {
-      pending: 'Đang chờ agent cài',
-      installed: 'Đã cài',
-      failed: 'Đẩy thất bại',
-    },
     noSkills: 'Chưa liên kết kỹ năng nào.',
     wakeSource: {
       assignment: 'Giao việc',
@@ -1010,6 +1005,7 @@ export const vi = {
     not_a_github_url: 'Địa chỉ này không giống địa chỉ GitHub.',
     github_error: 'GitHub trả về {{status}}: {{reason}}',
     github_unreachable: 'Không kết nối được tới GitHub: {{reason}}',
+    tool_result_not_summarised: 'Kết quả gọi công cụ phải gửi lên ở dạng rút gọn, không gửi toàn văn. Chỉ gửi kích thước, kiểu và phần đầu.',
   },
   language: {
     en: 'EN',

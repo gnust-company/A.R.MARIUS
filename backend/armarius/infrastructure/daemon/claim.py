@@ -47,6 +47,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import json
 import secrets
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
@@ -70,7 +71,7 @@ from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.infrastructure.database.models import ProjectModel, RunEventModel, RunModel
 from armarius.shared.clock import as_utc, utcnow
 from armarius.shared.config import settings
-from armarius.shared.errors import NotFound
+from armarius.shared.errors import BadRequest, NotFound
 from armarius.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -109,6 +110,63 @@ class GrantedRun:
     # The agent's own skills, whole, so nothing has to be fetched before it can begin
     # (FR-011b).
     skills: tuple[SkillBundle, ...] = ()
+    # Where this machine's own numbering starts (FR-045). The machine numbers the events it
+    # produces as it produces them — no round trip per event to agree on the next number — and
+    # this is the number that makes those numbers unique for the run: everything already
+    # written sits below it. Not always the same value twice, because a run put back on the
+    # shelf is handed out again with a message composed afresh, and that message is written
+    # down too.
+    first_seq: int = 1
+
+
+@dataclass(frozen=True)
+class ReportedEvent:
+    """One thing a machine says happened during a run (FR-015, FR-045)."""
+
+    seq: int
+    type: str
+    payload: dict
+
+
+# The event types whose payload may never carry what a tool returned (FR-043a).
+TOOL_RESULT_EVENT = "tool.completed"
+
+# How big a tool-result event may be once it reaches here.
+#
+# The daemon cuts the result down before it leaves the machine, and this is the check that does
+# not take its word for it (FR-043a). Comfortably larger than the daemon's own inline limit, so
+# a summary that was cut correctly always fits and only an uncut one can trip it: this refuses
+# the mistake, it does not tune the threshold.
+MAX_TOOL_RESULT_BYTES = 4096
+
+# Names under which a whole tool result would arrive if the cut had not happened. A summary is
+# a size, a type and an opening slice (FR-043b) — none of which is called any of these.
+WHOLE_RESULT_KEYS = frozenset(
+    {"content", "result", "output", "stdout", "stderr", "body", "data"}
+)
+
+
+def refuse_whole_tool_results(events: Sequence[ReportedEvent]) -> None:
+    """Refuse a batch that carries a tool's full output, whatever the daemon believes it sent.
+
+    Checked here rather than trusted from the machine, and that is the whole point of the rule
+    existing twice. The cut on the machine is what keeps the bytes at home (FR-043a); this is
+    what makes the rule true of the *store* rather than of one program's good behaviour — a
+    daemon on an old build, a daemon somebody patched, or a token used by something that is not
+    a daemon at all all end up here.
+
+    A refusal takes the whole batch. Writing the acceptable half would leave the run's log with
+    a hole at a number that will never be filled, because the machine has no way to send a
+    different event under a sequence number it has already used (FR-045).
+    """
+    for event in events:
+        if event.type != TOOL_RESULT_EVENT:
+            continue
+        named = WHOLE_RESULT_KEYS & set(event.payload)
+        if named:
+            raise BadRequest("tool_result_not_summarised")
+        if len(json.dumps(event.payload, default=str).encode("utf-8")) > MAX_TOOL_RESULT_BYTES:
+            raise BadRequest("tool_result_not_summarised")
 
 
 class DaemonClaimService:
@@ -122,6 +180,8 @@ class DaemonClaimService:
         on_release: Callable[[UUID], Awaitable[None]] | None = None,
         on_offer: Callable[[UUID, UUID], Awaitable[None]] | None = None,
         compose: Callable[[UUID], Awaitable[WorkPacket | None]] | None = None,
+        on_recorded: Callable[[UUID, str, dict], Awaitable[None]] | None = None,
+        on_finish: Callable[..., Awaitable[None]] | None = None,
     ) -> None:
         self._sessionmaker = sessionmaker
         self._clock = clock
@@ -138,6 +198,16 @@ class DaemonClaimService:
         # two above: assembling that message reads a project's brief and an agent's own
         # instructions, and nothing down here may reach up for those (Constitution III).
         self._compose = compose
+        # Told about each event as it is written, so a screen watching the task sees the run
+        # move rather than finding out when it ends (FR-046). A callback for the same reason
+        # as the others: publishing to a channel is not this layer's business, and nothing
+        # under `daemon/` may reach upwards (Constitution III).
+        self._on_recorded = on_recorded
+        # Told that a run is over, so the task gets a live drive again without waiting for a
+        # sweep (FR-030a). What *closing a run* means — the follow-up wake, the pair handed
+        # back, the recovery ladder — is entirely the business layer's, and none of it can be
+        # decided from down here.
+        self._on_finish = on_finish
         self._task: asyncio.Task[None] | None = None
 
     def _sessions(self) -> async_sessionmaker[AsyncSession]:
@@ -414,7 +484,13 @@ class DaemonClaimService:
                     task_id=task_id,
                     workplace_id=claim.workplace_id,
                     run_token=token,
-                    claim_expires_at=claim.claim_expires_at or now,
+                    # Read back through `as_utc` rather than handed over as stored. A
+                    # timestamp column comes back tz-aware from one database engine and
+                    # naive from another, and naive is not a smaller version of aware — it
+                    # serialises without an offset, and a machine reading it cannot parse it
+                    # at all. The daemon is right to refuse a moment that does not say which
+                    # moment it is; what must not vary is what this side sends.
+                    claim_expires_at=as_utc(claim.claim_expires_at) or now,
                 )
             )
         return granted
@@ -433,16 +509,22 @@ class DaemonClaimService:
             return list(granted)
         dressed: list[GrantedRun] = []
         for run in granted:
-            packet = await self._packet_for(run.run_id)
-            if packet is None:
+            made = await self._packet_for(run.run_id)
+            if made is None:
                 await self._give_back(run.run_id)
                 continue
+            packet, written_at = made
             dressed.append(
-                replace(run, prompt=packet.prompt, skills=tuple(packet.skills))
+                replace(
+                    run,
+                    prompt=packet.prompt,
+                    skills=tuple(packet.skills),
+                    first_seq=written_at + 1,
+                )
             )
         return dressed
 
-    async def _packet_for(self, run_id: UUID) -> WorkPacket | None:
+    async def _packet_for(self, run_id: UUID) -> tuple[WorkPacket, int] | None:
         """One run's packet, written down on the way past. None if either half failed.
 
         Swallowing the failure and answering None rather than raising: from here there is
@@ -461,18 +543,25 @@ class DaemonClaimService:
             logger.warning("there is nothing to say to an agent about run %s", run_id)
             return None
         try:
-            await self._record(run_id, packet.prompt)
+            written_at = await self._record(run_id, packet.prompt)
         except Exception:
             logger.exception("could not write down the message sent for run %s", run_id)
             return None
-        return packet
+        return packet, written_at
 
-    async def _record(self, run_id: UUID, prompt: str) -> None:
-        """Keep the message, whole, as the run's first event (FR-012a, FR-042).
+    async def _record(self, run_id: UUID, prompt: str) -> int:
+        """Keep the message, whole, as the run's first event, and say where it sits.
 
-        Written from here rather than sent back by whoever runs the agent: this side built
-        the text, so it already has it, and asking for it back would make the record depend
-        on a machine still being reachable at exactly the moment it may not be.
+        Written from here rather than sent back by whoever runs the agent (FR-012a, FR-042):
+        this side built the text, so it already has it, and asking for it back would make the
+        record depend on a machine still being reachable at exactly the moment it may not be.
+
+        **The number it takes matters to the machine.** Everything the agent then produces is
+        numbered by the machine that runs it, starting just after this one, and the pair
+        (run, number) is unique — which is what makes a re-sent batch harmless (FR-045). A run
+        can be dressed more than once, because work put back on the shelf is offered again with
+        a message composed afresh, so *first* is not always one; the number is returned rather
+        than assumed for exactly that reason.
 
         The size is recorded beside it even though nothing is cut yet. When the split into
         a preview and a full copy arrives (FR-049), the runs written before it should still
@@ -482,11 +571,12 @@ class DaemonClaimService:
             highest = await session.scalar(
                 select(func.max(RunEventModel.seq)).where(RunEventModel.run_id == run_id)
             )
+            seq = (highest or 0) + 1
             session.add(
                 RunEventModel(
                     id=uuid4(),
                     run_id=run_id,
-                    seq=(highest or 0) + 1,
+                    seq=seq,
                     type=PROMPT_EVENT,
                     payload={"prompt": prompt},
                     original_byte_size=len(prompt.encode("utf-8")),
@@ -494,6 +584,7 @@ class DaemonClaimService:
                 )
             )
             await session.commit()
+        return seq
 
     async def _give_back(self, run_id: UUID) -> None:
         """Put one run back exactly as it was before this ask found it.
@@ -552,6 +643,145 @@ class DaemonClaimService:
             # would take a healthy run away from the machine two minutes in.
             claim.claim_expires_at = None
             await session.commit()
+
+    # ── what the machine says while the run is going, and when it is over ────────
+
+    async def record(
+        self, machine: MachineIdentity, run_id: UUID, events: Sequence[ReportedEvent]
+    ) -> None:
+        """Write down what an agent did, while it is still doing it (FR-015, FR-045, FR-046).
+
+        **Numbered by the machine, written once here.** The machine numbers its own events as
+        it makes them, which is what lets it send them without a round trip per event; this
+        side treats a number it already holds as a number already written. That is what makes
+        a lost reply cost a repeated call and nothing else — the machine sends the same batch
+        again and the store is unchanged (FR-045).
+
+        Refused outright when this machine no longer holds the run (FR-059). That case is not
+        rare enough to leave open: the two clocks are not the same clock, so a machine whose
+        hold lapsed can still believe it holds the run and still have an agent running. Blocking
+        the write is what makes that surplus run leave no trace at all.
+        """
+        if not events:
+            return
+        refuse_whole_tool_results(events)
+
+        now = self._clock()
+        async with self._sessions()() as session:
+            claim = await session.get(RunClaimModel, run_id)
+            if (
+                claim is None
+                or claim.workspace_id != machine.workspace_id
+                or claim.machine_id != machine.machine_id
+                or not self._still_held(claim, now)
+            ):
+                raise NotFound("run_not_found")
+
+            already = set(
+                (
+                    await session.execute(
+                        select(RunEventModel.seq).where(
+                            RunEventModel.run_id == run_id,
+                            RunEventModel.seq.in_([e.seq for e in events]),
+                        )
+                    )
+                ).scalars()
+            )
+            fresh = [event for event in events if event.seq not in already]
+            for event in fresh:
+                session.add(
+                    RunEventModel(
+                        id=uuid4(),
+                        run_id=run_id,
+                        seq=event.seq,
+                        type=event.type,
+                        payload=dict(event.payload),
+                        created_at=now,
+                    )
+                )
+            if not fresh:
+                return
+            # The one column outside this module's own tables that a run's events touch, and
+            # it has to be touched here: it is what the silence rules read to tell a run that
+            # is working from one that has stopped (FR-030, FR-056).
+            await session.execute(
+                update(RunModel)
+                .where(RunModel.id == run_id)
+                .values(last_output_at=now)
+                .execution_options(synchronize_session=False)
+            )
+            task_id = await session.scalar(
+                select(RunModel.task_id).where(RunModel.id == run_id)
+            )
+            try:
+                await session.commit()
+            except IntegrityError:
+                # Two copies of one batch arriving together. The numbers are the same numbers,
+                # so whichever landed first wrote exactly what this one was going to.
+                await session.rollback()
+                return
+
+        await self._show(task_id, run_id, fresh)
+
+    async def _show(
+        self, task_id: UUID | None, run_id: UUID, events: Sequence[ReportedEvent]
+    ) -> None:
+        """Put what was just written in front of anyone watching the task (FR-046).
+
+        Best effort, and after the commit. A screen that cannot be told is a screen that
+        refreshes a moment later; a write that fails because a screen could not be told is
+        work lost. The run's identity travels in the payload so a client that both replays
+        the stream and reads the stored log can tell the overlap apart by identity.
+        """
+        if task_id is None or self._on_recorded is None:
+            return
+        for event in events:
+            with contextlib.suppress(Exception):
+                await self._on_recorded(
+                    task_id,
+                    event.type,
+                    {**event.payload, "_run_id": str(run_id), "_seq": event.seq},
+                )
+
+    async def finish(
+        self,
+        machine: MachineIdentity,
+        run_id: UUID,
+        *,
+        status: RunStatus,
+        error: str = "",
+        usage: dict | None = None,
+    ) -> None:
+        """The machine says the run is over, however it ended (FR-014b, FR-030a).
+
+        Two things happen and they are not the same thing. Here, the run stops being this
+        machine's: the hold goes and **the token goes with it**, which is the whole of FR-014b
+        — a credential minted for one run must stop opening anything the moment that run ends,
+        whether it ended well or badly. Above, the business layer decides what the *task* does
+        next, and that is the half FR-030a is about.
+
+        Told twice, this does nothing the second time. A reply lost on the way back makes the
+        machine call again, and by then the hold is already gone: there is nothing left to
+        release and nothing left to conclude, so the call returns quietly rather than sending
+        the task through its ending a second time.
+        """
+        async with self._sessions()() as session:
+            claim = await session.get(RunClaimModel, run_id)
+            if claim is None or claim.workspace_id != machine.workspace_id:
+                raise NotFound("run_not_found")
+            if claim.machine_id is None:
+                # Already closed, or taken back while this machine was finishing. Either way
+                # nobody holds it, and nothing here has anything left to do.
+                return
+            if claim.machine_id != machine.machine_id:
+                raise NotFound("run_not_found")
+            claim.machine_id = None
+            claim.claim_expires_at = None
+            claim.run_token_hash = None
+            await session.commit()
+
+        if self._on_finish is not None:
+            await self._on_finish(run_id, status=status, error=error or None, usage=usage or {})
 
     @staticmethod
     def _still_held(claim: RunClaimModel, now: datetime) -> bool:

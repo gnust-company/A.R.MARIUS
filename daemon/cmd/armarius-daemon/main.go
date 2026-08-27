@@ -10,8 +10,9 @@
 //	start   stay up: announce the CLIs found here, ask for work, run it, report back
 //	status  say what this machine currently knows about itself, then exit
 //
-// All three are built. `start` does not yet ask for work — that is the claim loop and the push
-// channel, T052 and T054 in specs/002-daemon-acp-runtime/tasks.md.
+// `start` is where the three roads meet: it says this machine is alive on a beat, holds the push
+// road open so it hears about work the moment there is any, asks for that work on its own rhythm
+// when nothing has said anything, and runs whatever it is handed.
 package main
 
 import (
@@ -23,7 +24,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime"
+	gosys "runtime"
+	"sync"
 	"syscall"
 	"time"
 
@@ -31,6 +33,7 @@ import (
 	"github.com/gnust-company/armarius-daemon/internal/config"
 	"github.com/gnust-company/armarius-daemon/internal/discovery"
 	"github.com/gnust-company/armarius-daemon/internal/execenv"
+	"github.com/gnust-company/armarius-daemon/internal/runtime"
 	"github.com/gnust-company/armarius-daemon/internal/supervisor"
 )
 
@@ -146,20 +149,22 @@ func runLogin(ctx context.Context, args []string, out io.Writer) error {
 	_, err := client.Login(ctx, client.LoginOptions{
 		Server:     *server,
 		ConfigPath: *config,
-		Platform:   runtime.GOOS,
+		Platform:   gosys.GOOS,
 		Version:    version,
 		Out:        out,
 	})
 	return err
 }
 
-// runStart brings this machine online: it works out what it can run, tells the server, and
-// keeps saying it is there until it is stopped.
+// runStart brings this machine online: it works out what it can run, tells the server, and then
+// stays up asking for work and running it until it is stopped.
 //
-// Asking for work is not here yet — that is the claim loop and the push channel, T052 and T054
-// in specs/002-daemon-acp-runtime/tasks.md. Until they land, a machine that runs this is a
-// machine the server can see and hand nothing to, which is a real and safe state: work with
-// nowhere to go simply waits, which is what FR-008a asks for anyway.
+// Three loops run at once and none of them owns the others. The beat says this machine is
+// reachable (FR-004). The push road carries *there is work, come and ask* (FR-055). The ask loop
+// is the one that actually takes work, on its own unhurried rhythm, whether or not anything
+// nudged it — which is what makes the push road an optimisation rather than a dependency
+// (FR-055d). Losing any one of them degrades this machine; losing all three stops it, and the
+// server notices that on its own.
 func runStart(ctx context.Context, args []string, out io.Writer) error {
 	fs := newFlagSet("start", out)
 	configPath := fs.String("config", defaultConfigPath(), "path to this machine's daemon configuration")
@@ -236,14 +241,113 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 	// specific thing: the daemon was killed rather than stopped.
 	defer client.RemoveState(statePath)
 
+	// What this machine can actually run, keyed the way work arrives: by workplace id. A
+	// workplace the server knows about but this daemon cannot drive is left out, and the ask
+	// loop below never asks for work there — see runtime.Supported.
+	places := workplacesOnThisMachine(registered.Workplaces, swept.Found)
+	// Said only for the CLIs this build genuinely cannot drive, and not for a workplace that
+	// simply is not ready: one is a gap in this program, the other is a machine reporting
+	// honestly about itself, and telling the operator the wrong one sends them to fix the wrong
+	// thing.
+	for _, workplace := range registered.Workplaces {
+		_, canRun := places[workplace.ID]
+		if !canRun && workplace.Ready && !runtime.Supported(workplace.CLIKind) {
+			emit(out, "Not asking for work on %s: this build cannot drive it yet.\n", workplace.CLIKind)
+		}
+	}
+
+	held := &supervisor.Runs{}
+	work := supervisor.RunOptions{
+		WorkRoot:     filepath.Join(filepath.Dir(*configPath), "work"),
+		StateRoot:    filepath.Join(filepath.Dir(*configPath), "stores"),
+		OperatorHome: operatorHome(),
+		Server:       creds.Server,
+		DaemonToken:  creds.Token,
+		Workplace: func(id string) (supervisor.Workplace, bool) {
+			place, known := places[id]
+			return place, known
+		},
+		Runtime: runtimeFor,
+		Ledger:  supervisor.Reporting{Session: session},
+		Runs:    held,
+		Report:  func(err error) { emit(out, "run: %v\n", err) },
+	}
+
+	// One buffered slot, deliberately: a nudge already waiting means an ask is already coming,
+	// and a second one would only make that ask happen twice (FR-055a).
+	nudges := make(chan struct{}, 1)
+	var running sync.WaitGroup
+
+	go func() {
+		err := session.WatchEvents(ctx, client.WatchOptions{
+			Nudge:  nudges,
+			Report: func(err error) { emit(out, "push road: %v\n", err) },
+		})
+		if err != nil && ctx.Err() == nil {
+			emit(out, "push road closed: %v\n", err)
+		}
+	}()
+
+	go func() {
+		_ = supervisor.RunClaimLoop(ctx, supervisor.ClaimOptions{
+			Interval: settings.PollInterval.Duration(),
+			Nudge:    nudges,
+			Capacity: func() int { return settings.MaxConcurrentRuns - held.Count() },
+			Workplaces: func() []string {
+				ids := make([]string, 0, len(places))
+				for id := range places {
+					ids = append(ids, id)
+				}
+				return ids
+			},
+			Claim: func(ctx context.Context, workplaces []string, most int) ([]supervisor.Grant, error) {
+				answered, err := session.ClaimRuns(ctx, client.ClaimRequest{
+					WorkplaceIDs: workplaces, Max: most,
+				})
+				if err != nil {
+					return nil, err
+				}
+				return grantsFrom(answered.Runs), nil
+			},
+			OnGranted: func(ctx context.Context, grant supervisor.Grant) {
+				// On its own goroutine: the ask loop is what decides when to ask next, and a
+				// machine with room for five runs that stops asking while the first one runs
+				// has a ceiling of one.
+				running.Add(1)
+				go func() {
+					defer running.Done()
+					work.Do(ctx, grant)
+				}()
+			},
+			Report: func(err error) { emit(out, "asking for work: %v\n", err) },
+		})
+	}()
+
 	emit(out, "Beating every %s. Stop with Ctrl-C.\n", settings.HeartbeatInterval)
-	return supervisor.RunHeartbeat(ctx, supervisor.HeartbeatOptions{
+	err = supervisor.RunHeartbeat(ctx, supervisor.HeartbeatOptions{
 		Interval: settings.HeartbeatInterval.Duration(),
 		State: func() supervisor.Beat {
-			// Nothing runs on this machine yet, so every slot is free. The count is read here
-			// on every beat rather than captured once, which is what will keep it true the
-			// moment the claim loop starts holding runs.
-			return supervisor.Beat{FreeSlots: settings.MaxConcurrentRuns}
+			// Read fresh on every beat rather than captured once: the free-slot count is the
+			// whole reason the beat carries a number (FR-055c).
+			return supervisor.Beat{
+				FreeSlots: settings.MaxConcurrentRuns - held.Count(),
+				Running:   held.IDs(),
+			}
+		},
+		OnReply: func(reply supervisor.Reply) {
+			for _, runID := range reply.Cancel {
+				// Work this machine reported as running and no longer holds. Its writes would
+				// be refused anyway (FR-059); stopping now saves producing them.
+				if held.Cancel(runID) {
+					emit(out, "Stopping run %s: this machine no longer holds it.\n", runID)
+				}
+			}
+			if reply.PendingWork {
+				select {
+				case nudges <- struct{}{}:
+				default:
+				}
+			}
 		},
 		Send: func(ctx context.Context, beat supervisor.Beat) (supervisor.Reply, error) {
 			answered, err := session.Beat(ctx, client.BeatRequest{
@@ -272,6 +376,91 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 		},
 		Report: func(err error) { emit(out, "heartbeat: %v\n", err) },
 	})
+
+	// Runs still going when the beat stops are runs this machine is holding, and holding them
+	// is a promise. Each one is already being cancelled by the same context that ended the
+	// beat; what is waited for here is the last thing each of them does — telling the server
+	// how it ended, which is what revokes its token and puts the task back in motion (FR-014b,
+	// FR-030a). Abandoning that leaves a run marked *running* on a machine that has exited.
+	running.Wait()
+	return err
+}
+
+// workplacesOnThisMachine pairs what the server now holds with what was actually found here.
+//
+// The server answers with ids and kinds; the path to the binary and which protocol family it
+// belongs to are facts only this machine has. A workplace this build cannot drive is left out
+// entirely rather than included and refused later — see runtime.Supported for why that
+// distinction is not cosmetic.
+func workplacesOnThisMachine(
+	registered []client.RegisteredWorkplace, found []discovery.Found,
+) map[string]supervisor.Workplace {
+	here := make(map[string]discovery.Found, len(found))
+	for _, cli := range found {
+		here[string(cli.Kind)] = cli
+	}
+
+	places := make(map[string]supervisor.Workplace, len(registered))
+	for _, workplace := range registered {
+		cli, present := here[workplace.CLIKind]
+		if !present || !workplace.Ready || !runtime.Supported(workplace.CLIKind) {
+			continue
+		}
+		places[workplace.ID] = supervisor.Workplace{
+			CLI:    workplace.CLIKind,
+			Family: string(cli.Family),
+			Binary: cli.Path,
+		}
+	}
+	return places
+}
+
+// runtimeFor answers which protocol family runs a workplace of one kind (FR-035, FR-039).
+func runtimeFor(family string) (runtime.Runtime, bool) {
+	switch discovery.Family(family) {
+	case discovery.FamilyOneShot:
+		return runtime.OneShot{}, true
+	case discovery.FamilyACP:
+		return runtime.ACP{}, true
+	default:
+		return nil, false
+	}
+}
+
+// grantsFrom turns what the server handed over into what the supervisor runs.
+func grantsFrom(granted []client.GrantedRun) []supervisor.Grant {
+	grants := make([]supervisor.Grant, 0, len(granted))
+	for _, run := range granted {
+		skills := make([]execenv.Skill, 0, len(run.Skills))
+		for _, skill := range run.Skills {
+			skills = append(skills, execenv.Skill{Name: skill.Name, Files: skill.Files})
+		}
+		grants = append(grants, supervisor.Grant{
+			RunID:       run.RunID,
+			TaskID:      run.TaskID,
+			WorkplaceID: run.WorkplaceID,
+			RunToken:    run.RunToken,
+			Expires:     run.ClaimExpiresAt,
+			Prompt:      run.Prompt,
+			Skills:      skills,
+			FirstSeq:    run.FirstSeq,
+		})
+	}
+	return grants
+}
+
+// operatorHome is the real home of the person running this daemon, linked into each run's home
+// so an agent finds the CLI credentials they already set up (execenv.Build).
+//
+// An empty answer is not a failure: a machine with no discoverable home directory simply has no
+// operator installation to link to, and every CLI in that state says so far better than this
+// program could.
+func operatorHome() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home
 }
 
 // runStatus answers, here on this machine, what state this machine is in (FR-005a).

@@ -782,11 +782,6 @@ export const en = {
       reinstallHint: 'Already linked — select to re-push the latest copy',
       linkedTag: 'linked',
     },
-    installState: {
-      pending: 'Waiting for the agent to install',
-      installed: 'Installed',
-      failed: 'Push failed',
-    },
     noSkills: 'No skills linked yet.',
     wakeSource: {
       assignment: 'Task assignment',
@@ -1008,6 +1003,7 @@ export const en = {
     not_a_github_url: 'That does not look like a GitHub URL.',
     github_error: 'GitHub returned {{status}}: {{reason}}',
     github_unreachable: 'GitHub could not be reached: {{reason}}',
+    tool_result_not_summarised: 'A tool result must arrive summarised, never whole. Send its size, its type and the opening bytes.',
   },
   language: {
     en: 'EN',

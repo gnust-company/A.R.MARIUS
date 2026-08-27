@@ -364,13 +364,11 @@ async def install_skills(
         marius_id, skill_ids=merged, skills=merged_names
     )
 
-    # "pending" means linked and not yet confirmed installed. There is no "failed" on this
-    # path any more: nothing is attempted here that could fail, so a state saying otherwise
-    # would be describing an act that no longer happens.
-    if pushed_slugs:
-        marius = await container.mariuses.set_skill_installs(
-            marius_id, {slug: "pending" for slug in pushed_slugs}
-        )
+    # No install state is written here any more, because there is no install to be in a state
+    # about. A skill granted to an agent is written onto the machine that runs it, as part of
+    # the work packet, every run (FR-011b) — so *granted* and *present on disk* stopped being
+    # two facts that could disagree, and the loop that used to reconcile them had nothing left
+    # to reconcile (FR-011c).
 
     await container.control_bus.publish(
         f"ws:{workspace_id}",

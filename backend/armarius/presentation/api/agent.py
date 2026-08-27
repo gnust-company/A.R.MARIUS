@@ -32,8 +32,6 @@ from armarius.presentation.schemas import (
     AgentOnboardingCompleteIn,
     AgentOnboardingQuestionIn,
     AgentRecoveryIn,
-    AgentSkillBundleOut,
-    AgentSkillSummary,
     ArtifactOut,
     CommentOut,
     CriterionOut,
@@ -80,68 +78,6 @@ async def whoami(marius: CurrentMarius, container: ContainerDep) -> dict:
             if m.id != marius.id
         ],
     }
-
-
-# ── skill install (fetch the full file tree of your linked skills) ───────────
-async def effective_skills(container, marius) -> list:
-    """The skills linked to this Marius (what these routes serve). The onboarding playbook is
-    no longer a granted skill — it is injected into the Workspace Agent's prompt at start (#61)."""
-    return list(await container.skills.resolve(marius.skill_ids))
-
-
-@router.get("/skills", response_model=list[AgentSkillSummary])
-async def list_my_skills(
-    marius: CurrentMarius, container: ContainerDep
-) -> list[AgentSkillSummary]:
-    """The skills linked to you — slug + file count. Fetch each one's full file tree
-    from GET /agent/skills/{slug} and write it under your runtime's skills directory."""
-    linked = await effective_skills(container, marius)
-    return [
-        AgentSkillSummary(
-            slug=sk.slug,
-            name=sk.name,
-            description=sk.description,
-            file_count=len(sk.files),
-        )
-        for sk in linked
-    ]
-
-
-@router.get("/skills/{slug}", response_model=AgentSkillBundleOut)
-async def get_my_skill_bundle(
-    slug: str, marius: CurrentMarius, container: ContainerDep
-) -> AgentSkillBundleOut:
-    """One linked skill's complete file tree (path → content). 404 if the slug is not
-    linked to you — you can only install skills your patron granted you."""
-    linked = await effective_skills(container, marius)
-    for sk in linked:
-        if sk.slug == slug:
-            return AgentSkillBundleOut(
-                slug=sk.slug,
-                name=sk.name,
-                description=sk.description,
-                files=sk.files,
-            )
-    raise NotFound("skill_not_linked", slug=slug)
-
-
-@router.post("/skills/{slug}/installed", status_code=200)
-async def confirm_skill_installed(
-    slug: str, marius: CurrentMarius, container: ContainerDep
-) -> dict[str, str]:
-    """Confirm you finished installing a linked skill (#74) → install state flips to
-    'installed', and the patron's UI updates in realtime. 404 if the slug is not linked to
-    you (you can only confirm skills you were granted)."""
-    linked = await effective_skills(container, marius)
-    if not any(sk.slug == slug for sk in linked):
-        raise NotFound("skill_not_linked", slug=slug)
-    updated = await container.mariuses.set_skill_installs(marius.id, {slug: "installed"})
-    await container.control_bus.publish(
-        f"ws:{updated.workspace_id}",
-        "marius.skill_installed",
-        {"marius_id": str(marius.id), "slug": slug},
-    )
-    return {"slug": slug, "status": "installed"}
 
 
 # ── onboarding callbacks (a live Workspace-Agent runtime drives the interview) ─

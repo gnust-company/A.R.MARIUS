@@ -14,7 +14,8 @@ import (
 // it. It also means nothing has to be cleaned up afterwards on a machine we do not own.
 const (
 	// RunTokenVar carries the token that opens exactly this run and nothing else (FR-014a).
-	RunTokenVar = "ARMARIUS_RUN_TOKEN"
+	// The name of a variable, not a secret: what goes in it is minted per run by the server.
+	RunTokenVar = "ARMARIUS_RUN_TOKEN" //nolint:gosec // a variable's name, not a credential
 	// RunIDVar says which run that token belongs to, so a callback does not have to be told
 	// twice what it is answering about.
 	RunIDVar = "ARMARIUS_RUN_ID"
