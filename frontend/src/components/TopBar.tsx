@@ -9,6 +9,7 @@ import { cn, wsHref } from '@/lib/utils';
 const SEGMENT_KEYS: Record<string, string> = {
   projects: 'nav.projects',
   agents: 'nav.directory',
+  machines: 'nav.machines',
   skills: 'nav.skills',
   inbox: 'nav.inbox',
   account: 'nav.account',

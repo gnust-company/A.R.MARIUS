@@ -13,6 +13,7 @@ import ProjectPlan from '@/pages/ProjectPlan';
 import Roster from './pages/Roster'
 import Directory from './pages/Directory'
 import AgentDetail from './pages/AgentDetail'
+import Machines from './pages/Machines'
 import Skills from './pages/Skills'
 import SkillEditor from './pages/SkillEditor'
 import Inbox from './pages/Inbox'
@@ -104,6 +105,7 @@ export default function App() {
           />
           <Route path="agents" element={<Directory />} />
           <Route path="agents/:id" element={<AgentDetail />} />
+          <Route path="machines" element={<Machines />} />
           <Route path="skills" element={<Skills />} />
           <Route path="skills/:id" element={<SkillEditor />} />
           <Route path="inbox" element={<Inbox />} />

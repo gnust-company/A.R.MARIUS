@@ -18,10 +18,13 @@ from armarius.presentation.schemas import (
     InstallSkillsIn,
     InstallSkillsOut,
     LabelOut,
+    MachineOut,
+    MachineWorkplaceOut,
     ManualSkillIn,
     MariusCreatedOut,
     MariusOut,
     RegisterMariusIn,
+    ResidentAgentOut,
     RunOut,
     SkillOut,
     UpdateMariusIn,
@@ -79,6 +82,52 @@ async def _require_owned_workspace(container, user, workspace_id: UUID):
     if ws is None or ws.owner_user_id != str(user.id):
         raise NotFound("workspace_not_found")
     return ws
+
+
+@router.get("/workspaces/{workspace_id}/machines", response_model=list[MachineOut])
+async def list_machines(
+    workspace_id: UUID, container: ContainerDep, user: CurrentUser
+) -> list[MachineOut]:
+    """Every machine the patron has linked, and what is running where (FR-003, FR-033).
+
+    Unlike the workplace picker beside it, this lists **everything** — including the
+    workplaces that cannot take work. That is the point of the screen: a CLI that was
+    uninstalled does not vanish from here, it turns red and keeps the agents attached to
+    it, because those agents are attached for life (FR-007) and *who is stranded on this*
+    is the question the person is actually asking.
+
+    Owner-scoped through the same check every other workspace door uses, so somebody
+    else's workspace reads exactly like one that does not exist (Constitution I).
+
+    An empty list is a real answer: nobody has linked a machine yet.
+    """
+    await _require_owned_workspace(container, user, workspace_id)
+    machines = await container.daemon_workplaces.list_machines(workspace_id)
+    return [
+        MachineOut(
+            id=machine.id,
+            display_name=machine.display_name,
+            platform=machine.platform,
+            daemon_version=machine.daemon_version,
+            last_heartbeat_at=machine.last_heartbeat_at,
+            reachable=machine.reachable,
+            workplaces=[
+                MachineWorkplaceOut(
+                    id=place.id,
+                    cli_kind=place.cli_kind,
+                    cli_version=place.cli_version,
+                    ready=place.ready,
+                    not_ready_reason=place.not_ready_reason,
+                    agents=[
+                        ResidentAgentOut(id=agent.id, name=agent.name)
+                        for agent in place.agents
+                    ],
+                )
+                for place in machine.workplaces
+            ],
+        )
+        for machine in machines
+    ]
 
 
 @router.get(
