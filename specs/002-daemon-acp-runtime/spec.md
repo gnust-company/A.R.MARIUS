@@ -424,8 +424,10 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   duy nhất nó được phép đưa là **từ chối**, kèm một mã ghi lại đúng thứ agent muốn làm. Lý do viết thành
   điều khoản: lượt chạy diễn ra khi không ai ngồi đó, nên nói "được" hộ là gắn một lời chấp thuận không ai
   đưa vào mọi lượt chạy về sau; còn im lặng thì agent treo tới lúc ngưỡng im lặng cắt, và bản ghi không nói
-  được vì sao. Một đường xin phép thật — hỏi ai, hỏi ở đâu, đợi bao lâu — là việc chưa thiết kế; điều khoản
-  này là luật cho tới khi có nó (bổ sung 2026-08-26, phát hiện lúc dựng họ ACP ở T066).
+  được vì sao. Đây là **luật, không phải chỗ tạm**: đặc tả này không hứa hẹn một đường xin phép nào cả. Nếu
+  sau này người chủ muốn một luồng phê duyệt thật — hỏi ai, hỏi ở đâu trên màn hình, đợi bao lâu, quá hạn thì
+  sao — đó là một tính năng phải được đặt ra thành yêu cầu, không phải một mẩu còn thiếu của cụm này (bổ sung
+  2026-08-26, phát hiện lúc dựng họ ACP ở T066).
 - **FR-014**: Thông tin xác thực cấp cho một lượt chạy PHẢI **hết hiệu lực khi lượt chạy kết thúc**, không
   dùng lại được cho lượt khác.
 - **FR-014a**: Hệ thống PHẢI có **hai loại token tách biệt**, kế thừa nguyên cách Multica làm (chốt

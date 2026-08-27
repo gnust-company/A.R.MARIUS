@@ -339,9 +339,9 @@ func (c *acpConn) notified(msg rpcMessage) {
 // person watching, and this daemon was given a machine's credentials, not a patron's judgement.
 // Answering *yes* on their behalf would make every unattended run carry an approval nobody gave;
 // answering *no* costs the agent one tool call and puts a code in the record saying exactly what
-// it wanted. Which of those is right for an unattended run is a product decision that has not
-// been made yet — task T131 in specs/002-daemon-acp-runtime/tasks.md — and until it is, the
-// refusal is the answer that cannot do damage.
+// it wanted. Refusing is the rule rather than a placeholder (FR-013b): this system does not
+// promise an approval road, and if one is ever wanted it will arrive as a requirement of its
+// own rather than as the missing half of this.
 func (c *acpConn) answer(msg rpcMessage) error {
 	if msg.Method == "session/request_permission" {
 		c.emit(Event{Type: EventRunError, Payload: map[string]any{"code": "permission_refused_nobody_to_ask"}})

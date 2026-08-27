@@ -233,7 +233,7 @@ func TestArgumentsTheCLIDoesSendTravelInFull(t *testing.T) {
 
 func TestNobodyIsHereToGrantPermissionSoNobodyDoes(t *testing.T) {
 	// The daemon holds a machine's credentials, not a patron's judgement. Saying yes on their
-	// behalf would put an approval nobody gave on every unattended run (task T131).
+	// behalf would put an approval nobody gave on every unattended run (FR-013b).
 	agent := &fakeAgent{askPermission: true}
 
 	events, _, err := talkTo(t, agent, Request{})
