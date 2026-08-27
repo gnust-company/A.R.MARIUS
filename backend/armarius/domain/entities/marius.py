@@ -79,10 +79,6 @@ class Marius:
     # IDs of Skill Shop skills linked to this Marius (drives per-skill install steps
     # in the invitation prompt). Stored as strings to stay ORM/transport-friendly.
     skill_ids: list[str] = field(default_factory=list)
-    # Per-skill install state for the post-invite install loop (#74): slug → status
-    # ("pending" pushed & awaiting the agent's confirm | "installed" confirmed | "failed"
-    # push rejected). The agent confirms via POST /agent/skills/{slug}/installed.
-    skill_installs: dict[str, str] = field(default_factory=dict)
     # No default: which runtime an agent runs on is a decision the caller must make,
     # never one this entity quietly makes for it (FR-040a).
     adapter_type: str = ""

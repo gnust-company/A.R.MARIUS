@@ -179,13 +179,21 @@ async def test_custom_skill_is_workspace_scoped():
     assert any(s["slug"] == "armarius-http" for s in b_skills)
 
 
-async def test_agent_can_fetch_linked_skill_bundle():
-    """An invited agent installs a multi-file skill via the JSON bundle endpoint."""
+async def test_an_agent_has_no_road_left_to_fetch_its_own_skills():
+    """There is no longer anywhere for an agent to go and get its skills (FR-011c).
+
+    They arrive with the work: written onto the machine that runs the agent, as real files,
+    before the agent reads its first line (FR-011b). A road that let an agent fetch them
+    afterwards would be a second answer to *what skills does this agent have* — and the two
+    would disagree exactly when it mattered, because one of them is rebuilt every run and the
+    other is whatever was there last time.
+
+    Checked as a **404 rather than as an absence in the code**, because that is what anything
+    still calling the old road will actually meet.
+    """
     async with await _client() as c:
         token, ws_id = await _register(c, "bundle@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
-
-        # Author a manual skill, then give it a sibling file (multi-file tree).
         made = await c.post(
             f"/v1/workspaces/{ws_id}/skills/manual",
             headers=h,
@@ -193,35 +201,16 @@ async def test_agent_can_fetch_linked_skill_bundle():
         )
         assert made.status_code == 201, made.text
         skill = made.json()
-        files = {
-            "SKILL.md": "---\nname: Bundle Test\ndescription: multi-file\n---\n# body",
-            "scripts/run.sh": "echo hi\n",
-        }
-        await c.put(
-            f"/v1/workspaces/{ws_id}/skills/{skill['id']}", headers=h, json={"files": files}
-        )
 
-        # Invite an agent linked to that skill; read its minted token from the repo (#63).
-        created = await invite_agent(
-            c, ws_id, h, name="Marin", skill_ids=[skill["id"]]
-        )
+        created = await invite_agent(c, ws_id, h, name="Marin", skill_ids=[skill["id"]])
         agent_token = await agent_token_for(created["id"])
         ah = {"Authorization": f"Bearer {agent_token}"}
 
-        # /agent/skills lists the linked skill with its file count.
-        listed = await c.get("/agent/skills", headers=ah)
-        assert listed.status_code == 200, listed.text
-        summary = next(s for s in listed.json() if s["slug"] == skill["slug"])
-        assert summary["file_count"] == 2
-
-        # /agent/skills/{slug} returns the full file tree.
-        bundle = await c.get(f"/agent/skills/{skill['slug']}", headers=ah)
-        assert bundle.status_code == 200, bundle.text
-        assert bundle.json()["files"] == files
-
-        # A slug the agent isn't linked to → 404; no token → 401.
-        assert (await c.get("/agent/skills/nope", headers=ah)).status_code == 404
-        assert (await c.get("/agent/skills")).status_code == 401
+        assert (await c.get("/agent/skills", headers=ah)).status_code == 404
+        assert (await c.get(f"/agent/skills/{skill['slug']}", headers=ah)).status_code == 404
+        assert (
+            await c.post(f"/agent/skills/{skill['slug']}/installed", headers=ah)
+        ).status_code == 404
 
 
 async def test_builtin_content_refreshes_unless_owner_edited():
@@ -365,41 +354,10 @@ async def test_relinking_a_skill_the_agent_already_has_does_not_duplicate_it():
     assert out["skill_ids"] == [http_id]  # no duplicate link
     assert out["installed"] == ["armarius-http"]  # named again even though already linked
     marin = next(m for m in listed if m["id"] == mid)
-    assert marin["skill_installs"] == {"armarius-http": "pending"}  # awaiting the agent's confirm
-
-
-async def test_agent_confirms_skill_install():
-    """After a push, the agent flips its linked skill to `installed` via the confirm callback;
-    a slug it isn't linked to → 404 (#74/#105)."""
-    async with await _client() as c:
-        token, ws_id = await _register(c, "confirm@armarius.dev")
-        h = {"Authorization": f"Bearer {token}"}
-        skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
-        http_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
-
-        created = await invite_agent(c, ws_id, h, name="Marin", skill_ids=[http_id])
-        mid = created["id"]
-        # Push it so the state starts at pending.
-        await c.post(
-            f"/v1/workspaces/{ws_id}/mariuses/{mid}/install-skills",
-            headers=h,
-            json={"skill_ids": [http_id]},
-        )
-
-        agent_token = await agent_token_for(mid)
-        ah = {"Authorization": f"Bearer {agent_token}"}
-
-        # A slug the agent isn't linked to → 404.
-        assert (await c.post("/agent/skills/nope/installed", headers=ah)).status_code == 404
-
-        # Confirm the real one → installed.
-        ok = await c.post("/agent/skills/armarius-http/installed", headers=ah)
-        assert ok.status_code == 200, ok.text
-        assert ok.json() == {"slug": "armarius-http", "status": "installed"}
-
-        listed = (await c.get(f"/v1/workspaces/{ws_id}/mariuses", headers=h)).json()
-    marin = next(m for m in listed if m["id"] == mid)
-    assert marin["skill_installs"] == {"armarius-http": "installed"}
+    # No install state to carry any more: linking *is* the install, because the files are
+    # written onto the machine with every run (FR-011b, FR-011c).
+    assert "skill_installs" not in marin
+    assert marin["skill_ids"] == [http_id]
 
 
 async def test_install_skills_on_other_workspace_is_404():

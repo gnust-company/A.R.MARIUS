@@ -81,6 +81,13 @@ _NEEDS_NO_GUARD: dict[tuple[str, str], str] = {
     # cùng cái máy. Câu lệnh lấy việc tự loại đầu việc của dự án đã đóng ra khỏi kệ.
     ("POST", "/daemon/runs/claim"): "chốt nằm trong câu lệnh lấy việc, không ở cửa",
     ("POST", "/daemon/runs/{run_id}/start"): "chốt nằm trong câu lệnh lấy việc, không ở cửa",
+    # Kể lại và khép lại: hai lối này nói về **việc đã ra khỏi kệ rồi**. Đóng băng chúng
+    # không ngăn được gì cả — agent đang chạy trên máy người ta, chốt ở đây không với tới nó
+    # — mà chỉ làm mất bản ghi của quãng nó chạy và bỏ lại token của lượt chạy không ai thu
+    # hồi (FR-014b). Đóng một dự án là chặn việc **mới** đi ra, và câu lệnh lấy việc đã làm
+    # đúng chuyện đó rồi.
+    ("POST", "/daemon/runs/{run_id}/events"): "nói về việc đã ra khỏi kệ, không phải việc mới",
+    ("POST", "/daemon/runs/{run_id}/finish"): "nói về việc đã ra khỏi kệ, không phải việc mới",
     # The two inbox doors: the guard is enforced **inside** rather than at the door,
     # because one path carries both an action that writes into the project and one that
     # only tidies the patron's own inbox — and which it is lives in the request body, read

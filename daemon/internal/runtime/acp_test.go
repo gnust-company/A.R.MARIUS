@@ -181,10 +181,10 @@ func TestWhatTheAgentSaysOverACPComesOutAsTheSameEventsAsTheOtherFamily(t *testi
 		t.Fatalf("một lượt qua ACP: %v", err)
 	}
 
-	if said := only(t, events, EventAgentMessage); said.Payload["text"] != "working on it" {
+	if said := only(t, events, EventAssistantMessage); said.Payload["text"] != "working on it" {
 		t.Fatalf("chữ agent nói: %v", said.Payload)
 	}
-	if thought := only(t, events, EventAgentThinking); thought.Payload["text"] != "thinking" {
+	if thought := only(t, events, EventAssistantThinking); thought.Payload["text"] != "thinking" {
 		t.Fatalf("phần suy luận: %v", thought.Payload)
 	}
 }
@@ -226,7 +226,7 @@ func TestArgumentsTheCLIDoesSendTravelInFull(t *testing.T) {
 	if !ok || args["path"] != "/etc/hosts" {
 		t.Fatalf("tham số gọi công cụ không đi đủ: %v", args)
 	}
-	if failed := only(t, events, EventToolFinished).Payload["failed"]; failed != true {
+	if failed := only(t, events, EventToolCompleted).Payload["failed"]; failed != true {
 		t.Fatalf("công cụ hỏng mà sự kiện không nói: %v", failed)
 	}
 }

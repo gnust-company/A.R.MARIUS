@@ -71,7 +71,6 @@ async def test_deleting_a_skill_takes_it_off_every_agent_that_had_it() -> None:
             json={"name": "Bảng màu", "description": "owner's own"},
         )
         doomed_id = made.json()["id"]
-        doomed_slug = made.json()["slug"]
 
         agent = await invite_agent(
             c, ws_id, h, name="Marin", skill_ids=[keeper_id, doomed_id]
@@ -83,7 +82,6 @@ async def test_deleting_a_skill_takes_it_off_every_agent_that_had_it() -> None:
         )
         before = await _agent_row(agent["id"])
         assert doomed_id in before.skill_ids
-        assert doomed_slug in before.skill_installs
 
         gone = await c.delete(
             f"/v1/workspaces/{ws_id}/skills/{doomed_id}", headers=h
@@ -93,7 +91,6 @@ async def test_deleting_a_skill_takes_it_off_every_agent_that_had_it() -> None:
         after = await _agent_row(agent["id"])
     assert after.skill_ids == [keeper_id], after.skill_ids
     assert after.skills == ["Armarius HTTP API"], after.skills
-    assert doomed_slug not in after.skill_installs, after.skill_installs
 
 
 # The two lists are one fact written twice, and they have to stay that way. A name left
@@ -143,7 +140,6 @@ async def test_deleting_one_skill_does_not_disturb_another_agents_links() -> Non
         after = await _agent_row(untouched["id"])
     assert after.skill_ids == [keeper_id]
     assert after.skills == ["Armarius HTTP API"]
-    assert after.skill_installs == {"armarius-http": "pending"}
 
 
 # ── 2. a built-in that stops being shipped ────────────────────────────────────
@@ -185,6 +181,11 @@ async def test_a_builtin_that_stops_shipping_is_forgotten_the_same_way() -> None
 # ── 3. the generation already in the database ─────────────────────────────────
 
 BEFORE = "e4c9f7b21a63"  # ngay trước bản dọn
+# Và chính bản dọn. Ba bài dưới đây nâng cấp tới **đúng bản này**, không tới `head`: chúng hỏi
+# một câu về một bản di trú cụ thể chạy trên dữ liệu thật, nên chạy hết cả chuỗi chỉ khiến
+# chúng đỏ mỗi lần một bản di trú *sau* đó đụng vào cùng cái cột — như bản gỡ
+# `mariuses.skill_installs` ở đợt daemon (T062), thứ chẳng liên quan gì tới điều đang hỏi.
+CLEANUP = "a1b7d3f95c28"
 
 
 def _alembic(db_file: Path, target: str) -> None:
@@ -352,7 +353,7 @@ def test_the_upgrade_clears_the_links_earlier_deletions_left_behind(
     _alembic(db_file, BEFORE)
     _seed(db_file)
 
-    _alembic(db_file, "head")
+    _alembic(db_file, CLEANUP)
 
     agent, role = _rows(db_file)
     assert json.loads(agent[0]) == [str(LIVE)], "mã kỹ năng đã chết còn nằm trên agent"
@@ -396,7 +397,7 @@ def test_the_upgrade_leaves_a_workspace_that_was_already_clean_alone(
     finally:
         engine.dispose()
 
-    _alembic(db_file, "head")
+    _alembic(db_file, CLEANUP)
 
     agent, role = _rows(db_file)
     assert json.loads(agent[0]) == [str(LIVE)]
@@ -418,7 +419,7 @@ def test_a_live_slug_next_door_does_not_save_a_dead_one_here(tmp_path: Path) -> 
     _seed(db_file)
     _seed_neighbour(db_file)
 
-    _alembic(db_file, "head")
+    _alembic(db_file, CLEANUP)
 
     agent, _ = _rows(db_file)
     assert json.loads(agent[2]) == {"armarius-http": "installed"}, (

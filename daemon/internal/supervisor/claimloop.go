@@ -3,6 +3,8 @@ package supervisor
 import (
 	"context"
 	"time"
+
+	"github.com/gnust-company/armarius-daemon/internal/execenv"
 )
 
 // DefaultClaimInterval is how often this machine asks for work when nothing has nudged it.
@@ -23,6 +25,18 @@ type Grant struct {
 	WorkplaceID string
 	RunToken    string
 	Expires     time.Time
+	// Prompt is what the agent is told this turn: assembled by the server, in English, and
+	// already written down there before it was sent (FR-011a, FR-012a). Nothing on this side
+	// composes any of it, abbreviates it, or sends it back.
+	Prompt string
+	// Skills are this agent's own skills, whole. They travel with the work rather than being
+	// fetched once it arrives, so that by the time the agent reads its first line everything
+	// it was granted is already on disk (FR-011b, FR-011c).
+	Skills []execenv.Skill
+	// FirstSeq is the number this machine gives the first event it produces for this run
+	// (FR-045). Chosen by the server, which owns the log and already has things written in
+	// it — the message this run was given, and any earlier hand-out of the same run.
+	FirstSeq int
 }
 
 // ClaimOptions is everything the ask loop needs from the rest of the daemon.

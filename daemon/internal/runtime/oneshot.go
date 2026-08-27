@@ -4,10 +4,13 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"os/exec"
+	"io"
+	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // maxOutputLine bounds one line of a CLI's stream.
@@ -105,34 +108,31 @@ func (OneShot) Run(ctx context.Context, req Request, emit Emit) (Outcome, error)
 		emit = func(Event) {}
 	}
 
-	// CommandContext ends the CLI itself when the context does. Whatever the CLI has started
-	// underneath it is not covered here — cleaning up the tree is the supervisor's job, and it
-	// is the supervisor that knows a run is over (task T067).
-	cmd := exec.CommandContext(ctx, req.Binary, shape.args(req)...) //nolint:gosec // the path is what discovery found on this machine
-	cmd.Dir = req.WorkDir
-	cmd.Env = req.Env
+	cmd := newProcess(ctx, req, shape.args(req))
 	cmd.Stdin = strings.NewReader(req.Message)
 
-	stdout, err := cmd.StdoutPipe()
+	streams, err := plumb(cmd)
 	if err != nil {
-		return Outcome{}, fmt.Errorf("reading what %s says: %w", req.CLI, err)
+		return Outcome{}, fmt.Errorf("listening to %s: %w", req.CLI, err)
 	}
-	var complaints tail
-	cmd.Stderr = &complaints
 
 	if err := cmd.Start(); err != nil {
+		streams.takeAway()
+		streams.handedOver()
 		return Outcome{}, fmt.Errorf("starting %s: %w", req.CLI, err)
 	}
+	streams.handedOver()
 
 	var (
-		out      Outcome
-		reading  sync.WaitGroup
-		overflow bool
+		out        Outcome
+		reading    sync.WaitGroup
+		complaints tail
+		overflow   atomic.Bool
 	)
-	reading.Add(1)
+	reading.Add(2)
 	go func() {
 		defer reading.Done()
-		lines := bufio.NewScanner(stdout)
+		lines := bufio.NewScanner(streams.out)
 		lines.Buffer(make([]byte, 0, 64<<10), maxOutputLine)
 		for lines.Scan() {
 			line := lines.Bytes()
@@ -141,26 +141,33 @@ func (OneShot) Run(ctx context.Context, req Request, emit Emit) (Outcome, error)
 			}
 			shape.read(line, emit, &out)
 		}
-		if lines.Err() != nil {
+		if lines.Err() != nil && !errors.Is(lines.Err(), os.ErrClosed) {
 			// The stream is unreadable from here on, but the process is still running and is
 			// still doing the work. Say so and let it finish: killing a healthy agent because
 			// this daemon lost the commentary would turn a gap in the record into lost work.
-			overflow = true
+			overflow.Store(true)
 			emit(Event{Type: EventRunError, Payload: map[string]any{
 				"code": "output_unreadable",
 				"cli":  req.CLI,
 			}})
 		}
 	}()
+	go func() {
+		defer reading.Done()
+		_, _ = io.Copy(&complaints, streams.errs)
+	}()
 
-	// Waited for before Wait: Wait closes the pipe, and closing it under the reader would end
-	// the record a few events early on a run that was about to finish normally.
-	reading.Wait()
 	err = cmd.Wait()
+	// The tree goes before the last of the output is waited for, and that order is the whole
+	// point: something the agent left running holds these pipes open, so waiting first would
+	// be waiting on exactly what has to be killed.
+	reap(cmd)
+	streams.drain(&reading)
+
 	if err != nil {
 		return out, fmt.Errorf("%s ended badly: %w%s", req.CLI, err, complaints.suffix())
 	}
-	if overflow {
+	if overflow.Load() {
 		return out, fmt.Errorf("%s ran to the end, but this machine could not read all of what it said", req.CLI)
 	}
 	return out, nil
@@ -215,11 +222,11 @@ func readClaudeCode(line []byte, emit Emit, out *Outcome) {
 			switch block.Type {
 			case "text":
 				if block.Text != "" {
-					emit(Event{Type: EventAgentMessage, Payload: map[string]any{"text": block.Text}})
+					emit(Event{Type: EventAssistantMessage, Payload: map[string]any{"text": block.Text}})
 				}
 			case "thinking":
 				if block.Thinking != "" {
-					emit(Event{Type: EventAgentThinking, Payload: map[string]any{"text": block.Thinking}})
+					emit(Event{Type: EventAssistantThinking, Payload: map[string]any{"text": block.Thinking}})
 				}
 			case "tool_use":
 				// Arguments in full, on purpose: FR-043 asks for the whole of them, and it is
@@ -233,7 +240,7 @@ func readClaudeCode(line []byte, emit Emit, out *Outcome) {
 				// No content. What the tool returned stays here (FR-043a); the summary that may
 				// travel — size, type, opening bytes, how much was cut — is built by the layer
 				// that owns the threshold (task T095).
-				emit(Event{Type: EventToolFinished, Payload: map[string]any{
+				emit(Event{Type: EventToolCompleted, Payload: map[string]any{
 					"call":   block.ToolUseID,
 					"failed": block.IsError,
 				}})
@@ -278,11 +285,11 @@ func readCodex(line []byte, emit Emit, out *Outcome) {
 	switch parsed.Item.Type {
 	case "agent_message":
 		if parsed.Item.Text != "" {
-			emit(Event{Type: EventAgentMessage, Payload: map[string]any{"text": parsed.Item.Text}})
+			emit(Event{Type: EventAssistantMessage, Payload: map[string]any{"text": parsed.Item.Text}})
 		}
 	case "reasoning":
 		if parsed.Item.Text != "" {
-			emit(Event{Type: EventAgentThinking, Payload: map[string]any{"text": parsed.Item.Text}})
+			emit(Event{Type: EventAssistantThinking, Payload: map[string]any{"text": parsed.Item.Text}})
 		}
 	case "command_execution":
 		emit(Event{Type: EventToolStarted, Payload: map[string]any{

@@ -285,6 +285,14 @@ ENGLISH: dict[str, str] = {
     "not_a_github_url": "That does not look like a GitHub URL.",
     "github_error": "GitHub returned {status}: {reason}",
     "github_unreachable": "GitHub could not be reached: {reason}",
+    # ── what a run may write about itself ─────────────────────────────────────
+    # A tool's full output must never leave the machine it ran on (FR-043a). The cut happens
+    # there; this refusal is what makes the rule true of the store rather than of one
+    # program's good behaviour.
+    "tool_result_not_summarised": (
+        "A tool result must arrive summarised, never whole. Send its size, its type and the "
+        "opening bytes."
+    ),
 }
 
 

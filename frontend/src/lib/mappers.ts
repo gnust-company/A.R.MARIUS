@@ -216,7 +216,6 @@ export function mariusToVM(dto: MariusDTO): Marius {
     workspaceId: dto.workspace_id ?? '',
     projectIds: [], // populated by the frontend from roster grants
     skills: dto.skills,
-    skillInstalls: dto.skill_installs ?? {},
     adapterType: dto.adapter_type,
     offlineReason: dto.offline_reason ?? undefined,
     lastSeen: dto.last_seen_at ?? undefined,
@@ -420,7 +419,7 @@ export function traceEventFromVM(
   else if (type === 'assistant.error' || type === 'run.error') vmType = 'run.error'
   else if (type === 'agent.comment' || type === 'comment') vmType = 'agent.comment'
   else if (type === 'agent.status' || type === 'status_change') vmType = 'agent.status'
-  else if (type === 'thought') vmType = 'thought'
+  else if (type === 'thought' || type === 'assistant.thinking') vmType = 'thought'
 
   // Kill empty bubbles: an event with nothing renderable is dropped whatever its type
   // (this is what silences the lifecycle noise: run.started/queued/finished, …).

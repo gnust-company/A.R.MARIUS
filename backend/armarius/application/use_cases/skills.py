@@ -187,17 +187,12 @@ class SkillService:
         """
         doomed = str(gone.id)
         for marius in await uow.mariuses.list_by_workspace(workspace_id):
-            if doomed not in marius.skill_ids and gone.slug not in marius.skill_installs:
+            if doomed not in marius.skill_ids:
                 continue
             marius.skill_ids = [s for s in marius.skill_ids if s != doomed]
             kept = await uow.skills.list_by_ids([UUID(s) for s in marius.skill_ids])
             by_id = {str(sk.id): sk.name for sk in kept}
             marius.skills = [by_id[s] for s in marius.skill_ids if s in by_id]
-            marius.skill_installs = {
-                slug: state
-                for slug, state in marius.skill_installs.items()
-                if slug != gone.slug
-            }
             await uow.mariuses.update(marius)
 
         for project in await uow.projects.list_by_workspace(workspace_id):

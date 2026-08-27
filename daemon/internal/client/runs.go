@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 )
@@ -40,6 +41,13 @@ type GrantedRun struct {
 	// fetched afterwards, so that by the time the agent reads its first line everything it
 	// was granted is already on disk (FR-011b).
 	Skills []GrantedSkill `json:"skills"`
+	// FirstSeq is the number this machine gives the first event it produces (FR-045).
+	//
+	// The server says it because the server owns the log: the message this run was given is
+	// already written down there, and a run that was put back and handed out again has more
+	// than one of those. Numbering from a number the server chose is what keeps the pair
+	// (run, number) unique without a round trip per event to agree on the next one.
+	FirstSeq int `json:"first_seq"`
 }
 
 // GrantedSkill is one skill as it arrives: a directory name and everything that goes in it.
@@ -60,6 +68,34 @@ type ClaimResponse struct {
 // StartRequest is the machine saying the agent is up.
 type StartRequest struct {
 	SessionHandle string `json:"session_handle"`
+}
+
+// EventIn is one thing that happened during a run, on its way to the server (FR-015, FR-045).
+//
+// `seq` is assigned on this machine, in the order the agent produced things. It is what makes
+// a re-sent batch harmless: the server writes each number once, so a reply lost on the way back
+// costs a repeated call and nothing more.
+type EventIn struct {
+	Seq     int            `json:"seq"`
+	Type    string         `json:"type"`
+	Payload map[string]any `json:"payload"`
+}
+
+// EventsRequest is one batch.
+type EventsRequest struct {
+	Events []EventIn `json:"events"`
+}
+
+// FinishRequest is the machine saying a run is over, however it ended.
+type FinishRequest struct {
+	// Status is a code, never a sentence (Constitution VII): completed, failed, timed_out or
+	// stopped. The server decides what each one means for the task.
+	Status string `json:"status"`
+	// Error is this machine's own account of what went wrong, when something did. It describes
+	// the side of the failure no code on the server could have seen.
+	Error string `json:"error,omitempty"`
+	// Usage is whatever the CLI said the turn cost, passed on exactly as it was given.
+	Usage map[string]any `json:"usage,omitempty"`
 }
 
 // ClaimRuns asks for work and comes back with what was given (FR-053, FR-054).
@@ -96,3 +132,45 @@ func (s Session) StartRun(ctx context.Context, runID, sessionHandle string) (boo
 	}
 	return err == nil, err
 }
+
+// Record sends one batch of a run's events while the run is still going (FR-015).
+//
+// Sent with the **machine's** token, like every other call this daemon makes: the run's own
+// token belongs to the agent and never comes back out of it (FR-014a). What ties the batch to
+// the run is the run's id in the path, and the server refuses a batch about a run this machine
+// no longer holds (FR-059).
+func (s Session) Record(ctx context.Context, runID string, events []EventIn) error {
+	if len(events) == 0 {
+		return nil
+	}
+	status, err := sendJSON(
+		ctx, s.client(), http.MethodPost,
+		endpoint(s.Server, "/daemon/runs/"+runID+"/events"), s.Token,
+		EventsRequest{Events: events}, nil,
+	)
+	if status == http.StatusNotFound {
+		return ErrRunNotOurs
+	}
+	return err
+}
+
+// FinishRun closes a run: the run token dies with it, and the task it belongs to gets something
+// live pushing it again rather than waiting to be noticed by a sweep (FR-014b, FR-030a).
+func (s Session) FinishRun(ctx context.Context, runID string, req FinishRequest) error {
+	status, err := sendJSON(
+		ctx, s.client(), http.MethodPost,
+		endpoint(s.Server, "/daemon/runs/"+runID+"/finish"), s.Token, req, nil,
+	)
+	if status == http.StatusNotFound {
+		return ErrRunNotOurs
+	}
+	return err
+}
+
+// ErrRunNotOurs is the server refusing a write about a run this machine no longer holds
+// (FR-059). It is not a transport failure and must never be retried — the run has been taken
+// back, and everything sent about it from now on would be refused for the same reason.
+//
+// Declared here rather than imported from the supervisor so that this package keeps depending
+// on nothing above it; the supervisor's own sentinel is defined as this one.
+var ErrRunNotOurs = errors.New("this run is no longer this machine's to run")

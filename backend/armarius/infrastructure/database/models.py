@@ -142,7 +142,6 @@ class MariusModel(Base):
     adapter_config: Mapped[dict] = mapped_column(JSON, default=dict)
     skill_ids: Mapped[list] = mapped_column(JSON, default=list)
     # Per-skill install state (post-invite loop #74): slug → pending|installed|failed.
-    skill_installs: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
     owner_user_id: Mapped[str | None] = mapped_column(String(200))
     agent_token: Mapped[str | None] = mapped_column(String(120), unique=True, index=True)
     # Invite lifecycle (LLD §3.4) — operator-invite: invited → approved (no enroll/approve).
@@ -394,6 +393,12 @@ class RunEventModel(Base):
         # builds from this metadata, and an index the metadata does not know about is
         # missing from every test database and proposed for deletion by autogenerate.
         Index("ix_run_events_run_id_type", "run_id", "type"),
+        # Feature 002: a run's events are numbered on the machine that produced them and sent
+        # up in batches, which is what lets that machine keep working without a round trip per
+        # event. This index is what makes a re-sent batch harmless — the numbers it carries are
+        # numbers already held, so nothing is written twice (FR-045). Sequence zero belongs to
+        # the message the agent was given, written before the agent existed.
+        Index("uq_run_events_run_seq", "run_id", "seq", unique=True),
     )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     run_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("runs.id"), index=True)

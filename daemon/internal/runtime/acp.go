@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os/exec"
+	"sync"
 )
 
 // acpProtocolVersion is the version of the Agent Client Protocol this daemon speaks.
@@ -50,31 +50,45 @@ func (ACP) Run(ctx context.Context, req Request, emit Emit) (Outcome, error) {
 		return Outcome{}, fmt.Errorf("running %s needs the task's working directory", req.CLI)
 	}
 
-	cmd := exec.CommandContext(ctx, req.Binary, flags...) //nolint:gosec // the path is what discovery found on this machine
-	cmd.Dir = req.WorkDir
-	cmd.Env = req.Env
+	cmd := newProcess(ctx, req, flags)
 
 	toAgent, err := cmd.StdinPipe()
 	if err != nil {
 		return Outcome{}, fmt.Errorf("speaking to %s: %w", req.CLI, err)
 	}
-	fromAgent, err := cmd.StdoutPipe()
+	// The same pipes the one-shot family owns, for the same reason: an ACP peer starts
+	// programs too, and one of them holding this pipe open is what would make waiting for the
+	// CLI a wait with no end (see `pipes`).
+	streams, err := plumb(cmd)
 	if err != nil {
 		return Outcome{}, fmt.Errorf("listening to %s: %w", req.CLI, err)
 	}
-	var complaints tail
-	cmd.Stderr = &complaints
 
 	if err := cmd.Start(); err != nil {
+		streams.takeAway()
+		streams.handedOver()
 		return Outcome{}, fmt.Errorf("starting %s: %w", req.CLI, err)
 	}
+	streams.handedOver()
 
-	out, talkErr := Converse(ctx, toAgent, fromAgent, req, emit)
+	var (
+		reading    sync.WaitGroup
+		complaints tail
+	)
+	reading.Add(1)
+	go func() {
+		defer reading.Done()
+		_, _ = io.Copy(&complaints, streams.errs)
+	}()
+
+	out, talkErr := Converse(ctx, toAgent, streams.out, req, emit)
 	// Closing our end is how an ACP peer is told the conversation is over; it then exits by
 	// itself. Ending the process instead would be indistinguishable, from its side, from the
 	// machine dying — and some of these CLIs write their session out on the way down.
 	_ = toAgent.Close()
 	waitErr := cmd.Wait()
+	reap(cmd)
+	streams.drain(&reading)
 
 	if talkErr != nil {
 		return out, fmt.Errorf("%s: %w%s", req.CLI, talkErr, complaints.suffix())
@@ -293,11 +307,11 @@ func (c *acpConn) notified(msg rpcMessage) {
 	switch update.Update.Kind {
 	case "agent_message_chunk":
 		if update.Update.Content.Text != "" {
-			c.emit(Event{Type: EventAgentMessage, Payload: map[string]any{"text": update.Update.Content.Text}})
+			c.emit(Event{Type: EventAssistantMessage, Payload: map[string]any{"text": update.Update.Content.Text}})
 		}
 	case "agent_thought_chunk":
 		if update.Update.Content.Text != "" {
-			c.emit(Event{Type: EventAgentThinking, Payload: map[string]any{"text": update.Update.Content.Text}})
+			c.emit(Event{Type: EventAssistantThinking, Payload: map[string]any{"text": update.Update.Content.Text}})
 		}
 	case "tool_call":
 		payload := map[string]any{"call": update.Update.ToolCallID, "name": update.Update.Title}
@@ -311,7 +325,7 @@ func (c *acpConn) notified(msg rpcMessage) {
 	case "tool_call_update":
 		switch update.Update.Status {
 		case "completed", "failed":
-			c.emit(Event{Type: EventToolFinished, Payload: map[string]any{
+			c.emit(Event{Type: EventToolCompleted, Payload: map[string]any{
 				"call":   update.Update.ToolCallID,
 				"failed": update.Update.Status == "failed",
 			}})

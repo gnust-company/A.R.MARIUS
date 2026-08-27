@@ -22,13 +22,15 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
+from armarius.domain.entities.run import RunStatus
+from armarius.infrastructure.daemon.claim import ReportedEvent
 from armarius.infrastructure.daemon.enrollment import MachineIdentity
 from armarius.infrastructure.daemon.workplaces import ReportedWorkplace
 from armarius.infrastructure.events.topic_bus import machine_topic
@@ -212,6 +214,10 @@ class GrantedRunOut(BaseModel):
     # not compose any of it, and it does not send it back.
     prompt: str = ""
     skills: list[SkillOut] = Field(default_factory=list)
+    # Where this machine numbers its own events from (FR-045). Everything already written for
+    # this run sits below it — the message above all — so the pair (run, number) stays unique
+    # even for a run that was put back and handed out a second time.
+    first_seq: int = 1
 
 
 class ClaimOut(BaseModel):
@@ -220,6 +226,50 @@ class ClaimOut(BaseModel):
 
 class StartIn(BaseModel):
     session_handle: str = ""
+
+
+class EventIn(BaseModel):
+    """One thing a machine says happened during a run (FR-015, FR-045).
+
+    `seq` is assigned on the machine, in the order the agent produced things, and it starts
+    at 1: zero belongs to the message the agent was given, which was written down here before
+    the agent existed. Numbering on that side is what lets a machine send events as it makes
+    them without a round trip each to agree on the next number, and it is what makes a
+    re-sent batch harmless — a number already written is left alone.
+    """
+
+    seq: int = Field(ge=1, le=1_000_000)
+    type: str = Field(min_length=1, max_length=60)
+    payload: dict[str, object] = Field(default_factory=dict)
+
+
+class EventsIn(BaseModel):
+    events: list[EventIn] = Field(default_factory=list, max_length=500)
+
+
+class FinishIn(BaseModel):
+    """How a run ended, said as a code (Constitution VII).
+
+    Four endings and no others. *Completed* says the turn ran to its end and says nothing
+    about whether the agent did the job — an agent that reports it could not finish still
+    ran. The other three are the ways a turn does not reach its end, and they are kept apart
+    because what happens to the task afterwards differs: a run that was cut for silence is
+    resumed, a run nobody could start is not the same failure.
+    """
+
+    status: Literal["completed", "failed", "timed_out", "stopped"]
+    error: str = Field(default="", max_length=4_000)
+    usage: dict[str, object] = Field(default_factory=dict)
+
+
+# The wire code for each ending, and the status it means. A table rather than a cast, so a
+# code the server does not know is refused at the door instead of stored.
+_ENDINGS: dict[str, RunStatus] = {
+    "completed": RunStatus.COMPLETED,
+    "failed": RunStatus.FAILED,
+    "timed_out": RunStatus.TIMED_OUT,
+    "stopped": RunStatus.STOPPED,
+}
 
 
 # ── the machine's half ────────────────────────────────────────────────────────
@@ -358,6 +408,7 @@ async def claim_runs(
                 claim_expires_at=g.claim_expires_at,
                 prompt=g.prompt,
                 skills=[SkillOut(name=b.name, files=b.files) for b in g.skills],
+                first_seq=g.first_seq,
             )
             for g in granted
         ]
@@ -376,6 +427,58 @@ async def start_run(
     put it down.
     """
     await container.daemon_claims.start(machine, run_id)
+    return {}
+
+
+@router.post("/runs/{run_id}/events")
+async def record_run_events(
+    run_id: UUID, body: EventsIn, machine: CurrentMachine, container: ContainerDep
+) -> dict[str, object]:
+    """What the agent is doing, while it is still doing it (FR-015, FR-045, FR-046).
+
+    Authenticated by the **machine's** token like every other call a daemon makes, not by the
+    run's. The run's token was minted for the agent and never comes back out of it (FR-014a);
+    what ties a batch to a run is the id in the path, and a batch about a run this machine no
+    longer holds is refused (FR-059).
+
+    404 rather than 403 for a run belonging to another machine, matching every other door
+    here: not yours and not there are the same answer, and the daemon does the same thing
+    with either — stop, and clean up (Constitution I, FR-058).
+    """
+    await container.daemon_claims.record(
+        machine,
+        run_id,
+        [
+            ReportedEvent(seq=e.seq, type=e.type, payload=dict(e.payload))
+            for e in body.events
+        ],
+    )
+    return {}
+
+
+@router.post("/runs/{run_id}/finish")
+async def finish_run(
+    run_id: UUID, body: FinishIn, machine: CurrentMachine, container: ContainerDep
+) -> dict[str, object]:
+    """The run is over — the token dies here, and the task starts moving again.
+
+    Two obligations meet at this one door. The run's token is revoked whether the run went
+    well or badly, because a credential minted for one run must stop opening anything the
+    moment that run ends (FR-014b). And the task gets something live pushing it again **now**,
+    rather than being noticed by a sweep some minutes later: a run can finish cleanly and
+    leave the task exactly where it was, with nothing scheduled to look at it again, which is
+    the hole FR-030a is written against.
+
+    Calling twice is not an error. A reply lost on the way back is the ordinary reason a
+    machine calls again, and the second call finds a run nobody holds and leaves it alone.
+    """
+    await container.daemon_claims.finish(
+        machine,
+        run_id,
+        status=_ENDINGS[body.status],
+        error=body.error,
+        usage=dict(body.usage),
+    )
     return {}
 
 

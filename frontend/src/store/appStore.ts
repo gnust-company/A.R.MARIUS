@@ -130,7 +130,6 @@ export interface Marius {
   description?: string
   skills?: string[]
   /** Per-skill install state (post-invite loop #74): slug → pending|installed|failed. */
-  skillInstalls?: Record<string, string>
   adapterType?: string
   model?: string
   isWorkspaceAgent?: boolean
@@ -388,7 +387,7 @@ export interface SkillFile {
 
 export interface Skill {
   id: string
-  /** Stable URL-safe id; skill_installs on an agent is keyed by this (#74). */
+  /** Stable URL-safe id: the directory a skill is written into on a machine. */
   slug?: string
   name: string
   description?: string
