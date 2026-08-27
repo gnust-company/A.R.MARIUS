@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
 from sqlalchemy import select, update
@@ -30,12 +30,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from armarius.infrastructure.daemon.enrollment import MachineIdentity
 from armarius.infrastructure.daemon.models import (
+    AgentWorkplaceBindingModel,
     MachineModel,
     RunClaimModel,
     WorkplaceModel,
 )
 from armarius.infrastructure.database.engine import get_sessionmaker
-from armarius.shared.clock import utcnow
+from armarius.infrastructure.database.models import MariusModel
+from armarius.shared.clock import as_utc, utcnow
+from armarius.shared.config import settings
 
 # Why a workplace is not ready. Codes, never sentences. They do not overlap: a CLI that is
 # gone from the machine says so even if the machine also cannot link, because *this CLI is
@@ -87,6 +90,41 @@ class Heartbeat:
 
     pending_work: bool
     cancel: tuple[UUID, ...]
+
+
+@dataclass(frozen=True)
+class ResidentAgent:
+    """One agent living at a workplace. Name included because that is what a person reads."""
+
+    id: UUID
+    name: str
+
+
+@dataclass(frozen=True)
+class MachineWorkplace:
+    """One agent CLI on one machine, as the person who linked that machine sees it."""
+
+    id: UUID
+    cli_kind: str
+    cli_version: str
+    ready: bool
+    # A code, never a sentence: the same fact is read on screen in the patron's own
+    # language and written into records in English (Constitution VI, Constitution VII).
+    not_ready_reason: str | None
+    agents: tuple[ResidentAgent, ...] = ()
+
+
+@dataclass(frozen=True)
+class LinkedMachine:
+    """One machine, everything it can run, and everyone who lives on it."""
+
+    id: UUID
+    display_name: str
+    platform: str
+    daemon_version: str
+    last_heartbeat_at: datetime | None
+    reachable: bool
+    workplaces: list[MachineWorkplace]
 
 
 class DaemonWorkplaceService:
@@ -308,6 +346,105 @@ class DaemonWorkplaceService:
                 )
                 for row, machine_name in found.all()
             ]
+
+    async def list_machines(self, workspace_id: UUID) -> list[LinkedMachine]:
+        """Every machine here, what it can run, and who lives on it (FR-003, FR-007a, FR-033).
+
+        **The same reachability rule the liveness verdict uses**, not a second one written
+        for the screen. Two rules would eventually disagree, and the shape of the
+        disagreement is the worst one available: the machines screen saying a machine is off
+        while the agent on it still counts as online, or the reverse. A person reading two
+        contradictory answers trusts neither, which is worse than one answer being wrong.
+
+        A CLI that was uninstalled keeps its row and turns *not ready* rather than
+        disappearing — that is what makes it visible at all, and it is the whole of FR-033.
+        The agents attached to it stay attached, because that attachment is for life
+        (FR-007): the screen has to be able to show *who is stranded here*, which is the
+        question the person is actually asking when a workplace goes red.
+        """
+        async with self._sessions()() as session:
+            machines = list(
+                (
+                    await session.execute(
+                        select(MachineModel)
+                        .where(MachineModel.workspace_id == workspace_id)
+                        .order_by(MachineModel.display_name, MachineModel.id)
+                    )
+                ).scalars()
+            )
+            if not machines:
+                return []
+
+            places = list(
+                (
+                    await session.execute(
+                        select(WorkplaceModel)
+                        .where(WorkplaceModel.workspace_id == workspace_id)
+                        .order_by(WorkplaceModel.cli_kind)
+                    )
+                ).scalars()
+            )
+            # Every agent on every workplace in one read. Asked per workplace this would be
+            # one query per CLI per machine, and the answer is a single small join.
+            residents = (
+                await session.execute(
+                    select(
+                        AgentWorkplaceBindingModel.workplace_id,
+                        MariusModel.id,
+                        MariusModel.name,
+                    )
+                    .join(
+                        MariusModel,
+                        MariusModel.id == AgentWorkplaceBindingModel.marius_id,
+                    )
+                    .where(AgentWorkplaceBindingModel.workspace_id == workspace_id)
+                    .order_by(MariusModel.name)
+                )
+            ).all()
+
+        living: dict[UUID, list[ResidentAgent]] = {}
+        for workplace_id, marius_id, name in residents:
+            living.setdefault(workplace_id, []).append(
+                ResidentAgent(id=marius_id, name=name or "")
+            )
+
+        cutoff = self._clock() - timedelta(
+            seconds=settings.machine_unreachable_after_seconds
+        )
+        by_machine: dict[UUID, list[WorkplaceModel]] = {}
+        for place in places:
+            by_machine.setdefault(place.machine_id, []).append(place)
+
+        return [
+            LinkedMachine(
+                id=machine.id,
+                display_name=machine.display_name or "",
+                platform=machine.platform or "",
+                daemon_version=machine.daemon_version or "",
+                # Through `as_utc` for the same reason the hold deadline is: a timestamp
+                # column comes back tz-aware from one engine and naive from another, and a
+                # naive one serialises without an offset. A browser reads an offset-less
+                # ISO string as **local time**, so the same beat would be shown hours out
+                # on any machine that is not on UTC — wrong, and wrong quietly.
+                last_heartbeat_at=as_utc(machine.last_heartbeat_at),
+                reachable=(
+                    machine.last_heartbeat_at is not None
+                    and as_utc(machine.last_heartbeat_at) > cutoff
+                ),
+                workplaces=[
+                    MachineWorkplace(
+                        id=place.id,
+                        cli_kind=place.cli_kind,
+                        cli_version=place.cli_version or "",
+                        ready=bool(place.ready),
+                        not_ready_reason=place.not_ready_reason,
+                        agents=tuple(living.get(place.id, ())),
+                    )
+                    for place in by_machine.get(machine.id, [])
+                ],
+            )
+            for machine in machines
+        ]
 
     async def _workplaces_of(
         self, session: AsyncSession, machine: MachineIdentity

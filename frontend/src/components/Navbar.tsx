@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
   Users,
+  Laptop,
   Wrench,
   Inbox,
   Settings,
@@ -21,6 +22,7 @@ import { cn, wsHref } from '@/lib/utils';
 const NAV_ITEMS = [
   { path: '/projects', labelKey: 'nav.projects', icon: LayoutDashboard },
   { path: '/agents', labelKey: 'nav.directory', icon: Users },
+  { path: '/machines', labelKey: 'nav.machines', icon: Laptop },
   { path: '/skills', labelKey: 'nav.skills', icon: Wrench },
   { path: '/inbox', labelKey: 'nav.inbox', icon: Inbox, badge: true },
 ];

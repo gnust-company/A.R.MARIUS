@@ -475,6 +475,45 @@ export async function listWorkplaces(workspaceId: string): Promise<WorkplaceChoi
   return get<WorkplaceChoiceDTO[]>(`/v1/workspaces/${workspaceId}/workplaces`)
 }
 
+/** One agent living at a workplace. */
+export interface ResidentAgentDTO {
+  id: string
+  name: string
+}
+
+/** One agent CLI on one machine — what it is, whether it can work, and who is on it. */
+export interface MachineWorkplaceDTO {
+  id: string
+  cli_kind: string
+  cli_version: string
+  ready: boolean
+  /** A code, never a sentence: the screen words it in the reader's own language. */
+  not_ready_reason: string | null
+  agents: ResidentAgentDTO[]
+}
+
+/** One machine the patron has linked. */
+export interface MachineDTO {
+  id: string
+  display_name: string
+  platform: string
+  daemon_version: string
+  last_heartbeat_at: string | null
+  reachable: boolean
+  workplaces: MachineWorkplaceDTO[]
+}
+
+/**
+ * Every machine in this workspace, including the workplaces that cannot take work.
+ *
+ * Deliberately not `listWorkplaces`: that one lists only the ready ones, because it feeds a
+ * picker. This screen exists for the opposite case — something has gone wrong and the person
+ * wants to see what, and who is stranded on it (FR-033).
+ */
+export async function listMachines(workspaceId: string): Promise<MachineDTO[]> {
+  return get<MachineDTO[]>(`/v1/workspaces/${workspaceId}/machines`)
+}
+
 export interface InviteMariusBody {
   name: string
   /** What the agent is told to be. Goes down with every run (FR-007i). */
