@@ -10,6 +10,22 @@ Xác thực bằng **token của lượt chạy**, thứ daemon nhét vào agent
 - **hết hiệu lực khi lượt chạy khép lại** (FR-014b);
 - **không bao giờ** là token của daemon, kể cả khi đúc hỏng (FR-014c).
 
+**Hai câu trả lời khi cú gọi không đi lọt**, và chúng khác nhau (dựng ở T135):
+
+| Tình huống | Trả về | Mã lý do |
+| --- | --- | --- |
+| Không trình gì cả | `401` | `missing_bearer_token` |
+| Token không mở lượt chạy nào — chưa từng có, **hoặc** đã thu hồi | `404` | `run_not_found` |
+| Chạm sang đầu việc / dự án ngoài phạm vi lượt chạy | `404` | `task_not_found` / `project_not_found` |
+
+Hai dòng dưới đọc y hệt nhau từ ngoài, và đó là chủ ý: không-phải-của-bạn và không-tồn-tại không được
+phân biệt (Điều I), nên ai cầm một chuỗi đã chết cũng không xác nhận được nó từng mở thứ gì. Thứ phân biệt
+chúng là **mã lý do**, và daemon cần đúng mã ấy để xếp *token đã chết* vào loại lỗi cần người xử thay vì
+thử lại (FR-014f).
+
+**Một ngoại lệ, có hạn**: hai lối `/agent/onboarding/*` còn nhận token sống lâu, vì buổi phỏng vấn chưa đi
+đường nhận việc nên chưa có lượt chạy nào để đúc token cho nó. Cửa tạm ấy chết cùng FR-040c (T048a).
+
 ---
 
 ## Đổi so với hôm nay

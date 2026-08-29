@@ -28,11 +28,16 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine, text
 
+from armarius.application.use_cases.skills import BUILTIN_SKILLS
 from armarius.infrastructure.persistence.unit_of_work import make_uow
 from armarius.main import app
 from tests.support.agents import invite_agent
 
 pytestmark = pytest.mark.anyio
+
+#: Tên hiển thị của kỹ năng dựng sẵn, đọc thẳng từ chỗ khai nó. Viết cứng vào đây thì bài này
+#: đỏ mỗi lần đổi tên tờ hướng dẫn — mà tên tờ hướng dẫn không phải thứ bài này nói về.
+_BUILTIN_NAME = BUILTIN_SKILLS[0]["name"]
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
@@ -90,7 +95,7 @@ async def test_deleting_a_skill_takes_it_off_every_agent_that_had_it() -> None:
 
         after = await _agent_row(agent["id"])
     assert after.skill_ids == [keeper_id], after.skill_ids
-    assert after.skills == ["Armarius HTTP API"], after.skills
+    assert after.skills == [_BUILTIN_NAME], after.skills
 
 
 # The two lists are one fact written twice, and they have to stay that way. A name left
@@ -139,7 +144,7 @@ async def test_deleting_one_skill_does_not_disturb_another_agents_links() -> Non
 
         after = await _agent_row(untouched["id"])
     assert after.skill_ids == [keeper_id]
-    assert after.skills == ["Armarius HTTP API"]
+    assert after.skills == [_BUILTIN_NAME]
 
 
 # ── 2. a built-in that stops being shipped ────────────────────────────────────

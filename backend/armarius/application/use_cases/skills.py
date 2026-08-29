@@ -47,11 +47,15 @@ BUILTIN_SKILL_FILE = BACKEND_ROOT / "static" / "skills" / "armarius-http" / "SKI
 # something an agent installs for itself any more.
 BUILTIN_SKILLS: list[dict] = [
     {
+        # The slug still says "http" and the sheet no longer teaches any HTTP. Renaming it
+        # would rewrite an identifier that installed rows in every existing workspace point
+        # at, to fix a word only this file reads; the name and description below are what an
+        # agent and a patron actually see, and those say what it now is.
         "slug": "armarius-http",
-        "name": "Armarius HTTP API",
+        "name": "Talking to Armarius",
         "description": (
-            "Call the Armarius workspace API directly with curl — claim tasks, "
-            "comment & @mention teammates, update status, publish artifacts."
+            "Talk to Armarius about the work you were given — read your task, report on "
+            "it, publish what you produced. One command, already set up for this run."
         ),
         "source": "builtin",
         "source_url": "/static/skills/armarius-http/SKILL.md",
