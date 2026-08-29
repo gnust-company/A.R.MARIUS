@@ -158,13 +158,15 @@ daemon/                            # MỚI — chương trình Go độc lập
 │   ├── callback/                  # MỚI — ruột của binary trên: MỘT bảng lệnh, hai mặt đọc chung
 │   │   ├── registry.go            #   bảng lệnh và phạm vi của từng nhóm (FR-013d)
 │   │   ├── cli.go                 #   mặt lệnh — mã thoát, JSON ra stdout
-│   │   └── mcp.go                 #   mặt công cụ native — MCP qua stdio
+│   │   ├── mcp.go                 #   mặt công cụ native — MCP qua stdio
+│   │   └── workdir.go             #   câu hỏi trả lời TẠI MÁY, không lên server (FR-020a)
 │   ├── client/                    # nói chuyện với server
 │   ├── discovery/                 # dò agent CLI có trên máy
 │   ├── execenv/                   # dựng thư mục làm việc, đổ kỹ năng, bơm công cụ
 │   │   ├── context_file.go        #   đặt thông điệp vào tệp bối cảnh native của CLI
 │   │   ├── skills.go              #   ghi kỹ năng — TỆP THẬT, ghi mới mỗi lượt (FR-011b)
-│   │   └── tools.go               #   cấp bộ công cụ theo lượt chạy (FR-013a)
+│   │   ├── tools.go               #   cấp bộ công cụ theo lượt chạy (FR-013a)
+│   │   └── changes.go             #   thư mục làm việc có gì — thứ agent tự làm ra (FR-020a)
 │   ├── runtime/                   # hai họ giao thức: ACP và chạy-một-phát
 │   ├── redact/                    # che bí mật TRƯỚC khi rời máy (FR-048)
 │   └── supervisor/                # vòng lặp xin việc, heartbeat, trần đồng thời

@@ -65,12 +65,23 @@ Kèm theo: tờ hướng dẫn agent không được dạy lệnh cài kỹ năn
 
 ### *Thứ đã đổi trong thư mục làm việc* — **một lệnh trả lời tại chỗ, KHÔNG phải route server**
 
+```
+armarius workdir changes [-limit N]
+```
+
 ```json
-← { "changed": [ { "path": "report.pdf", "bytes": 20481, "modified_at": "…" } ] }
+← { "root": "…/work/<task_id>", "total": 2,
+    "changed": [ { "path": "report.pdf", "bytes": 20481, "modified_at": "…" } ] }
 ```
 
 Agent hỏi **để biết mình có gì mà công bố**. Đây là thông tin, **không phải công bố tự động** (FR-020a);
 daemon không tự dò và không tự đẩy (FR-018).
+
+`total` là số tệp **tìm thấy**, không phải số tệp liệt kê: danh sách cắt theo `-limit` và xếp **mới nhất
+trước**, còn `total` thì không cắt — agent được xem ba trên bốn mươi tệp phải biết mình có bốn mươi. Thứ
+daemon đặt vào (brief, kỹ năng, chính binary này) **không có trong danh sách**; thư mục làm việc bắt đầu
+rỗng (FR-041) nên phần còn lại chính là của agent. **Xoá không báo được**: thứ đã mất không để lại dấu để
+đọc — và tệp đã mất cũng không phải tệp ai sắp công bố.
 
 **Sửa 2026-08-29 — bản trước ghi nó là `GET /agent/workdir/changes` trên bề mặt này, và đó là chỗ sai.**
 Câu hỏi này là câu **duy nhất** trong cả hợp đồng mà dữ liệu **không nằm ở server**: nó nằm trên đĩa của
