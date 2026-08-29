@@ -205,6 +205,8 @@ func (o RunOptions) prepare(grant Grant, place Workplace) (runtime.Request, stri
 	env, err := execenv.Environ(execenv.EnvSpec{
 		CLI:       place.CLI,
 		Home:      home,
+		TaskID:    grant.TaskID,
+		ProjectID: grant.ProjectID,
 		Inherited: os.Environ(),
 		Credentials: execenv.Credentials{
 			RunID:       grant.RunID,

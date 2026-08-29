@@ -160,6 +160,7 @@ func (w *world) grant() Grant {
 	return Grant{
 		RunID:       "run-1",
 		TaskID:      "task-1",
+		ProjectID:   "project-1",
 		WorkplaceID: "wp-1",
 		RunToken:    "armr_run_thisone",
 		Prompt:      "Your instructions: be Marin.\n",
@@ -237,6 +238,26 @@ func TestTheAgentIsGivenTheTasksOwnDirectoryTheMessageAndItsOwnToken(t *testing.
 		if strings.Contains(entry, "armr_machine_secret") {
 			t.Fatalf("token của cả cái máy lọt vào tay agent: %q", entry)
 		}
+	}
+}
+
+func TestTheAgentIsToldWhatItsRunIsAboutSoItsCommandsExist(t *testing.T) {
+	// Không phải chuyện trang trí. Hai mã này là thứ quyết **bộ lệnh** agent cầm trong tay
+	// (FR-013d): thiếu chúng thì mọi lượt chạy — kể cả một lượt chạy đầu việc bình thường —
+	// đọc thành "không nói về cái gì cả", và cả nhóm lệnh của đầu việc lẫn của dự án biến mất
+	// mà không một dòng lỗi nào.
+	//
+	// Bài này canh đúng **chỗ nối**, không canh `Environ`: cả hai đầu đều từng đúng riêng nó,
+	// và chỗ rỗng nằm ở giữa — nơi thật sự dựng môi trường cho agent quên không truyền vào.
+	w := aWorld(t)
+
+	w.options().Do(context.Background(), w.grant())
+
+	if !lookup(w.engine.saw.Env, "ARMARIUS_TASK_ID", "task-1") {
+		t.Fatalf("agent không được cho biết nó đang làm đầu việc nào: %v", w.engine.saw.Env)
+	}
+	if !lookup(w.engine.saw.Env, "ARMARIUS_PROJECT_ID", "project-1") {
+		t.Fatalf("agent không được cho biết nó đang ở dự án nào: %v", w.engine.saw.Env)
 	}
 }
 

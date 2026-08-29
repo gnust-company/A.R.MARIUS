@@ -703,3 +703,32 @@ async def test_work_left_over_from_a_project_that_has_since_closed_is_not_handed
         assert left is not None and left.machine_id is None, (
             "việc của dự án đã đóng không được trao, nhưng cũng không bị xoá"
         )
+
+
+async def test_the_packet_says_what_the_run_is_about_not_only_which_run_it_is() -> None:
+    """Cái máy cần biết lượt chạy này **nói về cái gì**, không chỉ nó là lượt chạy nào.
+
+    Không phải để kiểm tra quyền — token của lượt chạy đã trả lời câu ấy ở phía server. Cặp
+    (đầu việc, dự án) quyết **bộ lệnh** máy trao cho agent (FR-013d): thiếu nó thì mọi lượt
+    chạy đọc thành "không nói về cái gì cả", và cả nhóm lệnh của đầu việc lẫn của dự án biến
+    mất mà không một dòng lỗi nào.
+
+    Và nó phải đi **trong gói**: một cái máy chỉ được cho mã lượt chạy sẽ phải hỏi ngược lại
+    xem lượt chạy ấy nói về gì, mà một cái máy phải hỏi là một cái máy có thể bị trả lời về
+    thứ khác.
+    """
+    async with _client() as c:
+        box = await _box(c, "aboutwhat@armarius.dev")
+        project_id = await _project(box, closed=False)
+        task_id = await _task(box, project_id)
+        run_id = await _offer(box, task_id=task_id, project_id=project_id)
+
+        granted = await _claim(c, box)
+
+    assert len(granted) == 1, granted
+    packet = granted[0]
+    assert UUID(packet["run_id"]) == run_id
+    assert UUID(packet["task_id"]) == task_id
+    assert UUID(packet["project_id"]) == project_id, (
+        "gói nhận việc không nói lượt chạy này thuộc dự án nào"
+    )

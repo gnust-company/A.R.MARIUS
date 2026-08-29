@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/gnust-company/armarius-daemon/internal/execenv"
 )
 
 // fakeArmarius stands in for the server and records what reached it.
@@ -295,5 +297,95 @@ func TestPlanItemsArriveAsAListAndAMalformedOneIsRefusedRatherThanEmptied(t *tes
 	}
 	if server.method != "" {
 		t.Fatal("a plan with an unreadable item list was filed as an empty plan")
+	}
+}
+
+// ── the two halves have to meet (the gap review caught on PR #237) ───────────
+
+// envOf reads back an environment built by the daemon, the way a child process would.
+func envOf(t *testing.T, entries []string) Environment {
+	t.Helper()
+	values := map[string]string{}
+	for _, entry := range entries {
+		name, value, ok := strings.Cut(entry, "=")
+		if ok {
+			values[name] = value
+		}
+	}
+	return FromEnvironment(func(name string) string { return values[name] })
+}
+
+func TestTheEnvironmentTheDaemonBuildsIsTheEnvironmentThisProgramReads(t *testing.T) {
+	// The bug this exists for: `execenv` declared the names of the two variables and
+	// `callback` read them, and **nothing set them**. Both halves were right on their own and
+	// the seam between them was empty, so every run would have started an agent holding only
+	// `whoami` — no error, no warning, just a command set that quietly was not there.
+	//
+	// Neither package's own tests could catch that, because each one was correct. So the test
+	// has to cross the seam: build the environment the way the daemon builds it, read it the
+	// way the agent's program reads it, and ask what the agent ends up holding.
+	built, err := execenv.Environ(execenv.EnvSpec{
+		CLI:       "claude_code",
+		Home:      "/tmp/home",
+		TaskID:    "task-1",
+		ProjectID: "project-1",
+		Credentials: execenv.Credentials{
+			RunID:    "run-1",
+			RunToken: "armr_run_x",
+			Server:   "https://armarius.example",
+		},
+	})
+	if err != nil {
+		t.Fatalf("building the environment: %v", err)
+	}
+
+	env := envOf(t, built)
+	if env.TaskID != "task-1" || env.ProjectID != "project-1" {
+		t.Fatalf("the run's identifiers did not survive the crossing: %+v", env)
+	}
+	if env.RunToken != "armr_run_x" || env.Server != "https://armarius.example" {
+		t.Fatalf("the credential did not survive the crossing: %+v", env)
+	}
+
+	var groups []Group
+	for _, cmd := range Commands(env) {
+		groups = append(groups, cmd.Group)
+	}
+	if len(groups) < 2 {
+		t.Fatalf("a run about a task was handed %d commands: %v", len(groups), groups)
+	}
+	for _, g := range groups {
+		if g == GroupProject {
+			t.Fatal("a run about a task was handed the Leader's commands")
+		}
+	}
+}
+
+func TestARunAboutNothingCrossesTheSeamAsARunAboutNothing(t *testing.T) {
+	// The other direction, and the reason the variables are left unset rather than set empty:
+	// a variable set to nothing is worse than an absent one — code that checks for presence
+	// finds it and code that checks for a value does not.
+	built, err := execenv.Environ(execenv.EnvSpec{
+		CLI:  "claude_code",
+		Home: "/tmp/home",
+		Credentials: execenv.Credentials{
+			RunID:    "run-1",
+			RunToken: "armr_run_x",
+			Server:   "https://armarius.example",
+		},
+	})
+	if err != nil {
+		t.Fatalf("building the environment: %v", err)
+	}
+	for _, entry := range built {
+		if strings.HasPrefix(entry, execenv.TaskIDVar+"=") ||
+			strings.HasPrefix(entry, execenv.ProjectIDVar+"=") {
+			t.Fatalf("a run about nothing was told it is about something: %q", entry)
+		}
+	}
+	for _, cmd := range Commands(envOf(t, built)) {
+		if cmd.Group != GroupAny {
+			t.Fatalf("a run about nothing was handed %q", cmd.Name)
+		}
 	}
 }
