@@ -46,7 +46,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import hashlib
 import json
 import secrets
 from collections.abc import Awaitable, Callable, Sequence
@@ -67,6 +66,7 @@ from armarius.infrastructure.daemon.models import (
     RunClaimModel,
     WorkplaceModel,
 )
+from armarius.infrastructure.daemon.run_auth import hash_run_token
 from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.infrastructure.database.models import ProjectModel, RunEventModel, RunModel
 from armarius.shared.clock import as_utc, utcnow
@@ -88,9 +88,6 @@ PROMPT_EVENT = "run.prompt"
 _HOLDING_STATUSES = (RunStatus.QUEUED.value, RunStatus.RUNNING.value)
 
 
-def _hash_token(token: str) -> str:
-    """The only form of a run token this system keeps."""
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -477,7 +474,7 @@ class DaemonClaimService:
         granted: list[GrantedRun] = []
         for claim, task_id in rows:
             token = f"{_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
-            claim.run_token_hash = _hash_token(token)
+            claim.run_token_hash = hash_run_token(token)
             granted.append(
                 GrantedRun(
                     run_id=claim.run_id,

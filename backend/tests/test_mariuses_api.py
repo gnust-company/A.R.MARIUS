@@ -2,8 +2,12 @@
 
 Creating an agent takes a name and a workplace. Nothing is dialled out to and nothing is
 pushed down: the machine the agent runs on asks for work rather than being called, so there
-is no address to collect, nothing to probe, and no send to report. The agent's token is
-still minted — `/agent/*` has nothing else to authenticate with yet — and is never returned.
+is no address to collect, nothing to probe, and no send to report.
+
+What authenticates an agent is the token of the run it is in (FR-014g). The per-agent token
+is still minted, because the two onboarding routes have nothing else to present until the
+interview becomes a run of its own (FR-040c, T048a) — and the test below pins down that it
+opens nothing else.
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ from tests.support.agents import (
     invite_agent,
     ready_workplace,
 )
+from tests.support.runs import open_run
 
 
 async def _client() -> AsyncClient:
@@ -54,17 +59,37 @@ async def test_creating_an_agent_never_returns_its_token_and_reports_no_send() -
     assert "send_status" not in data
 
 
-async def test_agent_me_after_invite_marks_online() -> None:
-    """The agent's token (read from the repo) authenticates /agent/me → ONLINE."""
+async def test_agent_me_authenticates_with_the_token_of_a_live_run() -> None:
+    """Token của lượt chạy mở `/agent/me`, và cú gọi ấy tính là một lần chạm (FR-014g)."""
     async with await _client() as c:
         token, ws_id = await _register(c, "online@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
         data = await invite_agent(c, ws_id, h)
-        agent_token = await agent_token_for(data["id"])
+        run = await open_run(marius_id=data["id"])
 
-        me = await c.get("/agent/me", headers={"Authorization": f"Bearer {agent_token}"})
+        me = await c.get("/agent/me", headers=run.headers)
     assert me.status_code == 200, me.text
     assert me.json()["marius"]["liveness"] == "online"
+
+
+async def test_the_long_lived_agent_token_no_longer_opens_anything() -> None:
+    """Loại token thứ ba đã hết việc — và "hết việc" phải *có tác dụng*, không chỉ là một
+    câu trong đặc tả.
+
+    Nó vẫn được đúc, vì hai lối onboarding chưa có gì để trình (FR-040c, T048a). Bài này canh
+    đúng chỗ nguy hiểm: một token còn nằm trong bảng mà vẫn mở được cửa thì FR-014g mới chỉ đúng
+    trên giấy. Đọc thành **404**, không phải 403 — không-phải-của-bạn và không-tồn-tại đọc y hệt
+    nhau (Điều I), nên ai cầm một chuỗi đã chết cũng không xác nhận được nó từng mở thứ gì.
+    """
+    async with await _client() as c:
+        token, ws_id = await _register(c, "deadtoken@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        data = await invite_agent(c, ws_id, h)
+        stale = await agent_token_for(data["id"])
+
+        me = await c.get("/agent/me", headers={"Authorization": f"Bearer {stale}"})
+    assert me.status_code == 404, me.text
+    assert me.json()["code"] == "run_not_found"
 
 
 async def test_the_caller_does_not_get_to_choose_a_runtime() -> None:

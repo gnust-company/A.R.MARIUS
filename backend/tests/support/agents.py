@@ -1,9 +1,15 @@
 """Helpers for making agents in tests.
 
-Creating an agent takes a name and a workplace and nothing else (FR-007g). The agent's own
-token is still minted — `/agent/*` has nothing else to authenticate with until T039d — but
-it is never returned by the API and never pushed anywhere, so tests that need to act as the
-agent read it back from the database via ``agent_token_for``.
+Creating an agent takes a name and a workplace and nothing else (FR-007g).
+
+**Acting as an agent means holding a run.** `/agent/*` authenticates the run token now
+(FR-014g), so a test that wants to call those routes opens a run first — see
+``invite_and_online``, which returns the token of the run it opened, and
+``tests/support/runs.py`` for the run itself.
+
+The per-agent token is still minted and ``agent_token_for`` still reads it back, because
+the two `/agent/onboarding/*` routes have nothing else to present until the interview
+becomes a run of its own (FR-040c, T048a). Nothing else takes it.
 """
 
 from __future__ import annotations
@@ -121,10 +127,16 @@ async def invite_and_online(
     name: str = "Marin",
     is_workspace_agent: bool = False,
     skill_ids: list[str] | None = None,
+    task_id: str | None = None,
+    project_id: str | None = None,
 ) -> tuple[str, str]:
-    """Invite with creds, then hit /agent/me so the agent flips ONLINE.
+    """Invite an agent, open a run for it, then hit /agent/me so it flips ONLINE.
 
-    Returns ``(marius_id, agent_token)``.
+    Returns ``(marius_id, run_token)`` — the token an agent is actually started with.
+
+    With neither `task_id` nor `project_id` the run is **workspace-level**: the widest
+    shape there is, and the right default for a test that is about something other than
+    scope. Pass one or both when the test *is* about scope.
     """
     data = await invite_agent(
         c,
@@ -135,10 +147,12 @@ async def invite_and_online(
         skill_ids=skill_ids,
     )
     mid = data["id"]
-    token = await agent_token_for(mid)
-    me = await c.get("/agent/me", headers={"Authorization": f"Bearer {token}"})
+    from tests.support.runs import open_run
+
+    run = await open_run(marius_id=mid, task_id=task_id, project_id=project_id)
+    me = await c.get("/agent/me", headers=run.headers)
     assert me.status_code == 200, me.text
-    return mid, token
+    return mid, run.token
 
 
 async def make_agent(

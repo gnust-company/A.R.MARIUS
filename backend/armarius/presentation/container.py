@@ -43,6 +43,7 @@ from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.daemon.claim import DaemonClaimService
 from armarius.infrastructure.daemon.enrollment import DaemonEnrollmentService
 from armarius.infrastructure.daemon.liveness import DaemonLivenessProbe
+from armarius.infrastructure.daemon.run_auth import RunTokenAuthenticator
 from armarius.infrastructure.daemon.workplaces import DaemonWorkplaceService
 from armarius.infrastructure.events.in_memory_bus import InMemoryEventBus
 from armarius.infrastructure.events.task_trace import ControlBusTaskTrace
@@ -91,6 +92,7 @@ class Container:
     daemon_claims: DaemonClaimService
     daemon_enrollment: DaemonEnrollmentService
     daemon_workplaces: DaemonWorkplaceService
+    run_auth: RunTokenAuthenticator
     uow_factory: object
 
 
@@ -383,5 +385,6 @@ def build_container() -> Container:
         daemon_claims=claims,
         daemon_enrollment=DaemonEnrollmentService(),
         daemon_workplaces=DaemonWorkplaceService(),
+        run_auth=RunTokenAuthenticator(),
         uow_factory=uow_factory,
     )
