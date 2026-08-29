@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from armarius.application.use_cases.skills import BUILTIN_SKILLS
 from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.database.engine import init_db
 from armarius.main import app
@@ -13,6 +14,10 @@ from tests.support.agents import (
     agent_token_for,
     invite_agent,
 )
+
+#: Tên hiển thị của kỹ năng dựng sẵn, đọc thẳng từ chỗ khai nó. Viết cứng vào đây thì bài này
+#: đỏ mỗi lần đổi tên tờ hướng dẫn — mà tên tờ hướng dẫn không phải thứ bài này nói về.
+_BUILTIN_NAME = BUILTIN_SKILLS[0]["name"]
 
 
 @pytest.fixture(autouse=True)
@@ -326,7 +331,7 @@ async def test_linking_more_skills_merges_them():
     assert out["skill_ids"] == [http_id, second_id]
     assert out["installed"] == [second_slug]  # only the newly linked slug
     marin = next(m for m in listed if m["id"] == mid)
-    assert marin["skills"] == ["Armarius HTTP API", "Bảng màu"], marin["skills"]
+    assert marin["skills"] == [_BUILTIN_NAME, "Bảng màu"], marin["skills"]
 
 
 async def test_relinking_a_skill_the_agent_already_has_does_not_duplicate_it():

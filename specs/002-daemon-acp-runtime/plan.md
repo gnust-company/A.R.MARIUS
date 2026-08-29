@@ -155,6 +155,10 @@ daemon/                            # MỚI — chương trình Go độc lập
 ├── cmd/armarius-daemon/main.go
 ├── cmd/armarius/                  # MỚI — thứ agent gọi ngược; một binary, hai mặt (FR-013a)
 ├── internal/
+│   ├── callback/                  # MỚI — ruột của binary trên: MỘT bảng lệnh, hai mặt đọc chung
+│   │   ├── registry.go            #   bảng lệnh và phạm vi của từng nhóm (FR-013d)
+│   │   ├── cli.go                 #   mặt lệnh — mã thoát, JSON ra stdout
+│   │   └── mcp.go                 #   mặt công cụ native — MCP qua stdio
 │   ├── client/                    # nói chuyện với server
 │   ├── discovery/                 # dò agent CLI có trên máy
 │   ├── execenv/                   # dựng thư mục làm việc, đổ kỹ năng, bơm công cụ
