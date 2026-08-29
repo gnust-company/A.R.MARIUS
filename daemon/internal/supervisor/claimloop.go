@@ -20,8 +20,13 @@ const DefaultClaimInterval = 5 * time.Second
 // Deliberately not the client's own type: this package decides *when* to ask and what to do
 // with an answer, and it should not have to be edited the day the wire format gains a field.
 type Grant struct {
-	RunID       string
+	RunID string
+	// TaskID and ProjectID are what this run is about, and either may be empty (FR-013d).
+	// They travel no further than the environment the agent is started in, where they decide
+	// which commands it is given — the run token already says, on the server's side, what this
+	// run may touch.
 	TaskID      string
+	ProjectID   string
 	WorkplaceID string
 	RunToken    string
 	Expires     time.Time

@@ -438,6 +438,7 @@ func grantsFrom(granted []client.GrantedRun) []supervisor.Grant {
 		grants = append(grants, supervisor.Grant{
 			RunID:       run.RunID,
 			TaskID:      run.TaskID,
+			ProjectID:   run.ProjectID,
 			WorkplaceID: run.WorkplaceID,
 			RunToken:    run.RunToken,
 			Expires:     run.ClaimExpiresAt,

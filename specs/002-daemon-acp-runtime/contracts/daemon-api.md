@@ -174,7 +174,7 @@ nào tồn tại một agent chưa có chỗ làm (FR-007, FR-007f).
 ```json
 → { "workplace_ids": ["wp-1","wp-2"], "max": 3 }
 ← 200 { "runs": [ {
-      "run_id": "…", "task_id": "…", "workplace_id": "wp-1",
+      "run_id": "…", "task_id": "…", "project_id": "…", "workplace_id": "wp-1",
       "run_token": "…",                     ← token của lượt chạy, chỉ hiện một lần
       "claim_expires_at": "2026-08-21T10:02:00Z",
       "session": { "resume": true, "handle": "…" },
@@ -185,9 +185,14 @@ nào tồn tại một agent chưa có chỗ làm (FR-007, FR-007f).
 ← 200 { "runs": [] }                        ← không có việc; đây là câu trả lời thường gặp nhất
 ```
 
-**Đã dựng tới đâu (2026-08-26, T045–T047 rồi T056–T058)**: `run_id`, `task_id`, `workplace_id`,
-`run_token`, `claim_expires_at`, `prompt`, `skills`. Còn thiếu `session` (T039i) và `callback_base`
-(T061). Chúng **không** trả về rỗng: một `prompt` rỗng thì daemon vẫn ghi ra tệp bối cảnh, và một tệp
+**Đã dựng tới đâu (2026-08-26, T045–T047 rồi T056–T058; `project_id` thêm 2026-08-29)**: `run_id`,
+`task_id`, `project_id`, `workplace_id`, `run_token`, `claim_expires_at`, `prompt`, `skills`. Còn
+thiếu `session` (T039i) và `callback_base` (T061).
+
+`task_id` và `project_id` **đều để trống được**, và cặp ấy là thứ nói lượt chạy này thuộc loại nào
+(FR-013d). Máy cần đúng cặp ấy cho một việc: nó quyết **bộ lệnh** máy trao cho agent. Một cái máy chỉ
+được cho mã lượt chạy sẽ phải hỏi ngược lại xem lượt chạy này nói về cái gì — và một cái máy phải hỏi
+là một cái máy có thể bị trả lời về thứ khác. Chúng **không** trả về rỗng: một `prompt` rỗng thì daemon vẫn ghi ra tệp bối cảnh, và một tệp
 bối cảnh rỗng đọc y hệt một tệp bối cảnh đúng.
 
 **Việc không dựng nổi gói thì không được trao đi.** Server dựng thông điệp *sau* khi đổi chủ xong —

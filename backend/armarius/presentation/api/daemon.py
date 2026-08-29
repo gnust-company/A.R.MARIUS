@@ -203,7 +203,11 @@ class SkillOut(BaseModel):
 
 class GrantedRunOut(BaseModel):
     run_id: UUID
+    # What this run is about. Both may be empty, and which of them is filled is what says
+    # whether it is a task-level run, a project-level one, or the workspace-level interview
+    # (FR-013d) — which in turn decides the set of commands the machine hands its agent.
     task_id: UUID | None
+    project_id: UUID | None
     workplace_id: UUID
     # The one moment this string exists outside the machine that will use it. Only its hash
     # is kept, and it dies with the run (FR-014, FR-014a).
@@ -404,6 +408,7 @@ async def claim_runs(
             GrantedRunOut(
                 run_id=g.run_id,
                 task_id=g.task_id,
+                project_id=g.project_id,
                 workplace_id=g.workplace_id,
                 run_token=g.run_token,
                 claim_expires_at=g.claim_expires_at,

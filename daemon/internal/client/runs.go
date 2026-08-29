@@ -22,8 +22,13 @@ type ClaimRequest struct {
 
 // GrantedRun is one run this machine now holds.
 type GrantedRun struct {
-	RunID       string `json:"run_id"`
+	RunID string `json:"run_id"`
+	// TaskID and ProjectID say what this run is *about*, and either may be empty. Which of
+	// them is filled is what decides the set of commands the agent is handed (FR-013d), so an
+	// empty one is a real answer here rather than a missing value: a Leader's run has no task,
+	// and the team-building interview has neither.
 	TaskID      string `json:"task_id"`
+	ProjectID   string `json:"project_id"`
 	WorkplaceID string `json:"workplace_id"`
 	// RunToken opens exactly this run and dies with it. It is never the machine's own token,
 	// and it is never written to disk beside one: minting it is the server's job precisely so

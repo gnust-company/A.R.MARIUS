@@ -96,6 +96,12 @@ class GrantedRun:
 
     run_id: UUID
     task_id: UUID | None
+    # Which task and which project this run is about, and either may be empty. The pair is
+    # what says what kind of run it is (FR-013d), and the machine needs it for one reason: it
+    # decides which commands the agent is handed. A machine told only the run's id would have
+    # to ask what the run is about, and a machine that has to ask is one that can be told
+    # about something else.
+    project_id: UUID | None
     workplace_id: UUID
     run_token: str
     claim_expires_at: datetime
@@ -465,20 +471,21 @@ class DaemonClaimService:
         )
         rows = (
             await session.execute(
-                select(RunClaimModel, RunModel.task_id)
+                select(RunClaimModel, RunModel.task_id, RunModel.project_id)
                 .join(RunModel, RunModel.id == RunClaimModel.run_id)
                 .where(RunClaimModel.run_id.in_(list(taken)))
             )
         ).all()
 
         granted: list[GrantedRun] = []
-        for claim, task_id in rows:
+        for claim, task_id, project_id in rows:
             token = f"{_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
             claim.run_token_hash = hash_run_token(token)
             granted.append(
                 GrantedRun(
                     run_id=claim.run_id,
                     task_id=task_id,
+                    project_id=project_id,
                     workplace_id=claim.workplace_id,
                     run_token=token,
                     # Read back through `as_utc` rather than handed over as stored. A

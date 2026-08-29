@@ -242,3 +242,47 @@ async def test_reaching_out_of_scope_never_answers_with_a_projects_state() -> No
     assert reached.json()["code"] == "task_not_found", (
         "trả lời bằng trạng thái của dự án bên cạnh là đã nói ra rằng nó có thật"
     )
+
+
+async def test_a_run_about_nothing_is_bounded_by_its_workspace_and_nothing_narrower() -> None:
+    """Hàng thứ tư của bảng phạm vi, và nó là hàng dễ đọc nhầm nhất.
+
+    Lượt chạy cấp workspace — buổi phỏng vấn dựng đội (FR-040c) — không nói về đầu việc nào và
+    dự án nào, nên **không có gì để so**, nên lưới phạm vi không áp luật nào lên nó. Đó là chủ
+    ý, không phải lỗ: thứ giới hạn nó là bộ lệnh nó được cấp (nó không có lệnh đầu việc lẫn
+    lệnh dự án nào cả) cộng với hàng rào workspace mà mọi lối vẫn dựng.
+
+    Bài này ghi lại đúng chủ ý ấy, để hôm nào ai đó siết lưới cho "chặt hơn" thì thấy ngay
+    mình đang đổi một quyết định chứ không phải vá một lỗ.
+    """
+    async with _client() as c:
+        headers, ws_id = await _workspace(c, "workspacelevel@armarius.dev")
+        agent = await invite_agent(c, ws_id, headers)
+        project_id = await a_project(ws_id)
+        task_id = await a_task(project_id)
+        run = await open_run(marius_id=agent["id"])
+
+        who = await c.get("/agent/me", headers=run.headers)
+        reached = await c.get(f"/agent/tasks/{task_id}", headers=run.headers)
+
+    assert who.status_code == 200, who.text
+    assert reached.status_code == 200, (
+        "lượt chạy cấp workspace không bị lưới phạm vi chặn — nếu đổi thì phải đổi cả FR-013d"
+    )
+
+
+async def test_a_run_about_nothing_still_cannot_leave_its_workspace() -> None:
+    """Nửa còn lại của hàng thứ tư: không có luật phạm vi **không** có nghĩa là không có
+    hàng rào."""
+    async with _client() as c:
+        headers, ws_id = await _workspace(c, "wslevel-a@armarius.dev")
+        agent = await invite_agent(c, ws_id, headers)
+        run = await open_run(marius_id=agent["id"])
+
+        _, other_ws = await _workspace(c, "wslevel-b@armarius.dev")
+        other_project = await a_project(other_ws)
+        other_task = await a_task(other_project)
+
+        reached = await c.get(f"/agent/tasks/{other_task}", headers=run.headers)
+
+    assert reached.status_code == 404, reached.text
