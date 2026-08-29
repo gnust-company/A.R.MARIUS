@@ -53,6 +53,17 @@ from what it says, and an empty one means starting over from the brief.
 
 ## Publishing what you produced
 
+First, see what you have:
+
+```bash
+armarius workdir changes
+```
+
+That lists what is in this working directory that **you** put there, most recently written
+first — the brief you were handed, your skills and this command itself are left out. It is
+answered here on this machine and tells Armarius nothing. Nothing is published for you: read
+the list, decide what is worth delivering, and publish it yourself.
+
 ```bash
 armarius task publish -name report.md -content "..."
 armarius task publish -name build.zip -content_b64 "UEsDBBQ..."
@@ -102,8 +113,14 @@ submit and you propose; the patron decides.
 
 ## Two rules worth knowing before you hit them
 
-**A task cannot reach *done* with nothing published.** The gate refuses it, and the refusal
-tells you so. Publish the work first.
+**A task cannot leave *in progress* with nothing published.** Not *done*, and not *in
+review* either — both need something delivered, and a task with an empty shelf is refused at
+whichever of them you try. The refusal carries `task_needs_artifact`.
+
+This is a rule you are being told about, not a rule you are being asked to keep: the gate
+enforces it whether or not you read this. Being told is so that you do the work in the right
+order — publish, then move the task — rather than discovering the gate at the end. Run
+`armarius workdir changes` if you are not sure what you have.
 
 **A task closes with two signatures**, the Leader's and the patron's. Yours is not both.
 

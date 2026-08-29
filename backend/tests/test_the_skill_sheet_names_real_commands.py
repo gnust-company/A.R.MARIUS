@@ -28,8 +28,13 @@ _ROOT = pathlib.Path(__file__).resolve().parents[2]
 _SKILL = _ROOT / "backend" / "static" / "skills" / "armarius-http" / "SKILL.md"
 _REGISTRY = _ROOT / "daemon" / "internal" / "callback"
 
-#: `Name:    "task show",` — cách bảng lệnh khai một lệnh, và chỗ duy nhất khai nó.
-_DECLARED = re.compile(r'^\s*Name:\s*"([a-z][a-z0-9 -]*)",\s*$', re.MULTILINE)
+#: `Name:    "task show",` theo ngay sau là `Group:` — cách bảng khai một lệnh, và chỗ duy nhất
+#: khai nó. Đòi cả dòng `Group:` chứ không chỉ dòng `Name:`: một tham số cũng có tên, và bản
+#: trước của phép quét đọc `Name: "limit"` của một tham số thành một lệnh tên `limit` — rồi bắt
+#: SKILL.md phải dạy nó (bắt được 2026-08-29, lúc thêm `workdir changes`).
+_DECLARED = re.compile(
+    r'^\s*Name:\s*"([a-z][a-z0-9 -]*)",\s*\n\s*Group:', re.MULTILINE
+)
 
 #: `armarius task show ...` trong một khối lệnh của tờ hướng dẫn.
 _TAUGHT = re.compile(
