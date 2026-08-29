@@ -50,7 +50,7 @@ func ServeMCP(ctx context.Context, env Environment, stdin io.Reader, stdout, std
 		}
 		var request rpcRequest
 		if err := json.Unmarshal([]byte(line), &request); err != nil {
-			fmt.Fprintf(stderr, "armarius mcp: could not read a message: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "armarius mcp: could not read a message: %v\n", err)
 			continue
 		}
 		response, answer := dispatchMCP(ctx, env, available, request)
@@ -60,12 +60,12 @@ func ServeMCP(ctx context.Context, env Environment, stdin io.Reader, stdout, std
 			continue
 		}
 		if err := encoder.Encode(response); err != nil {
-			fmt.Fprintf(stderr, "armarius mcp: could not answer: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "armarius mcp: could not answer: %v\n", err)
 			return ExitUnreached
 		}
 	}
 	if err := reader.Err(); err != nil {
-		fmt.Fprintf(stderr, "armarius mcp: the connection ended badly: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "armarius mcp: the connection ended badly: %v\n", err)
 		return ExitUnreached
 	}
 	return ExitOK

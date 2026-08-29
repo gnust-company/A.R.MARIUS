@@ -118,7 +118,7 @@ func (c *Client) Call(ctx context.Context, method, path string, body any) (json.
 	case resp.StatusCode >= 500:
 		return nil, &Failure{
 			Code: ExitUnreached,
-			Err:  fmt.Errorf("Armarius answered %s", resp.Status),
+			Err:  fmt.Errorf("Armarius answered %s", resp.Status), //nolint:staticcheck // Armarius is a name, not a sentence opening
 			Body: raw,
 		}
 	case isRunOver(raw):
@@ -133,7 +133,7 @@ func (c *Client) Call(ctx context.Context, method, path string, body any) (json.
 	default:
 		return nil, &Failure{
 			Code: ExitRefused,
-			Err:  fmt.Errorf("Armarius refused: %s", refusalText(raw, resp.Status)),
+			Err:  fmt.Errorf("Armarius refused: %s", refusalText(raw, resp.Status)), //nolint:staticcheck // Armarius is a name
 			Body: raw,
 		}
 	}
