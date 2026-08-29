@@ -10,8 +10,9 @@ from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.database.engine import init_db
 from armarius.main import app
 from armarius.presentation.container import build_container
-from tests.support.agents import agent_token_for, invite_agent
+from tests.support.agents import invite_agent
 from tests.support.projects import force_operating
+from tests.support.runs import open_run
 
 
 @pytest.fixture(autouse=True)
@@ -41,9 +42,15 @@ async def _register(c: AsyncClient, email: str) -> tuple[str, str]:
 
 
 async def _provision_agent(c: AsyncClient, h: dict, ws_id: str, name: str) -> str:
-    """Invite a Marius with gateway creds; return its (repo-read) agent_token (#63)."""
+    """Invite a Marius and open a run for it; return the token that run speaks with.
+
+    Workspace-level, so nothing here narrows what the agent may reach *inside* its own
+    workspace — this file is about the wall between workspaces, and a run token confined
+    to one task would make every probe below pass for the wrong reason (FR-014g).
+    """
     created = await invite_agent(c, ws_id, h, name=name)
-    return await agent_token_for(created["id"])
+    run = await open_run(marius_id=created["id"])
+    return run.token
 
 
 async def _make_project(c: AsyncClient, h: dict, ws_id: str) -> str:

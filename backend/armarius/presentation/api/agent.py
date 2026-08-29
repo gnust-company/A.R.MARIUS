@@ -1,8 +1,16 @@
-"""Agent-facing API — the Armarius skills an onboarded Marius calls back into (§6.2).
+"""Agent-facing API — what an agent calls back into while a run of its own is open (§6.2).
 
-Authenticated by the per-Marius bearer token. These endpoints are what make the
-collaboration loop real: claim, comment/@mention, update status, record next_action,
-and publish artifacts into the shared store.
+Authenticated by the **run token** (FR-014g): minted when a machine takes the run, dead the
+moment the run closes, and naming exactly one run — so every write that arrives here says
+which run produced it, which is what FR-059 asks for and what the long-lived per-agent
+token could never answer.
+
+These endpoints are what make the collaboration loop real: read the task, comment/@mention,
+update status, record next_action, and publish artifacts into the shared store.
+
+The two `/agent/onboarding/*` routes are the one exception, and a dated one: the interview
+is not yet driven through the claim door, so it has no run to be given a token for. See
+`get_onboarding_marius` — it goes when T048a lands FR-040c.
 """
 
 from __future__ import annotations
@@ -19,8 +27,13 @@ from armarius.domain.entities.marius import Liveness, Marius
 from armarius.domain.entities.project import ProjectStatus
 from armarius.domain.entities.task import Task, TaskStatus
 from armarius.presentation.api.frozen import refuse_when_frozen
+from armarius.presentation.api.run_scope import refuse_outside_run_scope
 from armarius.presentation.container import Container
-from armarius.presentation.deps import ContainerDep, CurrentMarius
+from armarius.presentation.deps import (
+    ContainerDep,
+    CurrentMarius,
+    OnboardingMarius,
+)
 from armarius.presentation.schemas import (
     AgentArtifactIn,
     AgentArtifactOut,
@@ -53,9 +66,18 @@ from armarius.presentation.schemas import (
 )
 from armarius.shared.errors import BadRequest, NotFound
 
-# FR-005 — a closed project is frozen. The guard hangs on the router, not on each
-# route, so a route added later cannot forget it.
-router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(refuse_when_frozen)])
+# Two guards, both hung on the router rather than on each route, so a route added later
+# cannot forget either: a run reaches only what it is about (FR-059), and a closed project is
+# frozen (FR-005).
+#
+# Scope first, and the order matters. *This project is closed* is a fact about something the
+# caller may have no business knowing exists, so it must not be the answer a run gets for
+# reaching outside itself — that answer is *not found* (Constitution I).
+router = APIRouter(
+    prefix="/agent",
+    tags=["agent"],
+    dependencies=[Depends(refuse_outside_run_scope), Depends(refuse_when_frozen)],
+)
 
 
 @router.get("/me")
@@ -97,7 +119,7 @@ async def _wa_onboarding_session(container, marius, session_id: UUID):
 async def post_onboarding_question(
     session_id: UUID,
     body: AgentOnboardingQuestionIn,
-    marius: CurrentMarius,
+    marius: OnboardingMarius,
     container: ContainerDep,
 ) -> OnboardingOut:
     """Post your next onboarding question. One question at a time — 409 if the previous
@@ -116,7 +138,7 @@ async def post_onboarding_question(
 async def post_onboarding_complete(
     session_id: UUID,
     body: AgentOnboardingCompleteIn,
-    marius: CurrentMarius,
+    marius: OnboardingMarius,
     container: ContainerDep,
 ) -> OnboardingOut:
     """Post your final project + roster draft for the Patron to confirm and finalize."""
