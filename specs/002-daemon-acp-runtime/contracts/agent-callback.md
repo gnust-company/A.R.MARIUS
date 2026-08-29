@@ -47,14 +47,24 @@ nhận.
 
 Kèm theo: tờ hướng dẫn agent không được dạy lệnh cài kỹ năng nữa.
 
-### `GET /agent/workdir/changes` — mới
+### *Thứ đã đổi trong thư mục làm việc* — **một lệnh trả lời tại chỗ, KHÔNG phải route server**
 
 ```json
-← 200 { "changed": [ { "path": "report.pdf", "bytes": 20481, "modified_at": "…" } ] }
+← { "changed": [ { "path": "report.pdf", "bytes": 20481, "modified_at": "…" } ] }
 ```
 
-Daemon liệt kê những gì đã đổi trong thư mục làm việc **để agent biết mình có gì mà công bố**. Đây là
-thông tin, **không phải công bố tự động** (FR-020a). Daemon không tự dò và không tự đẩy (FR-018).
+Agent hỏi **để biết mình có gì mà công bố**. Đây là thông tin, **không phải công bố tự động** (FR-020a);
+daemon không tự dò và không tự đẩy (FR-018).
+
+**Sửa 2026-08-29 — bản trước ghi nó là `GET /agent/workdir/changes` trên bề mặt này, và đó là chỗ sai.**
+Câu hỏi này là câu **duy nhất** trong cả hợp đồng mà dữ liệu **không nằm ở server**: nó nằm trên đĩa của
+chính cái máy đang chạy agent. Đặt nó thành route server thì server phải đi hỏi ngược xuống daemon — mà
+daemon là bên **xin việc**, không phải bên phục vụ (FR-053, FR-055). Không có đường ấy, và dựng nó là lộn
+ngược cả chặng một.
+
+Nay nó là **một lệnh của bộ công cụ gọi ngược** (FR-013a), trả lời ngay tại máy, **không đi lên server và
+không cần token**. Nó vẫn nằm trong hợp đồng này vì nó là thứ agent gọi; nhưng nó nằm ở **mặt lệnh**, không
+ở bề mặt agent↔server.
 
 ### Cổng Done — không đổi, chỉ nhắc
 

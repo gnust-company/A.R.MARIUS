@@ -439,6 +439,12 @@ cài, vì hai bản là **hai danh sách việc agent làm được**, và chún
   cục bộ phải giữ tương thích về sau. Không chọn: token của lượt chạy đã có phạm vi hẹp và chết lúc khép
   lượt, nên phần lợi thêm không đáng cái giá ấy.
 
+**Giá phải trả của phương án đã chọn, ghi ra để sau này khỏi phải tìm lại** (người chủ nêu lúc review PR
+#236, 2026-08-29): token của lượt chạy nằm trong biến môi trường của tiến trình agent, nên **mọi tiến trình
+con agent tự khởi chạy đều thừa kế nó**. Chấp nhận được vì token chết lúc khép lượt và chỉ mở đúng một đầu
+việc. Nhưng nếu về sau có yêu cầu chặt hơn — ví dụ agent được phép chạy mã của người lạ — thì đây là chỗ
+phải xem lại đầu tiên, và phương án *agent không cầm token* ở trên là chỗ quay về.
+
 ### 12.2 Phạm vi của một lượt chạy
 
 **Decision**: phạm vi quyết bằng **bộ công cụ cấp cho lượt ấy**, không bằng một bảng quyền tra lúc gọi
