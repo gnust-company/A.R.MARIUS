@@ -153,13 +153,14 @@ backend/armarius/
 
 daemon/                            # MỚI — chương trình Go độc lập
 ├── cmd/armarius-daemon/main.go
+├── cmd/armarius/                  # MỚI — thứ agent gọi ngược; một binary, hai mặt (FR-013a)
 ├── internal/
 │   ├── client/                    # nói chuyện với server
 │   ├── discovery/                 # dò agent CLI có trên máy
 │   ├── execenv/                   # dựng thư mục làm việc, đổ kỹ năng, bơm công cụ
 │   │   ├── context_file.go        #   đặt thông điệp vào tệp bối cảnh native của CLI
 │   │   ├── skills.go              #   ghi kỹ năng — TỆP THẬT, ghi mới mỗi lượt (FR-011b)
-│   │   └── tools.go               #   bơm bộ công cụ theo lượt chạy (FR-013a)
+│   │   └── tools.go               #   cấp bộ công cụ theo lượt chạy (FR-013a)
 │   ├── runtime/                   # hai họ giao thức: ACP và chạy-một-phát
 │   ├── redact/                    # che bí mật TRƯỚC khi rời máy (FR-048)
 │   └── supervisor/                # vòng lặp xin việc, heartbeat, trần đồng thời

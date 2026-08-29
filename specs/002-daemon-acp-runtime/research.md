@@ -409,3 +409,59 @@ kiểm được. Ghi ở server cũng bỏ được một đường truyền ng�
 **Alternatives considered**: daemon ghi ở sự kiện đầu tiên của lượt chạy. Bỏ vì nó biến một chuyện đã biết
 chắc thành một chuyện phải chờ xác nhận — mất kết nối ngay sau khi nhận việc là mất luôn bản ghi thông
 điệp, đúng lúc cần nó nhất để tìm hiểu vì sao lượt chạy hỏng.
+
+---
+
+## 12. Lối gọi ngược của agent — một thứ, hai mặt (chốt 2026-08-29)
+
+### 12.1 Agent gọi về bằng gì
+
+**Decision**: daemon cấp cho mỗi lượt chạy **một binary**, mang hai mặt của cùng một danh sách việc — gọi
+được như **một lệnh** từ thư mục làm việc, và nói được **giao thức nạp công cụ (MCP) qua luồng chuẩn** cho
+CLI nào biết nạp (FR-013a). Token của lượt chạy đi qua **biến môi trường**, không qua tham số dòng lệnh
+(FR-013c).
+
+**Rationale**: mặt lệnh là mặt nền vì **mọi** agent CLI đều chạy được một lệnh — kể cả loại không có cơ chế
+nạp công cụ nào — nên không CLI nào bị bỏ lại và ranh giới FR-035/FR-037 không phải rẽ nhánh theo tên
+runtime. Mặt native là mặt Multica dùng (§7) và là chữ FR-013a vốn đã viết. Một binary chứ không hai bản
+cài, vì hai bản là **hai danh sách việc agent làm được**, và chúng sẽ lệch nhau đúng vào lúc thêm việc mới.
+
+**Alternatives considered**:
+
+- *Giữ tờ hướng dẫn dạy agent tự viết lời gọi mạng* — đây là hiện trạng: 405 dòng, 22 lời gọi `curl`, 22 lần
+  nhắc token sống lâu. Bỏ vì loại token ấy đang bị gỡ (FR-014g), và vì FR-043 ghi **đầy đủ tham số** mỗi lần
+  agent gọi công cụ: một lời gọi mạng cầm credential trong tham số là một credential nằm trong bản ghi trên
+  server.
+- *Chỉ làm mặt native, đúng như Multica* — bỏ vì CLI của đợt đầu không đồng đều, và một agent không nạp được
+  công cụ thì mất **toàn bộ** đường gọi ngược chứ không mất một phần.
+- *Agent không cầm token, binary nói với daemon qua một lối cục bộ rồi daemon mới gắn token* — chặn rò tận
+  gốc, nhưng phải sửa FR-014a (Multica cũng bơm token qua biến môi trường, §6) và đẻ thêm một mặt tiếp xúc
+  cục bộ phải giữ tương thích về sau. Không chọn: token của lượt chạy đã có phạm vi hẹp và chết lúc khép
+  lượt, nên phần lợi thêm không đáng cái giá ấy.
+
+### 12.2 Phạm vi của một lượt chạy
+
+**Decision**: phạm vi quyết bằng **bộ công cụ cấp cho lượt ấy**, không bằng một bảng quyền tra lúc gọi
+(FR-013d). Lượt chạy cấp đầu việc nhận công cụ của đầu việc; lượt chạy cấp dự án nhận công cụ của dự án.
+Server vẫn từ chối cú ghi vượt phạm vi (FR-059).
+
+**Rationale**: đây là cách Multica trả lời câu ấy — *công cụ đi theo đầu việc như hành lý* (§7) — và nó hợp
+với ta vì bảng lượt chạy **đã có sẵn hai cấp**: `runs.task_id` để trống được, và bảy cớ gọi dậy cấp dự án đã
+tồn tại từ đặc tả 001. Không phải đẻ khái niệm mới, chỉ phải đọc đúng thứ đã có.
+
+**Alternatives considered**: cho lượt chạy nào cũng chạm được mọi thứ trong dự án của nó. Bỏ vì khi ấy một
+agent thợ đang làm một đầu việc cũng nộp được kế hoạch dự án — thu hẹp thời hạn của token mà không thu hẹp
+quyền thì gần như không thu được gì.
+
+### 12.3 Buổi onboarding cũng là một lượt chạy
+
+**Decision**: buổi hỏi–đáp dựng đội của Tác nhân Không gian là **một lượt chạy cấp workspace** — không đầu
+việc, không dự án (FR-040c).
+
+**Rationale**: hai lối `/agent/onboarding/*` là **thứ duy nhất** trong 22 lối agent không thuộc lượt chạy
+nào. Nếu chúng không thành lượt chạy thì lối xác thực phải chừa lại một đường thứ hai cho riêng chúng, và
+token sống lâu không bao giờ chết được — T039d đứng vĩnh viễn. Bảng lượt chạy cho phép cả `task_id` lẫn
+`project_id` để trống, nên không phải thêm gì vào schema.
+
+**Alternatives considered**: đúc một loại token thứ ba sống bằng đúng buổi phỏng vấn. Bỏ vì FR-014a nói
+thẳng hệ thống chỉ có hai loại, và một ngoại lệ cho một màn hình là cách một luật bắt đầu mục ruỗng.
