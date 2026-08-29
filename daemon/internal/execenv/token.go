@@ -2,7 +2,9 @@ package execenv
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -39,6 +41,36 @@ const (
 	TaskIDVar    = "ARMARIUS_TASK_ID"
 	ProjectIDVar = "ARMARIUS_PROJECT_ID"
 )
+
+// WorkDirVar names the task's working directory (FR-010).
+//
+// The agent is started in it, so most of the time this says what the agent could have worked out
+// for itself. It is told anyway because the one command that needs it — what have I changed here
+// (FR-020a) — is asked after the agent has been working, by which point it may be anywhere: a
+// build ran in a subdirectory, a repository was cloned and entered. Answering *what changed*
+// about wherever the process happens to be standing would answer a different question, quietly.
+const WorkDirVar = "ARMARIUS_WORKDIR"
+
+// searchPathIn finds the search path in an inherited environment and answers under which name it
+// was spelled there.
+//
+// The name matters as much as the value. Windows spells it Path as often as PATH and treats the
+// two as one variable, so adding our own PATH beside an inherited Path would leave the child
+// holding two spellings of one thing; everywhere else they are two different variables and only
+// one of them means anything, so matching loosely would capture a variable that is not the
+// search path at all.
+func searchPathIn(inherited []string) (name, value string) {
+	for _, entry := range inherited {
+		n, v, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		if n == "PATH" || (runtime.GOOS == "windows" && strings.EqualFold(n, "PATH")) {
+			return n, v
+		}
+	}
+	return "PATH", ""
+}
 
 // Credentials is what a run is allowed to speak with, and what it must never be given.
 type Credentials struct {
@@ -90,6 +122,12 @@ type EnvSpec struct {
 	// whole task and project command sets vanish without a word.
 	TaskID    string
 	ProjectID string
+	// WorkDir is the task's working directory, and ToolsDir is the directory inside it holding
+	// the callback program (FR-013a). ToolsDir goes to the **front** of the search path: the
+	// agent is told to call Armarius back by a bare name, and a name resolved from anywhere else
+	// on a machine we do not own is a different program answering to it.
+	WorkDir  string
+	ToolsDir string
 	// Inherited is the environment this daemon is running in, normally os.Environ(). It is
 	// passed in rather than read here so a test can hand over an environment that contains the
 	// things this function exists to remove.
@@ -131,6 +169,14 @@ func Environ(spec EnvSpec) ([]string, error) {
 		ServerVar:    spec.Credentials.Server,
 		TaskIDVar:    spec.TaskID,
 		ProjectIDVar: spec.ProjectID,
+		WorkDirVar:   spec.WorkDir,
+	}
+	if spec.ToolsDir != "" {
+		name, inheritedPath := searchPathIn(spec.Inherited)
+		ours[name] = spec.ToolsDir
+		if inheritedPath != "" {
+			ours[name] = spec.ToolsDir + string(os.PathListSeparator) + inheritedPath
+		}
 	}
 	for _, p := range pointers {
 		target := spec.Home

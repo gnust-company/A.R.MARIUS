@@ -256,13 +256,24 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 		}
 	}
 
+	// Refused before a single run is asked for, rather than per run. A daemon missing the
+	// callback program can still register workplaces, still be handed work, and still start an
+	// agent — the agent would simply be holding instructions naming a command that is not there,
+	// and every call it made would fail as *command not found*, which nothing on either side
+	// reports. Better to be a machine that visibly will not start.
+	callback, err := callbackProgram()
+	if err != nil {
+		return err
+	}
+
 	held := &supervisor.Runs{}
 	work := supervisor.RunOptions{
-		WorkRoot:     filepath.Join(filepath.Dir(*configPath), "work"),
-		StateRoot:    filepath.Join(filepath.Dir(*configPath), "stores"),
-		OperatorHome: operatorHome(),
-		Server:       creds.Server,
-		DaemonToken:  creds.Token,
+		WorkRoot:        filepath.Join(filepath.Dir(*configPath), "work"),
+		StateRoot:       filepath.Join(filepath.Dir(*configPath), "stores"),
+		OperatorHome:    operatorHome(),
+		Server:          creds.Server,
+		DaemonToken:     creds.Token,
+		CallbackProgram: callback,
 		Workplace: func(id string) (supervisor.Workplace, bool) {
 			place, known := places[id]
 			return place, known
@@ -448,6 +459,40 @@ func grantsFrom(granted []client.GrantedRun) []supervisor.Grant {
 		})
 	}
 	return grants
+}
+
+// callbackProgram finds the program agents call Armarius back with (FR-013a).
+//
+// Next to this daemon, because the two are one release in one archive: that answer survives the
+// operator moving the installation, renaming its directory, or keeping two versions side by
+// side. Looking it up on the search path would find whichever copy happened to be first there,
+// which on a developer's machine is regularly last week's build.
+//
+// The environment override exists for exactly that case — running a daemon straight out of a
+// build directory — and is not a supported way to install: it names a program, not a credential,
+// and nothing about it is read from a run.
+func callbackProgram() (string, error) {
+	if named := os.Getenv("ARMARIUS_CALLBACK_PROGRAM"); named != "" {
+		// #nosec G703 -- naming a program is what this variable is for, and it is set by the
+		// operator running this daemon, who could as easily have replaced the file itself.
+		if _, err := os.Stat(named); err != nil {
+			return "", fmt.Errorf("ARMARIUS_CALLBACK_PROGRAM names %s, which is not there: %w", named, err)
+		}
+		return named, nil
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("finding where this daemon is installed: %w", err)
+	}
+	beside := execenv.CallbackBeside(self)
+	if _, err := os.Stat(beside); err != nil {
+		return "", fmt.Errorf(
+			"the %s program is not installed beside this daemon (looked at %s): the two ship "+
+				"together, and an agent cannot call Armarius back without it: %w",
+			execenv.CallbackProgram, beside, err,
+		)
+	}
+	return beside, nil
 }
 
 // operatorHome is the real home of the person running this daemon, linked into each run's home

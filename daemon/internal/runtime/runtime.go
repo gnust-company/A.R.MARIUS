@@ -11,7 +11,11 @@
 // watchdog's. What is left — start it, read it, say how it ended — is what lives here.
 package runtime
 
-import "context"
+import (
+	"context"
+
+	"github.com/gnust-company/armarius-daemon/internal/execenv"
+)
 
 // Request is one turn of work, as far as running it is concerned.
 type Request struct {
@@ -35,6 +39,17 @@ type Request struct {
 	// A CLI that cannot resume ignores it and opens a new session, which is a supported outcome
 	// rather than a failure (FR-039a).
 	Session string
+	// ToolConfig is the file this run's callback tools were declared in, for the CLIs that read
+	// one, and ToolServers is that same declaration for the family that carries it inline in its
+	// handshake (FR-013a).
+	//
+	// Two fields for one declaration, and they cannot drift: both come out of a single call to
+	// execenv.PlaceTools, which is where the declaration is made. What differs is only how each
+	// family is able to receive it — a file named on a command line, or an argument in a
+	// handshake — and a CLI that can receive neither still has the command face, which is why
+	// both being empty is a run that works rather than a run without tools.
+	ToolConfig  string
+	ToolServers []execenv.ToolServer
 }
 
 // Event is one thing that happened while the agent worked.

@@ -48,9 +48,30 @@ var oneShots = map[string]invocation{
 	//     arguments; it **requires** `--verbose` in print mode, which the CLI says outright:
 	//     "When using --print, --output-format=stream-json requires --verbose".
 	//   - `--resume <id>` carries on a conversation by session id (FR-023).
+	//   - `--mcp-config <file>` loads this run's own callback tools (FR-013a). Named on the
+	//     command line rather than left in the working directory for the CLI to find, because
+	//     the file it finds by itself is the project-scoped one and that has to be approved by
+	//     somebody sitting there — and nobody is. `--strict-mcp-config` is deliberately **not**
+	//     passed: it would also switch off whatever tools the operator configured for their own
+	//     installation, which is theirs to decide and is not what FR-013a asks for. What FR-013a
+	//     asks for is that *ours* be declared per run and never written into their configuration.
+	//   - `--allowed-tools mcp__<server>` is what makes the declaration usable, and it was
+	//     **measured, not assumed**: declared and not allowed, the tools appear in the agent's
+	//     list, the agent calls one, and the call comes back denied — nobody is sitting here to
+	//     grant it. This does not answer a permission question on the patron's behalf (FR-013b):
+	//     it names the toolset this run was *given*, which is the scope decision itself
+	//     (FR-013d). Handing an agent a set of tools and then refusing every use of them is not
+	//     a stricter reading of the rule, it is a run that cannot report what it did. Only our
+	//     own server is named; everything the agent asks to do in the world is untouched.
 	"claude_code": {
 		args: func(req Request) []string {
 			args := []string{"-p", "--output-format", "stream-json", "--verbose"}
+			if req.ToolConfig != "" {
+				args = append(args, "--mcp-config", req.ToolConfig)
+			}
+			if granted := grantedTools(req); len(granted) > 0 {
+				args = append(args, "--allowed-tools", strings.Join(granted, " "))
+			}
 			if req.Session != "" {
 				args = append(args, "--resume", req.Session)
 			}
@@ -76,6 +97,23 @@ var oneShots = map[string]invocation{
 		},
 		read: readCodex,
 	},
+}
+
+// grantedTools names the tool servers this run was handed, in the form a CLI's allow-list uses.
+//
+// Derived from the declaration itself rather than written out again, so that the set a run is
+// allowed to use and the set it was given are the same set by construction. A second list here
+// would be a second answer to what this agent may do, and the two would part company on the day
+// a server is added.
+func grantedTools(req Request) []string {
+	granted := make([]string, 0, len(req.ToolServers))
+	for _, server := range req.ToolServers {
+		if server.Name == "" {
+			continue
+		}
+		granted = append(granted, "mcp__"+server.Name)
+	}
+	return granted
 }
 
 // OneShot runs the CLIs that take one turn per process: hand them a message, read what they

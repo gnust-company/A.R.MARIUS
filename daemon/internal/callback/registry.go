@@ -31,6 +31,8 @@ const (
 // mean the same thing by it.
 type ParamType string
 
+// The shapes a parameter can have. Three, and no more without a reason: each one has to survive
+// being a command-line flag *and* a JSON schema property, and mean the same thing as both.
 const (
 	TypeString  ParamType = "string"
 	TypeBoolean ParamType = "boolean"
@@ -75,6 +77,26 @@ func (a Args) Bool(name string) bool {
 		return err == nil && parsed
 	default:
 		return false
+	}
+}
+
+// Int returns a whole-number argument, falling back when it was not given or cannot be read as
+// one. A fallback rather than a refusal: every integer in this program is a limit or a count,
+// where the sensible default is a better answer than an error about a typo.
+func (a Args) Int(name string, fallback int) int {
+	switch v := a[name].(type) {
+	case int:
+		return v
+	case float64:
+		return int(v)
+	case string:
+		parsed, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil {
+			return fallback
+		}
+		return parsed
+	default:
+		return fallback
 	}
 }
 
@@ -123,6 +145,7 @@ func (cmd Command) Missing(args Args) []string {
 func All() []Command {
 	var all []Command
 	all = append(all, sharedCommands()...)
+	all = append(all, workdirCommands()...)
 	all = append(all, taskCommands()...)
 	all = append(all, projectCommands()...)
 	sort.Slice(all, func(i, j int) bool { return all[i].Name < all[j].Name })
