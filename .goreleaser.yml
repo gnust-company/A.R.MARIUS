@@ -41,10 +41,33 @@ builds:
       - -X main.commit={{.Commit}}
       - -X main.date={{.Date}}
 
+  # The second binary ships in the same archive because it is not a separate product: it is what
+  # the daemon hands to the agents it runs (FR-013a), and a daemon whose release does not contain
+  # it is a daemon that can start an agent with no way to answer back. Same module, same
+  # platforms, same flags — the only difference is which main it is built from.
+  - id: armarius
+    dir: daemon
+    main: ./cmd/armarius
+    binary: armarius
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
 archives:
   - id: armarius-daemon
     ids:
       - armarius-daemon
+      - armarius
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats:
       - tar.gz
