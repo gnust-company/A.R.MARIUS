@@ -145,3 +145,18 @@ func Environ(spec EnvSpec) ([]string, error) {
 	sort.Strings(added)
 	return append(env, added...), nil
 }
+
+// The two identifiers a run is about, when it is about them (FR-013d).
+//
+// Neither is a credential and neither decides anything: the run token already says, on the
+// server's side, which task and which project this run may touch. They are here so the callback
+// commands do not have to be told twice what they are working on — an agent that had to pass an
+// identifier it was never given would have to go looking for one, and looking is how it finds
+// somebody else's.
+//
+// Which of them is set is what says what kind of run this is: both for a task-level run, only
+// the project for a Leader's, neither for the team-building interview (FR-040c).
+const (
+	TaskIDVar    = "ARMARIUS_TASK_ID"
+	ProjectIDVar = "ARMARIUS_PROJECT_ID"
+)
