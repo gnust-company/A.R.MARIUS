@@ -90,6 +90,30 @@ Người chủ chốt sau khi đối chiếu trực tiếp với mô hình agent
   nói thẳng: *"lúc đó tao chat với workspace agent, chấm hết"*. Đây là luật chung cho cả đợt, không riêng
   màn hình này — xem FR-040b.
 
+### Session 2026-08-29
+
+Người chủ hỏi thẳng: *"cho tôi kịch bản mà khiến bạn bắt buộc phải dùng 2 token"*, và *"Multica làm như
+nào?"*. Nền đối chiếu: [research-multica-daemon.md](research-multica-daemon.md) §6 và §7.
+
+- Q: Agent gọi ngược về Armarius bằng gì? Hôm nay tờ hướng dẫn dạy nó tự viết lời gọi mạng kèm **token
+  sống lâu** — thứ FR-014a không chừa chỗ cho. → A: **Một thứ, hai mặt.** Một lệnh gọi được từ dòng lệnh
+  (nền, vì mọi agent CLI đều chạy được một lệnh), và **chính thứ ấy** nói giao thức nạp công cụ qua luồng
+  chuẩn cho CLI nào biết nạp. Đúng cách Multica làm — công cụ đi theo đầu việc, không cài vào máy.
+- Q: Vì sao bắt buộc phải hai token? → A: **token của máy nói thay cả cái máy.** Hai kịch bản:
+  (1) một máy phục vụ nhiều agent (FR-007a), nên agent cầm token máy thì gọi ngược về ký được tên agent
+  bên cạnh và ghi sang dự án nó không có phần — Điều I bị phá từ bên trong, và không lối nào phân biệt
+  được vì token ấy không mang tên ai; (2) thư mục làm việc dùng chung cho mọi lượt của một đầu việc
+  (FR-010), nên agent chép token ra một tệp ở lượt đầu là giữ chìa khoá cả cái máy, không hạn — còn token
+  lượt chạy thì lượt sau đọc lên chỉ còn một chuỗi chết. Multica ngã đúng chỗ này rồi mới đặt luật
+  (MUL-3292, đã ghi ở FR-014c).
+- Q: Một lượt chạy được chạm tới đâu — chỉ đầu việc của nó, hay cả dự án chứa đầu việc ấy? → A: **bộ công
+  cụ cấp cho lượt ấy chính là phạm vi** (FR-013d). Không phải một bảng quyền tra lúc gọi: Multica trả lời
+  câu này bằng cấu trúc, và cấu trúc ấy hợp với ta vì bảng lượt chạy **đã có sẵn hai cấp** — cấp đầu việc
+  và cấp dự án — cùng bảy cớ gọi dậy cấp dự án đã tồn tại từ đặc tả 001.
+- Q: Hai lối onboarding (Tác nhân Không gian hỏi–đáp lúc dựng đội) không thuộc lượt chạy nào thì xác thực
+  bằng gì? → A: **nó cũng là một lượt chạy** — cấp workspace, không đầu việc, không dự án, vì lúc ấy dự án
+  chưa tồn tại (FR-040c). Nhờ vậy FR-014a giữ nguyên đúng hai loại token.
+
 ---
 
 ## User Scenarios & Testing *(mandatory)*
@@ -415,10 +439,22 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   thứ nó chỉ chuyển tay.
 - **FR-013**: Daemon PHẢI đưa cho agent một cách gọi ngược về Armarius, giới hạn đúng phạm vi của agent ấy
   và của lượt chạy ấy.
-- **FR-013a**: Bộ công cụ gọi ngược PHẢI được bơm **theo từng lượt chạy**, qua chính cơ chế nạp công cụ mà
-  từng CLI vốn có, và PHẢI mang **token của lượt chạy** chứ không phải token của daemon (FR-014c). Cùng luật
-  với kỹ năng ở FR-011b: **KHÔNG ĐƯỢC ghi vào cấu hình dùng chung của CLI trên máy**, vì cấu hình ấy thuộc
-  về người dùng và dùng chung cho mọi agent trên chỗ làm đó.
+- **FR-013a**: Bộ công cụ gọi ngược PHẢI được cấp **theo từng lượt chạy** và PHẢI mang **token của lượt
+  chạy** chứ không phải token của daemon (FR-014c). Nó PHẢI có **hai mặt của cùng một thứ** (sửa
+  2026-08-29):
+  - **mặt lệnh** — gọi được như một lệnh bình thường từ trong thư mục làm việc. Đây là **mặt nền**: mọi
+    agent CLI đều chạy được một lệnh, kể cả loại không có cơ chế nạp công cụ nào, nên không CLI nào bị bỏ
+    lại.
+  - **mặt công cụ native** — chính thứ ấy nói giao thức nạp công cụ (MCP) **qua luồng chuẩn**, khai theo
+    từng lượt chạy, cho CLI nào có cơ chế nạp. Đây là mặt Multica dùng.
+
+  Hai mặt PHẢI là **một thứ**, không phải hai bản cài. Hai bản là hai danh sách việc agent làm được, và
+  chúng sẽ lệch nhau đúng vào lúc thêm một việc mới.
+
+  Cùng luật với kỹ năng ở FR-011b: **KHÔNG ĐƯỢC ghi vào cấu hình dùng chung của CLI trên máy**, vì cấu hình
+  ấy thuộc về người dùng và dùng chung cho mọi agent trên chỗ làm đó. Và KHÔNG ĐƯỢC là **một địa chỉ từ xa
+  mà agent phải tự khai vào cấu hình** — cùng lý do đã gỡ đường agent tự đi lấy kỹ năng rồi tự ghi
+  (FR-011c): thứ gì agent phải tự cài thì có lúc nó cài hỏng, và hệ thống không biết để mà chờ.
 - **FR-013b**: Khi agent dừng giữa lượt để **xin phép** làm một việc, daemon **KHÔNG ĐƯỢC** cho phép thay
   người chủ. Nó cầm thông tin xác thực của một cái máy, không cầm quyền phán của người chủ, nên câu trả lời
   duy nhất nó được phép đưa là **từ chối**, kèm một mã ghi lại đúng thứ agent muốn làm. Lý do viết thành
@@ -428,6 +464,18 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   sau này người chủ muốn một luồng phê duyệt thật — hỏi ai, hỏi ở đâu trên màn hình, đợi bao lâu, quá hạn thì
   sao — đó là một tính năng phải được đặt ra thành yêu cầu, không phải một mẩu còn thiếu của cụm này (bổ sung
   2026-08-26, phát hiện lúc dựng họ ACP ở T066).
+- **FR-013c**: Thứ agent dùng để gọi ngược PHẢI nhận thông tin xác thực qua **biến môi trường**, và KHÔNG
+  ĐƯỢC nhận qua **tham số dòng lệnh**. Lý do là một luật khác của chính đặc tả này: FR-043 bắt ghi **đầy đủ
+  tham số** mỗi lần agent gọi công cụ, nên một credential nằm trong tham số là một credential nằm trong bản
+  ghi trên server — và ngay trên cái máy ấy, mọi tiến trình khác của cùng người dùng đọc được dòng lệnh của
+  nhau. Che bí mật (FR-048) là lưới đỡ, không phải chỗ dựa: lưới chỉ bắt được thứ nó nhận ra, còn thứ không
+  đưa vào thì không có gì để nhận ra.
+- **FR-013d**: Phạm vi của một lượt chạy PHẢI được quyết bằng **bộ công cụ cấp cho lượt ấy**, không bằng
+  một bảng quyền tra lúc gọi. Lượt chạy **cấp đầu việc** nhận công cụ của đầu việc; lượt chạy **cấp dự án**
+  nhận công cụ của dự án. Kế thừa Multica: *công cụ đi theo đầu việc như hành lý*. Điều này KHÔNG thay
+  FR-059 — server VẪN PHẢI từ chối cú ghi vượt phạm vi. Hai lớp vì chúng đỡ hai thứ khác nhau: lớp công cụ
+  là thứ agent **nhìn thấy** nên nó không đi nhầm, lớp server là thứ agent **không lách được** nên nó không
+  đi nhầm được kể cả khi cố.
 - **FR-014**: Thông tin xác thực cấp cho một lượt chạy PHẢI **hết hiệu lực khi lượt chạy kết thúc**, không
   dùng lại được cho lượt khác.
 - **FR-014a**: Hệ thống PHẢI có **hai loại token tách biệt**, kế thừa nguyên cách Multica làm (chốt
@@ -451,6 +499,11 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **FR-014f**: Token bị thu hồi hoặc hết hạn PHẢI xếp vào **lỗi cần người xử**, KHÔNG ĐƯỢC tiêu ngân sách
   tự phục hồi (FR-032). Đây là mẩu duy nhất trong cụm token mà ta phải tự giải, vì thử lại một token đã bị
   thu hồi thì lần nào cũng hỏng.
+- **FR-014g**: Mọi lối agent gọi về Armarius PHẢI xác thực bằng **token của lượt chạy**. Sau đợt này hệ
+  thống KHÔNG còn token sống lâu cấp cho agent: FR-014a chỉ chừa đúng hai loại, và loại thứ ba còn sống
+  tới hôm nay chỉ vì chưa có gì thay chỗ nó. Hệ quả bắt buộc: mọi lời gọi từ agent đều **mang danh tính
+  lượt chạy**, thứ FR-059 đòi mà lối xác thực hôm nay không cấp được — token sống lâu không biết nó đang ở
+  lượt chạy nào (thêm 2026-08-29).
 - **FR-015**: Daemon PHẢI truyền diễn biến của agent về Armarius **trong lúc đang chạy**, không đợi đến khi
   xong.
 - **FR-016**: Hệ thống PHẢI ghi lại đủ để **xem lại toàn bộ một lượt chạy** sau khi nó kết thúc.
@@ -573,6 +626,10 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
     tiếp, cuối cùng ra dự án và đội hình. Phần dưới dựng lại trên đường daemon.
   - Điều khoản này áp cho **mọi** luồng khác cũng đang gọi qua gateway, không riêng màn hình trên. Luồng nào
     tầng dưới đổi mà tầng người dùng đổi theo thì luồng đó sai.
+- **FR-040c**: Buổi hỏi–đáp dựng đội của Tác nhân Không gian PHẢI là **một lượt chạy** như mọi lượt chạy
+  khác, ở **cấp workspace** — không đầu việc, không dự án, vì lúc ấy dự án chưa tồn tại. Nhờ vậy nó xác
+  thực bằng chính token của lượt chạy và FR-014a giữ nguyên đúng hai loại token, thay vì phải đúc một loại
+  thứ ba chỉ để phục vụ một màn hình. Tầng người dùng không đổi (FR-040b) (chốt 2026-08-29).
 - **FR-041**: Thư mục làm việc của một đầu việc bắt đầu ở trạng thái **trắng**. Hệ thống KHÔNG lấy mã nguồn về và
   KHÔNG quản nhánh làm việc; agent tự lo phần mã nguồn bằng thông tin đăng nhập của chính nó. Armarius là
   nơi làm việc chung cho nhiều loại việc, không riêng việc viết mã.
@@ -690,6 +747,7 @@ Mọi thuật ngữ hệ thống dùng trong đặc tả này đều phải có 
 | **daemon** | Chương trình chạy nền trên máy người dùng, nối máy đó vào workspace và khởi chạy agent CLI tại chỗ |
 | **agent CLI** | Chương trình dòng lệnh của một hãng (Claude Code, Codex, Gemini CLI…) mà daemon bật lên để làm việc |
 | **ACP** | Agent Client Protocol — họ giao thức nói JSON-RPC qua luồng chuẩn của tiến trình |
+| **MCP** | Model Context Protocol — giao thức các agent CLI dùng để nạp thêm công cụ. Ở đây chỉ dùng ở **mặt công cụ native** của bộ công cụ gọi ngược, nói qua luồng chuẩn và khai theo từng lượt chạy (FR-013a) |
 | **token** | Chuỗi bí mật dùng để xác thực. Đặc tả này có hai loại: token của daemon và token của lượt chạy (FR-014a) |
 | **push** | Server chủ động gửi tín hiệu xuống daemon. Ở đây push chỉ báo *"có việc, đi hỏi đi"*, không mang việc theo và không phải lệnh chạy (FR-055a) |
 | **poll** | Daemon chủ động hỏi server theo nhịp đều. Là **fallback**, không phải đường chính (FR-055d) |
@@ -728,6 +786,10 @@ Các thuật ngữ riêng của dự án — **đầu việc**, **lượt chạy
   Là chỗ nháp, có hạn giữ; chỉ thứ agent tự công bố thành hiện vật mới sống sót.
 - **Hiện vật**: dùng lại thực thể đang có — thành phẩm đã nằm trong kho dùng chung, không phải file trên
   máy agent.
+- **Bộ công cụ gọi ngược**: những việc agent được phép nhờ Armarius làm hộ trong lúc chạy — báo trạng thái,
+  công bố hiện vật, để lại bình luận, nộp kế hoạch… Cấp **theo từng lượt chạy**, mang token của lượt ấy, và
+  **danh sách công cụ chính là phạm vi** của lượt chạy (FR-013a, FR-013d). Một thứ, hai mặt: gọi được như
+  một lệnh, và nói được giao thức nạp công cụ cho CLI nào biết nạp.
 
 ---
 
