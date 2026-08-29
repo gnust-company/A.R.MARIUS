@@ -11,6 +11,11 @@ import (
 	"strings"
 )
 
+// Writes to stdout and stderr in this file discard their error deliberately, and say so with
+// `_, _ =` rather than by leaving it out. There is nothing to do about a failed write to the
+// stream you were going to report the failure on, and the exit code — which is what the CLI
+// answers with — has already been decided by the time anything is printed.
+
 // RunCLI is the command face: the whole program, with its edges handed in so a test can drive it.
 //
 // **stdout always carries the answer, and it is always JSON.** On success it is what Armarius
@@ -87,7 +92,7 @@ func parseFlags(cmd Command, args []string, out io.Writer) (Args, error) {
 	fs := flag.NewFlagSet(cmd.Name, flag.ContinueOnError)
 	fs.SetOutput(out)
 	fs.Usage = func() {
-		fmt.Fprintf(out, "%s — %s\n\n", cmd.Name, cmd.Summary)
+		_, _ = fmt.Fprintf(out, "%s — %s\n\n", cmd.Name, cmd.Summary)
 		fs.PrintDefaults()
 	}
 
@@ -137,14 +142,14 @@ func isHelp(arg string) bool {
 }
 
 func printHelp(w io.Writer, env Environment, available []Command) {
-	fmt.Fprint(w, "armarius — talk to Armarius about the work you were given.\n\n")
+	_, _ = fmt.Fprint(w, "armarius — talk to Armarius about the work you were given.\n\n")
 	switch {
 	case env.TaskID != "":
-		fmt.Fprint(w, "This run is about one task. These are the commands it has:\n\n")
+		_, _ = fmt.Fprint(w, "This run is about one task. These are the commands it has:\n\n")
 	case env.ProjectID != "":
-		fmt.Fprint(w, "This run is about a project. These are the commands it has:\n\n")
+		_, _ = fmt.Fprint(w, "This run is about a project. These are the commands it has:\n\n")
 	default:
-		fmt.Fprint(w, "This run is about no particular task or project. These are the commands it has:\n\n")
+		_, _ = fmt.Fprint(w, "This run is about no particular task or project. These are the commands it has:\n\n")
 	}
 
 	names := make([]string, 0, len(available))
@@ -158,9 +163,9 @@ func printHelp(w io.Writer, env Environment, available []Command) {
 	sort.Strings(names)
 	for _, name := range names {
 		cmd, _ := Find(available, name)
-		fmt.Fprintf(w, "  %-*s  %s\n", width, cmd.Name, cmd.Summary)
+		_, _ = fmt.Fprintf(w, "  %-*s  %s\n", width, cmd.Name, cmd.Summary)
 	}
-	fmt.Fprint(w, "\nRun \"armarius <command> -h\" for what one command takes.\n")
+	_, _ = fmt.Fprint(w, "\nRun \"armarius <command> -h\" for what one command takes.\n")
 }
 
 // report writes the one line a person reads, puts the machine-readable half where the agent
@@ -177,7 +182,7 @@ func report(stdout, stderr io.Writer, err error) int {
 	if len(failure.Body) > 0 {
 		writeJSON(stdout, failure.Body)
 	}
-	fmt.Fprintf(stderr, "armarius: %v\n", failure.Err)
+	_, _ = fmt.Fprintf(stderr, "armarius: %v\n", failure.Err)
 	return failure.Code
 }
 
@@ -185,8 +190,8 @@ func report(stdout, stderr io.Writer, err error) int {
 // caller reading line by line is not left waiting for one.
 func writeJSON(w io.Writer, answer json.RawMessage) {
 	if len(answer) == 0 {
-		fmt.Fprintln(w, "{}")
+		_, _ = fmt.Fprintln(w, "{}")
 		return
 	}
-	fmt.Fprintln(w, strings.TrimRight(string(answer), "\n"))
+	_, _ = fmt.Fprintln(w, strings.TrimRight(string(answer), "\n"))
 }
