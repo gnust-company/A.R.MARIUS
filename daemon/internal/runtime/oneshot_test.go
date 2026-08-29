@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gnust-company/armarius-daemon/internal/execenv"
 )
 
 // The three lines below are the real shapes, copied from a run of claude 2.1.226 on 2026-08-26.
@@ -302,4 +304,85 @@ func only(t *testing.T, events []Event, kind string) Event {
 		t.Fatalf("mong đúng một %s, có %d: %v", kind, len(found), events)
 	}
 	return found[0]
+}
+
+func TestThisRunsOwnToolsAreNamedOnTheCommandLine(t *testing.T) {
+	// FR-013a asks for the native tool face to be declared **per run**. Claude Code takes a file
+	// on the command line, which is what makes that possible: the file it would otherwise find
+	// by itself is the project-scoped one, and that has to be approved by somebody sitting at
+	// the machine — where nobody is.
+	seen := filepath.Join(t.TempDir(), "args")
+	cli := fakeCLI(t, `echo "$@" > `+seen+`
+echo '`+doneLine+`'`)
+
+	declared := filepath.Join(t.TempDir(), "mcp.json")
+	if _, _, err := aTurn(t, Request{Binary: cli, ToolConfig: declared}); err != nil {
+		t.Fatalf("chạy một lượt: %v", err)
+	}
+
+	got := readFile(t, seen)
+	if !strings.Contains(got, "--mcp-config "+declared) {
+		t.Fatalf("bộ công cụ của lượt chạy không được khai: %q", got)
+	}
+	// The operator's own tools are theirs. FR-013a says ours must be declared per run and never
+	// written into their configuration; it does not say theirs must be switched off.
+	if strings.Contains(got, "--strict-mcp-config") {
+		t.Fatalf("công cụ của người dùng bị tắt mà không ai yêu cầu: %q", got)
+	}
+}
+
+func TestARunGivenNoToolsAsksForNoFile(t *testing.T) {
+	// A CLI whose loader is not known still runs, and still has the command face. Naming an
+	// empty path would make it refuse to start at all.
+	seen := filepath.Join(t.TempDir(), "args")
+	cli := fakeCLI(t, `echo "$@" > `+seen+`
+echo '`+doneLine+`'`)
+
+	if _, _, err := aTurn(t, Request{Binary: cli}); err != nil {
+		t.Fatalf("chạy một lượt: %v", err)
+	}
+	if got := readFile(t, seen); strings.Contains(got, "--mcp-config") {
+		t.Fatalf("khai một tệp không có: %q", got)
+	}
+}
+
+func TestToolsThatWereHandedOverAreAlsoAllowedToBeUsed(t *testing.T) {
+	// Đo thật, không suy đoán (claude 2.1.226, 2026-08-29): khai mà không cho phép thì công cụ
+	// **hiện ra** trong danh sách của agent, agent gọi, và lời gọi trả về *permission denied* —
+	// không có ai ngồi đây mà cấp. Một bộ công cụ được trao rồi bị chặn mọi lần dùng là một lượt
+	// chạy không báo cáo lại được gì.
+	//
+	// Danh sách cho phép lấy từ chính lời khai, nên phạm vi được trao và phạm vi được dùng là
+	// một (FR-013d) — và **chỉ** máy chủ công cụ của ta, không đụng thứ agent xin làm ngoài đời
+	// (FR-013b).
+	seen := filepath.Join(t.TempDir(), "args")
+	cli := fakeCLI(t, `echo "$@" > `+seen+`
+echo '`+doneLine+`'`)
+
+	_, _, err := aTurn(t, Request{
+		Binary:      cli,
+		ToolConfig:  filepath.Join(t.TempDir(), "mcp.json"),
+		ToolServers: []execenv.ToolServer{{Name: "armarius", Command: "/anywhere"}},
+	})
+	if err != nil {
+		t.Fatalf("chạy một lượt: %v", err)
+	}
+
+	got := readFile(t, seen)
+	if !strings.Contains(got, "--allowed-tools mcp__armarius") {
+		t.Fatalf("công cụ được trao mà không được phép dùng: %q", got)
+	}
+}
+
+func TestARunWithNoToolsAllowsNothingExtra(t *testing.T) {
+	seen := filepath.Join(t.TempDir(), "args")
+	cli := fakeCLI(t, `echo "$@" > `+seen+`
+echo '`+doneLine+`'`)
+
+	if _, _, err := aTurn(t, Request{Binary: cli}); err != nil {
+		t.Fatalf("chạy một lượt: %v", err)
+	}
+	if got := readFile(t, seen); strings.Contains(got, "--allowed-tools") {
+		t.Fatalf("cho phép một thứ không ai trao: %q", got)
+	}
 }

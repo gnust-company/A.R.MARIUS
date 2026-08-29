@@ -152,6 +152,30 @@ func Converse(ctx context.Context, toAgent io.Writer, fromAgent io.Reader, req R
 	return c.outcome, nil
 }
 
+// mcpServers is this run's callback tools, in the shape the handshake carries them (FR-013a).
+//
+// This is the native face for the whole ACP family: a peer is told about its tools when the
+// session opens, so there is no file to write and nothing per-CLI to declare. The same list is
+// sent when a session is resumed as when one is opened — a resumed conversation is still this
+// run, and this run's tools are the ones minted for it.
+//
+// It answers with an empty list rather than nothing when a run was given no tools, because the
+// two mean the same thing here and an absent field would leave the peer guessing which.
+func mcpServers(req Request) []map[string]any {
+	servers := make([]map[string]any, 0, len(req.ToolServers))
+	for _, s := range req.ToolServers {
+		declared := map[string]any{"name": s.Name, "command": s.Command}
+		if len(s.Args) > 0 {
+			declared["args"] = s.Args
+		}
+		// No env. The peer starts the program as a child of itself, so it inherits the
+		// environment this run was built with — which is where the run's own credential already
+		// is, and the only place FR-013c allows it to be.
+		servers = append(servers, declared)
+	}
+	return servers
+}
+
 // openSession carries the old conversation on if there is one, and starts a new one otherwise.
 //
 // A CLI that cannot load the session it was given is **not** a failure: FR-039a says a missing
@@ -164,7 +188,7 @@ func (c *acpConn) openSession(ctx context.Context, req Request) error {
 		if err := c.call(ctx, "session/load", map[string]any{
 			"sessionId":  req.Session,
 			"cwd":        c.cwd,
-			"mcpServers": []any{},
+			"mcpServers": mcpServers(req),
 		}, nil); err == nil {
 			return nil
 		}
@@ -180,7 +204,7 @@ func (c *acpConn) openSession(ctx context.Context, req Request) error {
 	}
 	if err := c.call(ctx, "session/new", map[string]any{
 		"cwd":        c.cwd,
-		"mcpServers": []any{},
+		"mcpServers": mcpServers(req),
 	}, &opened); err != nil {
 		return fmt.Errorf("opening a session: %w", err)
 	}

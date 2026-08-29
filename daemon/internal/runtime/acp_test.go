@@ -5,7 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"path/filepath"
 	"testing"
+
+	"github.com/gnust-company/armarius-daemon/internal/execenv"
 )
 
 // fakeAgent is an ACP peer that is not a CLI at all.
@@ -23,6 +26,7 @@ type fakeAgent struct {
 
 	// what it saw
 	cwd              string
+	offeredTools     []map[string]any
 	loaded           string
 	prompt           string
 	permissionAnswer json.RawMessage
@@ -59,10 +63,12 @@ func (a *fakeAgent) serve(in io.Reader, out io.Writer) {
 
 		case "session/new":
 			var params struct {
-				CWD string `json:"cwd"`
+				CWD        string           `json:"cwd"`
+				MCPServers []map[string]any `json:"mcpServers"`
 			}
 			_ = json.Unmarshal(msg.Params, &params)
 			a.cwd = params.CWD
+			a.offeredTools = params.MCPServers
 			reply(msg.ID, map[string]any{"sessionId": "session-just-opened"})
 
 		case "session/load":
@@ -317,5 +323,48 @@ func TestNoACPCLIIsStartedBeforeItHasActuallyBeenProbed(t *testing.T) {
 		}, nil); err == nil {
 			t.Fatalf("%s được khởi chạy như một peer ACP dù chưa ai dò nó", cli)
 		}
+	}
+}
+
+func TestAnACPPeerIsOfferedThisRunsOwnToolsWhenTheSessionOpens(t *testing.T) {
+	// The native tool face for this whole family (FR-013a). There is no file to write and
+	// nothing per-CLI to declare: a peer is told about its tools in the handshake, so the
+	// declaration is per run by construction.
+	agent := &fakeAgent{}
+	program := filepath.Join(t.TempDir(), "armarius")
+
+	_, _, err := talkTo(t, agent, Request{
+		WorkDir: t.TempDir(),
+		Message: "the whole brief",
+		ToolServers: []execenv.ToolServer{
+			{Name: "armarius", Command: program, Args: []string{"mcp"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("một lượt qua ACP: %v", err)
+	}
+
+	if len(agent.offeredTools) != 1 {
+		t.Fatalf("agent được mời %d bộ công cụ, mong đúng một: %v", len(agent.offeredTools), agent.offeredTools)
+	}
+	offered := agent.offeredTools[0]
+	if offered["name"] != "armarius" || offered["command"] != program {
+		t.Fatalf("bộ công cụ được khai không phải của lượt chạy này: %v", offered)
+	}
+	// No credential in the handshake. The peer starts the program as its own child, so it
+	// inherits the environment this run was built with — the only place FR-013c allows the
+	// token to be.
+	if _, carried := offered["env"]; carried {
+		t.Fatalf("token đi kèm lời khai công cụ: %v", offered)
+	}
+}
+
+func TestARunGivenNoToolsOffersAnEmptyListRatherThanNothing(t *testing.T) {
+	agent := &fakeAgent{}
+	if _, _, err := talkTo(t, agent, Request{WorkDir: t.TempDir(), Message: "hi"}); err != nil {
+		t.Fatalf("một lượt qua ACP: %v", err)
+	}
+	if agent.offeredTools == nil || len(agent.offeredTools) != 0 {
+		t.Fatalf("mong một danh sách rỗng, nhận %v", agent.offeredTools)
 	}
 }

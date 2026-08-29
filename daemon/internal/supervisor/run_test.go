@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gnust-company/armarius-daemon/internal/execenv"
 	armruntime "github.com/gnust-company/armarius-daemon/internal/runtime"
 )
 
@@ -105,35 +106,47 @@ func (s *scripted) Run(
 // ── the world one run happens in ─────────────────────────────────────────────
 
 type world struct {
-	t      *testing.T
-	root   string
-	ledger *ledger
-	engine *scripted
-	place  Workplace
-	held   *Runs
-	report []error
-	mu     sync.Mutex
+	t        *testing.T
+	root     string
+	callback string
+	ledger   *ledger
+	engine   *scripted
+	place    Workplace
+	held     *Runs
+	report   []error
+	mu       sync.Mutex
 }
 
 func aWorld(t *testing.T) *world {
 	t.Helper()
+	root := t.TempDir()
+	// A stand-in for the callback program. Setting up a run refuses without one (FR-013a), and
+	// rightly: an agent whose skill sheet names a command that is not there fails on every call
+	// it makes, silently. What it does when run is nothing this package tests — the point here
+	// is only that a run gets one.
+	callback := filepath.Join(root, "armarius")
+	if err := os.WriteFile(callback, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatalf("laying down a callback program to hand runs: %v", err)
+	}
 	return &world{
-		t:      t,
-		root:   t.TempDir(),
-		ledger: aLedger(),
-		engine: &scripted{},
-		place:  Workplace{CLI: "claude_code", Family: "one_shot", Binary: "/bin/true"},
-		held:   &Runs{},
+		t:        t,
+		root:     root,
+		callback: callback,
+		ledger:   aLedger(),
+		engine:   &scripted{},
+		place:    Workplace{CLI: "claude_code", Family: "one_shot", Binary: "/bin/true"},
+		held:     &Runs{},
 	}
 }
 
 func (w *world) options() RunOptions {
 	return RunOptions{
-		WorkRoot:     filepath.Join(w.root, "work"),
-		StateRoot:    filepath.Join(w.root, "stores"),
-		OperatorHome: filepath.Join(w.root, "home"),
-		Server:       "https://armarius.example",
-		DaemonToken:  "armr_machine_secret",
+		WorkRoot:        filepath.Join(w.root, "work"),
+		StateRoot:       filepath.Join(w.root, "stores"),
+		OperatorHome:    filepath.Join(w.root, "home"),
+		Server:          "https://armarius.example",
+		DaemonToken:     "armr_machine_secret",
+		CallbackProgram: w.callback,
 		Workplace: func(id string) (Workplace, bool) {
 			if id != "wp-1" {
 				return Workplace{}, false
@@ -259,6 +272,77 @@ func TestTheAgentIsToldWhatItsRunIsAboutSoItsCommandsExist(t *testing.T) {
 	if !lookup(w.engine.saw.Env, "ARMARIUS_PROJECT_ID", "project-1") {
 		t.Fatalf("agent không được cho biết nó đang ở dự án nào: %v", w.engine.saw.Env)
 	}
+}
+
+func TestTheCallbackProgramIsPutInTheAgentsHandAtTheRealCallSite(t *testing.T) {
+	// The lesson from the last one of these, applied before it costs anything: `PlaceTools` and
+	// `Environ` can each be perfectly right while the run that actually starts an agent never
+	// calls them. Take the two lines out of `prepare` and this is the test that goes red.
+	//
+	// What it asserts is the agent's own view: the program is on the disk it works from, its
+	// directory is at the **front** of the search path it was started with, and the tool face
+	// it can load names a file that exists.
+	w := aWorld(t)
+
+	w.options().Do(context.Background(), w.grant())
+
+	workDir := filepath.Join(w.root, "work", "task-1")
+	placed := filepath.Join(workDir, ".armarius", "bin", "armarius")
+	if _, err := os.Lstat(placed); err != nil {
+		t.Fatalf("agent không có thứ để gọi ngược: %v", err)
+	}
+
+	path, found := valueIn(w.engine.saw.Env, "PATH")
+	if !found {
+		t.Fatal("agent được khởi chạy mà không có đường tìm lệnh nào")
+	}
+	if first, _, _ := strings.Cut(path, string(os.PathListSeparator)); first != filepath.Dir(placed) {
+		t.Fatalf("thư mục của lượt chạy không đứng đầu đường tìm lệnh: %q", path)
+	}
+	if got, _ := valueIn(w.engine.saw.Env, "ARMARIUS_WORKDIR"); got != workDir {
+		t.Fatalf("agent không được cho biết nó làm việc ở đâu: %q", got)
+	}
+
+	if w.engine.saw.ToolConfig == "" {
+		t.Fatal("claude_code nạp được công cụ mà không được khai gì")
+	}
+	if _, err := os.Stat(w.engine.saw.ToolConfig); err != nil {
+		t.Fatalf("lời khai công cụ trỏ vào một tệp không có: %v", err)
+	}
+	if len(w.engine.saw.ToolServers) != 1 || w.engine.saw.ToolServers[0].Command != placed {
+		t.Fatalf("dạng khai trong bắt tay không trỏ về chương trình vừa đặt: %+v", w.engine.saw.ToolServers)
+	}
+}
+
+func TestWhatSetupPutInTheWorkingDirectoryIsNotCountedAsTheAgentsWork(t *testing.T) {
+	// FR-020a: the agent asks what it changed so it knows what to publish. A brief and a skills
+	// directory listed among its files is a list it cannot act on — and the only side that
+	// knows for certain which is which is the side that put them there.
+	w := aWorld(t)
+
+	w.options().Do(context.Background(), w.grant())
+
+	workDir := filepath.Join(w.root, "work", "task-1")
+	if err := os.WriteFile(filepath.Join(workDir, "report.md"), []byte("mine"), 0o600); err != nil {
+		t.Fatalf("viết tệp của agent: %v", err)
+	}
+
+	list, err := execenv.Changes(workDir, 0)
+	if err != nil {
+		t.Fatalf("hỏi thư mục làm việc có gì: %v", err)
+	}
+	if list.Total != 1 || len(list.Files) != 1 || list.Files[0].Path != "report.md" {
+		t.Fatalf("agent nhìn thấy cả thứ nó được phát: %+v", list.Files)
+	}
+}
+
+func valueIn(env []string, name string) (string, bool) {
+	for _, entry := range env {
+		if got, value, ok := strings.Cut(entry, "="); ok && got == name {
+			return value, true
+		}
+	}
+	return "", false
 }
 
 func lookup(env []string, name, want string) bool {

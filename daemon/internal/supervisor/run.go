@@ -99,6 +99,9 @@ type RunOptions struct {
 	// DaemonToken is this machine's own token, passed in **so it can be kept out** of every
 	// agent's environment (FR-014c).
 	DaemonToken string
+	// CallbackProgram is the program an agent calls Armarius back with, on this machine
+	// (FR-013a). Each run gets its own reachable path to it; this is where the real one is.
+	CallbackProgram string
 
 	// Workplace answers what a workplace id means on this machine.
 	Workplace func(workplaceID string) (Workplace, bool)
@@ -196,17 +199,35 @@ func (o RunOptions) prepare(grant Grant, place Workplace) (runtime.Request, stri
 	}); err != nil {
 		return runtime.Request{}, home, err
 	}
-	if _, err := execenv.WriteContextFile(place.CLI, workDir, grant.Prompt); err != nil {
+	brief, err := execenv.WriteContextFile(place.CLI, workDir, grant.Prompt)
+	if err != nil {
 		return runtime.Request{}, home, err
 	}
-	if _, err := execenv.WriteSkills(place.CLI, workDir, home, grant.Skills); err != nil {
+	skills, err := execenv.WriteSkills(place.CLI, workDir, home, grant.Skills)
+	if err != nil {
 		return runtime.Request{}, home, err
+	}
+	tools, err := execenv.PlaceTools(execenv.ToolsSpec{
+		CLI:     place.CLI,
+		WorkDir: workDir,
+		Program: o.CallbackProgram,
+	})
+	if err != nil {
+		return runtime.Request{}, home, err
+	}
+	// What was put here, said plainly, so that what the agent is later shown as its own changes
+	// is only what the agent made (FR-020a). Not fatal: a run whose record could not be written
+	// works, and the agent merely sees its brief listed among its files.
+	if err := execenv.RecordPlaced(workDir, []string{brief, skills, tools.Dir, tools.ConfigFile}); err != nil {
+		o.Report(fmt.Errorf("recording what was placed for run %s: %w", grant.RunID, err))
 	}
 	env, err := execenv.Environ(execenv.EnvSpec{
 		CLI:       place.CLI,
 		Home:      home,
 		TaskID:    grant.TaskID,
 		ProjectID: grant.ProjectID,
+		WorkDir:   workDir,
+		ToolsDir:  tools.Dir,
 		Inherited: os.Environ(),
 		Credentials: execenv.Credentials{
 			RunID:       grant.RunID,
@@ -219,11 +240,13 @@ func (o RunOptions) prepare(grant Grant, place Workplace) (runtime.Request, stri
 		return runtime.Request{}, home, err
 	}
 	return runtime.Request{
-		CLI:     place.CLI,
-		Binary:  place.Binary,
-		WorkDir: workDir,
-		Env:     env,
-		Message: grant.Prompt,
+		CLI:         place.CLI,
+		Binary:      place.Binary,
+		WorkDir:     workDir,
+		Env:         env,
+		Message:     grant.Prompt,
+		ToolConfig:  tools.ConfigFile,
+		ToolServers: tools.Servers,
 		// Empty until the daemon keeps session state of its own (FR-023, task T109). A CLI
 		// handed no handle opens a new conversation, which is the supported answer rather
 		// than a failure (FR-025).

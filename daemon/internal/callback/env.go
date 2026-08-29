@@ -35,6 +35,12 @@ type Environment struct {
 	// neither.
 	TaskID    string
 	ProjectID string
+	// WorkDir is the task's working directory on this machine, empty when this run has none.
+	// It is read rather than worked out from where the process happens to be standing: by the
+	// time an agent asks what it has changed, it may have moved into a subdirectory or into a
+	// repository it cloned, and answering about *there* would answer a different question
+	// without saying so.
+	WorkDir string
 }
 
 // Lookup is how the environment is read, handed in so a test does not have to mutate the
@@ -58,6 +64,7 @@ func FromEnvironment(get Lookup) Environment {
 		RunID:     get(execenv.RunIDVar),
 		TaskID:    get(execenv.TaskIDVar),
 		ProjectID: get(execenv.ProjectIDVar),
+		WorkDir:   get(execenv.WorkDirVar),
 	}
 }
 
