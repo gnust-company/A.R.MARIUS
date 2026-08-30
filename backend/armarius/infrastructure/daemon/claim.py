@@ -47,7 +47,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import re
 import secrets
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
@@ -62,7 +61,7 @@ from armarius.application.ports.work_packet import SkillBundle, WorkPacket
 from armarius.domain.entities.project import ProjectStatus
 from armarius.domain.entities.run import RunStatus
 from armarius.infrastructure.daemon import event_blobs
-from armarius.infrastructure.daemon.enrollment import MACHINE_TOKEN_PREFIX, MachineIdentity
+from armarius.infrastructure.daemon.enrollment import MachineIdentity
 from armarius.infrastructure.daemon.models import (
     MachineModel,
     RunClaimModel,
@@ -74,14 +73,11 @@ from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.infrastructure.database.models import ProjectModel, RunEventModel, RunModel
 from armarius.shared.clock import as_utc, utcnow
 from armarius.shared.config import settings
+from armarius.shared.credentials import RUN_TOKEN_PREFIX, carries_our_credential
 from armarius.shared.errors import BadRequest, NotFound
 from armarius.shared.logging import get_logger
 
 logger = get_logger(__name__)
-
-#: How a run token starts. Public for the same reason the machine one is: the shape has to
-#: be recognisable at the door.
-RUN_TOKEN_PREFIX = "armr_run_"
 
 # The durable record of what an agent was told (FR-012a, FR-042). Its own event type rather
 # than a field on the lifecycle event beside it: this is the one thing in a run's log that
@@ -187,26 +183,6 @@ def refuse_whole_tool_results(events: Sequence[ReportedEvent]) -> None:
             raise BadRequest("tool_result_not_summarised")
 
 
-
-#: How much url-safe text has to follow one of our prefixes before it counts as a credential
-#: rather than a name. `secrets.token_urlsafe(32)` is 43 characters, so this leaves three to
-#: spare — narrow on purpose in the other direction too: a guard that also fired on
-#: `armd_config_name` would cost a batch of a run's log for a variable name, and since T141 a
-#: refused batch is a batch dropped for good (FR-045).
-#:
-#: Three characters is not much margin, and the margin is not obvious from here — it lives in
-#: an argument to `token_urlsafe` two hundred lines below. `test_secret_redaction.py` asserts
-#: the property directly (*a token this system mints is one this guard recognises*), so
-#: shortening the token is a named failure rather than a door that quietly stops closing.
-CREDENTIAL_TAIL_FLOOR = 40
-
-# One of this system's own credentials, arriving somewhere it was never meant to be.
-_OUR_CREDENTIALS = re.compile(
-    rf"(?:{re.escape(RUN_TOKEN_PREFIX)}|{re.escape(MACHINE_TOKEN_PREFIX)})"
-    rf"[A-Za-z0-9_-]{{{CREDENTIAL_TAIL_FLOOR},}}"
-)
-
-
 def refuse_our_own_credentials(events: Sequence[ReportedEvent]) -> None:
     """Refuse a batch carrying one of this system's tokens in the clear (FR-048, SC-015).
 
@@ -226,9 +202,14 @@ def refuse_our_own_credentials(events: Sequence[ReportedEvent]) -> None:
     makes the log say a thing the agent did not say. A refusal is loud: the machine drops the
     batch for good and confesses `events_refused` (T141), so the run's log carries a line
     saying a batch never arrived rather than a line that has been edited.
+
+    Not the last thing standing between a token and the log, and it was never meant to be:
+    every row of a run's log is checked again at the moment it is inserted, by whatever road
+    it came (FR-048c). What this door adds is the **name** — a code the machine can act on,
+    in time to drop the batch and fix its masking. The net downstairs has nobody to tell.
     """
     for event in events:
-        if _OUR_CREDENTIALS.search(json.dumps(event.payload, default=str)):
+        if carries_our_credential(event.payload):
             raise BadRequest("credential_in_the_clear")
 
 

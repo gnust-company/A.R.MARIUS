@@ -39,6 +39,7 @@ from armarius.infrastructure.daemon.models import DaemonLinkCodeModel, MachineMo
 from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.shared.clock import as_utc, utcnow
 from armarius.shared.config import settings
+from armarius.shared.credentials import MACHINE_TOKEN_PREFIX
 from armarius.shared.errors import Conflict, NotFound
 
 # Digits and letters minus the two pairs a person copying off a screen gets wrong: 0/O
@@ -52,10 +53,6 @@ _CODE_HALF = 4
 # retry exists so that the unlikely case is a second draw rather than a 500.
 _CODE_ATTEMPTS = 5
 
-#: How a machine token starts. Public because the run door has to recognise one arriving
-#: somewhere it never belongs (FR-048), and a second copy of this string is a second copy
-#: to drift.
-MACHINE_TOKEN_PREFIX = "armd_"
 
 
 def _hash_token(token: str) -> str:

@@ -30,17 +30,17 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
-from armarius.infrastructure.daemon.claim import (
-    _OUR_CREDENTIALS,
-    CREDENTIAL_TAIL_FLOOR,
-    RUN_TOKEN_PREFIX,
-)
-from armarius.infrastructure.daemon.enrollment import MACHINE_TOKEN_PREFIX
 from armarius.infrastructure.daemon.models import RunClaimModel, RunEventBlobModel
 from armarius.infrastructure.daemon.run_auth import hash_run_token
 from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.infrastructure.database.models import RunEventModel
 from armarius.main import app
+from armarius.shared.credentials import (
+    CREDENTIAL_TAIL_FLOOR,
+    MACHINE_TOKEN_PREFIX,
+    OUR_CREDENTIALS,
+    RUN_TOKEN_PREFIX,
+)
 from tests.support.agents import invite_agent
 from tests.support.machines import auth, link_machine
 from tests.support.work import a_project, a_task, shelve
@@ -241,7 +241,7 @@ async def test_a_token_this_system_mints_is_one_this_guard_recognises() -> None:
             # Cắt đúng tiền tố, không tách theo `_`: bảng chữ url-safe **có** dấu gạch dưới,
             # nên tách theo nó là cắt vào giữa chính cái đuôi đang đo.
             tail = token.removeprefix(prefix)
-            assert _OUR_CREDENTIALS.fullmatch(token), (
+            assert OUR_CREDENTIALS.fullmatch(token), (
                 f"{what} vừa đúc ra không lọt lưới của chính cửa này: {len(tail)} ký tự đuôi, "
                 f"sàn đang là {CREDENTIAL_TAIL_FLOOR}. Hạ sàn, hoặc đừng hạ entropy."
             )
