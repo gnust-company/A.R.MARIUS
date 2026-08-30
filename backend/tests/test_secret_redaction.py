@@ -30,7 +30,11 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
-from armarius.infrastructure.daemon.claim import RUN_TOKEN_PREFIX
+from armarius.infrastructure.daemon.claim import (
+    _OUR_CREDENTIALS,
+    CREDENTIAL_TAIL_FLOOR,
+    RUN_TOKEN_PREFIX,
+)
 from armarius.infrastructure.daemon.enrollment import MACHINE_TOKEN_PREFIX
 from armarius.infrastructure.daemon.models import RunClaimModel, RunEventBlobModel
 from armarius.infrastructure.daemon.run_auth import hash_run_token
@@ -212,6 +216,39 @@ async def test_the_whole_batch_goes_back_not_just_the_event_that_carried_it() ->
                 )
             ).scalars().all()
         assert written == [], "không nửa nào được ghi"
+
+
+async def test_a_token_this_system_mints_is_one_this_guard_recognises() -> None:
+    """Cửa nhận ra theo **hình dạng**, mà hình dạng ấy neo vào một con số ở chỗ khác.
+
+    Sàn là 40 ký tự; `secrets.token_urlsafe(32)` ra 43. Ba ký tự dư, và ba ký tự ấy **không
+    nhìn thấy được** từ chỗ đặt sàn — chúng nằm trong một tham số của `token_urlsafe` cách đó
+    hai trăm dòng. Hạ entropy xuống 29 bytes là đuôi còn 39, và cửa lặng lẽ thôi đóng.
+
+    Bài kiểm cửa ở trên **cũng** đỏ khi ấy, vì nó gài đúng token thật — nhưng nó đỏ thành câu
+    *đợi 400, nhận 200*, tức là tên triệu chứng. Bài này đỏ thành tên nguyên nhân, và nó kiểm
+    đúng tính chất cần giữ chứ không kiểm lại phép tính: **thứ hệ thống này đúc ra phải là thứ
+    cửa của nó nhận ra**. Cả hai token đều lấy từ đường đúc thật, không dựng lại bằng tay.
+    """
+    async with _client() as c:
+        machine, run = await _a_run_in_hand(c, f"shape-{uuid4().hex[:8]}@example.com")
+
+        minted = (
+            ("token lượt chạy", run["run_token"], RUN_TOKEN_PREFIX),
+            ("token máy", machine.token, MACHINE_TOKEN_PREFIX),
+        )
+        for what, token, prefix in minted:
+            # Cắt đúng tiền tố, không tách theo `_`: bảng chữ url-safe **có** dấu gạch dưới,
+            # nên tách theo nó là cắt vào giữa chính cái đuôi đang đo.
+            tail = token.removeprefix(prefix)
+            assert _OUR_CREDENTIALS.fullmatch(token), (
+                f"{what} vừa đúc ra không lọt lưới của chính cửa này: {len(tail)} ký tự đuôi, "
+                f"sàn đang là {CREDENTIAL_TAIL_FLOOR}. Hạ sàn, hoặc đừng hạ entropy."
+            )
+            assert len(tail) > CREDENTIAL_TAIL_FLOOR, (
+                f"{what} chỉ còn {len(tail)} ký tự đuôi — bằng đúng sàn thì không còn chỗ nào "
+                "cho lần rút gọn tiếp theo, và lần ấy sẽ không có bài kiểm nào đỏ trước nó."
+            )
 
 
 async def test_a_name_that_merely_starts_like_a_token_is_left_alone() -> None:
