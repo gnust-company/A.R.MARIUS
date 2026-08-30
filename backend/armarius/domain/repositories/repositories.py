@@ -413,7 +413,43 @@ class RunEventRepository(ABC):
     @abstractmethod
     async def add(self, event: RunEvent) -> RunEvent: ...
     @abstractmethod
-    async def list_by_run(self, run_id: UUID) -> Sequence[RunEvent]: ...
+    async def list_by_run(
+        self,
+        run_id: UUID,
+        *,
+        types: Sequence[str] | None = None,
+        after_seq: int | None = None,
+        limit: int | None = None,
+    ) -> Sequence[RunEvent]:
+        """A run's events in order, narrowed the three ways a reader narrows them.
+
+        `types` is the filter that makes a thousand-line log usable — finding one tool call
+        among them by eye is not finding it (FR-052). `after_seq` and `limit` are how a screen
+        walks a long run without asking for all of it at once, and they work on `seq` rather
+        than on an offset because `seq` is the run's own ordering and does not shift when a
+        late batch lands in the middle of one.
+        """
+        ...
+
+    @abstractmethod
+    async def forget_before(self, cutoff: datetime) -> int:
+        """Drop every event older than `cutoff`, and everything kept apart from them.
+
+        Counted from the event's own clock, so what is forgotten is decided by when the thing
+        happened and not by when a row was written (FR-050). An event with no clock at all is
+        never swept: there is no answer to *how old is it*, and guessing one would quietly
+        delete the rows this system knows least about.
+        """
+        ...
+
+    @abstractmethod
+    async def full_text(self, run_id: UUID, seq: int) -> tuple[str, str, int] | None:
+        """The whole of what event `seq` only carries the opening of: field, text, size.
+
+        None when that event has nothing kept apart — which is the ordinary case, and is not
+        an error: it means the payload already holds the whole thing.
+        """
+        ...
 
 
 class ArtifactRepository(ABC):

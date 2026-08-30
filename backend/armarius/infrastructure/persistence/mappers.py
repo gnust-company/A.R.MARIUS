@@ -314,7 +314,10 @@ def run_to_entity(m: RunModel) -> Run:
     )
 
 
-def run_event_to_entity(m: RunEventModel) -> RunEvent:
+def run_event_to_entity(
+    m: RunEventModel, *, full: tuple[str, int] | None = None
+) -> RunEvent:
+    """One stored event. `full` is what the store kept apart, when it kept anything."""
     return RunEvent(
         id=m.id,
         run_id=m.run_id,
@@ -325,6 +328,8 @@ def run_event_to_entity(m: RunEventModel) -> RunEvent:
         original_byte_size=m.original_byte_size,
         omission_reason=m.omission_reason,
         redacted=bool(m.redacted),
+        full_field=full[0] if full else None,
+        full_byte_size=full[1] if full else None,
         created_at=m.created_at,
     )
 

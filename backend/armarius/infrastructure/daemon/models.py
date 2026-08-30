@@ -199,5 +199,9 @@ class RunEventBlobModel(Base):
     workspace_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("workspaces.id"), index=True
     )
+    #: Which key of the event's payload this is the whole of. Written down rather than
+    #: inferred from the event type: inferring means every reader carries the same mapping,
+    #: and the second copy of it to drift opens a field that is not there (FR-049).
+    field: Mapped[str] = mapped_column(String(40), default="", server_default="")
     content: Mapped[str] = mapped_column(Text, default="")
     byte_size: Mapped[int] = mapped_column(Integer, default=0)

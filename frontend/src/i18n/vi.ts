@@ -632,6 +632,17 @@ export const vi = {
       needsDependencies: 'còn việc phụ thuộc chưa xong',
     },
   },
+  runTrace: {
+    title: 'Nhật ký lượt chạy',
+    count: '{{count}} sự kiện',
+    live: 'đang theo dõi',
+    everything: 'tất cả',
+    loading: 'Đang mở nhật ký…',
+    nothing: 'Không có sự kiện nào khớp bộ lọc.',
+    openTheWhole: 'Mở toàn văn ({{bytes}} bytes)',
+    foldItBack: 'Thu lại',
+    openFullLog: 'Mở nhật ký đầy đủ',
+  },
   collaborationRoom: {
     acceptance: {
       title: 'Công nhận đầu ra',
@@ -1038,6 +1049,7 @@ export const vi = {
     not_a_github_url: 'Địa chỉ này không giống địa chỉ GitHub.',
     github_error: 'GitHub trả về {{status}}: {{reason}}',
     github_unreachable: 'Không kết nối được tới GitHub: {{reason}}',
+    run_event_full_text_not_found: 'Sự kiện này không có phần nào để mở thêm — phần thân của nó đã là toàn bộ.',
     tool_result_not_summarised: 'Kết quả gọi công cụ phải gửi lên ở dạng rút gọn, không gửi toàn văn. Chỉ gửi kích thước, kiểu và phần đầu.',
   },
   language: {

@@ -165,6 +165,28 @@ class Settings(BaseSettings):
     # dead machine's grip is measured in one hold plus a little, not in two.
     run_claim_reap_interval_seconds: float = 30.0
 
+    # How much of a long event stays in the event row itself (FR-049). Over this, the whole
+    # text goes to `run_event_blobs` and the row keeps an opening slice.
+    #
+    # Set for the read that hurts: a screen opening a run asks for every event it has, and a
+    # thousand of them must still arrive quickly (SC-014). 2 KiB is enough that almost nothing
+    # is ever split, and small enough that a run full of long prompts is still one page.
+    #
+    # Nothing to do with tool results, which are cut on the user's own machine and have no
+    # second half here at all (FR-043a).
+    run_event_inline_bytes: int = 2048
+
+    # How long the full log is kept (FR-050). Counted from the event's own clock.
+    #
+    # Its own setting, deliberately: the working directory on a machine is cleared on the
+    # machine's rhythm and for the machine's reasons — disk. This is the record of what an
+    # agent did and why, which is read by people, months later, to answer a question about
+    # work that was signed for. Tying the two together would make one of them wrong.
+    run_trace_retention_days: int = 30
+    # How often the sweep looks for a log past its keeping. Once an hour: the threshold is in
+    # days, so a sweep any keener only asks the database the same question more often.
+    run_trace_sweep_interval_seconds: float = 3600.0
+
     # Demo seed ("Acme Web Platform" scenario). OFF by default — real users get
     # their own empty workspace on register. Set ARMARIUS_SEED_DEMO=true to repopulate
     # the demo story (e.g. for a fresh showcase instance). The seed registers the demo
