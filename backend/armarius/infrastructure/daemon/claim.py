@@ -113,6 +113,9 @@ class GrantedRun:
     # The agent's own skills, whole, so nothing has to be fetched before it can begin
     # (FR-011b).
     skills: tuple[SkillBundle, ...] = ()
+    # What this agent was set to, out of what its workplace offers (FR-007k). Carried through
+    # unread: nothing on this side knows what any of these mean to the tool that will use them.
+    runtime_options: tuple[tuple[str, str], ...] = ()
     # Where this machine's own numbering starts (FR-045). The machine numbers the events it
     # produces as it produces them — no round trip per event to agree on the next number — and
     # this is the number that makes those numbers unique for the run: everything already
@@ -523,6 +526,9 @@ class DaemonClaimService:
                     run,
                     prompt=packet.prompt,
                     skills=tuple(packet.skills),
+                    # The place's word for these on the way in, the runtime's on the way
+                    # out: this is the boundary, and it is the only place they are renamed.
+                    runtime_options=tuple(packet.placement_options),
                     first_seq=written_at + 1,
                 )
             )

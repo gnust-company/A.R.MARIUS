@@ -309,6 +309,15 @@ export const vi = {
     workplacePlaceholder: 'Chọn chỗ làm cho agent này',
     workplaceOption: '{{cliKind}} trên {{machineName}}',
     workplaceHint: 'Agent sẽ làm việc ở đây suốt đời và không đổi được về sau. Chỗ làm chết thì agent ngoại tuyến, hệ thống không tự chuyển sang máy khác.',
+    // Thứ chỗ làm nhận, hỏi thẳng chính tool (FR-007k). Chữ để ở đây chứ không gửi từ server:
+    // thứ đi trên dây là mã, còn câu thì dựng ở màn hình theo ngôn ngữ người đọc (Điều VI, VII).
+    option: {
+      model: 'Model',
+      thinking_level: 'Mức suy nghĩ',
+      service_tier: 'Hạng dịch vụ',
+    },
+    optionDefault: 'Mặc định của chính tool',
+    optionHint: 'Chỗ làm bạn chọn khai ra danh sách này, do chính tool ở đó tự trả lời. Bỏ trống thì dùng mặc định của tool.',
     workplaceNone: 'Chưa có chỗ làm nào sẵn sàng.',
     workplaceNoneHint: 'Hãy chạy daemon trên máy của bạn rồi nối máy đó vào không gian làm việc này. Khi máy báo có agent CLI chạy được, chỗ làm sẽ hiện ở đây.',
     instructions: 'Chỉ dẫn',
@@ -953,6 +962,9 @@ export const vi = {
     task_reopen_needs_reason: 'Mở lại một đầu việc đã đóng thì phải nêu lý do.',
     task_stalled_cannot_finish: 'Đầu việc đang mang cờ đình trệ thì chưa chuyển sang xong được — gỡ cờ đã.',
     task_needs_artifact: 'Phải gắn thành phẩm đã công bố trước khi chuyển sang chờ rà soát hoặc xong.',
+    // FR-007k — thứ đặt được cho agent là câu trả lời của chỗ làm, không phải của người gọi.
+    placement_option_unknown: 'Chỗ làm này không có thiết lập nào tên {{option}}.',
+    placement_option_value_unsupported: 'Chỗ làm này không nhận {{value}} cho {{option}}.',
     task_needs_signatures: 'Đầu việc chỉ đóng khi đủ hai chữ ký.',
     task_needs_signatures_named: 'Đầu việc chỉ đóng khi đủ hai chữ ký — còn thiếu: {{missing}}.',
     task_criteria_unmet: 'Đầu việc chỉ đóng khi mọi tiêu chí công nhận đã chấm đạt.',

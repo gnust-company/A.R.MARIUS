@@ -48,6 +48,7 @@ from armarius.domain.entities.checklist_item import (
 from armarius.domain.entities.leader_chat import LeaderChatError
 from armarius.domain.entities.marius import InviteError
 from armarius.domain.entities.onboarding import OnboardingError
+from armarius.domain.entities.placement import OptionNotOffered
 from armarius.domain.entities.task import (
     ArtifactRequiredError,
     CriteriaNotMetError,
@@ -98,6 +99,7 @@ _ROUTING: tuple[tuple[type[Exception], int, str], ...] = (
     (PlanningError, 409, "same, one level up: the project's planning state refuses it"),
     (TaskTransitionError, 409, "the transition table refuses the move"),
     (ArtifactRequiredError, 409, "nothing published to review"),
+    (OptionNotOffered, 422, "FR-007k — the place decides what may be set on an agent"),
     (DependencyNotMetError, 409, "a blocked_by task is unfinished (§1.3)"),
     (DescriptionRequiredError, 409, "FR-029 — a worker may not be handed a bare title"),
     (StatusReasonRequiredError, 409, "FR-030 — the move must say why"),

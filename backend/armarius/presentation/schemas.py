@@ -298,6 +298,12 @@ class RegisterMariusIn(BaseModel):
     description: str = Field(default="", max_length=2000)
     skills: list[str] = Field(default_factory=list)
     skill_ids: list[str] = Field(default_factory=list)
+    # What the person picked out of what the chosen workplace said its tool takes (FR-007k):
+    # `{"model": "opus", "thinking_level": "high"}`. A key the workplace never offered, or a
+    # value outside a set it stated in full, is refused — by the placement, not here, because
+    # this side has no way of knowing what any workplace offers. Left out entirely, or left
+    # empty, means the tool's own default applies.
+    runtime_options: dict[str, str] = Field(default_factory=dict)
     # There is deliberately no runtime field here. Which tool carries an agent's turn follows
     # from the workplace it is put on — a thing the person can see and reason about — not from
     # a separate menu they have no way to answer well. A caller sending one is ignored rather
@@ -351,6 +357,12 @@ class MariusOut(_Out):
     role: str
     instructions: str = ""
     description: str = ""
+    # What was picked for this agent out of what its workplace offers (FR-007k). An absent
+    # key means nothing was picked and the tool's own default applies. Read off the entity's
+    # `placement_options`: this side may say *runtime*, the business layer may not (Điều III).
+    runtime_options: dict[str, str] = Field(
+        default_factory=dict, validation_alias="placement_options"
+    )
     skills: list[str]
     skill_ids: list[str] = Field(default_factory=list)
     adapter_type: str
@@ -408,6 +420,20 @@ class MachineOut(_Out):
     workplaces: list[MachineWorkplaceOut] = Field(default_factory=list)
 
 
+class PlacementOptionOut(_Out):
+    """One setting a person may pick for an agent put at a workplace (FR-007k).
+
+    `source` is here because the screen has to render two different things: a complete set
+    is a closed list of choices, while examples are suggestions beside a box the person may
+    type into. Showing the second as the first would refuse a legitimate value on a screen,
+    which is worse than not offering the list at all.
+    """
+
+    key: str
+    values: list[str] = Field(default_factory=list)
+    source: str
+
+
 class WorkplaceChoiceOut(_Out):
     """One workplace the person may put an agent on (FR-007f).
 
@@ -420,6 +446,10 @@ class WorkplaceChoiceOut(_Out):
     # The machine's own readable name — the only thing separating the same CLI on two of
     # the person's machines (FR-003).
     machine_name: str
+    # What may be set on an agent put here, and what this workplace's tool takes for each
+    # (FR-007k). Empty is ordinary: a workplace that offered nothing simply shows no
+    # settings, and its agents run on whatever the tool defaults to.
+    options: list[PlacementOptionOut] = Field(default_factory=list)
 
 
 class MariusCreatedOut(MariusOut):

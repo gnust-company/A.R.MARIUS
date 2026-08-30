@@ -40,3 +40,8 @@ class WorkPacket:
 
     prompt: str
     skills: tuple[SkillBundle, ...] = ()
+    # What this agent was set to, out of what the place it works at offers (FR-007k). Opaque here on
+    # purpose: this side knows a key was chosen and what it was set to, never what any of it
+    # means to the tool that will read it (Constitution III). Empty means nothing was picked,
+    # and the tool's own default applies.
+    placement_options: tuple[tuple[str, str], ...] = ()

@@ -171,6 +171,12 @@ ENGLISH: dict[str, str] = {
         "A task flagged as stalled cannot be moved to done — clear the flag first."
     ),
     "task_needs_artifact": "A published artifact must be linked before review or done.",
+    # FR-007k — what an agent may be set to comes from the place it works at, not from a
+    # list anybody may send.
+    "placement_option_unknown": "This workplace offers no setting called {option}.",
+    "placement_option_value_unsupported": (
+        "This workplace does not accept {value} for {option}."
+    ),
     "task_needs_signatures": "A task closes only with both signatures.",
     "task_needs_signatures_named": (
         "A task closes only with both signatures — still missing: {missing}."

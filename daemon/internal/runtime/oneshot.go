@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,6 +28,9 @@ const maxStderrTail = 8 << 10
 
 // invocation is how one CLI of the one-shot family is asked to take a turn.
 type invocation struct {
+	// flags says how this CLI spells the settings a person may pick (FR-007k). Keyed by the
+	// server's name for the setting; a key absent here is a setting this CLI does not take.
+	flags map[string]string
 	// args builds the command line. The message is never one of them — it goes in on standard
 	// input, so that its length is not the operating system's business and so that it does not
 	// sit in the process table for everyone on a shared machine to read.
@@ -64,6 +68,12 @@ var oneShots = map[string]invocation{
 	//     a stricter reading of the rule, it is a run that cannot report what it did. Only our
 	//     own server is named; everything the agent asks to do in the world is untouched.
 	"claude_code": {
+		// Measured on 2.1.226, and measured **together with the probe that offers them**: the
+		// values a person picks come out of `--effort (low, medium, high, xhigh, max)` and
+		// `--model ... (e.g. 'fable', 'opus', or 'sonnet')`, which are the same two flags
+		// named here. Reading the list from one place and spending it on another is how a
+		// screen ends up offering a setting nothing applies.
+		flags: map[string]string{"model": "--model", "thinking_level": "--effort"},
 		args: func(req Request) []string {
 			args := []string{"-p", "--output-format", "stream-json", "--verbose"}
 			if req.ToolConfig != "" {
@@ -97,6 +107,38 @@ var oneShots = map[string]invocation{
 		},
 		read: readCodex,
 	},
+}
+
+// chosen renders what a person set on this agent into this CLI's own flags (FR-007k).
+//
+// Sorted, so the command line a run is started with is the same one twice for the same
+// choices — a run that cannot be reproduced from its own record is a run nobody can debug.
+//
+// A setting with no flag here, or set to nothing, contributes nothing. Both are ordinary:
+// FR-007k says an unset choice means the tool's own default, and a workplace whose CLI has
+// since been replaced by one that takes fewer settings should still run.
+// Applied by Run rather than from inside each `args` closure: a closure in the table cannot
+// read the table it is being defined in, and threading the flag map through every one of them
+// would put the same three lines in each CLI that ever gets added.
+func chosen(req Request, flags map[string]string) []string {
+	if len(req.Options) == 0 || len(flags) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(req.Options))
+	for key := range req.Options {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	var args []string
+	for _, key := range keys {
+		flag, takes := flags[key]
+		if !takes || req.Options[key] == "" {
+			continue
+		}
+		args = append(args, flag, req.Options[key])
+	}
+	return args
 }
 
 // grantedTools names the tool servers this run was handed, in the form a CLI's allow-list uses.
@@ -146,7 +188,7 @@ func (OneShot) Run(ctx context.Context, req Request, emit Emit) (Outcome, error)
 		emit = func(Event) {}
 	}
 
-	cmd := newProcess(ctx, req, shape.args(req))
+	cmd := newProcess(ctx, req, append(shape.args(req), chosen(req, shape.flags)...))
 	cmd.Stdin = strings.NewReader(req.Message)
 
 	streams, err := plumb(cmd)

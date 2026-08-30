@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"context"
+	"regexp"
 	"strings"
 )
 
@@ -31,7 +32,52 @@ type Capabilities struct {
 	ExposesToolArgs   bool         `json:"exposes_tool_args"`
 	ExposesToolResult bool         `json:"exposes_tool_result"`
 	Unanswered        []Unanswered `json:"unanswered,omitempty"`
+	// Choices are the settings a person picks per agent, and what this tool takes for each
+	// (FR-007k). Absent means this tool was not asked or offers none — which is a workplace
+	// whose agents run on the tool's own defaults, not a broken one.
+	Choices []Choice `json:"choices,omitempty"`
 }
+
+// Choice is one setting a person picks per agent, and the values this tool accepts for it.
+//
+// **Which settings exist is the tool's answer, not a fixed pair.** Claude Code takes a model
+// and an effort level; Codex adds a service tier. Storing two named columns would give the
+// third nowhere to go and buy a second migration the day it is asked for, so what travels is a
+// list the tool fills in.
+//
+// `Source` is the honesty field, and it is not decoration: FR-007k bans deciding a tool's
+// abilities from the name on its binary, and the way to keep that honest is to say where every
+// list came from. A tool that starts enumerating properly moves from one source to another with
+// no schema change and no screen change.
+type Choice struct {
+	// Key names the setting. The screen builds its own label from it (Constitution VI).
+	Key string `json:"key"`
+	// Values are what this tool takes. Empty means the tool did not say — the person still
+	// leaves it blank and gets the tool's own default (FR-007k).
+	Values []string `json:"values,omitempty"`
+	// Source says how those values were arrived at. A screen that shows a complete set the
+	// same way it shows three examples is telling the person something untrue.
+	Source string `json:"source"`
+}
+
+// The settings a person picks per agent (FR-007k).
+const (
+	ChoiceModel         = "model"
+	ChoiceThinkingLevel = "thinking_level"
+)
+
+// Where a list of values came from. Codes, never sentences (Constitution VII).
+const (
+	// SourceToolDeclared: the tool printed the whole set. Safe to offer as the only options.
+	SourceToolDeclared = "tool_declared"
+	// SourceToolExamples: the tool named some by way of example and did not claim they are
+	// all. Offer them, and let the person type something else.
+	SourceToolExamples = "tool_examples"
+	// SourceKnownNames: this daemon carries the set for a tool that will not enumerate. The
+	// list this may be trusted for is the machine's, not the server's — the server never gets
+	// to decide what a CLI can do from its name (FR-017, Điều III).
+	SourceKnownNames = "known_names"
+)
 
 // Unanswered is one capability nobody could ask about, and why.
 //
@@ -62,6 +108,39 @@ const (
 type selfDescription struct {
 	args   []string
 	proves map[capability][]string
+	// offers is what a person may pick per agent, and how to read the accepted values out of
+	// the same self-description (FR-007k).
+	offers []choiceQuestion
+}
+
+// readAs says how the values for one choice are read out of a tool's own account of itself.
+type readAs string
+
+const (
+	// wholeSet: the tool printed its values as a bare comma-separated list inside brackets —
+	// `--effort <level> ... (low, medium, high, xhigh, max)`. That is the tool stating the
+	// complete set.
+	wholeSet readAs = "whole-set"
+	// examples: the tool quoted a few by way of illustration — `(e.g. 'fable', 'opus', or
+	// 'sonnet')`. Reading those as the complete set would put words in the tool's mouth.
+	examples readAs = "examples"
+	// carried: the tool says nothing and this daemon supplies the names.
+	carried readAs = "carried"
+)
+
+// choiceQuestion is how one pickable setting is asked about.
+//
+// `after` names the flag the values sit next to, and everything is read out of the **first
+// bracketed group following it** — not a window of bytes, which is what an earlier draft of
+// this used and which happened to be right only because the help text wrapped where it did.
+// Anchoring on the first group is a rule; a byte count is a coincidence waiting to be reflowed.
+type choiceQuestion struct {
+	key string
+	how readAs
+	// after is the flag whose bracketed group holds the values. Unused when how is `carried`.
+	after string
+	// names is the set for `carried`, and is ignored otherwise.
+	names []string
 }
 
 // selfDescriptions is the one-shot family's question, per CLI.
@@ -81,6 +160,24 @@ var selfDescriptions = map[Kind]selfDescription{
 			capExposesToolArgs:   {"stream-json"},
 			capExposesToolResult: {"stream-json"},
 		},
+		// Measured on claude 2.1.226, 2026-08-29. Both lists come out of the binary; **no
+		// table of model names is carried here**, which is the strongest form of FR-007k this
+		// tool allows.
+		//
+		//   --effort <level>    Effort level for the current session
+		//                       (low, medium, high, xhigh, max)
+		//
+		//   --model <model>     ... Provide an alias for the latest model
+		//                       (e.g. 'fable', 'opus', or 'sonnet') ...
+		//
+		// The effort list is the whole set and is offered as such. The model aliases are the
+		// tool's own examples and are offered as examples — a full model name is accepted too,
+		// and a screen that presented three suggestions as the only three would be wrong on
+		// the day a fourth ships.
+		offers: []choiceQuestion{
+			{key: ChoiceThinkingLevel, how: wholeSet, after: "--effort"},
+			{key: ChoiceModel, how: examples, after: "--model"},
+		},
 	},
 	KindCodex: {
 		args: []string{"--help"},
@@ -90,6 +187,28 @@ var selfDescriptions = map[Kind]selfDescription{
 			capExposesToolResult: {"--json"},
 		},
 	},
+}
+
+// FlagRead answers, for one kind of CLI, which flag each pickable setting's values were read
+// out of — `{"thinking_level": "--effort", "model": "--model"}`.
+//
+// Exported for one reason and it is worth stating: the part that *starts* a CLI has its own
+// table saying which flag each setting is spent on, and the two have to be the same flag. Read
+// the list off `--effort` and spend it on something else and nothing fails — a person picks a
+// value, it applies to nothing, and the screen looks right the whole time. This is what lets a
+// test hold the two tables against each other instead of trusting that nobody renamed one.
+func FlagRead(kind Kind) map[string]string {
+	question, known := selfDescriptions[kind]
+	if !known {
+		return nil
+	}
+	flags := map[string]string{}
+	for _, offer := range question.offers {
+		if offer.after != "" {
+			flags[offer.key] = offer.after
+		}
+	}
+	return flags
 }
 
 // prober asks one discovered CLI what it can do.
@@ -170,7 +289,95 @@ func probeSelfDescription(ctx context.Context, found Found, opts Options) (Capab
 		Resumable:         answered[capResumable],
 		ExposesToolArgs:   answered[capExposesToolArgs],
 		ExposesToolResult: answered[capExposesToolResult],
+		Choices:           offered(described, question.offers),
 	}, nil
+}
+
+// bracketedAfter is the first bracketed group following a flag in a tool's self-description.
+//
+// Anchored on the flag and then on the first `(`, rather than on a window of bytes: help text
+// wraps where the terminal says it wraps, and a rule that survives reflowing is the only kind
+// worth writing down. Nothing found is an empty string, which every caller reads as *the tool
+// did not say* — the same safe direction the marker lists err in.
+func bracketedAfter(described, flag string) string {
+	at := strings.Index(described, flag)
+	if at < 0 {
+		return ""
+	}
+	rest := described[at+len(flag):]
+	open := strings.Index(rest, "(")
+	if open < 0 {
+		return ""
+	}
+	close := strings.Index(rest[open:], ")")
+	if close < 0 {
+		return ""
+	}
+	return rest[open+1 : open+close]
+}
+
+// wholeSetIn reads a bare comma-separated list, and refuses anything that is not one.
+//
+// The shape is the check: `low, medium, high` is a list of values, `e.g. 'fable', 'opus'` is a
+// sentence about values, and a bracketed aside about anything else is neither. Refusing what
+// does not fit means the worst this can do is offer nothing, never offer nonsense as if the
+// tool had said it.
+var bareValue = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+
+func wholeSetIn(group string) []string {
+	parts := strings.Split(group, ",")
+	if len(parts) < 2 {
+		return nil
+	}
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		if !bareValue.MatchString(value) {
+			return nil
+		}
+		values = append(values, value)
+	}
+	return values
+}
+
+// quoted pulls the tool's own examples out of a bracketed aside.
+var quoted = regexp.MustCompile(`'([A-Za-z0-9][A-Za-z0-9._-]*)'`)
+
+func examplesIn(group string) []string {
+	var values []string
+	for _, found := range quoted.FindAllStringSubmatch(group, -1) {
+		values = append(values, found[1])
+	}
+	return values
+}
+
+// offered turns what one tool printed into the settings a person may pick for an agent.
+//
+// A question that comes back with nothing is **left out entirely** rather than reported with an
+// empty list. The two would look alike on a screen and mean opposite things: a setting this
+// tool does not have, versus a setting whose values nobody could read. Only the first is true
+// here, and only the first should be shown.
+func offered(described string, questions []choiceQuestion) []Choice {
+	var choices []Choice
+	for _, q := range questions {
+		var (
+			values []string
+			source string
+		)
+		switch q.how {
+		case carried:
+			values, source = q.names, SourceKnownNames
+		case wholeSet:
+			values, source = wholeSetIn(bracketedAfter(described, q.after)), SourceToolDeclared
+		case examples:
+			values, source = examplesIn(bracketedAfter(described, q.after)), SourceToolExamples
+		}
+		if len(values) == 0 {
+			continue
+		}
+		choices = append(choices, Choice{Key: q.key, Values: values, Source: source})
+	}
+	return choices
 }
 
 // unanswered builds the answer for a CLI that could not be asked at all: every capability

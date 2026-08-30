@@ -50,6 +50,16 @@ type Request struct {
 	// both being empty is a run that works rather than a run without tools.
 	ToolConfig  string
 	ToolServers []execenv.ToolServer
+	// Options is what a person set on this agent, by the **server's** name for each setting
+	// — `model`, `thinking_level`, and whatever a tool adds to that (FR-007k).
+	//
+	// Turning those names into flags happens per CLI, in the tables below, and that is the
+	// point of them arriving unconverted: the side that knows a setting is called `--effort`
+	// on one tool and something else on the next is the side that already knows how to start
+	// each tool. A setting this CLI has no flag for is dropped, not guessed at — the person
+	// chose it against what the workplace offered, and if that no longer matches the binary
+	// installed here, refusing to start would be a worse answer than running on the default.
+	Options map[string]string
 }
 
 // Event is one thing that happened while the agent worked.

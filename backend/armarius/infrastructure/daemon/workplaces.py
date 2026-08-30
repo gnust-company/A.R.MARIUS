@@ -28,6 +28,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from armarius.domain.entities.placement import PlacementOption
 from armarius.infrastructure.daemon.enrollment import MachineIdentity
 from armarius.infrastructure.daemon.models import (
     AgentWorkplaceBindingModel,
@@ -35,6 +36,7 @@ from armarius.infrastructure.daemon.models import (
     RunClaimModel,
     WorkplaceModel,
 )
+from armarius.infrastructure.daemon.placement import options_of
 from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.infrastructure.database.models import MariusModel
 from armarius.shared.clock import as_utc, utcnow
@@ -82,6 +84,9 @@ class OfferedWorkplace:
     id: UUID
     cli_kind: str
     machine_name: str
+    # What may be set on an agent put here (FR-007k), read from what the CLI answered when
+    # the daemon asked it — never from the kind of CLI it is (FR-017).
+    options: tuple[PlacementOption, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -342,7 +347,10 @@ class DaemonWorkplaceService:
             )
             return [
                 OfferedWorkplace(
-                    id=row.id, cli_kind=row.cli_kind, machine_name=machine_name or ""
+                    id=row.id,
+                    cli_kind=row.cli_kind,
+                    machine_name=machine_name or "",
+                    options=options_of(row),
                 )
                 for row, machine_name in found.all()
             ]

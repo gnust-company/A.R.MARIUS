@@ -269,7 +269,15 @@ async def test_the_picker_lists_only_ready_workplaces_with_their_machine() -> No
 
         assert listed.status_code == 200, listed.text
         assert listed.json() == [
-            {"id": usable, "cli_kind": "claude_code", "machine_name": "thinkpad"}
+            {
+                "id": usable,
+                "cli_kind": "claude_code",
+                "machine_name": "thinkpad",
+                # Nothing to pick: cái máy này khai khả năng mà không khai lựa chọn nào
+                # (T039g, FR-007k). Rỗng là chuyện thường — agent ở đó chạy bằng mặc định
+                # của chính tool — nên nó phải có mặt trong hình dạng, không phải vắng.
+                "options": [],
+            }
         ]
 
 

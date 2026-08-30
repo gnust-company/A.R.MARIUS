@@ -370,8 +370,27 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   **KHÔNG ĐƯỢC** đi vào prompt gửi agent. Tách khỏi instructions vì hai thứ có hai người đọc khác nhau; gộp
   lại thì mọi câu viết cho đồng nghiệp đọc đều tốn chỗ trong prompt.
 - **FR-007k**: Người dùng PHẢI chọn được **model** và **thinking level** cho từng agent. Danh sách chọn PHẢI
-  lấy từ **khả năng thật của chỗ làm** theo FR-017, KHÔNG được lấy từ bảng chép cứng theo tên CLI. Agent CLI
-  nào tự quản model thì **không hiện ô chọn**. Bỏ trống thì dùng mặc định của chính CLI đó.
+  lấy từ **khả năng thật của chỗ làm** theo FR-017. Agent CLI nào tự quản model thì **không hiện ô chọn**.
+  Bỏ trống thì dùng mặc định của chính CLI đó.
+  - **Sửa 2026-08-29 sau khi tra Multica (người chủ chốt).** Câu cũ cấm "bảng chép cứng theo tên CLI" mà
+    không nói cấm **ở đâu**, và như thế là không dựng được: đo `claude 2.1.226` thì `--model` chỉ cho **ví
+    dụ**, không lệnh nào liệt kê. Multica trả lời chỗ này bằng cách hỏi **runtime** — *"some tools expose a
+    fixed set of model names; others return available models based on local configuration, the signed-in
+    account, and subscription entitlements"* — tức là tập cố định ấy nằm ở **phía máy**, chỗ nhìn thấy tool
+    đã cài. Nay ghi rõ: **server KHÔNG ĐƯỢC** giữ bảng nào theo tên CLI (Điều III — tầng nghiệp vụ không
+    biết CLI nào tồn tại); **daemon ĐƯỢC** khai, vì nó là bên hỏi cái binary thật. Server chỉ nhận và
+    chuyển tiếp danh sách.
+  - **Số lựa chọn KHÔNG cố định là hai.** Multica có thêm **service tier** cho Codex, và khi ép agent sang
+    runtime khác thì cả **ba** bị xoá. Nên chỗ chứa PHẢI là **một chỗ theo thứ tool khai ra**, không phải
+    hai cột đúng tên — hai cột là để cái thứ ba không có chỗ đứng và mua thêm một lần migration.
+  - **Mỗi danh sách PHẢI nói nó chắc đến đâu.** Một bộ tool khai **đủ** là danh sách đóng và giá trị ngoài
+    nó bị từ chối; mấy cái tên tool kể làm **ví dụ** thì không — bày ví dụ như một bộ đóng là từ chối một
+    giá trị hợp lệ vào đúng ngày tool có thêm cái thứ tư. Đo được cả hai trên `claude 2.1.226`: `--effort`
+    in ra `(low, medium, high, xhigh, max)` là bộ đủ; `--model` in ra `(e.g. 'fable', 'opus', or 'sonnet')`
+    là ví dụ.
+  - **Danh sách rỗng là trạng thái hợp lệ**, không phải lỗi: chỗ làm ấy không có gì để chọn, và agent trên
+    đó chạy bằng mặc định của tool. Kế thừa Multica, gồm cả lời chỉ dẫn khi rỗng — *"confirm the runtime is
+    online and the tool is signed in"*.
 - **FR-007l**: **Bỏ role theo dự án.** Cách cư xử của agent đến từ instructions ở FR-007i, không từ một ghế
   role trong dự án. Thêm agent vào dự án là thêm thẳng agent, không qua role. **Giữ nguyên Trưởng dự án** —
   đó là vị trí điều phối của từng dự án, không phải một ghế trong bộ role đã bỏ (Hiến pháp 2.0.0 — Điều V).

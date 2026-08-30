@@ -90,7 +90,12 @@ Daemon gửi toàn bộ những gì nó dò được. Server đồng bộ: cái 
         "capabilities": { "resumable": false, "exposes_tool_args": false, "exposes_tool_result": false,
                           "unanswered": [ { "capability": "resumable", "reason": "no_probe_for_family" }, … ] } },
       { "cli_kind": "claude_code", "cli_version": "2.1.226", "protocol_family": "one_shot",
-        "capabilities": { "resumable": true, "exposes_tool_args": true, "exposes_tool_result": true } }
+        "capabilities": { "resumable": true, "exposes_tool_args": true, "exposes_tool_result": true,
+                          "choices": [
+                            { "key": "thinking_level", "values": ["low","medium","high","xhigh","max"],
+                              "source": "tool_declared" },
+                            { "key": "model", "values": ["fable","opus","sonnet"],
+                              "source": "tool_examples" } ] } }
     ],
     "symlink_capable": true }
 ← 200 { "workplaces": [ { "id": "…", "cli_kind": "gemini", "ready": true,
@@ -98,6 +103,25 @@ Daemon gửi toàn bộ những gì nó dò được. Server đồng bộ: cái 
 ```
 
 `capabilities` là kết quả **hỏi khả năng thật** (FR-017), không được suy từ tên loại CLI.
+
+**`choices` — bổ sung 2026-08-29 lúc hiện thực T039g (FR-007k).** Thứ người dùng đặt được cho một agent
+đặt ở chỗ làm này, và **giá trị nào tool nhận**. Danh sách này là thứ duy nhất quyết ô chọn trên màn hình:
+server **không giữ bảng nào theo tên CLI** (Điều III), nó chỉ nhận và chuyển tiếp.
+
+`source` nói **danh sách chắc đến đâu**, và nó không phải trang trí — nó quyết cả cách vẽ lẫn cách chặn:
+
+| `source` | Nghĩa | Hệ quả |
+| --- | --- | --- |
+| `tool_declared` | tool in ra **cả bộ** | danh sách đóng; giá trị ngoài nó bị **từ chối** (422 `placement_option_value_unsupported`) |
+| `tool_examples` | tool kể **vài cái làm ví dụ** | gợi ý cạnh ô nhập; **không** chặn giá trị lạ |
+| `known_names` | daemon mang sẵn cho tool không chịu liệt kê | như `tool_declared`; **chỉ được nằm ở daemon** |
+
+Khoá `key` là **tên chung của server** (`model`, `thinking_level`, `service_tier`…), không phải cờ dòng
+lệnh — chỉ daemon biết cái nào thành `--effort`. Bộ khoá **khác nhau theo tool**, nên đây là một danh sách
+chứ không phải hai trường cố định: Codex có thêm hạng dịch vụ mà Claude Code không có.
+
+Chỗ làm khai `choices` rỗng hoặc thiếu hẳn là **chuyện thường**: không có gì để chọn, agent trên đó chạy
+bằng mặc định của chính tool (FR-007k).
 
 **`unanswered` — bổ sung 2026-08-25 lúc hiện thực T034.** Ba khoá boolean là *câu trả lời*; khoá thứ tư
 này là danh sách những khả năng **không hỏi được**, mỗi mục một mã lý do (`no_probe_for_family` khi daemon
