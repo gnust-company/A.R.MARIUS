@@ -199,3 +199,59 @@ func TestAMaskerToldNothingStillMasksByShape(t *testing.T) {
 		t.Fatalf("masker rỗng bỏ qua cả hình dạng: %q", masked)
 	}
 }
+
+func TestWindowLooksPastTheCutFarEnoughToSeeASecretWhole(t *testing.T) {
+	// Bí mật bắt đầu **trước** chỗ cắt và kéo dài qua nó. Nếu chỉ nhìn đúng phần sẽ đi ra thì
+	// masker thấy một mẩu token cụt, không khớp gì cả, và mẩu ấy đi ra nguyên.
+	token := "armarius_run_9f3c1d8b47ae0025"
+	m := For(token)
+	body := strings.Repeat("y", 500) + token + strings.Repeat("z", 5000)
+
+	got, hidden := m.Window(body, 512)
+
+	if !hidden {
+		t.Fatal("bí mật vắt ngang chỗ cắt không được nhận ra")
+	}
+	if strings.Contains(got, "armarius_run_9f3c") {
+		t.Fatalf("nửa đầu token còn nguyên: %q", got[490:])
+	}
+}
+
+func TestWindowIgnoresWhatIsOnlyEverGoingToBeThrownAway(t *testing.T) {
+	// Đây là chỗ *bảo đảm* và *chi phí* gặp nhau. Phần đuôi không rời khỏi máy, nên che nó
+	// không bảo vệ được gì — mà che nó lại là công việc tỉ lệ với thứ công cụ in ra, chạy trên
+	// đúng goroutine đang đọc CLI.
+	//
+	// Quan sát được: `hidden` phải nói về **thứ người ta sắp nhìn thấy**, không phải về việc
+	// có một bí mật ở đâu đó trong thứ họ sẽ không bao giờ thấy. Một bản cài che cả thân sẽ
+	// báo `true` ở đây, và bài này đỏ.
+	token := "armarius_run_9f3c1d8b47ae0025"
+	m := For(token)
+	body := strings.Repeat("y", 100_000) + token
+
+	got, hidden := m.Window(body, 512)
+
+	if hidden {
+		t.Fatal("báo là đã che, trong khi thứ bị che nằm ngoài tầm nhìn của người đọc")
+	}
+	if len(got) > 512+m.reach() {
+		t.Fatalf("nhìn xa hơn mức cần: %d bytes", len(got))
+	}
+}
+
+func TestAPrivateKeyWhoseFooterFellBeyondTheCutIsStillTakenOut(t *testing.T) {
+	// Mẫu PEM có trần độ dài, nên một khoá bị cắt mất dòng đóng sẽ không khớp mẫu đủ cặp —
+	// và phần lọt lại chính là thân khoá, tức là đúng phần đáng ăn cắp.
+	m := For()
+	key := "-----BEGIN RSA PRIVATE KEY-----\n" + strings.Repeat("MIIEowIBAAKCAQEAx7Vk", 200) +
+		"\n-----END RSA PRIVATE KEY-----"
+
+	got, hidden := m.Window("cat id_rsa\n"+key, 512)
+
+	if !hidden {
+		t.Fatal("khoá bị cắt mất dòng đóng thì không che gì cả")
+	}
+	if strings.Contains(got, "MIIEowIBAAKCAQEAx7Vk") {
+		t.Fatalf("thân khoá đi ra theo phần đầu: %q", got)
+	}
+}

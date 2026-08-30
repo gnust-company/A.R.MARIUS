@@ -142,12 +142,21 @@ func (j *Journal) ToolCompleted(call string, failed bool, result Result) {
 
 	// Masked before cut, not after. A secret lying across the threshold would otherwise be cut
 	// in half and the first half sent — and half a token is half a token, not a redaction.
-	body, hidden := j.mask.Text(result.Body)
+	//
+	// But only as far as the cut can reach. Masking the whole body would be work proportional
+	// to what the tool printed, on the goroutine reading the CLI — and that goroutine must not
+	// stall (a megabyte of build log measured at ~470ms, and a line may be eight of them). The
+	// tail is discarded either way, so masking it protects nothing: what leaves is the opening,
+	// and `Window` masks exactly enough to be honest about that.
+	body, hidden := j.mask.Window(result.Body, j.limit)
 	event.Redacted = hidden
 
-	opening, cut := j.trim(body)
+	opening, _ := j.trim(body)
 	payload["opening"] = opening
-	if cut {
+	// Read off the original, not off what masking left: masking shortens text, so a body that
+	// was over the threshold can come back under it, and *truncated* is a fact about the
+	// result — how much the tool produced — not about how much of it was worth hiding.
+	if size > j.limit {
 		event.Truncated = true
 		event.OmissionReason = TruncatedByPolicy
 	}
