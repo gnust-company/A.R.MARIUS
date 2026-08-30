@@ -679,6 +679,14 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   thông báo lỗi. Lý do: token của lượt chạy đi **vào** agent qua thông điệp và biến môi trường, nên nó ra
   được bằng chính hai đường đó. FR-013 và FR-014 đã khoanh phạm vi và hạn dùng của token ấy nên thiệt hại
   có trần, nhưng khoanh vùng không thay cho che.
+- **FR-048b**: Server PHẢI **từ chối cả lô** khi một sự kiện mang **token của chính hệ thống này**
+  ở dạng nguyên bản — mã `credential_in_the_clear`, nhận ra theo **hình dạng** hai tiền tố server tự
+  đúc, kèm ràng buộc độ dài đủ chặt để một tên định danh không dính. Đây KHÔNG phải che thay cho
+  daemon (FR-048 vẫn giữ nguyên: che ở phía daemon): đây là bản sao thứ hai của luật ở tầng nhận,
+  để SC-015 là câu về **kho** chứ không phải câu về hạnh kiểm của một chương trình — một daemon bản
+  cũ, một daemon bị vá, hay một token của máy trong tay thứ không phải daemon đều tới cửa này. Server
+  KHÔNG ĐƯỢC tự sửa payload: một bản ghi bị lặng lẽ sửa giữa đường nói một câu agent không hề nói.
+
 - **FR-049**: Với những sự kiện **được phép mang toàn văn lên server** (thông điệp gửi agent, tham số gọi
   công cụ, chữ agent sinh ra), sự kiện quá lớn PHẢI lưu theo hai phần: một phần rút gọn nằm ngay trong dòng
   sự kiện, và **toàn văn** để ở kho tách riêng, mở ra xem được theo yêu cầu. Ngưỡng cắt PHẢI đặt được. Luật

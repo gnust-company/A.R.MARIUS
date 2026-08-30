@@ -316,7 +316,13 @@ một daemon bản cũ gửi đúng số bytes như trước, và sự kiện c�
 
 **Ràng buộc cứng**:
 - **Toàn văn kết quả công cụ không bao giờ có mặt trong body này** (FR-043a). Chỉ bản rút gọn.
-- Che bí mật đã làm **xong ở phía daemon** trước khi gửi (FR-048). Server không che hộ.
+- Che bí mật đã làm **xong ở phía daemon** trước khi gửi (FR-048). Server không che hộ. Server
+  **không** che thay, nhưng nó **từ chối** một lô mang token của chính hệ thống này ở dạng nguyên
+  bản — `400 credential_in_the_clear`, nhận ra theo hình dạng của hai tiền tố nó tự đúc
+  (`armr_run_…`, `armd_…`, mỗi cái kèm ít nhất 40 ký tự url-safe theo sau). Đây là bản sao thứ hai
+  của luật, đúng hình dạng T098 đã dựng cho kết quả công cụ: nó làm SC-015 thành câu về **kho**,
+  không phải câu về hạnh kiểm của một chương trình. Phía này không so theo *giá trị* được — nó chỉ
+  giữ hash — nên nó chỉ nhận ra được đúng loại bí mật nó tự sinh ra.
 - `omission_reason` chỉ nhận `truncated_by_policy` hoặc `not_exposed_by_cli`; giá trị khác bị từ
   chối **ở cửa** (422). Một chuỗi tự do ở đây là một màn hình phải đoán (FR-047).
 - `seq` tăng đơn điệu trong một lượt chạy, không trùng (FR-045). Có **lỗ** thì được — một sự kiện
@@ -329,6 +335,7 @@ giữ lại là lô chặn mọi sự kiện phía sau nó (FR-047):
 |---|---|---|
 | `404` | lượt chạy không còn của máy này (FR-059) | dừng lượt chạy, không gửi gì nữa |
 | `401` `403` `408` `425` `429` | *chưa phải lúc* | giữ lô, gửi lại |
+| `400 credential_in_the_clear` | lô mang bí mật chưa che (FR-048) | **bỏ**, và sửa phép che trên máy |
 | `4xx` còn lại | server đã đọc và không nhận | **bỏ**, không hỏi lại |
 | `5xx`, lỗi mạng | chưa đọc tới nơi | giữ lô, gửi lại |
 
