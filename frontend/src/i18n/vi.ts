@@ -1050,6 +1050,7 @@ export const vi = {
     github_error: 'GitHub trả về {{status}}: {{reason}}',
     github_unreachable: 'Không kết nối được tới GitHub: {{reason}}',
     run_event_full_text_not_found: 'Sự kiện này không có phần nào để mở thêm — phần thân của nó đã là toàn bộ.',
+    credential_in_the_clear: 'Lô sự kiện này mang một giá trị bí mật chưa che. Máy phải che bí mật trước khi gửi.',
     tool_result_not_summarised: 'Kết quả gọi công cụ phải gửi lên ở dạng rút gọn, không gửi toàn văn. Chỉ gửi kích thước, kiểu và phần đầu.',
   },
   language: {
