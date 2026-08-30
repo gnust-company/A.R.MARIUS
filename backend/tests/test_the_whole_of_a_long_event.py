@@ -312,6 +312,57 @@ async def test_a_run_being_watched_live_is_told_what_the_machine_just_said():
         assert heard[0]["payload"]["text"] == "vừa mới xảy ra"
 
 
+async def test_the_live_push_carries_the_opening_slice_not_the_whole_of_it():
+    """Đường đẩy trực tiếp gửi đúng thứ hàng đã lưu giữ: **phần đầu**, không phải toàn văn.
+
+    Cùng một luật hai-đường ở bài dưới, nhưng ở phần thân chứ không phải ở mấy cột giải thích.
+    Đường đẩy trước đây gửi payload **máy báo lên**, còn hàng lưu giữ payload **đã cắt** — nên
+    một sự kiện dài về màn hình theo hai hình dạng, và cái nào thắng là do lô nào tới trước.
+
+    Hai chỗ hỏng, không phải một. Người xem trực tiếp phải kéo cả megabyte vào trang, đúng thứ
+    FR-049 dựng ra để tránh (SC-014). Và khung đẩy vẫn kèm `_full_field` — *còn nữa, xin thì
+    có* — cho một đoạn văn nó **đã** cầm trong tay, nên nút mở toàn văn đi hỏi lại thứ đang nằm
+    sẵn trong trang.
+    """
+    from armarius.main import app
+
+    async with _client() as c:
+        machine, run = await _a_run_in_hand(c, f"slice-{uuid4().hex[:8]}@example.com")
+        whole = "đủ dài để phải tách" * 400
+        heard: list[dict] = []
+
+        watching = app.state.container.event_bus.subscribe(UUID(run["run_id"]))
+
+        async def listen() -> None:
+            async for event in watching:
+                heard.append(event)
+
+        ear = asyncio.create_task(listen())
+        await asyncio.sleep(0)
+
+        await _say(c, machine, run, [
+            {"seq": run["first_seq"], "type": "assistant.message", "payload": {"text": whole}},
+        ])
+        for _ in range(20):
+            if heard:
+                break
+            await asyncio.sleep(0.05)
+        ear.cancel()
+
+        assert heard, "không có gì đẩy ra kênh của lượt chạy"
+        pushed = heard[0]["payload"]
+        assert pushed["_full_field"] == "text", "khung đẩy phải nói là còn nữa"
+        assert pushed["_full_byte_size"] == len(whole.encode("utf-8"))
+        assert len(pushed["text"]) < len(whole), "đường đẩy vẫn mang toàn văn"
+
+        listed = await c.get(
+            f"/v1/runs/{run['run_id']}/events", headers=machine.headers
+        )
+        assert listed.status_code == 200, listed.text
+        stored = next(e for e in listed.json() if e["seq"] == run["first_seq"])
+        assert pushed["text"] == stored["payload"]["text"], "hai đường mang hai thân khác nhau"
+
+
 def test_the_two_roads_to_one_run_carry_the_same_facts_about_it():
     """Đọc bằng danh sách bền và đọc bằng đường phát lại phải ra **cùng một** sự thật.
 
