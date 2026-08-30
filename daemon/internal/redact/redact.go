@@ -83,6 +83,14 @@ var shaped = []*regexp.Regexp{
 	regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`),
 	// A PEM private key, however it is labelled, from its opening line to its closing one.
 	regexp.MustCompile(`(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----`),
+	// The same key with its closing line out of reach — everything after the header goes.
+	//
+	// Runs after the terminated form, so in whole text every key is already consumed by that
+	// one and nothing reaches here. What reaches here is a header whose footer was left behind
+	// a cut, and the bytes between them are the part worth stealing. Over-masking prose that
+	// says BEGIN … PRIVATE KEY and never ends is the safe direction, and such prose is a broken
+	// key far more often than it is a sentence.
+	regexp.MustCompile(`(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*`),
 }
 
 // carrier matches a name that says the value beside it is a credential, and captures the value.
@@ -117,6 +125,47 @@ func (m *Masker) Text(s string) (string, bool) {
 	masked = carrier.ReplaceAllString(masked, "${1}"+Marker)
 	masked = bearer.ReplaceAllString(masked, "${1} "+Marker)
 	return masked, masked != s
+}
+
+// patternReach is how far past a cut a **shape** can still begin and still be recognised.
+//
+// Every pattern above has a shortest form, and the longest of those shortest forms is a JWT at
+// roughly thirty characters. This is that with room to spare: a secret whose first character
+// lands before a cut stays fully visible to the masker as long as this many bytes follow it.
+const patternReach = 256
+
+// reach is how far past a cut this masker must look to recognise anything beginning before it.
+func (m *Masker) reach() int {
+	longest := patternReach
+	// `known` is sorted longest first, and an exact value has to be seen whole to be found.
+	if m != nil && len(m.known) > 0 && len(m.known[0]) > longest {
+		longest = len(m.known[0])
+	}
+	return longest
+}
+
+// Window masks the leading part of s — enough of it to answer honestly about the first `keep`
+// bytes — and says whether it took anything out of that part.
+//
+// Work is proportional to `keep`, not to len(s), and that is the whole point. The caller is
+// about to throw the rest away: everything past the cut of a tool result stays on this machine
+// (FR-043a), so masking it is work nobody can ever benefit from — and a tool that prints a
+// megabyte turns it into *seconds* of it, on the goroutine reading the CLI, which is the one
+// goroutine that must not stall.
+//
+// A secret lying **across** the cut is still caught: the window runs `reach()` bytes past
+// `keep`, which is enough to see whole anything that begins before the cut. What begins after
+// it is not masked and does not need to be — it never leaves.
+//
+// Trimming the result to size, and to a character boundary, is the caller's business.
+func (m *Masker) Window(s string, keep int) (string, bool) {
+	if keep < 0 {
+		keep = 0
+	}
+	if window := keep + m.reach(); len(s) > window {
+		s = s[:window]
+	}
+	return m.Text(s)
 }
 
 // Value masks anything that may appear in an event payload, walking into maps and slices.
