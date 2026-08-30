@@ -713,3 +713,18 @@ class TaskPushReasonModel(Base):
 # Feature 002: the daemon runtime's tables share this metadata, so `create_all` and
 # Alembic autogenerate both see them. Bottom import — `daemon.models` needs `Base` above.
 from armarius.infrastructure.daemon import models as daemon_models  # noqa: E402,F401
+
+# Feature 002: nothing written down about a run may carry one of this system's own
+# credentials, by any road (FR-048c). Wired from here rather than from any of the writers:
+# this is where all three tables are known at once, and a rule attached to the table is one
+# a new writer cannot be unaware of. The guard module takes the models as arguments so that
+# it does not have to import this one back.
+from armarius.infrastructure.database.no_credentials import (  # noqa: E402
+    refuse_credentials_in,
+)
+
+refuse_credentials_in(RunEventModel, "payload")
+refuse_credentials_in(daemon_models.RunEventBlobModel, "content")
+# The copy of the message that went out, filled in on the road that writes no `run_events`
+# row for it at all — the same text, under a different column name.
+refuse_credentials_in(WakeupModel, "prompt")
