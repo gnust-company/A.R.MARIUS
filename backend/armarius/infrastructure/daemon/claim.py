@@ -132,6 +132,13 @@ class ReportedEvent:
     seq: int
     type: str
     payload: dict
+    # What the machine says about the record itself: whether the payload is an opening slice
+    # rather than the whole thing, how big the whole thing was, why anything is missing, and
+    # whether a secret was masked out before it left (FR-043b, FR-047, FR-048).
+    truncated: bool = False
+    original_byte_size: int | None = None
+    omission_reason: str | None = None
+    redacted: bool = False
 
 
 # The event types whose payload may never carry what a tool returned (FR-043a).
@@ -173,6 +180,30 @@ def refuse_whole_tool_results(events: Sequence[ReportedEvent]) -> None:
             raise BadRequest("tool_result_not_summarised")
         if len(json.dumps(event.payload, default=str).encode("utf-8")) > MAX_TOOL_RESULT_BYTES:
             raise BadRequest("tool_result_not_summarised")
+
+
+
+def _about_the_record(event: ReportedEvent) -> dict:
+    """What a live viewer needs to draw *something is missing here* as it happens (FR-046).
+
+    The same four facts the stored row keeps in columns, carried under underscored names because
+    a viewer reads the same run from two places — this stream while it runs, the stored log
+    afterwards — and a screen that could only say *why* on one of them would show the same run
+    two different ways.
+
+    Left out when there is nothing to say, so an ordinary event is not made bigger to carry four
+    denials.
+    """
+    said = {}
+    if event.truncated:
+        said["_truncated"] = True
+    if event.original_byte_size is not None:
+        said["_original_byte_size"] = event.original_byte_size
+    if event.omission_reason:
+        said["_omission_reason"] = event.omission_reason
+    if event.redacted:
+        said["_redacted"] = True
+    return said
 
 
 class DaemonClaimService:
@@ -706,6 +737,10 @@ class DaemonClaimService:
                         seq=event.seq,
                         type=event.type,
                         payload=dict(event.payload),
+                        truncated=event.truncated,
+                        original_byte_size=event.original_byte_size,
+                        omission_reason=event.omission_reason,
+                        redacted=event.redacted,
                         created_at=now,
                     )
                 )
@@ -750,7 +785,12 @@ class DaemonClaimService:
                 await self._on_recorded(
                     task_id,
                     event.type,
-                    {**event.payload, "_run_id": str(run_id), "_seq": event.seq},
+                    {
+                        **event.payload,
+                        **_about_the_record(event),
+                        "_run_id": str(run_id),
+                        "_seq": event.seq,
+                    },
                 )
 
     async def finish(

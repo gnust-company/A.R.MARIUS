@@ -321,6 +321,10 @@ def run_event_to_entity(m: RunEventModel) -> RunEvent:
         seq=m.seq,
         type=m.type,
         payload=dict(m.payload or {}),
+        truncated=bool(m.truncated),
+        original_byte_size=m.original_byte_size,
+        omission_reason=m.omission_reason,
+        redacted=bool(m.redacted),
         created_at=m.created_at,
     )
 

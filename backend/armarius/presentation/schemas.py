@@ -744,6 +744,13 @@ class RunEventOut(_Out):
     seq: int
     type: str
     payload: dict
+    # Why this row is short, and whether a secret was taken out of it (FR-043b, FR-047, FR-048).
+    # Read back out because the screen has to say *something is missing here, and here is why*
+    # rather than draw a gap — a gap reads as an agent that called no tools.
+    truncated: bool = False
+    original_byte_size: int | None = None
+    omission_reason: str | None = None
+    redacted: bool = False
     created_at: datetime | None = None
 
 
