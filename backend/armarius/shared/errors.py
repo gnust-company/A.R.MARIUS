@@ -302,6 +302,11 @@ ENGLISH: dict[str, str] = {
     # A tool's full output must never leave the machine it ran on (FR-043a). The cut happens
     # there; this refusal is what makes the rule true of the store rather than of one
     # program's good behaviour.
+    # Asking for the rest of an event that has no rest. Reads as *not found* rather than as a
+    # separate refusal: the thing being asked for does not exist, and that is the whole answer.
+    "run_event_full_text_not_found": (
+        "That event has nothing kept apart from it — its payload is already the whole thing."
+    ),
     "tool_result_not_summarised": (
         "A tool result must arrive summarised, never whole. Send its size, its type and the "
         "opening bytes."

@@ -27,6 +27,21 @@ class RunQueryService:
         async with self._uow() as uow:
             return await uow.runs.list_by_marius(marius_id)
 
-    async def events(self, run_id: UUID) -> Sequence[RunEvent]:
+    async def events(
+        self,
+        run_id: UUID,
+        *,
+        types: Sequence[str] | None = None,
+        after_seq: int | None = None,
+        limit: int | None = None,
+    ) -> Sequence[RunEvent]:
+        """The durable log of one run, narrowed the three ways a reader narrows it (FR-052)."""
         async with self._uow() as uow:
-            return await uow.run_events.list_by_run(run_id)
+            return await uow.run_events.list_by_run(
+                run_id, types=types, after_seq=after_seq, limit=limit
+            )
+
+    async def full_text(self, run_id: UUID, seq: int) -> tuple[str, str, int] | None:
+        """The whole of what one event only carries the opening of (FR-049)."""
+        async with self._uow() as uow:
+            return await uow.run_events.full_text(run_id, seq)

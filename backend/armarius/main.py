@@ -67,7 +67,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Start the safety net — the loop that notices a task nobody is going to touch again
     # (spec 001 FR-056 → FR-069).
     app.state.container.stall_watchdog.start()
+    # Start the clock that forgets a run's log once it is past its keeping (FR-050). Its own
+    # loop and its own setting: the working directory on a machine is cleared for the machine's
+    # reasons, and this is the record people read months later to answer what an agent did.
+    app.state.container.trace_retention.start()
     yield
+    await app.state.container.trace_retention.stop()
     await app.state.container.stall_watchdog.stop()
     await app.state.container.orchestrator.stop()
     await app.state.container.daemon_claims.stop_sweep()

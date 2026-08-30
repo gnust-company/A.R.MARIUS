@@ -113,4 +113,10 @@ class RunEvent:
     original_byte_size: int | None = None
     omission_reason: str | None = None
     redacted: bool = False
+    # When the line above only carries the opening of something long, this names the payload
+    # key the rest belongs to, and how big the whole of it is (FR-049). Not an omission: the
+    # rest is kept and can be asked for, which is exactly what tells it apart from the two
+    # reasons above — one where the rest never left the machine, one where it never existed.
+    full_field: str | None = None
+    full_byte_size: int | None = None
     created_at: datetime | None = None

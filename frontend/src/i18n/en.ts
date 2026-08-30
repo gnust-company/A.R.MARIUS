@@ -630,6 +630,17 @@ export const en = {
       needsDependencies: 'a dependency is still unfinished',
     },
   },
+  runTrace: {
+    title: 'Run log',
+    count: '{{count}} events',
+    live: 'live',
+    everything: 'everything',
+    loading: 'Opening the log…',
+    nothing: 'No events match this filter.',
+    openTheWhole: 'Open the whole of it ({{bytes}} bytes)',
+    foldItBack: 'Fold it back',
+    openFullLog: 'Open the full log',
+  },
   collaborationRoom: {
     acceptance: {
       title: 'Output acceptance',
@@ -1037,6 +1048,7 @@ export const en = {
     not_a_github_url: 'That does not look like a GitHub URL.',
     github_error: 'GitHub returned {{status}}: {{reason}}',
     github_unreachable: 'GitHub could not be reached: {{reason}}',
+    run_event_full_text_not_found: 'That event has nothing kept apart from it — its payload is already the whole thing.',
     tool_result_not_summarised: 'A tool result must arrive summarised, never whole. Send its size, its type and the opening bytes.',
   },
   language: {

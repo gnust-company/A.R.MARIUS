@@ -79,6 +79,7 @@ from armarius.infrastructure.daemon.cleanup import (
     forget_claims_of_runs,
     forget_workspace,
 )
+from armarius.infrastructure.daemon.models import RunEventBlobModel
 from armarius.infrastructure.database.models import (
     ArtifactModel,
     ChecklistItemModel,
@@ -1569,15 +1570,77 @@ class SqlRunEventRepository(RunEventRepository):
         await self._s.flush()
         return event
 
-    async def list_by_run(self, run_id: UUID) -> Sequence[RunEvent]:
-        rows = (
-            await self._s.execute(
-                select(RunEventModel)
-                .where(RunEventModel.run_id == run_id)
-                .order_by(RunEventModel.seq)
+    async def list_by_run(
+        self,
+        run_id: UUID,
+        *,
+        types: Sequence[str] | None = None,
+        after_seq: int | None = None,
+        limit: int | None = None,
+    ) -> Sequence[RunEvent]:
+        """A run's events in order, and what each of them is only the opening of.
+
+        The outer join is what keeps the list one query. Asking per row whether that row has a
+        full copy is a thousand round trips on a run with a thousand events, and the answer is
+        two small columns — a name and a number — so it costs nothing to carry them along. The
+        text itself is not selected: it is the whole point of this table that it stays put
+        until somebody asks for one (FR-049).
+        """
+        query = (
+            select(RunEventModel, RunEventBlobModel.field, RunEventBlobModel.byte_size)
+            .outerjoin(RunEventBlobModel, RunEventBlobModel.run_event_id == RunEventModel.id)
+            .where(RunEventModel.run_id == run_id)
+            .order_by(RunEventModel.seq)
+        )
+        if types:
+            query = query.where(RunEventModel.type.in_(list(types)))
+        if after_seq is not None:
+            query = query.where(RunEventModel.seq > after_seq)
+        if limit is not None:
+            query = query.limit(limit)
+        rows = (await self._s.execute(query)).all()
+        return [
+            mappers.run_event_to_entity(
+                event, full=(field, size) if field is not None else None
             )
-        ).scalars().all()
-        return [mappers.run_event_to_entity(m) for m in rows]
+            for event, field, size in rows
+        ]
+
+    async def forget_before(self, cutoff: datetime) -> int:
+        """Drop aged-out events, children first (FR-050).
+
+        The blobs go before the events they hang off: the foreign key has no cascade of its
+        own, on purpose and everywhere in this schema, so the order is written down here rather
+        than inherited from whichever database happens to be running.
+        """
+        doomed = select(RunEventModel.id).where(RunEventModel.created_at < cutoff)
+        await self._s.execute(
+            delete(RunEventBlobModel).where(RunEventBlobModel.run_event_id.in_(doomed))
+        )
+        swept = await self._s.execute(
+            delete(RunEventModel).where(RunEventModel.created_at < cutoff)
+        )
+        return swept.rowcount or 0
+
+    async def full_text(self, run_id: UUID, seq: int) -> tuple[str, str, int] | None:
+        """The whole of one event's long field.
+
+        Reached through its own run rather than by blob id: the id would be a second name for
+        a thing the caller already has a name for, and a name nobody can check against the run
+        they were allowed to read (FR-051, Constitution I).
+        """
+        found = (
+            await self._s.execute(
+                select(
+                    RunEventBlobModel.field,
+                    RunEventBlobModel.content,
+                    RunEventBlobModel.byte_size,
+                )
+                .join(RunEventModel, RunEventModel.id == RunEventBlobModel.run_event_id)
+                .where(RunEventModel.run_id == run_id, RunEventModel.seq == seq)
+            )
+        ).first()
+        return (found[0], found[1], found[2]) if found is not None else None
 
 
 class SqlArtifactRepository(ArtifactRepository):

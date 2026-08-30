@@ -33,6 +33,7 @@ from armarius.application.use_cases.stall_watchdog import StallWatchdog
 from armarius.application.use_cases.task_log import TaskLogService
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.threads import ThreadService
+from armarius.application.use_cases.trace_retention import TraceRetention
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.application.use_cases.workspace_agent import WorkspaceAgentService
 from armarius.application.use_cases.workspaces import WorkspaceService
@@ -75,6 +76,8 @@ class Container:
     orchestrator: OrchestrationLoop
     push_reasons: PushReasonService
     stall_watchdog: StallWatchdog
+    #: The clock that forgets a run's log once it is past its keeping (FR-050).
+    trace_retention: TraceRetention
     recovery: RecoveryEscalator
     inbox: InboxService
     labels: LabelService
@@ -241,6 +244,12 @@ def build_container() -> Container:
         # in-process path uses (FR-046). One channel, so a run carried out on somebody's
         # machine and a run carried out here are watched the same way.
         on_recorded=task_trace.publish,
+        # The run's own channel, beside the task's. A person reading one run's log while it
+        # happens is subscribed here, and until this existed only the in-process adapter fed
+        # it — so a run on a real machine wrote a full record and streamed nothing (FR-046).
+        on_run_event=lambda run_id, seq, event_type, payload: event_bus.publish(
+            run_id, {"type": event_type, "seq": seq, "payload": payload}
+        ),
         # And the end of a run handed to the layer that decides what a task does next — the
         # follow-up wake above all, which is what stops a finished run leaving a task with
         # nothing scheduled to look at it again (FR-030a).
@@ -307,6 +316,7 @@ def build_container() -> Container:
     # drive and hands what it finds to the recovery ladder. Detection and recovery are
     # split because detection has to keep working even when every recovery route is
     # broken — that is the failure it exists to survive.
+    trace_retention = TraceRetention(uow_factory)
     stall_watchdog = StallWatchdog(
         uow_factory,
         push_reasons,
@@ -352,6 +362,7 @@ def build_container() -> Container:
         orchestrator=orchestrator,
         push_reasons=push_reasons,
         stall_watchdog=stall_watchdog,
+        trace_retention=trace_retention,
         recovery=recovery,
         inbox=inbox,
         labels=LabelService(uow_factory),

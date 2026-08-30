@@ -60,10 +60,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from armarius.application.ports.work_packet import SkillBundle, WorkPacket
 from armarius.domain.entities.project import ProjectStatus
 from armarius.domain.entities.run import RunStatus
+from armarius.infrastructure.daemon import event_blobs
 from armarius.infrastructure.daemon.enrollment import MachineIdentity
 from armarius.infrastructure.daemon.models import (
     MachineModel,
     RunClaimModel,
+    RunEventBlobModel,
     WorkplaceModel,
 )
 from armarius.infrastructure.daemon.run_auth import hash_run_token
@@ -183,7 +185,7 @@ def refuse_whole_tool_results(events: Sequence[ReportedEvent]) -> None:
 
 
 
-def _about_the_record(event: ReportedEvent) -> dict:
+def _about_the_record(event: ReportedEvent, apart: tuple[str, int] | None = None) -> dict:
     """What a live viewer needs to draw *something is missing here* as it happens (FR-046).
 
     The same four facts the stored row keeps in columns, carried under underscored names because
@@ -203,6 +205,12 @@ def _about_the_record(event: ReportedEvent) -> dict:
         said["_omission_reason"] = event.omission_reason
     if event.redacted:
         said["_redacted"] = True
+    if apart is not None:
+        # Said here too, and not only in the stored row, for the reason the whole function
+        # exists: a run watched live and the same run read afterwards must not offer different
+        # things. Without this the *open the whole of it* handle appears only on reload, which
+        # reads as the text having arrived late rather than as it having been there all along.
+        said["_full_field"], said["_full_byte_size"] = apart
     return said
 
 
@@ -218,6 +226,7 @@ class DaemonClaimService:
         on_offer: Callable[[UUID, UUID], Awaitable[None]] | None = None,
         compose: Callable[[UUID], Awaitable[WorkPacket | None]] | None = None,
         on_recorded: Callable[[UUID, str, dict], Awaitable[None]] | None = None,
+        on_run_event: Callable[[UUID, int, str, dict], Awaitable[None]] | None = None,
         on_finish: Callable[..., Awaitable[None]] | None = None,
     ) -> None:
         self._sessionmaker = sessionmaker
@@ -240,6 +249,7 @@ class DaemonClaimService:
         # as the others: publishing to a channel is not this layer's business, and nothing
         # under `daemon/` may reach upwards (Constitution III).
         self._on_recorded = on_recorded
+        self._on_run_event = on_run_event
         # Told that a run is over, so the task gets a live drive again without waiting for a
         # sweep (FR-030a). What *closing a run* means — the follow-up wake, the pair handed
         # back, the recovery ladder — is entirely the business layer's, and none of it can be
@@ -353,7 +363,7 @@ class DaemonClaimService:
         # the length of the read. Out here the swap has already committed, so the worst a
         # slow or failing dress can do is give a run back — never hand the same one out
         # twice.
-        return await self._dress(granted)
+        return await self._dress(granted, machine.workspace_id)
 
     async def _workplaces_of(
         self,
@@ -535,7 +545,9 @@ class DaemonClaimService:
 
     # ── dressing it ──────────────────────────────────────────────────────────────
 
-    async def _dress(self, granted: Sequence[GrantedRun]) -> list[GrantedRun]:
+    async def _dress(
+        self, granted: Sequence[GrantedRun], workspace_id: UUID
+    ) -> list[GrantedRun]:
         """Give each run its message and its skills, and write the message down.
 
         Composing and recording are one step with one outcome, because a run is only
@@ -547,7 +559,7 @@ class DaemonClaimService:
             return list(granted)
         dressed: list[GrantedRun] = []
         for run in granted:
-            made = await self._packet_for(run.run_id)
+            made = await self._packet_for(run.run_id, workspace_id)
             if made is None:
                 await self._give_back(run.run_id)
                 continue
@@ -565,7 +577,9 @@ class DaemonClaimService:
             )
         return dressed
 
-    async def _packet_for(self, run_id: UUID) -> tuple[WorkPacket, int] | None:
+    async def _packet_for(
+        self, run_id: UUID, workspace_id: UUID
+    ) -> tuple[WorkPacket, int] | None:
         """One run's packet, written down on the way past. None if either half failed.
 
         Swallowing the failure and answering None rather than raising: from here there is
@@ -584,13 +598,13 @@ class DaemonClaimService:
             logger.warning("there is nothing to say to an agent about run %s", run_id)
             return None
         try:
-            written_at = await self._record(run_id, packet.prompt)
+            written_at = await self._record(run_id, packet.prompt, workspace_id)
         except Exception:
             logger.exception("could not write down the message sent for run %s", run_id)
             return None
         return packet, written_at
 
-    async def _record(self, run_id: UUID, prompt: str) -> int:
+    async def _record(self, run_id: UUID, prompt: str, workspace_id: UUID) -> int:
         """Keep the message, whole, as the run's first event, and say where it sits.
 
         Written from here rather than sent back by whoever runs the agent (FR-012a, FR-042):
@@ -604,26 +618,44 @@ class DaemonClaimService:
         a message composed afresh, so *first* is not always one; the number is returned rather
         than assumed for exactly that reason.
 
-        The size is recorded beside it even though nothing is cut yet. When the split into
-        a preview and a full copy arrives (FR-049), the runs written before it should still
-        be able to say how big they were.
+        The size is recorded beside it whether or not anything was cut, so that *how long was
+        the message* is one column rather than a question about which branch was taken.
+
+        A long message is kept in two pieces (FR-049): an opening slice here, the whole of it
+        in `run_event_blobs`. A message is the one thing on this side that is routinely long —
+        it carries the task, the skills and the standing instructions — and it is also the one
+        thing a person reads in full when they want to know why an agent did what it did.
         """
         async with self._sessions()() as session:
             highest = await session.scalar(
                 select(func.max(RunEventModel.seq)).where(RunEventModel.run_id == run_id)
             )
             seq = (highest or 0) + 1
+            event_id = uuid4()
+            split = event_blobs.split(
+                PROMPT_EVENT, {"prompt": prompt}, settings.run_event_inline_bytes
+            )
             session.add(
                 RunEventModel(
-                    id=uuid4(),
+                    id=event_id,
                     run_id=run_id,
                     seq=seq,
                     type=PROMPT_EVENT,
-                    payload={"prompt": prompt},
+                    payload=split.payload,
+                    truncated=split.was_cut,
                     original_byte_size=len(prompt.encode("utf-8")),
                     created_at=self._clock(),
                 )
             )
+            if split.was_cut:
+                # The event row goes down first: see the note in `record` — a foreign key on
+                # its own does not make one insert wait for another.
+                await session.flush()
+                session.add(
+                    event_blobs.keeping(
+                        run_event_id=event_id, workspace_id=workspace_id, split=split
+                    )
+                )
             await session.commit()
         return seq
 
@@ -729,23 +761,58 @@ class DaemonClaimService:
                 ).scalars()
             )
             fresh = [event for event in events if event.seq not in already]
+            # What has a second half, held back until the rows it hangs off are in. A bare
+            # foreign key does not order a flush — only a mapped relationship does, and this
+            # schema has none by design — so adding a child beside its parent leaves the order
+            # to chance, and chance loses on PostgreSQL every time.
+            apart: list[RunEventBlobModel] = []
+            #: seq → (which key has more, how much of it there is), for the live push below.
+            more: dict[int, tuple[str, int]] = {}
             for event in fresh:
+                event_id = uuid4()
+                # Long enough to be worth keeping in two pieces? Only three kinds of event
+                # can be, and a tool result is never one of them (FR-049, FR-043a).
+                split = event_blobs.split(
+                    event.type, dict(event.payload), settings.run_event_inline_bytes
+                )
                 session.add(
                     RunEventModel(
-                        id=uuid4(),
+                        id=event_id,
                         run_id=run_id,
                         seq=event.seq,
                         type=event.type,
-                        payload=dict(event.payload),
-                        truncated=event.truncated,
-                        original_byte_size=event.original_byte_size,
+                        payload=split.payload,
+                        # `or`, not `=`: the machine may already have cut this for its own
+                        # reason, and a cut here does not undo one made there.
+                        truncated=event.truncated or split.was_cut,
+                        # Only when something was actually cut. A size on an event that is
+                        # whole would put one on nearly every row, and then *has a size*
+                        # stops meaning *there is more of this* — which is the one thing a
+                        # reader uses it for.
+                        original_byte_size=(
+                            event.original_byte_size
+                            if event.original_byte_size is not None
+                            else (split.byte_size if split.was_cut else None)
+                        ),
                         omission_reason=event.omission_reason,
                         redacted=event.redacted,
                         created_at=now,
                     )
                 )
+                if split.was_cut:
+                    more[event.seq] = (split.field, split.byte_size)
+                    apart.append(
+                        event_blobs.keeping(
+                            run_event_id=event_id,
+                            workspace_id=machine.workspace_id,
+                            split=split,
+                        )
+                    )
             if not fresh:
                 return
+            if apart:
+                await session.flush()
+                session.add_all(apart)
             # The one column outside this module's own tables that a run's events touch, and
             # it has to be touched here: it is what the silence rules read to tell a run that
             # is working from one that has stopped (FR-030, FR-056).
@@ -766,32 +833,43 @@ class DaemonClaimService:
                 await session.rollback()
                 return
 
-        await self._show(task_id, run_id, fresh)
+        await self._show(task_id, run_id, fresh, more)
 
     async def _show(
-        self, task_id: UUID | None, run_id: UUID, events: Sequence[ReportedEvent]
+        self,
+        task_id: UUID | None,
+        run_id: UUID,
+        events: Sequence[ReportedEvent],
+        more: dict[int, tuple[str, int]] | None = None,
     ) -> None:
-        """Put what was just written in front of anyone watching the task (FR-046).
+        """Put what was just written in front of anyone watching (FR-046).
 
         Best effort, and after the commit. A screen that cannot be told is a screen that
         refreshes a moment later; a write that fails because a screen could not be told is
         work lost. The run's identity travels in the payload so a client that both replays
         the stream and reads the stored log can tell the overlap apart by identity.
+
+        **Two channels, because two screens ask different questions.** The task channel is the
+        collaboration room: *what is happening on this piece of work*, across every run it has
+        had. The run channel is one run's own log, and it is the one a person opens to answer
+        *what did this agent do* — so a run with no task still has to feed it, and a run being
+        watched live has to show the same thing the stored log will show afterwards. Wired
+        separately for the same reason they are separate: neither may fall silent because the
+        other did.
         """
-        if task_id is None or self._on_recorded is None:
-            return
         for event in events:
-            with contextlib.suppress(Exception):
-                await self._on_recorded(
-                    task_id,
-                    event.type,
-                    {
-                        **event.payload,
-                        **_about_the_record(event),
-                        "_run_id": str(run_id),
-                        "_seq": event.seq,
-                    },
-                )
+            said = {
+                **event.payload,
+                **_about_the_record(event, (more or {}).get(event.seq)),
+                "_run_id": str(run_id),
+                "_seq": event.seq,
+            }
+            if task_id is not None and self._on_recorded is not None:
+                with contextlib.suppress(Exception):
+                    await self._on_recorded(task_id, event.type, said)
+            if self._on_run_event is not None:
+                with contextlib.suppress(Exception):
+                    await self._on_run_event(run_id, event.seq, event.type, said)
 
     async def finish(
         self,

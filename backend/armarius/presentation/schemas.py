@@ -751,7 +751,21 @@ class RunEventOut(_Out):
     original_byte_size: int | None = None
     omission_reason: str | None = None
     redacted: bool = False
+    # The rest of a long field, kept apart and fetched on demand (FR-049). A *fourth* state
+    # beside the three above and deliberately not one of them: nothing is missing here, it is
+    # simply not in this response. Null means the payload is whole.
+    full_field: str | None = None
+    full_byte_size: int | None = None
     created_at: datetime | None = None
+
+
+class RunEventFullOut(_Out):
+    """The whole of one long field, asked for by the one screen that wants it (FR-049)."""
+
+    seq: int
+    field: str
+    byte_size: int
+    content: str
 
 
 class RunStartedOut(BaseModel):
