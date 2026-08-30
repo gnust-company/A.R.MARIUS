@@ -471,3 +471,49 @@ token sống lâu không bao giờ chết được — T039d đứng vĩnh viễ
 
 **Alternatives considered**: đúc một loại token thứ ba sống bằng đúng buổi phỏng vấn. Bỏ vì FR-014a nói
 thẳng hệ thống chỉ có hai loại, và một ngoại lệ cho một màn hình là cách một luật bắt đầu mục ruỗng.
+
+---
+
+## 13. Model và mức suy nghĩ — Multica hỏi runtime, không tra bảng (chốt 2026-08-29)
+
+**Decision**: danh sách model và mức suy nghĩ **hỏi chỗ làm**, và mỗi danh sách nói rõ **nó chắc đến đâu**.
+Bảng tên model cho tool không liệt kê được thì **được phép nằm ở daemon**, cấm ở server (FR-007k, sửa
+2026-08-29).
+
+**Nguồn**: [multica.ai/docs/agents-create](https://multica.ai/docs/agents-create),
+[multica.ai/docs/agents](https://multica.ai/docs/agents), đọc 2026-08-29. Nguyên văn:
+
+> *"Each runtime already maps to one AI coding tool. After picking a runtime, you can pick a model and
+> thinking level **the tool supports**."*
+> *"Some tools expose a **fixed set of model names**; others return available models based on **local
+> configuration, the signed-in account, and subscription entitlements**."*
+> *"If the list is empty, confirm the runtime is online and the tool is signed in, then **refresh** the
+> model list."*
+> *"Left blank, the runtime or local CLI default applies."*
+
+**Rationale**: đây là câu trả lời cho một chỗ đặc tả ta tự viết vào ngõ cụt. FR-007k bản đầu cấm "bảng chép
+cứng theo tên CLI" mà không nói cấm ở đâu — mà đo `claude 2.1.226` thì **không có đường liệt kê model**:
+`--model` chỉ in ví dụ, không lệnh con nào liệt kê, `config list` đòi tương tác. Đọc chặt thì FR-007k tự mâu
+thuẫn với chính CLI đầu tiên của đợt. Multica tách được nút ấy: bảng nằm ở **phía máy**, chỗ nhìn thấy tool
+đã cài và tài khoản đang đăng nhập, còn server thì không giữ bảng nào — đúng Điều III.
+
+**Đo được, và tốt hơn ta tưởng**: cả hai danh sách của Claude Code ra thẳng từ binary, **không cần bảng nào
+cả**.
+
+| Thiết lập | Cách tool khai | Đọc ra |
+| --- | --- | --- |
+| mức suy nghĩ | `--effort <level>` … `(low, medium, high, xhigh, max)` | **bộ đủ** — giá trị ngoài nó bị từ chối |
+| model | `--model <model>` … `(e.g. 'fable', 'opus', or 'sonnet')` | **ví dụ** — nhận cả giá trị người dùng tự gõ |
+
+**Ba luật kế thừa thêm**, FR-007k bản đầu chưa có:
+
+- **danh sách rỗng là trạng thái hợp lệ** kèm lý do đọc được, không phải lỗi;
+- **số lựa chọn khác nhau theo tool** — Codex có thêm *service tier*, nên chỗ chứa phải theo thứ tool khai
+  ra, không phải hai cột đúng tên;
+- Multica **xoá** model/mức nghĩ/hạng khi agent bị ép sang runtime khác, *"those three are cleared and must
+  be re-selected"*. Ta **không cần** luật này: FR-007 buộc agent vào đúng một chỗ làm suốt đời, không có
+  đường đổi (T077 đã chốt). Ghi ra để sau này ai định mở đường đổi thì biết còn món nợ này.
+
+**Alternatives considered**: *ô nhập tự do cho model* — đơn giản nhất, bỏ vì người dùng gõ sai thì lượt chạy
+hỏng lúc khởi chạy chứ không hỏng lúc chọn. *Để task đứng tới khi có CLI liệt kê được* — bỏ vì mức suy nghĩ
+đã liệt kê được ngay, và chặn cả hai vì một nửa là bỏ phí nửa đo được.

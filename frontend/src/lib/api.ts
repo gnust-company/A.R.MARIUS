@@ -468,6 +468,20 @@ export interface WorkplaceChoiceDTO {
   cli_kind: string
   /** The machine's own name. Without it, the same CLI on two machines is two identical rows. */
   machine_name: string
+  /** What may be set on an agent put here, as this workplace's tool answered it (FR-007k). */
+  options?: PlacementOptionDTO[]
+}
+
+/** One setting a person may pick for an agent, and what the tool behind this workplace takes.
+ *
+ *  `source` decides how it is rendered, and the difference is not cosmetic: a complete set is
+ *  a closed list, while examples are suggestions beside a box the person may type into.
+ *  Rendering the second as the first refuses a perfectly good value on the day the tool gains
+ *  one more. */
+export interface PlacementOptionDTO {
+  key: string
+  values: string[]
+  source: 'tool_declared' | 'tool_examples' | 'known_names' | string
 }
 
 export async function listWorkplaces(workspaceId: string): Promise<WorkplaceChoiceDTO[]> {
@@ -526,6 +540,9 @@ export interface InviteMariusBody {
   /** Where this agent will work. Required and fixed for life — an agent is never moved
    *  to another workplace afterwards (FR-007, FR-007f). */
   workplace_id: string
+  /** What was picked out of what that workplace said its tool takes (FR-007k). A key it never
+   *  offered, or a value outside a set it stated in full, is refused by the server. */
+  runtime_options?: Record<string, string>
   /** Seat the newcomer as Workspace Agent on creation; a sitting host is demoted (#32). */
   is_workspace_agent?: boolean
 }

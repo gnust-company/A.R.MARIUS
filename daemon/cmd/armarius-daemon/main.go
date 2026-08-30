@@ -447,15 +447,16 @@ func grantsFrom(granted []client.GrantedRun) []supervisor.Grant {
 			skills = append(skills, execenv.Skill{Name: skill.Name, Files: skill.Files})
 		}
 		grants = append(grants, supervisor.Grant{
-			RunID:       run.RunID,
-			TaskID:      run.TaskID,
-			ProjectID:   run.ProjectID,
-			WorkplaceID: run.WorkplaceID,
-			RunToken:    run.RunToken,
-			Expires:     run.ClaimExpiresAt,
-			Prompt:      run.Prompt,
-			Skills:      skills,
-			FirstSeq:    run.FirstSeq,
+			RunID:          run.RunID,
+			TaskID:         run.TaskID,
+			ProjectID:      run.ProjectID,
+			RuntimeOptions: run.RuntimeOptions,
+			WorkplaceID:    run.WorkplaceID,
+			RunToken:       run.RunToken,
+			Expires:        run.ClaimExpiresAt,
+			Prompt:         run.Prompt,
+			Skills:         skills,
+			FirstSeq:       run.FirstSeq,
 		})
 	}
 	return grants

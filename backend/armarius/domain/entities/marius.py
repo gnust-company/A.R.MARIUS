@@ -83,6 +83,20 @@ class Marius:
     # never one this entity quietly makes for it (FR-040a).
     adapter_type: str = ""
     adapter_config: dict = field(default_factory=dict)
+    # What the person picked for this agent out of what the **place it works at** offers
+    # (FR-007k): `{"model": "opus", "thinking_level": "high"}`.
+    #
+    # Named for the placement, not for the thing on the far side of it. This layer is not
+    # allowed to know that where an agent works is a CLI on a machine (Điều III), so it is not
+    # allowed to call these settings a *runtime's* either — `test_constitution_guards` catches
+    # the word, and it was right to: the first draft of this field called them exactly that.
+    #
+    # **One place, not a column per setting.** Which settings exist is the tool's answer, not
+    # ours — Claude Code takes a model and an effort level, Codex adds a service tier — so two
+    # named columns would give the third nowhere to go and buy a second migration the day it
+    # is asked for. An absent key is not the same as an empty one and both are legal: absent
+    # means the person never chose, and the tool's own default applies (FR-007k).
+    placement_options: dict = field(default_factory=dict)
     owner_user_id: str | None = None
     agent_token: str | None = None
     # Invite lifecycle (LLD §3.4) — operator-invite: invited → approved (no enroll/approve).

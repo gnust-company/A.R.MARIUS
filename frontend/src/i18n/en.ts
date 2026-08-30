@@ -309,6 +309,16 @@ export const en = {
     workplacePlaceholder: 'Choose where this agent works',
     workplaceOption: '{{cliKind}} on {{machineName}}',
     workplaceHint: 'The agent works here for life and cannot be moved later. If the workplace stops working the agent goes offline; nothing reassigns it to another machine.',
+    // What a workplace's tool takes, asked of the tool itself (FR-007k). The labels are here
+    // rather than sent from the server, so the person reads them in their own language even
+    // though the keys that travel are codes (Hiến pháp VI, VII).
+    option: {
+      model: 'Model',
+      thinking_level: 'Thinking level',
+      service_tier: 'Service tier',
+    },
+    optionDefault: "The tool's own default",
+    optionHint: 'Offered by the workplace you picked, as its tool answered for itself. Leave it alone to use whatever that tool defaults to.',
     workplaceNone: 'No workplace is ready yet.',
     workplaceNoneHint: 'Run the daemon on your machine and link it to this workspace. Once it reports an agent CLI it can run, the workplace appears here.',
     instructions: 'Instructions',
@@ -951,6 +961,9 @@ export const en = {
     task_reopen_needs_reason: 'Reopening a closed task must say why.',
     task_stalled_cannot_finish: 'A task flagged as stalled cannot be moved to done — clear the flag first.',
     task_needs_artifact: 'A published artifact must be linked before review or done.',
+    // FR-007k — what may be set on an agent is the workplace's answer, not the caller's.
+    placement_option_unknown: 'This workplace offers no setting called {{option}}.',
+    placement_option_value_unsupported: 'This workplace does not accept {{value}} for {{option}}.',
     task_needs_signatures: 'A task closes only with both signatures.',
     task_needs_signatures_named: 'A task closes only with both signatures — still missing: {{missing}}.',
     task_criteria_unmet: 'A task closes only when every acceptance criterion has passed.',

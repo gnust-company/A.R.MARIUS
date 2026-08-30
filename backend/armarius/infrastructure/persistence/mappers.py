@@ -158,6 +158,7 @@ def marius_to_entity(m: MariusModel) -> Marius:
         skill_ids=[str(x) for x in (m.skill_ids or [])],
         adapter_type=m.adapter_type,
         adapter_config=dict(m.adapter_config or {}),
+        placement_options=dict(m.runtime_options or {}),
         owner_user_id=m.owner_user_id,
         agent_token=m.agent_token,
         invite_status=InviteStatus(m.invite_status) if m.invite_status else InviteStatus.INVITED,

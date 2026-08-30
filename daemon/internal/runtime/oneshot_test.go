@@ -386,3 +386,75 @@ echo '`+doneLine+`'`)
 		t.Fatalf("cho phép một thứ không ai trao: %q", got)
 	}
 }
+
+func TestWhatThePersonPickedReachesTheCLIAsItsOwnFlags(t *testing.T) {
+	// FR-007k, chặng cuối. Server gửi xuống **tên chung** (`model`, `thinking_level`); chỉ
+	// bên này biết CLI ấy gọi chúng là `--model` và `--effort`. Hai cái tên trong bảng đây là
+	// đúng hai cái cờ phép dò đã đọc dải giá trị ra — đọc danh sách ở một chỗ rồi tiêu ở chỗ
+	// khác là cách một màn hình bày ra thiết lập chẳng áp vào đâu.
+	seen := filepath.Join(t.TempDir(), "args")
+	cli := fakeCLI(t, `echo "$@" > `+seen+`
+echo '`+doneLine+`'`)
+
+	_, _, err := aTurn(t, Request{
+		Binary:  cli,
+		Options: map[string]string{"model": "opus", "thinking_level": "high"},
+	})
+	if err != nil {
+		t.Fatalf("chạy một lượt: %v", err)
+	}
+
+	got := readFile(t, seen)
+	if !strings.Contains(got, "--model opus") {
+		t.Fatalf("model người dùng chọn không tới CLI: %q", got)
+	}
+	if !strings.Contains(got, "--effort high") {
+		t.Fatalf("mức nghĩ người dùng chọn không tới CLI: %q", got)
+	}
+}
+
+func TestASettingThisCLIHasNoFlagForIsDroppedRatherThanGuessedAt(t *testing.T) {
+	// Chỗ làm khai gì thì người dùng chọn nấy, nhưng binary trên máy có thể đã bị thay bằng
+	// bản nhận ít cờ hơn. Chạy trên mặc định vẫn hơn từ chối khởi chạy — và đoán một cái cờ
+	// thì CLI từ chối start, cả lượt chạy hỏng vì một thiết lập không ai cần tới.
+	seen := filepath.Join(t.TempDir(), "args")
+	cli := fakeCLI(t, `echo "$@" > `+seen+`
+echo '`+doneLine+`'`)
+
+	if _, _, err := aTurn(t, Request{
+		Binary:  cli,
+		Options: map[string]string{"service_tier": "priority", "model": ""},
+	}); err != nil {
+		t.Fatalf("chạy một lượt: %v", err)
+	}
+
+	got := readFile(t, seen)
+	if strings.Contains(got, "service_tier") || strings.Contains(got, "priority") {
+		t.Fatalf("bịa ra một cái cờ cho thiết lập CLI này không có: %q", got)
+	}
+	if strings.Contains(got, "--model") {
+		t.Fatalf("bỏ trống mà vẫn truyền cờ — mất mặc định của chính CLI: %q", got)
+	}
+}
+
+func TestTheSameChoicesProduceTheSameCommandLineTwice(t *testing.T) {
+	// Một lượt chạy không dựng lại được từ chính bản ghi của nó là một lượt chạy không ai gỡ
+	// rối được. Thứ tự duyệt map trong Go là ngẫu nhiên, nên đây không phải chuyện thẩm mỹ.
+	seen := filepath.Join(t.TempDir(), "args")
+	cli := fakeCLI(t, `echo "$@" >> `+seen+`
+echo '`+doneLine+`'`)
+	options := map[string]string{"model": "opus", "thinking_level": "high"}
+
+	for range 6 {
+		if _, _, err := aTurn(t, Request{Binary: cli, Options: options}); err != nil {
+			t.Fatalf("chạy một lượt: %v", err)
+		}
+	}
+
+	lines := strings.Split(strings.TrimSpace(readFile(t, seen)), "\n")
+	for i, line := range lines {
+		if line != lines[0] {
+			t.Fatalf("lượt %d ra dòng lệnh khác lượt đầu:\n%q\n%q", i, lines[0], line)
+		}
+	}
+}

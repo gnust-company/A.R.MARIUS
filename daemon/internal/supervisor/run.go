@@ -247,6 +247,7 @@ func (o RunOptions) prepare(grant Grant, place Workplace) (runtime.Request, stri
 		Message:     grant.Prompt,
 		ToolConfig:  tools.ConfigFile,
 		ToolServers: tools.Servers,
+		Options:     grant.RuntimeOptions,
 		// Empty until the daemon keeps session state of its own (FR-023, task T109). A CLI
 		// handed no handle opens a new conversation, which is the supported answer rather
 		// than a failure (FR-025).

@@ -38,6 +38,10 @@ type Grant struct {
 	// fetched once it arrives, so that by the time the agent reads its first line everything
 	// it was granted is already on disk (FR-011b, FR-011c).
 	Skills []execenv.Skill
+	// RuntimeOptions is what a person chose for this agent — a model, how hard to think, and
+	// whatever else the tool at this workplace said it takes (FR-007k). Carried by name, not
+	// as flags: only the runtime knows how its own CLI spells them.
+	RuntimeOptions map[string]string
 	// FirstSeq is the number this machine gives the first event it produces for this run
 	// (FR-045). Chosen by the server, which owns the log and already has things written in
 	// it — the message this run was given, and any earlier hand-out of the same run.

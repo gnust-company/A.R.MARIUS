@@ -46,6 +46,12 @@ type GrantedRun struct {
 	// fetched afterwards, so that by the time the agent reads its first line everything it
 	// was granted is already on disk (FR-011b).
 	Skills []GrantedSkill `json:"skills"`
+
+	// RuntimeOptions is what the person set on this agent, out of what this workplace said its
+	// CLI takes (FR-007k). The keys are the server's names for the settings, not this CLI's
+	// flags — turning one into the other is the runtime's job, and doing it here would put
+	// knowledge of a particular CLI in the part that only carries bytes.
+	RuntimeOptions map[string]string `json:"runtime_options"`
 	// FirstSeq is the number this machine gives the first event it produces (FR-045).
 	//
 	// The server says it because the server owns the log: the message this run was given is

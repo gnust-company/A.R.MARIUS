@@ -19,6 +19,13 @@ Options:
                                         "text" (default), "json" (single
                                         result), or "stream-json" (realtime
                                         streaming)
+  --effort <level>                      Effort level for the current session
+                                        (low, medium, high, xhigh, max)
+  --model <model>                       Model for the current session. Provide
+                                        an alias for the latest model (e.g.
+                                        'fable', 'opus', or 'sonnet') or a
+                                        model's full name (e.g.
+                                        'claude-fable-5')
 `
 
 func askedWith(printed string, err error) Options {
@@ -119,5 +126,97 @@ func TestEveryFoundCLIGetsAskedInOrder(t *testing.T) {
 	}
 	if !got[1].Resumable {
 		t.Error("the one-shot one was asked and answered")
+	}
+}
+
+// ── what a person may pick per agent (T039g, FR-007k, FR-017) ────────────────
+
+func choiceOf(got Capabilities, key string) (Choice, bool) {
+	for _, c := range got.Choices {
+		if c.Key == key {
+			return c, true
+		}
+	}
+	return Choice{}, false
+}
+
+func TestWhatAPersonMayPickComesOutOfTheBinaryAndNotOffItsName(t *testing.T) {
+	// FR-007k cấm dựng danh sách từ một bảng chép cứng theo tên CLI. Bài này là chỗ luật ấy
+	// thành thật: cùng một `Kind`, cùng một đường dẫn, chỉ khác **thứ binary in ra** — và
+	// danh sách phải khác theo.
+	found := Found{Kind: KindClaudeCode, Family: FamilyOneShot, Path: "/usr/bin/claude"}
+
+	got := Probe(context.Background(), found, askedWith(claudeHelp, nil))
+
+	effort, offered := choiceOf(got, ChoiceThinkingLevel)
+	if !offered {
+		t.Fatalf("nó in ra --effort kèm cả dải giá trị mà không ai đọc: %+v", got.Choices)
+	}
+	if effort.Source != SourceToolDeclared {
+		t.Errorf("dải đóng ngoặc là tool nói **hết** bộ, không phải ví dụ: %q", effort.Source)
+	}
+	want := []string{"low", "medium", "high", "xhigh", "max"}
+	if len(effort.Values) != len(want) {
+		t.Fatalf("mức nghĩ đọc ra %v, mong %v", effort.Values, want)
+	}
+	for i, value := range want {
+		if effort.Values[i] != value {
+			t.Fatalf("mức nghĩ đọc ra %v, mong %v", effort.Values, want)
+		}
+	}
+
+	model, offered := choiceOf(got, ChoiceModel)
+	if !offered {
+		t.Fatalf("nó có --model kèm ví dụ mà không ai đọc: %+v", got.Choices)
+	}
+	if model.Source != SourceToolExamples {
+		t.Errorf("ba cái tên trong ngoặc là **ví dụ**, khai thành cả bộ là nói hộ tool: %q", model.Source)
+	}
+	// Đúng ba alias trong nhóm ngoặc đầu tiên. `claude-fable-5` nằm ở nhóm ngoặc **thứ hai**
+	// và không được lọt vào: nó là một tên đầy đủ của hôm nay, bày lên màn là bày một phiên
+	// bản sẽ cũ đi.
+	if len(model.Values) != 3 {
+		t.Fatalf("model đọc ra %v — mong đúng ba alias ở nhóm ngoặc đầu", model.Values)
+	}
+	for _, value := range model.Values {
+		if value == "claude-fable-5" {
+			t.Fatalf("vớ luôn tên đầy đủ ở nhóm ngoặc thứ hai: %v", model.Values)
+		}
+	}
+}
+
+func TestATOOLThatSaysNothingAboutASettingIsOfferedNoneRatherThanAnEmptyOne(t *testing.T) {
+	// Hai thứ trông giống nhau trên màn và nghĩa ngược nhau: *tool này không có thiết lập ấy*
+	// và *có mà không ai đọc nổi giá trị*. Chỉ cái thứ nhất đúng ở đây, nên chỉ nó được hiện.
+	found := Found{Kind: KindClaudeCode, Family: FamilyOneShot, Path: "/usr/bin/claude"}
+	bare := "Usage: claude [options]\n\nOptions:\n  -r, --resume [value]   Resume\n"
+
+	got := Probe(context.Background(), found, askedWith(bare, nil))
+
+	if len(got.Choices) != 0 {
+		t.Fatalf("không in ra thiết lập nào mà vẫn khai: %+v", got.Choices)
+	}
+}
+
+func TestABracketedAsideThatIsNotAListIsNotReadAsOne(t *testing.T) {
+	// Ngoặc đơn trong trợ giúp phần lớn là câu văn, không phải danh sách. Đọc bừa một câu
+	// thành các lựa chọn là bày ra thứ tool chưa từng nói.
+	found := Found{Kind: KindClaudeCode, Family: FamilyOneShot, Path: "/usr/bin/claude"}
+	prose := "Usage: claude\n\nOptions:\n  --effort <level>   Effort level (only works with --print)\n"
+
+	got := Probe(context.Background(), found, askedWith(prose, nil))
+
+	if _, offered := choiceOf(got, ChoiceThinkingLevel); offered {
+		t.Fatalf("đọc một câu văn thành dải giá trị: %+v", got.Choices)
+	}
+}
+
+func TestACLIThatCouldNotBeAskedOffersNothingToPick(t *testing.T) {
+	found := Found{Kind: KindClaudeCode, Family: FamilyOneShot, Path: "/usr/bin/claude"}
+
+	got := Probe(context.Background(), found, askedWith("", errors.New("nope")))
+
+	if len(got.Choices) != 0 {
+		t.Fatalf("hỏi không được mà vẫn bày ra lựa chọn: %+v", got.Choices)
 	}
 }

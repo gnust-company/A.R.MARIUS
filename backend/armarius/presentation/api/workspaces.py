@@ -23,6 +23,7 @@ from armarius.presentation.schemas import (
     ManualSkillIn,
     MariusCreatedOut,
     MariusOut,
+    PlacementOptionOut,
     RegisterMariusIn,
     ResidentAgentOut,
     RunOut,
@@ -151,7 +152,15 @@ async def list_workplaces(
     offered = await container.daemon_workplaces.list_ready(workspace_id)
     return [
         WorkplaceChoiceOut(
-            id=one.id, cli_kind=one.cli_kind, machine_name=one.machine_name
+            id=one.id,
+            cli_kind=one.cli_kind,
+            machine_name=one.machine_name,
+            options=[
+                PlacementOptionOut(
+                    key=option.key, values=list(option.values), source=str(option.source.value)
+                )
+                for option in one.options
+            ],
         )
         for one in offered
     ]
@@ -203,6 +212,9 @@ async def create_marius(
         description=body.description,
         skills=body.skills,
         skill_ids=body.skill_ids,
+        # Renamed on the way in: the caller says *runtime*, the business layer says what it
+        # is allowed to know about — the place this agent works (Điều III).
+        placement_options=body.runtime_options,
         owner_user_id=str(user.id),
     )
     if body.is_workspace_agent:

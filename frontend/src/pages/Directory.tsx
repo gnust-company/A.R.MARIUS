@@ -371,7 +371,13 @@ export default function Directory() {
   // that is true at the moment of choosing, not one cached from an earlier visit.
   const [workplaces, setWorkplaces] = useState<WorkplaceChoice[]>([]);
   const [workplaceId, setWorkplaceId] = useState('');
+  // What the person picked out of what the chosen workplace offers (FR-007k). Keyed by the
+  // server's name for each setting, never by a flag: this screen has no idea that one of them
+  // becomes `--effort` on the machine, and it must not learn.
+  const [runtimeOptions, setRuntimeOptions] = useState<Record<string, string>>({});
   const [workplacesLoading, setWorkplacesLoading] = useState(false);
+  // The workplace currently picked, and therefore what it says its tool takes (FR-007k).
+  const chosenWorkplace = workplaces.find((w) => w.id === workplaceId);
   // Why a refused invite was refused. The workplace list was true when this form opened;
   // a CLI uninstalled a minute later makes the chosen one stale, and the server says so in
   // a coded refusal. Swallowing it would leave the person clicking a button that does
@@ -428,6 +434,7 @@ export default function Directory() {
     setAgentDescription('');
     setWorkplaces([]);
     setWorkplaceId('');
+    setRuntimeOptions({});
     setInviteError('');
     setSelectedSkillIds([]);
     setMakeWorkspaceAgent(false);
@@ -462,6 +469,11 @@ export default function Directory() {
         description: agentDescription.trim(),
         workplaceId,
         skillIds: selectedSkillIds,
+        // Only what was actually chosen. A blank travelling as an empty string would be a
+        // key the server has to reason about, when what it means is *nothing was picked*.
+        runtimeOptions: Object.fromEntries(
+          Object.entries(runtimeOptions).filter(([, value]) => value !== ''),
+        ),
         isWorkspaceAgent: makeWorkspaceAgent,
       });
       setInviteModalOpen(false);
@@ -739,7 +751,14 @@ export default function Directory() {
                 ) : (
                   <select
                     value={workplaceId}
-                    onChange={(e) => setWorkplaceId(e.target.value)}
+                    onChange={(e) => {
+                      setWorkplaceId(e.target.value);
+                      // The settings belong to the **workplace**, not to the agent: two
+                      // workplaces offer different ones, and a value carried over from the
+                      // last pick would be a setting the new one never offered — refused by
+                      // the server at the far end of a form the person thought was filled in.
+                      setRuntimeOptions({});
+                    }}
                     className={cn(
                       'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
                       'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
@@ -759,6 +778,66 @@ export default function Directory() {
                 )}
                 <p className="mt-1 text-[11px] text-[#A89880]">{t('directory.workplaceHint')}</p>
               </div>
+
+              {/* What this workplace's tool takes, as the tool itself answered it (FR-007k,
+                  FR-017). Nothing here is keyed on which CLI it is: the list arrives with the
+                  workplace, and a workplace that offered none simply shows nothing. */}
+              {chosenWorkplace?.options.map((option) => (
+                <div key={option.key}>
+                  <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
+                    {t(`directory.option.${option.key}`, { defaultValue: option.key })}
+                  </label>
+                  {option.source === 'tool_examples' ? (
+                    // The tool named a few by way of example and did not claim they are all,
+                    // so this is a box with suggestions beside it. Offering them as the only
+                    // three would refuse a real model the day a fourth ships.
+                    <>
+                      <input
+                        type="text"
+                        list={`option-${option.key}`}
+                        value={runtimeOptions[option.key] ?? ''}
+                        onChange={(e) =>
+                          setRuntimeOptions((was) => ({ ...was, [option.key]: e.target.value }))
+                        }
+                        placeholder={t('directory.optionDefault')}
+                        className={cn(
+                          'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
+                          'placeholder:text-[#A89880]',
+                          'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+                          'transition-all'
+                        )}
+                      />
+                      <datalist id={`option-${option.key}`}>
+                        {option.values.map((value) => (
+                          <option key={value} value={value} />
+                        ))}
+                      </datalist>
+                    </>
+                  ) : (
+                    <select
+                      value={runtimeOptions[option.key] ?? ''}
+                      onChange={(e) =>
+                        setRuntimeOptions((was) => ({ ...was, [option.key]: e.target.value }))
+                      }
+                      className={cn(
+                        'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
+                        'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+                        'transition-all'
+                      )}
+                    >
+                      {/* Blank stays a real choice: FR-007k says an unset setting means the
+                          tool's own default, so the person must be able to get back to it. */}
+                      <option value="">{t('directory.optionDefault')}</option>
+                      {option.values.map((value) => (
+                        <option key={value} value={value}>
+                          {value}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <p className="mt-1 text-[11px] text-[#A89880]">{t('directory.optionHint')}</p>
+                </div>
+              ))}
 
               {/* What the agent is told to be (FR-007i). This is the whole of how it
                   behaves: there is no per-project role adding to it later. */}

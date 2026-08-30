@@ -63,6 +63,7 @@ class AgentService:
         instructions: str = "",
         description: str = "",
         adapter_type: str = "echo",
+        placement_options: dict[str, str] | None = None,
         skills: list[str] | None = None,
         skill_ids: list[str] | None = None,
         owner_user_id: str | None = None,
@@ -99,6 +100,12 @@ class AgentService:
                     "placement_not_ready",
                     reason=placement.not_ready_reason or "unknown",
                 )
+            # What may be set on an agent is the **place's** answer, not the caller's
+            # (FR-007k). Checked here rather than only where the screen builds its lists: a
+            # screen rendered from the same data keeps an honest person right, and only this
+            # keeps everybody right.
+            chosen = {k: v for k, v in (placement_options or {}).items()}
+            placement.refuse_unchosen(chosen)
 
             marius = Marius(
                 workspace_id=workspace_id,
@@ -108,6 +115,7 @@ class AgentService:
                 skills=skills or [],
                 skill_ids=skill_ids or [],
                 adapter_type=adapter_type,
+                placement_options=chosen,
                 owner_user_id=owner_user_id,
                 created_at=now,
                 updated_at=now,

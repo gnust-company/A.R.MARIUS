@@ -116,6 +116,17 @@ export interface WorkplaceChoice {
   id: string
   cliKind: string
   machineName: string
+  /** What may be set on an agent put here (FR-007k). Empty is ordinary and means this
+   *  workplace offers nothing to choose — its agents run on the tool's own defaults. */
+  options: PlacementOption[]
+}
+
+/** One setting a person picks for an agent, and what this workplace's tool takes for it. */
+export interface PlacementOption {
+  key: string
+  values: string[]
+  /** `tool_declared` is a closed list; anything else is a suggestion the person may go past. */
+  source: string
 }
 
 export interface Marius {
@@ -486,6 +497,9 @@ interface AppStoreState {
     /** Where this agent works — chosen once, never changed afterwards (FR-007). */
     workplaceId: string
     skillIds: string[]
+    /** What was picked out of what the chosen workplace offers (FR-007k). Left out means the
+     *  tool's own default applies. */
+    runtimeOptions?: Record<string, string>
     /** Seat the newcomer as Workspace Agent; a sitting host is demoted, kept (#32). */
     isWorkspaceAgent?: boolean
   }) => Promise<{ agent: Marius }>
@@ -583,7 +597,16 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   listWorkplaces: async () => {
     const workspaceId = get().activeWorkspaceId || 'w1'
     const rows = await api.listWorkplaces(workspaceId)
-    return rows.map((r) => ({ id: r.id, cliKind: r.cli_kind, machineName: r.machine_name }))
+    return rows.map((r) => ({
+      id: r.id,
+      cliKind: r.cli_kind,
+      machineName: r.machine_name,
+      options: (r.options ?? []).map((o) => ({
+        key: o.key,
+        values: o.values ?? [],
+        source: o.source,
+      })),
+    }))
   },
 
   inviteNewAgent: async ({
@@ -592,6 +615,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     description,
     workplaceId,
     skillIds,
+    runtimeOptions,
     isWorkspaceAgent,
   }) => {
     const workspaceId = get().activeWorkspaceId || 'w1'
@@ -608,6 +632,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       skills: skillNames,
       skill_ids: skillIds,
       workplace_id: workplaceId,
+      runtime_options: runtimeOptions ?? {},
       is_workspace_agent: isWorkspaceAgent ?? false,
     })
     const agent: Marius = {

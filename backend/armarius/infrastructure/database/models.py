@@ -140,6 +140,10 @@ class MariusModel(Base):
     skills: Mapped[list] = mapped_column(JSON, default=list)
     adapter_type: Mapped[str] = mapped_column(String(80))
     adapter_config: Mapped[dict] = mapped_column(JSON, default=dict)
+    # What the person picked out of what this agent's workplace said its tool takes (FR-007k).
+    # One column rather than one per setting: the set of settings belongs to the tool, and
+    # Codex already has a third that Claude Code does not.
+    runtime_options: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     skill_ids: Mapped[list] = mapped_column(JSON, default=list)
     # Per-skill install state (post-invite loop #74): slug → pending|installed|failed.
     owner_user_id: Mapped[str | None] = mapped_column(String(200))

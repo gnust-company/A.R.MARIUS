@@ -691,7 +691,11 @@ class WakeEngine:
                 return None
             prompt = await self._assemble(uow, run, task, marius, credential_hint=False)
 
-        return WorkPacket(prompt=prompt, skills=await self._bundles(marius))
+        return WorkPacket(
+            prompt=prompt,
+            skills=await self._bundles(marius),
+            placement_options=tuple(sorted((marius.placement_options or {}).items())),
+        )
 
     async def _bundles(self, marius: Marius) -> tuple[SkillBundle, ...]:
         """This agent's granted skills, whole, and **only** this agent's (FR-007b).

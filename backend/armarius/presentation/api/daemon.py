@@ -218,6 +218,9 @@ class GrantedRunOut(BaseModel):
     # not compose any of it, and it does not send it back.
     prompt: str = ""
     skills: list[SkillOut] = Field(default_factory=list)
+    # What this agent was set to, out of what its workplace said its tool takes (FR-007k).
+    # The machine turns these into whatever its CLI wants; this side never learns how.
+    runtime_options: dict[str, str] = Field(default_factory=dict)
     # Where this machine numbers its own events from (FR-045). Everything already written for
     # this run sits below it — the message above all — so the pair (run, number) stays unique
     # even for a run that was put back and handed out a second time.
@@ -414,6 +417,7 @@ async def claim_runs(
                 claim_expires_at=g.claim_expires_at,
                 prompt=g.prompt,
                 skills=[SkillOut(name=b.name, files=b.files) for b in g.skills],
+                runtime_options=dict(g.runtime_options),
                 first_seq=g.first_seq,
             )
             for g in granted

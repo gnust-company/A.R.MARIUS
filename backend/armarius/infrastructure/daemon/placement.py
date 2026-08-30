@@ -16,7 +16,11 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from armarius.domain.entities.placement import Placement
+from armarius.domain.entities.placement import (
+    OptionSource,
+    Placement,
+    PlacementOption,
+)
 from armarius.domain.repositories.repositories import PlacementRepository
 from armarius.infrastructure.daemon.models import (
     AgentWorkplaceBindingModel,
@@ -65,6 +69,7 @@ class SqlPlacementRepository(PlacementRepository):
             workspace_id=row.workspace_id,
             ready=row.ready,
             not_ready_reason=row.not_ready_reason,
+            options=options_of(row),
         )
 
     async def attach(
@@ -163,3 +168,46 @@ def _at_least(moment: datetime) -> datetime:
     if moment.tzinfo is None:
         return moment.replace(tzinfo=UTC)
     return moment
+
+
+def options_of(row: WorkplaceModel) -> tuple[PlacementOption, ...]:
+    """What a person may choose for an agent put at this workplace (FR-007k, FR-017).
+
+    Read straight out of what the daemon reported the CLI answered. **Nothing here is keyed
+    on the CLI's name** — this function would return the same thing for a kind of tool that
+    did not exist when it was written, which is the whole of FR-017's ban on deciding a
+    tool's abilities from its name.
+
+    Anything malformed is dropped rather than repaired. The column is written by a program on
+    somebody else's machine, so it is data from outside; a half-understood entry offered to a
+    person as a choice is worse than one that never appears, because they would pick it.
+    """
+    declared = row.capabilities or {}
+    if not isinstance(declared, dict):
+        return ()
+    offered = declared.get("choices")
+    if not isinstance(offered, list):
+        return ()
+
+    options: list[PlacementOption] = []
+    for one in offered:
+        if not isinstance(one, dict):
+            continue
+        key = one.get("key")
+        if not isinstance(key, str) or not key:
+            continue
+        raw = one.get("values")
+        values = tuple(v for v in raw if isinstance(v, str) and v) if isinstance(raw, list) else ()
+        try:
+            source = OptionSource(one.get("source"))
+        except ValueError:
+            # A source this build does not know is treated as the careful reading: values
+            # are suggestions, and nothing is refused for being outside them. Guessing the
+            # other way would refuse a legitimate value on the strength of a word we could
+            # not read.
+            source = OptionSource.EXAMPLES
+        if not values:
+            # A setting with nothing to pick from is not a setting anybody can pick.
+            continue
+        options.append(PlacementOption(key=key, values=values, source=source))
+    return tuple(options)
