@@ -6,9 +6,12 @@ make and a response to assert. These three are different: they are rules about t
 again. A one-off review catches the line that exists today; a check that runs with the
 suite catches the one written next month.
 
-Reading the frontend from a pytest file is deliberate. The repo has no JS test runner, and
-adding one to host three assertions would cost more than it guards. If a runner ever
-arrives, these three move.
+Reading the frontend from a pytest file is deliberate, and it stays that way now that
+`frontend/` does have a runner (T142). These checks are about **one** rule each, held on
+both sides of the wire — the codes the server can send against the phrases the screen has
+for them, the layers that must not name a runtime against the screens that must not hold a
+Vietnamese string. Splitting one rule across two suites means half of it can go red in a
+place the other half's author is not looking.
 
   * III — Trung lập adapter (FR-083)   → no runtime branching in domain/ or application/
   * III — Trung lập adapter (FR-035/037) → those layers never learn *where* work runs either
@@ -346,6 +349,10 @@ _SCREENS_UNDER_THE_RULE = (
     "pages/ProjectPlan.tsx",
     "pages/Projects.tsx",
     "pages/Roster.tsx",
+    # spec 002 — the log of one run (T102, T104). Added the moment the screen existed: the
+    # phrases were written in `vi.ts` from the first commit, and this is what keeps the next
+    # line added to it from being written in place.
+    "pages/RunTrace.tsx",
 )
 
 _QUOTED = re.compile(r"'((?:[^'\\\n]|\\.)*)'|\"((?:[^\"\\\n]|\\.)*)\"")
