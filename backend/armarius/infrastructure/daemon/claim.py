@@ -188,15 +188,22 @@ def refuse_whole_tool_results(events: Sequence[ReportedEvent]) -> None:
 
 
 
+#: How much url-safe text has to follow one of our prefixes before it counts as a credential
+#: rather than a name. `secrets.token_urlsafe(32)` is 43 characters, so this leaves three to
+#: spare — narrow on purpose in the other direction too: a guard that also fired on
+#: `armd_config_name` would cost a batch of a run's log for a variable name, and since T141 a
+#: refused batch is a batch dropped for good (FR-045).
+#:
+#: Three characters is not much margin, and the margin is not obvious from here — it lives in
+#: an argument to `token_urlsafe` two hundred lines below. `test_secret_redaction.py` asserts
+#: the property directly (*a token this system mints is one this guard recognises*), so
+#: shortening the token is a named failure rather than a door that quietly stops closing.
+CREDENTIAL_TAIL_FLOOR = 40
+
 # One of this system's own credentials, arriving somewhere it was never meant to be.
-#
-# Anchored on the two prefixes this server mints with and on the length of what follows them:
-# `secrets.token_urlsafe(32)` is 43 characters of url-safe alphabet, so forty is a floor no
-# identifier reaches. Deliberately narrow — a shape guard that also fires on `armd_config_name`
-# would cost a batch of a run's log for a variable name, and a refused batch is a batch dropped
-# (FR-045, T141).
 _OUR_CREDENTIALS = re.compile(
-    rf"(?:{re.escape(RUN_TOKEN_PREFIX)}|{re.escape(MACHINE_TOKEN_PREFIX)})[A-Za-z0-9_-]{{40,}}"
+    rf"(?:{re.escape(RUN_TOKEN_PREFIX)}|{re.escape(MACHINE_TOKEN_PREFIX)})"
+    rf"[A-Za-z0-9_-]{{{CREDENTIAL_TAIL_FLOOR},}}"
 )
 
 
