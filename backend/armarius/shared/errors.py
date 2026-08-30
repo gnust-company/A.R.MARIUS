@@ -311,6 +311,12 @@ ENGLISH: dict[str, str] = {
         "A tool result must arrive summarised, never whole. Send its size, its type and the "
         "opening bytes."
     ),
+    # Said to a machine, so it is said in English (Constitution VII) and it names what to do:
+    # the masking is the machine's job and it did not happen (FR-048).
+    "credential_in_the_clear": (
+        "This batch carries a credential in the clear. Mask secrets on the machine before "
+        "sending them."
+    ),
 }
 
 
