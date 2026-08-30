@@ -114,6 +114,28 @@ func TestAValueNamedAsACredentialIsMaskedWhateverItLooksLike(t *testing.T) {
 	}
 }
 
+func TestAValueTooShortToBeACredentialIsNeverSearchedFor(t *testing.T) {
+	// Ngưỡng 12 ký tự là thứ giữ cho lưới không nuốt cả bản ghi. Hạ nó xuống thì một "abc"
+	// nào đó lọt vào danh sách và mọi chữ chứa "abc" thành [redacted] — bản ghi không đọc nổi
+	// là bản ghi không ai đọc, tức là mất đúng thứ FR-044 dựng ra.
+	//
+	// Không có bài kiểm thì ngưỡng ấy đổi được mà không ai thấy, và cái hỏng chỉ lộ ra ở một
+	// bản ghi thật của một lượt chạy thật.
+	m := For("abc", "run", "0123456789")
+	plain := "abc ran the run at 0123456789 and printed abcdef"
+
+	masked, changed := m.Text(plain)
+	if changed || masked != plain {
+		t.Fatalf("bí mật quá ngắn vẫn bị tìm, chữ bình thường bị che theo: %q", masked)
+	}
+
+	// Và ngay trên ngưỡng thì vẫn che, để bài này không xanh chỉ vì `For` bỏ hết mọi thứ.
+	long := "armarius_run_x"
+	if got, hidden := For(long).Text("token " + long); !hidden || strings.Contains(got, long) {
+		t.Fatalf("giá trị đủ dài lại không được che: %q", got)
+	}
+}
+
 func TestOrdinaryTextIsLeftAloneSoTheLogStaysReadable(t *testing.T) {
 	// Một lưới che quá tay biến bản ghi thành giấy vụn, và bản ghi không đọc nổi là bản ghi
 	// không ai đọc — tức là mất đúng thứ FR-044 dựng ra.
