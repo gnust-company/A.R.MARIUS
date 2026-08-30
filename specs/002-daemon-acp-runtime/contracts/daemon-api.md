@@ -291,19 +291,34 @@ Gửi theo lô, trong lúc đang chạy (FR-015).
 ```json
 → { "events": [
       { "seq": 12, "type": "tool.started",
-        "payload": { "name": "read_file", "args": { … } },      ← toàn văn tham số
+        "payload": { "call": "toolu_1", "name": "read_file", "args": { … } },   ← toàn văn tham số
         "redacted": true },
-      { "seq": 13, "type": "tool.finished",
-        "payload": { "name": "read_file", "summary": "text/plain, 4821 bytes, 3 dòng đầu: …" },
+      { "seq": 13, "type": "tool.completed",
+        "payload": { "call": "toolu_1", "failed": false,
+                     "bytes": 4821, "kind": "text", "opening": "…" },
         "truncated": true, "original_byte_size": 4821,
-        "omission_reason": "truncated_by_policy" }
+        "omission_reason": "truncated_by_policy" },
+      { "seq": 14, "type": "tool.completed",
+        "payload": { "call": "toolu_2", "failed": false },
+        "omission_reason": "not_exposed_by_cli" }
     ] }
-← 200 { "accepted_through": 13 }
+← 200 {}
 ```
+
+**Bản rút gọn của một kết quả** gồm `bytes` (kích thước **trước** khi che và cắt), `kind` khi CLI
+nói, và `opening` — phần đầu cắt theo ngưỡng. Tên khoá tránh `content`/`result`/`output`/`stdout`/
+`stderr`/`body`/`data`: server từ chối cả lô nếu thấy một trong số đó, hoặc nếu payload của một
+`tool.completed` vượt 4096 bytes.
+
+**Bốn trường ngoài payload** nói về *bản ghi*, không về việc đã xảy ra, nên chúng nằm cạnh payload
+chứ không trong: người đọc hỏi *chỗ nào bị cắt* mà không phải mở từng payload. Cả bốn đều bỏ được —
+một daemon bản cũ gửi đúng số bytes như trước, và sự kiện của nó lưu lại đúng như nó vốn thế.
 
 **Ràng buộc cứng**:
 - **Toàn văn kết quả công cụ không bao giờ có mặt trong body này** (FR-043a). Chỉ bản rút gọn.
 - Che bí mật đã làm **xong ở phía daemon** trước khi gửi (FR-048). Server không che hộ.
+- `omission_reason` chỉ nhận `truncated_by_policy` hoặc `not_exposed_by_cli`; giá trị khác bị từ
+  chối **ở cửa** (422). Một chuỗi tự do ở đây là một màn hình phải đoán (FR-047).
 - `seq` tăng đơn điệu trong một lượt chạy, không trùng (FR-045).
 
 ### `POST /daemon/runs/{run_id}/finish`

@@ -100,4 +100,17 @@ class RunEvent:
     seq: int = 0
     type: str = ""  # run.started | assistant.delta | tool.started | ...
     payload: dict = field(default_factory=dict)
+    # Why this event is short, and whether anything was taken out of it before it was written
+    # down. Four facts about the *record*, not about the thing that happened, which is why they
+    # sit beside the payload rather than inside it: a reader asking "show me where something is
+    # missing" should not have to open every payload and guess at a shape that differs per type.
+    #
+    # None of them is inferable from here. A summary that was cut correctly looks exactly like a
+    # short answer that never needed cutting, and text with a secret masked out of it looks
+    # exactly like text that never had one — so whichever side did the cutting and the masking
+    # has to say so, and this is where what it said is kept (FR-043b, FR-047, FR-048).
+    truncated: bool = False
+    original_byte_size: int | None = None
+    omission_reason: str | None = None
+    redacted: bool = False
     created_at: datetime | None = None

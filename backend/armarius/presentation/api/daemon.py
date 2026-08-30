@@ -250,6 +250,18 @@ class EventIn(BaseModel):
     type: str = Field(min_length=1, max_length=60)
     payload: dict[str, object] = Field(default_factory=dict)
 
+    # Why the payload is short, and whether something was taken out of it, in fields of their
+    # own rather than buried inside it (FR-043b, FR-047, FR-048). Only the machine can say any
+    # of this truthfully: it cut and it masked, and from here a summary that was cut correctly
+    # is indistinguishable from a small result that never needed cutting.
+    #
+    # All four default, so a daemon built before them sends the same bytes it always did and
+    # its events store as what they are — untouched.
+    truncated: bool = False
+    original_byte_size: int | None = Field(default=None, ge=0)
+    omission_reason: Literal["truncated_by_policy", "not_exposed_by_cli"] | None = None
+    redacted: bool = False
+
 
 class EventsIn(BaseModel):
     events: list[EventIn] = Field(default_factory=list, max_length=500)
@@ -459,7 +471,15 @@ async def record_run_events(
         machine,
         run_id,
         [
-            ReportedEvent(seq=e.seq, type=e.type, payload=dict(e.payload))
+            ReportedEvent(
+                seq=e.seq,
+                type=e.type,
+                payload=dict(e.payload),
+                truncated=e.truncated,
+                original_byte_size=e.original_byte_size,
+                omission_reason=e.omission_reason,
+                redacted=e.redacted,
+            )
             for e in body.events
         ],
     )
