@@ -47,6 +47,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import re
 import secrets
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
@@ -61,7 +62,7 @@ from armarius.application.ports.work_packet import SkillBundle, WorkPacket
 from armarius.domain.entities.project import ProjectStatus
 from armarius.domain.entities.run import RunStatus
 from armarius.infrastructure.daemon import event_blobs
-from armarius.infrastructure.daemon.enrollment import MachineIdentity
+from armarius.infrastructure.daemon.enrollment import MACHINE_TOKEN_PREFIX, MachineIdentity
 from armarius.infrastructure.daemon.models import (
     MachineModel,
     RunClaimModel,
@@ -78,7 +79,9 @@ from armarius.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
-_TOKEN_PREFIX = "armr_run_"
+#: How a run token starts. Public for the same reason the machine one is: the shape has to
+#: be recognisable at the door.
+RUN_TOKEN_PREFIX = "armr_run_"
 
 # The durable record of what an agent was told (FR-012a, FR-042). Its own event type rather
 # than a field on the lifecycle event beside it: this is the one thing in a run's log that
@@ -183,6 +186,43 @@ def refuse_whole_tool_results(events: Sequence[ReportedEvent]) -> None:
         if len(json.dumps(event.payload, default=str).encode("utf-8")) > MAX_TOOL_RESULT_BYTES:
             raise BadRequest("tool_result_not_summarised")
 
+
+
+# One of this system's own credentials, arriving somewhere it was never meant to be.
+#
+# Anchored on the two prefixes this server mints with and on the length of what follows them:
+# `secrets.token_urlsafe(32)` is 43 characters of url-safe alphabet, so forty is a floor no
+# identifier reaches. Deliberately narrow — a shape guard that also fires on `armd_config_name`
+# would cost a batch of a run's log for a variable name, and a refused batch is a batch dropped
+# (FR-045, T141).
+_OUR_CREDENTIALS = re.compile(
+    rf"(?:{re.escape(RUN_TOKEN_PREFIX)}|{re.escape(MACHINE_TOKEN_PREFIX)})[A-Za-z0-9_-]{{40,}}"
+)
+
+
+def refuse_our_own_credentials(events: Sequence[ReportedEvent]) -> None:
+    """Refuse a batch carrying one of this system's tokens in the clear (FR-048, SC-015).
+
+    Masking belongs on the machine and stays there: the daemon is handed the run's token and
+    the machine's, so it masks those two by **value**, which is exact rather than a guess
+    (FR-048). This is the second copy of the rule, in the T098 shape — what makes SC-015 true
+    of the **store** rather than of one program's good behaviour. A daemon on an old build, a
+    daemon somebody patched, and a machine token used by something that is not a daemon at all
+    all arrive here, and none of them masked anything.
+
+    This side cannot do it by value: it keeps only hashes, and there is nothing to compare a
+    payload against. So it is done by shape, on the two prefixes it mints itself — the one
+    class of secret whose shape this side actually knows.
+
+    Refusing rather than masking, and the difference matters. Masking here would put the rule
+    on the server, which FR-048 says it must not be; and a payload quietly rewritten in transit
+    makes the log say a thing the agent did not say. A refusal is loud: the machine drops the
+    batch for good and confesses `events_refused` (T141), so the run's log carries a line
+    saying a batch never arrived rather than a line that has been edited.
+    """
+    for event in events:
+        if _OUR_CREDENTIALS.search(json.dumps(event.payload, default=str)):
+            raise BadRequest("credential_in_the_clear")
 
 
 def _about_the_record(event: ReportedEvent, apart: tuple[str, int] | None = None) -> dict:
@@ -523,7 +563,7 @@ class DaemonClaimService:
 
         granted: list[GrantedRun] = []
         for claim, task_id, project_id in rows:
-            token = f"{_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
+            token = f"{RUN_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
             claim.run_token_hash = hash_run_token(token)
             granted.append(
                 GrantedRun(
@@ -738,6 +778,7 @@ class DaemonClaimService:
         if not events:
             return
         refuse_whole_tool_results(events)
+        refuse_our_own_credentials(events)
 
         now = self._clock()
         async with self._sessions()() as session:
@@ -768,6 +809,10 @@ class DaemonClaimService:
             apart: list[RunEventBlobModel] = []
             #: seq → (which key has more, how much of it there is), for the live push below.
             more: dict[int, tuple[str, int]] = {}
+            # What the live push says, which has to be what the stored row says — the opening
+            # slice, not the whole. A viewer reads one run from two roads (this push while it
+            # runs, the stored log afterwards) and the two must not describe it differently.
+            shown: list[ReportedEvent] = []
             for event in fresh:
                 event_id = uuid4()
                 # Long enough to be worth keeping in two pieces? Only three kinds of event
@@ -799,6 +844,7 @@ class DaemonClaimService:
                         created_at=now,
                     )
                 )
+                shown.append(replace(event, payload=split.payload))
                 if split.was_cut:
                     more[event.seq] = (split.field, split.byte_size)
                     apart.append(
@@ -833,7 +879,7 @@ class DaemonClaimService:
                 await session.rollback()
                 return
 
-        await self._show(task_id, run_id, fresh, more)
+        await self._show(task_id, run_id, shown, more)
 
     async def _show(
         self,
