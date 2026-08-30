@@ -75,9 +75,27 @@ function formatTime(iso: string): string {
 
 // ─── Trace Event Card ────────────────────────────────────────────────────────
 
+/** A safe i18n key segment: the daemon's codes are snake_case, and anything else is a code this
+ *  screen has never heard of rather than a path into the phrase table. */
+function segment(code: string): string {
+  return /^[a-z0-9_]+$/.test(code) ? code : 'unknown';
+}
+
 function TraceEventCard({ event }: { event: TraceEvent }) {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
   const colors = TRACE_TYPE_COLORS[event.type] || TRACE_TYPE_COLORS['run.delta'];
+
+  // The daemon says what went wrong as a code with its details (Constitution VII); the sentence
+  // is built here, where the reader's language is known. A code this build has no phrase for
+  // still becomes a sentence — showing the raw key would put our own internals on their screen.
+  const said = event.code
+    ? t(`collaborationRoom.trace.error.${segment(event.code)}`, {
+        defaultValue: t('collaborationRoom.trace.error.unknown', { code: event.code }),
+        ...event.codeParams,
+      })
+    : '';
+  const body = event.content || said;
 
   return (
     <motion.div
@@ -122,14 +140,35 @@ function TraceEventCard({ event }: { event: TraceEvent }) {
         </div>
       )}
 
-      {event.content && (
+      {body && (
         <div
           className={cn(
             'font-body text-body-xs text-ink-light leading-relaxed',
             !isExpanded && 'line-clamp-3'
           )}
         >
-          {event.content}
+          {body}
+        </div>
+      )}
+
+      {/* Say what is missing and why, rather than leaving a gap (FR-047). A gap here reads as
+          an agent that called no tools — a different and untrue story. */}
+      {event.omission && (
+        <div className="font-mono text-mono-sm text-ink-muted mt-1">
+          {t(`collaborationRoom.trace.omission.${segment(event.omission.reason)}`, {
+            defaultValue: t('collaborationRoom.trace.omission.unknown'),
+          })}
+          {event.omission.originalBytes !== undefined && (
+            <span className="ml-1">
+              {t('collaborationRoom.trace.omission.size', { bytes: event.omission.originalBytes })}
+            </span>
+          )}
+        </div>
+      )}
+
+      {event.redacted && (
+        <div className="font-mono text-mono-sm text-ink-muted mt-1">
+          {t('collaborationRoom.trace.redacted')}
         </div>
       )}
 

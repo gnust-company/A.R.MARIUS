@@ -16,8 +16,18 @@ export async function loadTaskTrace(taskId: string): Promise<TraceEvent[]> {
   for (const run of runs) {
     const events = await listRunEvents(run.id)
     for (const e of events) {
+      // The whole row, not just its payload. The four fields that say *why this is short* live
+      // beside the payload on this road, so handing over only the payload drops exactly the
+      // part a reader needs to tell a cut result from a small one.
       const mapped = traceEventFromVM(
-        { event_type: e.type, payload: e.payload },
+        {
+          event_type: e.type,
+          payload: e.payload,
+          truncated: e.truncated,
+          original_byte_size: e.original_byte_size,
+          omission_reason: e.omission_reason,
+          redacted: e.redacted,
+        },
         { id: `${run.id}:${e.seq}`, timestamp: e.created_at ?? undefined, taskId },
       )
       if (mapped) out.push(mapped)

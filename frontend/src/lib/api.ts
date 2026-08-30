@@ -360,6 +360,12 @@ export interface RunEventDTO {
   seq: number
   type: string
   payload: Record<string, unknown>
+  // Beside the payload, not inside it: why this row is short, and whether a secret was taken
+  // out of it before it was written down (FR-043b, FR-047, FR-048).
+  truncated?: boolean
+  original_byte_size?: number | null
+  omission_reason?: string | null
+  redacted?: boolean
   created_at?: string | null
 }
 

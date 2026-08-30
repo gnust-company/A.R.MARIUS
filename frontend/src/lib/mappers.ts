@@ -399,7 +399,26 @@ export function traceEventFromVM(
   if (!payload || typeof payload !== 'object') return null
   const p = payload as Record<string, unknown>
 
-  const content = String(p.content ?? p.text ?? p.delta ?? p.message ?? p.error ?? '')
+  // `opening` is the summarised head of a tool result (FR-043a) — the only body a completion
+  // event has, and it is read last so it never shadows a real message field.
+  const content = String(p.content ?? p.text ?? p.delta ?? p.message ?? p.error ?? p.opening ?? '')
+  // The daemon says what went wrong as a code with its details, never as a sentence
+  // (Constitution VII). Reading only the text fields drops those events on the floor: the log
+  // records exactly why a run stopped and the reader is shown a blank. The sentence is built
+  // where the language is known — the card — so what travels from here is the code itself.
+  const code = typeof p.code === 'string' && /^[a-z0-9_]+$/.test(p.code) ? p.code : undefined
+  const codeParams = code ? aboutTheCode(p) : undefined
+  // Why part of this event is missing (FR-043b, FR-047). The same run arrives here two ways and
+  // they do not look alike: the stored log carries these as columns **beside** the payload,
+  // while the live stream folds them **into** it under underscored names — a push has no payload
+  // wrapper to put them beside. Reading one shape only is how a run explains itself after it has
+  // finished and stays silent while it runs, which is the half a person is watching (FR-046).
+  const reason = String(d.omission_reason ?? p._omission_reason ?? '')
+  const originalBytes = Number(d.original_byte_size ?? p._original_byte_size ?? NaN)
+  const omission = reason
+    ? { reason, ...(Number.isFinite(originalBytes) ? { originalBytes } : {}) }
+    : undefined
+  const redacted = Boolean(d.redacted ?? p._redacted)
   const agentId = p.marius_id ? String(p.marius_id) : undefined
   const model = p.model ? String(p.model) : undefined
   const toolName = (p.tool_name ?? p.name ?? p.tool) ? String(p.tool_name ?? p.name ?? p.tool) : undefined
@@ -412,8 +431,11 @@ export function traceEventFromVM(
   if (type === 'assistant.delta' || type === 'run.delta' || type === 'assistant.message') vmType = 'run.delta'
   else if (type === 'assistant.tool' || type === 'run.tool' || type === 'tool.started' || type === 'tool.call' || type === 'tool_call') vmType = 'run.tool'
   else if (type === 'tool.completed' || type === 'tool.result' || type === 'tool_result') {
-    // A completion ack with no textual result is redundant with the call bubble → drop it.
-    if (!content) return null
+    // A completion ack that says nothing is redundant with the call bubble → drop it. But
+    // *saying nothing* and *carrying no prose* are not the same: a completion whose whole point
+    // is that the result was cut, or that this CLI never revealed it, is the one a reader must
+    // not lose — dropping it puts back exactly the gap FR-047 exists to remove.
+    if (!content && !omission) return null
     vmType = 'run.tool'
   } else if (type === 'assistant.usage' || type === 'run.usage' || type === 'run.completed') vmType = 'run.usage'
   else if (type === 'assistant.error' || type === 'run.error') vmType = 'run.error'
@@ -423,7 +445,7 @@ export function traceEventFromVM(
 
   // Kill empty bubbles: an event with nothing renderable is dropped whatever its type
   // (this is what silences the lifecycle noise: run.started/queued/finished, …).
-  const hasBody = Boolean(content || toolName || tokens || args)
+  const hasBody = Boolean(content || toolName || tokens || args || code || omission)
   if (!hasBody) return null
   if (vmType === null) vmType = 'message' // renderable but unknown → generic bubble
 
@@ -444,7 +466,27 @@ export function traceEventFromVM(
     toolName,
     args,
     tokens,
+    code,
+    codeParams,
+    omission,
+    redacted,
   }
+}
+
+/** The details that travel beside an error code, minus the bookkeeping nobody reads.
+ *
+ * Kept as data rather than folded into a string here: the card interpolates them into whichever
+ * sentence the reader's language has, and a sentence assembled at this end would be one language
+ * baked into the mapper. */
+function aboutTheCode(p: Record<string, unknown>): Record<string, unknown> {
+  const said: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(p)) {
+    if (key === 'code' || key.startsWith('_')) continue
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      said[key] = value
+    }
+  }
+  return said
 }
 
 /**
