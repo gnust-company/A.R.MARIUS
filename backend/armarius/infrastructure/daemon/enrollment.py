@@ -52,7 +52,10 @@ _CODE_HALF = 4
 # retry exists so that the unlikely case is a second draw rather than a 500.
 _CODE_ATTEMPTS = 5
 
-_TOKEN_PREFIX = "armd_"
+#: How a machine token starts. Public because the run door has to recognise one arriving
+#: somewhere it never belongs (FR-048), and a second copy of this string is a second copy
+#: to drift.
+MACHINE_TOKEN_PREFIX = "armd_"
 
 
 def _hash_token(token: str) -> str:
@@ -211,7 +214,7 @@ class DaemonEnrollmentService:
             if row.approved_by_user_id is None or row.workspace_id is None:
                 return None
 
-            token = f"{_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
+            token = f"{MACHINE_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
             machine = MachineModel(
                 id=uuid4(),
                 workspace_id=row.workspace_id,
