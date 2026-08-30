@@ -270,6 +270,15 @@ export interface TraceEvent {
   tokens?: { input?: number; output?: number; used?: number; total?: number; prompt?: number; completion?: number }
   toolName?: string
   args?: Record<string, unknown>
+  /** The daemon says what went wrong as a code plus its details, never as a sentence
+   *  (Constitution VII). The sentence is built here, in the reader's own language. */
+  code?: string
+  codeParams?: Record<string, unknown>
+  /** Why part of this event is missing, and how big the whole thing was (FR-043b, FR-047).
+   *  Two reasons that look alike on screen and mean opposite things, so they are kept apart. */
+  omission?: { reason: string; originalBytes?: number }
+  /** A secret was masked out of this event on the user's machine before it left (FR-048). */
+  redacted?: boolean
 }
 
 export interface TaskComment {
