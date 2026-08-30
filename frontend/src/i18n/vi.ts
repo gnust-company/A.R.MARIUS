@@ -658,6 +658,7 @@ export const vi = {
         silence_threshold: 'Agent im lặng quá {{quiet_seconds}} giây nên máy đã dừng lượt chạy này.',
         setup_failed: 'Máy không dựng nổi chỗ làm cho lượt chạy: {{why}}',
         events_dropped: 'Mất {{count}} sự kiện vì máy gửi không kịp.',
+        events_refused: 'Server không nhận {{count}} sự kiện nên bản ghi thiếu chỗ đó.',
         output_unreadable: 'Máy không đọc hết được thứ {{cli}} in ra. Agent vẫn chạy tiếp, chỉ là bản ghi có chỗ hụt.',
         permission_refused_nobody_to_ask: 'Agent xin phép làm một việc, nhưng không có ai ở đây để trả lời nên máy từ chối.',
         session_not_resumed: 'Không nối lại được mạch trò chuyện cũ, nên lượt này bắt đầu mạch mới.',

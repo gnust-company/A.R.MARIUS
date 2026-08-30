@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 )
@@ -172,6 +173,9 @@ func (s Session) Record(ctx context.Context, runID string, events []EventIn) err
 	if status == http.StatusNotFound {
 		return ErrRunNotOurs
 	}
+	if err != nil && refusedForGood(status) {
+		return fmt.Errorf("%w: %w", ErrRefusedForGood, err)
+	}
 	return err
 }
 
@@ -186,6 +190,44 @@ func (s Session) FinishRun(ctx context.Context, runID string, req FinishRequest)
 		return ErrRunNotOurs
 	}
 	return err
+}
+
+// ErrRefusedForGood is the server saying it will not take these bytes — not now and not on the
+// hundredth try, because nothing about the bytes or the server will have changed by then.
+//
+// The distinction it draws is the only one that matters to a retry loop: a call that failed
+// because something was *momentarily* in the way deserves to be made again, and a call that
+// failed because the server read the request and rejected it does not. Sending the second kind
+// again is not resilience — it is asking the same question forever and holding every later
+// event behind the answer.
+var ErrRefusedForGood = errors.New("the server refused this batch and will refuse it again")
+
+// refusedForGood decides which failing statuses are the server's settled answer.
+//
+// The default for a 4xx is *settled*: the client sent something the server read and would not
+// have. Listed here are the exceptions, each because retrying it can genuinely end differently:
+//
+//   - 401 and 403 — this machine's token. It is renewed on a schedule while the daemon runs, so
+//     the same batch under a fresh credential is a different request (FR-062).
+//   - 408, 425 and 429 — the server saying *not now* in as many words. 429 in particular is an
+//     instruction to come back, and treating it as a refusal would throw away events precisely
+//     when the server is asking for patience.
+//
+// 404 never reaches here: it is the run no longer being this machine's, which is neither a
+// refusal of the bytes nor a reason to retry, and it is answered above (FR-059).
+//
+// 5xx is not a refusal either — a server that broke while handling a batch has not read it to
+// the end, and the batch stays in the buffer.
+func refusedForGood(status int) bool {
+	switch status {
+	case http.StatusUnauthorized,
+		http.StatusForbidden,
+		http.StatusRequestTimeout,
+		http.StatusTooEarly,
+		http.StatusTooManyRequests:
+		return false
+	}
+	return status >= 400 && status < 500
 }
 
 // ErrRunNotOurs is the server refusing a write about a run this machine no longer holds
