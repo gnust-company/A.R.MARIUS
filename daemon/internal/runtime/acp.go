@@ -109,15 +109,14 @@ func Converse(ctx context.Context, toAgent io.Writer, fromAgent io.Reader, req R
 	if req.Message == "" {
 		return Outcome{}, fmt.Errorf("refusing to run %s with nothing to say to it", req.CLI)
 	}
-	if emit == nil {
-		emit = func(Event) {}
-	}
+	// One gate for everything this conversation says, so masking and the tool-result cut hold
+	// on this family for the same reason they hold on the other (FR-043a, FR-048a).
 	c := &acpConn{
-		out:   json.NewEncoder(toAgent),
-		in:    newLineReader(fromAgent),
-		emit:  emit,
-		cwd:   req.WorkDir,
-		outID: 0,
+		out:     json.NewEncoder(toAgent),
+		in:      newLineReader(fromAgent),
+		journal: NewJournal(req, emit),
+		cwd:     req.WorkDir,
+		outID:   0,
 	}
 
 	var handshake struct {
@@ -192,10 +191,7 @@ func (c *acpConn) openSession(ctx context.Context, req Request) error {
 		}, nil); err == nil {
 			return nil
 		}
-		c.emit(Event{Type: EventRunError, Payload: map[string]any{
-			"code":    "session_not_resumed",
-			"session": req.Session,
-		}})
+		c.journal.Fail("session_not_resumed", map[string]any{"session": req.Session})
 		c.outcome.Session = ""
 	}
 
@@ -225,7 +221,7 @@ func (c *acpConn) openSession(ctx context.Context, req Request) error {
 type acpConn struct {
 	out     *json.Encoder
 	in      *bufio.Scanner
-	emit    Emit
+	journal *Journal
 	cwd     string
 	outID   int
 	outcome Outcome
@@ -316,7 +312,29 @@ type sessionUpdate struct {
 		Title      string         `json:"title"`
 		Status     string         `json:"status"`
 		RawInput   map[string]any `json:"rawInput"`
+		// RawOutput is what the tool gave back. Left raw so it is read, measured and dropped
+		// here rather than carried anywhere: the whole of it never leaves this machine
+		// (FR-043a), and a field this side decoded into a struct is a field this side is
+		// holding onto.
+		RawOutput json.RawMessage `json:"rawOutput"`
 	} `json:"update"`
+}
+
+// resultIn reads what a tool returned out of an ACP update.
+//
+// Absent is not empty, and this is where that distinction is made for this family: an agent that
+// sends no rawOutput has not told us its tool returned nothing, it has told us nothing (FR-047).
+func resultIn(raw json.RawMessage) Result {
+	if len(raw) == 0 || string(raw) == "null" {
+		return Result{}
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return Result{Exposed: true, Body: text}
+	}
+	// Anything else is structured, and its own JSON is the most faithful rendering of it there
+	// is — no field of it is interpreted, so nothing about its shape is assumed.
+	return Result{Exposed: true, Body: string(raw), Kind: "json"}
 }
 
 func (c *acpConn) notified(msg rpcMessage) {
@@ -330,29 +348,25 @@ func (c *acpConn) notified(msg rpcMessage) {
 
 	switch update.Update.Kind {
 	case "agent_message_chunk":
-		if update.Update.Content.Text != "" {
-			c.emit(Event{Type: EventAssistantMessage, Payload: map[string]any{"text": update.Update.Content.Text}})
-		}
+		c.journal.Text(update.Update.Content.Text)
 	case "agent_thought_chunk":
-		if update.Update.Content.Text != "" {
-			c.emit(Event{Type: EventAssistantThinking, Payload: map[string]any{"text": update.Update.Content.Text}})
-		}
+		c.journal.Thought(update.Update.Content.Text)
 	case "tool_call":
-		payload := map[string]any{"call": update.Update.ToolCallID, "name": update.Update.Title}
 		// Arguments only when the CLI actually sent them. An empty map here would read as *the
 		// tool was called with nothing*, which is a different fact from *this CLI does not say*
 		// — and telling those two apart is the whole of FR-047.
-		if update.Update.RawInput != nil {
-			payload["args"] = update.Update.RawInput
-		}
-		c.emit(Event{Type: EventToolStarted, Payload: payload})
+		c.journal.ToolStarted(
+			update.Update.ToolCallID, update.Update.Title,
+			update.Update.RawInput, update.Update.RawInput != nil,
+		)
 	case "tool_call_update":
 		switch update.Update.Status {
 		case "completed", "failed":
-			c.emit(Event{Type: EventToolCompleted, Payload: map[string]any{
-				"call":   update.Update.ToolCallID,
-				"failed": update.Update.Status == "failed",
-			}})
+			c.journal.ToolCompleted(
+				update.Update.ToolCallID,
+				update.Update.Status == "failed",
+				resultIn(update.Update.RawOutput),
+			)
 		}
 	}
 }
@@ -368,7 +382,7 @@ func (c *acpConn) notified(msg rpcMessage) {
 // own rather than as the missing half of this.
 func (c *acpConn) answer(msg rpcMessage) error {
 	if msg.Method == "session/request_permission" {
-		c.emit(Event{Type: EventRunError, Payload: map[string]any{"code": "permission_refused_nobody_to_ask"}})
+		c.journal.Fail("permission_refused_nobody_to_ask", nil)
 		return c.out.Encode(rpcMessage{
 			JSONRPC: "2.0",
 			ID:      msg.ID,

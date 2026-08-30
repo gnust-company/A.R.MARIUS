@@ -60,6 +60,15 @@ type Request struct {
 	// chose it against what the workplace offered, and if that no longer matches the binary
 	// installed here, refusing to start would be a worse answer than running on the default.
 	Options map[string]string
+	// Secrets are the values this run holds that must never leave the machine inside anything
+	// it says — its own token and this machine's (FR-048, FR-048a). Passed in rather than read
+	// back out of Env, because the guarantee is *these exact strings*, and a list rebuilt by
+	// guessing which variables looked sensitive would be a pattern wearing a guarantee's name.
+	Secrets []string
+	// ResultLimit is how many bytes of a tool result may travel. Zero takes DefaultResultLimit,
+	// which is what an ordinary run wants; the field exists because FR-043a says the threshold
+	// is settable, and a threshold nobody can reach is not one.
+	ResultLimit int
 }
 
 // Event is one thing that happened while the agent worked.
@@ -69,6 +78,23 @@ type Request struct {
 type Event struct {
 	Type    string
 	Payload map[string]any
+
+	// What follows is about the record rather than about the thing that happened, which is why
+	// it sits beside the payload instead of inside it: the store keeps these in columns of their
+	// own so a reader can ask *show me what was cut* without opening every payload, and so a
+	// screen can say *something is missing here, and here is why* rather than drawing a gap.
+	//
+	// Nothing sets these except the journal in events.go. A reader that fills them in by hand
+	// is a reader claiming its output was masked or summarised when it was not.
+
+	// Truncated says the payload carries an opening slice rather than the whole thing (FR-043b).
+	Truncated bool
+	// OriginalBytes is how big the thing was before any of that, so *cut* comes with *how much*.
+	OriginalBytes int
+	// OmissionReason is why something is missing: TruncatedByPolicy or NotExposedByCLI (FR-047).
+	OmissionReason string
+	// Redacted says a secret was masked out of this event before it left the machine (FR-048).
+	Redacted bool
 }
 
 // The events both families produce.
