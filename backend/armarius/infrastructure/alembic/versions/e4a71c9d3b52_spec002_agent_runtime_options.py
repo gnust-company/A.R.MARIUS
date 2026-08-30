@@ -5,6 +5,11 @@ của ta: Claude Code nhận model và mức nghĩ, Codex có thêm một hạng
 tên bây giờ là để hạng thứ ba không có chỗ đứng, và mua thêm một lần migration vào đúng ngày có
 người hỏi tới nó.
 
+**Cột mang tên khác lớp nghiệp vụ, và đó là cố ý.** Ở đây là `runtime_options` vì hạ tầng và
+dây nói *runtime*; `domain/` với `application/` gọi cùng thứ ấy là `placement_options` vì Điều
+III cấm hai lớp đó biết việc chạy ở đâu. Chỗ dịch tên nằm đúng một chỗ mỗi chiều: đọc ở
+`mappers.py`, ghi ở `repositories.py`.
+
 `NOT NULL DEFAULT '{}'` chứ không nullable: với mọi chỗ đọc thì *chưa chọn gì* và *không có gì
 để chọn* là một, và một cột nullable chỉ bắt từng chỗ đọc tự quyết lại chuyện đó.
 

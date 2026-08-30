@@ -300,11 +300,10 @@ func probeSelfDescription(ctx context.Context, found Found, opts Options) (Capab
 // worth writing down. Nothing found is an empty string, which every caller reads as *the tool
 // did not say* — the same safe direction the marker lists err in.
 func bracketedAfter(described, flag string) string {
-	at := strings.Index(described, flag)
-	if at < 0 {
+	rest, found := afterFlag(described, flag)
+	if !found {
 		return ""
 	}
-	rest := described[at+len(flag):]
 	open := strings.Index(rest, "(")
 	if open < 0 {
 		return ""
@@ -314,6 +313,31 @@ func bracketedAfter(described, flag string) string {
 		return ""
 	}
 	return rest[open+1 : open+close]
+}
+
+// afterFlag is what follows a flag, and only where the flag name actually ends.
+//
+// Searching for the text alone would find "--model" inside "--model-set" and then read that
+// other flag's bracket as this one's answer. What ends a flag name is the character after it,
+// so keep looking until one does.
+func afterFlag(described, flag string) (string, bool) {
+	for at := 0; at < len(described); {
+		found := strings.Index(described[at:], flag)
+		if found < 0 {
+			return "", false
+		}
+		ends := at + found + len(flag)
+		if ends == len(described) || !continuesName(described[ends]) {
+			return described[ends:], true
+		}
+		at = ends
+	}
+	return "", false
+}
+
+func continuesName(c byte) bool {
+	return c == '-' || c == '_' ||
+		(c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }
 
 // wholeSetIn reads a bare comma-separated list, and refuses anything that is not one.
