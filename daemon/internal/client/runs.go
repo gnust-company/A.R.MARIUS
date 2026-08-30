@@ -90,6 +90,16 @@ type EventIn struct {
 	Seq     int            `json:"seq"`
 	Type    string         `json:"type"`
 	Payload map[string]any `json:"payload"`
+
+	// Why the payload is short, and whether something was taken out of it, said in fields of
+	// their own rather than buried in the payload: the screen has to be able to draw *something
+	// is missing here, and here is why* without reading into a shape that differs per event
+	// (FR-043b, FR-047, FR-048). Omitted when they have nothing to say, so an old daemon and a
+	// new one send the same bytes for the same ordinary event.
+	Truncated      bool   `json:"truncated,omitempty"`
+	OriginalBytes  int    `json:"original_byte_size,omitempty"`
+	OmissionReason string `json:"omission_reason,omitempty"`
+	Redacted       bool   `json:"redacted,omitempty"`
 }
 
 // EventsRequest is one batch.

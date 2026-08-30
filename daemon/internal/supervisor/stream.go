@@ -93,7 +93,15 @@ func (s *stream) record(event runtime.Event, now time.Time) {
 		return
 	}
 	s.seq++
-	s.pending = append(s.pending, Recorded{Seq: s.seq, Type: event.Type, Payload: event.Payload})
+	s.pending = append(s.pending, Recorded{
+		Seq:            s.seq,
+		Type:           event.Type,
+		Payload:        event.Payload,
+		Truncated:      event.Truncated,
+		OriginalBytes:  event.OriginalBytes,
+		OmissionReason: event.OmissionReason,
+		Redacted:       event.Redacted,
+	})
 	s.mu.Unlock()
 
 	// Non-blocking: a wake-up already waiting is a flush already coming.

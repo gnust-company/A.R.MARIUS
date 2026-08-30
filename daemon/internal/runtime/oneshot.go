@@ -39,7 +39,7 @@ type invocation struct {
 	// needs. A line it does not recognise produces nothing: these streams carry banners,
 	// progress and warnings alongside the events, and guessing at an unknown shape would put
 	// invented facts in a record that is meant to be evidence.
-	read func(line []byte, emit Emit, out *Outcome)
+	read func(line []byte, journal *Journal, out *Outcome)
 }
 
 // oneShots is every CLI this family knows how to run.
@@ -184,9 +184,10 @@ func (OneShot) Run(ctx context.Context, req Request, emit Emit) (Outcome, error)
 		// angle: a process appears, events arrive, it ends. Refusing is how that stays visible.
 		return Outcome{}, fmt.Errorf("refusing to run %s with nothing to say to it", req.CLI)
 	}
-	if emit == nil {
-		emit = func(Event) {}
-	}
+	// Everything this run says goes out through one gate: masked, and cut down to what may
+	// travel (FR-043a, FR-048a). Built here rather than by the caller so that a runtime cannot
+	// be wired up without it.
+	journal := NewJournal(req, emit)
 
 	cmd := newProcess(ctx, req, append(shape.args(req), chosen(req, shape.flags)...))
 	cmd.Stdin = strings.NewReader(req.Message)
@@ -219,17 +220,14 @@ func (OneShot) Run(ctx context.Context, req Request, emit Emit) (Outcome, error)
 			if len(line) == 0 || line[0] != '{' {
 				continue
 			}
-			shape.read(line, emit, &out)
+			shape.read(line, journal, &out)
 		}
 		if lines.Err() != nil && !errors.Is(lines.Err(), os.ErrClosed) {
 			// The stream is unreadable from here on, but the process is still running and is
 			// still doing the work. Say so and let it finish: killing a healthy agent because
 			// this daemon lost the commentary would turn a gap in the record into lost work.
 			overflow.Store(true)
-			emit(Event{Type: EventRunError, Payload: map[string]any{
-				"code": "output_unreadable",
-				"cli":  req.CLI,
-			}})
+			journal.Fail("output_unreadable", map[string]any{"cli": req.CLI})
 		}
 	}()
 	go func() {
@@ -277,10 +275,50 @@ type claudeBlocks struct {
 		Input     map[string]any `json:"input"`
 		ToolUseID string         `json:"tool_use_id"`
 		IsError   bool           `json:"is_error"`
+		// Content is what a tool gave back, left raw because its shape is not constant: a
+		// string for the simple case, a list of blocks when the tool returned more than text.
+		// Raw also means it is never accidentally carried anywhere — it is read here, measured,
+		// and dropped (FR-043a).
+		Content json.RawMessage `json:"content"`
 	} `json:"content"`
 }
 
-func readClaudeCode(line []byte, emit Emit, out *Outcome) {
+// resultOf reads what a tool returned out of whichever shape Claude Code sent it in.
+//
+// Absent is not empty. A CLI that says nothing about a result and a tool that returned nothing
+// are two different facts, and the second value here is which one this was (FR-047).
+func resultOf(raw json.RawMessage) Result {
+	if len(raw) == 0 || string(raw) == "null" {
+		return Result{}
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return Result{Exposed: true, Body: text}
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &blocks) != nil {
+		// Some shape nobody here has measured. Saying so is honest; guessing at its fields
+		// would put an invented number in a record meant to be evidence.
+		return Result{}
+	}
+	var joined strings.Builder
+	kind := ""
+	for _, block := range blocks {
+		if block.Text != "" {
+			joined.WriteString(block.Text)
+			continue
+		}
+		if block.Type != "" && block.Type != "text" {
+			kind = block.Type
+		}
+	}
+	return Result{Exposed: true, Body: joined.String(), Kind: kind}
+}
+
+func readClaudeCode(line []byte, journal *Journal, out *Outcome) {
 	var parsed claudeLine
 	if json.Unmarshal(line, &parsed) != nil {
 		return
@@ -301,39 +339,24 @@ func readClaudeCode(line []byte, emit Emit, out *Outcome) {
 		for _, block := range blocks.Content {
 			switch block.Type {
 			case "text":
-				if block.Text != "" {
-					emit(Event{Type: EventAssistantMessage, Payload: map[string]any{"text": block.Text}})
-				}
+				journal.Text(block.Text)
 			case "thinking":
-				if block.Thinking != "" {
-					emit(Event{Type: EventAssistantThinking, Payload: map[string]any{"text": block.Thinking}})
-				}
+				journal.Thought(block.Thinking)
 			case "tool_use":
 				// Arguments in full, on purpose: FR-043 asks for the whole of them, and it is
 				// the *result* that must never leave this machine, not the request.
-				emit(Event{Type: EventToolStarted, Payload: map[string]any{
-					"call": block.ID,
-					"name": block.Name,
-					"args": block.Input,
-				}})
+				journal.ToolStarted(block.ID, block.Name, block.Input, block.Input != nil)
 			case "tool_result":
-				// No content. What the tool returned stays here (FR-043a); the summary that may
-				// travel — size, type, opening bytes, how much was cut — is built by the layer
-				// that owns the threshold (task T095).
-				emit(Event{Type: EventToolCompleted, Payload: map[string]any{
-					"call":   block.ToolUseID,
-					"failed": block.IsError,
-				}})
+				// What the tool returned stays here (FR-043a). The summary built from it —
+				// size, kind, opening bytes, and whether it was cut — is all that travels.
+				journal.ToolCompleted(block.ToolUseID, block.IsError, resultOf(block.Content))
 			}
 		}
 
 	case "result":
 		out.Usage = parsed.Usage
 		if parsed.IsError {
-			emit(Event{Type: EventRunError, Payload: map[string]any{
-				"code": "agent_reported_failure",
-				"why":  parsed.Subtype,
-			}})
+			journal.Fail("agent_reported_failure", map[string]any{"why": parsed.Subtype})
 		}
 	}
 }
@@ -351,7 +374,7 @@ type codexLine struct {
 	} `json:"item"`
 }
 
-func readCodex(line []byte, emit Emit, out *Outcome) {
+func readCodex(line []byte, journal *Journal, out *Outcome) {
 	var parsed codexLine
 	if json.Unmarshal(line, &parsed) != nil {
 		return
@@ -364,19 +387,17 @@ func readCodex(line []byte, emit Emit, out *Outcome) {
 	}
 	switch parsed.Item.Type {
 	case "agent_message":
-		if parsed.Item.Text != "" {
-			emit(Event{Type: EventAssistantMessage, Payload: map[string]any{"text": parsed.Item.Text}})
-		}
+		journal.Text(parsed.Item.Text)
 	case "reasoning":
-		if parsed.Item.Text != "" {
-			emit(Event{Type: EventAssistantThinking, Payload: map[string]any{"text": parsed.Item.Text}})
-		}
+		journal.Thought(parsed.Item.Text)
 	case "command_execution":
-		emit(Event{Type: EventToolStarted, Payload: map[string]any{
-			"call": parsed.Item.ID,
-			"name": "command",
-			"args": map[string]any{"command": parsed.Item.Command},
-		}})
+		journal.ToolStarted(parsed.Item.ID, "command", map[string]any{"command": parsed.Item.Command}, true)
+		// The command ran and ended; what it printed is not in a field this side has measured,
+		// so the record says *this CLI did not reveal it* rather than showing a gap that reads
+		// as a command with no output (FR-047). Marked unmeasured for the same reason the rest
+		// of this entry is: a field name taken from documentation and never seen would be an
+		// invented fact in a record meant to be evidence.
+		journal.ToolCompleted(parsed.Item.ID, false, Result{})
 	}
 }
 

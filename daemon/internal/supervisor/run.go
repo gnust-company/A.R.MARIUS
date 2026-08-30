@@ -38,6 +38,15 @@ type Recorded struct {
 	Seq     int
 	Type    string
 	Payload map[string]any
+
+	// What the store keeps beside the payload: why something is short, and whether a secret was
+	// taken out of it before it left (FR-043b, FR-047, FR-048). Carried rather than recomputed,
+	// because the side that cut and masked is the only side that can say so truthfully — the
+	// server sees the result of both and cannot tell either from an event that never needed one.
+	Truncated      bool
+	OriginalBytes  int
+	OmissionReason string
+	Redacted       bool
 }
 
 // How a run ended, as a code (Constitution VII).
@@ -248,6 +257,11 @@ func (o RunOptions) prepare(grant Grant, place Workplace) (runtime.Request, stri
 		ToolConfig:  tools.ConfigFile,
 		ToolServers: tools.Servers,
 		Options:     grant.RuntimeOptions,
+		// The two values this run must never let out in anything it says (FR-048a). The run's
+		// own token goes in through the environment and the message, so it can come back out
+		// through either; the machine's is here because losing it is worse than losing the
+		// run's, and a net that catches only the lesser one is not a net.
+		Secrets: []string{grant.RunToken, o.DaemonToken},
 		// Empty until the daemon keeps session state of its own (FR-023, task T109). A CLI
 		// handed no handle opens a new conversation, which is the supported answer rather
 		// than a failure (FR-025).

@@ -26,7 +26,15 @@ func (r Reporting) Start(ctx context.Context, runID, session string) (bool, erro
 func (r Reporting) Record(ctx context.Context, runID string, events []Recorded) error {
 	batch := make([]client.EventIn, 0, len(events))
 	for _, e := range events {
-		batch = append(batch, client.EventIn{Seq: e.Seq, Type: e.Type, Payload: e.Payload})
+		batch = append(batch, client.EventIn{
+			Seq:            e.Seq,
+			Type:           e.Type,
+			Payload:        e.Payload,
+			Truncated:      e.Truncated,
+			OriginalBytes:  e.OriginalBytes,
+			OmissionReason: e.OmissionReason,
+			Redacted:       e.Redacted,
+		})
 	}
 	return r.Session.Record(ctx, runID, batch)
 }

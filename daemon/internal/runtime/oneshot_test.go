@@ -150,12 +150,15 @@ echo '`+doneLine+`'`)
 	}
 }
 
-func TestToolArgumentsTravelInFullAndToolResultsDoNotTravelAtAll(t *testing.T) {
-	// FR-043 asks for the whole of the arguments; FR-043a says the *result* must never leave
-	// this machine. The summary that may travel is built by the layer that owns the threshold
-	// (task T095), so nothing of the result belongs in the event at this point.
-	const call = `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"read_file","input":{"path":"/etc/hosts"}}]},"session_id":"s"}`
-	const answer = `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","is_error":false,"content":"127.0.0.1 localhost SECRET"}]},"session_id":"s"}`
+func TestToolArgumentsTravelInFullAndOnlyASummaryOfTheResultDoes(t *testing.T) {
+	// FR-043 asks for the whole of the arguments; FR-043a says only a **summary** of the result
+	// may leave — its size, its kind, and an opening slice cut to the threshold. So the tail is
+	// what has to be proven to stay home, and the tail is where the recognisable string goes: a
+	// test that puts it at the front would pass on a build that sends everything.
+	const tail = "SECRET-IN-THE-TAIL"
+	whole := strings.Repeat("a", DefaultResultLimit) + tail
+	call := `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"read_file","input":{"path":"/etc/hosts"}}]},"session_id":"s"}`
+	answer := `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","is_error":false,"content":"` + whole + `"}]},"session_id":"s"}`
 	cli := fakeCLI(t, `echo '`+call+`'
 echo '`+answer+`'
 echo '`+doneLine+`'`)
@@ -179,8 +182,17 @@ echo '`+doneLine+`'`)
 	if err != nil {
 		t.Fatalf("đọc lại phần thân: %v", err)
 	}
-	if strings.Contains(string(written), "SECRET") {
-		t.Fatalf("toàn văn kết quả công cụ rời khỏi máy: %s", written)
+	if strings.Contains(string(written), tail) {
+		t.Fatalf("phần đuôi của kết quả rời khỏi máy: %s", written)
+	}
+	if finished.Payload["bytes"] != len(whole) {
+		t.Fatalf("kích thước thật không được ghi lại: %v, phải là %d", finished.Payload["bytes"], len(whole))
+	}
+	if !finished.Truncated {
+		t.Fatal("cắt rồi mà không nói là đã cắt — người đọc tưởng đó là toàn bộ kết quả (FR-043b)")
+	}
+	if finished.OmissionReason != TruncatedByPolicy {
+		t.Fatalf("lý do thiếu: %q", finished.OmissionReason)
 	}
 }
 
