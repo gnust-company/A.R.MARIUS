@@ -319,7 +319,26 @@ một daemon bản cũ gửi đúng số bytes như trước, và sự kiện c�
 - Che bí mật đã làm **xong ở phía daemon** trước khi gửi (FR-048). Server không che hộ.
 - `omission_reason` chỉ nhận `truncated_by_policy` hoặc `not_exposed_by_cli`; giá trị khác bị từ
   chối **ở cửa** (422). Một chuỗi tự do ở đây là một màn hình phải đoán (FR-047).
-- `seq` tăng đơn điệu trong một lượt chạy, không trùng (FR-045).
+- `seq` tăng đơn điệu trong một lượt chạy, không trùng (FR-045). Có **lỗ** thì được — một sự kiện
+  bị bỏ để lại chỗ trống mà không gì lấp được, và bản ghi tự nói ra chỗ trống ấy (xem dưới).
+
+**Từ chối là câu trả lời cuối, hay chỉ là *chưa phải lúc*** — daemon phải phân biệt được, vì lô bị
+giữ lại là lô chặn mọi sự kiện phía sau nó (FR-047):
+
+| Server đáp | Daemon hiểu | Daemon làm |
+|---|---|---|
+| `404` | lượt chạy không còn của máy này (FR-059) | dừng lượt chạy, không gửi gì nữa |
+| `401` `403` `408` `425` `429` | *chưa phải lúc* | giữ lô, gửi lại |
+| `4xx` còn lại | server đã đọc và không nhận | **bỏ**, không hỏi lại |
+| `5xx`, lỗi mạng | chưa đọc tới nơi | giữ lô, gửi lại |
+
+Server từ chối **cả lô** và không nói sự kiện nào sai, nên daemon **chia đôi lô rồi hỏi lại** để tìm
+ra đúng sự kiện bị từ chối, bỏ mình nó, và đẩy phần còn lại lên. Mỗi lần hỏi thêm loại bỏ hẳn ít nhất
+một sự kiện, nên việc này không quay vòng.
+
+Chỗ trống để lại được nói ra bằng một sự kiện `run.error` do chính máy viết: `events_dropped` (buffer
+đầy — máy chạy nhanh hơn đường truyền) hoặc `events_refused` (server không nhận). Hai mã tách nhau vì
+hai chuyện khác nhau; một con số gộp sẽ đẩy người đọc đi sai hướng.
 
 ### `POST /daemon/runs/{run_id}/finish`
 

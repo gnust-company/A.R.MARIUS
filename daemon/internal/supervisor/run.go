@@ -47,6 +47,12 @@ type Recorded struct {
 	OriginalBytes  int
 	OmissionReason string
 	Redacted       bool
+
+	// confession marks the one kind of event this machine writes about *itself* rather than
+	// about the agent: the count of events that never reached the record (FR-047). Never sent —
+	// the server has no use for it — and read in exactly one place, where a confession the
+	// server also refuses must not become a reason to write another one.
+	confession bool
 }
 
 // How a run ended, as a code (Constitution VII).

@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -163,5 +164,72 @@ func TestAServerFailureIsStillAFailure(t *testing.T) {
 	}
 	if held {
 		t.Fatal("a failed call must not read as a run still held")
+	}
+}
+
+// ── which failures the machine is allowed to keep asking about ───────────────
+
+// A batch the server read and rejected must come back marked, or the caller has no way to
+// tell it apart from a server that was momentarily unreachable — and it will ask again
+// forever, holding every later event behind the same refusal (FR-047).
+func TestABatchTheServerRejectsComesBackMarkedAsSettled(t *testing.T) {
+	for _, status := range []int{
+		http.StatusBadRequest,
+		http.StatusConflict,
+		http.StatusRequestEntityTooLarge,
+		http.StatusUnsupportedMediaType,
+		http.StatusUnprocessableEntity,
+	} {
+		server, _ := serverThatAnswers(t, `{}`, status)
+		session := Session{Server: server.URL, Token: "armd_secret"}
+
+		err := session.Record(context.Background(), "run-1", []EventIn{{Seq: 1, Type: "run.text"}})
+
+		if !errors.Is(err, ErrRefusedForGood) {
+			t.Fatalf("%d must read as the server's settled answer, got %v", status, err)
+		}
+	}
+}
+
+// The three ways a server says *not now*. Sending the same batch again is exactly the right
+// thing to do with these, so none of them may be read as a refusal.
+func TestAServerAskingForPatienceIsNotAServerRefusing(t *testing.T) {
+	for _, status := range []int{
+		http.StatusUnauthorized,
+		http.StatusForbidden,
+		http.StatusRequestTimeout,
+		http.StatusTooEarly,
+		http.StatusTooManyRequests,
+		http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+	} {
+		server, _ := serverThatAnswers(t, `{}`, status)
+		session := Session{Server: server.URL, Token: "armd_secret"}
+
+		err := session.Record(context.Background(), "run-1", []EventIn{{Seq: 1, Type: "run.text"}})
+
+		if err == nil {
+			t.Fatalf("%d was swallowed", status)
+		}
+		if errors.Is(err, ErrRefusedForGood) {
+			t.Fatalf("%d must stay retryable, but was marked as a refusal", status)
+		}
+	}
+}
+
+// A run taken back is neither. It has its own answer and must keep it, or the supervisor stops
+// stopping the run and starts dropping events instead.
+func TestARunTakenBackIsStillItsOwnAnswerAndNotARefusal(t *testing.T) {
+	server, _ := serverThatAnswers(t, `{}`, 404)
+	session := Session{Server: server.URL, Token: "armd_secret"}
+
+	err := session.Record(context.Background(), "run-1", []EventIn{{Seq: 1, Type: "run.text"}})
+
+	if !errors.Is(err, ErrRunNotOurs) {
+		t.Fatalf("a 404 must stay *not ours*, got %v", err)
+	}
+	if errors.Is(err, ErrRefusedForGood) {
+		t.Fatal("a run taken back is not a batch the server rejected")
 	}
 }

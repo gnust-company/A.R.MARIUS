@@ -656,6 +656,7 @@ export const en = {
         silence_threshold: 'The agent said nothing for {{quiet_seconds}} seconds, so this run was stopped.',
         setup_failed: 'This machine could not set the run up: {{why}}',
         events_dropped: '{{count}} events were lost because they could not be sent fast enough.',
+        events_refused: 'The server would not accept {{count}} events, so the record has a gap there.',
         output_unreadable: 'This machine could not read all of what {{cli}} printed. The agent kept working; the record has a hole.',
         permission_refused_nobody_to_ask: 'The agent asked permission and there was nobody here to give it, so it was refused.',
         session_not_resumed: 'The earlier conversation could not be resumed, so this turn started a new one.',
