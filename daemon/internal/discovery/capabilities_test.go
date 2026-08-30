@@ -220,3 +220,25 @@ func TestACLIThatCouldNotBeAskedOffersNothingToPick(t *testing.T) {
 		t.Fatalf("hỏi không được mà vẫn bày ra lựa chọn: %+v", got.Choices)
 	}
 }
+
+func TestALongerFlagSharingThePrefixDoesNotAnswerForThisOne(t *testing.T) {
+	// `--model-set` đứng trước `--model` trong trợ giúp: tìm theo chuỗi thuần sẽ dừng ở cái
+	// dài hơn và đọc ngoặc của **nó** thành danh sách model. Không có gì đỏ khi việc này xảy
+	// ra — màn hình vẫn bày ra một danh sách, chỉ là danh sách của một cờ khác.
+	found := Found{Kind: KindClaudeCode, Family: FamilyOneShot, Path: "/usr/bin/claude"}
+	shadowed := "Usage: claude\n\nOptions:\n" +
+		"  --model-set <name>   Saved set (e.g. 'fast', 'cheap')\n" +
+		"  --model <name>       Model (e.g. 'opus', 'sonnet')\n"
+
+	got := Probe(context.Background(), found, askedWith(shadowed, nil))
+
+	choice, offered := choiceOf(got, ChoiceModel)
+	if !offered {
+		t.Fatalf("không đọc ra model nào: %+v", got.Choices)
+	}
+	for _, value := range choice.Values {
+		if value == "fast" || value == "cheap" {
+			t.Fatalf("đọc ngoặc của --model-set thành model: %v", choice.Values)
+		}
+	}
+}
