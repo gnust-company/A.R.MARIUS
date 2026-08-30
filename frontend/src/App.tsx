@@ -19,6 +19,7 @@ import SkillEditor from './pages/SkillEditor'
 import Inbox from './pages/Inbox'
 import Account from './pages/Account'
 import CollaborationRoom from './pages/CollaborationRoom'
+import RunTrace from './pages/RunTrace'
 import { useAppStore } from './store/appStore'
 
 /** Boot: rehydrate the session from the stored JWT before rendering routes, so the auth
@@ -111,6 +112,7 @@ export default function App() {
           <Route path="inbox" element={<Inbox />} />
           <Route path="account" element={<Account />} />
           <Route path="tasks/:id" element={<CollaborationRoom />} />
+          <Route path="runs/:runId" element={<RunTrace />} />
         </Route>
       </Route>
     </Routes>

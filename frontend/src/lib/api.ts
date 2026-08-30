@@ -366,7 +366,20 @@ export interface RunEventDTO {
   original_byte_size?: number | null
   omission_reason?: string | null
   redacted?: boolean
+  /** When the row carries only the opening of something long, which payload key the rest
+   *  belongs to and how big the whole of it is (FR-049). Null means the payload is whole —
+   *  and note this is *not* an omission: the rest is here, one request away. */
+  full_field?: string | null
+  full_byte_size?: number | null
   created_at?: string | null
+}
+
+/** The whole of one long field, fetched for the one event a reader opened (FR-049). */
+export interface RunEventFullDTO {
+  seq: number
+  field: string
+  byte_size: number
+  content: string
 }
 
 
@@ -618,8 +631,25 @@ export async function listTaskRuns(taskId: string): Promise<RunDTO[]> {
 }
 
 // The durable per-run trace (assistant deltas, tool calls, …) — reused from the §8.1 trace API.
-export async function listRunEvents(runId: string): Promise<RunEventDTO[]> {
-  return get<RunEventDTO[]>(`/v1/runs/${runId}/events`)
+//
+// `types` narrows to the kinds being looked for (FR-052) and `afterSeq` walks a long run by
+// the number it stopped at rather than by an offset — the numbering is the run's own and does
+// not shift when a late batch lands in the middle of one.
+export async function listRunEvents(
+  runId: string,
+  opts?: { types?: string[]; afterSeq?: number; limit?: number },
+): Promise<RunEventDTO[]> {
+  const query = new URLSearchParams()
+  for (const type of opts?.types ?? []) query.append('type', type)
+  if (opts?.afterSeq !== undefined) query.set('after_seq', String(opts.afterSeq))
+  if (opts?.limit !== undefined) query.set('limit', String(opts.limit))
+  const suffix = query.toString() ? `?${query}` : ''
+  return get<RunEventDTO[]>(`/v1/runs/${runId}/events${suffix}`)
+}
+
+// The rest of a long field — asked for only when a reader opens that one event (FR-049).
+export async function readRunEventInFull(runId: string, seq: number): Promise<RunEventFullDTO> {
+  return get<RunEventFullDTO>(`/v1/runs/${runId}/events/${seq}/full`)
 }
 
 // ── Labels ─────────────────────────────────────────────────────────────────────────────
