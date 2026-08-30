@@ -11,7 +11,7 @@ nhưng không phải một, và cái người ta hỏi bao giờ cũng là *chuy
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -28,7 +28,7 @@ from armarius.shared.config import settings
 
 pytestmark = pytest.mark.anyio
 
-NOW = datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
 
 
 async def _a_run_with_events(uow_factory, ages: dict[int, timedelta | None]) -> UUID:
