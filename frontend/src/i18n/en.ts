@@ -1049,6 +1049,7 @@ export const en = {
     github_error: 'GitHub returned {{status}}: {{reason}}',
     github_unreachable: 'GitHub could not be reached: {{reason}}',
     run_event_full_text_not_found: 'That event has nothing kept apart from it — its payload is already the whole thing.',
+    credential_in_the_clear: 'This batch carries a credential in the clear. Mask secrets on the machine before sending them.',
     tool_result_not_summarised: 'A tool result must arrive summarised, never whole. Send its size, its type and the opening bytes.',
   },
   language: {
