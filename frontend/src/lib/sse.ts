@@ -15,6 +15,7 @@
 
 import { getToken, refreshAccessToken } from './auth'
 import { API_BASE } from './env'
+import type { RunEventDTO } from './api'
 import { traceEventFromVM, workspaceEventFromVM } from './mappers'
 
 export interface SSEMessage {
@@ -118,7 +119,11 @@ export function subscribeSSE(
             if (line === '') {
               // Empty line → end of event block.
               if (inEvent) {
-                onMessage({ type: currentType, data: currentData, id: currentId })
+                // An event with no `event:` line is named `message` — that is the default the
+                // spec gives it, not a nameless event. `/v1/runs/{id}/stream` sends every one
+                // of its events that way on purpose, so that a browser's own EventSource, whose
+                // `onmessage` only ever hears `message`, receives all of them.
+                onMessage({ type: currentType || 'message', data: currentData, id: currentId })
                 lastId = currentId
                 currentType = ''
                 currentData = ''
@@ -131,7 +136,13 @@ export function subscribeSSE(
               currentType = line.slice(6).trim()
               inEvent = true
             } else if (line.startsWith('data:')) {
-              currentData = line.slice(5).trim()
+              // `inEvent` here too, and this is the whole of a real bug: without it a block
+              // carrying only `data:` was read to the end and then thrown away, so every
+              // unnamed event on every stream vanished with no error anywhere. Nothing noticed
+              // because until now no screen subscribed to a stream that sends them.
+              const value = line.slice(5).trim()
+              currentData = currentData ? `${currentData}\n${value}` : value
+              inEvent = true
             } else if (line.startsWith('id:')) {
               currentId = line.slice(3).trim()
             } else if (line.startsWith('retry:')) {
@@ -211,6 +222,57 @@ export function subscribeTaskTrace(
     },
     onError,
     { lastEventId },
+  )
+}
+
+/**
+ * Subscribe to one run's own trace SSE (`/v1/runs/{id}/stream`, FR-046).
+ *
+ * Raw on purpose. `subscribeTaskTrace` above maps into the Room's view-model, which drops
+ * whatever it cannot draw as a chat bubble — the right thing for a conversation and the wrong
+ * thing for a log, where *every* event is the point and the filter works on the real type
+ * names (FR-052). So this hands back what the server sent.
+ *
+ * The four facts about the record arrive folded into the payload here, under underscored names,
+ * because a push has no payload wrapper to put them beside. They are lifted back out to the
+ * shape the stored log uses, so a screen reading the same run two ways sees it one way.
+ */
+export function subscribeRunTrace(
+  runId: string,
+  onEvent: (event: RunEventDTO) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  const url = `${API_BASE}/v1/runs/${runId}/stream`
+  return subscribeSSE(
+    url,
+    (msg) => {
+      const frame = parseData(msg.data) as Record<string, unknown> | null
+      if (!frame || typeof frame !== 'object') return
+      const payload = (frame.payload ?? {}) as Record<string, unknown>
+      const seq = typeof frame.seq === 'number' ? frame.seq : Number(payload._seq)
+      if (!Number.isFinite(seq)) return
+      // Beside the payload when the row came out of the store, folded into it under underscored
+      // names when it came off the live bus — a push has no payload wrapper to put them beside.
+      // Read both, because the backlog and the tail arrive down the same pipe and a reader must
+      // not be shown two versions of one run depending on which half an event landed in.
+      const size = Number(frame.original_byte_size ?? payload._original_byte_size)
+      const reason = frame.omission_reason ?? payload._omission_reason
+      const field = frame.full_field ?? payload._full_field
+      const fullSize = Number(frame.full_byte_size ?? payload._full_byte_size)
+      onEvent({
+        seq,
+        type: String(frame.type ?? msg.type ?? ''),
+        payload,
+        truncated: Boolean(frame.truncated ?? payload._truncated),
+        original_byte_size: Number.isFinite(size) ? size : null,
+        omission_reason: reason ? String(reason) : null,
+        redacted: Boolean(frame.redacted ?? payload._redacted),
+        full_field: field ? String(field) : null,
+        full_byte_size: Number.isFinite(fullSize) ? fullSize : null,
+        created_at: frame.created_at ? String(frame.created_at) : new Date().toISOString(),
+      })
+    },
+    onError,
   )
 }
 

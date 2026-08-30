@@ -4,7 +4,7 @@
 // durable per-run trace (RunEvent). Data is read-only, and a live run advances in place off
 // the workspace event channel — no timer (T167, FR-080).
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams, useNavigate, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import {
@@ -26,6 +26,7 @@ import {
   Check,
   CheckCircle2,
   Plus,
+  ExternalLink,
 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
 import type { AgentStatus } from '@/store/appStore';
@@ -156,6 +157,7 @@ function RunEventList({ runId }: { runId: string }) {
 
 function RunRow({ run }: { run: RunDTO }) {
   const { t } = useTranslation();
+  const { workspaceId } = useParams<{ workspaceId: string }>();
   const rel = useRelativeTime();
   const [open, setOpen] = useState(false);
   const tone = RUN_STATUS_COLORS[run.status] || RUN_STATUS_COLORS.stopped;
@@ -206,6 +208,17 @@ function RunRow({ run }: { run: RunDTO }) {
       {open && (
         <div className="border-t border-[#E3D7BC] bg-[#F7F0E0]/60">
           <RunEventList runId={run.id} />
+          {/* The panel above is a preview. The whole log — every event, filterable, with the
+              long fields openable — is its own page, because answering *what did it do and
+              why* is a different act from glancing at a run (FR-016, SC-013). */}
+          <div className="px-4 pb-3">
+            <Link
+              to={wsHref(workspaceId, `runs/${run.id}`)}
+              className="inline-flex items-center gap-1 text-[12px] text-[#C25E3A] hover:underline"
+            >
+              <ExternalLink className="w-3 h-3" /> {t('runTrace.openFullLog')}
+            </Link>
+          </div>
         </div>
       )}
     </div>
