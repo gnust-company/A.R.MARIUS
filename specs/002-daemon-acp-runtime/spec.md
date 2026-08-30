@@ -686,6 +686,15 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   để SC-015 là câu về **kho** chứ không phải câu về hạnh kiểm của một chương trình — một daemon bản
   cũ, một daemon bị vá, hay một token của máy trong tay thứ không phải daemon đều tới cửa này. Server
   KHÔNG ĐƯỢC tự sửa payload: một bản ghi bị lặng lẽ sửa giữa đường nói một câu agent không hề nói.
+- **FR-048c**: Không đường ghi nào được đưa một credential của chính hệ thống này vào nhật ký ở dạng
+  nguyên bản — **kể cả chữ do server tự soạn và tự ghi**. FR-048b đặt cửa trên lối daemon gõ vào;
+  điều này nói về **kho**: mọi dòng sự kiện, mọi toàn văn để riêng (FR-049), và **bản sao của
+  chữ đã gửi** giữ cùng lượt gọi dậy đều PHẢI đi qua cùng một phép kiểm tại **lúc ghi** — chèn
+  mới lẫn ghi đè — chứ không phải qua một bản sao của phép kiểm đặt ở từng chỗ ghi. Lý do là số
+  chỗ ghi tăng theo thời gian, và bản sao thứ tư là bản sao bị quên. Phép kiểm PHẢI đọc cả nửa để
+  riêng: chỉ đọc phần rút gọn là chỉ chống được bí mật nằm trong vài kilobyte đầu. Từ chối ghi,
+  KHÔNG tự sửa (như FR-048b); mỗi lối tự phơi lời từ chối theo cách của nó — lối giao việc trả
+  việc về kệ và ghi lại lý do, lối chạy trong tiến trình cho lượt chạy hỏng.
 
 - **FR-049**: Với những sự kiện **được phép mang toàn văn lên server** (thông điệp gửi agent, tham số gọi
   công cụ, chữ agent sinh ra), sự kiện quá lớn PHẢI lưu theo hai phần: một phần rút gọn nằm ngay trong dòng
