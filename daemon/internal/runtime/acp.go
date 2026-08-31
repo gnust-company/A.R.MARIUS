@@ -135,16 +135,24 @@ func Converse(ctx context.Context, toAgent io.Writer, fromAgent io.Reader, req R
 		return c.outcome, fmt.Errorf("opening the conversation: %w", err)
 	}
 
+	// What the machine has to say about the conversation itself, decided before the turn: the
+	// thread aged out, or belonged to a workplace that is gone (FR-025, FR-026, FR-027).
+	notice := tell(c.journal, req.Restart)
+
 	if err := c.openSession(ctx, req); err != nil {
 		return c.outcome, err
 	}
+	// And what only became true inside it: the handle was offered and would not load. Found
+	// here rather than before the turn, which is exactly why the notice is assembled in two
+	// places and sent in one (FR-039a).
+	notice = ahead(notice, tell(c.journal, c.refused))
 
 	var turn struct {
 		StopReason string `json:"stopReason"`
 	}
 	if err := c.call(ctx, "session/prompt", map[string]any{
 		"sessionId": c.outcome.Session,
-		"prompt":    []any{map[string]any{"type": "text", "text": req.Message}},
+		"prompt":    []any{map[string]any{"type": "text", "text": ahead(notice, req.Message)}},
 	}, &turn); err != nil {
 		return c.outcome, fmt.Errorf("taking the turn: %w", err)
 	}
@@ -191,7 +199,9 @@ func (c *acpConn) openSession(ctx context.Context, req Request) error {
 		}, nil); err == nil {
 			return nil
 		}
-		c.journal.Fail("session_not_resumed", map[string]any{"session": req.Session})
+		// Recorded by `tell` along with every other way a thread is lost, so that one shape of
+		// event covers all four and the agent is told in the same words whichever happened.
+		c.refused = &Restart{Code: RestartRefused, Params: map[string]any{"session": req.Session}}
 		c.outcome.Session = ""
 	}
 
@@ -225,6 +235,9 @@ type acpConn struct {
 	cwd     string
 	outID   int
 	outcome Outcome
+	// refused is set when the handle this run was given would not load — the one way of losing
+	// a thread that cannot be known until the turn has already begun (FR-039a).
+	refused *Restart
 }
 
 type rpcError struct {

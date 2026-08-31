@@ -189,8 +189,12 @@ func (OneShot) Run(ctx context.Context, req Request, emit Emit) (Outcome, error)
 	// be wired up without it.
 	journal := NewJournal(req, emit)
 
+	// Said before anything else this turn produces, and in both places at once: the code goes
+	// into the run's log, the English goes to the agent ahead of the brief (FR-025, SC-007).
+	notice := tell(journal, req.Restart)
+
 	cmd := newProcess(ctx, req, append(shape.args(req), chosen(req, shape.flags)...))
-	cmd.Stdin = strings.NewReader(req.Message)
+	cmd.Stdin = strings.NewReader(ahead(notice, req.Message))
 
 	streams, err := plumb(cmd)
 	if err != nil {

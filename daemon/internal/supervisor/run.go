@@ -80,6 +80,10 @@ type Conclusion struct {
 	Error string
 	// Usage is whatever the CLI said the turn cost, passed on exactly as it was given.
 	Usage map[string]any
+	// Session is the conversation the run ended holding (FR-023). Told to the server as well as
+	// written down here, because a claim about this machine's disk is a claim nobody can check —
+	// and the machine can be rebuilt, switched off, or simply wrong.
+	Session string
 }
 
 // Ledger is the server, as far as one run is concerned.
@@ -128,6 +132,13 @@ type RunOptions struct {
 	Runs *Runs
 	// Watchdog decides how long silence is allowed to last (FR-031, FR-031a).
 	Watchdog *Watchdog
+	// SessionRetention is how long a conversation may sit idle and still be carried on
+	// (FR-027). Zero takes execenv.DefaultSessionRetention. Asked here as well as by the
+	// sweep because the two answer different questions at different moments: the sweep decides
+	// when a thread is *deleted*, this decides whether the one still on disk may be *trusted*,
+	// and a machine that was switched off for a week has plenty of the second and none of the
+	// first.
+	SessionRetention time.Duration
 
 	// Report is told about anything that went wrong which did not end the run.
 	Report func(error)
@@ -160,7 +171,7 @@ func (o RunOptions) Do(ctx context.Context, grant Grant) {
 		return
 	}
 
-	req, home, err := o.prepare(grant, place)
+	req, home, prior, err := o.prepare(grant, place)
 	if err != nil {
 		o.giveUpDuringSetup(ctx, grant, err)
 		return
@@ -188,7 +199,39 @@ func (o RunOptions) Do(ctx context.Context, grant Grant) {
 		return
 	}
 
-	o.carry(ctx, grant, place, engine, req)
+	o.remember(grant, req, prior, o.carry(ctx, grant, place, engine, req))
+}
+
+// remember writes down the conversation this run leaves behind, so the next wake on the same
+// task carries it on instead of starting again (FR-023).
+//
+// After `carry` and not inside it, because what is being remembered is what the CLI *ended* the
+// turn calling the conversation — a run that opened a new one because the old handle would not
+// load has a different answer at the end than it had at the start, and the handle written down
+// has to be the one that will work next time.
+//
+// A failure here is reported and nothing else. The run happened, its events are already at the
+// server, and losing the note costs the next wake its thread — which is a restart with a notice,
+// the outcome FR-025 is written for.
+func (o RunOptions) remember(
+	grant Grant, req runtime.Request, prior execenv.Thread, outcome runtime.Outcome,
+) {
+	if outcome.Session == "" {
+		return
+	}
+	now := o.Now()
+	opened := prior.OpenedAt
+	if outcome.Session != prior.Handle || opened.IsZero() {
+		opened = now
+	}
+	if err := execenv.RememberThread(req.WorkDir, execenv.Thread{
+		Handle:     outcome.Session,
+		Workplace:  grant.WorkplaceID,
+		OpenedAt:   opened,
+		LastUsedAt: now,
+	}); err != nil {
+		o.Report(fmt.Errorf("remembering the conversation of task %s: %w", grant.TaskID, err))
+	}
 }
 
 // prepare puts everything the agent needs on disk and builds the environment it runs in.
@@ -196,15 +239,25 @@ func (o RunOptions) Do(ctx context.Context, grant Grant) {
 // Ordered so that nothing exists half-made: the directory, then the home, then the two things
 // written fresh for this run, and only then the environment — which is the one step that can
 // refuse on a rule rather than on a filesystem (FR-014c).
-func (o RunOptions) prepare(grant Grant, place Workplace) (runtime.Request, string, error) {
+func (o RunOptions) prepare(
+	grant Grant, place Workplace,
+) (runtime.Request, string, execenv.Thread, error) {
 	workDir, err := execenv.WorkDir(o.WorkRoot, grant.TaskID)
 	if err != nil {
-		return runtime.Request{}, "", err
+		return runtime.Request{}, "", execenv.Thread{}, err
 	}
 	home, err := execenv.RunHome(workDir, grant.RunID)
 	if err != nil {
-		return runtime.Request{}, "", err
+		return runtime.Request{}, "", execenv.Thread{}, err
 	}
+	// What this task was last saying, and whether it may still be said (FR-023, FR-027). Read
+	// before anything is built: a failure to read is not a reason to refuse the run — it is a
+	// new conversation with a sentence explaining itself (FR-025).
+	prior, verdict, err := execenv.RecallThread(workDir, o.Now(), o.SessionRetention)
+	if err != nil {
+		return runtime.Request{}, "", execenv.Thread{}, err
+	}
+	handle, restart := runtime.Continue(prior, verdict, grant.WorkplaceID, o.Now())
 	if _, err := execenv.Build(execenv.Spec{
 		CLI:          place.CLI,
 		Home:         home,
@@ -212,15 +265,15 @@ func (o RunOptions) prepare(grant Grant, place Workplace) (runtime.Request, stri
 		OperatorHome: o.OperatorHome,
 		TaskID:       grant.TaskID,
 	}); err != nil {
-		return runtime.Request{}, home, err
+		return runtime.Request{}, home, prior, err
 	}
 	brief, err := execenv.WriteContextFile(place.CLI, workDir, grant.Prompt)
 	if err != nil {
-		return runtime.Request{}, home, err
+		return runtime.Request{}, home, prior, err
 	}
 	skills, err := execenv.WriteSkills(place.CLI, workDir, home, grant.Skills)
 	if err != nil {
-		return runtime.Request{}, home, err
+		return runtime.Request{}, home, prior, err
 	}
 	tools, err := execenv.PlaceTools(execenv.ToolsSpec{
 		CLI:     place.CLI,
@@ -228,7 +281,7 @@ func (o RunOptions) prepare(grant Grant, place Workplace) (runtime.Request, stri
 		Program: o.CallbackProgram,
 	})
 	if err != nil {
-		return runtime.Request{}, home, err
+		return runtime.Request{}, home, prior, err
 	}
 	// What was put here, said plainly, so that what the agent is later shown as its own changes
 	// is only what the agent made (FR-020a). Not fatal: a run whose record could not be written
@@ -252,7 +305,7 @@ func (o RunOptions) prepare(grant Grant, place Workplace) (runtime.Request, stri
 		},
 	})
 	if err != nil {
-		return runtime.Request{}, home, err
+		return runtime.Request{}, home, prior, err
 	}
 	return runtime.Request{
 		CLI:         place.CLI,
@@ -268,17 +321,19 @@ func (o RunOptions) prepare(grant Grant, place Workplace) (runtime.Request, stri
 		// through either; the machine's is here because losing it is worse than losing the
 		// run's, and a net that catches only the lesser one is not a net.
 		Secrets: []string{grant.RunToken, o.DaemonToken},
-		// Empty until the daemon keeps session state of its own (FR-023, task T109). A CLI
-		// handed no handle opens a new conversation, which is the supported answer rather
-		// than a failure (FR-025).
-		Session: "",
-	}, home, nil
+		// The conversation this task was already having, when there is one that may still be
+		// carried on (FR-023). Empty is not a failure: it is either the first turn on this task
+		// or a thread that could not be picked up, and the second of those comes with a sentence
+		// saying so (FR-025).
+		Session: handle,
+		Restart: restart,
+	}, home, prior, nil
 }
 
 // carry runs the agent and reports how it went.
 func (o RunOptions) carry(
 	ctx context.Context, grant Grant, place Workplace, engine runtime.Runtime, req runtime.Request,
-) {
+) runtime.Outcome {
 	// Cancelled from three directions, and the run cannot tell which: the daemon being stopped,
 	// the server saying the run is not ours, and the agent going silent for too long. Each one
 	// ends the CLI and its whole process tree the same way.
@@ -308,10 +363,12 @@ func (o RunOptions) carry(
 	carrying.Wait()
 
 	o.close(ctx, grant, Conclusion{
-		Status: o.verdict(err, silent(), endedFromOutside),
-		Error:  errorText(err),
-		Usage:  outcome.Usage,
+		Status:  o.verdict(err, silent(), endedFromOutside),
+		Error:   errorText(err),
+		Usage:   outcome.Usage,
+		Session: outcome.Session,
 	})
+	return outcome
 }
 
 // watchSilence cuts a run that has stopped producing anything (FR-031).

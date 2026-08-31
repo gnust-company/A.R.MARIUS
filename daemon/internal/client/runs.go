@@ -118,6 +118,10 @@ type FinishRequest struct {
 	Error string `json:"error,omitempty"`
 	// Usage is whatever the CLI said the turn cost, passed on exactly as it was given.
 	Usage map[string]any `json:"usage,omitempty"`
+	// SessionHandle is the conversation the run **ended** holding, which is not always the one
+	// it started with: a run handed a handle the CLI would not load opens a new one and carries
+	// on (FR-025). This is therefore the handle the next wake on this task can actually use.
+	SessionHandle string `json:"session_handle,omitempty"`
 }
 
 // ClaimRuns asks for work and comes back with what was given (FR-053, FR-054).

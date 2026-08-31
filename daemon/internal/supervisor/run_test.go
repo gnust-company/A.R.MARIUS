@@ -30,16 +30,18 @@ type ledger struct {
 
 	// what it saw
 	started  []string
+	sessions []string
 	events   []Recorded
 	finished []Conclusion
 }
 
 func aLedger() *ledger { return &ledger{startMine: true} }
 
-func (l *ledger) Start(_ context.Context, runID, _ string) (bool, error) {
+func (l *ledger) Start(_ context.Context, runID, session string) (bool, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.started = append(l.started, runID)
+	l.sessions = append(l.sessions, session)
 	return l.startMine, l.startErr
 }
 
@@ -84,6 +86,7 @@ func (l *ledger) ending() (Conclusion, bool) {
 type scripted struct {
 	says    []armruntime.Event
 	fails   error
+	session string
 	usage   map[string]any
 	waitFor func(ctx context.Context)
 	saw     armruntime.Request
@@ -100,7 +103,7 @@ func (s *scripted) Run(
 	if s.waitFor != nil {
 		s.waitFor(ctx)
 	}
-	return armruntime.Outcome{Usage: s.usage}, s.fails
+	return armruntime.Outcome{Session: s.session, Usage: s.usage}, s.fails
 }
 
 // ── the world one run happens in ─────────────────────────────────────────────
@@ -618,4 +621,147 @@ func shellScript(t *testing.T, dir, body string) string {
 		t.Fatalf("viết CLI giả: %v", err)
 	}
 	return path
+}
+
+// ── carrying one task's conversation from one wake to the next ───────────────
+
+// FR-023: the second wake on a task carries on the conversation the first one opened. Nothing
+// above this machine keeps it — the handle is the CLI's own word for the thread, and it is
+// written down here beside the work it is about.
+func TestTheSecondWakeOnATaskCarriesOnTheFirstOnesConversation(t *testing.T) {
+	w := aWorld(t)
+	w.engine.session = "sess-first"
+	w.options().Do(context.Background(), w.grant())
+
+	if w.engine.saw.Session != "" {
+		t.Errorf("the first run on a task was handed the handle %q", w.engine.saw.Session)
+	}
+	if w.engine.saw.Restart != nil {
+		t.Errorf("the first turn on a task was announced as a restart: %v", w.engine.saw.Restart.Code)
+	}
+
+	second := w.grant()
+	second.RunID = "run-2"
+	w.options().Do(context.Background(), second)
+
+	if w.engine.saw.Session != "sess-first" {
+		t.Errorf("the second run was handed %q, want the conversation the first one opened",
+			w.engine.saw.Session)
+	}
+	if w.engine.saw.Restart != nil {
+		t.Errorf("a conversation that was carried on was announced as a restart: %v",
+			w.engine.saw.Restart.Code)
+	}
+	if last := w.ledger.sessions[len(w.ledger.sessions)-1]; last != "sess-first" {
+		t.Errorf("the server was told the run carried on %q, want %q", last, "sess-first")
+	}
+}
+
+// FR-024, FR-010b: two tasks are two conversations, on the same machine, at the same workplace,
+// with the same agent.
+func TestTwoTasksNeverShareAConversation(t *testing.T) {
+	w := aWorld(t)
+	w.engine.session = "sess-one"
+	w.options().Do(context.Background(), w.grant())
+
+	other := w.grant()
+	other.RunID, other.TaskID = "run-2", "task-2"
+	w.engine.session = "sess-two"
+	w.options().Do(context.Background(), other)
+	if w.engine.saw.Session != "" {
+		t.Errorf("a different task was handed %q — the two share a conversation", w.engine.saw.Session)
+	}
+
+	back := w.grant()
+	back.RunID = "run-3"
+	w.options().Do(context.Background(), back)
+	if w.engine.saw.Session != "sess-one" {
+		t.Errorf("the first task came back to %q, want %q", w.engine.saw.Session, "sess-one")
+	}
+}
+
+// FR-027: past its keeping, the thread is not handed over — and the agent is told, in the same
+// turn, that it is starting again (FR-025).
+func TestAConversationPastItsKeepingIsRestartedWithAWordToTheAgent(t *testing.T) {
+	w := aWorld(t)
+	w.engine.session = "sess-old"
+	opts := w.options()
+	opts.Now = func() time.Time { return time.Now().Add(-30 * 24 * time.Hour) }
+	opts.Do(context.Background(), w.grant())
+
+	second := w.grant()
+	second.RunID = "run-2"
+	fresh := w.options()
+	fresh.SessionRetention = 14 * 24 * time.Hour
+	fresh.Do(context.Background(), second)
+
+	if w.engine.saw.Session != "" {
+		t.Errorf("a thread a month idle was handed over: %q", w.engine.saw.Session)
+	}
+	if w.engine.saw.Restart == nil || w.engine.saw.Restart.Code != armruntime.RestartExpired {
+		t.Fatalf("the restart is %v, want %s", w.engine.saw.Restart, armruntime.RestartExpired)
+	}
+}
+
+// FR-026: a thread opened at a workplace that no longer serves this agent is not carried on, and
+// not quietly pretended to be either.
+func TestAThreadFromARebuiltWorkplaceStartsAgainAndSaysSo(t *testing.T) {
+	w := aWorld(t)
+	w.engine.session = "sess-old"
+	w.options().Do(context.Background(), w.grant())
+
+	// The machine was rebuilt: the CLI here registered again and came back a different
+	// workplace. The task is the same and its directory is still on disk.
+	w.place = Workplace{CLI: "claude_code", Family: "one_shot", Binary: "/bin/true"}
+	rebuilt := w.grant()
+	rebuilt.RunID, rebuilt.WorkplaceID = "run-2", "wp-2"
+	opts := w.options()
+	opts.Workplace = func(string) (Workplace, bool) { return w.place, true }
+	opts.Do(context.Background(), rebuilt)
+
+	if w.engine.saw.Session != "" {
+		t.Errorf("a thread from the old workplace was handed over: %q", w.engine.saw.Session)
+	}
+	if w.engine.saw.Restart == nil ||
+		w.engine.saw.Restart.Code != armruntime.RestartWorkplaceRebuilt {
+		t.Fatalf("the restart is %v, want %s",
+			w.engine.saw.Restart, armruntime.RestartWorkplaceRebuilt)
+	}
+}
+
+// A CLI that names no conversation leaves nothing behind, and the next wake is a first wake
+// rather than one carrying on a handle nobody has.
+func TestACLIThatNamesNoConversationLeavesNothingToCarryOn(t *testing.T) {
+	w := aWorld(t)
+	w.options().Do(context.Background(), w.grant())
+
+	second := w.grant()
+	second.RunID = "run-2"
+	w.options().Do(context.Background(), second)
+
+	if w.engine.saw.Session != "" {
+		t.Errorf("the second run was handed %q out of nowhere", w.engine.saw.Session)
+	}
+	if w.engine.saw.Restart != nil {
+		t.Errorf("nothing was ever remembered, and the agent was told it lost something: %v",
+			w.engine.saw.Restart.Code)
+	}
+}
+
+// The machine tells the server which conversation the run ended holding, and it is the one the
+// CLI ended with rather than the one it was handed: a run whose handle would not load opens a new
+// conversation and finishes on that (FR-023, FR-025).
+func TestTheServerIsToldWhichConversationTheRunEndedHolding(t *testing.T) {
+	w := aWorld(t)
+	w.engine.session = "sess-ended-on-this"
+	w.options().Do(context.Background(), w.grant())
+
+	done, ended := w.ledger.ending()
+	if !ended {
+		t.Fatal("the run was never closed")
+	}
+	if done.Session != "sess-ended-on-this" {
+		t.Errorf("the server was told the run ended on %q, want %q",
+			done.Session, "sess-ended-on-this")
+	}
 }
