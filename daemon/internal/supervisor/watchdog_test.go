@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gnust-company/armarius-daemon/internal/agentcli"
 )
 
 func newTestWatchdog(t *testing.T, base time.Duration, perCLI map[string]time.Duration) *Watchdog {
@@ -132,5 +134,50 @@ func TestAThresholdOfZeroIsRefused(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "codex") {
 		t.Errorf("the error does not name the offending CLI: %v", err)
+	}
+}
+
+// FR-031a from the other side: the clamp above proves a loose threshold is pulled back, and this
+// proves the table it is applied to has nothing to pull.
+//
+// Both are wanted. The clamp is what keeps a future entry honest; this is what says the entries
+// there today are, and it fails loudly if somebody adds one that would run under a rule the
+// operator does not think is in force — a run cut later than the machine's own threshold is a
+// run nobody is watching for exactly as long as the difference.
+func TestNoCLIInTheRegistryAsksForMoreRoomThanTheBaseAllows(t *testing.T) {
+	w, err := NewWatchdog(DefaultSilenceThreshold, agentcli.Silences())
+	if err != nil {
+		t.Fatalf("the registry's own thresholds do not build a watchdog: %v", err)
+	}
+	if pulled := w.Loosened(); len(pulled) != 0 {
+		t.Errorf("the registry declares thresholds that had to be pulled back: %v", pulled)
+	}
+	for cli, threshold := range agentcli.Silences() {
+		if threshold > DefaultSilenceThreshold {
+			t.Errorf("%s asks for %s, which is more room than the base %s",
+				cli, threshold, DefaultSilenceThreshold)
+		}
+		if got := w.Threshold(cli); got != threshold {
+			t.Errorf("%s declares %s and the watchdog enforces %s", cli, threshold, got)
+		}
+	}
+}
+
+// A kind the registry declares no threshold of its own for runs on the machine's, which is what
+// every kind does today. Stated so that "the table is empty" and "the table is not read" stay
+// two different things.
+func TestACLIWithNoThresholdOfItsOwnRunsOnTheMachines(t *testing.T) {
+	w, err := NewWatchdog(DefaultSilenceThreshold, agentcli.Silences())
+	if err != nil {
+		t.Fatalf("NewWatchdog returned an error: %v", err)
+	}
+	for _, row := range agentcli.All() {
+		if row.Silence > 0 {
+			continue
+		}
+		if got := w.Threshold(string(row.Kind)); got != DefaultSilenceThreshold {
+			t.Errorf("%s declares no threshold and is cut at %s, want the base %s",
+				row.Kind, got, DefaultSilenceThreshold)
+		}
 	}
 }

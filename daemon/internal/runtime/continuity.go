@@ -26,6 +26,14 @@ const (
 	// inside the turn rather than before it, which is why this one is raised by the runtime
 	// itself (FR-039a).
 	RestartRefused = "session_not_resumed"
+	// RestartNotResumable means the workplace did not declare that it can carry a conversation
+	// on, so the handle this task was holding was never offered (FR-017, FR-039a).
+	//
+	// The difference from RestartRefused is where it was found out, and it is worth a code of
+	// its own for that reason alone: this one is known *before* the turn, from the CLI's own
+	// account of itself, and acting on it is the degrade FR-039a calls still-supported. The
+	// other is a handle that was offered in good faith and bounced.
+	RestartNotResumable = "session_cli_not_resumable"
 )
 
 // Restart is a conversation that had to begin again, and why.
@@ -54,6 +62,8 @@ var restartReasons = map[string]string{
 	RestartUnreadable: "this machine kept a note of the previous session and can no longer " +
 		"read it",
 	RestartRefused: "the previous session was offered to the agent and it could not be loaded",
+	RestartNotResumable: "the agent CLI serving this task did not declare that it can carry a " +
+		"conversation on, so the previous session was not offered to it",
 }
 
 // Notice is what the agent is told, in English (Constitution VII).
@@ -93,13 +103,16 @@ func (r *Restart) detail() string {
 // told when it does not.
 //
 // Everything it needs is already decided: execenv answered whether a thread exists and whether
-// it is still within its keeping, and the caller knows which workplace is serving this agent
-// now. What is left here is the one comparison execenv cannot make — FR-026's — and the words.
+// it is still within its keeping, the workplace answered whether this CLI can carry one on at
+// all (FR-017), and the caller knows which workplace is serving this agent now. What is left
+// here is the two comparisons execenv cannot make and the words for all of them.
 //
 // **A first run is not a restart.** ThreadNone returns no handle and no notice: there is nothing
 // to have lost, and an agent told it is starting over on its first turn would go looking for a
 // history that never existed.
-func Continue(thread execenv.Thread, verdict execenv.Verdict, workplace string, now time.Time) (string, *Restart) {
+func Continue(
+	thread execenv.Thread, verdict execenv.Verdict, workplace string, resumable bool, now time.Time,
+) (string, *Restart) {
 	switch verdict {
 	case execenv.ThreadNone:
 		return "", nil
@@ -110,6 +123,18 @@ func Continue(thread execenv.Thread, verdict execenv.Verdict, workplace string, 
 		}
 	case execenv.ThreadUnreadable:
 		return "", &Restart{Code: RestartUnreadable}
+	}
+
+	// FR-017's answer, applied rather than merely recorded. The workplace was asked whether it
+	// can carry a conversation on and said it could not, so the handle is not offered — and the
+	// agent is told why, which is the whole of FR-039a's *degraded is still supported*.
+	//
+	// Checked after ThreadNone on purpose. A CLI that never resumes also never hands back a
+	// handle, so its ordinary turns have nothing to have lost and are not restarts at all; what
+	// is left here is the case that actually needs saying — a thread this machine is holding,
+	// for a workplace that has since answered that it cannot open one.
+	if !resumable {
+		return "", &Restart{Code: RestartNotResumable}
 	}
 
 	// FR-026, and the reason it is checked here rather than where the thread was read: only

@@ -14,7 +14,19 @@ import (
 func TestEveryLostThreadIsToldToTheAgent(t *testing.T) {
 	codes := []string{
 		RestartExpired, RestartWorkplaceRebuilt, RestartUnreadable, RestartRefused,
+		RestartNotResumable,
 		"a_code_nobody_wrote_a_sentence_for",
+	}
+	// Walked from the other side as well: a sentence written for a code this list forgot would
+	// otherwise pass, and the forgetting is the failure this test is about.
+	listed := map[string]bool{}
+	for _, code := range codes {
+		listed[code] = true
+	}
+	for code := range restartReasons {
+		if !listed[code] {
+			t.Errorf("%s has a sentence and is not walked here", code)
+		}
 	}
 	for _, code := range codes {
 		t.Run(code, func(t *testing.T) {
@@ -37,7 +49,7 @@ func TestCarryingOnSaysNothing(t *testing.T) {
 	now := time.Now()
 	handle, restart := Continue(
 		execenv.Thread{Handle: "sess-abc", Workplace: "place-1", LastUsedAt: now},
-		execenv.ThreadUsable, "place-1", now,
+		execenv.ThreadUsable, "place-1", true, now,
 	)
 	if handle != "sess-abc" {
 		t.Errorf("the handle is %q, want the one that was remembered", handle)
@@ -52,7 +64,7 @@ func TestCarryingOnSaysNothing(t *testing.T) {
 
 // A first run is not a restart: there is nothing to have lost (FR-025).
 func TestAFirstTurnIsNotAnnouncedAsARestart(t *testing.T) {
-	handle, restart := Continue(execenv.Thread{}, execenv.ThreadNone, "place-1", time.Now())
+	handle, restart := Continue(execenv.Thread{}, execenv.ThreadNone, "place-1", true, time.Now())
 	if handle != "" {
 		t.Errorf("a task with no history was given the handle %q", handle)
 	}
@@ -67,7 +79,7 @@ func TestAThreadFromARebuiltWorkplaceIsNotPretendedToContinue(t *testing.T) {
 	now := time.Now()
 	handle, restart := Continue(
 		execenv.Thread{Handle: "sess-abc", Workplace: "the-old-place", LastUsedAt: now},
-		execenv.ThreadUsable, "the-place-now-serving", now,
+		execenv.ThreadUsable, "the-place-now-serving", true, now,
 	)
 	if handle != "" {
 		t.Errorf("the old handle was handed over anyway: %q", handle)
@@ -91,7 +103,7 @@ func TestAnUnknownWorkplaceIsNotTreatedAsADifferentOne(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			handle, restart := Continue(
 				execenv.Thread{Handle: "sess-abc", Workplace: pair[0], LastUsedAt: now},
-				execenv.ThreadUsable, pair[1], now,
+				execenv.ThreadUsable, pair[1], true, now,
 			)
 			if handle != "sess-abc" || restart != nil {
 				t.Errorf("a conversation was restarted on an absence: handle %q, restart %v",
@@ -106,7 +118,7 @@ func TestAThreadPastItsKeepingIsAnnouncedWithHowLongItSat(t *testing.T) {
 	now := time.Now()
 	handle, restart := Continue(
 		execenv.Thread{Handle: "sess-old", LastUsedAt: now.Add(-20 * 24 * time.Hour)},
-		execenv.ThreadExpired, "place-1", now,
+		execenv.ThreadExpired, "place-1", true, now,
 	)
 	if handle != "" {
 		t.Errorf("an expired handle was handed over: %q", handle)
@@ -121,7 +133,7 @@ func TestAThreadPastItsKeepingIsAnnouncedWithHowLongItSat(t *testing.T) {
 
 // A note this daemon cannot read is a restart with a reason, not a silent new conversation.
 func TestANoteThatCannotBeReadIsStillAnnounced(t *testing.T) {
-	handle, restart := Continue(execenv.Thread{}, execenv.ThreadUnreadable, "place-1", time.Now())
+	handle, restart := Continue(execenv.Thread{}, execenv.ThreadUnreadable, "place-1", true, time.Now())
 	if handle != "" {
 		t.Errorf("a handle came out of an unreadable note: %q", handle)
 	}
@@ -186,5 +198,38 @@ func TestTheServersMessageIsNotTouched(t *testing.T) {
 	}
 	if !strings.HasPrefix(got, "This is a new conversation.") {
 		t.Errorf("the notice does not come first: %q", got)
+	}
+}
+
+// FR-017 answered, and acted on. A workplace that said it cannot carry a conversation on is not
+// handed the handle this machine was holding for the task — and the agent is told why, which is
+// the whole of FR-039a's *degraded is still supported*.
+func TestAWorkplaceThatCannotResumeIsNotHandedTheHandle(t *testing.T) {
+	now := time.Now()
+	handle, restart := Continue(
+		execenv.Thread{Handle: "sess-abc", Workplace: "place-1", LastUsedAt: now},
+		execenv.ThreadUsable, "place-1", false, now,
+	)
+	if handle != "" {
+		t.Errorf("the handle %q was offered to a CLI that said it cannot open one", handle)
+	}
+	if restart == nil || restart.Code != RestartNotResumable {
+		t.Fatalf("the restart is %v, want %s", restart, RestartNotResumable)
+	}
+	if notice := restart.Notice(); !strings.Contains(notice, "new conversation") {
+		t.Errorf("the agent was not told this is a new conversation: %q", notice)
+	}
+}
+
+// The ordinary turn on a CLI that never resumes is not a restart at all.
+//
+// It never hands a handle back, so there is nothing to have lost, and an agent told it is
+// starting over on every single turn would go looking each time for a history that never
+// existed. What the code above is for is the narrower case: a thread this machine *is* holding,
+// for a workplace that has since answered it cannot open one.
+func TestATurnWithNothingToLoseIsNotARestartEvenOnACLIThatCannotResume(t *testing.T) {
+	handle, restart := Continue(execenv.Thread{}, execenv.ThreadNone, "place-1", false, time.Now())
+	if handle != "" || restart != nil {
+		t.Errorf("a first turn was announced as a restart: handle %q, restart %v", handle, restart)
 	}
 }

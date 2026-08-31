@@ -141,8 +141,11 @@ func aWorld(t *testing.T) *world {
 		callback: callback,
 		ledger:   aLedger(),
 		engine:   &scripted{},
-		place:    Workplace{CLI: "claude_code", Family: "one_shot", Binary: "/bin/true"},
-		held:     &Runs{},
+		// Resumable because the real Claude Code is: the probe reads `--resume` out of its own
+		// help text. A workplace left at the zero value would be one that answered *no*, and
+		// every continuity test below would be measuring the degrade rather than the thread.
+		place: Workplace{CLI: "claude_code", Family: "one_shot", Binary: "/bin/true", Resumable: true},
+		held:  &Runs{},
 	}
 }
 
@@ -737,6 +740,37 @@ func TestTheSecondWakeOnATaskCarriesOnTheFirstOnesConversation(t *testing.T) {
 	}
 }
 
+// FR-017 + FR-039a, end to end: a workplace that answered it cannot carry a conversation on is
+// still handed work, still runs it, and gets a new conversation each time with the agent told
+// why. The degrade is *applied* here, not discovered by handing over a handle and watching the
+// CLI refuse it — the answer was on the workplace before the run began.
+func TestAWorkplaceThatCannotResumeStartsAgainEachTimeAndSaysSo(t *testing.T) {
+	w := aWorld(t)
+	w.engine.session = "sess-first"
+	w.options().Do(context.Background(), w.grant())
+
+	// The same CLI, the same task, and this installation says it cannot open a thread again.
+	w.place.Resumable = false
+	second := w.grant()
+	second.RunID = "run-2"
+	opts := w.options()
+	opts.Workplace = func(string) (Workplace, bool) { return w.place, true }
+	opts.Do(context.Background(), second)
+
+	if w.engine.saw.Session != "" {
+		t.Errorf("the handle %q was offered to a workplace that said it cannot open one",
+			w.engine.saw.Session)
+	}
+	if w.engine.saw.Restart == nil || w.engine.saw.Restart.Code != armruntime.RestartNotResumable {
+		t.Fatalf("the restart is %v, want %s", w.engine.saw.Restart, armruntime.RestartNotResumable)
+	}
+	// Still work, still done. FR-039a is explicit that this is support, not failure.
+	if last := w.ledger.finished[len(w.ledger.finished)-1]; last.Status != Completed {
+		t.Errorf("the run ended %q — a missing capability is a smaller run, not a failed one",
+			last.Status)
+	}
+}
+
 // FR-024, FR-010b: two tasks are two conversations, on the same machine, at the same workplace,
 // with the same agent.
 func TestTwoTasksNeverShareAConversation(t *testing.T) {
@@ -792,7 +826,7 @@ func TestAThreadFromARebuiltWorkplaceStartsAgainAndSaysSo(t *testing.T) {
 
 	// The machine was rebuilt: the CLI here registered again and came back a different
 	// workplace. The task is the same and its directory is still on disk.
-	w.place = Workplace{CLI: "claude_code", Family: "one_shot", Binary: "/bin/true"}
+	w.place = Workplace{CLI: "claude_code", Family: "one_shot", Binary: "/bin/true", Resumable: true}
 	rebuilt := w.grant()
 	rebuilt.RunID, rebuilt.WorkplaceID = "run-2", "wp-2"
 	opts := w.options()
