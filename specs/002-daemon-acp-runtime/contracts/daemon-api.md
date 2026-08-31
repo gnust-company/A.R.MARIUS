@@ -268,6 +268,11 @@ Daemon báo đã dựng xong môi trường và agent bắt đầu chạy.
 ← 404 {}     ← lượt chạy không còn thuộc máy này (hạn giữ đã hết) — daemon PHẢI dừng và dọn
 ```
 
+`session_handle` là mạch trò chuyện lượt chạy này **đang nối tiếp**, để trống khi nó mở mạch mới — bình
+thường ở lần gọi dậy đầu tiên của một đầu việc và sau mỗi lần bắt đầu lại (FR-023, FR-025). Server ghi nó
+vào đúng hàng mà đường chạy trong tiến trình vẫn dùng, khoá theo (agent, adapter, đầu việc). Để trống thì
+**không ghi gì**: nó nghĩa là *lượt này không nối tiếp gì*, không phải *đầu việc này hết mạch*.
+
 `404` ở đây chính là lưới ở FR-059: một máy đã bị thu hồi mà ngủ dậy muộn thì **không ghi được gì**. Hạn
 giữ đã trôi qua là đủ để trả `404`, **không đợi** vòng quét dọn hàng — nếu đợi thì trong quãng tối đa một
 vòng quét, máy vẫn bật được agent lên trên đầu việc mà vòng quét sắp trả về kệ, và đầu việc ấy đi ra lần
@@ -356,6 +361,10 @@ hai chuyện khác nhau; một con số gộp sẽ đẩy người đọc đi sa
 
 Server **thu hồi token của lượt chạy ngay tại đây** (FR-014b), và đầu việc phải có một động cơ đẩy sống
 ngay lập tức, không đợi vòng quét (FR-030a).
+
+`session_handle` ở đây là mạch lượt chạy **kết thúc** với nó, và nó không phải lúc nào cũng là mạch nó bắt
+đầu: một lượt chạy được đưa handle mà CLI không nạp được sẽ mở mạch mới rồi chạy tiếp trên mạch ấy
+(FR-025). Nên đây mới là handle lần gọi dậy sau thật sự dùng được.
 
 ---
 
