@@ -217,6 +217,15 @@ func (o RunOptions) remember(
 	grant Grant, req runtime.Request, prior execenv.Thread, outcome runtime.Outcome,
 ) {
 	if outcome.Session == "" {
+		if outcome.SessionRefused {
+			// The handle was offered, refused, and this turn produced no replacement — a second
+			// start that failed for its own reasons. Leaving the note where it is would have the
+			// next wake offer the same dead handle and fail the same way, and the one after
+			// that, until the thread aged out (FR-025, FR-027).
+			if err := execenv.ForgetThread(req.WorkDir); err != nil {
+				o.Report(fmt.Errorf("forgetting the conversation of task %s: %w", grant.TaskID, err))
+			}
+		}
 		return
 	}
 	now := o.Now()

@@ -193,6 +193,51 @@ func (OneShot) Run(ctx context.Context, req Request, emit Emit) (Outcome, error)
 	// into the run's log, the English goes to the agent ahead of the brief (FR-025, SC-007).
 	notice := tell(journal, req.Restart)
 
+	out, err := takeTurn(ctx, req, shape, journal, notice)
+	if !refusedTheHandle(ctx, req, journal, err) {
+		return out, err
+	}
+
+	// The handle was the only thing this turn was told that could be wrong, and the agent never
+	// said a word. **Measured, not assumed** (Claude Code 2.1.226): `--resume` with an id it
+	// cannot find prints `No conversation found with session ID: …`, exits 1, reports
+	// `num_turns: 0` — and echoes the id it was given back as the session, so the handle that
+	// just failed is the one that would have been written down for the next wake to try again.
+	//
+	// This family has no way to be told mid-turn that a load failed, which is how the ACP side
+	// learns it. So it is learnt from the outside instead: given a handle, ended badly, nothing
+	// heard from the agent. A second start costs one failed process; not doing it costs the run,
+	// and then every run after it until the thread ages out — which is exactly the outcome
+	// FR-025 exists to prevent (SC-007).
+	out.SessionRefused = true
+	fresh := req
+	fresh.Session = ""
+	again, err := takeTurn(ctx, fresh, shape, journal,
+		ahead(notice, tell(journal, &Restart{
+			Code:   RestartRefused,
+			Params: map[string]any{"session": req.Session},
+		})))
+	again.SessionRefused = true
+	return again, err
+}
+
+// refusedTheHandle says whether a failed turn failed *because of the handle it was given*, as
+// closely as this family can be asked.
+//
+// Three conditions, and each rules out a way of being wrong. **A handle was given**, so there is
+// something to blame. **Nothing was heard from the agent**, so nothing was done and nothing will
+// be repeated by starting again — an error is not the agent working. And **nothing outside ended
+// the run**: a daemon shutting down or a watchdog cutting a silent agent looks like a failure
+// from in here, and starting a second process on the way out is the one thing that must not
+// happen.
+func refusedTheHandle(ctx context.Context, req Request, journal *Journal, err error) bool {
+	return err != nil && req.Session != "" && !journal.HeardTheAgent() && ctx.Err() == nil
+}
+
+// takeTurn starts the CLI once and reads it to the end.
+func takeTurn(
+	ctx context.Context, req Request, shape invocation, journal *Journal, notice string,
+) (Outcome, error) {
 	cmd := newProcess(ctx, req, append(shape.args(req), chosen(req, shape.flags)...))
 	cmd.Stdin = strings.NewReader(ahead(notice, req.Message))
 

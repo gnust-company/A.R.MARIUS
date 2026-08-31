@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"sync/atomic"
 	"unicode/utf8"
 
 	"github.com/gnust-company/armarius-daemon/internal/redact"
@@ -50,6 +51,11 @@ type Journal struct {
 	out   Emit
 	mask  *redact.Masker
 	limit int
+	// heard records whether the agent has said anything at all this turn — anything, that is,
+	// other than something going wrong. It is the difference between *the CLI never got going*
+	// and *the CLI was working and then stopped*, and the only party in a position to tell them
+	// apart is the one every event passes through.
+	heard atomic.Bool
 }
 
 // NewJournal builds the gate for one run, out of the secrets that run knows.
@@ -81,7 +87,19 @@ func (j *Journal) Say(event Event) {
 	masked, hidden := j.mask.Payload(event.Payload)
 	event.Payload = masked
 	event.Redacted = event.Redacted || hidden
+	if event.Type != EventRunError {
+		j.heard.Store(true)
+	}
 	j.out(event)
+}
+
+// HeardTheAgent says whether the agent has produced anything of its own this turn.
+//
+// Errors do not count, and that is the whole point of the question: a turn that only ever
+// reported a failure is a turn in which nothing was done, and a turn in which nothing was done
+// is one that can be attempted again without repeating any of the agent's work.
+func (j *Journal) HeardTheAgent() bool {
+	return j != nil && j.heard.Load()
 }
 
 // Text records something the agent wrote (FR-044).

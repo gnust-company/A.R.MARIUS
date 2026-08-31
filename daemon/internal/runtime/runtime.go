@@ -138,6 +138,12 @@ type Outcome struct {
 	// Session is the handle to hand back next time. Empty means this CLI gave none, which is
 	// what starting a fresh conversation next time will look like (FR-025).
 	Session string
+	// SessionRefused says the handle this turn was given would not load, so the conversation
+	// began again. Reported rather than merely announced to the agent, because the machine has
+	// to stop offering that handle: a run that then fails for some other reason leaves nothing
+	// new to write down, and the next wake would pick the same dead handle straight back up
+	// (FR-025, FR-027).
+	SessionRefused bool
 	// Usage is whatever the CLI said the turn cost, passed on as it was given. Not interpreted
 	// here: every CLI counts in its own units, and averaging them into a shape of our own would
 	// be inventing a number nobody measured.

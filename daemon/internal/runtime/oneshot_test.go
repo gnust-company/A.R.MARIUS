@@ -470,3 +470,158 @@ echo '`+doneLine+`'`)
 		}
 	}
 }
+
+// ── một handle bị CLI từ chối ────────────────────────────────────────────────
+
+// Đo thật, Claude Code 2.1.226: `--resume` với một id nó không tìm thấy in
+// `No conversation found with session ID: …`, thoát 1, báo `num_turns: 0`, và **trả lại chính
+// cái id ấy** ở trường `session_id`. Họ chạy-một-phát không có đường nào để được báo giữa lượt
+// rằng phiên không nạp được — bên ACP học điều đó qua một lời từ chối của giao thức — nên phải
+// học từ bên ngoài: đã đưa handle, kết thúc tệ, và không nghe agent nói gì.
+const refusedLine = `{"type":"result","subtype":"error_during_execution","is_error":true,"num_turns":0,"session_id":"00000000-dead-beef-0000-000000000000","errors":["No conversation found with session ID: 00000000-dead-beef-0000-000000000000"]}`
+
+// resumeRefusingCLI hỏng khi được đưa `--resume`, chạy bình thường khi không.
+func resumeRefusingCLI(t *testing.T, tally string) string {
+	t.Helper()
+	return fakeCLI(t, `cat >> `+tally+`.stdin
+echo "$@" >> `+tally+`.args
+for arg in "$@"; do
+  if [ "$arg" = "--resume" ]; then
+    echo '`+refusedLine+`'
+    exit 1
+  fi
+done
+echo '`+initLine+`'
+echo '`+sayLine+`'
+echo '`+doneLine+`'`)
+}
+
+// FR-025 cho **cả hai** họ giao thức, không riêng ACP: mất mạch thì mở mạch mới và nói ra.
+func TestAHandleTheCLIRefusesStartsAFreshTurnRatherThanFailingTheRun(t *testing.T) {
+	tally := filepath.Join(t.TempDir(), "seen")
+	events, out, err := aTurn(t, Request{
+		Binary:  resumeRefusingCLI(t, tally),
+		Session: "00000000-dead-beef-0000-000000000000",
+	})
+	if err != nil {
+		t.Fatalf("lượt chạy hỏng hẳn thay vì mở mạch mới: %v", err)
+	}
+	if !out.SessionRefused {
+		t.Error("kết quả không nói rằng handle đã bị từ chối")
+	}
+	if out.Session != "76342bdf-65bf-4ff5-b7ad-88f612dc929f" {
+		t.Errorf("handle mang về là %q — phải là mạch **mới**, không phải cái vừa bị từ chối", out.Session)
+	}
+
+	var announced bool
+	for _, e := range events {
+		if e.Type == EventRunError && e.Payload["code"] == RestartRefused {
+			announced = true
+		}
+	}
+	if !announced {
+		t.Error("nhật ký không có dòng nào nói mạch cũ đã mất")
+	}
+
+	// Và agent phải **đọc** được câu ấy, không chỉ có nó trong nhật ký (SC-007).
+	stdin, readErr := os.ReadFile(tally + ".stdin")
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !strings.Contains(string(stdin), "new conversation") {
+		t.Errorf("agent không hề được báo là đang bắt đầu lại; nó đọc: %q", stdin)
+	}
+}
+
+// Lần thứ hai chạy **không** kèm `--resume`. Nếu vẫn kèm thì nó hỏng đúng như lần đầu, và cả
+// phép thử lại chỉ là hỏng hai lần thay vì một.
+func TestTheSecondAttemptDoesNotCarryTheHandleThatJustFailed(t *testing.T) {
+	tally := filepath.Join(t.TempDir(), "seen")
+	if _, _, err := aTurn(t, Request{
+		Binary:  resumeRefusingCLI(t, tally),
+		Session: "00000000-dead-beef-0000-000000000000",
+	}); err != nil {
+		t.Fatalf("chạy một lượt: %v", err)
+	}
+	args, err := os.ReadFile(tally + ".args")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(args)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("CLI được chạy %d lần, mong đúng hai", len(lines))
+	}
+	if !strings.Contains(lines[0], "--resume") {
+		t.Errorf("lần đầu không hề mang handle: %q", lines[0])
+	}
+	if strings.Contains(lines[1], "--resume") {
+		t.Errorf("lần thử lại vẫn mang đúng cái handle vừa hỏng: %q", lines[1])
+	}
+}
+
+// Ranh giới quan trọng nhất của phép thử lại: một lượt chạy đã **làm gì đó** thì không bao giờ
+// chạy lại. Một lỗi không phải là agent đang làm việc; một dòng agent nói ra thì có.
+func TestATurnTheAgentActuallyWorkedInIsNeverRunTwice(t *testing.T) {
+	tally := filepath.Join(t.TempDir(), "seen")
+	cli := fakeCLI(t, `echo "$@" >> `+tally+`.args
+echo '`+initLine+`'
+echo '`+sayLine+`'
+exit 1`)
+
+	if _, _, err := aTurn(t, Request{Binary: cli, Session: "sess-abc"}); err == nil {
+		t.Fatal("một lượt chạy hỏng giữa chừng lại báo là xong")
+	}
+	args, err := os.ReadFile(tally + ".args")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines := strings.Split(strings.TrimSpace(string(args)), "\n"); len(lines) != 1 {
+		t.Errorf("CLI được chạy %d lần — agent đã nói rồi thì chạy lại là làm lại việc nó đã làm",
+			len(lines))
+	}
+}
+
+// Không có handle thì không có gì để đổ lỗi, và không có gì để thử lại.
+func TestAFailingTurnThatWasGivenNoHandleIsNotRunTwice(t *testing.T) {
+	tally := filepath.Join(t.TempDir(), "seen")
+	cli := fakeCLI(t, `echo "$@" >> `+tally+`.args
+exit 1`)
+
+	if _, _, err := aTurn(t, Request{Binary: cli}); err == nil {
+		t.Fatal("một lượt chạy hỏng lại báo là xong")
+	}
+	args, err := os.ReadFile(tally + ".args")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines := strings.Split(strings.TrimSpace(string(args)), "\n"); len(lines) != 1 {
+		t.Errorf("CLI được chạy %d lần, mong đúng một", len(lines))
+	}
+}
+
+// Bị dừng từ bên ngoài — daemon tắt, hoặc chó canh cắt một agent im lặng — nhìn từ trong đây
+// giống hệt một lần hỏng. Khởi động một tiến trình thứ hai trên đường ra là đúng thứ không được
+// phép xảy ra.
+func TestARunEndedFromOutsideIsNotStartedAgain(t *testing.T) {
+	tally := filepath.Join(t.TempDir(), "seen")
+	cli := fakeCLI(t, `echo "$@" >> `+tally+`.args
+sleep 30`)
+
+	ctx, stop := context.WithCancel(context.Background())
+	go func() { time.Sleep(150 * time.Millisecond); stop() }()
+	_, err := OneShot{}.Run(ctx, Request{
+		CLI: "claude_code", Binary: cli, WorkDir: t.TempDir(),
+		Message: "Your instructions: be Marin.\n", Session: "sess-abc",
+		Env: []string{"PATH=" + os.Getenv("PATH")},
+	}, func(Event) {})
+	if err == nil {
+		t.Fatal("một lượt chạy bị cắt lại báo là xong")
+	}
+	args, readErr := os.ReadFile(tally + ".args")
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if lines := strings.Split(strings.TrimSpace(string(args)), "\n"); len(lines) != 1 {
+		t.Errorf("CLI được chạy %d lần trên đường daemon tắt", len(lines))
+	}
+}

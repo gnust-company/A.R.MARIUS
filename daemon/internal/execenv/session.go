@@ -136,3 +136,22 @@ func RememberThread(workDir string, thread Thread) error {
 	}
 	return nil
 }
+
+// ForgetThread drops what was remembered about a task's conversation.
+//
+// Called when a handle was offered and refused: the thread it names is gone on the CLI's side,
+// so keeping it here only guarantees that the next wake offers the same dead handle and fails
+// the same way. A run that then fails for some other reason writes nothing new, which is exactly
+// the case this covers — the note has to be taken away rather than merely overwritten later.
+//
+// A note that is not there is not a failure. It is the state this call is trying to reach.
+func ForgetThread(workDir string) error {
+	if workDir == "" {
+		return fmt.Errorf("forgetting a thread needs a working directory")
+	}
+	err := os.Remove(filepath.Join(workDir, filepath.FromSlash(threadFile)))
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("forgetting the thread of %s: %w", workDir, err)
+	}
+	return nil
+}
