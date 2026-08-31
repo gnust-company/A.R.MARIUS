@@ -23,6 +23,10 @@ func TestDefaultsAreTheNumbersTheResearchSettledOn(t *testing.T) {
 		{"claim_lease", c.ClaimLease.Duration(), 120 * time.Second},
 		{"tool_result_inline_limit_bytes", c.ToolResultInlineLimit, 2048},
 		{"max_concurrent_runs", c.MaxConcurrentRuns, 5},
+		{"sweep_interval", c.SweepInterval.Duration(), 2 * time.Hour},
+		{"work_dir_retention", c.WorkDirRetention.Duration(), 24 * time.Hour},
+		{"session_retention", c.SessionRetention.Duration(), 14 * 24 * time.Hour},
+		{"orphan_retention", c.OrphanRetention.Duration(), 72 * time.Hour},
 	} {
 		if want.got != want.want {
 			t.Errorf("%s = %v, want %v", want.name, want.got, want.want)
@@ -53,7 +57,7 @@ func writeConfig(t *testing.T, body string) string {
 	return path
 }
 
-// Naming one number must not reset the other four.
+// Naming one number must not reset any of the others.
 func TestNamingOneNumberLeavesTheRestAlone(t *testing.T) {
 	got, err := Load(writeConfig(t, `{"poll_interval": "30s"}`))
 	if err != nil {
@@ -146,12 +150,36 @@ func TestSettingsThatWouldStopTheMachineWorkingAreRefused(t *testing.T) {
 		"negative heartbeat":          `{"heartbeat_interval": "-5s"}`,
 		"no room for any tool output": `{"tool_result_inline_limit_bytes": 0}`,
 		"no room for any run":         `{"max_concurrent_runs": 0}`,
+		"a sweep that never comes":    `{"sweep_interval": "0s"}`,
+		"nothing kept at all":         `{"work_dir_retention": "0s"}`,
+		"no conversation kept":        `{"session_retention": "0s"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := Load(writeConfig(t, body)); err == nil {
 				t.Fatalf("%s was accepted", name)
 			}
 		})
+	}
+}
+
+// A directory the server never mentioned is deleted on a guess; one it said was finished with
+// is deleted on a statement. Letting the guess act sooner inverts which of the two this program
+// trusts more, and it does so silently — the machine runs, and quietly reclaims the directories
+// it knows least about first (FR-021a).
+func TestGuessingIsNeverAllowedToActSoonerThanBeingTold(t *testing.T) {
+	tighter := `{"work_dir_retention": "48h", "orphan_retention": "24h"}`
+	if _, err := Load(writeConfig(t, tighter)); err == nil {
+		t.Fatal("một hạn đoán ngắn hơn hạn được kể được nhận")
+	}
+
+	equal := `{"work_dir_retention": "24h", "orphan_retention": "24h"}`
+	if _, err := Load(writeConfig(t, equal)); err == nil {
+		t.Fatal("hai hạn bằng nhau được nhận — ca đoán phải dài hơn hẳn")
+	}
+
+	longer := `{"work_dir_retention": "24h", "orphan_retention": "72h"}`
+	if _, err := Load(writeConfig(t, longer)); err != nil {
+		t.Fatalf("một cặp hạn hợp lệ bị từ chối: %v", err)
 	}
 }
 

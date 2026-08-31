@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -579,6 +580,82 @@ func TestAFinishedRunFreesItsSlot(t *testing.T) {
 	if w.held.Holding(filepath.Join(w.root, "work", "task-1")) {
 		t.Fatal("lượt chạy xong rồi mà vòng quét vẫn bị chặn khỏi thư mục")
 	}
+}
+
+// longClosed is a server that says every task it is asked about finished a year ago — the one
+// answer that makes the sweep want to delete.
+type longClosed struct{}
+
+func (longClosed) Lookup(
+	_ context.Context, taskIDs []string,
+) (map[string]execenv.TaskState, error) {
+	states := make(map[string]execenv.TaskState, len(taskIDs))
+	for _, id := range taskIDs {
+		states[id] = execenv.TaskState{
+			Closed:       true,
+			LastActivity: time.Now().Add(-365 * 24 * time.Hour),
+		}
+	}
+	return states, nil
+}
+
+func TestARealSweepLeavesTheDirectoryOfARunInFlightAlone(t *testing.T) {
+	// The other half of FR-022, and the half no unit test of `Holding` can reach: the real
+	// collector, over the real working root, asking the same register the runner writes to.
+	// Everything about this directory says delete me — the server calls the task finished a
+	// year ago — and the one thing that must outweigh all of it is that somebody is in there.
+	w := aWorld(t)
+	inside := make(chan struct{})
+	w.engine.waitFor = func(ctx context.Context) {
+		close(inside)
+		<-ctx.Done()
+	}
+	go w.options().Do(context.Background(), w.grant())
+	<-inside
+
+	workDir := filepath.Join(w.root, "work", "task-1")
+	sweeper := execenv.Collector{
+		WorkRoot:  filepath.Join(w.root, "work"),
+		StateRoot: filepath.Join(w.root, "stores"),
+		Tasks:     longClosed{},
+		Runs:      w.held,
+	}
+
+	report, err := sweeper.Sweep(context.Background(), time.Now())
+	if err != nil {
+		t.Fatalf("quét: %v", err)
+	}
+	if _, err := os.Stat(workDir); err != nil {
+		t.Fatalf("vòng quét xoá mất thư mục của một lượt chạy đang chạy: %v", err)
+	}
+	if !keptFor(report, workDir, "a run is holding it") {
+		t.Fatalf("thư mục còn đó nhưng vòng quét không nói vì sao: %#v", report)
+	}
+
+	// And once nobody is in there, the same sweep over the same directory reclaims it — so the
+	// test above is measuring the hold, not a collector that never deletes anything.
+	w.held.Cancel("run-1")
+	until(t, func() bool { return w.held.Count() == 0 })
+
+	report, err = sweeper.Sweep(context.Background(), time.Now())
+	if err != nil {
+		t.Fatalf("quét lần hai: %v", err)
+	}
+	if _, err := os.Stat(workDir); !os.IsNotExist(err) {
+		t.Fatalf("lượt chạy xong rồi mà thư mục vẫn nằm lại: %v", err)
+	}
+	if !slices.Contains(report.Removed, workDir) {
+		t.Fatalf("thư mục biến mất nhưng không có trong sổ: %#v", report)
+	}
+}
+
+func keptFor(report execenv.Report, path, reason string) bool {
+	for _, kept := range report.Kept {
+		if kept.Path == path && kept.Reason == reason {
+			return true
+		}
+	}
+	return false
 }
 
 func TestCancellingARunNobodyHoldsChangesNothing(t *testing.T) {

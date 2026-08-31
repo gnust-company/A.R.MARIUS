@@ -268,12 +268,13 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 
 	held := &supervisor.Runs{}
 	work := supervisor.RunOptions{
-		WorkRoot:        filepath.Join(filepath.Dir(*configPath), "work"),
-		StateRoot:       filepath.Join(filepath.Dir(*configPath), "stores"),
-		OperatorHome:    operatorHome(),
-		Server:          creds.Server,
-		DaemonToken:     creds.Token,
-		CallbackProgram: callback,
+		WorkRoot:         filepath.Join(filepath.Dir(*configPath), "work"),
+		StateRoot:        filepath.Join(filepath.Dir(*configPath), "stores"),
+		OperatorHome:     operatorHome(),
+		Server:           creds.Server,
+		DaemonToken:      creds.Token,
+		CallbackProgram:  callback,
+		SessionRetention: settings.SessionRetention.Duration(),
 		Workplace: func(id string) (supervisor.Workplace, bool) {
 			place, known := places[id]
 			return place, known
@@ -331,6 +332,30 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 				}()
 			},
 			Report: func(err error) { emit(out, "asking for work: %v\n", err) },
+		})
+	}()
+
+	sweeper := housekeeping(settings, work, session)
+	go func() {
+		_ = supervisor.RunSweepLoop(ctx, supervisor.SweepOptions{
+			Interval: settings.SweepInterval.Duration(),
+			Sweep:    sweeper.Sweep,
+			Swept: func(report execenv.Report) {
+				if len(report.Removed) == 0 && len(report.Kept) == 0 {
+					// Nothing on disk at all. A machine that has run nothing yet is not
+					// worth a line every two hours.
+					return
+				}
+				// The count of what was left alone goes out too, and not only the deletions:
+				// a sweep that keeps everything and says nothing is indistinguishable from a
+				// sweep that is not running, which is the state an operator staring at a full
+				// disk most needs to be able to rule out.
+				emit(out, "Swept: reclaimed %d, kept %d.\n", len(report.Removed), len(report.Kept))
+				for _, path := range report.Removed {
+					emit(out, "  reclaimed %s\n", path)
+				}
+			},
+			Report: func(err error) { emit(out, "reclaiming disk: %v\n", err) },
 		})
 	}()
 
@@ -502,6 +527,27 @@ func callbackProgram() (string, error) {
 // An empty answer is not a failure: a machine with no discoverable home directory simply has no
 // operator installation to link to, and every CLI in that state says so far better than this
 // program could.
+// housekeeping is the disk sweep, built from the same options the runner was built from.
+//
+// It takes `supervisor.RunOptions` rather than the four values it reads out of it, and that is
+// the point: FR-022 holds only while the sweep asks the *same* register the runner writes to,
+// and while both look at the *same* two directories. Handing this function a fresh
+// `&supervisor.Runs{}`, or a work root spelled a second time, would compile, run, and delete a
+// live agent's working directory.
+func housekeeping(
+	settings config.Config, work supervisor.RunOptions, session client.Session,
+) execenv.Collector {
+	return execenv.Collector{
+		WorkRoot:         work.WorkRoot,
+		StateRoot:        work.StateRoot,
+		Tasks:            supervisor.Asking{Session: session},
+		Runs:             work.Runs,
+		WorkDirRetention: settings.WorkDirRetention.Duration(),
+		SessionRetention: settings.SessionRetention.Duration(),
+		OrphanRetention:  settings.OrphanRetention.Duration(),
+	}
+}
+
 func operatorHome() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
