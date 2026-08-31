@@ -9,8 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gnust-company/armarius-daemon/internal/agentcli"
 	"github.com/gnust-company/armarius-daemon/internal/client"
 	"github.com/gnust-company/armarius-daemon/internal/config"
+	"github.com/gnust-company/armarius-daemon/internal/discovery"
 	"github.com/gnust-company/armarius-daemon/internal/execenv"
 	"github.com/gnust-company/armarius-daemon/internal/supervisor"
 )
@@ -221,5 +223,98 @@ func TestTheSweepTakesTheRetentionsTheOperatorSet(t *testing.T) {
 	}
 	if sweeper.OrphanRetention != 30*24*time.Hour {
 		t.Errorf("orphan_retention = %s", sweeper.OrphanRetention)
+	}
+}
+
+func TestTheWatchdogIsBuiltFromTheRegistryRatherThanLeftOnItsDefault(t *testing.T) {
+	// The supervisor has always been able to take a threshold of each CLI's own, and until this
+	// was wired nothing ever handed it one: `RunOptions` filled in a watchdog with no overrides
+	// and every CLI on every machine ran on the base. That compiles, runs, and is
+	// indistinguishable from the wiring working — so what the watchdog was built from is
+	// asserted here (FR-031, FR-031a).
+	watchdog, err := silenceWatchdog(agentcli.Silences())
+	if err != nil {
+		t.Fatalf("máy không dựng nổi bộ canh im lặng của chính nó: %v", err)
+	}
+	for _, row := range agentcli.All() {
+		want := supervisor.DefaultSilenceThreshold
+		if row.Silence > 0 {
+			want = row.Silence
+		}
+		if got := watchdog.Threshold(string(row.Kind)); got != want {
+			t.Errorf("%s bị cắt ở %s, mong %s", row.Kind, got, want)
+		}
+	}
+	if pulled := watchdog.Loosened(); len(pulled) != 0 {
+		t.Errorf("bảng đặc tính có mục bị siết lại mà máy vẫn chạy im: %v", pulled)
+	}
+}
+
+func TestALooseThresholdIsPulledBackOnTheVeryPathTheMachineUses(t *testing.T) {
+	// FR-031a, driven down the path `start` takes rather than against the watchdog alone. The
+	// registry declares no thresholds today — agentcli says so out loud — so this hands the
+	// same function a table that tries to switch the safety net off, and proves the machine
+	// would clamp it and say so rather than run under it.
+	watchdog, err := silenceWatchdog(map[string]time.Duration{
+		"claude_code": supervisor.DefaultSilenceThreshold + time.Hour,
+		"codex":       time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("silenceWatchdog trả về lỗi: %v", err)
+	}
+	if got := watchdog.Threshold("claude_code"); got != supervisor.DefaultSilenceThreshold {
+		t.Errorf("một mục nới rộng được nhận: cắt ở %s, mong %s", got, supervisor.DefaultSilenceThreshold)
+	}
+	if got := watchdog.Threshold("codex"); got != time.Minute {
+		t.Errorf("một mục siết chặt bị bỏ qua: cắt ở %s, mong %s", got, time.Minute)
+	}
+	if pulled := watchdog.Loosened(); len(pulled) != 1 || pulled[0].CLI != "claude_code" {
+		t.Errorf("mục bị siết lại không được nói ra: %v", pulled)
+	}
+}
+
+func TestAWorkplaceCarriesTheAnswerItsOwnBinaryGave(t *testing.T) {
+	// FR-017 forbids deciding what a CLI can do from its name, so the answer has to travel from
+	// the probe to the run. It used to stop at the server: capabilities were reported and never
+	// read again, and every workplace on this machine was driven as though it had said yes to
+	// everything.
+	registered := []client.RegisteredWorkplace{
+		{ID: "wp-1", CLIKind: "claude_code", Ready: true},
+		{ID: "wp-2", CLIKind: "codex", Ready: true},
+	}
+	found := []discovery.Found{
+		{Kind: agentcli.ClaudeCode, Family: agentcli.FamilyOneShot, Path: "/usr/bin/claude"},
+		{Kind: agentcli.Codex, Family: agentcli.FamilyOneShot, Path: "/usr/local/bin/codex"},
+	}
+	answers := map[string]discovery.Capabilities{
+		"claude_code": {Resumable: true},
+		// The same kind of CLI, on a machine whose copy answered otherwise. This is the case the
+		// name-based lookup would get wrong.
+		"codex": {Resumable: false},
+	}
+
+	places := workplacesOnThisMachine(registered, found, answers)
+	if len(places) != 2 {
+		t.Fatalf("có %d chỗ làm, mong 2: %+v", len(places), places)
+	}
+	if !places["wp-1"].Resumable {
+		t.Error("chỗ làm khai nối lại được mà lại mang câu trả lời ngược")
+	}
+	if places["wp-2"].Resumable {
+		t.Error("chỗ làm khai không nối lại được vẫn được ghi là nối lại được")
+	}
+}
+
+func TestAWorkplaceThisBuildCannotDriveIsLeftOut(t *testing.T) {
+	// Gemini is installed, ready, and its row is blank on purpose (T013). Leaving it in the map
+	// would mean asking for work there, winning a run that fails during setup, and being offered
+	// the same run again — forever, a slot at a time.
+	places := workplacesOnThisMachine(
+		[]client.RegisteredWorkplace{{ID: "wp-1", CLIKind: "gemini", Ready: true}},
+		[]discovery.Found{{Kind: agentcli.Gemini, Family: agentcli.FamilyACP, Path: "/usr/local/bin/gemini"}},
+		map[string]discovery.Capabilities{"gemini": {}},
+	)
+	if len(places) != 0 {
+		t.Errorf("máy nhận việc ở chỗ làm nó chưa lái được: %+v", places)
 	}
 }

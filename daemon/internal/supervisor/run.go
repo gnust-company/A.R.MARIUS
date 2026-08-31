@@ -27,6 +27,14 @@ type Workplace struct {
 	// Binary is where discovery found it. Carried rather than looked up again, so that the CLI
 	// that runs is the one this machine registered.
 	Binary string
+	// Resumable is what **this installation** answered when it was asked whether it can carry a
+	// conversation on (FR-017). Carried on the workplace rather than looked up by kind, because
+	// that is precisely the lookup FR-017 forbids: two machines with the same CLI installed can
+	// answer differently, and the one that matters is the one about to run the work.
+	//
+	// A workplace that answered no still gets work. It gets a new conversation each turn and the
+	// agent is told why, which is FR-039a's degraded-but-supported rather than a failure.
+	Resumable bool
 }
 
 // Recorded is one event with its place in the run's order (FR-045).
@@ -266,7 +274,7 @@ func (o RunOptions) prepare(
 	if err != nil {
 		return runtime.Request{}, "", execenv.Thread{}, err
 	}
-	handle, restart := runtime.Continue(prior, verdict, grant.WorkplaceID, o.Now())
+	handle, restart := runtime.Continue(prior, verdict, grant.WorkplaceID, place.Resumable, o.Now())
 	if _, err := execenv.Build(execenv.Spec{
 		CLI:          place.CLI,
 		Home:         home,

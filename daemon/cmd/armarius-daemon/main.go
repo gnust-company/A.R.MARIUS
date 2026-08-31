@@ -29,6 +29,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gnust-company/armarius-daemon/internal/agentcli"
 	"github.com/gnust-company/armarius-daemon/internal/client"
 	"github.com/gnust-company/armarius-daemon/internal/config"
 	"github.com/gnust-company/armarius-daemon/internal/discovery"
@@ -199,13 +200,20 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 		emit(out, "Skipping %s at %s (%s): %v\n", broken.Kind, broken.Path, broken.Reason, broken.Err)
 	}
 
+	// Kept as well as sent. What a CLI answered about itself decides how this machine runs it —
+	// a workplace that cannot carry a conversation on must not be handed a handle to carry one
+	// (FR-017) — and until now the answer went to the server and nowhere else, so every
+	// workplace on this machine was driven as though it had said yes to everything.
+	answers := make(map[string]discovery.Capabilities, len(swept.Found))
 	reported := make([]client.WorkplaceReport, 0, len(swept.Found))
 	for _, found := range swept.Found {
+		answered := discovery.Probe(ctx, found, discovery.Options{})
+		answers[string(found.Kind)] = answered
 		reported = append(reported, client.WorkplaceReport{
 			CLIKind:        string(found.Kind),
 			CLIVersion:     found.Version,
 			ProtocolFamily: string(found.Family),
-			Capabilities:   discovery.Probe(ctx, found, discovery.Options{}),
+			Capabilities:   answered,
 		})
 	}
 
@@ -222,6 +230,14 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 			state = "not ready (" + workplace.NotReadyReason + ")"
 		}
 		emit(out, "%s on %s: %s\n", workplace.CLIKind, workplace.MachineName, state)
+		// Degraded, and said out loud (FR-017, FR-039a). A capability missing is not a broken
+		// workplace and does not stop work being offered here — but it does mean this workplace
+		// behaves differently from its neighbour, and an operator who is never told that has no
+		// way to tell a CLI that cannot resume from one that keeps losing its thread.
+		for _, missing := range answers[workplace.CLIKind].Reduced() {
+			emit(out, "  %s runs without %s (%s), which is supported and does less.\n",
+				workplace.CLIKind, missing.Capability, missing.Reason)
+		}
 	}
 
 	// From here on this machine has a running daemon, and `status` has to be able to say so
@@ -244,7 +260,7 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 	// What this machine can actually run, keyed the way work arrives: by workplace id. A
 	// workplace the server knows about but this daemon cannot drive is left out, and the ask
 	// loop below never asks for work there — see runtime.Supported.
-	places := workplacesOnThisMachine(registered.Workplaces, swept.Found)
+	places := workplacesOnThisMachine(registered.Workplaces, swept.Found, answers)
 	// Said only for the CLIs this build genuinely cannot drive, and not for a workplace that
 	// simply is not ready: one is a gap in this program, the other is a machine reporting
 	// honestly about itself, and telling the operator the wrong one sends them to fix the wrong
@@ -266,6 +282,21 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 		return err
 	}
 
+	// Built here rather than left to the supervisor's own default, and that is the whole of
+	// T119: the watchdog has always been able to take a threshold of each CLI's own, and until
+	// now nothing ever handed it one — every CLI on every machine ran on the base, and the
+	// tighten-only rule guarded a table nobody filled in.
+	watchdog, err := silenceWatchdog(agentcli.Silences())
+	if err != nil {
+		return err
+	}
+	// A threshold pulled back to the base is said, never quietly applied. A CLI whose entry
+	// asked for more room than the base allows is a machine running under a rule its operator
+	// does not think is in force (FR-031a).
+	for _, pulled := range watchdog.Loosened() {
+		emit(out, "%s\n", pulled)
+	}
+
 	held := &supervisor.Runs{}
 	work := supervisor.RunOptions{
 		WorkRoot:         filepath.Join(filepath.Dir(*configPath), "work"),
@@ -279,10 +310,11 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 			place, known := places[id]
 			return place, known
 		},
-		Runtime: runtimeFor,
-		Ledger:  supervisor.Reporting{Session: session},
-		Runs:    held,
-		Report:  func(err error) { emit(out, "run: %v\n", err) },
+		Runtime:  runtimeFor,
+		Ledger:   supervisor.Reporting{Session: session},
+		Runs:     held,
+		Watchdog: watchdog,
+		Report:   func(err error) { emit(out, "run: %v\n", err) },
 	}
 
 	// One buffered slot, deliberately: a nudge already waiting means an ask is already coming,
@@ -429,7 +461,9 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 // entirely rather than included and refused later — see runtime.Supported for why that
 // distinction is not cosmetic.
 func workplacesOnThisMachine(
-	registered []client.RegisteredWorkplace, found []discovery.Found,
+	registered []client.RegisteredWorkplace,
+	found []discovery.Found,
+	answers map[string]discovery.Capabilities,
 ) map[string]supervisor.Workplace {
 	here := make(map[string]discovery.Found, len(found))
 	for _, cli := range found {
@@ -443,9 +477,10 @@ func workplacesOnThisMachine(
 			continue
 		}
 		places[workplace.ID] = supervisor.Workplace{
-			CLI:    workplace.CLIKind,
-			Family: string(cli.Family),
-			Binary: cli.Path,
+			CLI:       workplace.CLIKind,
+			Family:    string(cli.Family),
+			Binary:    cli.Path,
+			Resumable: answers[workplace.CLIKind].Resumable,
 		}
 	}
 	return places
@@ -453,10 +488,10 @@ func workplacesOnThisMachine(
 
 // runtimeFor answers which protocol family runs a workplace of one kind (FR-035, FR-039).
 func runtimeFor(family string) (runtime.Runtime, bool) {
-	switch discovery.Family(family) {
-	case discovery.FamilyOneShot:
+	switch agentcli.Family(family) {
+	case agentcli.FamilyOneShot:
 		return runtime.OneShot{}, true
-	case discovery.FamilyACP:
+	case agentcli.FamilyACP:
 		return runtime.ACP{}, true
 	default:
 		return nil, false
@@ -527,6 +562,21 @@ func callbackProgram() (string, error) {
 // An empty answer is not a failure: a machine with no discoverable home directory simply has no
 // operator installation to link to, and every CLI in that state says so far better than this
 // program could.
+// silenceWatchdog builds the watchdog that decides a run has stopped producing anything.
+//
+// A function rather than three words inside the start-up path, for the same reason housekeeping
+// below is one: what it is handed is the argument. A watchdog built with no per-CLI thresholds
+// compiles, runs, and cuts every run at the base — which is exactly what this machine did before
+// anything read the registry, and is indistinguishable from the wiring working.
+//
+// The declarations come in rather than being read here, so that the tighten-only rule can be
+// driven down this exact path with a table that tries to break it. The registry declares none
+// today, which is a thing a test says out loud in agentcli; a table nobody can hand a bad entry
+// to is a rule nobody can prove is enforced.
+func silenceWatchdog(declared map[string]time.Duration) (*supervisor.Watchdog, error) {
+	return supervisor.NewWatchdog(supervisor.DefaultSilenceThreshold, declared)
+}
+
 // housekeeping is the disk sweep, built from the same options the runner was built from.
 //
 // It takes `supervisor.RunOptions` rather than the four values it reads out of it, and that is
