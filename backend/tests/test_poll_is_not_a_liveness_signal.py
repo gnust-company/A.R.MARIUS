@@ -211,6 +211,41 @@ async def test_a_beating_machine_whose_cli_is_gone_still_leaves_the_agent_offlin
         assert shown["offline_reason"] == "cli_removed"
 
 
+# FR-005: cái giá của việc không chào là ba nhịp lỡ — quãng ấy việc vẫn được giao cho một cái
+# máy không còn ở đó, và mọi lượt chạy sinh ra trong quãng ấy đều phải thu hồi lại. Nên daemon
+# tắt có trật tự thì trả chỗ làm về ngay, và agent ngoại tuyến **ngay lúc ấy**, không đợi.
+async def test_a_daemon_that_says_goodbye_takes_its_agents_offline_at_once() -> None:
+    async with _client() as c:
+        machine, workspace, workplace = await _machine_with_one_cli(
+            c, "beat-goodbye@example.com"
+        )
+        person = (
+            await c.post(
+                "/auth/login",
+                json={"email": "beat-goodbye@example.com", "password": "password1234"},
+            )
+        ).json()["tokens"]["access_token"]
+        agent = await _an_agent(c, person, workspace, workplace)
+        await _beat(c, machine)
+        assert await _alive(agent["id"]) is True
+
+        await c.put(
+            "/daemon/workplaces",
+            json={"workplaces": [], "symlink_capable": True, "stopping": True},
+            headers=_auth(machine),
+        )
+
+        # Không có nhịp nào bị lỡ, không có giây nào trôi qua. Máy vừa nói xong câu cuối.
+        assert await _alive(agent["id"]) is False
+
+        shown = (
+            await c.get(f"/v1/workspaces/{workspace}/mariuses", headers=_auth(person))
+        ).json()[0]
+        assert shown["offline_reason"] == "daemon_stopped", (
+            "câu hiện lên phải bảo người ta bật daemon lại, không phải cài lại agent CLI"
+        )
+
+
 # ── 3. máy im hẳn ─────────────────────────────────────────────────────────────
 
 

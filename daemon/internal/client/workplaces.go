@@ -43,6 +43,24 @@ type WorkplacesRequest struct {
 	// SymlinkCapable is what the link probe established by making a link, not a guess from
 	// which operating system this is (research §5).
 	SymlinkCapable bool `json:"symlink_capable"`
+	// Stopping says this is the last thing this daemon will send: the empty list beside it
+	// means *these workplaces are closed*, not *these CLIs were uninstalled* (FR-005).
+	//
+	// Without it, handing the workplaces back on the way out would tell every operator to go
+	// and reinstall a CLI that never moved — the only reason the server has for a workplace
+	// that stopped being reported. Same list, same door, one word of difference in what the
+	// person reading the screen is sent to do.
+	Stopping bool `json:"stopping,omitempty"`
+}
+
+// Deregister hands every workplace on this machine back, because the daemon is stopping
+// (FR-005).
+//
+// The list is empty and that is the whole message: this door takes a machine's complete
+// inventory every time, so a report that mentions nothing closes everything.
+func (s Session) Deregister(ctx context.Context) error {
+	_, err := s.SyncWorkplaces(ctx, WorkplacesRequest{Stopping: true})
+	return err
 }
 
 // RegisteredWorkplace is one workplace as the server now holds it.

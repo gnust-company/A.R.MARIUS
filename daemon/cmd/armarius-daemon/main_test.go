@@ -318,3 +318,37 @@ func TestAWorkplaceThisBuildCannotDriveIsLeftOut(t *testing.T) {
 		t.Errorf("máy nhận việc ở chỗ làm nó chưa lái được: %+v", places)
 	}
 }
+
+// Two packages hold the same number and neither may import the other: the operator's config
+// needs a default to run without a file, and the supervisor needs one to run without a config.
+// This is the only place in the program that can see both, so it is the only place the two can
+// be held together — and the day they drift, a machine on its defaults would drain for one
+// length while the daemon replacing it waits for another.
+func TestTheDefaultsAnOperatorGetsAreTheOnesTheSupervisorEnforces(t *testing.T) {
+	defaults := config.Defaults()
+	if got := defaults.DrainPatience.Duration(); got != supervisor.DefaultDrainPatience {
+		t.Errorf(
+			"config default drain_patience = %s, supervisor default = %s",
+			got, supervisor.DefaultDrainPatience,
+		)
+	}
+	if got := defaults.HeartbeatInterval.Duration(); got != supervisor.DefaultHeartbeatInterval {
+		t.Errorf(
+			"config default heartbeat_interval = %s, supervisor default = %s",
+			got, supervisor.DefaultHeartbeatInterval,
+		)
+	}
+}
+
+// The drain is bounded by what the machine's service manager allows a stop to take. Longer than
+// systemd's default TimeoutStopSec and the process is destroyed mid-drain, which cuts the run
+// anyway *and* leaves the state file behind, making an orderly stop look like a crash.
+func TestTheDefaultDrainFitsInsideAnOrdinaryServiceStopTimeout(t *testing.T) {
+	const systemdDefaultStopTimeout = 90 * time.Second
+	if supervisor.DefaultDrainPatience >= systemdDefaultStopTimeout {
+		t.Errorf(
+			"the default drain is %s, which a service manager stopping at %s would destroy",
+			supervisor.DefaultDrainPatience, systemdDefaultStopTimeout,
+		)
+	}
+}

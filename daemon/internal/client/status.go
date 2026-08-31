@@ -48,7 +48,24 @@ type RunState struct {
 	// ready, and nothing at all is reaching the server.
 	LastBeatOKAt  time.Time `json:"last_beat_ok_at"`
 	LastBeatError string    `json:"last_beat_error"`
+	// LeavingAt is written the moment this daemon is told to stop, and it is what turns an
+	// upgrade from a race into a handover: the daemon starting up reads it to tell a process
+	// that is finishing its last runs from one that intends to keep running (FR-034).
+	//
+	// It is a moment rather than a flag because the difference between *stopping* and *stopping
+	// for the last twenty minutes* is the difference between waiting and investigating, and a
+	// boolean cannot say which one an operator is looking at.
+	LeavingAt time.Time `json:"leaving_at,omitempty"`
 }
+
+// Leaving reports whether the daemon that wrote this state is on its way out.
+func (s RunState) Leaving() bool { return !s.LeavingAt.IsZero() }
+
+// ProcessAlive reports whether a process id is still running on this machine.
+//
+// Exported because the daemon that is starting up has to ask it about the daemon that is
+// stopping, and that question is asked from the supervisor rather than from here.
+func ProcessAlive(pid int) bool { return processAlive(pid) }
 
 // StatePath is where the state file sits for a given config file — beside it, never inside it.
 // The config file is shared with the operator's own settings and is theirs to edit; this one
@@ -122,9 +139,15 @@ type Status struct {
 	// silence, which is the worst of both.
 	StartedAt *time.Time `json:"started_at,omitempty"`
 	// StoppedUncleanly is true when a state file was left behind by a process that is gone.
-	StoppedUncleanly bool       `json:"stopped_uncleanly"`
-	LastBeatOKAt     *time.Time `json:"last_beat_ok_at,omitempty"`
-	LastBeatError    string     `json:"last_beat_error,omitempty"`
+	StoppedUncleanly bool `json:"stopped_uncleanly"`
+	// DaemonLeaving is true while the daemon is winding down: it has stopped asking for work
+	// and is finishing what it already holds (FR-034). Worth its own answer because a daemon
+	// that has been *stopping* for twenty minutes and one that is running normally look the
+	// same from every other line of this report.
+	DaemonLeaving bool       `json:"daemon_leaving"`
+	LeavingAt     *time.Time `json:"leaving_at,omitempty"`
+	LastBeatOKAt  *time.Time `json:"last_beat_ok_at,omitempty"`
+	LastBeatError string     `json:"last_beat_error,omitempty"`
 
 	CLIs       []FoundCLI            `json:"clis"`
 	Workplaces []RegisteredWorkplace `json:"workplaces"`
@@ -172,6 +195,8 @@ func Report(ctx context.Context, opts StatusOptions) (Status, error) {
 		status.Workplaces = state.Workplaces
 		status.DaemonRunning = opts.Alive(state.PID)
 		status.StoppedUncleanly = !status.DaemonRunning
+		status.DaemonLeaving = state.Leaving()
+		status.LeavingAt = whenSet(state.LeavingAt)
 	}
 	if status.Workplaces == nil {
 		status.Workplaces = []RegisteredWorkplace{}
@@ -220,8 +245,18 @@ func (s Status) WriteText(w io.Writer, now time.Time) {
 	}
 
 	switch {
+	case s.DaemonRunning && s.DaemonLeaving:
+		// Not a fault, and said plainly so nobody restarts it on top of itself. This machine
+		// is not taking new work and is waiting on the runs it already took (FR-034).
+		say(w, "Daemon:     stopping (pid %d, finishing its runs since %s)\n",
+			s.DaemonPID, stamp(s.LeavingAt))
 	case s.DaemonRunning:
 		say(w, "Daemon:     running (pid %d, up since %s)\n", s.DaemonPID, stamp(s.StartedAt))
+	case s.StoppedUncleanly && s.DaemonLeaving:
+		// It was doing the right thing and was destroyed anyway, which on a service-managed
+		// machine usually means the stop timeout is shorter than the runs on this box.
+		say(w, "Daemon:     not running — a daemon was killed at %s while it was still stopping\n",
+			stamp(s.LeavingAt))
 	case s.StoppedUncleanly:
 		say(w, "Daemon:     not running — a daemon started %s did not shut down cleanly\n", stamp(s.StartedAt))
 	default:

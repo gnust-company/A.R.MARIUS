@@ -220,7 +220,8 @@ export interface MariusDTO {
   adapter_type: string
   liveness: string
   /** Why this agent has nowhere to work, when it has nowhere to work (FR-006c). A code —
-   *  `not_placed`, `machine_unreachable`, `cli_removed`, `link_unsupported` — never a
+   *  `not_placed`, `machine_unreachable`, `cli_removed`, `link_unsupported`,
+   *  `daemon_stopped` — never a
    *  sentence; this side writes the sentence. Absent when the place is open. */
   offline_reason?: string | null
   /** Invite lifecycle: invited → pending_review → approved (#51). */

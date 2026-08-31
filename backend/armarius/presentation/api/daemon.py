@@ -152,6 +152,11 @@ class WorkplacesIn(BaseModel):
     # Whether this machine can make a real symbolic link, established by making one at startup
     # rather than guessed from the operating system (research.md §5).
     symlink_capable: bool = False
+    # The daemon is stopping and this is the last thing it will send (FR-005). The list beside
+    # it is empty, and the flag is what stops that empty list being read as "every agent CLI on
+    # this machine was uninstalled" — the same rows, closed for a different reason, and a
+    # different thing for the operator to do about it.
+    stopping: bool = False
 
 
 class WorkplaceOut(BaseModel):
@@ -414,6 +419,7 @@ async def sync_workplaces(
             for one in body.workplaces
         ],
         symlink_capable=body.symlink_capable,
+        stopping=body.stopping,
     )
     return WorkplacesOut(
         workplaces=[

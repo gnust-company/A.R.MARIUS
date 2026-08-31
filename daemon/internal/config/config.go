@@ -61,6 +61,21 @@ type Config struct {
 	// (FR-008d).
 	MaxConcurrentRuns int `json:"max_concurrent_runs"`
 
+	// DrainPatience is how long a stopping daemon lets the runs it already holds finish before
+	// it cuts them (FR-034). Stopping the daemon always stops it *asking* for work at once;
+	// this number is only about the work it had already taken.
+	//
+	// The default is written out here and again as supervisor.DefaultDrainPatience, the same way
+	// the heartbeat interval is, because neither package can be made to run without a number and
+	// neither may import the other. The two are held together by a test in the one place that
+	// sees both — cmd/armarius-daemon.
+	//
+	// It is paired with whatever the service manager on this machine allows a stop to take —
+	// systemd's `TimeoutStopSec`, 90 seconds by default — and raising one without the other
+	// buys nothing: past that limit the process is destroyed mid-drain, which cuts the run
+	// anyway and additionally leaves the machine looking as though it crashed.
+	DrainPatience Duration `json:"drain_patience"`
+
 	// SweepInterval is how often this machine looks over what it has left on its own disk
 	// (FR-021). Nothing is removed before its retention has passed, so this decides how *late*
 	// a reclaim can be, never whether one happens.
@@ -91,6 +106,7 @@ func Defaults() Config {
 		ClaimLease:            Duration(120 * time.Second),
 		ToolResultInlineLimit: 2048,
 		MaxConcurrentRuns:     5,
+		DrainPatience:         Duration(60 * time.Second),
 		SweepInterval:         Duration(execenv.DefaultSweepInterval),
 		WorkDirRetention:      Duration(execenv.DefaultWorkDirRetention),
 		SessionRetention:      Duration(execenv.DefaultSessionRetention),
@@ -133,6 +149,7 @@ func (c Config) Validate() error {
 		{"poll_interval", c.PollInterval.Duration()},
 		{"heartbeat_interval", c.HeartbeatInterval.Duration()},
 		{"claim_lease", c.ClaimLease.Duration()},
+		{"drain_patience", c.DrainPatience.Duration()},
 		{"sweep_interval", c.SweepInterval.Duration()},
 		{"work_dir_retention", c.WorkDirRetention.Duration()},
 		{"session_retention", c.SessionRetention.Duration()},

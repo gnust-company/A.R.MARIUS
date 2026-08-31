@@ -47,6 +47,12 @@ from armarius.shared.config import settings
 # not here* is the thing its operator can act on.
 REASON_CLI_REMOVED = "cli_removed"
 REASON_LINK_UNSUPPORTED = "link_unsupported"
+#: The daemon on that machine was stopped, and said so on its way out (FR-005). Distinct from
+#: `cli_removed` although both arrive as the same thing — a workplace the machine stopped
+#: reporting — because the two send the person reading the screen to do different work: one to
+#: reinstall a CLI, the other to start the daemon again. Without this code a routine restart
+#: told every operator their agent CLI had been uninstalled.
+REASON_DAEMON_STOPPED = "daemon_stopped"
 
 # How many times a sync is retried when two of them collide on the unique index over
 # (machine_id, cli_kind). One retry is enough by construction: after the loser rolls back, the
@@ -155,16 +161,24 @@ class DaemonWorkplaceService:
         *,
         reported: Sequence[ReportedWorkplace],
         symlink_capable: bool,
+        stopping: bool = False,
     ) -> list[SyncedWorkplace]:
         """Make the stored workplaces of one machine match what it just reported (FR-002).
 
         The daemon sends its whole list every time rather than a difference, so this is the one
         place that knows which CLIs left. A missing CLI is not a missing row.
+
+        ``stopping`` is the daemon saying this is the last thing it will send before it exits
+        (FR-005). It changes no rows that the ordinary path would not change; it changes only
+        the *reason* written on them, and that reason is the sentence an operator acts on.
         """
         for attempt in range(_SYNC_ATTEMPTS):
             try:
                 return await self._sync_once(
-                    machine, reported=reported, symlink_capable=symlink_capable
+                    machine,
+                    reported=reported,
+                    symlink_capable=symlink_capable,
+                    stopping=stopping,
                 )
             except IntegrityError:
                 # Two syncs from the same machine raced and both tried to insert the same
@@ -180,6 +194,7 @@ class DaemonWorkplaceService:
         *,
         reported: Sequence[ReportedWorkplace],
         symlink_capable: bool,
+        stopping: bool = False,
     ) -> list[SyncedWorkplace]:
         now = self._clock()
         async with self._sessions()() as session:
@@ -236,9 +251,16 @@ class DaemonWorkplaceService:
                 # Whatever is left in `stored` was registered before and is not on the machine
                 # any more. It stops being offered work and says why; it does not stop
                 # existing (FR-033).
+                #
+                # Why it stopped being reported is the machine's to say, and it says it by
+                # calling this door one last time as it exits (FR-005). Guessing `cli_removed`
+                # for a daemon that was simply stopped is not a small inaccuracy: it is the
+                # difference between "start the daemon again" and "go and reinstall gemini",
+                # and only one of those makes the workplace come back.
+                closed = REASON_DAEMON_STOPPED if stopping else REASON_CLI_REMOVED
                 for gone in stored.values():
                     gone.ready = False
-                    gone.not_ready_reason = REASON_CLI_REMOVED
+                    gone.not_ready_reason = closed
                     gone.updated_at = now
 
                 await session.commit()

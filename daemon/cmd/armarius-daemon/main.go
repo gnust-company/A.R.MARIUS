@@ -25,7 +25,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	gosys "runtime"
-	"sync"
 	"syscall"
 	"time"
 
@@ -186,6 +185,23 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 	}
 	session := client.Session{Server: creds.Server, Token: creds.Token}
 
+	// Before a single workplace is registered. A daemon that is on its way out is still holding
+	// runs and is still going to hand its workplaces back when it is done — registering on top
+	// of that would double this machine's slots for the length of the drain and then be undone
+	// by the outgoing daemon's goodbye (FR-034, FR-005).
+	statePath := client.StatePath(*configPath)
+	err = supervisor.WaitForPredecessor(ctx, supervisor.HandoverOptions{
+		Read:     func() (client.RunState, bool, error) { return client.LoadState(statePath) },
+		Self:     os.Getpid(),
+		Patience: supervisor.HandoverPatience(settings.DrainPatience.Duration()),
+		Waiting: func(pid int) {
+			emit(out, "Waiting for the daemon already on this machine (process %d) to finish its runs.\n", pid)
+		},
+	})
+	if err != nil {
+		return err
+	}
+
 	// What this machine can link is established by linking, once, on the disk the daemon's own
 	// state lives on — the same filesystem every agent home will be built on (research §5).
 	links := execenv.ProbeLinks(ctx, filepath.Dir(*configPath), execenv.LinkOptions{})
@@ -244,7 +260,6 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 	// without asking the server — which is the whole point of it (FR-005a). The state file is
 	// written now and refreshed on every beat, so a daemon whose token expired stops looking
 	// identical to a healthy one.
-	statePath := client.StatePath(*configPath)
 	state := client.RunState{
 		PID:        os.Getpid(),
 		StartedAt:  time.Now(),
@@ -317,10 +332,21 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 		Report:   func(err error) { emit(out, "run: %v\n", err) },
 	}
 
+	// **Runs do not stop when the daemon is told to stop** (FR-034). Every loop below is on
+	// `ctx` and ends the moment a signal arrives; the work already taken is on a context of its
+	// own, and the only things that end it are a run finishing, the server taking it back, or
+	// the drain below running out of patience.
+	//
+	// Before this, the two were the same context, and stopping the daemon cut every agent
+	// mid-sentence — which is exactly what an upgrade does to a machine: stop, swap the binary,
+	// start. The run still reported, so nothing looked broken; it reported a failure this
+	// machine had caused.
+	runCtx, endRuns := context.WithCancel(context.WithoutCancel(ctx))
+	defer endRuns()
+
 	// One buffered slot, deliberately: a nudge already waiting means an ask is already coming,
 	// and a second one would only make that ask happen twice (FR-055a).
 	nudges := make(chan struct{}, 1)
-	var running sync.WaitGroup
 
 	go func() {
 		err := session.WatchEvents(ctx, client.WatchOptions{
@@ -353,15 +379,14 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 				}
 				return grantsFrom(answered.Runs), nil
 			},
-			OnGranted: func(ctx context.Context, grant supervisor.Grant) {
+			OnGranted: func(_ context.Context, grant supervisor.Grant) {
 				// On its own goroutine: the ask loop is what decides when to ask next, and a
 				// machine with room for five runs that stops asking while the first one runs
 				// has a ceiling of one.
-				running.Add(1)
-				go func() {
-					defer running.Done()
-					work.Do(ctx, grant)
-				}()
+				//
+				// `runCtx`, deliberately not the context the ask loop was called with. That one
+				// dies with the loop, and the run has to outlive the loop that fetched it.
+				go work.Do(runCtx, grant)
 			},
 			Report: func(err error) { emit(out, "asking for work: %v\n", err) },
 		})
@@ -445,12 +470,43 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 		Report: func(err error) { emit(out, "heartbeat: %v\n", err) },
 	})
 
+	// From here on the daemon is leaving. Written down first, and before anything is waited
+	// for, because the daemon that replaces this one reads exactly this to tell a process
+	// finishing its last runs from one that means to keep running (FR-034).
+	state.LeavingAt = time.Now()
+	if saveErr := client.SaveState(statePath, state); saveErr != nil {
+		emit(out, "could not record that this machine is stopping: %v\n", saveErr)
+	}
+
 	// Runs still going when the beat stops are runs this machine is holding, and holding them
-	// is a promise. Each one is already being cancelled by the same context that ended the
-	// beat; what is waited for here is the last thing each of them does — telling the server
-	// how it ended, which is what revokes its token and puts the task back in motion (FR-014b,
-	// FR-030a). Abandoning that leaves a run marked *running* on a machine that has exited.
-	running.Wait()
+	// is a promise. They are given the time to end the way they were going to end, and only
+	// what is still going after that is cut — a cut run's hold lapses and its task goes back
+	// through the recovery path that exists for it (FR-056a), which is a real cost and the
+	// reason the wait comes first.
+	stillRunning := supervisor.Drain(ctx, supervisor.DrainOptions{
+		Held:     held.IDs,
+		Patience: settings.DrainPatience.Duration(),
+		Waiting: func(runs []string, patience time.Duration) {
+			emit(out, "Stopping. Waiting up to %s for %d run(s) to finish.\n", patience, len(runs))
+		},
+	})
+	for _, runID := range stillRunning {
+		emit(out, "Cutting run %s: it was still going after %s.\n", runID, settings.DrainPatience)
+	}
+	endRuns()
+
+	// Said last, when there is genuinely nothing left running here. Without it a stopped daemon
+	// is indistinguishable from a closed laptop — both simply stop beating — and every agent on
+	// this machine stays online until the missed-beat threshold runs out, which is time in which
+	// work is handed to a machine that is not there (FR-005).
+	if leaveErr := supervisor.Leave(ctx, supervisor.LeaveOptions{
+		Deregister: session.Deregister,
+	}); leaveErr != nil {
+		// Not fatal, and not silent. Failing to say goodbye costs the threshold's worth of
+		// delay and nothing else; hiding it would leave an operator wondering why their
+		// machine's agents took three beats to go offline.
+		emit(out, "could not hand this machine's workplaces back: %v\n", leaveErr)
+	}
 	return err
 }
 

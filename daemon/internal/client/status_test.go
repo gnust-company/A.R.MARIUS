@@ -327,3 +327,69 @@ func save(t *testing.T, configPath string, state RunState) {
 		t.Fatal(err)
 	}
 }
+
+// A daemon that is stopping is doing the right thing, and it looks from every other line of this
+// report exactly like one that is running normally. Told apart, so that an operator watching an
+// upgrade does not restart it on top of itself (FR-034).
+func TestADaemonFinishingItsRunsIsReportedAsStoppingNotAsRunning(t *testing.T) {
+	config := linkedConfig(t)
+	save(t, config, RunState{
+		PID:       4242,
+		StartedAt: time.Date(2026, 8, 25, 11, 0, 0, 0, time.UTC),
+		LeavingAt: time.Date(2026, 8, 25, 11, 58, 0, 0, time.UTC),
+	})
+
+	got, err := Report(context.Background(), aMachineWith(config, nil, map[int]bool{4242: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !got.DaemonRunning {
+		t.Fatal("a daemon that is still finishing its runs was reported as gone")
+	}
+	if !got.DaemonLeaving {
+		t.Fatal("a daemon on its way out was reported as one that means to keep running")
+	}
+	var text bytes.Buffer
+	got.WriteText(&text, time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC))
+	if !strings.Contains(text.String(), "stopping") {
+		t.Errorf("the answer does not say the daemon is stopping:\n%s", text.String())
+	}
+}
+
+// Being killed during a drain is not the same fault as crashing while running, and on a
+// service-managed machine it has a specific cause: the stop timeout is shorter than the runs.
+func TestADaemonKilledWhileStoppingSaysThatIsWhatHappened(t *testing.T) {
+	config := linkedConfig(t)
+	save(t, config, RunState{
+		PID:       4242,
+		StartedAt: time.Date(2026, 8, 25, 11, 0, 0, 0, time.UTC),
+		LeavingAt: time.Date(2026, 8, 25, 11, 58, 0, 0, time.UTC),
+	})
+
+	got, err := Report(context.Background(), aMachineWith(config, nil, map[int]bool{4242: false}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var text bytes.Buffer
+	got.WriteText(&text, time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC))
+	if !strings.Contains(text.String(), "while it was still stopping") {
+		t.Errorf("a daemon killed mid-drain reads as an ordinary crash:\n%s", text.String())
+	}
+}
+
+// A machine that has never been asked to stop must not read as one that is stopping.
+func TestADaemonNobodyStoppedIsNotReportedAsLeaving(t *testing.T) {
+	config := linkedConfig(t)
+	save(t, config, RunState{PID: 4242, StartedAt: time.Now().Add(-time.Hour)})
+
+	got, err := Report(context.Background(), aMachineWith(config, nil, map[int]bool{4242: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.DaemonLeaving || got.LeavingAt != nil {
+		t.Errorf("a daemon running normally was reported as leaving: %+v", got)
+	}
+}

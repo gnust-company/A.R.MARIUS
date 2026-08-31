@@ -86,10 +86,16 @@ def _cli(kind: str, **overrides: object) -> dict:
     return body
 
 
-async def _sync(c: AsyncClient, token: str, *clis: dict, symlink: bool = True):
+async def _sync(
+    c: AsyncClient, token: str, *clis: dict, symlink: bool = True, stopping: bool = False
+):
     return await c.put(
         "/daemon/workplaces",
-        json={"workplaces": list(clis), "symlink_capable": symlink},
+        json={
+            "workplaces": list(clis),
+            "symlink_capable": symlink,
+            "stopping": stopping,
+        },
         headers=_auth(token),
     )
 
@@ -173,6 +179,58 @@ async def test_a_cli_that_disappears_turns_not_ready_and_keeps_its_row() -> None
         assert offered["codex"]["ready"] is False
         assert offered["codex"]["not_ready_reason"] == "cli_removed"
         assert offered["claude_code"]["ready"] is True
+
+
+# FR-005: a daemon that is stopping hands its workplaces back rather than letting the machine
+# fall quiet and be noticed three missed beats later. Same door, same empty list — and the one
+# word that keeps the screen from telling its operator to reinstall a CLI that never moved.
+async def test_a_daemon_that_stops_closes_its_workplaces_without_blaming_the_cli() -> None:
+    async with _client() as c:
+        machine, _ = await _linked_machine(c, "wp-stopping@example.com")
+        before = await _sync(c, machine, _cli("claude_code"), _cli("codex"))
+        ids = {w["cli_kind"]: w["id"] for w in before.json()["workplaces"]}
+
+        after = await _sync(c, machine, stopping=True)
+
+        closed = {w["cli_kind"]: w for w in after.json()["workplaces"]}
+        assert set(closed) == {"claude_code", "codex"}, "the rows must not be deleted"
+        assert closed["codex"]["id"] == ids["codex"], "and they must keep their identity"
+        for one in closed.values():
+            assert one["ready"] is False, "a stopped daemon offers no workplace"
+            assert one["not_ready_reason"] == "daemon_stopped", (
+                "a stopped daemon must not read as an uninstalled CLI: one is fixed by "
+                "starting the daemon, the other by reinstalling something that never moved"
+            )
+
+
+# The same empty list without the word still means what it always meant. A machine whose CLIs
+# were genuinely uninstalled has to keep reading that way.
+async def test_an_empty_report_from_a_running_daemon_still_means_the_cli_is_gone() -> None:
+    async with _client() as c:
+        machine, _ = await _linked_machine(c, "wp-emptied@example.com")
+        await _sync(c, machine, _cli("codex"))
+
+        after = await _sync(c, machine)
+
+        closed = after.json()["workplaces"][0]
+        assert closed["not_ready_reason"] == "cli_removed"
+
+
+# Starting again is the whole promise of the goodbye: nothing was lost, the workplace comes back
+# with the identity it had, and the agents living there come back online with it.
+async def test_a_daemon_that_starts_again_reopens_the_workplaces_it_closed() -> None:
+    async with _client() as c:
+        machine, _ = await _linked_machine(c, "wp-restart@example.com")
+        before = await _sync(c, machine, _cli("codex"))
+        was = before.json()["workplaces"][0]["id"]
+        await _sync(c, machine, stopping=True)
+
+        after = await _sync(c, machine, _cli("codex"))
+
+        reopened = after.json()["workplaces"][0]
+        assert reopened["id"] == was, "the same workplace, not a second one"
+        assert reopened["ready"] is True
+        assert reopened["not_ready_reason"] is None
 
 
 async def test_a_cli_that_comes_back_is_offered_work_again() -> None:
