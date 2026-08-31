@@ -27,10 +27,11 @@ func TestTheBriefLandsInTheFileTheCLIAlreadyOpens(t *testing.T) {
 }
 
 func TestACLIWhoseContextFileIsUnknownIsRefused(t *testing.T) {
-	// Which file Gemini CLI reads has not been verified (T013). Guessing means writing where
-	// nothing looks, and an agent that was never told anything reads exactly like one that
-	// was told nothing was needed.
-	if _, err := WriteContextFile("gemini", t.TempDir(), brief); err == nil {
+	// The rule is about any CLI the registry has not declared a context file for — OpenCode is
+	// one of the fourteen in the research table that this release does not carry. Guessing means
+	// writing where nothing looks, and an agent that was never told anything reads exactly like
+	// one that was told nothing was needed. Gemini stood here until its file was measured.
+	if _, err := WriteContextFile("opencode", t.TempDir(), brief); err == nil {
 		t.Fatal("CLI chưa khai tệp bối cảnh mà vẫn ghi ra được")
 	}
 }

@@ -290,7 +290,7 @@ liệu đang có; 10 phút lấy theo hai giá trị per-CLI tìm được, và 
 
 | CLI | Họ | Vì sao có trong đợt đầu |
 | --- | --- | --- |
-| **Gemini CLI** (`--experimental-acp`) | ACP | Người chủ chốt là bắt buộc (FR-039) |
+| **Gemini CLI** (`--acp`; `--experimental-acp` là tên cũ, còn nhận) | ACP | Người chủ chốt là bắt buộc (FR-039) |
 | **Claude Code** | chạy-một-phát | Đang dùng thật hằng ngày trong dự án |
 | **Codex** | chạy-một-phát | Có mô hình thư mục nhà riêng, thử được cơ chế dựng môi trường |
 
@@ -358,6 +358,63 @@ giúp, và `gemini --acp` cần đăng nhập thì mới bắt tay được. N�
 tác khi bị **một chương trình khác** khởi chạy (stdin không phải terminal) không? Issue #12042 báo đúng ca
 này, và daemon **luôn** chạy nó theo kiểu đó. Script hỏi luôn câu này.
 
+### 9.2 Chạy thật, 2026-08-31 — `gemini 0.56.0` trên máy phát triển
+
+Ghi chú 2026-08-24 *"máy phát triển không cài được `gemini`"* đã lỗi thời: `gemini` **có** trên máy, chạy
+được, và daemon đăng ký nó thành chỗ làm *ready*. Đã chạy `daemon/scripts/probe-gemini-acp.mjs`.
+
+**Đo được — đây là phần thay thế phỏng đoán:**
+
+| Điều | Kết quả |
+| --- | --- |
+| Bắt tay ACP khi bị chương trình khác bật, stdin không phải terminal | **XONG SẠCH.** `initialize` trả về `{"name":"gemini-cli","version":"0.56.0"}` |
+| Câu hỏi thứ năm (issue #12042): có đòi đăng nhập tương tác không | **KHÔNG.** Bắt tay đi qua bình thường |
+| `agentCapabilities` nó tự khai | `loadSession: true`, `promptCapabilities: {image, audio, embeddedContext}`, `mcpCapabilities: {http: true, sse: true}` |
+
+`loadSession: true` **đo được**, không phải đọc mã — issue #15502 báo `false` là bản cũ, đúng như mục 9.1
+dự đoán. `mcpCapabilities` là thứ T061 cần khi khai bộ công cụ gọi ngược cho Gemini.
+
+**Không đo được, và vì sao:** một lượt prompt không chạy nổi. Google **cắt hẳn client này cho tài khoản cá
+nhân miễn phí** — không phải hết quota:
+
+```
+IneligibleTierError · reasonCode: UNSUPPORTED_CLIENT · tierId: free-tier
+"This client is no longer supported for Gemini Code Assist for individuals.
+ To continue using Gemini, please migrate to the Antigravity suite of products"
+```
+
+Nên câu 1, 2, 4 (dấu cắm trong `GEMINI.md` có tới model không, kỹ năng có được thấy không, lời gọi công cụ
+mang gì) **vẫn chưa xem tận mắt**. Đường đáng thử tiếp: `GEMINI_API_KEY` — Gemini CLI có đường xác thực
+bằng API key, khác đường OAuth vừa bị chặn.
+
+**Phát hiện phụ, đọc mã nguồn trên mạng không ra — và nó là thứ quan trọng nhất của cả lần chạy:**
+
+Gemini có **cổng thư mục tin cậy**. Chạy trong `/tmp/...` nó ghi ra luồng lỗi:
+
+```
+Skipping project agents due to untrusted folder.
+Project hooks disabled because the folder is not trusted.
+```
+
+Thư mục daemon tự tạo cho mỗi đầu việc **luôn** là thư mục chưa ai tin cậy. Không xử thì bản tóm tắt ghi
+vào `GEMINI.md` nằm đó không ai đọc — mà **không có lỗi nào**: đúng hình dạng hỏng-trong-im-lặng.
+
+Cách xử, đọc từ chính bundle của bản cài (`checkPathTrust`): biến môi trường
+**`GEMINI_CLI_TRUST_WORKSPACE=true`** được xét **trước** danh sách trên đĩa. Một biến, không phải sửa
+`trustedFolders.json` của người vận hành.
+
+**Ba thứ nữa đọc từ bundle bản cài** (`/usr/local/lib/node_modules/@google/gemini-cli/bundle`), mạnh hơn
+tài liệu vì đó là đúng thứ đang chạy:
+
+- `GEMINI_DIR = ".gemini"` là **hằng số**, không phải biến nó đọc ⇒ chỉ có một cần gạt là đổi `HOME`.
+- `.gemini/skills` — có trong bundle. Thư mục kỹ năng **cá nhân** (`~/.gemini/skills`) đọc không cần
+  quyết định tin cậy, còn thư mục kỹ năng của dự án thì nằm sau đúng cái cổng ấy.
+- `"GEMINI.md"` và `contextFileName` — có trong bundle.
+
+**Còn phải đo lại khi có tài khoản chạy được**: dấu cắm trong `GEMINI.md` và trong kỹ năng có quay lại
+trong câu trả lời của model không; và một lời gọi công cụ mang `rawInput`/`rawOutput` hay chỉ mang tiêu đề.
+
+
 ---
 
 ## 11. Kỹ năng và thông điệp — kế thừa nguyên flow Multica (chốt 2026-08-23)
@@ -374,7 +431,7 @@ Bảng dưới là phần rút gọn của [research-multica-daemon.md §3](rese
 | --- | --- | --- |
 | **Claude Code** | `CLAUDE.md` | `.claude/skills/` |
 | **Codex** | `AGENTS.md` | qua `CODEX_HOME` |
-| **Gemini CLI** | **chưa xác minh** — task T013 phải trả lời | **chưa xác minh** — task T013 |
+| **Gemini CLI** | `GEMINI.md` | `.gemini/skills/` (bản cá nhân, trong nhà) |
 
 Nguyên tắc chung của Multica, giữ nguyên: **không dạy agent một đường nạp mới**. Ghi vào đúng chỗ nó vốn
 tự đọc, tự dò. Agent không cần biết Armarius tồn tại để nhận được kỹ năng.

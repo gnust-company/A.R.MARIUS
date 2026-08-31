@@ -143,6 +143,17 @@ type Skills struct {
 	InHome bool
 }
 
+// EnvVar is one variable a CLI needs set that is not about where its home is.
+//
+// Kept apart from HomeVars because the two answer different questions and fail differently. A
+// home pointer aimed wrong sends a CLI to read somebody else's installation; one of these
+// missing turns a feature off. Both are facts about the CLI, and neither is a credential —
+// nothing here may carry a secret, which is why it is a plain pair rather than a lookup.
+type EnvVar struct {
+	Name  string
+	Value string
+}
+
 // HomeVar is one variable that tells a CLI where its home is.
 type HomeVar struct {
 	Variable string
@@ -191,6 +202,13 @@ type CLI struct {
 	// the point.
 	HomeVars []HomeVar
 
+	// Env is what this CLI needs set beyond being pointed at its home.
+	//
+	// Ordered rather than a map, so the environment a run is started with is the same twice for
+	// the same CLI: a run that cannot be reproduced from its own record is a run nobody can
+	// debug.
+	Env []EnvVar
+
 	// Silence is how long a run on this kind of CLI may say nothing before it is treated as
 	// hung, when that differs from the machine's own threshold. Zero means the machine's.
 	//
@@ -220,25 +238,60 @@ const (
 // disagree about the order of the same three workplaces look like a machine whose CLIs keep
 // changing.
 var rows = []CLI{
-	// Gemini CLI: **known of, and deliberately undeclared.**
+	// Gemini CLI. **Every line below was read off the binary installed on a machine, not off a
+	// web page** — `gemini 0.56.0`, 2026-08-31, `daemon/scripts/probe-gemini-acp.mjs` plus the
+	// bundle it ships (see research §9.2). That distinction is the whole of FR-039a: what is
+	// forbidden is guessing, not writing.
 	//
-	// It is looked for and registered as a workplace, because it really is installed and the
-	// server is entitled to know (FR-002). Everything past that is blank, and blank is the
-	// honest content: which file it reads its brief out of, which directory it scans for
-	// skills, and whether it can carry a conversation on are all unverified. The spec forbids
-	// writing Gemini's answers before the probe has actually been run against it (FR-039a,
-	// task T013), and a guess here would not be a guess that fails — it would be a brief
-	// written to a file nothing opens, which reads on every screen exactly like an agent that
-	// was told everything and did nothing.
-	//
-	// The blanks are what stop that. A run cannot be set up on a kind whose facts are missing,
-	// so the machine does not ask for work here and says why, rather than winning a run it
-	// would spoil (see Ready).
+	// What the probe reached, and what it did not, matters for reading this row. The ACP
+	// handshake **completed** with the process started by another program and no terminal, and
+	// Gemini declared its own capabilities in it — so the failure this row was held back for,
+	// a daemon waiting forever on a handshake that was never coming, is measured not to happen.
+	// What could not be reached was a prompt: Google refuses this account outright
+	// (`IneligibleTierError`, `UNSUPPORTED_CLIENT` on the individual free tier). So the four
+	// paths below are read from the shipped source rather than watched being used, and the day
+	// a working account exists they are the first thing to check.
 	{
 		Kind:        Gemini,
 		Family:      FamilyACP,
 		Binary:      "gemini",
 		VersionArgs: []string{"--version"},
+		// `"GEMINI.md"` and `contextFileName` in the bundle. Project-level, in the working
+		// directory, which is why the trust variable below is not optional.
+		ContextFile: "GEMINI.md",
+		// The **personal** skills directory, inside the home, rather than the project one.
+		// Both exist; this one is read without asking anybody's permission, while the project
+		// directory sits behind the same trust gate the brief does. The home is built fresh for
+		// each run, so it also gives skills the lifetime they should have had anyway — and one
+		// agent's skills cannot be sitting there when the next agent runs (FR-007b).
+		Skills: Skills{Path: ".gemini/skills", InHome: true},
+		Home: []Entry{
+			// Child by child, so the operator's login comes along and the two directories
+			// Gemini writes into stay ours — same reason Claude Code's `.claude` is linked
+			// this way (T109).
+			{Path: ".gemini", Lifetime: OperatorTree, Source: ".gemini"},
+			// `~/.gemini/tmp/<project>/chats/session-*.jsonl` is where a conversation lives,
+			// which makes it the thing FR-023 carries between wakes and FR-027 ages out.
+			// Measured: the probe left one there under its own workspace name.
+			{Path: ".gemini/tmp", Lifetime: PerTask},
+			// Command history. Kept out of the operator's real home deliberately and not kept
+			// at all: it is the agent's typing, not theirs, and nothing reads it back.
+			{Path: ".gemini/history", Lifetime: PerRun},
+			{Path: ".gemini/skills", Lifetime: PerRun},
+		},
+		// HOME and nothing else. `GEMINI_DIR` is a **constant** in the bundle rather than a
+		// variable it reads, so there is no second lever here: redirect the home or reach
+		// nothing.
+		HomeVars: []HomeVar{{Variable: "HOME"}},
+		// The gate the probe found, and the reason a row filled in without it would have been
+		// the silent failure this table exists to prevent. Gemini will not read project-level
+		// configuration out of a folder nobody has trusted — and the daemon makes a fresh
+		// folder for every task, which nobody ever has. Untrusted, it says so on its error
+		// stream and carries on with the brief unread.
+		//
+		// The variable is checked before the on-disk list (`checkPathTrust` in the bundle), so
+		// it settles the question without editing a file the operator owns.
+		Env: []EnvVar{{Name: "GEMINI_CLI_TRUST_WORKSPACE", Value: "true"}},
 	},
 
 	// Claude Code reads its brief from CLAUDE.md and its skills from .claude/skills, both

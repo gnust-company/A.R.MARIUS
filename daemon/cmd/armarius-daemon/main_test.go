@@ -306,13 +306,13 @@ func TestAWorkplaceCarriesTheAnswerItsOwnBinaryGave(t *testing.T) {
 }
 
 func TestAWorkplaceThisBuildCannotDriveIsLeftOut(t *testing.T) {
-	// Gemini is installed, ready, and its row is blank on purpose (T013). Leaving it in the map
-	// would mean asking for work there, winning a run that fails during setup, and being offered
-	// the same run again — forever, a slot at a time.
+	// The server knows of more kinds than any one build carries. Leaving one in the map would
+	// mean asking for work there, winning a run that fails during setup, and being offered the
+	// same run again — forever, a slot at a time.
 	places := workplacesOnThisMachine(
-		[]client.RegisteredWorkplace{{ID: "wp-1", CLIKind: "gemini", Ready: true}},
-		[]discovery.Found{{Kind: agentcli.Gemini, Family: agentcli.FamilyACP, Path: "/usr/local/bin/gemini"}},
-		map[string]discovery.Capabilities{"gemini": {}},
+		[]client.RegisteredWorkplace{{ID: "wp-1", CLIKind: "opencode", Ready: true}},
+		[]discovery.Found{{Kind: "opencode", Family: agentcli.FamilyOneShot, Path: "/usr/local/bin/opencode"}},
+		map[string]discovery.Capabilities{"opencode": {}},
 	)
 	if len(places) != 0 {
 		t.Errorf("máy nhận việc ở chỗ làm nó chưa lái được: %+v", places)

@@ -167,6 +167,13 @@ func Environ(spec EnvSpec) ([]string, error) {
 		}
 		ours[p.Variable] = target
 	}
+	// What this CLI needs set beyond being pointed at its home. Applied the same way as
+	// everything else here — placed in `ours`, so an inherited value of the same name is
+	// dropped rather than left to win. A variable that turns a feature on is exactly the kind
+	// a machine can have set for some unrelated reason.
+	for _, v := range row.Env {
+		ours[v.Name] = v.Value
+	}
 
 	env := make([]string, 0, len(spec.Inherited)+len(ours))
 	for _, entry := range spec.Inherited {
