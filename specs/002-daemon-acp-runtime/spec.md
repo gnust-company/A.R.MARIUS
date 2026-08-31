@@ -570,6 +570,14 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   Vào nhật ký lượt chạy thì nó PHẢI ở dạng **mã kèm tham số**, không phải câu đã dựng sẵn (Điều VII).
   Lần **đầu tiên** làm việc trên một đầu việc KHÔNG phải một lần bắt đầu lại: chưa từng có mạch nào để
   mất, và bảo agent rằng nó đang làm lại sẽ khiến agent đi tìm một lịch sử chưa bao giờ tồn tại.
+- **FR-025b**: FR-025 áp cho **mọi họ giao thức**, kể cả họ không có đường báo giữa lượt rằng phiên
+  không nạp được. Với họ ấy hệ thống PHẢI nhận ra ca đó **từ bên ngoài** — đã đưa handle, lượt chạy kết
+  thúc tệ, và **không nghe agent nói gì** — rồi thử lại đúng **một** lần không kèm handle. Ba điều kiện
+  đều cần: *không nghe gì* là bảo đảm không có việc nào của agent bị làm lại (một lỗi không phải là
+  agent đang làm việc), và *bị dừng từ bên ngoài* phải loại trừ vì nhìn từ trong nó giống hệt một lần
+  hỏng. Handle bị từ chối PHẢI bị **bỏ khỏi máy**, không chỉ chờ được ghi đè: nếu lượt thử lại cũng
+  hỏng thì không có gì mới để ghi đè lên, và lần gọi dậy sau sẽ đưa lại đúng cái handle chết ấy cho tới
+  khi mạch hết hạn giữ.
 - **FR-026**: Khi chỗ làm giữ phiên cũ **không còn là chỗ làm đang phục vụ agent ấy** (máy cài lại, daemon
   đăng ký lại thành chỗ làm mới), hệ thống PHẢI mở phiên mới và báo theo FR-025 — KHÔNG ĐƯỢC giả vờ nối
   tiếp. Lưu ý: vì FR-007 buộc mỗi agent vào đúng một chỗ làm không đổi được, một lượt gọi dậy **không thể**

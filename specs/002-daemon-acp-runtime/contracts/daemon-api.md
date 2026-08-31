@@ -271,7 +271,9 @@ Daemon báo đã dựng xong môi trường và agent bắt đầu chạy.
 `session_handle` là mạch trò chuyện lượt chạy này **đang nối tiếp**, để trống khi nó mở mạch mới — bình
 thường ở lần gọi dậy đầu tiên của một đầu việc và sau mỗi lần bắt đầu lại (FR-023, FR-025). Server ghi nó
 vào đúng hàng mà đường chạy trong tiến trình vẫn dùng, khoá theo (agent, adapter, đầu việc). Để trống thì
-**không ghi gì**: nó nghĩa là *lượt này không nối tiếp gì*, không phải *đầu việc này hết mạch*.
+**không ghi gì**: nó nghĩa là *lượt này không nối tiếp gì*, không phải *đầu việc này hết mạch*. Trường
+này dài **tối đa 200 ký tự** — mọi handle CLI đã đo đều là một UUID, nên đây là trần chống rác chứ không
+phải một ràng buộc lên client nào đang chạy.
 
 `404` ở đây chính là lưới ở FR-059: một máy đã bị thu hồi mà ngủ dậy muộn thì **không ghi được gì**. Hạn
 giữ đã trôi qua là đủ để trả `404`, **không đợi** vòng quét dọn hàng — nếu đợi thì trong quãng tối đa một
