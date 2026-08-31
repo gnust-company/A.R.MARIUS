@@ -232,7 +232,14 @@ class ClaimOut(BaseModel):
 
 
 class StartIn(BaseModel):
-    session_handle: str = ""
+    """What the machine says as the agent comes up.
+
+    `session_handle` is the conversation this run is carrying on — the CLI's own word for the
+    thread, opaque here — and empty means it opened a new one, which is the ordinary answer on
+    a task's first wake and after a restart (FR-023, FR-025).
+    """
+
+    session_handle: str = Field(default="", max_length=200)
 
 
 class EventIn(BaseModel):
@@ -280,6 +287,10 @@ class FinishIn(BaseModel):
     status: Literal["completed", "failed", "timed_out", "stopped"]
     error: str = Field(default="", max_length=4_000)
     usage: dict[str, object] = Field(default_factory=dict)
+    # The conversation the run **ended** holding, which is not always the one it started with:
+    # a run handed a handle the CLI would not load opens a new one and carries on (FR-025). This
+    # is therefore the handle the next wake on this task will actually be able to use.
+    session_handle: str = Field(default="", max_length=200)
 
 
 # The wire code for each ending, and the status it means. A table rather than a cast, so a
@@ -448,7 +459,7 @@ async def start_run(
     started is no longer this system's run, and the only useful thing left to do with it is
     put it down.
     """
-    await container.daemon_claims.start(machine, run_id)
+    await container.daemon_claims.start(machine, run_id, body.session_handle)
     return {}
 
 
@@ -508,6 +519,7 @@ async def finish_run(
         status=_ENDINGS[body.status],
         error=body.error,
         usage=dict(body.usage),
+        session_handle=body.session_handle,
     )
     return {}
 
