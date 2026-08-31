@@ -218,3 +218,40 @@ async def test_the_conversation_the_run_ended_on_is_the_one_written_down() -> No
     assert row is not None
     assert row.session_id_after == "sess-opened-mid-run"
     assert row.session_id_before is None, "lượt này không nối tiếp gì cả"
+
+
+async def test_a_run_that_ends_without_naming_a_conversation_leaves_the_old_one_alone() -> None:
+    """Cùng luật ấy ở cửa `/finish`, và đây mới là cửa hay gặp ca này.
+
+    Một lượt chạy hỏng trước khi CLI kịp đặt tên cho mạch sẽ đóng lại với handle rỗng. Nếu chỗ
+    trống ấy ghi đè, thì một lượt chạy hỏng vừa làm mất luôn mạch mà lần gọi dậy sau đang định
+    nối lại — hỏng một lượt thành hỏng cả cuộc trò chuyện.
+    """
+    async with _client() as c:
+        machine, agent, project_id = await _a_machine_with_an_agent(
+            c, f"failed-{uuid4().hex[:8]}@example.com"
+        )
+        task_id = await a_task(project_id, assigned_to=agent["id"])
+
+        await shelve(marius_id=agent["id"], task_id=task_id)
+        first = await _take_one(c, machine)
+        await _say_it_started(c, machine, first["run_id"], "")
+        await c.post(
+            f"/daemon/runs/{first['run_id']}/finish",
+            json={"status": "completed", "session_handle": "sess-still-good"},
+            headers=auth(machine.token),
+        )
+
+        await shelve(marius_id=agent["id"], task_id=task_id)
+        second = await _take_one(c, machine)
+        await _say_it_started(c, machine, second["run_id"], "sess-still-good")
+        done = await c.post(
+            f"/daemon/runs/{second['run_id']}/finish",
+            json={"status": "failed", "error": "CLI chết trước khi nói được gì"},
+            headers=auth(machine.token),
+        )
+        assert done.status_code == 200, done.text
+
+    rows = await _sessions_of(agent["id"])
+    assert len(rows) == 1
+    assert rows[0].session_display_id == "sess-still-good", "một lượt chạy hỏng đã xoá mạch cũ"
