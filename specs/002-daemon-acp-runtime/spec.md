@@ -528,6 +528,13 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **FR-016**: Hệ thống PHẢI ghi lại đủ để **xem lại toàn bộ một lượt chạy** sau khi nó kết thúc.
 - **FR-017**: Daemon PHẢI **hỏi khả năng** của agent CLI rồi mới dùng, và hạ cấp có báo khi khả năng ấy
   không có — KHÔNG ĐƯỢC suy ra khả năng từ tên loại agent.
+- **FR-017a**: Hạ cấp PHẢI **áp dụng trước khi chạy**, không phải phát hiện bằng cách hỏng. Chỗ làm khai
+  không nối lại được phiên thì cái tay nắm phiên cũ KHÔNG ĐƯỢC đưa ra — mở phiên mới kèm câu báo theo
+  FR-025 — và lượt chạy ấy **vẫn tính là xong**, không phải hỏng (FR-039a). Câu báo đi hai hướng: agent
+  nhận câu giải thích, người vận hành thấy một dòng lúc chỗ làm đăng ký, nêu khả năng nào thiếu và thiếu
+  vì đâu (hỏi rồi CLI nói không · không hỏi được · hỏi mà không trả lời). Câu trả lời gắn với **bản cài
+  trên máy này**, không gắn với tên loại CLI: cùng một loại trên hai máy trả lời khác nhau được, và cái
+  đáng tin là cái sắp chạy việc. *(thêm 2026-08-31)*
 
 ### Nhóm C — Hiện vật buộc rời khỏi máy
 
@@ -666,6 +673,12 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   phiên mới kèm câu báo theo FR-025 — và đó **vẫn tính là hỗ trợ**, không phải hỏng. Cam kết ở FR-039 giữ
   nguyên; điều khoản này chỉ nói rõ thước đo, vì tài liệu nghiên cứu ghi Gemini CLI có ACP nhưng **chưa xác
   minh** nó đọc file bối cảnh nào, dò kỹ năng ở đâu, và có nối lại được phiên không.
+- **FR-039c**: Đặc tính của một loại agent CLI — tệp bối cảnh, thư mục kỹ năng, hình dạng nhà giả, biến
+  môi trường trỏ về nhà ấy, binary để dò, họ giao thức — PHẢI khai ở **một chỗ duy nhất**, và PHẢI khai
+  **trọn hoặc không khai gì**. Nửa vời là hỏng kiểu im lặng: chỗ làm vẫn đăng ký, vẫn nhận việc, vẫn bật
+  agent lên, và bản tóm tắt được ghi vào một tệp loại CLI ấy không bao giờ mở — trên mọi màn hình nó đọc
+  y hệt một agent đã được kể hết mà không làm gì. Một loại chưa khai gì thì máy **không xin việc** ở đó và
+  **nói ra vì sao**, chứ không nhận rồi hỏng lúc dựng. *(thêm 2026-08-31)*
 - **FR-040**: Daemon PHẢI **thay hẳn** đường gọi agent qua cổng ngoài. Sau đợt này hệ thống chỉ còn **một**
   đường nói chuyện với agent. Đường cũ được gỡ, không giữ song song.
 - **FR-040a**: Đường cổng ngoài cũ được xử như **chưa từng tồn tại** (chốt 2026-08-21). Không luật chuyển
