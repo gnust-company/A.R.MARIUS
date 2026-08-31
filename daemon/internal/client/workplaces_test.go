@@ -89,6 +89,44 @@ func TestAMachineWithNoCLIsSendsAnEmptyListNotNull(t *testing.T) {
 	}
 }
 
+// FR-005: the goodbye is the same door with the same empty list, and one word saying what the
+// emptiness means. Without that word the server has only one reason for a workplace that stopped
+// being reported — the CLI was uninstalled — and every restart would send its operator off to
+// reinstall something that never moved.
+func TestTheGoodbyeSaysTheWorkplacesAreClosedNotThatTheCLIsAreGone(t *testing.T) {
+	server, seen := serverThatAnswers(t, `{"workplaces":[]}`, 200)
+	session := Session{Server: server.URL, Token: "armd_secret"}
+
+	if err := session.Deregister(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if seen.method != http.MethodPut {
+		t.Errorf("method = %s, want the same door the machine registers through", seen.method)
+	}
+	if !strings.Contains(seen.body, `"workplaces":[]`) {
+		t.Errorf("body = %s, want every workplace handed back", seen.body)
+	}
+	if !strings.Contains(seen.body, `"stopping":true`) {
+		t.Errorf("body = %s, want it to say the daemon is stopping", seen.body)
+	}
+}
+
+// An ordinary report must not carry the word: a machine that lost a CLI while running has to
+// keep reading as a machine that lost a CLI.
+func TestAnOrdinaryReportDoesNotClaimTheDaemonIsStopping(t *testing.T) {
+	server, seen := serverThatAnswers(t, `{"workplaces":[]}`, 200)
+	session := Session{Server: server.URL, Token: "armd_secret"}
+
+	if _, err := session.SyncWorkplaces(context.Background(), WorkplacesRequest{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(seen.body, "stopping") {
+		t.Errorf("body = %s, want no claim about stopping", seen.body)
+	}
+}
+
 func TestABeatCarriesTheFreeSlotsAndBringsBackTheAnswer(t *testing.T) {
 	server, seen := serverThatAnswers(t, `{"pending_work":true,"cancel":["run-2"]}`, 200)
 	session := Session{Server: server.URL, Token: "armd_secret"}

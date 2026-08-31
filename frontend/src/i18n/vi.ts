@@ -77,6 +77,7 @@ export const vi = {
     noAgentsHere: 'Chưa có agent nào ở chỗ làm này.',
     notReady: {
       cli_removed: 'Agent CLI này đã bị gỡ khỏi máy. Cài lại thì chỗ làm sống lại, agent vẫn nguyên chỗ cũ.',
+      daemon_stopped: 'Daemon trên máy này đã tắt. Bật lại là chỗ làm sống lại — không có gì bị gỡ cả.',
       link_unsupported: 'Máy này không tạo được liên kết tượng trưng, thứ mà mọi lượt chạy đều cần.',
       machine_unreachable: 'Máy đã ngừng báo nhịp. Bật máy lên và chạy lại daemon.',
       unknown: 'Chỗ làm này chưa nhận việc được. Xem lại daemon trên máy ấy.',
@@ -807,6 +808,7 @@ export const vi = {
       not_placed: 'Agent chưa được đặt vào chỗ làm nào.',
       machine_unreachable: 'Máy giữ chỗ làm này đã ngừng báo nhịp — nhiều khả năng máy đang tắt hoặc mất mạng.',
       cli_removed: 'Agent CLI của chỗ làm này không còn trên máy nữa. Cài lại rồi chỗ làm tự sẵn sàng trở lại.',
+      daemon_stopped: 'Daemon trên máy giữ chỗ làm này đã tắt. Bật lại là agent trực tuyến trở lại.',
       link_unsupported: 'Máy này không tạo được liên kết bắt buộc, nên không chỗ làm nào trên đó nhận việc được.',
       placement_not_ready: 'Chỗ làm của agent đang đóng.',
       unknown: 'Chỗ làm của agent đang đóng, chưa rõ lý do.',
