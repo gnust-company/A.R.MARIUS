@@ -71,6 +71,7 @@ from armarius.infrastructure.daemon.models import (
 from armarius.infrastructure.daemon.run_auth import hash_run_token
 from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.infrastructure.database.models import (
+    MariusModel,
     ProjectModel,
     RunEventModel,
     RunModel,
@@ -773,6 +774,14 @@ class DaemonClaimService:
         Keyed by agent, adapter and task, which is the boundary itself: FR-024 says two tasks
         are two conversations even for one agent, and this unique triple is where that stops
         being a promise and becomes a row.
+
+        The adapter is read off the **agent**, not off the run, and that is not a detail. It is
+        the key every reader looks the row up by, and the layer that closes a run writes it the
+        same way. A run carries its own copy, taken when the run was made; deriving the key here
+        from that copy would be a second derivation of one key, and a second derivation is a
+        second answer waiting to differ — two rows for one task, each written by a different
+        road, and whichever road wrote last winning a conversation the other one is still
+        looking for.
         """
         if not handle:
             return
@@ -780,11 +789,14 @@ class DaemonClaimService:
         if run is None or run.marius_id is None or run.task_id is None:
             return
         run.session_id_before = handle
+        marius = await db.get(MariusModel, run.marius_id)
+        if marius is None:
+            return
 
         found = await db.scalar(
             select(SessionModel).where(
                 SessionModel.marius_id == run.marius_id,
-                SessionModel.adapter_type == run.adapter_type,
+                SessionModel.adapter_type == marius.adapter_type,
                 SessionModel.task_id == run.task_id,
             )
         )
@@ -793,7 +805,7 @@ class DaemonClaimService:
                 id=uuid4(),
                 project_id=run.project_id,
                 marius_id=run.marius_id,
-                adapter_type=run.adapter_type,
+                adapter_type=marius.adapter_type,
                 task_id=run.task_id,
                 created_at=now,
             )
