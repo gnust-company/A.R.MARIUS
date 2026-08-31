@@ -557,6 +557,18 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   người dùng. Đây đúng ca Multica đã gặp và xử bằng nhánh riêng *"không có sổ ghi + 72 giờ → xoá"*. Hạn
   riêng phải dài hơn vì đây là ca **đoán**, không phải ca **biết** (bổ sung 2026-08-24, phát hiện lúc dựng
   T009).
+- **FR-021b**: Vòng quét ở FR-021 PHẢI thật sự **có một nhịp chạy nó**, và **lượt quét đầu tiên chạy ngay
+  lúc khởi động** chứ không đợi hết một nhịp. Máy vừa bật lại sau một tuần tắt là đúng ca vòng quét sinh
+  ra để phục vụ, và bắt nó đợi thêm hai giờ là cộng đúng khoảng chờ ấy vào lúc có nhiều thứ để thu hồi
+  nhất. Quét lại ở mỗi lần khởi động không tốn gì: không thứ gì bị xoá trước khi hết hạn giữ của nó.
+  Một lượt quét **không hỏi được server** PHẢI giữ nguyên mọi thứ và thử lại ở nhịp sau — vắng mặt trong
+  câu trả lời có nghĩa *server không biết đầu việc này*, nên một lượt hỏi không tới nơi mà bị đọc thành
+  một câu trả lời rỗng sẽ đẩy **mọi** thư mục sang đồng hồ mồ côi cùng một lúc (bổ sung 2026-08-31, phát
+  hiện lúc dựng T134: `Sweep()` là một lượt quét đơn và ngoài bài kiểm ra không nơi nào gọi).
+- **FR-021c**: Hai hạn giữ ở FR-021 và FR-021a PHẢI **đặt được** ở cấu hình của máy, và hệ thống PHẢI
+  **từ chối** một cấu hình đặt hạn của ca *đoán* ngắn hơn hoặc bằng hạn của ca *được kể*. Đây là một luật
+  giữa hai con số nên nó chỉ cưỡng chế được ở chỗ cả hai cùng nằm. Đặt ngược lại không làm máy hỏng — nó
+  làm máy chạy, và lặng lẽ thu hồi trước hết đúng những thư mục nó biết ít nhất.
 - **FR-022**: Hệ thống KHÔNG ĐƯỢC thu hồi thư mục làm việc mà **một lượt chạy đang giữ**.
 
 ### Nhóm D — Phiên và mạch làm việc

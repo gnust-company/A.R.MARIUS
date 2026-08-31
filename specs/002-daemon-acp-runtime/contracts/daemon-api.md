@@ -400,3 +400,41 @@ Chú thích không phải sự kiện: daemon bỏ qua, và không đi hỏi vì
 
 Mất kết nối này **không mất việc**: nhịp poll 5 giây là fallback (FR-055d). Nhịp nối lại của đường đẩy
 giãn dần 1 → 60 giây, và nó **chỉ là nhịp của đường đẩy** — nhịp đi hỏi không bao giờ bị rút ngắn để bù.
+
+---
+
+## 6. Dọn đĩa
+
+### `POST /daemon/tasks/states`
+
+```json
+→ { "task_ids": ["<uuid>", "…"] }
+← 200 { "tasks": [ { "task_id": "<uuid>", "closed": true, "last_activity": "2026-08-20T10:00:00Z" } ] }
+```
+
+**Chiều đi là cả thiết kế.** Server không bao giờ đẩy xuống câu *đầu việc này khép rồi, buông thư mục đi*.
+Một câu như thế có thể được gửi lúc máy đang tắt, và cái máy lỡ mất nó sẽ giữ thư mục ấy mãi mãi. Nên máy
+tự hỏi, theo nhịp của nó, về đúng những thư mục nó đang có (FR-021, chốt 2026-08-22 theo cách Multica làm).
+Một câu hỏi bị hỏi muộn thì vẫn được trả lời; một tin nhắn bị lỡ thì không.
+
+**Cái tên vắng mặt là một câu trả lời**, không phải lỗi và không phải một lời từ chối. Nó có nghĩa *server
+không kể tên được đầu việc này* — đã xoá, chưa từng ghi, hoặc thuộc workspace khác — và vòng quét có một
+cái đồng hồ dài hơn hẳn dành riêng cho ca ấy (FR-021a). Vì thế cửa này **không cần nhánh 404 nào** để giữ
+Điều I: đầu việc của người bên cạnh và đầu việc chưa bao giờ tồn tại cho ra cùng một sự im lặng.
+
+**Tên không phải mã đầu việc thì bị bỏ, không bị từ chối cả lô.** Danh sách này đọc từ tên thư mục trên đĩa
+người ta, nơi một thư mục có thể mang bất cứ cái tên gì người dùng hay một lần treo máy để lại. Trả 422 cho
+cả lô vì một cái tên lạ sẽ dừng hẳn vòng quét — mà cái tên lạ ấy chính là thứ FR-021a sinh ra để dọn.
+
+**`closed`** đúng hai nghĩa: đầu việc **đã xong** hoặc **đã huỷ**. Đang vướng không tính, đang chờ duyệt
+không tính — cả hai vẫn có người quay lại làm tiếp, và thư mục là chỗ họ quay lại.
+
+**`last_activity`** đọc từ chính hàng đầu việc: mọi lần sửa và mọi lần chuyển trạng thái đều đẩy nó, và một
+lượt chạy khép lại là một trong những thứ đẩy nó. Ghép thêm nhật ký lượt chạy vào đây chỉ mua được vài giây
+chính xác trên một hạn giữ đo bằng ngày.
+
+**Trần 200 mã một lượt** là trần chống rác, không phải trần cho vòng quét: máy nhiều thư mục hơn thế thì
+hỏi nhiều lượt, và phía daemon tự cắt danh sách nên con số không phải thoả thuận ở hai nơi. Một lô hỏng
+làm hỏng **cả** lượt tra, không trả về nửa bản đồ — vòng quét đọc vắng mặt thành *server không biết đầu
+việc này*, nên một lô chưa bao giờ tới nơi sẽ đẩy thư mục của nó sang đồng hồ mồ côi vì một lý do không
+liên quan gì tới nó.
