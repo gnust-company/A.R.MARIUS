@@ -43,7 +43,7 @@ func TestWhatOutlivesTheRunIsALinkNotACopy(t *testing.T) {
 		t.Fatalf("Build returned an error: %v", err)
 	}
 
-	link := filepath.Join(spec.Home, ".armarius", "sessions")
+	link := filepath.Join(spec.Home, ".claude", "projects")
 	info, err := os.Lstat(link)
 	if err != nil {
 		t.Fatalf("the session directory is not there: %v", err)
@@ -174,7 +174,7 @@ func TestOperatorFilesThatExistAreLinkedIn(t *testing.T) {
 // A link that cannot be made is an error. It must never become a copy behind the operator's back.
 func TestALinkThatCannotBeMadeIsAnErrorNotAQuietCopy(t *testing.T) {
 	spec := buildSpec(t, "claude_code")
-	blocked := filepath.Join(spec.Home, ".armarius", "sessions")
+	blocked := filepath.Join(spec.Home, ".claude", "projects")
 	if err := os.MkdirAll(filepath.Dir(blocked), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestALinkThatCannotBeMadeIsAnErrorNotAQuietCopy(t *testing.T) {
 	if err == nil {
 		t.Fatal("Build reported success although the session link could not be made")
 	}
-	if !strings.Contains(err.Error(), "sessions") {
+	if !strings.Contains(err.Error(), "projects") {
 		t.Errorf("the error does not say what could not be linked: %v", err)
 	}
 }
@@ -201,6 +201,7 @@ func TestAStoreNeedsSomethingToBeKeyedBy(t *testing.T) {
 		"a per-agent store with no agent": {PerAgent, "", "task-1"},
 		"a per-run thing has no store":    {PerRun, "agent-1", "task-1"},
 		"the operator's own files":        {Operator, "agent-1", "task-1"},
+		"a whole tree of theirs":          {OperatorTree, "agent-1", "task-1"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -208,5 +209,127 @@ func TestAStoreNeedsSomethingToBeKeyedBy(t *testing.T) {
 				t.Fatalf("%s was given a store path", name)
 			}
 		})
+	}
+}
+
+// The hole T109 was written to close, stated as a test: while `.claude` was a single link out to
+// the operator's real home, every session Claude Code opened was written *there* — outside
+// anything this daemon sweeps, so the keeping in FR-027 never once applied to it.
+func TestTheOperatorsHomeIsNotWhereSessionsLand(t *testing.T) {
+	spec := buildSpec(t, "claude_code")
+	theirs := filepath.Join(spec.OperatorHome, ".claude")
+	if err := os.MkdirAll(filepath.Join(theirs, "projects", "a-project-of-their-own"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Build(spec); err != nil {
+		t.Fatalf("Build returned an error: %v", err)
+	}
+
+	// `.claude` itself is ours to arrange, so that a name inside it can be.
+	info, err := os.Lstat(filepath.Join(spec.Home, ".claude"))
+	if err != nil {
+		t.Fatalf(".claude is not there: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatal(".claude is one link out to the operator's home — sessions land outside every sweep")
+	}
+
+	target, err := os.Readlink(filepath.Join(spec.Home, ".claude", "projects"))
+	if err != nil {
+		t.Fatalf("the session store is not linked in: %v", err)
+	}
+	if strings.HasPrefix(target, spec.OperatorHome) {
+		t.Errorf("sessions are written to %s, which is inside the operator's own home", target)
+	}
+	want, err := StorePath(spec.StateRoot, "claude_code", PerTask, spec.AgentID, spec.TaskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target != want {
+		t.Errorf("sessions are written to %s, want the task's own store %s", target, want)
+	}
+}
+
+// The operator keeps everything else they had. Taking one name is the whole of the change; a
+// home that lost their credentials would make the agent log in again, which is worse than the
+// leak it was fixing.
+func TestEverythingElseTheOperatorHasIsStillTheirs(t *testing.T) {
+	spec := buildSpec(t, "claude_code")
+	theirs := filepath.Join(spec.OperatorHome, ".claude")
+	for _, name := range []string{".credentials.json", "settings.json"} {
+		if err := os.MkdirAll(theirs, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(theirs, name), []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(theirs, "plugins"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Build(spec); err != nil {
+		t.Fatalf("Build returned an error: %v", err)
+	}
+	for _, name := range []string{".credentials.json", "settings.json", "plugins"} {
+		got, err := os.Readlink(filepath.Join(spec.Home, ".claude", name))
+		if err != nil {
+			t.Errorf("%s was not linked in from the operator's own home: %v", name, err)
+			continue
+		}
+		if got != filepath.Join(theirs, name) {
+			t.Errorf("%s points at %s, want %s", name, got, filepath.Join(theirs, name))
+		}
+	}
+}
+
+// Which direction the rule runs matters more than the rule. A name the vendor adds next release
+// is the operator's without anybody editing the table; only what this layout claims is ours.
+func TestANameWeNeverClaimedIsTheirsByDefault(t *testing.T) {
+	spec := buildSpec(t, "claude_code")
+	theirs := filepath.Join(spec.OperatorHome, ".claude")
+	if err := os.MkdirAll(filepath.Join(theirs, "something-invented-next-release"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Build(spec); err != nil {
+		t.Fatalf("Build returned an error: %v", err)
+	}
+	if _, err := os.Readlink(
+		filepath.Join(spec.Home, ".claude", "something-invented-next-release"),
+	); err != nil {
+		t.Errorf("a name nobody here has ever heard of was not linked through: %v", err)
+	}
+}
+
+// An operator who has never run the CLI is not a failure — it is a CLI they have not logged into
+// yet, and the CLI says so far better than we could. The home is still built, and the one name
+// we own is still ours.
+func TestACLITheOperatorHasNeverRunStillGetsItsSessionStore(t *testing.T) {
+	spec := buildSpec(t, "claude_code")
+	if _, err := Build(spec); err != nil {
+		t.Fatalf("Build failed because the operator has never run Claude Code: %v", err)
+	}
+	if _, err := os.Readlink(filepath.Join(spec.Home, ".claude", "projects")); err != nil {
+		t.Errorf("the session store is not there: %v", err)
+	}
+}
+
+// One store per lifetime per CLI, because that is all StorePath can name. Two entries of the same
+// lifetime would silently link to the same directory, and two directories pretending to be one is
+// the kind of bug that only shows up as a conversation with somebody else's turns in it.
+func TestNoCLIDeclaresTwoStoresOfTheSameLifetime(t *testing.T) {
+	for cli, entries := range layouts {
+		seen := map[Lifetime]string{}
+		for _, e := range entries {
+			if e.Lifetime != PerTask && e.Lifetime != PerAgent {
+				continue
+			}
+			if other, clash := seen[e.Lifetime]; clash {
+				t.Errorf("%s declares %s and %s, which are both %s and share one store",
+					cli, other, e.Path, e.Lifetime)
+			}
+			seen[e.Lifetime] = e.Path
+		}
 	}
 }

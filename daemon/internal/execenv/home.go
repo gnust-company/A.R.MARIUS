@@ -5,6 +5,7 @@ package execenv
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 )
@@ -30,6 +31,17 @@ const (
 	// they set up themselves. We link to it so the agent does not have to log in again, and we
 	// never write it and never delete it.
 	Operator
+
+	// OperatorTree is the operator's own directory linked in **child by child** rather than
+	// whole, so that a few names inside it can be ours.
+	//
+	// The direction is the point. Everything the operator has becomes visible by default, and
+	// the only names left out are the ones this layout declares a path for — so a file the
+	// vendor adds next release is theirs without anybody editing this table, while the session
+	// store stays on our side of the line. Linking the whole directory is simpler and is what
+	// this did before; it also meant every session a CLI wrote landed in the operator's real
+	// home, where no retention of ours could ever reach it (FR-027).
+	OperatorTree
 )
 
 func (l Lifetime) String() string {
@@ -42,6 +54,8 @@ func (l Lifetime) String() string {
 		return "per-agent"
 	case Operator:
 		return "operator"
+	case OperatorTree:
+		return "operator-tree"
 	default:
 		return fmt.Sprintf("Lifetime(%d)", int(l))
 	}
@@ -79,8 +93,14 @@ var layouts = map[string][]Entry{
 	// moment it matters — a run arriving for a CLI whose home was declared under another spelling.
 	"claude_code": {
 		{Path: ".claude.json", Lifetime: Operator, Source: ".claude.json"},
-		{Path: ".claude", Lifetime: Operator, Source: ".claude"},
-		{Path: ".armarius/sessions", Lifetime: PerTask},
+		// Child by child, not whole, and `projects` is the reason (T109). Claude Code keeps a
+		// task's transcript in `$HOME/.claude/projects/<the working directory, escaped>`, so
+		// while `.claude` was one link out to the operator's real home every session this
+		// daemon ever opened was written there and stayed there: `.armarius/sessions` was
+		// declared per-task and nobody wrote it, the sweep swept an empty directory, and the
+		// fourteen-day keeping in FR-027 was never once applied to Claude Code.
+		{Path: ".claude", Lifetime: OperatorTree, Source: ".claude"},
+		{Path: ".claude/projects", Lifetime: PerTask},
 	},
 
 	// Codex keeps its authentication, its configuration and its session state together under one
@@ -143,6 +163,7 @@ func Build(spec Spec) (Home, error) {
 	}
 
 	built := Home{Path: spec.Home}
+	ours := claimedPaths(entries)
 	for _, e := range entries {
 		target := filepath.Join(spec.Home, filepath.FromSlash(e.Path))
 		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
@@ -179,11 +200,67 @@ func Build(spec Spec) (Home, error) {
 			if err := os.Symlink(source, target); err != nil {
 				return Home{}, fmt.Errorf("linking %s to the operator's own %s: %w", e.Path, e.Source, err)
 			}
+
+		case OperatorTree:
+			if err := linkTheirChildren(spec, e, target, ours); err != nil {
+				return Home{}, err
+			}
 		}
 	}
 
 	sort.Strings(built.Stores)
 	return built, nil
+}
+
+// claimedPaths is every path inside this home that the layout says is ours.
+//
+// Read once, before anything is built, so that an OperatorTree entry gives the same answer
+// wherever it sits in the table. A rule that depended on the order of two lines would be a rule
+// the next person reorders by accident.
+func claimedPaths(entries []Entry) map[string]bool {
+	claimed := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		if e.Lifetime != OperatorTree {
+			claimed[path.Clean(e.Path)] = true
+		}
+	}
+	return claimed
+}
+
+// linkTheirChildren links each child of one of the operator's directories into the fake home,
+// leaving out the names this layout has claimed.
+//
+// An operator with no such directory is skipped in silence, for the same reason a missing
+// Operator file is: it is a CLI they have not logged into yet, and the CLI says so far better
+// than we could. The directory is still created — the names we own live inside it.
+func linkTheirChildren(spec Spec, e Entry, target string, ours map[string]bool) error {
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		return fmt.Errorf("creating %s for %s: %w", e.Path, spec.CLI, err)
+	}
+	source := filepath.Join(spec.OperatorHome, filepath.FromSlash(e.Source))
+	children, err := os.ReadDir(source)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("reading the operator's own %s: %w", e.Source, err)
+	}
+	for _, child := range children {
+		if ours[path.Join(e.Path, child.Name())] {
+			continue
+		}
+		link := filepath.Join(target, child.Name())
+		// Ours may already be here if it was built first. Whoever declared it wins: this
+		// branch only ever adds what the operator has and we did not ask for.
+		if _, err := os.Lstat(link); err == nil {
+			continue
+		}
+		if err := os.Symlink(filepath.Join(source, child.Name()), link); err != nil {
+			return fmt.Errorf("linking %s to the operator's own %s: %w",
+				path.Join(e.Path, child.Name()), path.Join(e.Source, child.Name()), err)
+		}
+	}
+	return nil
 }
 
 // StorePath is where a long-lived piece of a CLI's home is kept.
