@@ -41,6 +41,7 @@ async def link_machine(
     *,
     hostname: str = "thinkpad",
     cli_kind: str = "claude_code",
+    protocol_family: str = "one_shot",
 ) -> LinkedMachine:
     """Register a person, link a machine to their workspace, and report one workplace.
 
@@ -76,7 +77,7 @@ async def link_machine(
                 {
                     "cli_kind": cli_kind,
                     "cli_version": "1.0.0",
-                    "protocol_family": "one_shot",
+                    "protocol_family": protocol_family,
                     "capabilities": {"resumable": True},
                 }
             ],
