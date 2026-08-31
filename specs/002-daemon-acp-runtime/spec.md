@@ -311,6 +311,12 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   ấy, và không lối nào được ghi dấu hiệu sống cho **agent** từ một cú gọi của máy.
 - **FR-005**: Khi daemon tắt có trật tự, nó PHẢI gỡ đăng ký mọi chỗ làm của mình thay vì để hệ thống chờ
   hết ngưỡng.
+- **FR-005b**: Lời chào lúc tắt PHẢI nói rõ **daemon dừng**, KHÔNG ĐƯỢC để hệ thống đọc thành **agent CLI
+  bị gỡ**. Cùng một cửa, cùng một danh sách rỗng, nhưng câu hiện lên màn Máy sai một chữ là sai cả việc
+  người ta phải làm: một đằng bật daemon lên là xong, một đằng đi cài lại thứ chưa từng bị gỡ. Lời chào
+  cũng PHẢI gửi trên một hạn giờ **của riêng nó**: lúc nó chạy thì ngữ cảnh đã bị huỷ rồi — chính cú huỷ
+  ấy dẫn tới nó — nên gửi trên ngữ cảnh cũ là một lời chào không bao giờ tới nơi mà đọc trong mã thì y hệt
+  một lời chào chạy được (thêm 2026-08-31, T122).
 - **FR-005a**: Daemon PHẢI trả lời được **ngay tại cái máy đang chạy nó** câu hỏi *"máy này đang ở tình
   trạng nào"*: đã nối vào workspace nào, dò được những agent CLI nào và chỗ làm nào đang sẵn sàng, và
   **có tiến trình daemon nào đang sống trên máy này hay không**. Câu trả lời PHẢI có cả dạng đọc bằng mắt
@@ -645,6 +651,21 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **FR-033**: Agent CLI đã đăng ký nhưng không còn trên máy PHẢI làm chỗ làm ấy chuyển sang không sẵn sàng
   kèm lý do, chứ không im lặng nhận việc rồi hỏng.
 - **FR-034**: Nâng cấp daemon KHÔNG ĐƯỢC cắt ngang một lượt chạy đang diễn ra.
+- **FR-034a**: Hệ quả bắt buộc của FR-034, gồm ba mảnh — mảnh nào thiếu thì điều khoản trên chỉ là chữ
+  (thêm 2026-08-31, T123):
+  - **Lượt chạy KHÔNG ĐƯỢC dùng chung vòng đời với các vòng lặp của daemon.** Bảo daemon dừng thì nó dừng
+    *xin việc* ngay; việc đã nhận phải kết thúc theo cách nó vốn sẽ kết thúc. Trước đợt này hai thứ dùng
+    chung một ngữ cảnh, nên mỗi lần nâng cấp là mỗi lần cắt ngang agent giữa câu — mà nhìn thì không thấy
+    hỏng ở đâu: lượt chạy vẫn báo về, chỉ là báo một thất bại do chính cái máy gây ra.
+  - **Khoảng chờ ấy PHẢI có trần, và trần PHẢI khớp với trần của bộ quản dịch vụ trên máy.** Chờ vô hạn là
+    một lệnh dừng không bao giờ trả về, và bộ quản dịch vụ trả lời bằng SIGKILL — vừa cắt lượt chạy vừa
+    bỏ luôn lời chào ở FR-005. Lượt chạy bị cắt vì hết trần PHẢI được nói ra, và nó rơi về đúng đường
+    phục hồi đã có (FR-056a), không cần đường riêng.
+  - **Một máy chỉ được có một daemon nhận việc tại một thời điểm.** Bản mới lên trong lúc bản cũ còn đang
+    kết thúc việc thì PHẢI đợi, không được đăng ký đè lên. Bản mới lên cạnh một bản **không hề định
+    dừng** thì PHẢI từ chối khởi động và nêu tên tiến trình đang giữ máy: hai daemon cùng khai số chỗ
+    trống của riêng mình thì máy lặng lẽ chạy gấp đôi trần người chủ đặt (FR-008), mà không bên nào làm
+    gì sai cả — đó mới là chỗ khó thấy về sau.
 
 ### Nhóm F — Ranh giới kiến trúc
 
