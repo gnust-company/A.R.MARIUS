@@ -459,6 +459,7 @@ class WakeEngine:
         status: RunStatus,
         error: str | None = None,
         usage: dict | None = None,
+        session_handle: str = "",
     ) -> None:
         """Close a run that was carried out somewhere this process cannot watch (FR-030a).
 
@@ -494,7 +495,17 @@ class WakeEngine:
                 task,
                 marius,
                 session,
-                ExecResult(status=status, error=error, usage=usage or {}),
+                ExecResult(
+                    status=status,
+                    error=error,
+                    usage=usage or {},
+                    # The conversation the run ended holding, said in the same two fields an
+                    # in-process run says it in. Ending a run is one piece of work with one
+                    # place it is done; a second place that also wrote a task's session would
+                    # be a second answer to *what is this task in the middle of* (FR-023).
+                    session_display_id=session_handle or None,
+                    session_params={"handle": session_handle} if session_handle else {},
+                ),
             )
 
         # After the finalise and in this order, exactly as an in-process run ends: the pair is

@@ -70,7 +70,12 @@ from armarius.infrastructure.daemon.models import (
 )
 from armarius.infrastructure.daemon.run_auth import hash_run_token
 from armarius.infrastructure.database.engine import get_sessionmaker
-from armarius.infrastructure.database.models import ProjectModel, RunEventModel, RunModel
+from armarius.infrastructure.database.models import (
+    ProjectModel,
+    RunEventModel,
+    RunModel,
+    SessionModel,
+)
 from armarius.shared.clock import as_utc, utcnow
 from armarius.shared.config import settings
 from armarius.shared.credentials import RUN_TOKEN_PREFIX, carries_our_credential
@@ -713,17 +718,26 @@ class DaemonClaimService:
 
     # ── saying it started ────────────────────────────────────────────────────────
 
-    async def start(self, machine: MachineIdentity, run_id: UUID) -> None:
+    async def start(
+        self, machine: MachineIdentity, run_id: UUID, session_handle: str = ""
+    ) -> None:
         """The machine reports the agent is up. Refuses anything it no longer holds.
 
         *Not yours* and *not there* are the same answer here, and deliberately so: a machine
         whose hold ran out while it was setting up is a machine that must stop and clean up,
         and telling it apart from a run that never existed would only teach it to argue
         (FR-058, FR-059, Constitution I).
+
+        `session_handle` is the conversation this run is carrying on, empty when it opened a
+        new one. It is written down here for the same reason everything else about a run is:
+        the machine holds it, and a claim about the machine's disk is a claim nobody can check
+        (FR-023, SC-006). What is stored is the same row the in-process road stores — one
+        session per agent, adapter and task — so *the boundary of a conversation is the task*
+        is one fact with one place to read it, not a property each road proves separately.
         """
         now = self._clock()
-        async with self._sessions()() as session:
-            claim = await session.get(RunClaimModel, run_id)
+        async with self._sessions()() as db:
+            claim = await db.get(RunClaimModel, run_id)
             if (
                 claim is None
                 or claim.workspace_id != machine.workspace_id
@@ -731,19 +745,63 @@ class DaemonClaimService:
                 or not self._still_held(claim, now)
             ):
                 raise NotFound("run_not_found")
-            await session.execute(
+            await db.execute(
                 update(RunModel)
                 .where(RunModel.id == run_id, RunModel.status == RunStatus.QUEUED.value)
                 .values(status=RunStatus.RUNNING.value, started_at=now)
                 .execution_options(synchronize_session=False)
             )
+            await self._remember_session(db, run_id, session_handle, now)
             # The countdown ends here, and the hold does not. FR-056a times the *setting
             # up* — the minutes between a machine taking work and an agent existing — and
             # once the agent is up there is something real to watch instead: the run goes
             # quiet, and the hung-run reaper answers for it. Leaving the countdown running
             # would take a healthy run away from the machine two minutes in.
             claim.claim_expires_at = None
-            await session.commit()
+            await db.commit()
+
+    async def _remember_session(
+        self, db: AsyncSession, run_id: UUID, handle: str, now: datetime
+    ) -> None:
+        """Write down which conversation this run is carrying on (FR-023, FR-024).
+
+        Nothing is written for a run that opened a new conversation. The machine cannot say
+        what a CLI will call a thread until the CLI has said it, so an empty handle here means
+        *this run is not carrying anything on* — and overwriting a task's session with that
+        would erase the very thread the next wake is meant to find.
+
+        Keyed by agent, adapter and task, which is the boundary itself: FR-024 says two tasks
+        are two conversations even for one agent, and this unique triple is where that stops
+        being a promise and becomes a row.
+        """
+        if not handle:
+            return
+        run = await db.get(RunModel, run_id)
+        if run is None or run.marius_id is None or run.task_id is None:
+            return
+        run.session_id_before = handle
+
+        found = await db.scalar(
+            select(SessionModel).where(
+                SessionModel.marius_id == run.marius_id,
+                SessionModel.adapter_type == run.adapter_type,
+                SessionModel.task_id == run.task_id,
+            )
+        )
+        if found is None:
+            found = SessionModel(
+                id=uuid4(),
+                project_id=run.project_id,
+                marius_id=run.marius_id,
+                adapter_type=run.adapter_type,
+                task_id=run.task_id,
+                created_at=now,
+            )
+            db.add(found)
+        found.session_params_json = {"handle": handle}
+        found.session_display_id = handle
+        found.last_run_id = run_id
+        found.updated_at = now
 
     # ── what the machine says while the run is going, and when it is over ────────
 
@@ -913,6 +971,7 @@ class DaemonClaimService:
         status: RunStatus,
         error: str = "",
         usage: dict | None = None,
+        session_handle: str = "",
     ) -> None:
         """The machine says the run is over, however it ended (FR-014b, FR-030a).
 
@@ -943,7 +1002,18 @@ class DaemonClaimService:
             await session.commit()
 
         if self._on_finish is not None:
-            await self._on_finish(run_id, status=status, error=error or None, usage=usage or {})
+            # The conversation the run *ended* holding travels with the ending rather than being
+            # written here: closing a run is one piece of work, and the layer that does it
+            # already writes a task's session (FR-023, FR-025). A second writer on this side
+            # would be a second answer to the same question — and the losing one, because the
+            # ending lands after it.
+            await self._on_finish(
+                run_id,
+                status=status,
+                error=error or None,
+                usage=usage or {},
+                session_handle=session_handle,
+            )
 
     @staticmethod
     def _still_held(claim: RunClaimModel, now: datetime) -> bool:
