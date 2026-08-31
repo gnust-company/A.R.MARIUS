@@ -117,15 +117,46 @@ func TestNoCLIInTheFirstRoundClaimsLongTermMemory(t *testing.T) {
 	}
 }
 
-// Guessing Gemini's layout before T013 has run would be worse than having none.
-func TestGeminiHasNoLayoutUntilItHasBeenRunForReal(t *testing.T) {
-	for _, cli := range KnownCLIs() {
-		if cli == "gemini" {
-			t.Fatal("a layout was written for gemini before the research task that verifies it")
-		}
+// Gemini keeps its conversation in `.gemini/tmp/<project>/chats`, so that is the directory the
+// task owns: it has to survive between two wakes on the same task (FR-023) and be aged out on
+// the retention (FR-027). Measured — the probe left a session file there under its own
+// workspace name.
+func TestGeminiKeepsItsConversationWhereTheTaskCanFindItAgain(t *testing.T) {
+	spec := buildSpec(t, "gemini")
+	home, err := Build(spec)
+	if err != nil {
+		t.Fatalf("Build returned an error: %v", err)
 	}
-	if _, err := Build(buildSpec(t, "gemini")); err == nil {
-		t.Fatal("a home was built for gemini")
+	want, err := StorePath(spec.StateRoot, "gemini", agentcli.PerTask, spec.AgentID, spec.TaskID)
+	if err != nil {
+		t.Fatalf("StorePath returned an error: %v", err)
+	}
+	got, err := os.Readlink(filepath.Join(spec.Home, ".gemini", "tmp"))
+	if err != nil {
+		t.Fatalf("the conversation store is not linked: %v", err)
+	}
+	if got != want {
+		t.Errorf("the conversation is kept at %s, want the task's own store %s", got, want)
+	}
+	if len(home.Stores) != 1 {
+		t.Errorf("gemini reached into %v, want only the task's conversation", home.Stores)
+	}
+}
+
+// The agent's command history is not the operator's to keep. It lives inside the run and dies
+// with it — a real directory, so nothing is written through a link into their own home.
+func TestGeminisCommandHistoryDoesNotLandInTheOperatorsHome(t *testing.T) {
+	spec := buildSpec(t, "gemini")
+	if _, err := Build(spec); err != nil {
+		t.Fatalf("Build returned an error: %v", err)
+	}
+	history := filepath.Join(spec.Home, ".gemini", "history")
+	info, err := os.Lstat(history)
+	if err != nil {
+		t.Fatalf("the history directory is not there: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Error("the agent's command history is a link out of the run")
 	}
 }
 

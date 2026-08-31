@@ -149,10 +149,11 @@ func TestCodexIsToldWhereItsOwnHomeIs(t *testing.T) {
 }
 
 func TestACLIWhoseHomeVariablesAreUnknownIsRefused(t *testing.T) {
-	// Gemini CLI is unverified (T013). Starting it without redirecting its home means it reads
-	// the operator's own, and everything Build lays out is laid out beside the point.
+	// Starting a CLI without redirecting its home means it reads the operator's own, and
+	// everything Build lays out is laid out beside the point — so a kind the registry declares
+	// no home variables for is refused rather than started.
 	_, err := Environ(EnvSpec{
-		CLI:         "gemini",
+		CLI:         "opencode",
 		Home:        t.TempDir(),
 		Credentials: Credentials{RunToken: "only-this-run"},
 	})
@@ -168,5 +169,43 @@ func TestAnAddressNobodyGaveIsLeftOutRatherThanSetEmpty(t *testing.T) {
 
 	if got, ok := lookup(env, ServerVar); ok {
 		t.Fatalf("%s được đặt thành %q dù không ai nói địa chỉ", ServerVar, got)
+	}
+}
+
+// A CLI that needs more than a home pointer gets it, and gets it the same way: placed by this
+// function, so an inherited value of the same name loses. Gemini will not read project-level
+// configuration out of a folder nobody trusted, and the daemon makes a new folder per task.
+func TestWhatACLINeedsSetBeyondItsHomeIsSet(t *testing.T) {
+	env, err := Environ(EnvSpec{
+		CLI:         "gemini",
+		Home:        t.TempDir(),
+		Inherited:   []string{"GEMINI_CLI_TRUST_WORKSPACE=false"},
+		Credentials: Credentials{RunToken: "only-this-run"},
+	})
+	if err != nil {
+		t.Fatalf("Environ trả về lỗi: %v", err)
+	}
+	got, set := lookup(env, "GEMINI_CLI_TRUST_WORKSPACE")
+	if !set {
+		t.Fatal("thư mục làm việc của lượt chạy không được khai là tin cậy, nên bản tóm tắt sẽ không ai đọc")
+	}
+	if got != "true" {
+		t.Errorf("GEMINI_CLI_TRUST_WORKSPACE=%q — giá trị thừa hưởng sẵn trên máy đã thắng", got)
+	}
+}
+
+// And a CLI that declares none gets none. A variable meant for one tool arriving in another's
+// environment is how a setting nobody chose starts applying.
+func TestACLIThatDeclaresNoExtraVariablesGetsNone(t *testing.T) {
+	env, err := Environ(EnvSpec{
+		CLI:         "claude_code",
+		Home:        t.TempDir(),
+		Credentials: Credentials{RunToken: "only-this-run"},
+	})
+	if err != nil {
+		t.Fatalf("Environ trả về lỗi: %v", err)
+	}
+	if _, set := lookup(env, "GEMINI_CLI_TRUST_WORKSPACE"); set {
+		t.Error("biến của một CLI khác lọt vào môi trường")
 	}
 }

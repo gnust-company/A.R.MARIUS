@@ -70,13 +70,35 @@ func TestNothingIsStartableUnderANameTheRegistryDoesNotCarry(t *testing.T) {
 	}
 }
 
-// Gemini is the case the two halves exist to handle, so it is checked as itself: known of,
-// registered as a workplace, and not asked for work (FR-039a, task T013).
-func TestGeminiIsNotAskedForWorkWhileItsAnswersAreUnmeasured(t *testing.T) {
-	if Supported(string(agentcli.Gemini)) {
-		t.Fatal("this build claims it can drive Gemini CLI — a run there would fail during setup, " +
-			"go back on the shelf, and be offered to this same machine again")
+// Gemini is the case the two halves exist to handle, so it is checked as itself. It was the
+// kind held out of both — no row and no invocation — and it is now in both, which is the only
+// state that lets a machine ask for work there without spoiling it (FR-039, FR-039a).
+func TestGeminiIsDrivableFromBothHalvesOrNeither(t *testing.T) {
+	kind := string(agentcli.Gemini)
+	if agentcli.Ready(kind) != startable(kind) {
+		t.Fatalf("Gemini is declared=%v and startable=%v — one half without the other is either "+
+			"a machine asking for work it cannot begin, or an agent handed a brief written where "+
+			"it never looks", agentcli.Ready(kind), startable(kind))
 	}
+	if !Supported(kind) {
+		t.Fatal("Gemini is in neither half, and the handshake was measured to work")
+	}
+}
+
+// The flag is the half that was measured, so it is named here rather than left to the table.
+// A guessed flag is a daemon that starts a CLI and waits forever for a handshake that was
+// never coming — which is the failure the whole of task T013 was held open for.
+func TestGeminiIsStartedWithTheFlagThatWasWatchedWorking(t *testing.T) {
+	flags, known := acpFlags[string(agentcli.Gemini)]
+	if !known {
+		t.Fatal("nothing here knows how to start Gemini as an ACP peer")
+	}
+	for _, flag := range flags {
+		if flag == "--acp" || flag == "--experimental-acp" {
+			return
+		}
+	}
+	t.Errorf("Gemini is started with %v, and neither spelling of the ACP flag is among them", flags)
 }
 
 // A kind nobody has heard of is not supported, and asking is not an error.

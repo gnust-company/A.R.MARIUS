@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"sync"
+
+	"github.com/gnust-company/armarius-daemon/internal/agentcli"
 )
 
 // acpProtocolVersion is the version of the Agent Client Protocol this daemon speaks.
@@ -15,18 +17,18 @@ const acpProtocolVersion = 1
 // acpFlags is what each ACP CLI is started with to make it speak the protocol instead of
 // talking to a person.
 //
-// **Empty, and that is the correct content today.** The only ACP CLI of the first release is
-// Gemini CLI, and its invocation may not be written before the probe has actually been run
-// against it (FR-039a, task T013): what is known about its flag comes from a help page, not from
-// a session, and a guess written here would be a daemon that starts a CLI and then waits forever
-// for a handshake that was never going to come.
+// Gemini's line is **measured**, which is the only reason it is here: `gemini 0.56.0` was
+// started with this flag by a program, over pipes, with no terminal, and it completed the
+// `initialize` handshake and declared its own capabilities (research §9.2). That was the thing
+// worth waiting for — a guessed flag would have been a daemon starting a CLI and then waiting
+// forever for a handshake that was never coming.
 //
-// The conversation below is not waiting on that answer, and that is the point of keeping the two
-// apart. What ACP is — how a session opens, what an update looks like, who answers a permission
-// request — is a fact about the protocol, and it is settled and tested here. What turns one
-// particular CLI into an ACP peer is a fact about that CLI, and it arrives with T117 as a single
-// line in this table.
-var acpFlags = map[string][]string{}
+// `--acp` rather than `--experimental-acp`: the binary's own help calls the older spelling
+// deprecated and names this one. The probe happened to use the old one and it still works, so
+// the older spelling remains the fallback if a build ever refuses this.
+var acpFlags = map[string][]string{
+	string(agentcli.Gemini): {"--acp"},
+}
 
 // ACP runs the CLIs that hold a conversation over their own standard streams: JSON-RPC in, JSON-
 // RPC out, for as long as the turn lasts (FR-039).

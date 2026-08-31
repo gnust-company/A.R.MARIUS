@@ -71,25 +71,76 @@ func TestARowIsAllOfACLIOrNoneOfIt(t *testing.T) {
 	}
 }
 
-// Gemini CLI is known of and deliberately undeclared (FR-039a, task T013).
+// Gemini's row is the one written from a measurement rather than from documentation, so what
+// was measured is pinned here.
 //
-// Pinned rather than left to be noticed, because the day somebody fills these in is the day
-// this test has to be deleted — and deleting a test is a decision, while quietly gaining four
-// fields is not. What may not happen is Gemini's answers arriving as a guess.
-func TestGeminiIsKnownOfAndDeliberatelyUndeclared(t *testing.T) {
+// The distinction FR-039a draws is between guessing and knowing, not between waiting and
+// writing. Two things were watched happening on `gemini 0.56.0` and they are the two that
+// decide whether any of the rest can be true: the flag starts an ACP peer when a program starts
+// it with no terminal, and the trust gate exists. The four paths come from the bundle the
+// binary ships. If a working account ever contradicts one of them, this test is where the
+// correction lands.
+func TestGeminisRowSaysWhatWasMeasured(t *testing.T) {
 	row, known := Lookup(string(Gemini))
 	if !known {
 		t.Fatal("Gemini is not in the registry at all, so this machine would not even look for it")
 	}
-	if row.Binary == "" {
-		t.Error("Gemini has no binary to look for, so it can never be reported as a workplace")
+	if !Ready(string(Gemini)) {
+		t.Fatalf("Gemini is missing %v", row.Undeclared())
 	}
-	if Ready(string(Gemini)) {
-		t.Fatal("Gemini is declared ready — its answers must be measured before they are written (T013)")
+	if row.Family != FamilyACP {
+		t.Errorf("Gemini is declared %q, and the handshake that was measured is ACP", row.Family)
 	}
-	if len(row.Undeclared()) != 4 {
-		t.Errorf("Gemini declares %v, and the probe that would justify any of it has not been run",
-			row.Undeclared())
+	if row.ContextFile != "GEMINI.md" {
+		t.Errorf("the brief goes to %q, want GEMINI.md", row.ContextFile)
+	}
+	// In the home, not the working directory: the personal skills directory is read without a
+	// trust decision, and the home is built fresh for each run.
+	if row.Skills.Path != ".gemini/skills" || !row.Skills.InHome {
+		t.Errorf("skills go to %+v, want .gemini/skills inside the home", row.Skills)
+	}
+	// Redirecting the home is the only lever: GEMINI_DIR is a constant in the bundle, not a
+	// variable it reads.
+	if len(row.HomeVars) != 1 || row.HomeVars[0].Variable != "HOME" || row.HomeVars[0].Path != "" {
+		t.Errorf("Gemini is pointed at its home by %+v, want HOME alone", row.HomeVars)
+	}
+}
+
+// The gate that would have made the whole row a silent no-op.
+//
+// Gemini will not read project-level configuration out of a folder nobody has trusted, and the
+// daemon makes a fresh folder for every task, which nobody ever has. Untrusted, it writes a line
+// to its error stream and carries on with the brief unread — which on every screen looks like an
+// agent that was told everything and did nothing.
+func TestGeminiIsToldTheRunsOwnFolderMayBeRead(t *testing.T) {
+	row, _ := Lookup(string(Gemini))
+	for _, v := range row.Env {
+		if v.Name == "GEMINI_CLI_TRUST_WORKSPACE" {
+			if v.Value != "true" {
+				t.Fatalf("the trust variable is set to %q, and only \"true\" opens the gate", v.Value)
+			}
+			return
+		}
+	}
+	t.Fatal("Gemini is not told the run's own folder may be read, so its brief goes unopened")
+}
+
+// Nothing here may carry a secret. These land in the environment of a program this daemon does
+// not own, and the one rule about that environment is that a run sees what a rule put there
+// (FR-014c) — a credential in a table read by every machine is not that.
+func TestNoRowSmugglesACredentialIntoTheEnvironment(t *testing.T) {
+	for _, row := range All() {
+		for _, v := range row.Env {
+			if v.Name == "" || v.Value == "" {
+				t.Errorf("%s declares an unusable variable %+v", row.Kind, v)
+			}
+			for _, smell := range []string{"TOKEN", "SECRET", "PASSWORD", "KEY", "CREDENTIAL"} {
+				if strings.Contains(v.Name, smell) {
+					t.Errorf("%s declares %s, which reads like a credential — those are minted "+
+						"per run, never carried in a table", row.Kind, v.Name)
+				}
+			}
+		}
 	}
 }
 

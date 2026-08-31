@@ -62,10 +62,10 @@ func TestACLIThatKeepsItsSkillsInItsHomeGetsThemThere(t *testing.T) {
 }
 
 func TestACLIWhoseSkillsDirectoryIsUnknownIsRefused(t *testing.T) {
-	// Gemini CLI is in the wire vocabulary and deliberately not in this table: nobody has
-	// verified where it looks. Guessing would write skills where nothing reads them, and a
-	// skill that is silently never loaded is worse than a run that refuses to start.
-	if _, err := WriteSkills("gemini", t.TempDir(), t.TempDir(), []Skill{cookbook}); err == nil {
+	// Any CLI the registry has not declared a skills directory for. Guessing would write skills
+	// where nothing reads them, and a skill that is silently never loaded is worse than a run
+	// that refuses to start.
+	if _, err := WriteSkills("opencode", t.TempDir(), t.TempDir(), []Skill{cookbook}); err == nil {
 		t.Fatal("CLI chưa khai chỗ để kỹ năng mà vẫn ghi ra được")
 	}
 }
