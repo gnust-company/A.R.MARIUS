@@ -43,8 +43,9 @@ func (r Reporting) Record(ctx context.Context, runID string, events []Recorded) 
 // it again without waiting for a sweep (FR-014b, FR-030a).
 func (r Reporting) Finish(ctx context.Context, runID string, done Conclusion) error {
 	return r.Session.FinishRun(ctx, runID, client.FinishRequest{
-		Status: done.Status,
-		Error:  done.Error,
-		Usage:  done.Usage,
+		Status:        done.Status,
+		Error:         done.Error,
+		Usage:         done.Usage,
+		SessionHandle: done.Session,
 	})
 }

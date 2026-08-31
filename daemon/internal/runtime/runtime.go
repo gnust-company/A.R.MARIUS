@@ -39,6 +39,15 @@ type Request struct {
 	// A CLI that cannot resume ignores it and opens a new session, which is a supported outcome
 	// rather than a failure (FR-039a).
 	Session string
+	// Restart says this turn begins a new conversation where the last one was meant to be
+	// carried on, and why (FR-025, FR-026, FR-027). Nil is the ordinary case: either the thread
+	// was picked up, or this is the first turn on the task and there was nothing to pick up.
+	//
+	// Not folded into Message, on purpose. The message is the server's — assembled there,
+	// recorded there before it was sent, and nothing here may compose any part of it (FR-011a).
+	// This is one sentence from the machine about the machine, and it travels beside the
+	// message so that the agent reads both with neither rewritten.
+	Restart *Restart
 	// ToolConfig is the file this run's callback tools were declared in, for the CLIs that read
 	// one, and ToolServers is that same declaration for the family that carries it inline in its
 	// handshake (FR-013a).
