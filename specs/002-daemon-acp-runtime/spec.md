@@ -565,11 +565,27 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **FR-024**: Hai đầu việc khác nhau PHẢI có hai phiên tách biệt, kể cả khi cùng một agent.
 - **FR-025**: Khi không nối lại được phiên cũ, hệ thống PHẢI mở phiên mới **và gửi cho agent một câu báo
   bằng tiếng Anh** nói rõ đây là bắt đầu lại cùng lý do.
+- **FR-025a**: Câu báo ở FR-025 PHẢI đi **cạnh** thông điệp server dựng, KHÔNG được trộn vào hay viết
+  lại nó (FR-011a) — nó là một câu của cái máy nói về cái máy, không phải một phần nội dung công việc.
+  Vào nhật ký lượt chạy thì nó PHẢI ở dạng **mã kèm tham số**, không phải câu đã dựng sẵn (Điều VII).
+  Lần **đầu tiên** làm việc trên một đầu việc KHÔNG phải một lần bắt đầu lại: chưa từng có mạch nào để
+  mất, và bảo agent rằng nó đang làm lại sẽ khiến agent đi tìm một lịch sử chưa bao giờ tồn tại.
 - **FR-026**: Khi chỗ làm giữ phiên cũ **không còn là chỗ làm đang phục vụ agent ấy** (máy cài lại, daemon
   đăng ký lại thành chỗ làm mới), hệ thống PHẢI mở phiên mới và báo theo FR-025 — KHÔNG ĐƯỢC giả vờ nối
   tiếp. Lưu ý: vì FR-007 buộc mỗi agent vào đúng một chỗ làm không đổi được, một lượt gọi dậy **không thể**
   rơi sang máy khác trong lúc mối buộc còn nguyên; điều khoản này chỉ áp cho lúc mối buộc bị dựng lại.
 - **FR-027**: Phiên PHẢI có hạn giữ đặt được. Quá hạn thì thu hồi, và lần gọi dậy sau xử theo FR-025.
+- **FR-027a**: Hạn giữ ở FR-027 PHẢI **hỏi được ở lúc gọi dậy**, không chỉ ở vòng quét dọn. Vòng quét
+  chạy theo nhịp của nó và không chạy lúc máy tắt, nên một lượt gọi dậy hoàn toàn có thể rơi vào một
+  phiên đã quá hạn nhiều ngày mà chưa vòng quét nào chạm tới. Đưa handle ấy cho CLI là câu trả lời tệ
+  nhất trong các lựa chọn: CLI hoặc không chạy, hoặc mở phiên mới mà không nói gì — và bản ghi thành
+  ra khai rằng mạch cũ đã được nối tiếp.
+- **FR-027b**: Chỗ một CLI thật sự ghi trạng thái phiên PHẢI nằm trong **tầm dọn của daemon**. CLI nào
+  ghi phiên vào thư mục nhà thì nhà giả PHẢI dựng sao cho đúng chỗ ấy là của daemon: mắc **từng mục
+  con** của người dùng vào thay vì mắc cả thư mục, và chỉ giữ lại những tên daemon tự khai. Chiều của
+  luật là điều quan trọng — mọi thứ khác mặc định vẫn là của người dùng, kể cả tên hãng thêm ở bản
+  sau. Lý do: một mục khai "theo đầu việc" mà không ai ghi vào là một vòng quét chạy trên thư mục
+  rỗng vĩnh viễn, còn phiên thật thì nằm lại trong nhà người dùng mãi mãi.
 
 ### Nhóm E — Hỏng hóc và lưới an toàn
 
