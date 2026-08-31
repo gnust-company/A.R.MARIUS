@@ -273,6 +273,41 @@ async def test_a_beat_claiming_somebody_elses_run_tells_nothing_and_costs_nothin
         assert started.status_code == 200, started.text
 
 
+async def test_a_machine_learns_nothing_about_the_tasks_next_door() -> None:
+    """Cửa vòng quét đọc **một danh sách mã do chính máy khai** — chỗ dễ lọt nhất còn lại.
+
+    Máy B hỏi về đầu việc có thật của A. Câu trả lời phải giống hệt câu trả lời cho một mã bịa:
+    im lặng. Ở đây im lặng không phải một lời từ chối — nó có nghĩa *server không kể tên được
+    đầu việc này*, và đó đúng là sự thật đối với B (Điều I, FR-021a).
+    """
+    async with _client() as c:
+        a, b = await _two_sides(c)
+        invented = str(uuid4())
+
+        borrowed = await c.post(
+            "/daemon/tasks/states",
+            json={"task_ids": [str(a.task_id)]},
+            headers=b.headers,
+        )
+        fictional = await c.post(
+            "/daemon/tasks/states",
+            json={"task_ids": [invented]},
+            headers=b.headers,
+        )
+        assert borrowed.status_code == fictional.status_code == 200
+        assert borrowed.json() == fictional.json() == {"tasks": []}, (
+            f"đầu việc có thật của A trả lời khác một mã bịa: {borrowed.json()}"
+        )
+
+        # Và đầu việc của A vẫn kể tên được cho chính A.
+        mine = await c.post(
+            "/daemon/tasks/states",
+            json={"task_ids": [str(a.task_id)]},
+            headers=a.headers,
+        )
+        assert [t["task_id"] for t in mine.json()["tasks"]] == [str(a.task_id)]
+
+
 # ── 3. lưới: không cửa nào của daemon nằm ngoài bài này ───────────────────────
 
 
@@ -297,6 +332,7 @@ _TOUCHED_HERE = {
     "/daemon/runs/{run_id}/start",
     "/daemon/runs/{run_id}/events",
     "/daemon/runs/{run_id}/finish",
+    "/daemon/tasks/states",
 }
 
 

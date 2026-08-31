@@ -32,6 +32,7 @@ from sse_starlette.sse import EventSourceResponse
 from armarius.domain.entities.run import RunStatus
 from armarius.infrastructure.daemon.claim import ReportedEvent
 from armarius.infrastructure.daemon.enrollment import MachineIdentity
+from armarius.infrastructure.daemon.housekeeping import MAX_TASKS_PER_ASK
 from armarius.infrastructure.daemon.workplaces import ReportedWorkplace
 from armarius.infrastructure.events.topic_bus import machine_topic
 from armarius.presentation.api.auth import CurrentUser
@@ -293,6 +294,35 @@ class FinishIn(BaseModel):
     session_handle: str = Field(default="", max_length=200)
 
 
+class TaskStatesIn(BaseModel):
+    """The tasks a machine found directories for on its own disk (FR-021).
+
+    Both caps are anti-junk ceilings, not limits on how much a machine may sweep: a machine
+    with more directories than this asks more than once, and the daemon splits the list for
+    itself so the number never has to be agreed on twice. The one on each name is the length
+    a directory name can have on any filesystem this runs on — these are read off a disk, so
+    anything longer is not a name that was found there.
+    """
+
+    task_ids: list[Annotated[str, Field(max_length=255)]] = Field(
+        default_factory=list, max_length=MAX_TASKS_PER_ASK
+    )
+
+
+class TaskStateOut(BaseModel):
+    """One task the workspace could account for."""
+
+    task_id: UUID
+    closed: bool
+    last_activity: datetime
+
+
+class TaskStatesOut(BaseModel):
+    """Only the tasks that were found. A name that is absent is the answer to it (FR-021a)."""
+
+    tasks: list[TaskStateOut]
+
+
 # The wire code for each ending, and the status it means. A table rather than a cast, so a
 # code the server does not know is refused at the door instead of stored.
 _ENDINGS: dict[str, RunStatus] = {
@@ -522,6 +552,38 @@ async def finish_run(
         session_handle=body.session_handle,
     )
     return {}
+
+
+# ── keeping the machine's disk from filling up ────────────────────────────────
+
+
+@router.post("/tasks/states", response_model=TaskStatesOut)
+async def task_states(
+    body: TaskStatesIn, machine: CurrentMachine, container: ContainerDep
+) -> TaskStatesOut:
+    """What this workspace knows about the tasks a machine has directories for (FR-021).
+
+    The server never pushes *this task is finished, let its directory go*. Such a message can
+    be sent while a laptop is closed, and the machine that missed it would hold the directory
+    forever; a question asked on a schedule can only be asked late (chốt 2026-08-22).
+
+    A task that is not in the answer is not a refusal and not an error. It is the server saying
+    it cannot account for that name — deleted, never recorded, or in another workspace — and
+    the sweep has a separate, much longer clock for exactly that (FR-021a). Which is also why
+    this door needs no 404 branch to keep Constitution I: a task next door and a task that
+    never existed produce the same silence.
+    """
+    found = await container.daemon_housekeeping.task_states(machine, body.task_ids)
+    return TaskStatesOut(
+        tasks=[
+            TaskStateOut(
+                task_id=state.task_id,
+                closed=state.closed,
+                last_activity=state.last_activity,
+            )
+            for state in found
+        ]
+    )
 
 
 # ── the push road ─────────────────────────────────────────────────────────────

@@ -88,6 +88,12 @@ _NEEDS_NO_GUARD: dict[tuple[str, str], str] = {
     # đúng chuyện đó rồi.
     ("POST", "/daemon/runs/{run_id}/events"): "nói về việc đã ra khỏi kệ, không phải việc mới",
     ("POST", "/daemon/runs/{run_id}/finish"): "nói về việc đã ra khỏi kệ, không phải việc mới",
+    # Hỏi trạng thái đầu việc trước khi dọn đĩa: cửa này **không ghi gì cả** — POST chỉ vì
+    # danh sách mã đi trong thân, không vì nó thay đổi thứ gì. Và đóng băng nó là chuyện tệ
+    # theo đúng chiều ngược lại với mọi dòng khác trong bảng này: một dự án đóng lại là lúc
+    # thư mục làm việc của nó **đáng được thu hồi nhất**, còn chặn câu hỏi ấy sẽ giữ chúng
+    # nằm lại trên máy người ta vĩnh viễn (FR-021).
+    ("POST", "/daemon/tasks/states"): "không ghi gì, và đóng dự án là lúc cần dọn nhất",
     # The two inbox doors: the guard is enforced **inside** rather than at the door,
     # because one path carries both an action that writes into the project and one that
     # only tidies the patron's own inbox — and which it is lives in the request body, read
