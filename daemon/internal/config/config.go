@@ -1,10 +1,13 @@
 // Package config holds the numbers an operator is allowed to turn on their own machine.
 //
-// There are five of them, and they are gathered here rather than scattered through the code
-// because two of them are not independent: the lease the server grants when this machine claims
-// a run has to outlast the whole wake-to-running budget, or the system takes work back from a
-// machine that is doing everything right (FR-056c). A rule between two numbers can only be
-// enforced where both numbers live.
+// They are gathered here rather than scattered through the code because some of them are not
+// independent, and a rule between two numbers can only be enforced where both numbers live:
+//
+//   - the lease the server grants when this machine claims a run has to outlast the whole
+//     wake-to-running budget, or the system takes work back from a machine that is doing
+//     everything right (FR-056c);
+//   - a directory the server cannot account for has to be kept longer than one it said was
+//     finished with, because the first is a guess and the second is a statement (FR-021a).
 //
 // The silence threshold that decides a run has hung is deliberately NOT here. It carries a rule
 // this file cannot express — each agent CLI may tighten it but none may loosen it — so it lives
@@ -17,6 +20,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/gnust-company/armarius-daemon/internal/execenv"
 )
 
 // wakeToRunBudget is the 15 seconds SC-002 allows from deciding to wake an agent to that agent
@@ -55,6 +60,26 @@ type Config struct {
 	// reports a stale or wrong number still cannot be given more than the server allows
 	// (FR-008d).
 	MaxConcurrentRuns int `json:"max_concurrent_runs"`
+
+	// SweepInterval is how often this machine looks over what it has left on its own disk
+	// (FR-021). Nothing is removed before its retention has passed, so this decides how *late*
+	// a reclaim can be, never whether one happens.
+	SweepInterval Duration `json:"sweep_interval"`
+
+	// WorkDirRetention is how long a task's working directory survives after the server said
+	// that task was finished with and nothing more happened to it (FR-021).
+	WorkDirRetention Duration `json:"work_dir_retention"`
+
+	// SessionRetention is how long a conversation may sit idle and still be carried on
+	// (FR-027). It is asked twice — by the sweep, and again at each wake, because the sweep
+	// does not run while the machine is off (FR-027a).
+	SessionRetention Duration `json:"session_retention"`
+
+	// OrphanRetention is how long a working directory the server cannot account for survives
+	// (FR-021a). Longer than WorkDirRetention on purpose, and the difference is not caution
+	// for its own sake: that clock acts on something the server stated, this one acts on the
+	// absence of a statement, and an absence is the weaker evidence of the two.
+	OrphanRetention Duration `json:"orphan_retention"`
 }
 
 // Defaults are the values a machine runs with when its config file says nothing. Every one of
@@ -66,6 +91,10 @@ func Defaults() Config {
 		ClaimLease:            Duration(120 * time.Second),
 		ToolResultInlineLimit: 2048,
 		MaxConcurrentRuns:     5,
+		SweepInterval:         Duration(execenv.DefaultSweepInterval),
+		WorkDirRetention:      Duration(execenv.DefaultWorkDirRetention),
+		SessionRetention:      Duration(execenv.DefaultSessionRetention),
+		OrphanRetention:       Duration(execenv.DefaultOrphanRetention),
 	}
 }
 
@@ -104,6 +133,10 @@ func (c Config) Validate() error {
 		{"poll_interval", c.PollInterval.Duration()},
 		{"heartbeat_interval", c.HeartbeatInterval.Duration()},
 		{"claim_lease", c.ClaimLease.Duration()},
+		{"sweep_interval", c.SweepInterval.Duration()},
+		{"work_dir_retention", c.WorkDirRetention.Duration()},
+		{"session_retention", c.SessionRetention.Duration()},
+		{"orphan_retention", c.OrphanRetention.Duration()},
 	}
 	for _, p := range positive {
 		if p.value <= 0 {
@@ -118,6 +151,17 @@ func (c Config) Validate() error {
 		return fmt.Errorf(
 			"claim_lease must be longer than the %s a wake is allowed to take, got %s",
 			wakeToRunBudget, c.ClaimLease.Duration(),
+		)
+	}
+
+	// The second rule that spans two numbers. A directory the server never mentioned is
+	// deleted on a guess; one it said was finished with is deleted on a statement. Letting the
+	// guess act sooner than the statement inverts which of the two this program trusts more
+	// (FR-021a).
+	if c.OrphanRetention.Duration() <= c.WorkDirRetention.Duration() {
+		return fmt.Errorf(
+			"orphan_retention must be longer than work_dir_retention (%s), got %s",
+			c.WorkDirRetention, c.OrphanRetention,
 		)
 	}
 

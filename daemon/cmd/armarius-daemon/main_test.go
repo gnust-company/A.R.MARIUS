@@ -7,6 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/gnust-company/armarius-daemon/internal/client"
+	"github.com/gnust-company/armarius-daemon/internal/config"
+	"github.com/gnust-company/armarius-daemon/internal/execenv"
+	"github.com/gnust-company/armarius-daemon/internal/supervisor"
 )
 
 // dispatch runs the command line and hands back what a person would have seen on each stream.
@@ -173,5 +179,47 @@ func TestDefaultConfigPathIsUnderTheArmariusDirectory(t *testing.T) {
 	got := defaultConfigPath()
 	if !strings.Contains(got, ".armarius") || !strings.HasSuffix(got, "daemon.json") {
 		t.Errorf("default config path %q is not ~/.armarius/daemon.json", got)
+	}
+}
+
+func TestTheSweepAsksTheSameRegisterTheRunnerWritesTo(t *testing.T) {
+	// FR-022 holds only while these two are the same object. A fresh `&supervisor.Runs{}` here
+	// compiles, runs, reports nothing, and deletes the working directory of a live agent — so
+	// the identity is asserted rather than left to whoever edits `start` next.
+	held := &supervisor.Runs{}
+	work := supervisor.RunOptions{
+		WorkRoot:  "/var/armarius/work",
+		StateRoot: "/var/armarius/stores",
+		Runs:      held,
+	}
+
+	sweeper := housekeeping(config.Defaults(), work, client.Session{})
+
+	if sweeper.Runs != execenv.RunHolder(held) {
+		t.Fatal("vòng quét hỏi một sổ khác cái sổ lượt chạy ghi vào")
+	}
+	if sweeper.WorkRoot != work.WorkRoot || sweeper.StateRoot != work.StateRoot {
+		t.Fatalf("vòng quét nhìn vào chỗ khác: %s, %s", sweeper.WorkRoot, sweeper.StateRoot)
+	}
+}
+
+func TestTheSweepTakesTheRetentionsTheOperatorSet(t *testing.T) {
+	// FR-021 and FR-027 both say the retention is settable. A collector built from the
+	// defaults instead of from the file would leave every one of those settings inert.
+	settings := config.Defaults()
+	settings.WorkDirRetention = config.Duration(90 * time.Minute)
+	settings.SessionRetention = config.Duration(48 * time.Hour)
+	settings.OrphanRetention = config.Duration(30 * 24 * time.Hour)
+
+	sweeper := housekeeping(settings, supervisor.RunOptions{Runs: &supervisor.Runs{}}, client.Session{})
+
+	if sweeper.WorkDirRetention != 90*time.Minute {
+		t.Errorf("work_dir_retention = %s", sweeper.WorkDirRetention)
+	}
+	if sweeper.SessionRetention != 48*time.Hour {
+		t.Errorf("session_retention = %s", sweeper.SessionRetention)
+	}
+	if sweeper.OrphanRetention != 30*24*time.Hour {
+		t.Errorf("orphan_retention = %s", sweeper.OrphanRetention)
 	}
 }
