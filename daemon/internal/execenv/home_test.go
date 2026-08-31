@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/gnust-company/armarius-daemon/internal/agentcli"
 )
 
 func buildSpec(t *testing.T, cli string) Spec {
@@ -56,7 +58,7 @@ func TestWhatOutlivesTheRunIsALinkNotACopy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not read the link: %v", err)
 	}
-	want, err := StorePath(spec.StateRoot, "claude_code", PerTask, spec.AgentID, spec.TaskID)
+	want, err := StorePath(spec.StateRoot, "claude_code", agentcli.PerTask, spec.AgentID, spec.TaskID)
 	if err != nil {
 		t.Fatalf("StorePath returned an error: %v", err)
 	}
@@ -76,7 +78,7 @@ func TestWhatOutlivesTheRunIsALinkNotACopy(t *testing.T) {
 func TestNoTwoCLIsEverShareAStore(t *testing.T) {
 	seen := map[string]string{}
 	for _, cli := range KnownCLIs() {
-		for _, lt := range []Lifetime{PerTask, PerAgent} {
+		for _, lt := range []Lifetime{agentcli.PerTask, agentcli.PerAgent} {
 			path, err := StorePath("/state", cli, lt, "agent-1", "task-1")
 			if err != nil {
 				t.Fatalf("StorePath(%s, %s): %v", cli, lt, err)
@@ -95,10 +97,10 @@ func TestNoTwoCLIsEverShareAStore(t *testing.T) {
 // FR-007e: long-term memory is a feature some CLIs happen to have, not something Armarius
 // provides. None of the first round declares one, and no store should exist for it.
 func TestNoCLIInTheFirstRoundClaimsLongTermMemory(t *testing.T) {
-	for cli, entries := range layouts {
-		for _, e := range entries {
-			if e.Lifetime == PerAgent {
-				t.Errorf("%s declares a per-agent store at %s — if that is intended, it needs its own retention", cli, e.Path)
+	for _, row := range agentcli.All() {
+		for _, e := range row.Home {
+			if e.Lifetime == agentcli.PerAgent {
+				t.Errorf("%s declares a per-agent store at %s — if that is intended, it needs its own retention", row.Kind, e.Path)
 			}
 		}
 	}
@@ -197,11 +199,11 @@ func TestAStoreNeedsSomethingToBeKeyedBy(t *testing.T) {
 		agentID string
 		taskID  string
 	}{
-		"a per-task store with no task":   {PerTask, "agent-1", ""},
-		"a per-agent store with no agent": {PerAgent, "", "task-1"},
-		"a per-run thing has no store":    {PerRun, "agent-1", "task-1"},
-		"the operator's own files":        {Operator, "agent-1", "task-1"},
-		"a whole tree of theirs":          {OperatorTree, "agent-1", "task-1"},
+		"a per-task store with no task":   {agentcli.PerTask, "agent-1", ""},
+		"a per-agent store with no agent": {agentcli.PerAgent, "", "task-1"},
+		"a per-run thing has no store":    {agentcli.PerRun, "agent-1", "task-1"},
+		"the operator's own files":        {agentcli.Operator, "agent-1", "task-1"},
+		"a whole tree of theirs":          {agentcli.OperatorTree, "agent-1", "task-1"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -242,7 +244,7 @@ func TestTheOperatorsHomeIsNotWhereSessionsLand(t *testing.T) {
 	if strings.HasPrefix(target, spec.OperatorHome) {
 		t.Errorf("sessions are written to %s, which is inside the operator's own home", target)
 	}
-	want, err := StorePath(spec.StateRoot, "claude_code", PerTask, spec.AgentID, spec.TaskID)
+	want, err := StorePath(spec.StateRoot, "claude_code", agentcli.PerTask, spec.AgentID, spec.TaskID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,10 +321,11 @@ func TestACLITheOperatorHasNeverRunStillGetsItsSessionStore(t *testing.T) {
 // lifetime would silently link to the same directory, and two directories pretending to be one is
 // the kind of bug that only shows up as a conversation with somebody else's turns in it.
 func TestNoCLIDeclaresTwoStoresOfTheSameLifetime(t *testing.T) {
-	for cli, entries := range layouts {
+	for _, row := range agentcli.All() {
+		cli, entries := row.Kind, row.Home
 		seen := map[Lifetime]string{}
 		for _, e := range entries {
-			if e.Lifetime != PerTask && e.Lifetime != PerAgent {
+			if e.Lifetime != agentcli.PerTask && e.Lifetime != agentcli.PerAgent {
 				continue
 			}
 			if other, clash := seen[e.Lifetime]; clash {

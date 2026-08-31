@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/gnust-company/armarius-daemon/internal/agentcli"
 )
 
 // Skill is one skill as it arrives with the work: a directory name, and everything that goes
@@ -16,24 +18,6 @@ import (
 type Skill struct {
 	Name  string
 	Files map[string]string
-}
-
-// where one CLI looks for skills, and which directory that path hangs off.
-type skillDir struct {
-	path string
-	// inHome is true when the CLI looks under its home rather than under the working
-	// directory. Not a detail: the working directory belongs to one task, the home is built
-	// for one run, and putting skills in the wrong one changes how long they live.
-	inHome bool
-}
-
-// skillDirs is where each CLI goes looking for skills of its own accord.
-//
-// Same principle as the context file: write where it already looks. Gemini CLI is absent for
-// the same reason it is absent there — unverified (FR-039a, task T013).
-var skillDirs = map[string]skillDir{
-	"claude_code": {path: ".claude/skills"},
-	"codex":       {path: ".codex/skills", inHome: true},
 }
 
 // WriteSkills lays this run's skills out where cli will find them (FR-011b).
@@ -51,12 +35,12 @@ var skillDirs = map[string]skillDir{
 //
 // Returns the directory the skills were written into.
 func WriteSkills(cli, workDir, home string, skills []Skill) (string, error) {
-	where, ok := skillDirs[cli]
-	if !ok {
+	row, known := agentcli.Lookup(cli)
+	if !known || row.Skills.Path == "" {
 		return "", fmt.Errorf("no skills directory is declared for %q", cli)
 	}
 	root := workDir
-	if where.inHome {
+	if row.Skills.InHome {
 		root = home
 	}
 	if root == "" {
@@ -78,7 +62,7 @@ func WriteSkills(cli, workDir, home string, skills []Skill) (string, error) {
 		}
 	}
 
-	dir := filepath.Join(root, filepath.FromSlash(where.path))
+	dir := filepath.Join(root, filepath.FromSlash(row.Skills.Path))
 	// Taken away whole, then made again. Removing rather than emptying is also what stops the
 	// directory being a link: os.RemoveAll takes the link and leaves whatever it pointed at
 	// alone, so a run cannot be talked into writing skills into the operator's own CLI

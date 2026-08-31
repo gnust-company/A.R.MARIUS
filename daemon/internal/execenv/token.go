@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+
+	"github.com/gnust-company/armarius-daemon/internal/agentcli"
 )
 
 // The variables one run's own credentials travel in.
@@ -86,30 +88,6 @@ type Credentials struct {
 	DaemonToken string
 }
 
-// homePointer is one variable that tells a CLI where its home is.
-type homePointer struct {
-	variable string
-	// path is relative to the fake home. Empty means the home itself.
-	path string
-}
-
-// homePointers is how each CLI is told to look in the home built for this run rather than in the
-// operator's real one.
-//
-// Getting this wrong is not a small mistake: a CLI that keeps reading the operator's own home
-// would find their sessions, their configuration and, on a shared workplace, the previous
-// agent's leftovers — and everything Build lays out would be laid out beside the point.
-//
-// Gemini CLI is absent for the same reason it is absent from every other table here: unverified
-// (FR-039a, task T013).
-var homePointers = map[string][]homePointer{
-	"claude_code": {{variable: "HOME"}},
-	// Codex keeps authentication, configuration and session state under one directory of its
-	// own, and reads CODEX_HOME to find it (research §11.1). HOME is redirected as well, so that
-	// anything it does not route through CODEX_HOME still lands inside this run's home.
-	"codex": {{variable: "HOME"}, {variable: "CODEX_HOME", path: ".codex"}},
-}
-
 // EnvSpec is everything the environment for one run is built out of.
 type EnvSpec struct {
 	CLI  string
@@ -149,8 +127,12 @@ type EnvSpec struct {
 // put there; an operator who exported their token to run a one-off command has one in theirs,
 // and the child would inherit it without a single line of this code being wrong.
 func Environ(spec EnvSpec) ([]string, error) {
-	pointers, known := homePointers[spec.CLI]
-	if !known {
+	// Getting this wrong is not a small mistake: a CLI still reading the operator's own home
+	// would find their sessions, their configuration and, on a shared workplace, the previous
+	// agent's leftovers — so a kind the registry declares no variables for is refused rather
+	// than started with everything laid out beside the point.
+	row, known := agentcli.Lookup(spec.CLI)
+	if !known || len(row.HomeVars) == 0 {
 		return nil, fmt.Errorf("no home variables are declared for %q", spec.CLI)
 	}
 	if spec.Home == "" {
@@ -178,12 +160,12 @@ func Environ(spec EnvSpec) ([]string, error) {
 			ours[name] = spec.ToolsDir + string(os.PathListSeparator) + inheritedPath
 		}
 	}
-	for _, p := range pointers {
+	for _, p := range row.HomeVars {
 		target := spec.Home
-		if p.path != "" {
-			target = filepath.Join(spec.Home, filepath.FromSlash(p.path))
+		if p.Path != "" {
+			target = filepath.Join(spec.Home, filepath.FromSlash(p.Path))
 		}
-		ours[p.variable] = target
+		ours[p.Variable] = target
 	}
 
 	env := make([]string, 0, len(spec.Inherited)+len(ours))

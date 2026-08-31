@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/gnust-company/armarius-daemon/internal/agentcli"
 )
 
 // claudeHelp is the shape of what `claude --help` prints, cut down to the lines the probe
@@ -41,7 +43,7 @@ func askedWith(printed string, err error) Options {
 }
 
 func TestAOneShotCLIsCapabilitiesComeFromWhatItPrinted(t *testing.T) {
-	found := Found{Kind: KindClaudeCode, Family: FamilyOneShot, Path: "/usr/bin/claude"}
+	found := Found{Kind: agentcli.ClaudeCode, Family: agentcli.FamilyOneShot, Path: "/usr/bin/claude"}
 
 	got := Probe(context.Background(), found, askedWith(claudeHelp, nil))
 
@@ -59,7 +61,7 @@ func TestAOneShotCLIsCapabilitiesComeFromWhatItPrinted(t *testing.T) {
 // The point of FR-017. Same CLI, same name, a build without the resume flag — and the answer
 // has to change, because it came from the binary rather than from the name on it.
 func TestTheSameCLIWithoutTheFlagIsReportedWithoutTheCapability(t *testing.T) {
-	found := Found{Kind: KindClaudeCode, Family: FamilyOneShot, Path: "/usr/bin/claude"}
+	found := Found{Kind: agentcli.ClaudeCode, Family: agentcli.FamilyOneShot, Path: "/usr/bin/claude"}
 	stripped := `Usage: claude [options] [prompt]
 
 Options:
@@ -80,7 +82,7 @@ Options:
 // saying why. It does not register with guesses, and it does not fail to register: a CLI with
 // no declared capability is still supported, degraded (FR-039a).
 func TestAFamilyWithNoProbeSaysSoRatherThanGuessing(t *testing.T) {
-	found := Found{Kind: KindGemini, Family: FamilyACP, Path: "/usr/local/bin/gemini"}
+	found := Found{Kind: agentcli.Gemini, Family: agentcli.FamilyACP, Path: "/usr/local/bin/gemini"}
 
 	got := Probe(context.Background(), found, askedWith("anything at all", nil))
 
@@ -98,7 +100,7 @@ func TestAFamilyWithNoProbeSaysSoRatherThanGuessing(t *testing.T) {
 }
 
 func TestACLIThatRefusesToDescribeItselfIsUnansweredNotAssumed(t *testing.T) {
-	found := Found{Kind: KindClaudeCode, Family: FamilyOneShot, Path: "/usr/bin/claude"}
+	found := Found{Kind: agentcli.ClaudeCode, Family: agentcli.FamilyOneShot, Path: "/usr/bin/claude"}
 
 	got := Probe(context.Background(), found, askedWith("", errors.New("exit status 2")))
 
@@ -112,8 +114,8 @@ func TestACLIThatRefusesToDescribeItselfIsUnansweredNotAssumed(t *testing.T) {
 
 func TestEveryFoundCLIGetsAskedInOrder(t *testing.T) {
 	found := []Found{
-		{Kind: KindGemini, Family: FamilyACP, Path: "/usr/local/bin/gemini"},
-		{Kind: KindClaudeCode, Family: FamilyOneShot, Path: "/usr/bin/claude"},
+		{Kind: agentcli.Gemini, Family: agentcli.FamilyACP, Path: "/usr/local/bin/gemini"},
+		{Kind: agentcli.ClaudeCode, Family: agentcli.FamilyOneShot, Path: "/usr/bin/claude"},
 	}
 
 	got := ProbeAll(context.Background(), found, askedWith(claudeHelp, nil))
@@ -144,7 +146,7 @@ func TestWhatAPersonMayPickComesOutOfTheBinaryAndNotOffItsName(t *testing.T) {
 	// FR-007k cấm dựng danh sách từ một bảng chép cứng theo tên CLI. Bài này là chỗ luật ấy
 	// thành thật: cùng một `Kind`, cùng một đường dẫn, chỉ khác **thứ binary in ra** — và
 	// danh sách phải khác theo.
-	found := Found{Kind: KindClaudeCode, Family: FamilyOneShot, Path: "/usr/bin/claude"}
+	found := Found{Kind: agentcli.ClaudeCode, Family: agentcli.FamilyOneShot, Path: "/usr/bin/claude"}
 
 	got := Probe(context.Background(), found, askedWith(claudeHelp, nil))
 
@@ -188,7 +190,7 @@ func TestWhatAPersonMayPickComesOutOfTheBinaryAndNotOffItsName(t *testing.T) {
 func TestATOOLThatSaysNothingAboutASettingIsOfferedNoneRatherThanAnEmptyOne(t *testing.T) {
 	// Hai thứ trông giống nhau trên màn và nghĩa ngược nhau: *tool này không có thiết lập ấy*
 	// và *có mà không ai đọc nổi giá trị*. Chỉ cái thứ nhất đúng ở đây, nên chỉ nó được hiện.
-	found := Found{Kind: KindClaudeCode, Family: FamilyOneShot, Path: "/usr/bin/claude"}
+	found := Found{Kind: agentcli.ClaudeCode, Family: agentcli.FamilyOneShot, Path: "/usr/bin/claude"}
 	bare := "Usage: claude [options]\n\nOptions:\n  -r, --resume [value]   Resume\n"
 
 	got := Probe(context.Background(), found, askedWith(bare, nil))
@@ -201,7 +203,7 @@ func TestATOOLThatSaysNothingAboutASettingIsOfferedNoneRatherThanAnEmptyOne(t *t
 func TestABracketedAsideThatIsNotAListIsNotReadAsOne(t *testing.T) {
 	// Ngoặc đơn trong trợ giúp phần lớn là câu văn, không phải danh sách. Đọc bừa một câu
 	// thành các lựa chọn là bày ra thứ tool chưa từng nói.
-	found := Found{Kind: KindClaudeCode, Family: FamilyOneShot, Path: "/usr/bin/claude"}
+	found := Found{Kind: agentcli.ClaudeCode, Family: agentcli.FamilyOneShot, Path: "/usr/bin/claude"}
 	prose := "Usage: claude\n\nOptions:\n  --effort <level>   Effort level (only works with --print)\n"
 
 	got := Probe(context.Background(), found, askedWith(prose, nil))
@@ -212,7 +214,7 @@ func TestABracketedAsideThatIsNotAListIsNotReadAsOne(t *testing.T) {
 }
 
 func TestACLIThatCouldNotBeAskedOffersNothingToPick(t *testing.T) {
-	found := Found{Kind: KindClaudeCode, Family: FamilyOneShot, Path: "/usr/bin/claude"}
+	found := Found{Kind: agentcli.ClaudeCode, Family: agentcli.FamilyOneShot, Path: "/usr/bin/claude"}
 
 	got := Probe(context.Background(), found, askedWith("", errors.New("nope")))
 
@@ -225,7 +227,7 @@ func TestALongerFlagSharingThePrefixDoesNotAnswerForThisOne(t *testing.T) {
 	// `--model-set` đứng trước `--model` trong trợ giúp: tìm theo chuỗi thuần sẽ dừng ở cái
 	// dài hơn và đọc ngoặc của **nó** thành danh sách model. Không có gì đỏ khi việc này xảy
 	// ra — màn hình vẫn bày ra một danh sách, chỉ là danh sách của một cờ khác.
-	found := Found{Kind: KindClaudeCode, Family: FamilyOneShot, Path: "/usr/bin/claude"}
+	found := Found{Kind: agentcli.ClaudeCode, Family: agentcli.FamilyOneShot, Path: "/usr/bin/claude"}
 	shadowed := "Usage: claude\n\nOptions:\n" +
 		"  --model-set <name>   Saved set (e.g. 'fast', 'cheap')\n" +
 		"  --model <name>       Model (e.g. 'opus', 'sonnet')\n"
@@ -240,5 +242,57 @@ func TestALongerFlagSharingThePrefixDoesNotAnswerForThisOne(t *testing.T) {
 		if value == "fast" || value == "cheap" {
 			t.Fatalf("đọc ngoặc của --model-set thành model: %v", choice.Values)
 		}
+	}
+}
+
+// FR-017 + FR-039a: what a workplace does *not* have is one list with a reason against each
+// entry, and the workplace is still a workplace. The reasons matter because they point at
+// different people — a CLI that answered no is the vendor's, a probe that could not be run is
+// this daemon's, and telling an operator the wrong one sends them to fix the wrong thing.
+func TestWhatAWorkplaceLacksIsOneListWithAReasonAgainstEachEntry(t *testing.T) {
+	answered := Capabilities{Resumable: true}
+	reduced := answered.Reduced()
+	if len(reduced) != 2 {
+		t.Fatalf("a CLI that answered yes to one of three is missing %v", reduced)
+	}
+	for _, missing := range reduced {
+		if missing.Capability == "resumable" {
+			t.Error("a capability the CLI answered yes to was reported as missing")
+		}
+		if missing.Reason != ReasonDeclaredAbsent {
+			t.Errorf("%s is missing for %q, want %q — it was asked and said no",
+				missing.Capability, missing.Reason, ReasonDeclaredAbsent)
+		}
+	}
+}
+
+// A CLI nobody could ask keeps the reason it could not be asked. It travels as false either
+// way, which is the degraded reading FR-017 requires, but *why* is not the same fact.
+func TestACapabilityNobodyCouldAskAboutKeepsWhyNotDeclaredAbsent(t *testing.T) {
+	for _, missing := range unanswered(ReasonNoProbe).Reduced() {
+		if missing.Reason != ReasonNoProbe {
+			t.Errorf("%s is missing for %q, want %q", missing.Capability, missing.Reason, ReasonNoProbe)
+		}
+	}
+}
+
+// A CLI that answered yes to everything has nothing to report, and reports nothing. An empty
+// list is what lets a caller say *this workplace runs the whole contract* without inspecting
+// three booleans of its own.
+func TestAWorkplaceWithTheWholeContractSaysNothing(t *testing.T) {
+	whole := Capabilities{Resumable: true, ExposesToolArgs: true, ExposesToolResult: true}
+	if reduced := whole.Reduced(); len(reduced) != 0 {
+		t.Errorf("a workplace with every capability reported %v as missing", reduced)
+	}
+}
+
+// Every capability the server is told about is one this list can account for. A fourth added to
+// the record without a line in `everyCapability` would be missing from every report of what a
+// workplace lacks, and missing quietly.
+func TestEveryCapabilityTheServerStoresCanBeReportedMissing(t *testing.T) {
+	nothing := Capabilities{}
+	if len(nothing.Reduced()) != len(everyCapability) {
+		t.Errorf("a CLI that has nothing reported %d missing, want all %d",
+			len(nothing.Reduced()), len(everyCapability))
 	}
 }

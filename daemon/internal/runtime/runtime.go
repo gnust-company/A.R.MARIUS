@@ -14,6 +14,7 @@ package runtime
 import (
 	"context"
 
+	"github.com/gnust-company/armarius-daemon/internal/agentcli"
 	"github.com/gnust-company/armarius-daemon/internal/execenv"
 )
 
@@ -168,10 +169,16 @@ type Runtime interface {
 
 // Supported answers whether this daemon can actually drive a CLI of this kind.
 //
+// Two halves, and both are needed. The registry has to declare what a run of this kind is set
+// up from — the brief's file, the skills directory, the home and the variable pointing at it —
+// and this package has to know how to start one. Neither implies the other: a row can be filled
+// in for a CLI nobody has written an invocation for, and an invocation is useless against a row
+// that cannot say where the brief goes.
+//
 // Not the same question as *is it installed* — that one is discovery's, and its answer is what
 // the machine reports as a workplace (FR-002). This one is about what has been written here,
-// and today the honest answer for Gemini CLI is no: its invocation may not be written before it
-// has been probed (FR-039a, task T013).
+// and today the honest answer for Gemini CLI is no: its row is blank because its invocation may
+// not be written before it has been probed (FR-039a, task T013).
 //
 // It matters because of what a machine does with the answer. Asking for work at a workplace
 // this daemon cannot drive wins a run that fails during setup, and a run that fails during
@@ -179,6 +186,11 @@ type Runtime interface {
 // forever, a slot at a time. Not asking leaves the task where it is, which is visibly stuck
 // rather than invisibly churning.
 func Supported(cli string) bool {
+	return agentcli.Ready(cli) && startable(cli)
+}
+
+// startable says whether this package knows how to start a CLI of this kind, either family.
+func startable(cli string) bool {
 	if _, oneShot := oneShots[cli]; oneShot {
 		return true
 	}
