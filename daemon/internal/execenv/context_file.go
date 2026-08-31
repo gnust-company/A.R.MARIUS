@@ -4,24 +4,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/gnust-company/armarius-daemon/internal/agentcli"
 )
 
-// contextFiles says which file each CLI reads its brief out of without being asked to.
-//
-// This is the whole of Multica's trick and the reason the daemon writes a file instead of
-// sending a message: **do not teach the agent a new way to be told things**. Every one of these
-// CLIs already opens a file of its own accord at the start of a session, so putting the brief
-// there means the agent needs to know nothing about Armarius to receive it — no flag, no
-// protocol, no first turn spent explaining itself.
-//
-// Gemini CLI is deliberately absent. Which file it reads is unverified, and a guess here would
-// be a file written where nothing looks (FR-039a, task T013).
-var contextFiles = map[string]string{
-	"claude_code": "CLAUDE.md",
-	"codex":       "AGENTS.md",
-}
-
 // WriteContextFile puts the server's message where cli will find it on its own (FR-011a).
+//
+// Which file that is comes from the registry, and the CLIs it leaves blank are the ones nobody
+// has verified — a brief written where nothing looks reads, on every screen, exactly like an
+// agent that was told everything and did nothing (FR-039a, task T013).
 //
 // The daemon composes none of this. The message is built on the server, out of the agent's own
 // instructions and the project's context, because those are the rules that live there and
@@ -34,10 +25,11 @@ var contextFiles = map[string]string{
 //
 // Returns the path written.
 func WriteContextFile(cli, workDir, message string) (string, error) {
-	name, ok := contextFiles[cli]
-	if !ok {
+	row, known := agentcli.Lookup(cli)
+	if !known || row.ContextFile == "" {
 		return "", fmt.Errorf("no context file is declared for %q", cli)
 	}
+	name := row.ContextFile
 	if workDir == "" {
 		return "", fmt.Errorf("writing the brief for %s needs a working directory", cli)
 	}

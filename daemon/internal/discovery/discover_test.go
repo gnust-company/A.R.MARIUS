@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/gnust-company/armarius-daemon/internal/agentcli"
 )
 
 // machine describes a machine that does not exist, so a test can say what is installed on it
@@ -49,11 +51,11 @@ func TestOnlyTheCLIsActuallyInstalledAreReported(t *testing.T) {
 	if len(got.Found) != 1 {
 		t.Fatalf("want exactly the one installed CLI, got %+v", got.Found)
 	}
-	if got.Found[0].Kind != KindClaudeCode {
-		t.Errorf("kind = %q, want %q", got.Found[0].Kind, KindClaudeCode)
+	if got.Found[0].Kind != agentcli.ClaudeCode {
+		t.Errorf("kind = %q, want %q", got.Found[0].Kind, agentcli.ClaudeCode)
 	}
-	if got.Found[0].Family != FamilyOneShot {
-		t.Errorf("family = %q, want %q", got.Found[0].Family, FamilyOneShot)
+	if got.Found[0].Family != agentcli.FamilyOneShot {
+		t.Errorf("family = %q, want %q", got.Found[0].Family, agentcli.FamilyOneShot)
 	}
 	if got.Found[0].Version != "2.1.226" {
 		t.Errorf("version = %q, want the number out of the line it printed", got.Found[0].Version)
@@ -82,7 +84,7 @@ func TestABinaryThatWillNotRunIsSkippedRatherThanOffered(t *testing.T) {
 	if len(got.Skipped) != 1 {
 		t.Fatalf("want the broken CLI reported, got %+v", got.Skipped)
 	}
-	if got.Skipped[0].Kind != KindCodex || got.Skipped[0].Reason != ReasonNotRunnable {
+	if got.Skipped[0].Kind != agentcli.Codex || got.Skipped[0].Reason != ReasonNotRunnable {
 		t.Errorf("skipped = %+v, want codex/%s", got.Skipped[0], ReasonNotRunnable)
 	}
 	if got.Skipped[0].Err == nil {
@@ -148,7 +150,7 @@ func TestTheSweepReportsInAStableOrder(t *testing.T) {
 
 	for range 5 {
 		got := Discover(context.Background(), m.options())
-		want := []Kind{KindGemini, KindClaudeCode, KindCodex}
+		want := []Kind{agentcli.Gemini, agentcli.ClaudeCode, agentcli.Codex}
 		if len(got.Found) != len(want) {
 			t.Fatalf("found %+v, want all three", got.Found)
 		}

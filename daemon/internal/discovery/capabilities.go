@@ -4,6 +4,8 @@ import (
 	"context"
 	"regexp"
 	"strings"
+
+	"github.com/gnust-company/armarius-daemon/internal/agentcli"
 )
 
 // capability names one thing the server needs to know about a workplace before it hands it
@@ -95,7 +97,46 @@ const (
 	ReasonNoProbe = "no_probe_for_family"
 	// ReasonProbeFailed: the CLI was asked and would not answer.
 	ReasonProbeFailed = "probe_failed"
+	// ReasonDeclaredAbsent: the CLI was asked, answered, and its own account of itself does not
+	// have this. The only one of the three that is a fact about the CLI rather than about the
+	// asking.
+	ReasonDeclaredAbsent = "not_declared"
 )
+
+// Reduced is every capability this workplace does not have, and why it does not have it.
+//
+// One list rather than two, because the difference between *asked and said no* and *could not
+// be asked* changes who should do something about it, not whether the workplace runs. Both are
+// the degraded reading FR-017 describes, and FR-039a is explicit that degraded is still
+// supported: a workplace missing every one of these is still offered work, and still does it.
+//
+// What it is for is the other half of that sentence — **degraded, and said out loud**. A
+// capability quietly absent is a workplace that behaves differently from its neighbour for a
+// reason nobody on this machine was ever told.
+func (c Capabilities) Reduced() []Unanswered {
+	unasked := make(map[string]string, len(c.Unanswered))
+	for _, u := range c.Unanswered {
+		unasked[u.Capability] = u.Reason
+	}
+	answered := map[capability]bool{
+		capResumable:         c.Resumable,
+		capExposesToolArgs:   c.ExposesToolArgs,
+		capExposesToolResult: c.ExposesToolResult,
+	}
+
+	var reduced []Unanswered
+	for _, want := range everyCapability {
+		if answered[want] {
+			continue
+		}
+		reason := ReasonDeclaredAbsent
+		if why, never := unasked[string(want)]; never {
+			reason = why
+		}
+		reduced = append(reduced, Unanswered{Capability: string(want), Reason: reason})
+	}
+	return reduced
+}
 
 // selfDescription is how one CLI is asked to describe itself, and which strings in that
 // description count as the CLI declaring a capability.
@@ -153,7 +194,7 @@ type choiceQuestion struct {
 //     platform binary and will not run at all, so it never reaches a probe. Its markers are
 //     read from the published interface and, per the note above, err towards saying less.
 var selfDescriptions = map[Kind]selfDescription{
-	KindClaudeCode: {
+	agentcli.ClaudeCode: {
 		args: []string{"--help"},
 		proves: map[capability][]string{
 			capResumable:         {"--resume", "--continue"},
@@ -179,7 +220,7 @@ var selfDescriptions = map[Kind]selfDescription{
 			{key: ChoiceModel, how: examples, after: "--model"},
 		},
 	},
-	KindCodex: {
+	agentcli.Codex: {
 		args: []string{"--help"},
 		proves: map[capability][]string{
 			capResumable:         {"resume"},
@@ -223,7 +264,7 @@ type prober func(ctx context.Context, found Found, opts Options) (Capabilities, 
 // then would mean guessing, and a guess written into a workplace is indistinguishable from an
 // answer once it is stored.
 var probers = map[Family]prober{
-	FamilyOneShot: probeSelfDescription,
+	agentcli.FamilyOneShot: probeSelfDescription,
 }
 
 // Probe asks one discovered CLI what it can do (FR-017).

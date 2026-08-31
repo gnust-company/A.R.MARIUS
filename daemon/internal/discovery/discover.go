@@ -14,48 +14,22 @@ import (
 	"os/exec"
 	"regexp"
 	"time"
+
+	"github.com/gnust-company/armarius-daemon/internal/agentcli"
 )
 
 // Kind names one agent CLI the way the server records it, in `workplaces.cli_kind`.
-type Kind string
-
-// The three CLIs of the first release (research §9). Two protocol families are represented
-// from the start on purpose, so the boundary between them is forced to be right early rather
-// than discovered later around a single family.
-const (
-	KindGemini     Kind = "gemini"
-	KindClaudeCode Kind = "claude_code"
-	KindCodex      Kind = "codex"
-)
+//
+// The registry's type rather than this package's. It was declared here once, beside a candidate
+// table that repeated the binary name and the protocol family of every CLI — and holding a
+// second copy of facts that belong to the kind of CLI, rather than to the act of looking for
+// one, is how a kind ends up known under two slightly different descriptions in two files.
+type Kind = agentcli.Kind
 
 // Family is how the daemon will talk to a CLI once it runs one: over the ACP protocol, or by
-// running it once per turn and reading what it prints.
-type Family string
-
-// The two families. A new CLI joins one of them; neither the wake path nor anything above the
-// adapter contract learns that either exists (FR-035, FR-037).
-const (
-	FamilyACP     Family = "acp"
-	FamilyOneShot Family = "one_shot"
-)
-
-// candidate is one CLI this release knows how to look for.
-//
-// Nothing here is a capability. It is only *where to look* and *how to ask* — every answer
-// comes from the binary itself (FR-017).
-type candidate struct {
-	kind        Kind
-	binary      string
-	family      Family
-	versionArgs []string
-}
-
-// candidates is the whole list of CLIs looked for, in the order they are reported.
-var candidates = []candidate{
-	{kind: KindGemini, binary: "gemini", family: FamilyACP, versionArgs: []string{"--version"}},
-	{kind: KindClaudeCode, binary: "claude", family: FamilyOneShot, versionArgs: []string{"--version"}},
-	{kind: KindCodex, binary: "codex", family: FamilyOneShot, versionArgs: []string{"--version"}},
-}
+// running it once per turn and reading what it prints. The registry's, for the same reason Kind
+// is.
+type Family = agentcli.Family
 
 // Found is one agent CLI that is present on this machine and runs.
 type Found struct {
@@ -117,16 +91,16 @@ func Discover(ctx context.Context, opts Options) Result {
 	opts = opts.withDefaults()
 
 	result := Result{}
-	for _, c := range candidates {
-		path, err := opts.LookPath(c.binary)
+	for _, c := range agentcli.All() {
+		path, err := opts.LookPath(c.Binary)
 		if err != nil {
 			// Not installed here. The ordinary case for two of the three.
 			continue
 		}
-		version, err := opts.version(ctx, path, c.versionArgs)
+		version, err := opts.version(ctx, path, c.VersionArgs)
 		if err != nil {
 			result.Skipped = append(result.Skipped, Skipped{
-				Kind:   c.kind,
+				Kind:   c.Kind,
 				Path:   path,
 				Reason: ReasonNotRunnable,
 				Err:    err,
@@ -134,8 +108,8 @@ func Discover(ctx context.Context, opts Options) Result {
 			continue
 		}
 		result.Found = append(result.Found, Found{
-			Kind:    c.kind,
-			Family:  c.family,
+			Kind:    c.Kind,
+			Family:  c.Family,
 			Path:    path,
 			Version: version,
 		})
