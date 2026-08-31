@@ -181,3 +181,29 @@ func TestTheNoteIsKeptWhereNoCLILooks(t *testing.T) {
 		}
 	}
 }
+
+// Một handle bị CLI từ chối phải biến mất, không chỉ chờ được ghi đè: mạch nó gọi tên đã không
+// còn ở phía CLI, nên giữ nó lại chỉ bảo đảm rằng lần gọi dậy sau đưa đúng cái handle chết ấy.
+func TestAThreadCanBeForgotten(t *testing.T) {
+	dir := aWorkDir(t, "task-1")
+	if err := RememberThread(dir, Thread{Handle: "sess-dead", LastUsedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ForgetThread(dir); err != nil {
+		t.Fatalf("ForgetThread trả về lỗi: %v", err)
+	}
+	_, verdict, err := RecallThread(dir, time.Now(), 0)
+	if err != nil {
+		t.Fatalf("RecallThread trả về lỗi: %v", err)
+	}
+	if verdict != ThreadNone {
+		t.Errorf("sau khi quên, phán quyết là %s, mong %s", verdict, ThreadNone)
+	}
+}
+
+// Quên một thứ không có ở đó không phải lỗi — đó chính là trạng thái lời gọi này muốn tới.
+func TestForgettingAThreadThatIsNotThereIsNotAFailure(t *testing.T) {
+	if err := ForgetThread(aWorkDir(t, "task-1")); err != nil {
+		t.Errorf("ForgetThread trả về lỗi cho một đầu việc chưa có mạch nào: %v", err)
+	}
+}

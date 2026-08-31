@@ -146,6 +146,7 @@ func Converse(ctx context.Context, toAgent io.Writer, fromAgent io.Reader, req R
 	// here rather than before the turn, which is exactly why the notice is assembled in two
 	// places and sent in one (FR-039a).
 	notice = ahead(notice, tell(c.journal, c.refused))
+	c.outcome.SessionRefused = c.refused != nil
 
 	var turn struct {
 		StopReason string `json:"stopReason"`

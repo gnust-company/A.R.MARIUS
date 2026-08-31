@@ -87,6 +87,7 @@ type scripted struct {
 	says    []armruntime.Event
 	fails   error
 	session string
+	refused bool
 	usage   map[string]any
 	waitFor func(ctx context.Context)
 	saw     armruntime.Request
@@ -103,7 +104,9 @@ func (s *scripted) Run(
 	if s.waitFor != nil {
 		s.waitFor(ctx)
 	}
-	return armruntime.Outcome{Session: s.session, Usage: s.usage}, s.fails
+	return armruntime.Outcome{
+		Session: s.session, SessionRefused: s.refused, Usage: s.usage,
+	}, s.fails
 }
 
 // ── the world one run happens in ─────────────────────────────────────────────
@@ -763,5 +766,60 @@ func TestTheServerIsToldWhichConversationTheRunEndedHolding(t *testing.T) {
 	if done.Session != "sess-ended-on-this" {
 		t.Errorf("the server was told the run ended on %q, want %q",
 			done.Session, "sess-ended-on-this")
+	}
+}
+
+// Một handle bị CLI từ chối phải **biến mất** khỏi máy, không chỉ được thay thế.
+//
+// Thay thế là đủ khi lượt thử lại chạy được. Khi nó cũng hỏng — vì một lý do khác hẳn — thì
+// không có gì mới để ghi đè lên, và bản ghi cũ nằm nguyên đó: lần gọi dậy sau lại đưa đúng cái
+// handle chết ấy, rồi lần sau nữa, cho tới lúc mạch hết hạn giữ (FR-025, FR-027).
+func TestAHandleThatWasRefusedIsTakenAwayRatherThanLeftForTheNextWake(t *testing.T) {
+	w := aWorld(t)
+	w.engine.session = "sess-first"
+	w.options().Do(context.Background(), w.grant())
+
+	// Lượt sau: handle bị từ chối, và lượt thử lại cũng hỏng — nên nó không mang về mạch nào.
+	second := w.grant()
+	second.RunID = "run-2"
+	w.engine.session = ""
+	w.engine.refused = true
+	w.engine.fails = errors.New("và lần thử lại cũng không chạy được")
+	w.options().Do(context.Background(), second)
+
+	third := w.grant()
+	third.RunID = "run-3"
+	w.engine.session, w.engine.refused, w.engine.fails = "sess-new", false, nil
+	w.options().Do(context.Background(), third)
+
+	if w.engine.saw.Session != "" {
+		t.Errorf("lần gọi dậy sau lại được đưa %q — đúng cái handle vừa bị từ chối",
+			w.engine.saw.Session)
+	}
+	if w.engine.saw.Restart != nil {
+		t.Errorf("agent bị báo mất mạch lần thứ hai, cho cùng một lần mất: %v",
+			w.engine.saw.Restart.Code)
+	}
+}
+
+// Và khi lượt thử lại **chạy được**, mạch mới ghi đè như thường: không có gì phải quên.
+func TestARefusedHandleReplacedByAWorkingOneIsSimplyOverwritten(t *testing.T) {
+	w := aWorld(t)
+	w.engine.session = "sess-first"
+	w.options().Do(context.Background(), w.grant())
+
+	second := w.grant()
+	second.RunID = "run-2"
+	w.engine.session, w.engine.refused = "sess-after-restart", true
+	w.options().Do(context.Background(), second)
+
+	third := w.grant()
+	third.RunID = "run-3"
+	w.engine.refused = false
+	w.options().Do(context.Background(), third)
+
+	if w.engine.saw.Session != "sess-after-restart" {
+		t.Errorf("lần gọi dậy sau nối vào %q, mong mạch mở lại sau khi bắt đầu lại",
+			w.engine.saw.Session)
 	}
 }
