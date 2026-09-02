@@ -409,6 +409,11 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **FR-007c**: Đăng nhập và hạn mức của agent CLI là thuộc tính của **chỗ làm**, không của agent. Cạn hạn
   mức PHẢI làm **mọi agent trên chỗ làm ấy** offline cùng lúc, và PHẢI xếp vào **lỗi cần người xử** —
   KHÔNG ĐƯỢC tiêu ngân sách tự phục hồi (xem FR-032).
+  - **Cách làm (chốt 2026-09-02, T124)**: một lượt chạy kết thúc với lời khai *cạn hạn mức* đóng **chỗ
+    làm**, không phải đóng riêng góc của lượt chạy ấy. Từ đó mọi hệ quả đi theo cửa đã có cho một chỗ làm
+    hết dùng được — agent báo offline, đầu việc đậu lại, Trưởng dự án được báo — nên không dựng đường thứ
+    hai. Chỗ làm đang đóng thì **giữ nguyên lý do cũ**: câu trả lời đầu là câu đã đo được, đè lên nó bằng
+    một câu muộn hơn và mơ hồ hơn là cách đẩy người đọc đi sửa nhầm thứ.
 - **FR-007d**: Hệ thống PHẢI bảo đảm **một lượt chạy chỉ được đúng một máy nhận**. Khi một lượt chạy bị
   tuyên là hỏng, **token của lượt chạy ấy** PHẢI bị thu hồi ngay, để một tiến trình ngủ dậy muộn không ghi
   thêm được gì vào đầu việc.
@@ -646,6 +651,20 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **FR-031a**: Ngưỡng im lặng đặt được **riêng cho từng loại agent CLI**, nhưng giá trị riêng ấy **chỉ được
   siết chặt hơn, KHÔNG được nới rộng hơn** ngưỡng nền. Cấu hình của một CLI không được phép tắt lưới an
   toàn chung — luật này chép của Multica.
+- **FR-032a**: Hệ quả bắt buộc của FR-032 — ba mảnh, thiếu mảnh nào thì điều khoản trên chỉ là chữ
+  (thêm 2026-09-02, T124):
+  - **Máy PHẢI nói được *vì sao*, bằng mã, ngay trên cửa báo kết thúc lượt chạy.** Ô chữ tự do đang có
+    chép lại thứ CLI in ra, và một câu văn thì không rẽ nhánh được hai lần giống nhau. Mã ấy **được phép
+    để trống**: máy không chắc thì không khai, và lượt chạy được thử lại y như trước. Mã lạ đọc thành
+    *không có lời khai*, không phải thành từ chối — một cú báo kết thúc bị từ chối là một lượt chạy server
+    không bao giờ biết là đã xong.
+  - **Cả hai ngân sách PHẢI nghe cùng một phân loại.** Ngân sách gọi lại lượt chạy và ngân sách Mức 1 của
+    thang phục hồi đều dựng trên cùng một giả định — thử lại thì có thể được — và đó đúng là thứ lỗi cần
+    người xử làm sai. Tiêu **không một lần nào**, chứ không phải tiêu ít đi: cùng một bức tường thì ba lần
+    thử chỉ mua thêm nửa giờ trước khi người sửa được nó được báo.
+  - **Danh sách lỗi cần người xử PHẢI đóng, và mặc định là *lỗi tạm*.** Đoán nhầm sang *tạm* thì ngân sách
+    đang có chặn thiệt hại lại trong vài lần rồi vẫn tới tay người; đoán nhầm sang *cần người* thì mọi trục
+    trặc lạ đều thành một lần làm phiền, và chuông kêu bậy là chuông bị tắt.
 - **FR-032**: Hệ thống PHẢI phân biệt **lỗi tạm** (đáng tự thử lại) với **lỗi cần người** (hết hạn mức, sai
   cấu hình, thiếu quyền). Lỗi cần người KHÔNG ĐƯỢC tiêu ngân sách tự phục hồi.
 - **FR-033**: Agent CLI đã đăng ký nhưng không còn trên máy PHẢI làm chỗ làm ấy chuyển sang không sẵn sàng
