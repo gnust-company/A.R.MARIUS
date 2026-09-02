@@ -87,8 +87,9 @@ Daemon gửi toàn bộ những gì nó dò được. Server đồng bộ: cái 
 ```json
 → { "workplaces": [
       { "cli_kind": "gemini", "cli_version": "0.56.0", "protocol_family": "acp",
-        "capabilities": { "resumable": false, "exposes_tool_args": false, "exposes_tool_result": false,
-                          "unanswered": [ { "capability": "resumable", "reason": "no_probe_for_family" }, … ] } },
+        "capabilities": { "resumable": true, "exposes_tool_args": false, "exposes_tool_result": false,
+                          "unanswered": [ { "capability": "exposes_tool_args", "reason": "not_in_protocol" },
+                                          { "capability": "exposes_tool_result", "reason": "not_in_protocol" } ] } },
       { "cli_kind": "claude_code", "cli_version": "2.1.226", "protocol_family": "one_shot",
         "capabilities": { "resumable": true, "exposes_tool_args": true, "exposes_tool_result": true,
                           "choices": [
@@ -124,11 +125,22 @@ Chỗ làm khai `choices` rỗng hoặc thiếu hẳn là **chuyện thường**
 bằng mặc định của chính tool (FR-007k).
 
 **`unanswered` — bổ sung 2026-08-25 lúc hiện thực T034.** Ba khoá boolean là *câu trả lời*; khoá thứ tư
-này là danh sách những khả năng **không hỏi được**, mỗi mục một mã lý do (`no_probe_for_family` khi daemon
-chưa nói được giao thức của họ ấy — đường ACP dựng ở T066; `probe_failed` khi CLI được hỏi mà không đáp).
-Vắng mặt hoặc rỗng nghĩa là hỏi đủ. Không có nó thì "hỏi rồi, CLI bảo không có" và "chưa hỏi được" đọc
-giống hệt nhau, mà FR-017 cấm đúng chuyện đó — một phỏng đoán đã ghi vào cơ sở dữ liệu không còn phân biệt
-được với một câu trả lời.
+này là danh sách những khả năng **không hỏi được**, mỗi mục một mã lý do. Vắng mặt hoặc rỗng nghĩa là hỏi
+đủ. Không có nó thì "hỏi rồi, CLI bảo không có" và "chưa hỏi được" đọc giống hệt nhau, mà FR-017 cấm đúng
+chuyện đó — một phỏng đoán đã ghi vào cơ sở dữ liệu không còn phân biệt được với một câu trả lời.
+
+| mã lý do | nghĩa | nói về ai |
+| --- | --- | --- |
+| `no_probe_for_family` | bản daemon này chưa nói được giao thức của họ ấy | **daemon** |
+| `probe_failed` | CLI được hỏi mà không đáp | **lượt hỏi** |
+| `not_in_protocol` | hỏi hết những gì giao thức cho phép hỏi, và khả năng này không nằm trong số agent khai được | **giao thức** |
+| *(không có mục nào)* | hỏi rồi, CLI tự khai là không có | **chính CLI** |
+
+**`not_in_protocol` — bổ sung 2026-09-02 lúc hiện thực T131a.** Cái bắt tay ACP khai `loadSession` và
+**không có chỗ nào** cho hai khả năng kia: chúng đi theo từng lời gọi công cụ chứ không theo lời khai của
+agent. Ghi thành mục rỗng (nghĩa "hỏi rồi nó nói không") là nói hộ agent một câu chưa ai hỏi nó, và người
+vận hành đọc câu ấy sẽ đi tìm bản cài mới hơn cho một thứ không bản nào có. Ghi thành `no_probe_for_family`
+cũng sai theo chiều ngược: daemon **có** hỏi, và đã hỏi.
 
 **`machine_name`** là `machines.display_name`, để cùng một CLI trên hai máy của một người là hai chỗ làm
 phân biệt được bằng mắt (FR-003). **`not_ready_reason`** là mã: `cli_removed` (CLI không còn trên máy —
