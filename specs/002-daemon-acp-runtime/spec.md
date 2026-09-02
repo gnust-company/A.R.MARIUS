@@ -296,6 +296,22 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 
 - **FR-001**: Hệ thống PHẢI cho phép một người cài và chạy daemon trên máy của mình rồi nối nó vào đúng
   một workspace bằng danh tính của người ấy.
+- **FR-001a**: Ba cửa của luồng nối máy PHẢI có trần số lần gọi (RFC 8628 §5.2). *Chốt 2026-09-02, T126a.*
+  Ba ràng buộc, mỗi ràng buộc trả lời một mối lo khác nhau:
+  - **Phía người dùng, chỉ tính lần trượt.** Hai cửa *tra cứu mã* và *duyệt mã* dùng **chung một** hạn
+    mức cho mỗi người dùng, không phải mỗi cửa một hạn mức: nhìn rồi duyệt là **một** việc, chia đôi chỉ
+    làm số lần đoán tăng gấp đôi. Lượt gọi trúng mã sống KHÔNG ĐƯỢC tính, nên người nối máy của chính
+    mình không bao giờ bị chậm lại, còn người đọc mã từ một danh sách thì hết lượt ngay.
+  - **Phía máy, hai trần.** Một trần cho **mỗi mã**, suy ra từ nhịp hỏi mà chính server phát cho daemon
+    và tuổi thọ của mã — đặt thành một con số riêng thì nó lệch khỏi nhịp ấy lúc nào không hay. Một trần
+    cho **cả cửa**, vì đây là cửa duy nhất không có giấy tờ gì đứng trước. Hai trần PHẢI trả về cùng một
+    mã lỗi: nói cho người gọi biết họ đụng trần nào là nói về lưu lượng của người khác.
+  - **429 là lời từ chối, không phải lần hỏng.** Daemon PHẢI đọc `Retry-After` rồi đợi, KHÔNG ĐƯỢC tính nó
+    vào hạn mức *hỏng liên tiếp* rồi bỏ cuộc — cuộc nối vẫn còn sống nguyên.
+
+  Ghi rõ điều **không** nằm trong đây: trần theo mã KHÔNG làm việc dò mã chậm lại, vì mỗi lần đoán là một
+  mã khác và do đó là một suất mới. Thứ chặn người dò là trần của cả cửa, còn thứ làm việc dò trở nên vô
+  nghĩa là entropy của mã và mười phút nó sống. Trần chỉ đặt giá cho cú gõ cửa.
 - **FR-002**: Daemon PHẢI tự dò các agent CLI có trên máy và đăng ký mỗi cái tìm được thành một **chỗ làm**
   gắn với workspace đó.
 - **FR-003**: Mỗi chỗ làm PHẢI mang tên máy đọc được, để người dùng phân biệt được hai máy khác nhau của
