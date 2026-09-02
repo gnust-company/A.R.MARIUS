@@ -162,6 +162,7 @@ class RecoveryEscalator:
         )
 
         async with self._uow() as uow:
+            level1_available = await self._level_one_can_work(uow, task)
             ladder = await uow.push_reasons.get_for_task(task.id) or TaskPushReason(
                 task_id=task.id, created_at=now
             )
@@ -178,10 +179,11 @@ class RecoveryEscalator:
                 handover_cap=handover_cap,
                 progressed=False,
                 cause=cause,
-                # FR-059a — Level 1 is *re-wake the assignee*, so an unassigned task has
-                # no rung to enter and goes straight to the Leader. Read here, from the
-                # task row, because the ladder itself must not know about assignees.
-                level1_available=task.assigned_marius_id is not None,
+                # FR-059a — Level 1 is *re-wake the assignee*, so a task with nobody to
+                # wake, or nobody who could answer, has no rung to enter and goes straight
+                # to the Leader. Read here rather than inside the ladder, because the
+                # ladder knows rungs and budgets and must not learn about assignees.
+                level1_available=level1_available,
             )
             ladder.apply(state, now=now)
             ladder.last_attempt_at = now
@@ -204,8 +206,43 @@ class RecoveryEscalator:
             await uow.commit()
 
         await self._act(
-            task, ladder, cause=cause, now=now, before=before, handover_cap=handover_cap
+            task,
+            ladder,
+            cause=cause,
+            now=now,
+            before=before,
+            handover_cap=handover_cap,
+            level1_available=level1_available,
         )
+
+    @staticmethod
+    async def _level_one_can_work(uow: UnitOfWork, task: Task) -> bool:
+        """Whether re-waking the assignee is a thing that could still work (FR-059a).
+
+        Two ways it cannot. **Nobody is on the task** — the original case, and the one the
+        entry condition was written for. Or **the assignee has nowhere to work**: the
+        machine it was bound to is gone, its CLI was uninstalled, its workplace ran out of
+        provider quota (FR-007c). An agent with no open workplace does not answer wakes, so
+        each Level-1 attempt opens a run row nobody will ever claim, waits out its ten
+        minutes of grace, and comes back to exactly where it started. Three of those is
+        half an hour of a project's time bought for nothing, and only then is the Leader
+        told — the one party who could actually move the work somewhere else, which FR-007
+        says is its decision to make and never the system's.
+
+        That is not skipping a rung. Skipping is passing over a rung that could still work;
+        this is a rung that does not apply, and the budget it would have spent stays unspent
+        (FR-032). The Level-2 question and the Level-3 dossier both say which of the two
+        cases brought the task here, because they ask for different things.
+
+        Only the **verdict** is read, never the code beside it: whether the agent has an
+        open place to work is a fact the business layer is allowed to act on, and *why* it
+        does not is display information and stays that way (FR-006, FR-006a, FR-006c).
+        """
+        if task.assigned_marius_id is None:
+            return False
+        placed = await uow.placements.placed_at([task.assigned_marius_id])
+        place = placed.get(task.assigned_marius_id)
+        return place is not None and place.ready
 
     async def leader_decided(
         self, task_id: UUID, *, action: str, now: datetime | None = None
@@ -276,6 +313,10 @@ class RecoveryEscalator:
             # degrades to the generic "stalled" label. What the Leader actually wrote is
             # kept verbatim in the task log below, which is where prose belongs.
             cause = ladder.cause or STALL_LEADER_GAVE_UP
+            # Asked inside this transaction, because the dossier written below reports it
+            # and a default of *yes* would tell the patron the system had called somebody
+            # who never had anywhere to answer from.
+            level1_available = await self._level_one_can_work(uow, task)
             await uow.push_reasons.upsert(ladder)
             await uow.commit()
 
@@ -287,7 +328,9 @@ class RecoveryEscalator:
             after=f"mức {int(EscalationLevel.LEVEL_3)}",
             reason=f"Trưởng dự án báo ngoài tầm xử lý: {reason}",
         )
-        await self._ask_patron(task, ladder, cause=cause, now=now)
+        await self._ask_patron(
+            task, ladder, cause=cause, now=now, level1_available=level1_available
+        )
 
     async def stand_down(self, task_id: UUID, *, now: datetime | None = None) -> None:
         """The task stopped being stalled — clear the rung, budgets and all (FR-060).
@@ -475,6 +518,7 @@ class RecoveryEscalator:
         now: datetime,
         before: EscalationLevel,
         handover_cap: int,
+        level1_available: bool,
     ) -> None:
         # The rung it came from, not "the one below where it is now": those two stopped
         # being the same answer once an unassigned task could enter at Level 2 (FR-059a),
@@ -498,10 +542,17 @@ class RecoveryEscalator:
             # climbed. Level 2 is a series of spaced asks, exactly like Level 1 — the ask is
             # the attempt, and one attempt is not a rung.
             await self._ask_leader(
-                task, ladder, cause=cause, now=now, handover_cap=handover_cap
+                task,
+                ladder,
+                cause=cause,
+                now=now,
+                handover_cap=handover_cap,
+                level1_available=level1_available,
             )
         elif ladder.level is EscalationLevel.LEVEL_3 and climbed:
-            await self._ask_patron(task, ladder, cause=cause, now=now)
+            await self._ask_patron(
+                task, ladder, cause=cause, now=now, level1_available=level1_available
+            )
 
     async def _mark_waiting_on_recovery(self, task_id: UUID, *, until: datetime | None) -> None:
         """Say on the task that a delivery is being retried (FR-063)."""
@@ -557,6 +608,7 @@ class RecoveryEscalator:
         cause: str,
         now: datetime,
         handover_cap: int,
+        level1_available: bool,
     ) -> None:
         """Mức 2 — tell the Leader exactly what is wrong and let it act.
 
@@ -572,15 +624,30 @@ class RecoveryEscalator:
         the patron is told the Leader was asked or told nobody could reach them, and those
         two send the patron to do different things.
 
-        The two roads *into* this rung do need separate wording (FR-059a). A task whose
+        The three roads *into* this rung do need separate wording (FR-059a). A task whose
         assignee was called and never came wants the Leader to reassign, split or unblock
-        it; a task nobody was ever given wants one thing, and it is not any of those.
-        Handing both the same paragraph would tell the Leader the system had tried three
-        times to wake somebody who does not exist.
+        it; a task nobody was ever given wants one thing, and it is not any of those; and a
+        task whose assignee has nowhere left to work wants exactly one thing — somebody
+        else — because FR-007 says the system will not move an agent to another machine and
+        that call is the Leader's. Handing all three the same paragraph would tell the
+        Leader the system had tried three times to wake somebody who could not answer.
         """
         if self._notifier is None or task.project_id is None:  # pragma: no cover
             return
-        if task.assigned_marius_id is None:
+        if task.assigned_marius_id is not None and not level1_available:
+            situation = (
+                "The agent holding this task has nowhere to work — its workplace is not "
+                "open — so there was nothing for the safety net to call back: Level 1 did "
+                "not apply and spent no attempt on it. Waiting will not clear this on its "
+                "own, and this system never moves an agent to another machine. Two ways "
+                "out:\n"
+                "  1. Hand the task to somebody whose workplace is open — assigning wakes "
+                "them by itself, nothing further is needed from you.\n"
+                "  2. This work needs that particular agent — say so, and the question "
+                "goes straight to the patron, who is the one who can reopen a "
+                "workplace.\n\n"
+            )
+        elif task.assigned_marius_id is None:
             situation = (
                 "Nobody holds this task, so there was nobody for the safety net to call "
                 "back: Level 1 had no one to act on and spent no attempt on it. Two ways "
@@ -642,7 +709,13 @@ class RecoveryEscalator:
             await uow.commit()
 
     async def _ask_patron(
-        self, task: Task, ladder: TaskPushReason, *, cause: str, now: datetime
+        self,
+        task: Task,
+        ladder: TaskPushReason,
+        *,
+        cause: str,
+        now: datetime,
+        level1_available: bool = True,
     ) -> None:
         """Mức 3 — ask the patron, and hand over everything already tried (FR-061)."""
         async with self._uow() as uow:
@@ -679,7 +752,15 @@ class RecoveryEscalator:
         # it is not the thing an exhausted Level 1 asks for. Reported as a flag rather than
         # inferred from `level1_attempts == 0`, so a reader never has to guess whether a
         # zero means *not applicable* or *not yet tried*.
-        level1_applicable = task.assigned_marius_id is not None
+        assigned = task.assigned_marius_id is not None
+        level1_applicable = assigned and level1_available
+        # Which of the two ways it did not apply, when it did not. A single false would
+        # send the patron to assign somebody to a task that already has an owner.
+        level1_skipped = (
+            None
+            if level1_applicable
+            else ("nobody_assigned" if not assigned else "assignee_has_nowhere_to_work")
+        )
         dossier: dict[str, object] = {
             # The stall verdict as its code, and only here — the letter body used to repeat
             # it as a Vietnamese clause, which meant the one fact was written twice and one
@@ -687,6 +768,7 @@ class RecoveryEscalator:
             # screen renders this field in the patron's own language.
             "cause": cause,
             "level1_applicable": level1_applicable,
+            "level1_skipped": level1_skipped,
             "level1_attempts": ladder.attempts,
             "last_attempt_at": ladder.last_attempt_at.isoformat()
             if ladder.last_attempt_at
@@ -694,7 +776,10 @@ class RecoveryEscalator:
             "leader_asked": leader_asked,
             "leader_asks": ladder.handover_attempts,
             "question": (
-                "Đầu việc này chưa được giao cho ai, và Trưởng dự án cũng không giao. "
+                "Người phụ trách đầu việc này không còn chỗ làm nào mở, nên hệ không gọi "
+                "lại lần nào. Bạn muốn giao cho người khác, mở lại chỗ làm cũ, hay huỷ nó?"
+                if level1_skipped == "assignee_has_nowhere_to_work"
+                else "Đầu việc này chưa được giao cho ai, và Trưởng dự án cũng không giao. "
                 "Bạn muốn giao cho ai, hay huỷ nó?"
                 if not level1_applicable
                 else "Đầu việc này đã qua cả hai mức phục hồi mà vẫn không đi tiếp. "
@@ -712,7 +797,10 @@ class RecoveryEscalator:
             body=(
                 f"{task.title}\n\n"
                 + (
-                    "Đầu việc chưa có người phụ trách nên hệ không tự gọi lại lần nào "
+                    "Người phụ trách không còn chỗ làm nào mở nên hệ không tự gọi lại lần "
+                    f"nào — đã hỏi Trưởng dự án {ladder.handover_attempts} lần"
+                    if level1_skipped == "assignee_has_nowhere_to_work"
+                    else "Đầu việc chưa có người phụ trách nên hệ không tự gọi lại lần nào "
                     f"— đã hỏi Trưởng dự án {ladder.handover_attempts} lần"
                     if not level1_applicable
                     else f"Hệ thống đã tự gọi lại {ladder.attempts} lần, rồi hỏi Trưởng "

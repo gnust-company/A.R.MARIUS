@@ -224,6 +224,12 @@ async def make_agent(
             display_name=f"box-for-{name}",
             token_hash=f"test-{uuid4().hex}",
             symlink_capable=True,
+            # Beating as of now, for the reason `ready_workplace` above beats: a machine
+            # that has never once been heard from is a real state with a real meaning —
+            # every agent on it offline (FR-006a) — and not the state a caller asking for
+            # *an agent that exists* is asking for. Without this the helper handed out
+            # agents that read as placed and answered no wakes.
+            last_heartbeat_at=now,
             created_at=now,
         )
         workplace = WorkplaceModel(

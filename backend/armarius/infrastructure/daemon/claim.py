@@ -60,6 +60,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from armarius.application.ports.work_packet import SkillBundle, WorkPacket
 from armarius.domain.entities.project import ProjectStatus
 from armarius.domain.entities.run import RunStatus
+from armarius.domain.services.failure_kind import QUOTA_EXHAUSTED
 from armarius.infrastructure.daemon import event_blobs
 from armarius.infrastructure.daemon.enrollment import MachineIdentity
 from armarius.infrastructure.daemon.models import (
@@ -984,6 +985,7 @@ class DaemonClaimService:
         error: str = "",
         usage: dict | None = None,
         session_handle: str = "",
+        failure: str = "",
     ) -> None:
         """The machine says the run is over, however it ended (FR-014b, FR-030a).
 
@@ -997,6 +999,14 @@ class DaemonClaimService:
         machine call again, and by then the hold is already gone: there is nothing left to
         release and nothing left to conclude, so the call returns quietly rather than sending
         the task through its ending a second time.
+
+        A run that ended because the workplace has no provider quota left closes **the
+        workplace**, not the run's own little corner of it (FR-007c). Quota belongs to the
+        login the workplace was set up with, so it is out for every agent working there and
+        for the next run as much as this one; closing it here is what stops the next agent
+        being sent to the same wall, and every consequence after that — the agents reported
+        offline, their tasks parked, the Leader told — is the door that already exists for a
+        workplace that stops being usable.
         """
         async with self._sessions()() as session:
             claim = await session.get(RunClaimModel, run_id)
@@ -1011,6 +1021,10 @@ class DaemonClaimService:
             claim.machine_id = None
             claim.claim_expires_at = None
             claim.run_token_hash = None
+            if failure == QUOTA_EXHAUSTED:
+                await self._close_the_workplace(
+                    session, claim.workplace_id, reason=failure
+                )
             await session.commit()
 
         if self._on_finish is not None:
@@ -1025,7 +1039,26 @@ class DaemonClaimService:
                 error=error or None,
                 usage=usage or {},
                 session_handle=session_handle,
+                failure=failure,
             )
+
+    async def _close_the_workplace(
+        self, session: AsyncSession, workplace_id: UUID, *, reason: str
+    ) -> None:
+        """Mark a workplace unusable, with the reason, in the caller's transaction.
+
+        Not ready is a single verdict with a code beside it for the screen, exactly as the
+        workplace sweep writes it (FR-006c) — nothing above this layer branches on which
+        code it is. A workplace already closed keeps the reason it already had: the first
+        answer is the measured one, and overwriting it with a later, vaguer one is how a
+        reader ends up being sent to fix the wrong thing.
+        """
+        workplace = await session.get(WorkplaceModel, workplace_id)
+        if workplace is None or not workplace.ready:  # pragma: no cover - defensive
+            return
+        workplace.ready = False
+        workplace.not_ready_reason = reason
+        workplace.updated_at = self._clock()
 
     @staticmethod
     def _still_held(claim: RunClaimModel, now: datetime) -> bool:

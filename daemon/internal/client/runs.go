@@ -116,6 +116,15 @@ type FinishRequest struct {
 	// Error is this machine's own account of what went wrong, when something did. It describes
 	// the side of the failure no code on the server could have seen.
 	Error string `json:"error,omitempty"`
+	// Failure is *why*, as a code, when this machine can say which kind of failure it was.
+	// Separate from Error because that field is whatever the CLI printed, and prose is not
+	// something a policy can branch on twice running.
+	//
+	// It exists to be left empty. A machine with no verdict says nothing and the run is
+	// retried exactly as it always was; a machine that is certain says so, and an ending
+	// nothing can get past by trying again is not retried at all (FR-032). Certainty is the
+	// bar: a guess here spends a person's attention on a network wobble.
+	Failure string `json:"failure,omitempty"`
 	// Usage is whatever the CLI said the turn cost, passed on exactly as it was given.
 	Usage map[string]any `json:"usage,omitempty"`
 	// SessionHandle is the conversation the run **ended** holding, which is not always the one
