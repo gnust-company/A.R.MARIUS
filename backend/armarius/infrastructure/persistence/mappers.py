@@ -74,6 +74,7 @@ from armarius.infrastructure.database.models import (
     WakeupModel,
     WorkspaceModel,
 )
+from armarius.shared.clock import as_utc
 
 
 def workspace_to_entity(m: WorkspaceModel) -> Workspace:
@@ -164,12 +165,18 @@ def marius_to_entity(m: MariusModel) -> Marius:
         invite_status=InviteStatus(m.invite_status) if m.invite_status else InviteStatus.INVITED,
         approved_at=m.approved_at,
         liveness=Liveness(m.liveness),
-        last_seen_at=m.last_seen_at,
+        # The four the liveness rules do arithmetic on, read back through `as_utc`. The
+        # column is declared with a timezone, which PostgreSQL honours and SQLite does not,
+        # so the same row comes back aware from one engine and naive from the other — and
+        # subtracting one from `utcnow()` raises rather than being merely wrong. Normalising
+        # here, at the boundary, is what `shared.clock` exists to say: the rules above are
+        # entitled to assume every moment they are handed says which moment it is.
+        last_seen_at=as_utc(m.last_seen_at),
         probe_attempts=m.probe_attempts or 0,
         backoff_step=m.backoff_step or 0,
-        next_probe_at=m.next_probe_at,
-        offline_since=m.offline_since,
-        turn_started_at=m.turn_started_at,
+        next_probe_at=as_utc(m.next_probe_at),
+        offline_since=as_utc(m.offline_since),
+        turn_started_at=as_utc(m.turn_started_at),
         created_at=m.created_at,
         updated_at=m.updated_at,
     )
