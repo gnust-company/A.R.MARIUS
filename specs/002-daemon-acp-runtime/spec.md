@@ -559,9 +559,14 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   không nối lại được phiên thì cái tay nắm phiên cũ KHÔNG ĐƯỢC đưa ra — mở phiên mới kèm câu báo theo
   FR-025 — và lượt chạy ấy **vẫn tính là xong**, không phải hỏng (FR-039a). Câu báo đi hai hướng: agent
   nhận câu giải thích, người vận hành thấy một dòng lúc chỗ làm đăng ký, nêu khả năng nào thiếu và thiếu
-  vì đâu (hỏi rồi CLI nói không · không hỏi được · hỏi mà không trả lời). Câu trả lời gắn với **bản cài
-  trên máy này**, không gắn với tên loại CLI: cùng một loại trên hai máy trả lời khác nhau được, và cái
-  đáng tin là cái sắp chạy việc. *(thêm 2026-08-31)*
+  vì đâu (hỏi rồi CLI nói không · không hỏi được · hỏi mà không trả lời · **giao thức của họ ấy không có
+  chỗ để hỏi**). Câu trả lời gắn với **bản cài trên máy này**, không gắn với tên loại CLI: cùng một loại
+  trên hai máy trả lời khác nhau được, và cái đáng tin là cái sắp chạy việc. *(thêm 2026-08-31)*
+- **FR-017b**: Lý do thứ tư — *giao thức không có chỗ để hỏi* — PHẢI đứng riêng, không được gộp vào ba lý
+  do kia, và dòng báo cho người vận hành PHẢI nói khác đi. Ba lý do kia đều là **hạ cấp**: chỗ làm này làm
+  được ít hơn chỗ làm bên cạnh. Lý do thứ tư thì không — không peer nào của họ giao thức ấy khai được điều
+  đó, nên mọi bản cài đều như nhau, và không có gì để đi tìm bản mới hơn. Gộp chung là nói hộ agent một câu
+  chưa ai hỏi nó. *(thêm 2026-09-02)*
 
 ### Nhóm C — Hiện vật buộc rời khỏi máy
 
