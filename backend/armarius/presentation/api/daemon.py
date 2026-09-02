@@ -292,6 +292,15 @@ class FinishIn(BaseModel):
 
     status: Literal["completed", "failed", "timed_out", "stopped"]
     error: str = Field(default="", max_length=4_000)
+    # Why it could not go on, as a code, when the machine knows (FR-032). Separate from
+    # `error` because that field is whatever the CLI printed, and prose is not something a
+    # policy can branch on twice running.
+    #
+    # Deliberately not a closed list at this door. An unrecognised code is read as *no
+    # verdict* and the run is retried exactly as it is today, so a machine on a newer build
+    # than the server loses a refinement rather than having its finish rejected — and a
+    # rejected finish is a run the server never learns is over.
+    failure: str = Field(default="", max_length=40)
     usage: dict[str, object] = Field(default_factory=dict)
     # The conversation the run **ended** holding, which is not always the one it started with:
     # a run handed a handle the CLI would not load opens a new one and carries on (FR-025). This
@@ -548,6 +557,11 @@ async def finish_run(
 
     Calling twice is not an error. A reply lost on the way back is the ordinary reason a
     machine calls again, and the second call finds a run nobody holds and leaves it alone.
+
+    A third obligation rides on `failure`, and only when the machine sends one: an ending
+    the system cannot get past by trying again is not retried at all, not once (FR-032),
+    and an exhausted quota closes the whole workplace because that is whose quota it is
+    (FR-007c).
     """
     await container.daemon_claims.finish(
         machine,
@@ -556,6 +570,7 @@ async def finish_run(
         error=body.error,
         usage=dict(body.usage),
         session_handle=body.session_handle,
+        failure=body.failure,
     )
     return {}
 

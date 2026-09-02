@@ -460,6 +460,7 @@ class WakeEngine:
         error: str | None = None,
         usage: dict | None = None,
         session_handle: str = "",
+        failure: str = "",
     ) -> None:
         """Close a run that was carried out somewhere this process cannot watch (FR-030a).
 
@@ -478,6 +479,10 @@ class WakeEngine:
         Reporting twice is not an error. A machine whose reply went missing calls again, and the
         second call finds the run already closed and leaves it alone — repeating the finalise
         would spend a continuation attempt the first call already spent.
+
+        ``failure`` is the machine's verdict on *why*, as a code, when it had one (FR-032).
+        Only the machine can hold that verdict: ``error`` is whatever the CLI printed, and
+        prose is not something a policy can branch on twice running.
         """
         async with self._uow() as uow:
             run = await uow.runs.get(run_id)
@@ -518,7 +523,7 @@ class WakeEngine:
         )
         await settle(
             f"decide the follow-up wake after run {run_id}",
-            lambda: self._maybe_self_wake(run_id),
+            lambda: self._maybe_self_wake(run_id, failure=failure),
         )
 
     async def _release_pair(self, run_id: UUID, *, cause: str | None = None) -> None:
@@ -957,7 +962,7 @@ class WakeEngine:
         except Exception:
             logger.exception("could not announce run %s on the workspace channel", run.id)
 
-    async def _maybe_self_wake(self, run_id: UUID) -> None:
+    async def _maybe_self_wake(self, run_id: UUID, *, failure: str = "") -> None:
         async with self._uow() as uow:
             run = await uow.runs.get(run_id)
             if run is None or run.task_id is None or run.marius_id is None:
@@ -976,6 +981,7 @@ class WakeEngine:
                 has_block_reason=has_block_reason,
                 continuation_attempt=run.continuation_attempt,
                 max_attempts=self._max_attempts,
+                failure=failure,
             )
             marius_id = run.marius_id
             task_id = run.task_id

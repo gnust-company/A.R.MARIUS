@@ -16,6 +16,7 @@ from enum import StrEnum
 
 from armarius.domain.entities.run import RunStatus, WakeSource
 from armarius.domain.entities.task import TERMINAL_STATUSES, TaskStatus
+from armarius.domain.services.failure_kind import english, needs_a_person
 from armarius.shared.errors import CodedError
 
 # ── the two closed lists (FR-047, FR-048) ────────────────────────────────────
@@ -139,15 +140,34 @@ def decide_self_wake(
     has_block_reason: bool,
     continuation_attempt: int,
     max_attempts: int,
+    failure: str = "",
 ) -> WakeDecision:
     """Decide the follow-up wake after a run ends (or a watchdog fires).
 
     Mirrors the §4.3 table. The guiding rule: only wake when "the ball is in the
     agent's court". When someone else owes the next move, stay silent and let their
     event wake the agent.
+
+    ``failure`` is the machine's own verdict on *why* the run could not go on, when it had
+    one. It is checked before anything else that could book a wake, because the budgets
+    below all assume the same thing about a retry — that it might land — and that
+    assumption is exactly what some endings falsify (FR-032).
     """
     if task_status in TERMINAL_STATUSES:
         return WakeDecision(False, reason="terminal status")
+
+    # A wall, not a hiccup: waiting on a person, and no number of attempts gets past it
+    # (FR-007c, FR-014f, FR-032). Checked ahead of every budget below rather than inside
+    # them, so that not one attempt is spent — an ending that fails identically every time
+    # turns a budget into a delay, and the person who could fix it in a minute is told
+    # only once the delay runs out.
+    if needs_a_person(failure):
+        return WakeDecision(
+            False,
+            reason=english(failure),
+            code=failure,
+            escalate_to_human=True,
+        )
 
     # Review / waiting on a human reviewer — the ball is in their court.
     if task_status == TaskStatus.IN_REVIEW:

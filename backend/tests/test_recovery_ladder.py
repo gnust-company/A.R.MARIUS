@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
+from sqlalchemy import select
 
 from armarius.application.use_cases.inbox import InboxService
 from armarius.application.use_cases.projects import ProjectService
@@ -152,6 +153,35 @@ def _escalator(uow_factory, *, wakes, notifier, bus) -> RecoveryEscalator:
 async def _ladder(uow_factory, task_id):
     async with uow_factory() as uow:
         return await uow.push_reasons.get_for_task(task_id)
+
+
+async def _shut_the_workplace(uow_factory, marius_id) -> None:
+    """Close the one place this agent works, the way the system closes one.
+
+    Which of the several reasons a workplace shuts is display information and nothing here
+    reads it (FR-006c); what matters to the ladder is the single verdict *not ready*, so
+    the code written is the one the sweep writes when a CLI has gone.
+    """
+    from armarius.infrastructure.daemon.models import (
+        AgentWorkplaceBindingModel,
+        WorkplaceModel,
+    )
+    from armarius.infrastructure.daemon.workplaces import REASON_CLI_REMOVED
+
+    async with uow_factory() as uow:
+        session = uow._session  # noqa: SLF001 — the tests' own back door, as in app_db
+        workplace_id = (
+            await session.execute(
+                select(AgentWorkplaceBindingModel.workplace_id).where(
+                    AgentWorkplaceBindingModel.marius_id == marius_id
+                )
+            )
+        ).scalar_one()
+        workplace = await session.get(WorkplaceModel, workplace_id)
+        assert workplace is not None
+        workplace.ready = False
+        workplace.not_ready_reason = REASON_CLI_REMOVED
+        await uow.commit()
 
 
 # ── Mức 1: có ngân sách và có khoảng cách ───────────────────────────────────────
@@ -1469,3 +1499,117 @@ async def test_someone_elses_letter_is_not_found(uow_factory) -> None:
             now=T0 + timedelta(hours=13),
         )
     assert await _letter_status(uow_factory, letter.id) is InboxItemStatus.PENDING
+
+
+# ── Mức 1 không áp dụng khi người phụ trách không còn chỗ làm (FR-032, FR-007c) ─
+
+
+@pytest.mark.asyncio
+async def test_an_assignee_with_nowhere_to_work_spends_no_level_one_attempt(
+    uow_factory,
+) -> None:
+    """FR-032, FR-059a. Level 1 is *re-wake the assignee*; an agent with no open workplace
+    does not answer wakes, so there is nothing here for the rung to act on.
+
+    The cost of not checking, measured: each attempt opens a run row nobody will ever
+    claim, waits out its ten minutes of grace, and lands back where it started. Three of
+    those, spaced 5, 10 and 20 minutes, is half an hour of a project's time bought for
+    nothing — and only then is the Leader told, who is the one party that could have moved
+    the work in a single move (FR-007).
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    await _shut_the_workplace(uow_factory, alice.id)
+    wakes, notifier = RecordingWakes(), RecordingNotifier()
+
+    await _escalator(
+        uow_factory, wakes=wakes, notifier=notifier, bus=TopicEventBus()
+    ).climb(task, cause=CAUSE, now=T0)
+
+    assert wakes.calls == [], (
+        "người phụ trách không còn chỗ làm mà hệ vẫn tiêu một lần gọi lại"
+    )
+    assert notifier.calls, "không gọi lại được mà Trưởng dự án cũng không được hỏi ngay"
+    ladder = await _ladder(uow_factory, task.id)
+    assert ladder is not None
+    assert ladder.level is EscalationLevel.LEVEL_2
+    assert ladder.attempts == 0, "ngân sách tự phục hồi bị tiêu vào một bức tường"
+
+
+@pytest.mark.asyncio
+async def test_an_assignee_who_still_has_a_place_is_called_back_as_before(
+    uow_factory,
+) -> None:
+    """The control beside the test above. Without it, a ladder that had simply stopped
+    calling anybody back would pass just as well."""
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    wakes = RecordingWakes()
+
+    await _escalator(
+        uow_factory, wakes=wakes, notifier=RecordingNotifier(), bus=TopicEventBus()
+    ).climb(task, cause=CAUSE, now=T0)
+
+    assert len(wakes.calls) == 1
+    assert (await _ladder(uow_factory, task.id)).level is EscalationLevel.LEVEL_1
+
+
+@pytest.mark.asyncio
+async def test_the_leader_is_told_the_assignee_has_nowhere_to_work(uow_factory) -> None:
+    """A third road into Mức 2, and it asks the Leader for a different move.
+
+    *Called and never came* wants a reassignment, a split or an unblock. *Nobody was ever
+    given this* wants one move: assign it. *Has nowhere to work* wants exactly one thing —
+    somebody else — because FR-007 says this system never moves an agent to another
+    machine and that call belongs to the Leader. One paragraph for all three would tell the
+    Leader the system had tried three times to wake somebody who could not answer.
+    """
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    await _shut_the_workplace(uow_factory, alice.id)
+    notifier = RecordingNotifier()
+
+    await _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=notifier, bus=TopicEventBus()
+    ).climb(task, cause=CAUSE, now=T0)
+
+    text = notifier.calls[0]["detail"]
+    assert "nowhere to work" in text
+    assert "called them back" not in text, (
+        "nói với Trưởng dự án là đã gọi lại, trong khi không gọi lần nào"
+    )
+    assert "Nobody holds this task" not in text, (
+        "đầu việc có người phụ trách mà lại bảo Trưởng dự án đi giao cho ai đó"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_dossier_keeps_the_two_ways_level_one_was_skipped_apart(
+    uow_factory,
+) -> None:
+    """FR-061. *Nobody is on this* and *the one who is has nowhere to work* both leave
+    ``level1_attempts`` at zero, and they ask the patron for different things: one wants
+    somebody assigned, the other wants either a different agent or the old workplace
+    reopened. A single flag would send them to do the first in both cases."""
+    _, project, alice = await _world(uow_factory)
+    task = await _task(uow_factory, project.id, assignee=alice.id)
+    await _shut_the_workplace(uow_factory, alice.id)
+    escalator = _escalator(
+        uow_factory, wakes=RecordingWakes(), notifier=RecordingNotifier(), bus=TopicEventBus()
+    )
+
+    for hour in range(7):
+        await escalator.climb(task, cause=CAUSE, now=T0 + timedelta(hours=hour))
+
+    async with uow_factory() as uow:
+        items = list(await uow.inbox.list_for_recipient("patron-1"))
+    escalations = [i for i in items if i.kind is InboxItemKind.ESCALATION]
+    assert escalations, "leo hết thang mà người chủ không nhận được gì"
+    dossier = escalations[0].attempt_dossier
+    assert dossier.get("level1_applicable") is False
+    assert dossier.get("level1_skipped") == "assignee_has_nowhere_to_work"
+    assert dossier.get("level1_attempts") == 0
+    assert "chỗ làm" in str(dossier.get("question", "")), (
+        "hồ sơ không nói thứ thật sự chặn đầu việc là chỗ làm đã đóng"
+    )
+    assert "không còn chỗ làm nào mở" in escalations[0].body

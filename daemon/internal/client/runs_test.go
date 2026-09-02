@@ -233,3 +233,40 @@ func TestARunTakenBackIsStillItsOwnAnswerAndNotARefusal(t *testing.T) {
 		t.Fatal("a run taken back is not a batch the server rejected")
 	}
 }
+
+// A machine with no verdict must send exactly what it sent before this field existed. The
+// server reads an absent `failure` as *I do not know why*, and an empty string it had to
+// invent a meaning for would be the same claim made twice in two different words.
+func TestAnEndingWithNoVerdictSaysNothingAboutWhy(t *testing.T) {
+	server, seen := serverThatAnswers(t, `{}`, 200)
+	session := Session{Server: server.URL, Token: "armd_secret"}
+
+	err := session.FinishRun(context.Background(), "run-1", FinishRequest{
+		Status: "failed", Error: "the CLI gave up",
+	})
+
+	if err != nil {
+		t.Fatalf("finishing: %v", err)
+	}
+	if strings.Contains(seen.body, "failure") {
+		t.Fatalf("không biết vì sao mà vẫn khai một lý do: %s", seen.body)
+	}
+}
+
+// And when it *is* certain, the code travels — the whole reason the field is there is that
+// a run nothing can get past by trying again must not be tried again (FR-032).
+func TestAnEndingThisMachineIsSureAboutCarriesTheReasonAsACode(t *testing.T) {
+	server, seen := serverThatAnswers(t, `{}`, 200)
+	session := Session{Server: server.URL, Token: "armd_secret"}
+
+	err := session.FinishRun(context.Background(), "run-1", FinishRequest{
+		Status: "failed", Failure: "quota_exhausted",
+	})
+
+	if err != nil {
+		t.Fatalf("finishing: %v", err)
+	}
+	if !strings.Contains(seen.body, `"failure":"quota_exhausted"`) {
+		t.Fatalf("lý do không đi ra khỏi máy: %s", seen.body)
+	}
+}

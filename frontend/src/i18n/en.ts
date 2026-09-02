@@ -78,6 +78,7 @@ export const en = {
     notReady: {
       cli_removed: 'This agent CLI was uninstalled from the machine. Reinstall it and the workplace comes back — the agents stay where they were.',
       daemon_stopped: 'The daemon on this machine was stopped. Start it again and this workplace comes back — nothing was uninstalled.',
+      quota_exhausted: 'This workplace has run out of provider quota. Top it up or sign in with another account, and every agent working here comes back at once.',
       link_unsupported: 'This machine cannot create symbolic links, which every run needs.',
       machine_unreachable: 'The machine has stopped beating. Turn it on and start the daemon again.',
       unknown: 'This workplace cannot take work. Check the daemon on that machine.',
@@ -807,6 +808,7 @@ export const en = {
       machine_unreachable: 'The machine holding this workplace has stopped beating — it is most likely powered off or off the network.',
       cli_removed: "This workplace's agent CLI is no longer on the machine. Reinstall it and the workplace becomes ready again.",
       daemon_stopped: "The daemon on the machine holding this workplace was stopped. Start it again and the agent comes back online.",
+      quota_exhausted: "This agent's workplace has run out of provider quota. Top it up or sign in with another account, and the agent comes back online.",
       link_unsupported: 'This machine cannot create the links a run requires, so no workplace on it can take work.',
       placement_not_ready: "The agent's workplace is closed.",
       unknown: "The agent's workplace is closed, for a reason it did not record.",
