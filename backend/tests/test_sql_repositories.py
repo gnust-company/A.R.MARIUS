@@ -7,7 +7,7 @@ that a `recompute_active` flip is actually flushed to the database.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from armarius.application.use_cases.projects import ProjectService, RoleSpec
@@ -149,9 +149,16 @@ async def test_marius_invite_and_liveness_timers_round_trip(uow_factory) -> None
     assert got.liveness == Liveness.CHECKING
     assert got.probe_attempts == 2
     assert got.backoff_step == 1
-    assert got.next_probe_at == _T
-    assert got.offline_since == _T
-    assert got.turn_started_at == _T
+    # Bốn mốc thời gian mà luật liveness đem ra trừ nhau đọc lên **luôn** có múi giờ, dù
+    # ghi xuống kiểu gì và dù nằm trên engine nào. Cột khai là có múi giờ, PostgreSQL tôn
+    # trọng còn SQLite thì không, nên nếu để nguyên như đọc được thì cùng một hàng về hai
+    # dạng khác nhau ở hai nơi — và trừ nó cho `utcnow()` thì **nổ**, chứ không phải sai
+    # âm thầm. Chuẩn hoá ở biên chính là điều `shared/clock` viết ra để nói.
+    aware = _T.replace(tzinfo=UTC)
+    assert got.last_seen_at == aware
+    assert got.next_probe_at == aware
+    assert got.offline_since == aware
+    assert got.turn_started_at == aware
 
 
 async def test_seat_grant_round_trip_and_vacate(uow_factory) -> None:
