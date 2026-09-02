@@ -53,6 +53,11 @@ func TestWhatCanBeStartedAndWhatIsDeclaredAreTheSameSet(t *testing.T) {
 // Nothing here knows how to start a CLI the registry has never heard of. An invocation under a
 // name no row carries is one nothing will ever reach — the name a run arrives under comes from
 // the server, out of a workplace this machine registered off the same table.
+//
+// Only the one-shot half is checked, and the reason is worth writing down rather than looking
+// like a gap: the ACP half **cannot** be under a name the registry does not carry, because it
+// reads the name out of the registry. The one-shot half is still a table written by hand beside
+// the rows, and a table written by hand can name something that is not there.
 func TestNothingIsStartableUnderANameTheRegistryDoesNotCarry(t *testing.T) {
 	known := map[string]bool{}
 	for _, row := range agentcli.All() {
@@ -61,11 +66,6 @@ func TestNothingIsStartableUnderANameTheRegistryDoesNotCarry(t *testing.T) {
 	for kind := range oneShots {
 		if !known[kind] {
 			t.Errorf("a one-shot invocation is written for %q, which is in no row", kind)
-		}
-	}
-	for kind := range acpFlags {
-		if !known[kind] {
-			t.Errorf("an ACP invocation is written for %q, which is in no row", kind)
 		}
 	}
 }
@@ -89,7 +89,7 @@ func TestGeminiIsDrivableFromBothHalvesOrNeither(t *testing.T) {
 // A guessed flag is a daemon that starts a CLI and waits forever for a handshake that was
 // never coming — which is the failure the whole of task T013 was held open for.
 func TestGeminiIsStartedWithTheFlagThatWasWatchedWorking(t *testing.T) {
-	flags, known := acpFlags[string(agentcli.Gemini)]
+	flags, known := acpStart(string(agentcli.Gemini))
 	if !known {
 		t.Fatal("nothing here knows how to start Gemini as an ACP peer")
 	}

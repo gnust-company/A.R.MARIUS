@@ -11,23 +11,23 @@ import (
 	"github.com/gnust-company/armarius-daemon/internal/agentcli"
 )
 
-// acpProtocolVersion is the version of the Agent Client Protocol this daemon speaks.
-const acpProtocolVersion = 1
-
-// acpFlags is what each ACP CLI is started with to make it speak the protocol instead of
-// talking to a person.
+// acpStart is what one ACP CLI is started with to make it speak the protocol instead of talking
+// to a person, read off the row for that kind.
 //
-// Gemini's line is **measured**, which is the only reason it is here: `gemini 0.56.0` was
-// started with this flag by a program, over pipes, with no terminal, and it completed the
-// `initialize` handshake and declared its own capabilities (research §9.2). That was the thing
-// worth waiting for — a guessed flag would have been a daemon starting a CLI and then waiting
-// forever for a handshake that was never coming.
+// Read rather than kept here, and that is the point: **the probe that asks a CLI what it can do
+// starts the same binary with the same flag** (FR-017). Two copies of that flag would let the
+// question be put to one program and the work given to another, which nothing would report.
 //
-// `--acp` rather than `--experimental-acp`: the binary's own help calls the older spelling
-// deprecated and names this one. The probe happened to use the old one and it still works, so
-// the older spelling remains the fallback if a build ever refuses this.
-var acpFlags = map[string][]string{
-	string(agentcli.Gemini): {"--acp"},
+// Gemini's row is measured, which is the only reason the ACP road exists at all: `gemini 0.56.0`
+// was started with that flag by a program, over pipes, with no terminal, and it completed the
+// `initialize` handshake (research §9.2). A guessed flag would have been a daemon starting a CLI
+// and then waiting forever for a handshake that was never coming.
+func acpStart(kind string) ([]string, bool) {
+	row, known := agentcli.Lookup(kind)
+	if !known || row.Family != agentcli.FamilyACP || len(row.ProtocolArgs) == 0 {
+		return nil, false
+	}
+	return row.ProtocolArgs, true
 }
 
 // ACP runs the CLIs that hold a conversation over their own standard streams: JSON-RPC in, JSON-
@@ -41,7 +41,7 @@ type ACP struct{}
 
 // Run takes one turn over ACP.
 func (ACP) Run(ctx context.Context, req Request, emit Emit) (Outcome, error) {
-	flags, known := acpFlags[req.CLI]
+	flags, known := acpStart(req.CLI)
 	if !known {
 		return Outcome{}, fmt.Errorf("%q is not an ACP CLI this daemon knows how to start", req.CLI)
 	}
@@ -125,7 +125,7 @@ func Converse(ctx context.Context, toAgent io.Writer, fromAgent io.Reader, req R
 		ProtocolVersion int `json:"protocolVersion"`
 	}
 	if err := c.call(ctx, "initialize", map[string]any{
-		"protocolVersion": acpProtocolVersion,
+		"protocolVersion": agentcli.ACPVersion,
 		// Said plainly rather than left out: this client offers the agent no file access and no
 		// terminal of its own. An agent told that reaches for its own, which is what we want —
 		// it is running in the task's directory with the operator's own credentials, and a file

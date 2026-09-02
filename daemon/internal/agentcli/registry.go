@@ -46,6 +46,15 @@ const (
 	FamilyOneShot Family = "one_shot"
 )
 
+// ACPVersion is the version of the Agent Client Protocol this daemon speaks.
+//
+// It sits beside the family rather than inside whoever uses it because **two** parts of this
+// daemon open an ACP conversation: the one that asks a CLI what it can do, and the one that runs
+// a turn. What a peer declares about itself is declared *for a protocol version*, so an answer
+// obtained under one version is only an answer about the run if the run speaks the same one.
+// Two constants would let that stop being true without anything failing.
+const ACPVersion = 1
+
 // Lifetime says how long one piece of a CLI's home is meant to last.
 type Lifetime int
 
@@ -172,6 +181,17 @@ type CLI struct {
 	Binary      string
 	VersionArgs []string
 
+	// ProtocolArgs is what this CLI is started with to make it speak its family's protocol
+	// rather than talk to a person. Empty for the one-shot family, which has no protocol to be
+	// switched into — such a CLI is handed a message and prints an account of what it did.
+	//
+	// Not a capability either, for the reason above: this is how to address the binary, and
+	// everything the binary then says about itself is its own (FR-017). It is here rather than
+	// beside the code that starts a run because both halves of the ACP road need it — the probe
+	// that asks a CLI what it can do has to start it the same way the run will, or it is asking
+	// a different program than the one that gets the work.
+	ProtocolArgs []string
+
 	// ContextFile is the file this CLI opens of its own accord at the start of a session.
 	//
 	// This is the whole of Multica's trick and the reason the daemon writes a file instead of
@@ -230,6 +250,9 @@ const (
 	FactSkillsDir   = "skills_dir"
 	FactHomeLayout  = "home_layout"
 	FactHomeVars    = "home_vars"
+	// FactProtocolArgs is asked of the ACP family only. A one-shot CLI has nothing to switch
+	// into, so an empty ProtocolArgs is the right content there and a missing fact here.
+	FactProtocolArgs = "protocol_args"
 )
 
 // rows is the whole table, in the order machines report their workplaces in.
@@ -256,6 +279,10 @@ var rows = []CLI{
 		Family:      FamilyACP,
 		Binary:      "gemini",
 		VersionArgs: []string{"--version"},
+		// `--acp` rather than `--experimental-acp`: the binary's own help calls the older
+		// spelling deprecated and names this one. Both were measured to work, so the older one
+		// remains the fallback if a build ever refuses this.
+		ProtocolArgs: []string{"--acp"},
 		// `"GEMINI.md"` and `contextFileName` in the bundle. Project-level, in the working
 		// directory, which is why the trust variable below is not optional.
 		ContextFile: "GEMINI.md",
@@ -389,6 +416,12 @@ func (c CLI) Undeclared() []string {
 	if len(c.HomeVars) == 0 {
 		missing = append(missing, FactHomeVars)
 	}
+	// An ACP row with nothing to start the CLI with is the same shape of silent failure as a
+	// row with no context file: the machine registers the workplace, asks for work, wins a run,
+	// and only then finds it has no way to make the binary speak the protocol.
+	if c.Family == FamilyACP && len(c.ProtocolArgs) == 0 {
+		missing = append(missing, FactProtocolArgs)
+	}
 	return missing
 }
 
@@ -396,7 +429,7 @@ func (c CLI) Undeclared() []string {
 //
 // Not the same question as *is it installed* — that one is discovery's, and its answer is what
 // the machine reports as a workplace (FR-002). This one is about what has been written down
-// here, and today the honest answer for Gemini CLI is no.
+// here, and every row of this release now answers yes.
 //
 // It matters because of what a machine does with the answer. Asking for work at a workplace
 // this daemon cannot set up wins a run that fails during setup, and a run that fails during

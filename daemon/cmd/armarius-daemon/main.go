@@ -251,6 +251,16 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 		// behaves differently from its neighbour, and an operator who is never told that has no
 		// way to tell a CLI that cannot resume from one that keeps losing its thread.
 		for _, missing := range answers[workplace.CLIKind].Reduced() {
+			if missing.Reason == discovery.ReasonNotInProtocol {
+				// **Not the same news, and printing it as the same news is the harm.** This one
+				// is not a workplace doing less than its neighbour: no peer of that protocol
+				// declares this, so every installation is alike. An operator told their CLI
+				// "runs without" it would go looking for a newer build of something that is
+				// already the newest there is.
+				emit(out, "  %s was never asked about %s (%s): nothing is claimed either way.\n",
+					workplace.CLIKind, missing.Capability, missing.Reason)
+				continue
+			}
 			emit(out, "  %s runs without %s (%s), which is supported and does less.\n",
 				workplace.CLIKind, missing.Capability, missing.Reason)
 		}

@@ -11,6 +11,7 @@ package discovery
 import (
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"regexp"
 	"time"
@@ -73,6 +74,15 @@ type Options struct {
 	// Run executes a discovered binary and returns everything it wrote, on either stream.
 	// Combined on purpose: a CLI that prints its version to stderr is not a broken CLI.
 	Run func(ctx context.Context, path string, args ...string) ([]byte, error)
+	// Handshake starts a discovered binary that speaks a protocol and hands the two streams to
+	// `talk`, which asks its question and reads the answer. Defaults to startAndTalk.
+	//
+	// A second edge rather than a shape of the first, because the two ask different things of
+	// the program. `Run` waits for a program to finish and hands back what it printed; an ACP
+	// peer does not finish — it starts and waits to be spoken to. A probe built on `Run` would
+	// start a CLI that is waiting for a question and then wait for it to exit, and both sides
+	// would wait until the timeout.
+	Handshake func(ctx context.Context, path string, args []string, talk func(to io.Writer, from io.Reader) error) error
 	// Timeout bounds one such call. A CLI that hangs on `--version` must not hold up the
 	// sweep — the machine still has other CLIs, and the server is waiting to hear about them.
 	Timeout time.Duration
@@ -146,6 +156,9 @@ func (o Options) withDefaults() Options {
 	if o.Run == nil {
 		o.Run = runBinary
 	}
+	if o.Handshake == nil {
+		o.Handshake = startAndTalk
+	}
 	if o.Timeout <= 0 {
 		o.Timeout = defaultTimeout
 	}
@@ -165,6 +178,52 @@ func runBinary(ctx context.Context, path string, args ...string) ([]byte, error)
 		return nil, fmt.Errorf("%w: %s", err, firstLine(out))
 	}
 	return out, nil
+}
+
+// handshakeGrace bounds the tail of a CLI that has been told the conversation is over.
+//
+// `Wait` does not return while anything still holds the pipes open, and an agent CLI is a program
+// that starts programs. Without a bound, one forgotten child turns "ask this CLI what it can do"
+// into a daemon that never finishes starting. Short, because by this point the answer is already
+// in hand and nothing further is wanted from it.
+const handshakeGrace = 3 * time.Second
+
+// startAndTalk starts one of this machine's own CLIs in its protocol and holds a conversation
+// with it over its standard streams.
+//
+// **Its complaints are not the conversation.** gemini 0.56.0 writes a whole authentication
+// failure to its error stream — the account this daemon was tested against is refused outright —
+// and answers the handshake anyway. A probe that read that stream as failure would report a
+// perfectly capable installation as unaskable because somebody's quota ran out.
+//
+// **The exit status after a completed handshake is not news either.** What was asked was
+// answered; a CLI that then exits badly on the way out has not unsaid it. Only a conversation
+// that failed is reported as a failure.
+func startAndTalk(ctx context.Context, path string, args []string, talk func(to io.Writer, from io.Reader) error) error {
+	cmd := exec.CommandContext(ctx, path, args...) //nolint:gosec // this machine's own CLI, found on PATH, with arguments from the registry row
+	cmd.Stderr = io.Discard
+	cmd.WaitDelay = handshakeGrace
+
+	toAgent, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("speaking to %s: %w", path, err)
+	}
+	fromAgent, err := cmd.StdoutPipe()
+	if err != nil {
+		_ = toAgent.Close()
+		return fmt.Errorf("listening to %s: %w", path, err)
+	}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("starting %s: %w", path, err)
+	}
+
+	asked := talk(toAgent, fromAgent)
+	// Closing our end is how an ACP peer is told the conversation is over; it then exits by
+	// itself. Ending the process instead would be indistinguishable, from its side, from the
+	// machine dying.
+	_ = toAgent.Close()
+	_ = cmd.Wait()
+	return asked
 }
 
 // firstLine keeps a failure readable: a broken CLI can print a whole stack trace, and the line

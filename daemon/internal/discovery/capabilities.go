@@ -1,8 +1,13 @@
 package discovery
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/gnust-company/armarius-daemon/internal/agentcli"
@@ -98,9 +103,21 @@ const (
 	// ReasonProbeFailed: the CLI was asked and would not answer.
 	ReasonProbeFailed = "probe_failed"
 	// ReasonDeclaredAbsent: the CLI was asked, answered, and its own account of itself does not
-	// have this. The only one of the three that is a fact about the CLI rather than about the
-	// asking.
+	// have this. The only one of these that is a fact about the CLI rather than about the asking.
 	ReasonDeclaredAbsent = "not_declared"
+	// ReasonNotInProtocol: the CLI was asked everything its protocol allows asking, and this
+	// capability is not among the things that protocol lets an agent declare.
+	//
+	// A fourth reason rather than reusing `not_declared`, and the difference is not a nicety.
+	// `not_declared` says *this agent has not got this*, which an operator reads as a weaker
+	// installation and a reason to look for a newer build. Here the agent was never asked,
+	// because there is no field in the handshake to ask with — and no build of any agent in the
+	// family will ever answer differently. Saying `not_declared` would be putting a sentence in
+	// the agent's mouth about a question nobody put to it.
+	//
+	// It is also not `no_probe_for_family`: that one says this daemon has no way to interrogate
+	// the family, and here it has, and did.
+	ReasonNotInProtocol = "not_in_protocol"
 )
 
 // Reduced is every capability this workplace does not have, and why it does not have it.
@@ -258,13 +275,12 @@ type prober func(ctx context.Context, found Found, opts Options) (Capabilities, 
 // probers is how each protocol family is asked.
 //
 // A family with no entry here is not a bug and not a lie: its CLIs register with every
-// capability unanswered and a code saying so, which is exactly the degraded-but-supported
-// state FR-039a describes. The ACP family joins this map when the daemon can speak ACP over
-// standard streams — T066 in specs/002-daemon-acp-runtime/tasks.md. Answering for it before
-// then would mean guessing, and a guess written into a workplace is indistinguishable from an
-// answer once it is stored.
+// capability unanswered and a code saying so, which is exactly the degraded-but-supported state
+// FR-039a describes. Both families of this release are here now; a third one arriving before
+// anybody has written its probe would register that way, rather than with guesses.
 var probers = map[Family]prober{
 	agentcli.FamilyOneShot: probeSelfDescription,
+	agentcli.FamilyACP:     probeHandshake,
 }
 
 // Probe asks one discovered CLI what it can do (FR-017).
@@ -454,3 +470,136 @@ func unanswered(reason string) Capabilities {
 	}
 	return Capabilities{Unanswered: missing}
 }
+
+// ── the ACP family: ask the agent, in the agent's own protocol ────────────────
+
+// acpDeclaration is what an ACP agent says about itself when the conversation opens.
+//
+// **One field of the three is in here, and that is the finding rather than an omission.** An ACP
+// agent declares `loadSession` and nothing that answers whether it shows the arguments a tool was
+// called with, or what that tool gave back. Those two are not properties an agent declares at all
+// in this protocol: they travel per tool call, in `session/update`, and the run path already reads
+// each one on its own merits — an update carrying no `rawInput` is recorded as *this CLI did not
+// say*, never as *the tool was called with nothing* (FR-047).
+//
+// So the honest answer for those two is neither true nor false but `not_in_protocol`, and the
+// place that must not be tempted is right here: writing `true` for them because ACP agents
+// generally do send tool calls would be exactly the guess FR-017 forbids, dressed as a reading.
+type acpDeclaration struct {
+	// ProtocolVersion is what the agent will actually speak. Read but not acted on, the same way
+	// the run path reads it: the two must at least agree in that, so that the day one of them
+	// starts refusing a version the other accepts, the difference is visible here.
+	ProtocolVersion   int `json:"protocolVersion"`
+	AgentCapabilities struct {
+		LoadSession bool `json:"loadSession"`
+	} `json:"agentCapabilities"`
+}
+
+// probeHandshake asks an ACP CLI what it can do by opening the conversation it was built for.
+//
+// This is the strongest form of FR-017 available anywhere in this daemon: not a marker read out
+// of help text, but the agent's own declaration, in its own protocol, from the binary installed
+// on this machine. Two builds of the same CLI can answer differently, and the workplace follows
+// the one that is about to do the work.
+//
+// **The price is a process start.** A sweep already runs every CLI once for its version; an ACP
+// CLI is now started twice. Measured against gemini 0.56.0 on 2026-09-02: the handshake answers
+// in about 3.5s and the process exits by itself about 0.2s after its input is closed. That is
+// paid once, when the daemon starts, and it buys a workplace that carries conversations on
+// instead of losing them.
+func probeHandshake(ctx context.Context, found Found, opts Options) (Capabilities, error) {
+	row, known := agentcli.Lookup(string(found.Kind))
+	if !known || len(row.ProtocolArgs) == 0 {
+		// A CLI of this family with nothing to start it with cannot be spoken to — and that is a
+		// fact about what has been written down here, not about the CLI.
+		return unanswered(ReasonNoProbe), nil
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, opts.Timeout)
+	defer cancel()
+
+	var declared acpDeclaration
+	err := opts.Handshake(ctx, found.Path, row.ProtocolArgs, func(to io.Writer, from io.Reader) error {
+		return openConversation(ctx, to, from, &declared)
+	})
+	if err != nil {
+		return Capabilities{}, err
+	}
+	return Capabilities{
+		Resumable: declared.AgentCapabilities.LoadSession,
+		Unanswered: []Unanswered{
+			{Capability: string(capExposesToolArgs), Reason: ReasonNotInProtocol},
+			{Capability: string(capExposesToolResult), Reason: ReasonNotInProtocol},
+		},
+	}, nil
+}
+
+// openConversation puts the one question a probe has to the agent, and reads its answer.
+//
+// **It introduces this client exactly as the run path does**, and that is the whole reason the
+// answer is worth anything. What a peer declares, it declares in reply to what it was told about
+// its counterpart; asked as one client and then run as another, what is stored against the
+// workplace is an answer to a question nobody asks again.
+func openConversation(ctx context.Context, to io.Writer, from io.Reader, into *acpDeclaration) error {
+	const askID = 1
+	if err := json.NewEncoder(to).Encode(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      askID,
+		"method":  "initialize",
+		"params": map[string]any{
+			"protocolVersion": agentcli.ACPVersion,
+			// The same words the run path opens with: this client offers the agent no file
+			// access and no terminal of its own (FR-013a).
+			"clientCapabilities": map[string]any{
+				"fs": map[string]any{"readTextFile": false, "writeTextFile": false},
+			},
+		},
+	}); err != nil {
+		return fmt.Errorf("asking the agent to introduce itself: %w", err)
+	}
+
+	lines := bufio.NewScanner(from)
+	lines.Buffer(make([]byte, 0, 8<<10), maxHandshakeLine)
+	for lines.Scan() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		line := lines.Bytes()
+		if len(line) == 0 || line[0] != '{' {
+			// CLIs print banners. A line that is not a JSON object cannot be the answer, and
+			// stopping at one would fail a probe over a greeting.
+			continue
+		}
+		var msg struct {
+			ID     json.RawMessage `json:"id"`
+			Result json.RawMessage `json:"result"`
+			Error  *struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(line, &msg) != nil || string(msg.ID) != strconv.Itoa(askID) {
+			// Notifications, and answers to questions nobody asked. An agent may say several
+			// things before it answers, and none of them is what was asked for.
+			continue
+		}
+		if msg.Error != nil {
+			return fmt.Errorf("the agent refused to introduce itself: %s (%d)",
+				msg.Error.Message, msg.Error.Code)
+		}
+		if err := json.Unmarshal(msg.Result, into); err != nil {
+			return fmt.Errorf("reading what the agent said about itself: %w", err)
+		}
+		return nil
+	}
+	if err := lines.Err(); err != nil {
+		return fmt.Errorf("listening for the agent: %w", err)
+	}
+	return fmt.Errorf("the agent stopped talking without introducing itself")
+}
+
+// maxHandshakeLine bounds the one line a probe reads. Far smaller than the bound a run uses: a
+// run carries whatever an agent writes, and this carries an introduction — gemini 0.56.0's is
+// under a kilobyte. A bound generous enough for a run would let a CLI that answers with a
+// gigabyte of nonsense take the daemon down at startup.
+const maxHandshakeLine = 256 << 10
