@@ -374,7 +374,13 @@ async def poll_link(
     The three dead ways — never existed, ran out, already spent — collapse to one answer
     because the daemon does the same thing for all of them: stop polling and tell the
     person to run `login` again.
+
+    There is a fourth answer, 429, and it is the opposite of those three: *ask again, just
+    not yet*. This is the only door in the system with no credential in front of it, so the
+    pace is the only thing bounding what a stranger can make it do (FR-001). The wait rides
+    on `Retry-After` as well as in the sentence, because the caller here is a machine.
     """
+    container.daemon_link_guard.before_a_machine_polls(body.code)
     try:
         issued = await container.daemon_enrollment.poll_link(body.code)
     except NotFound:
@@ -658,6 +664,18 @@ async def machine_events(
 # ── the person's half ─────────────────────────────────────────────────────────
 
 
+def _the_code_was_not_live(miss: NotFound) -> bool:
+    """Was this refusal about the code itself, or about something else not being there?
+
+    Only the first is a guess. A caller whose own workspace id is wrong has not tried a
+    code at all, and spending their budget on it would slow down a person hitting a bug in
+    front of them rather than a person reading codes off a list.
+    """
+    return miss.code.startswith("daemon_link_code_")
+
+
+
+
 @people_router.get("/link/{code}", response_model=PendingLinkOut)
 async def describe_link(
     code: str, container: ContainerDep, user: CurrentUser
@@ -665,9 +683,17 @@ async def describe_link(
     """Show what is behind a typed-in code, so nobody approves a machine they cannot name.
 
     Signed-in only. A code is short enough to guess at eventually, and this route is what
-    would tell a guesser whether they had.
+    would tell a guesser whether they had — so a person who keeps naming codes that are not
+    live runs out of asks (FR-001). Only the misses count: someone linking their own
+    machines is never slowed down by this.
     """
-    pending = await container.daemon_enrollment.describe_link(code)
+    container.daemon_link_guard.before_a_person_asks(str(user.id))
+    try:
+        pending = await container.daemon_enrollment.describe_link(code)
+    except NotFound as miss:
+        if _the_code_was_not_live(miss):
+            container.daemon_link_guard.a_person_missed(str(user.id))
+        raise
     return PendingLinkOut(
         code=pending.code,
         hostname=pending.hostname,
@@ -686,13 +712,24 @@ async def approve_link(
     The ownership check comes first and answers 404, matching every other workspace door:
     approving into someone else's workspace and naming a workspace that does not exist are
     the same event as far as the caller is allowed to learn.
+
+    This is what guessing a code would be *for*: a machine somebody else is waiting on,
+    admitted to the guesser's workspace instead. So it shares the miss budget with the
+    lookup above rather than having one of its own — look-then-approve is one activity, and
+    two budgets would only mean twice the guesses.
     """
+    container.daemon_link_guard.before_a_person_asks(str(user.id))
     workspace = await container.workspaces.get_workspace(body.workspace_id)
     if workspace is None or workspace.owner_user_id != str(user.id):
         raise NotFound("workspace_not_found")
-    pending = await container.daemon_enrollment.approve_link(
-        code, workspace_id=body.workspace_id, approved_by_user_id=user.id
-    )
+    try:
+        pending = await container.daemon_enrollment.approve_link(
+            code, workspace_id=body.workspace_id, approved_by_user_id=user.id
+        )
+    except NotFound as miss:
+        if _the_code_was_not_live(miss):
+            container.daemon_link_guard.a_person_missed(str(user.id))
+        raise
     return PendingLinkOut(
         code=pending.code,
         hostname=pending.hostname,

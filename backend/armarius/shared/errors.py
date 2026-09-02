@@ -19,6 +19,8 @@ second code, not a parameter that is sometimes blank.
 
 from __future__ import annotations
 
+import math
+
 # A placeholder with nothing to fill it degrades to this instead of raising. A refusal
 # that reads a little vaguely still tells the caller no; a refusal that blows up while
 # being worded turns a 409 into a 500.
@@ -72,6 +74,17 @@ ENGLISH: dict[str, str] = {
     "project_closed": "This project is closed — its history is read-only.",
     "daemon_link_code_already_approved": "That link code has already been approved.",
     "daemon_link_code_unavailable": "Could not allocate a link code; please try again.",
+    # ── knocking too often ────────────────────────────────────────────────────
+    # Two codes rather than one, because the two readers do different things about it. The
+    # person has typed codes that were not live and is told to stop and check; the machine
+    # is asking faster than the pace it was handed and is told to slow down. Both carry the
+    # wait in seconds, which is also what rides on the `Retry-After` header.
+    "daemon_link_guessed_too_often": (
+        "Too many link codes have been tried. Wait {seconds} seconds and try again."
+    ),
+    "daemon_link_polled_too_often": (
+        "Asking too often. Wait {seconds} seconds before asking again."
+    ),
     # A machine sweeps its own PATH and cannot find the same CLI twice, so a repeated
     # kind in one report is a broken caller rather than a machine with two of something.
     # Refused rather than collapsed, because collapsing it would decide on the caller's
@@ -388,6 +401,20 @@ class Unauthorized(CodedError):
 
 class Conflict(CodedError):
     """The call is well formed; the state it lands in refuses it — 409."""
+
+
+class TooManyRequests(CodedError):
+    """The call is fine and the caller may make it — just not this often — 429.
+
+    Carries `retry_after` as whole seconds rather than only in the message, because the
+    number has two readers: a person sees the sentence, and a machine reads the header.
+    Rounded **up**, so a caller that obeys it to the second is never refused a second time
+    for having been half a second early.
+    """
+
+    def __init__(self, code: str, /, *, retry_after: float, **params: object) -> None:
+        self.retry_after = max(1, math.ceil(retry_after))
+        CodedError.__init__(self, code, seconds=self.retry_after, **params)
 
 
 class ArtifactStoreUnreliable(CodedError):

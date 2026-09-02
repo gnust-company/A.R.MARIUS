@@ -139,6 +139,17 @@ class Settings(BaseSettings):
     # How often the waiting daemon should ask again. Handed to it in the answer rather
     # than compiled in, so the pace stays the server's to change.
     daemon_link_poll_interval_seconds: int = 5
+    # How many link codes one person may try and miss in a minute before the two doors
+    # they use stop answering (FR-001, RFC 8628 §5.2). Only misses count, so this is not a
+    # limit anybody reaches by linking machines — it is reached by reading codes off a
+    # list. Ten leaves room for a person retyping a code they cannot quite read.
+    daemon_link_misses_per_minute: int = 10
+    # How many polls the unauthenticated poll door answers in a minute, everybody together.
+    # A daemon waiting for approval polls every `daemon_link_poll_interval_seconds`, so
+    # this is roughly fifty machines mid-handshake at the same moment. It is a load shed on
+    # the one door with no credential in front of it, not a guessing limit: guessing is
+    # bounded by the code, and no counter improves on that.
+    daemon_link_polls_per_minute: int = 600
     # How long a machine's token is good for once issued.
     daemon_token_ttl_days: int = 90
     # How much life has to be left before a renewal request is granted. The daemon may

@@ -933,6 +933,8 @@ export const vi = {
     daemon_link_code_not_found: 'Không có mã nối máy này. Xem lại mã rồi nhập lại.',
     daemon_link_code_expired: 'Mã nối máy đã hết hạn. Chạy lại `armarius-daemon login` để lấy mã mới.',
     daemon_link_code_already_used: 'Mã nối máy này đã dùng rồi. Chạy lại `armarius-daemon login` để lấy mã mới.',
+    daemon_link_guessed_too_often: 'Tài khoản này vừa thử quá nhiều mã nối máy. Đợi {{seconds}} giây, rồi xem lại mã đang in trên máy và gõ lại.',
+    daemon_link_polled_too_often: 'Máy đó đang hỏi xin nối quá dày. Nó tự đợi {{seconds}} giây rồi hỏi lại, bạn không phải làm gì.',
     plan_not_found: 'Không tìm thấy kế hoạch.',
     onboarding_session_not_found: 'Không tìm thấy buổi lập dự án.',
     no_active_onboarding_session: 'Không có buổi lập dự án nào đang mở.',

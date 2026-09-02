@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -304,6 +305,113 @@ func TestLoginRefusesToStartWithoutSomewhereToGo(t *testing.T) {
 	} {
 		if _, err := Login(context.Background(), tc.opts); err == nil {
 			t.Errorf("%s: login went ahead anyway", tc.name)
+		}
+	}
+}
+
+// ── being told to ask less often (T126a) ─────────────────────────────────────
+//
+// The poll door has a pace limit on it now, and a machine that trips it is told 429. That is
+// a refusal, not a failure, and the two are counted differently on this side: five failures in
+// a row end the login, while a refusal is an instruction to wait. Reading them the same way
+// would abandon a link that is still perfectly alive.
+
+// slowDownServer answers 429 for the first `refusals` polls, then behaves normally.
+func slowDownServer(t *testing.T, refusals int, seconds string) *httptest.Server {
+	t.Helper()
+	polls := 0
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/daemon/link/start":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code": "KQ7F-M2XD", "verify_url": "https://armarius.example/link",
+				"expires_in": 600, "interval": 5,
+			})
+		case "/daemon/link/poll":
+			polls++
+			if polls <= refusals {
+				w.Header().Set("Retry-After", seconds)
+				w.WriteHeader(http.StatusTooManyRequests)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"detail": "Asking too often.",
+					"code":   "daemon_link_polled_too_often",
+					"params": map[string]string{"seconds": seconds},
+				})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status": "approved", "machine_id": "m-1", "workspace_id": "w-1", "token": "armd_secret",
+			})
+		default:
+			t.Errorf("login called an endpoint nobody built: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+}
+
+func TestBeingToldToAskLessOftenIsNotAFailedAttempt(t *testing.T) {
+	// More refusals than maxPollFailures: if 429 were counted as a failure this login would
+	// give up, which is exactly the regression the branch exists to prevent.
+	server := slowDownServer(t, maxPollFailures+3, "30")
+	defer server.Close()
+
+	creds, err := Login(context.Background(), LoginOptions{
+		Server: server.URL, ConfigPath: filepath.Join(t.TempDir(), "daemon.json"),
+		Hostname: "box", Out: io.Discard, Sleep: noWait,
+	})
+	if err != nil {
+		t.Fatalf("login gave up on a link that was still alive: %v", err)
+	}
+	if creds.Token != "armd_secret" {
+		t.Fatalf("token = %q, want the one the server handed over", creds.Token)
+	}
+}
+
+func TestTheWaitTheServerAsksForIsTheWaitTaken(t *testing.T) {
+	server := slowDownServer(t, 1, "30")
+	defer server.Close()
+
+	var waits []time.Duration
+	_, err := Login(context.Background(), LoginOptions{
+		Server: server.URL, ConfigPath: filepath.Join(t.TempDir(), "daemon.json"),
+		Hostname: "box", Out: io.Discard,
+		Sleep: func(ctx context.Context, d time.Duration) error {
+			waits = append(waits, d)
+			return ctx.Err()
+		},
+	})
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	// The first wait is the ordinary interval before the first poll; the second is the one the
+	// refusal asked for.
+	if len(waits) < 2 || waits[1] != 30*time.Second {
+		t.Fatalf("waits = %v, want the second one to be the 30s the server asked for", waits)
+	}
+}
+
+func TestAWaitThisMachineCannotReadFallsBackToTheInterval(t *testing.T) {
+	// A number that is absent, malformed, or shorter than the pace already handed over must
+	// never produce a tighter loop against a door that has just said it is being asked too
+	// often.
+	for _, asked := range []string{"", "soon", "-5", "1"} {
+		server := slowDownServer(t, 1, asked)
+		var waits []time.Duration
+		_, err := Login(context.Background(), LoginOptions{
+			Server: server.URL, ConfigPath: filepath.Join(t.TempDir(), "daemon.json"),
+			Hostname: "box", Out: io.Discard,
+			Sleep: func(ctx context.Context, d time.Duration) error {
+				waits = append(waits, d)
+				return ctx.Err()
+			},
+		})
+		server.Close()
+		if err != nil {
+			t.Fatalf("seconds=%q: login: %v", asked, err)
+		}
+		if len(waits) < 2 || waits[1] != 5*time.Second {
+			t.Fatalf("seconds=%q: waits = %v, want the 5s interval the server advertised", asked, waits)
 		}
 	}
 }
