@@ -75,6 +75,7 @@ from armarius.shared.errors import (
     Conflict,
     Forbidden,
     NotFound,
+    TooManyRequests,
     Unauthorized,
 )
 
@@ -138,6 +139,10 @@ _ROUTING: tuple[tuple[type[Exception], int, str], ...] = (
     # 502 — the artifact store failed the publish mid-write; the caller did nothing wrong
     # and should send it again (FR-020, FR-020b).
     (ArtifactStoreUnreliable, 502, "the store did not keep what it was given"),
+    # 429 — nothing is wrong with the call, only with how often it is being made. The
+    # answer carries `Retry-After`, so a machine reading it knows the wait without having
+    # to parse a sentence written for somebody else.
+    (TooManyRequests, 429, "FR-001 — a door a stranger may knock on has to cost something"),
     # 422 — the request was well formed as far as the wire is concerned, but what it asks
     # for cannot be made into a thing that exists.
     (TitleRequiredError, 422, "FR-070a — an edit may clear a deadline, never the name"),
@@ -155,9 +160,21 @@ def _json(status_code: int, exc: Exception) -> JSONResponse:
     Anything that is not coded yet still answers with `detail` alone — the interface falls
     back to it, which is exactly what it did before the codes existed.
     """
+    # The one refusal that says *when*, not just *what*. A machine that has to read the
+    # wait out of an English sentence is a machine that stops working the day the sentence
+    # is reworded.
+    headers = (
+        {"Retry-After": str(exc.retry_after)}
+        if isinstance(exc, TooManyRequests)
+        else None
+    )
     if isinstance(exc, CodedError):
-        return JSONResponse(status_code=status_code, content=exc.to_payload())
-    return JSONResponse(status_code=status_code, content={"detail": str(exc)})
+        return JSONResponse(
+            status_code=status_code, content=exc.to_payload(), headers=headers
+        )
+    return JSONResponse(
+        status_code=status_code, content={"detail": str(exc)}, headers=headers
+    )
 
 
 def install_error_handlers(app: FastAPI) -> None:

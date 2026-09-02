@@ -66,7 +66,7 @@ def _new_code() -> str:
     return f"{draw[:_CODE_HALF]}-{draw[_CODE_HALF:]}"
 
 
-def _normalise_code(typed: str) -> str:
+def normalise_code(typed: str) -> str:
     """Read a hand-typed code the way it was meant, not the way it was punctuated.
 
     The dash is a reading aid this end put in; someone typing `kq7fm2xd`, or pasting it with
@@ -383,7 +383,7 @@ class DaemonEnrollmentService:
     ) -> DaemonLinkCodeModel:
         """The one place a code is looked up, so no caller can skip one of the three checks."""
         row = await session.scalar(
-            select(DaemonLinkCodeModel).where(DaemonLinkCodeModel.code == _normalise_code(code))
+            select(DaemonLinkCodeModel).where(DaemonLinkCodeModel.code == normalise_code(code))
         )
         if row is None:
             raise NotFound("daemon_link_code_not_found")

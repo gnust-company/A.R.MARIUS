@@ -44,6 +44,7 @@ from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from armarius.infrastructure.daemon.claim import DaemonClaimService
 from armarius.infrastructure.daemon.enrollment import DaemonEnrollmentService
 from armarius.infrastructure.daemon.housekeeping import DaemonHousekeepingService
+from armarius.infrastructure.daemon.link_guard import LinkDoorGuard
 from armarius.infrastructure.daemon.liveness import DaemonLivenessProbe
 from armarius.infrastructure.daemon.run_auth import RunTokenAuthenticator
 from armarius.infrastructure.daemon.workplaces import DaemonWorkplaceService
@@ -95,6 +96,8 @@ class Container:
     jwt_service: JWTService
     daemon_claims: DaemonClaimService
     daemon_enrollment: DaemonEnrollmentService
+    #: The counters in front of the three link doors (FR-001).
+    daemon_link_guard: LinkDoorGuard
     daemon_housekeeping: DaemonHousekeepingService
     daemon_workplaces: DaemonWorkplaceService
     run_auth: RunTokenAuthenticator
@@ -397,6 +400,7 @@ def build_container() -> Container:
         jwt_service=jwt_service,
         daemon_claims=claims,
         daemon_enrollment=DaemonEnrollmentService(),
+        daemon_link_guard=LinkDoorGuard(),
         daemon_housekeeping=DaemonHousekeepingService(),
         daemon_workplaces=DaemonWorkplaceService(),
         run_auth=RunTokenAuthenticator(),

@@ -932,6 +932,8 @@ export const en = {
     daemon_link_code_not_found: 'No such link code. Check the code and try again.',
     daemon_link_code_expired: 'That link code has expired. Run `armarius-daemon login` again for a new one.',
     daemon_link_code_already_used: 'That link code has already been used. Run `armarius-daemon login` again for a new one.',
+    daemon_link_guessed_too_often: 'Too many link codes have been tried from this account. Wait {{seconds}} seconds, then check the code printed on the machine and type it again.',
+    daemon_link_polled_too_often: 'That machine is asking to be linked too often. It waits {{seconds}} seconds and asks again by itself — nothing to do here.',
     plan_not_found: 'Plan not found.',
     onboarding_session_not_found: 'Onboarding session not found.',
     no_active_onboarding_session: 'No onboarding session is open.',

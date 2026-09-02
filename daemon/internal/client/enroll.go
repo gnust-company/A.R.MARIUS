@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -70,6 +71,12 @@ type linkPollResponse struct {
 	MachineID   string `json:"machine_id"`
 	WorkspaceID string `json:"workspace_id"`
 	Token       string `json:"token"`
+	// The parts of a refusal, when the answer is one. A 429 carries how long this machine
+	// should wait before asking again; the server words the reason for whoever reads it and
+	// puts the number here separately, so this side reads the number rather than the sentence.
+	Params struct {
+		Seconds string `json:"seconds"`
+	} `json:"params"`
 }
 
 // ErrLinkExpired reports that the code ran out, or was already used, before anyone approved it.
@@ -157,6 +164,17 @@ func awaitApproval(
 		}
 		failures = 0
 		switch {
+		case status == http.StatusTooManyRequests:
+			// A refusal, not a failure, and the distinction is the whole of this branch. The
+			// server is saying *ask less often*, which is an answer; counting it as a failed
+			// attempt would abandon a link that is still perfectly alive after five of them.
+			// The wait is the server's to set, and never shorter than the pace it already
+			// handed over.
+			if err := opts.Sleep(ctx, waitAsked(polled, interval)); err != nil {
+				return Credentials{}, err
+			}
+			say(opts.Out, ",")
+			continue
 		case status == http.StatusGone || polled.Status == "expired":
 			return Credentials{}, ErrLinkExpired
 		case polled.Status == "approved" && polled.Token != "":
@@ -187,12 +205,30 @@ func startLink(ctx context.Context, opts LoginOptions) (linkStartResponse, error
 	return out, nil
 }
 
-// pollLink returns the decoded answer and its HTTP status. 410 is a real answer, not a failure,
-// so the status travels back rather than being turned into an error here.
+// waitAsked reads how long the server said to wait, floored at the pace it already handed over.
+//
+// Floored rather than trusted outright: a number this side cannot read — absent, malformed, or
+// smaller than the interval — must not turn into a tighter loop against a door that has just
+// said it is being asked too often.
+func waitAsked(polled linkPollResponse, interval time.Duration) time.Duration {
+	seconds, err := strconv.Atoi(strings.TrimSpace(polled.Params.Seconds))
+	if err != nil || seconds <= 0 {
+		return interval
+	}
+	asked := time.Duration(seconds) * time.Second
+	if asked < interval {
+		return interval
+	}
+	return asked
+}
+
+// pollLink returns the decoded answer and its HTTP status. 410 and 429 are real answers rather
+// than failures — the code is dead, or this machine is asking too often — so both travel back as
+// statuses instead of being turned into errors here.
 func pollLink(ctx context.Context, opts LoginOptions, code string) (linkPollResponse, int, error) {
 	var out linkPollResponse
 	status, err := opts.post(ctx, "/daemon/link/poll", map[string]string{"code": code}, &out)
-	if err != nil && status != http.StatusGone {
+	if err != nil && status != http.StatusGone && status != http.StatusTooManyRequests {
 		return linkPollResponse{}, status, err
 	}
 	return out, status, nil
