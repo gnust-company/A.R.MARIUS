@@ -176,9 +176,13 @@ type Runtime interface {
 // that cannot say where the brief goes.
 //
 // Not the same question as *is it installed* — that one is discovery's, and its answer is what
-// the machine reports as a workplace (FR-002). This one is about what has been written here,
-// and today the honest answer for Gemini CLI is no: its row is blank because its invocation may
-// not be written before it has been probed (FR-039a, task T013).
+// the machine reports as a workplace (FR-002). This one is about what has been written here.
+//
+// The two families answer the second half from different places, and the asymmetry is real
+// rather than untidy. A one-shot CLI needs an invocation written by hand for it, because every
+// one of them has its own flags and its own way of printing what it did. An ACP CLI needs one
+// flag and nothing else: the conversation after that is the protocol's, identical for every peer
+// that speaks it. So for that family the whole of "can this be started" is the row.
 //
 // It matters because of what a machine does with the answer. Asking for work at a workplace
 // this daemon cannot drive wins a run that fails during setup, and a run that fails during
@@ -194,6 +198,6 @@ func startable(cli string) bool {
 	if _, oneShot := oneShots[cli]; oneShot {
 		return true
 	}
-	_, acp := acpFlags[cli]
+	_, acp := acpStart(cli)
 	return acp
 }

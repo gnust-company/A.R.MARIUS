@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/gnust-company/armarius-daemon/internal/agentcli"
 	"github.com/gnust-company/armarius-daemon/internal/execenv"
 )
 
@@ -59,7 +60,7 @@ func (a *fakeAgent) serve(in io.Reader, out io.Writer) {
 
 		switch msg.Method {
 		case "initialize":
-			reply(msg.ID, map[string]any{"protocolVersion": acpProtocolVersion})
+			reply(msg.ID, map[string]any{"protocolVersion": agentcli.ACPVersion})
 
 		case "session/new":
 			var params struct {
