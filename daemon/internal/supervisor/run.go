@@ -191,6 +191,15 @@ func (o RunOptions) Do(ctx context.Context, grant Grant) {
 		if err := os.RemoveAll(home); err != nil {
 			o.Report(fmt.Errorf("clearing the home of run %s: %w", grant.RunID, err))
 		}
+		// A run about no task worked in a directory of its own, and nobody comes back to it —
+		// there is no next run of this task, because there is no task. Taken away here rather
+		// than left to the sweep so that an interview does not leave one directory per question
+		// on somebody's disk for hours; the sweep stays the backstop for a daemon that died.
+		if grant.TaskID == "" {
+			if err := os.RemoveAll(req.WorkDir); err != nil {
+				o.Report(fmt.Errorf("clearing the turf of run %s: %w", grant.RunID, err))
+			}
+		}
 	}()
 
 	// The agent is about to exist. Saying so stops the clock on getting ready — from here the
@@ -251,6 +260,23 @@ func (o RunOptions) remember(
 	}
 }
 
+// turf is where this run works: the task's directory, or one of the run's own when it is about
+// no task.
+func (o RunOptions) turf(grant Grant) (string, error) {
+	if grant.TaskID == "" {
+		return execenv.TurnDir(o.WorkRoot, grant.RunID)
+	}
+	return execenv.WorkDir(o.WorkRoot, grant.TaskID)
+}
+
+// storeKey names the store that outlives this run — see the note where it is used.
+func (o RunOptions) storeKey(grant Grant) string {
+	if grant.TaskID == "" {
+		return grant.RunID
+	}
+	return grant.TaskID
+}
+
 // prepare puts everything the agent needs on disk and builds the environment it runs in.
 //
 // Ordered so that nothing exists half-made: the directory, then the home, then the two things
@@ -259,7 +285,10 @@ func (o RunOptions) remember(
 func (o RunOptions) prepare(
 	grant Grant, place Workplace,
 ) (runtime.Request, string, execenv.Thread, error) {
-	workDir, err := execenv.WorkDir(o.WorkRoot, grant.TaskID)
+	// A run about a task works in the task's directory, which every run of that task comes back
+	// to. A run about no task — the team-building interview (FR-040c) — has no such directory to
+	// come back to and needs one all the same, so it gets one of its own that goes when it does.
+	workDir, err := o.turf(grant)
 	if err != nil {
 		return runtime.Request{}, "", execenv.Thread{}, err
 	}
@@ -280,7 +309,11 @@ func (o RunOptions) prepare(
 		Home:         home,
 		StateRoot:    o.StateRoot,
 		OperatorHome: o.OperatorHome,
-		TaskID:       grant.TaskID,
+		// The key of the store that outlives the run. A turn about no task has nothing to
+		// outlive it — the conversation it is carrying on lives on the server and is replayed
+		// into the message of every turn — so the key names this one turn, and what it points at
+		// is swept on the same clock as any other session store nobody comes back to.
+		TaskID: o.storeKey(grant),
 	}); err != nil {
 		return runtime.Request{}, home, prior, err
 	}
@@ -307,8 +340,12 @@ func (o RunOptions) prepare(
 		o.Report(fmt.Errorf("recording what was placed for run %s: %w", grant.RunID, err))
 	}
 	env, err := execenv.Environ(execenv.EnvSpec{
-		CLI:       place.CLI,
-		Home:      home,
+		CLI:  place.CLI,
+		Home: home,
+		// The **task** and nothing else, even when the directory above was named after the run:
+		// what this says is what the run is *about*, and that is what decides the toolset the
+		// agent is handed (FR-013d). A run id smuggled in here would hand an interview the
+		// commands of a task nobody assigned it.
 		TaskID:    grant.TaskID,
 		ProjectID: grant.ProjectID,
 		WorkDir:   workDir,

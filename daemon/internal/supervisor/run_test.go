@@ -934,3 +934,48 @@ func TestARefusedHandleReplacedByAWorkingOneIsSimplyOverwritten(t *testing.T) {
 			w.engine.saw.Session)
 	}
 }
+
+// ── a run about no task still needs somewhere to work (T048a, FR-040c) ─────────
+
+func TestARunAboutNoTaskWorksInATurfOfItsOwnAndLeavesNothingBehind(t *testing.T) {
+	// Before the interview became a run, every run was assumed to be about a task, and the
+	// working directory was named after one. A run about no task was refused during setup —
+	// the whole road existed and nothing could travel it.
+	w := aWorld(t)
+	grant := w.grant()
+	grant.RunID, grant.TaskID, grant.ProjectID = "run-interview", "", ""
+
+	w.options().Do(context.Background(), grant)
+
+	if !w.engine.ran {
+		t.Fatalf("a run about no task never reached the runtime: %v", w.complaints())
+	}
+	placed := w.engine.saw.WorkDir
+	if filepath.Base(placed) != "run-interview" {
+		t.Fatalf("the turf is named %q, wanted the run", filepath.Base(placed))
+	}
+	if _, err := os.Stat(placed); !os.IsNotExist(err) {
+		t.Fatalf("the turf of a finished turn is still there: %v", err)
+	}
+	// And it is told it is about no task, whatever the directory happens to be called: the
+	// toolset a run is handed follows from that, not from a path (FR-013d).
+	if value, ok := valueIn(w.engine.saw.Env, execenv.TaskIDVar); ok && value != "" {
+		t.Fatalf("a run about no task was told it is about task %q", value)
+	}
+}
+
+func TestARunAboutATaskKeepsItsDirectoryForTheNextRun(t *testing.T) {
+	// The other half, and the reason the two are not one rule: a task's directory is where its
+	// conversation was opened, and the next run has to find it again (FR-010a).
+	w := aWorld(t)
+
+	w.options().Do(context.Background(), w.grant())
+
+	placed := w.engine.saw.WorkDir
+	if filepath.Base(placed) != "task-1" {
+		t.Fatalf("the working directory is named %q, wanted the task", filepath.Base(placed))
+	}
+	if _, err := os.Stat(placed); err != nil {
+		t.Fatalf("the task's directory was taken away: %v", err)
+	}
+}

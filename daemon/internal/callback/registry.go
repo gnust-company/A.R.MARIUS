@@ -22,6 +22,9 @@ const (
 	GroupTask Group = "task"
 	// GroupProject is what a run about a project may do — the Leader's set.
 	GroupProject Group = "project"
+	// GroupWorkspace is what a run about neither may do — the team-building interview, which
+	// happens before there is a project to be about (FR-040c).
+	GroupWorkspace Group = "workspace"
 	// GroupAny is the handful that belong to no scope: who am I, and what is on this disk.
 	GroupAny Group = "any"
 )
@@ -148,6 +151,7 @@ func All() []Command {
 	all = append(all, workdirCommands()...)
 	all = append(all, taskCommands()...)
 	all = append(all, projectCommands()...)
+	all = append(all, onboardingCommands()...)
 	sort.Slice(all, func(i, j int) bool { return all[i].Name < all[j].Name })
 	return all
 }
@@ -155,11 +159,11 @@ func All() []Command {
 // Commands is what *this* run may do, decided by what the run is about (FR-013d).
 //
 // A run that names a task gets the task set; one that names only a project gets the Leader's
-// set; one that names neither — the team-building interview (FR-040c) — gets only the commands
-// that belong to no scope. A task-level run is deliberately **not** given the project set: the
-// Leader's tools are not a superset an ordinary worker happens to inherit.
+// set; one that names neither — the team-building interview (FR-040c) — gets the interview's own
+// two, and never the other two sets. A task-level run is deliberately **not** given the project
+// set: the Leader's tools are not a superset an ordinary worker happens to inherit.
 func Commands(env Environment) []Command {
-	group := GroupAny
+	group := GroupWorkspace
 	switch {
 	case env.TaskID != "":
 		group = GroupTask

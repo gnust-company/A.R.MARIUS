@@ -264,16 +264,22 @@ func TestARunAboutOneTaskIsNeverGivenTheProjectSet(t *testing.T) {
 	}
 }
 
-func TestARunAboutNeitherGetsOnlyWhatBelongsToNoScope(t *testing.T) {
-	// The team-building interview (FR-040c): a run with no task and no project.
+func TestARunAboutNeitherGetsTheInterviewSetAndNeitherOfTheOthers(t *testing.T) {
+	// The team-building interview (FR-040c): a run with no task and no project. It is handed
+	// its own two commands — without them the interview cannot be driven at all, which is the
+	// state this was in until the interview became a run — and neither of the other two sets.
 	env := Environment{Server: "http://example.invalid", RunToken: "armr_run_x"}
+	var interviewing bool
 	for _, cmd := range Commands(env) {
-		if cmd.Group != GroupAny {
+		if cmd.Group != GroupAny && cmd.Group != GroupWorkspace {
 			t.Fatalf("a workspace-level run was handed %q, which belongs to %s", cmd.Name, cmd.Group)
 		}
+		if cmd.Name == "onboarding ask" {
+			interviewing = true
+		}
 	}
-	if len(Commands(env)) == 0 {
-		t.Fatal("a workspace-level run was handed nothing at all")
+	if !interviewing {
+		t.Fatal("a workspace-level run cannot ask the patron anything")
 	}
 }
 
@@ -384,7 +390,7 @@ func TestARunAboutNothingCrossesTheSeamAsARunAboutNothing(t *testing.T) {
 		}
 	}
 	for _, cmd := range Commands(envOf(t, built)) {
-		if cmd.Group != GroupAny {
+		if cmd.Group != GroupAny && cmd.Group != GroupWorkspace {
 			t.Fatalf("a run about nothing was handed %q", cmd.Name)
 		}
 	}
