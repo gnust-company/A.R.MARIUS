@@ -765,6 +765,22 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   trong câu trả lời — agent nhận lượt rồi im, không nói gì — nay xảy ra **sau** khi đã trả lời, nên
   phải bắt ở chỗ nó thật sự lộ ra là lúc lượt chạy kết thúc, và **cũng phải báo lên màn hình**. Bỏ
   nửa sau là đổi một lỗi thấy được thành một khung màn hình quay mãi (chốt 2026-09-03, T048a).
+- **FR-040e**: Một luồng chuyển sang đường daemon PHẢI quyết **con đường** dựa trên điều hợp đồng runtime
+  nói về *hình dạng một lượt nói*, KHÔNG dựa trên tên runtime (Hiến pháp III). Hai hình dạng, và mọi hệ quả
+  bên dưới đi ra từ chỗ khác nhau ấy: một runtime **gọi được** thì lượt nói xảy ra bên trong cú gọi; một
+  runtime **được giao việc** thì lượt nói xảy ra sau đó, ở nơi khác, và chính nơi ấy báo về.
+  - Lượt chạy đã giao đi **KHÔNG ĐƯỢC khép** bởi bên giao, và mối giữ *(agent, đầu việc)* **ở lại**. Cái
+    mốc bắt đầu, từng dòng agent nói, và cú khép đều đi vào từ phía máy. Trả mối giữ lại lúc giao việc là
+    trả nó **đúng giây việc rời đi**: sự kiện tiếp theo mở một lượt chạy thứ hai về cùng một lượt nói.
+  - Lượt chạy đã giao đi cũng **KHÔNG ĐƯỢC đánh dấu đang chạy**. Chưa có gì chạy — việc đang nằm trên kệ —
+    và cửa nhận việc lấy việc theo đúng trạng thái *đang chờ*, nên nói *đang chạy* ở đây là làm cho việc ấy
+    không máy nào lấy được nữa.
+  - Cú giao việc **bị từ chối** thì lượt chạy khép lại **ngay tại chỗ giao**. Không còn ai đến lấy nó, và
+    một lượt chạy để mở giữ đầu việc ấy mãi mãi.
+  - Và màn hình phải biết lượt chạy **đã bắt đầu**, không chỉ đã xong (FR-080, FR-040d): trên đường
+    gọi-rồi-đợi, bên đổi trạng thái tự loan tin; trên đường daemon, bên đổi trạng thái là cửa của máy, nên
+    cửa ấy phải loan. Thiếu nửa này thì cùng một lượt chạy nằm ở *đang chờ* trên màn hình suốt cả lượt
+    (chốt 2026-09-03, T048b).
 - **FR-041**: Thư mục làm việc của một đầu việc bắt đầu ở trạng thái **trắng**. Hệ thống KHÔNG lấy mã nguồn về và
   KHÔNG quản nhánh làm việc; agent tự lo phần mã nguồn bằng thông tin đăng nhập của chính nó. Armarius là
   nơi làm việc chung cho nhiều loại việc, không riêng việc viết mã.
