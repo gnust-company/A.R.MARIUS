@@ -14,7 +14,6 @@ with the seeded data (every ``/v1`` route is owner-scoped).
 
 from __future__ import annotations
 
-import secrets
 from datetime import timedelta
 
 from armarius.domain.entities.artifact import Artifact
@@ -31,10 +30,6 @@ from armarius.shared.logging import get_logger
 logger = get_logger(__name__)
 
 ACME_SLUG = "acme-web-platform"
-
-
-def _token() -> str:
-    return f"arm_{secrets.token_urlsafe(24)}"
 
 
 async def _demo_owner_id(container: Container) -> str:
@@ -92,7 +87,6 @@ async def maybe_seed(container: Container) -> None:
                 adapter_type="echo",
                 adapter_config={},
                 owner_user_id=owner_id,
-                agent_token=_token(),
                 liveness=live,
                 last_seen_at=now,
                 created_at=now,

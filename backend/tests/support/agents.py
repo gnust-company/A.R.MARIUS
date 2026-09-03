@@ -2,19 +2,15 @@
 
 Creating an agent takes a name and a workplace and nothing else (FR-007g).
 
-**Acting as an agent means holding a run.** `/agent/*` authenticates the run token now
-(FR-014g), so a test that wants to call those routes opens a run first — see
-``invite_and_online``, which returns the token of the run it opened, and
-``tests/support/runs.py`` for the run itself.
-
-The per-agent token is still minted and ``agent_token_for`` still reads it back, because
-the two `/agent/onboarding/*` routes have nothing else to present until the interview
-becomes a run of its own (FR-040c, T048a). Nothing else takes it.
+**Acting as an agent means holding a run.** `/agent/*` authenticates the run token
+(FR-014g) and nothing else does — including the two onboarding routes, now that the
+team-building interview is a run of its own (FR-040c). So a test that wants to call any of
+those routes opens a run first: see ``invite_and_online``, which returns the token of the
+run it opened, and ``tests/support/runs.py`` for the run itself.
 """
 
 from __future__ import annotations
 
-import secrets
 from uuid import UUID
 
 from httpx import AsyncClient
@@ -107,16 +103,6 @@ async def invite_agent(
     r = await c.post(f"/v1/workspaces/{ws_id}/mariuses", headers=h, json=body)
     assert r.status_code == 201, r.text
     return r.json()
-
-
-async def agent_token_for(marius_id: str | UUID) -> str:
-    """Read an agent's minted token from the repo (the API never exposes it)."""
-    from armarius.main import app
-
-    async with app.state.container.uow_factory() as uow:
-        marius = await uow.mariuses.get(UUID(str(marius_id)))
-    assert marius is not None and marius.agent_token
-    return marius.agent_token
 
 
 async def invite_and_online(
@@ -253,7 +239,6 @@ async def make_agent(
             adapter_type=adapter_type,
             adapter_config=adapter_config or {},
             owner_user_id=owner_user_id,
-            agent_token=f"arm_{secrets.token_urlsafe(32)}",
         )
         created = await uow.mariuses.add(marius)
         await uow.placements.attach(created.id, workspace_id, workplace.id)

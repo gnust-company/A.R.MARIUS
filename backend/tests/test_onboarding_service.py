@@ -23,7 +23,7 @@ from armarius.application.use_cases.workspace_agent import (
     WORKSPACE_AGENT_ROLE,
     WorkspaceAgentService,
 )
-from armarius.domain.entities.marius import InviteStatus, Liveness, Marius
+from armarius.domain.entities.marius import Liveness, Marius
 from armarius.domain.entities.onboarding import OnboardingStatus
 from armarius.domain.entities.run import RunStatus
 from armarius.domain.entities.workspace import Workspace
@@ -31,7 +31,7 @@ from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from tests.support.fakes import FakeAdapter, FakeUowFactory
 
 
-def _services(*, adapter: FakeAdapter | None = None, base_url: str = "http://api.test"):
+def _services(*, adapter: FakeAdapter | None = None):
     factory = FakeUowFactory()
     ws = Workspace(name="Studio", slug="studio", owner_user_id="u1")
     factory.store.workspaces[ws.id] = ws
@@ -40,7 +40,7 @@ def _services(*, adapter: FakeAdapter | None = None, base_url: str = "http://api
     reg = InMemoryAdapterRegistry()
     if adapter is not None:
         reg.register(adapter)
-    onboarding = OnboardingService(factory, projects, ws_agent, reg, base_url)
+    onboarding = OnboardingService(factory, projects, ws_agent, reg)
     return factory, onboarding, ws.id, adapter
 
 
@@ -100,8 +100,6 @@ async def _ensure_then_online(onboarding: OnboardingService, ws_id) -> None:
             role=WORKSPACE_AGENT_ROLE,
             adapter_type="fake",  # matches the FakeAdapter registered in _services
             liveness=Liveness.ONLINE,
-            invite_status=InviteStatus.APPROVED,
-            agent_token="arm_wa",
         )
         await uow.mariuses.add(host)
         ws = await uow.workspaces.get(ws_id)

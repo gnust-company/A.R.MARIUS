@@ -28,7 +28,6 @@ from armarius.application.ports.workspace_trace import (
     WorkspaceTracePublisher,
     announce_run_state,
 )
-from armarius.application.use_cases.onboarding import credential_file_for
 from armarius.application.use_cases.seats import holds_the_leader_seat
 from armarius.application.use_cases.skills import SkillService
 from armarius.application.use_cases.types import UowFactory
@@ -46,6 +45,7 @@ from armarius.domain.entities.run import (
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.task import Task, TaskStatus
 from armarius.domain.entities.wakeup import (
+    PENDING_WAKEUP_STATUSES,
     WakePairBusyError,
     WakeupRequest,
     WakeupStatus,
@@ -488,12 +488,23 @@ class WakeEngine:
             run = await uow.runs.get(run_id)
             if run is None or run.status not in ACTIVE_RUN_STATUSES:
                 return
-            task = await uow.tasks.get(run.task_id) if run.task_id else None
             marius = await uow.mariuses.get(run.marius_id) if run.marius_id else None
-            if task is None or marius is None:
+            if marius is None:
                 return
-            session = await uow.sessions.get_for(marius.id, marius.adapter_type, task.id)
-            marius_id, task_id = marius.id, task.id
+            # A run that names a task the task is gone from is still unclosable — there is
+            # no telling what it was doing. A run that names no task at all is a different
+            # thing entirely and closes like any other: the interview is one such run
+            # (FR-040c), and until this told them apart every one of them stayed open for
+            # ever, holding a slot on its machine and a live token with it.
+            task = await uow.tasks.get(run.task_id) if run.task_id else None
+            if run.task_id is not None and task is None:
+                return
+            session = (
+                await uow.sessions.get_for(marius.id, marius.adapter_type, task.id)
+                if task is not None
+                else None
+            )
+            marius_id, task_id = marius.id, task.id if task is not None else None
             await self._finalise(
                 uow,
                 run,
@@ -517,10 +528,11 @@ class WakeEngine:
         # handed back first because both of the calls after it may enqueue, and enqueueing
         # against a pair this run still holds folds the new wake into the turn that just ended.
         await self._release_pair(run_id, cause=error)
-        await settle(
-            f"re-wake run {run_id} for the causes it absorbed",
-            lambda: self._rewake_for_absorbed_causes(run_id, marius_id, task_id),
-        )
+        if task_id is not None:
+            await settle(
+                f"re-wake run {run_id} for the causes it absorbed",
+                lambda: self._rewake_for_absorbed_causes(run_id, marius_id, task_id),
+            )
         await settle(
             f"decide the follow-up wake after run {run_id}",
             lambda: self._maybe_self_wake(run_id, failure=failure),
@@ -561,9 +573,24 @@ class WakeEngine:
         """
         async with self._uow() as uow:
             run = await uow.runs.get(run_id)
-            if run is None or run.marius_id is None or run.task_id is None:
+            if run is None or run.marius_id is None:
                 return
-            for w in await uow.wakeups.list_active_for(run.marius_id, run.task_id):
+            # A run about a task is found through its pair, because the pair is what FR-050
+            # arbitrates on. A run about no task has no pair to be found through, and its
+            # wake is filed under the run itself — without this second road that wake stays
+            # marked *still owed* for ever, on a turn that ended long ago.
+            if run.task_id is not None:
+                pending = list(
+                    await uow.wakeups.list_active_for(run.marius_id, run.task_id)
+                )
+            else:
+                only = await uow.wakeups.get_for_run(run_id)
+                pending = (
+                    [only]
+                    if only is not None and only.status in PENDING_WAKEUP_STATUSES
+                    else []
+                )
+            for w in pending:
                 if w.run_id != run_id:
                     continue
                 w.status = WakeupStatus.DONE
@@ -633,8 +660,6 @@ class WakeEngine:
         run: Run,
         task: Task,
         marius: Marius,
-        *,
-        credential_hint: bool,
     ) -> str:
         """Gather what this wake has to say and write it out, in English (Constitution VII).
 
@@ -677,7 +702,6 @@ class WakeEngine:
                 project,
                 brief,
                 audience,
-                credential_hint=credential_hint,
             )
         )
 
@@ -687,8 +711,17 @@ class WakeEngine:
         Called at the moment the work changes hands, not when it was queued: the message
         names the task's newest comments and its recorded next action, and a message built
         an hour early would describe a task nobody has since touched. `None` means this run
-        cannot be described — no task, no agent, nothing to say — and a run nobody can
+        cannot be described — no agent, or nothing anywhere to say — and a run nobody can
         describe is a run nobody can do.
+
+        **A run about no task is described from the wake that opened it.** Building the
+        message late is right only where waiting makes it truer, and that is exactly what a
+        task gives it: comments arrive, the next action is rewritten, the status moves. A
+        run with no task has no such thing to re-read — the team-building interview is one
+        turn of a conversation, and what the agent has to be told was settled the moment the
+        patron answered (FR-040c). So that message is written down when the run is opened
+        and handed over unchanged, rather than rebuilt here out of a guess about which
+        conversation this run belongs to.
 
         The skills come whole rather than as a list to fetch. An agent that has to go and
         collect them can start reading before they arrive, and then the first thing it does
@@ -701,11 +734,19 @@ class WakeEngine:
             run = await uow.runs.get(run_id)
             if run is None:
                 return None
-            task = await uow.tasks.get(run.task_id) if run.task_id else None
             marius = await uow.mariuses.get(run.marius_id) if run.marius_id else None
-            if task is None or marius is None:
+            if marius is None:
                 return None
-            prompt = await self._assemble(uow, run, task, marius, credential_hint=False)
+            if run.task_id is None:
+                standing = await uow.wakeups.get_for_run(run_id)
+                if standing is None or not standing.prompt:
+                    return None
+                prompt = standing.prompt
+            else:
+                task = await uow.tasks.get(run.task_id)
+                if task is None:
+                    return None
+                prompt = await self._assemble(uow, run, task, marius)
 
         return WorkPacket(
             prompt=prompt,
@@ -757,7 +798,7 @@ class WakeEngine:
                 return
 
             session = await uow.sessions.get_for(marius.id, marius.adapter_type, task.id)
-            prompt = await self._assemble(uow, run, task, marius, credential_hint=True)
+            prompt = await self._assemble(uow, run, task, marius)
 
             # Keep the exact packet that went out. Until now nothing recorded what an
             # agent was actually told, so "why did it do that?" could only ever be
@@ -878,11 +919,20 @@ class WakeEngine:
         self,
         uow,  # noqa: ANN001 - concrete UoW
         run: Run,
-        task: Task,
+        task: Task | None,
         marius: Marius,
         session: AgentTaskSession | None,
         result: ExecResult,
     ) -> None:
+        """Write down how a run ended, whatever it was about.
+
+        ``task`` is absent for a run that is about no task — the team-building interview
+        (FR-040c). Three of the things below belong to a task and are simply not done for
+        such a run: the conversation it rides is the task's, the next action it may have
+        recorded is the task's, and the channel the Room watches is the task's. What is
+        left is the whole of what *ending* means — the run's own row and the agent being
+        free again — and that half is the same for every run there is.
+        """
         run.status = result.status
         run.finished_at = utcnow()
         run.usage_json = result.usage
@@ -894,7 +944,7 @@ class WakeEngine:
         )
         await uow.runs.update(run)
 
-        if result.session_params:
+        if task is not None and result.session_params:
             if session is None:
                 session = AgentTaskSession(
                     project_id=task.project_id,
@@ -910,12 +960,13 @@ class WakeEngine:
             session.updated_at = utcnow()
             await uow.sessions.upsert(session)
 
-        # Reload task: the agent may have changed status/next_action via the agent API.
-        fresh_task = await uow.tasks.get(task.id)
-        if fresh_task is not None and result.next_action and not fresh_task.next_action:
-            fresh_task.next_action = result.next_action
-            fresh_task.updated_at = utcnow()
-            await uow.tasks.update(fresh_task)
+        if task is not None:
+            # Reload task: the agent may have changed status/next_action via the agent API.
+            fresh_task = await uow.tasks.get(task.id)
+            if fresh_task is not None and result.next_action and not fresh_task.next_action:
+                fresh_task.next_action = result.next_action
+                fresh_task.updated_at = utcnow()
+                await uow.tasks.update(fresh_task)
 
         # Liveness reflects *reachability*, not the run's outcome. Any finalized run —
         # COMPLETED or not — means the agent runtime reached back, so the agent is free again:
@@ -933,7 +984,8 @@ class WakeEngine:
             run.id,
             {"type": "run.finished", "payload": {"status": str(result.status)}},
         )
-        await self._tee_task(task.id, "run.finished", {"status": str(result.status)})
+        if task is not None:
+            await self._tee_task(task.id, "run.finished", {"status": str(result.status)})
         await self.announce_run(run, marius)
 
     async def _tee_task(self, task_id: UUID, event_type: str, payload: dict) -> None:
@@ -1062,8 +1114,6 @@ def _wake_context(
     project: Project | None = None,
     brief: ProjectContext | None = None,
     audience: WakeAudience = WakeAudience.WORKER,
-    *,
-    credential_hint: bool = True,
 ) -> WakeContext:
     dir_entries = [
         DirectoryEntry(
@@ -1112,10 +1162,6 @@ def _wake_context(
         workspace_name=workspace.name if workspace else "",
         project_name=project.name if project else "",
         instructions=marius.instructions,
-        credential_hint=credential_hint,
-        credential_file=(
-            credential_file_for(marius, workspace.name) if workspace else None
-        ),
     )
 
 

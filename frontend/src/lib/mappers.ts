@@ -192,27 +192,15 @@ export function projectDetailToVM(dto: ProjectDetailDTO): Project {
 
 // ── Marius ──────────────────────────────────────────────────────────────────────────────
 
-/** Pre-approval, the invite lifecycle wins — an invited/pending agent has no
- *  meaningful liveness yet. Once approved, its status follows liveness (#51). */
-function agentStatusFor(dto: MariusDTO): AgentStatus {
-  switch (dto.invite_status) {
-    case 'invited':
-      return 'invited'
-    case 'pending_review':
-      return 'pending'
-    case 'revoked':
-      return 'revoked'
-    default: // 'approved' or unset → follow liveness
-      return livenessToAgentStatus(dto.liveness)
-  }
-}
-
 export function mariusToVM(dto: MariusDTO): Marius {
   return {
     id: dto.id,
     name: dto.name,
     role: dto.role,
-    status: agentStatusFor(dto),
+    // An agent's status is its liveness and nothing else. It used to be read off an invite
+    // lifecycle first, but that lifecycle marked exactly one moment — the minting of the
+    // agent's own token — and there is no such token any more (FR-014a).
+    status: livenessToAgentStatus(dto.liveness),
     workspaceId: dto.workspace_id ?? '',
     projectIds: [], // populated by the frontend from roster grants
     skills: dto.skills,

@@ -377,9 +377,7 @@ class MariusOut(_Out):
     # whatever the status says rather than instead of it; anything that tried to derive one
     # of the two from the other would be inventing an agreement neither field promises.
     offline_reason: str | None = None
-    # Invite lifecycle (operator-invite: invited → approved). `adapter_config` and
-    # `agent_token` are deliberately omitted — they are secrets, never serialized out.
-    invite_status: str | None = None
+    # `adapter_config` is deliberately omitted — it holds secrets, never serialized out.
     last_seen_at: datetime | None = None
     created_at: datetime | None = None
 

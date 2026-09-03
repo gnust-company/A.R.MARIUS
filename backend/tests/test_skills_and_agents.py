@@ -10,10 +10,8 @@ from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.database.engine import init_db
 from armarius.main import app
 from armarius.presentation.container import build_container
-from tests.support.agents import (
-    agent_token_for,
-    invite_agent,
-)
+from tests.support.agents import invite_agent
+from tests.support.runs import open_run
 
 #: Tên hiển thị của kỹ năng dựng sẵn, đọc thẳng từ chỗ khai nó. Viết cứng vào đây thì bài này
 #: đỏ mỗi lần đổi tên tờ hướng dẫn — mà tên tờ hướng dẫn không phải thứ bài này nói về.
@@ -91,7 +89,6 @@ async def test_creating_an_agent_links_its_skills():
     # The linked skill is persisted on the agent. It reaches the machine with the work that
     # needs it (FR-011b), not through a push at creation time.
     assert data["skill_ids"] == [skill_id]
-    assert data["invite_status"] == "approved"
     assert "agent_token" not in data
     assert "invite" not in data
 
@@ -108,13 +105,17 @@ async def test_inviting_agent_does_not_create_a_project():
         data = await invite_agent(c, ws_id, h, name="Marin")
 
         after = (await c.get(f"/v1/workspaces/{ws_id}/projects", headers=h)).json()
-    assert data["invite_status"] == "approved"
+    assert data["id"]
     assert after == []  # still no project after inviting an agent
 
 
-async def test_directory_exposes_invite_status():
-    """The directory list carries invite_status; under operator-invite an agent is
-    "approved" the moment it is invited (#63)."""
+async def test_the_directory_says_nothing_about_an_invite_lifecycle():
+    """Một agent vừa thêm là một agent dùng được ngay — không có bước duyệt nào để chờ.
+
+    Trạng thái ấy từng được khai ra trên danh bạ, và nó chỉ đánh dấu đúng một mốc: lúc token
+    riêng của agent được đúc (FR-014a). Không còn token thì trạng thái ấy không mô tả gì, và
+    một trường luôn trả về cùng một giá trị là một trường dạy người đọc rằng có thứ gì đó
+    thay đổi được."""
     async with await _client() as c:
         token, ws_id = await _register(c, "pending@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
@@ -122,7 +123,11 @@ async def test_directory_exposes_invite_status():
         mid = data["id"]
 
         directory = (await c.get(f"/v1/workspaces/{ws_id}/mariuses", headers=h)).json()
-    assert next(m for m in directory if m["id"] == mid)["invite_status"] == "approved"
+    row = next(m for m in directory if m["id"] == mid)
+    assert "invite_status" not in row
+    assert "approved_at" not in row
+    # Cái nó *có* nói là thứ vẫn đổi thật: agent ấy đang sống hay không.
+    assert row["liveness"] == "offline"
 
 
 async def test_edit_agent_updates_skills():
@@ -208,8 +213,9 @@ async def test_an_agent_has_no_road_left_to_fetch_its_own_skills():
         skill = made.json()
 
         created = await invite_agent(c, ws_id, h, name="Marin", skill_ids=[skill["id"]])
-        agent_token = await agent_token_for(created["id"])
-        ah = {"Authorization": f"Bearer {agent_token}"}
+        # A live run of that very agent, which is the strongest caller there is on these
+        # routes: the 404 is the road being gone, not a credential being refused.
+        ah = (await open_run(marius_id=created["id"])).headers
 
         assert (await c.get("/agent/skills", headers=ah)).status_code == 404
         assert (await c.get(f"/agent/skills/{skill['slug']}", headers=ah)).status_code == 404

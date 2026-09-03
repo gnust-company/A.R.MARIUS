@@ -147,10 +147,6 @@ class MariusModel(Base):
     skill_ids: Mapped[list] = mapped_column(JSON, default=list)
     # Per-skill install state (post-invite loop #74): slug → pending|installed|failed.
     owner_user_id: Mapped[str | None] = mapped_column(String(200))
-    agent_token: Mapped[str | None] = mapped_column(String(120), unique=True, index=True)
-    # Invite lifecycle (LLD §3.4) — operator-invite: invited → approved (no enroll/approve).
-    invite_status: Mapped[str] = mapped_column(String(20), default="invited")
-    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Liveness bookkeeping (LLD §10) — driven by LivenessEngine via liveness_fsm.
     liveness: Mapped[str] = mapped_column(String(20), default="offline")
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -324,6 +320,10 @@ class OnboardingSessionModel(Base):
     transcript: Mapped[list] = mapped_column(JSON, default=list)
     collected: Mapped[dict] = mapped_column(JSON, default=dict)
     created_project_id: Mapped[UUID | None] = mapped_column(Uuid)
+    # The run taking this chat's current turn — see ``OnboardingSession.driving_run_id``.
+    # Indexed because it is read the other way round: a run ends and asks which chat, if
+    # any, it was driving.
+    driving_run_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

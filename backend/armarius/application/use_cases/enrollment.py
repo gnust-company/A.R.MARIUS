@@ -20,8 +20,6 @@ compressed session cannot lose it.
 
 from __future__ import annotations
 
-import secrets
-from collections.abc import Callable
 from uuid import UUID
 
 from armarius.application.use_cases.types import UowFactory
@@ -38,21 +36,11 @@ class PlacementNotReady(BadRequest):
     """
 
 
-def _default_token() -> str:
-    return f"arm_{secrets.token_urlsafe(32)}"
-
-
 class AgentService:
     """The one create path. There is no second one, by design (FR-007f)."""
 
-    def __init__(
-        self,
-        uow_factory: UowFactory,
-        *,
-        token_factory: Callable[[], str] = _default_token,
-    ) -> None:
+    def __init__(self, uow_factory: UowFactory) -> None:
         self._uow = uow_factory
-        self._mint_token = token_factory
 
     async def create(
         self,
@@ -120,13 +108,10 @@ class AgentService:
                 created_at=now,
                 updated_at=now,
             )
-            # The agent's own long-lived token is on its way out (FR-014a): the system is
-            # meant to have two tokens, the daemon's and the run's. It is still minted here
-            # because `/agent/*` has nothing else to authenticate with yet, and an agent
-            # created without one would simply be locked out. Nothing pushes it anywhere any
-            # more — it is read back from the database by whatever still needs it. T039d
-            # removes it, once the run token can carry that traffic.
-            marius.activate(self._mint_token(), now)
+            # No credential is minted here, and none is minted anywhere else either. An
+            # agent is an identity, not a bearer: what opens a door is the token of the run
+            # it is taking, and that is minted when a machine takes the run and dies with it
+            # (FR-014a, FR-014g).
             created = await uow.mariuses.add(marius)
             await uow.placements.attach(created.id, workspace_id, placement.id)
             await uow.commit()

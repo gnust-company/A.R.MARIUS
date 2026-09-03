@@ -16,16 +16,20 @@ from armarius.application.use_cases.onboarding_brain import (
 
 def test_guide_prompt_lists_the_ordered_field_plan():
     guide = build_onboarding_guide_prompt(
-        base_url="http://api.test", session_id="s1", workspace_name="Studio"
+        session_id="s1", workspace_name="Studio"
     )
     # The ordered FIELD PLAN tied to the draft body — every required field is named.
     for field in ("objective", "name", "roster", "success_metrics", "target_date", "context"):
         assert field in guide, field
     # Anti-drift: tell the agent not to spiral into implementation detail.
     assert "implementation detail" in guide.lower()
-    # The two callback endpoints are present and self-sufficient.
-    assert "/agent/onboarding/s1/question" in guide
-    assert "/agent/onboarding/s1/complete" in guide
+    # The two tools are named, and the chat they act on with them. Tools rather than an HTTP
+    # address on purpose: the toolset a run is handed *is* its scope (FR-013d), and a prompt
+    # that spells out a request teaches the agent to write around the tools it was given.
+    assert "`onboarding ask`" in guide
+    assert "`onboarding propose`" in guide
+    assert "session_id=s1" in guide
+    assert "/agent/onboarding/" not in guide
 
 
 def test_answer_prompt_carries_the_full_answer_history():
@@ -34,7 +38,7 @@ def test_answer_prompt_carries_the_full_answer_history():
         ("A short project name?", "Task Tracker"),
     ]
     prompt = build_onboarding_answer_prompt(
-        base_url="http://api.test", session_id="s1", history=history
+        session_id="s1", history=history
     )
     # Every prior Q/A is replayed (openclaw-style) so the agent knows what is collected.
     assert "Answered so far:" in prompt
@@ -42,20 +46,21 @@ def test_answer_prompt_carries_the_full_answer_history():
     assert "A web app" in prompt
     assert "A short project name?" in prompt
     assert "Task Tracker" in prompt
-    # The field plan + endpoints are still present on a continuation wake.
+    # The field plan + the two tools are still present on a continuation wake.
     assert "FIELD PLAN" in prompt
-    assert "/agent/onboarding/s1/question" in prompt
-    assert "/agent/onboarding/s1/complete" in prompt
+    assert "`onboarding ask`" in prompt
+    assert "`onboarding propose`" in prompt
+    assert "session_id=s1" in prompt
 
 
 def test_answer_prompt_handles_empty_history():
-    """A continuation wake with no answered pairs still shows the field plan + endpoints."""
+    """A continuation turn with no answered pairs still shows the field plan and the tools."""
     prompt = build_onboarding_answer_prompt(
-        base_url="http://api.test", session_id="s1", history=[]
+        session_id="s1", history=[]
     )
     assert "Answered so far:" not in prompt
     assert "FIELD PLAN" in prompt
-    assert "/agent/onboarding/s1/complete" in prompt
+    assert "`onboarding propose`" in prompt
 
 
 def test_both_prompts_ask_each_worker_role_for_a_description():
@@ -63,10 +68,10 @@ def test_both_prompts_ask_each_worker_role_for_a_description():
     model a per-worker `description` and the instruction must ask for one, on BOTH the first wake
     and every continuation wake (#112)."""
     guide = build_onboarding_guide_prompt(
-        base_url="http://api.test", session_id="s1", workspace_name="Studio"
+        session_id="s1", workspace_name="Studio"
     )
     answer = build_onboarding_answer_prompt(
-        base_url="http://api.test", session_id="s1", history=[]
+        session_id="s1", history=[]
     )
     for prompt in (guide, answer):
         assert '"description"' in prompt               # the draft body example carries it

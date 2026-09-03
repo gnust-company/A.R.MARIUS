@@ -447,6 +447,7 @@ class SqlOnboardingRepository(OnboardingRepository):
                 transcript=list(session.transcript),
                 collected=dict(session.collected),
                 created_project_id=session.created_project_id,
+                driving_run_id=session.driving_run_id,
                 created_at=session.created_at,
                 updated_at=session.updated_at,
             )
@@ -466,9 +467,20 @@ class SqlOnboardingRepository(OnboardingRepository):
         m.transcript = list(session.transcript)
         m.collected = dict(session.collected)
         m.created_project_id = session.created_project_id
+        m.driving_run_id = session.driving_run_id
         m.updated_at = session.updated_at
         await self._s.flush()
         return session
+
+    async def get_by_run(self, run_id: UUID) -> OnboardingSession | None:
+        m = (
+            await self._s.execute(
+                select(OnboardingSessionModel).where(
+                    OnboardingSessionModel.driving_run_id == run_id
+                )
+            )
+        ).scalars().first()
+        return mappers.onboarding_to_entity(m) if m else None
 
     async def list_by_workspace(
         self, workspace_id: UUID
@@ -805,9 +817,6 @@ class SqlMariusRepository(MariusRepository):
                 runtime_options=dict(marius.placement_options),
                 skill_ids=[str(x) for x in marius.skill_ids],
                 owner_user_id=marius.owner_user_id,
-                agent_token=marius.agent_token,
-                invite_status=str(marius.invite_status),
-                approved_at=marius.approved_at,
                 liveness=str(marius.liveness),
                 last_seen_at=marius.last_seen_at,
                 probe_attempts=marius.probe_attempts,
@@ -832,12 +841,6 @@ class SqlMariusRepository(MariusRepository):
 
     async def get(self, marius_id: UUID) -> Marius | None:
         m = await self._s.get(MariusModel, marius_id)
-        return mappers.marius_to_entity(m) if m else None
-
-    async def get_by_token(self, token: str) -> Marius | None:
-        m = (
-            await self._s.execute(select(MariusModel).where(MariusModel.agent_token == token))
-        ).scalar_one_or_none()
         return mappers.marius_to_entity(m) if m else None
 
     async def list_by_workspace(self, workspace_id: UUID) -> Sequence[Marius]:
@@ -872,9 +875,6 @@ class SqlMariusRepository(MariusRepository):
         m.adapter_config = dict(marius.adapter_config)
         m.runtime_options = dict(marius.placement_options)
         m.owner_user_id = marius.owner_user_id
-        m.agent_token = marius.agent_token
-        m.invite_status = str(marius.invite_status)
-        m.approved_at = marius.approved_at
         m.liveness = str(marius.liveness)
         m.last_seen_at = marius.last_seen_at
         m.probe_attempts = marius.probe_attempts
@@ -1781,6 +1781,14 @@ class SqlWakeupRepository(WakeupRepository):
             )
         ).scalars().all()
         return [mappers.wakeup_to_entity(m) for m in rows]
+
+    async def get_for_run(self, run_id: UUID) -> WakeupRequest | None:
+        m = (
+            await self._s.execute(
+                select(WakeupModel).where(WakeupModel.run_id == run_id)
+            )
+        ).scalars().first()
+        return mappers.wakeup_to_entity(m) if m else None
 
     async def list_pending_for_task(self, task_id: UUID) -> Sequence[WakeupRequest]:
         rows = (

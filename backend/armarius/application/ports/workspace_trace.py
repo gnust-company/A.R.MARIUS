@@ -33,6 +33,13 @@ EVENT_RUN_STATE_CHANGED = "run.status_changed"
 # a patron needs to see. Emitted on the *edge* into offline, never on every idle tick.
 EVENT_MARIUS_OFFLINE = "marius.offline"
 
+# The team-building interview moved a step: the agent asked its next question, or posted the
+# draft it wants confirmed. The screen holding that chat open cannot learn this any other way
+# — the turn runs on somebody's machine and the answer arrives by a road the browser is not on
+# (FR-040c). Ids only, like the two above: it says *go and read the chat again*, never what the
+# agent said (contracts/push-events.md, principle 1 and principle 4).
+EVENT_ONBOARDING_CHANGED = "onboarding.changed"
+
 
 class WorkspaceTracePublisher(ABC):
     @abstractmethod
@@ -73,6 +80,19 @@ async def announce_run_state(
             "project_id": str(run.project_id) if run.project_id is not None else None,
             "status": str(run.status),
         },
+    )
+
+
+async def announce_onboarding_step(
+    trace: WorkspaceTracePublisher | None, workspace_id: UUID | None, session_id: UUID
+) -> None:
+    """Announce that a team-building chat has something new in it (no-op if not wired)."""
+    if trace is None or workspace_id is None:
+        return
+    await trace.publish(
+        workspace_id,
+        EVENT_ONBOARDING_CHANGED,
+        {"session_id": str(session_id)},
     )
 
 
