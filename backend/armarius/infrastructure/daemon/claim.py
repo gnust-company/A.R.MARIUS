@@ -262,6 +262,7 @@ class DaemonClaimService:
         compose: Callable[[UUID], Awaitable[WorkPacket | None]] | None = None,
         on_recorded: Callable[[UUID, str, dict], Awaitable[None]] | None = None,
         on_run_event: Callable[[UUID, int, str, dict], Awaitable[None]] | None = None,
+        on_start: Callable[[UUID], Awaitable[None]] | None = None,
         on_finish: Callable[..., Awaitable[None]] | None = None,
     ) -> None:
         self._sessionmaker = sessionmaker
@@ -285,6 +286,10 @@ class DaemonClaimService:
         # under `daemon/` may reach upwards (Constitution III).
         self._on_recorded = on_recorded
         self._on_run_event = on_run_event
+        # Told that an agent is up on a run, so a screen watching that agent stops showing
+        # the run as still waiting. This door already writes down *that* it started; saying
+        # so on a channel is not something a layer under `daemon/` may do (Constitution III).
+        self._on_start = on_start
         # Told that a run is over, so the task gets a live drive again without waiting for a
         # sweep (FR-030a). What *closing a run* means — the follow-up wake, the pair handed
         # back, the recovery ladder — is entirely the business layer's, and none of it can be
@@ -761,6 +766,17 @@ class DaemonClaimService:
             # would take a healthy run away from the machine two minutes in.
             claim.claim_expires_at = None
             await db.commit()
+
+        # After the commit, and its failure is swallowed for the same reason the nudge's is:
+        # the run has begun whether or not anybody was told. A channel that throws must not
+        # undo a start the machine has already acted on — refusing it would leave a live agent
+        # working on a run this side believes is still on the shelf. The screen catches up on
+        # its next read; that costs one stale status, and the alternative costs the run.
+        if self._on_start is not None:
+            try:
+                await self._on_start(run_id)
+            except Exception:  # pragma: no cover - the run is already correct
+                logger.exception("could not announce the start of run %s", run_id)
 
     async def _remember_session(
         self, db: AsyncSession, run_id: UUID, handle: str, now: datetime

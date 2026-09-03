@@ -38,7 +38,15 @@ from armarius.infrastructure.database.engine import get_sessionmaker
 
 class DaemonAdapter(MariusAdapter):
     type = "daemon"
-    capabilities = AdapterCapabilities(resumable=True, streaming=True, transport="process")
+    capabilities = AdapterCapabilities(
+        resumable=True,
+        streaming=True,
+        transport="process",
+        # The whole of what makes this path different, said in one place so nobody has to
+        # ask for it by name. A turn here does not happen inside the call that starts it;
+        # it happens later, on a machine, and that machine reports it.
+        turn_ends_in_the_call=False,
+    )
 
     def __init__(
         self,

@@ -274,6 +274,11 @@ def build_container() -> Container:
         on_run_event=lambda run_id, seq, event_type, payload: event_bus.publish(
             run_id, {"type": event_type, "seq": seq, "payload": payload}
         ),
+        # A run that has actually begun, said on the channel an agent's own screen holds
+        # open. The in-process road announces this transition itself; without this line the
+        # same run carried out on a machine sat at *queued* on screen for the whole time it
+        # ran, and only moved when it ended (FR-080).
+        on_start=wake_engine.run_started,
         # And the end of a run handed to the layer that decides what a task does next — the
         # follow-up wake above all, which is what stops a finished run leaving a task with
         # nothing scheduled to look at it again (FR-030a).
