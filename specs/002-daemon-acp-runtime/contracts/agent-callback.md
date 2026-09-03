@@ -23,8 +23,15 @@ phân biệt (Điều I), nên ai cầm một chuỗi đã chết cũng không x
 chúng là **mã lý do**, và daemon cần đúng mã ấy để xếp *token đã chết* vào loại lỗi cần người xử thay vì
 thử lại (FR-014f).
 
-**Một ngoại lệ, có hạn**: hai lối `/agent/onboarding/*` còn nhận token sống lâu, vì buổi phỏng vấn chưa đi
-đường nhận việc nên chưa có lượt chạy nào để đúc token cho nó. Cửa tạm ấy chết cùng FR-040c (T048a).
+**Không còn ngoại lệ nào.** Hai lối `/agent/onboarding/*` từng nhận một token sống lâu, vì buổi phỏng vấn
+chưa đi đường nhận việc nên chưa có lượt chạy nào để đúc token cho nó. Buổi phỏng vấn nay **là** một lượt
+chạy, cấp workspace (FR-040c), nên nó trình đúng thứ 20 lối kia trình — và loại token thứ ba mất chỗ dựa
+cuối cùng, cùng với cột giữ nó (T048a, T039d).
+
+Kèm theo đó, lượt chạy cấp workspace có **bộ lệnh của riêng nó**: hỏi người chủ một câu, và đăng bản nháp.
+Không có hai lệnh ấy thì cửa mở mà agent không có gì để gõ — token nhận, nhưng buổi phỏng vấn không ai lái
+được. Bộ lệnh **chính là phạm vi** (FR-013d), nên lượt chạy cấp đầu việc và cấp dự án không được cầm chúng,
+và lượt phỏng vấn không cầm bộ nào của hai cấp kia.
 
 ---
 
