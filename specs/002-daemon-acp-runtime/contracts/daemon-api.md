@@ -231,6 +231,15 @@ thiếu `session` (T039i) và `callback_base` (T061).
 là một cái máy có thể bị trả lời về thứ khác. Chúng **không** trả về rỗng: một `prompt` rỗng thì daemon vẫn ghi ra tệp bối cảnh, và một tệp
 bối cảnh rỗng đọc y hệt một tệp bối cảnh đúng.
 
+**Thông điệp lấy ở đâu ra thì tuỳ lượt chạy nói về cái gì.** Lượt chạy về một đầu việc dựng thông
+điệp từ đầu việc ấy, và dựng muộn là đúng: bình luận mới tới, việc kế tiếp bị viết lại, trạng thái
+đổi — đợi làm câu chuyện đúng hơn. Lượt chạy **không** có đầu việc thì không có gì để đọc lại như
+thế: buổi hỏi–đáp dựng đội là một lượt của một cuộc trò chuyện, và thứ phải nói với agent đã chốt
+đúng lúc người chủ trả lời (FR-040c). Nên thông điệp ấy được **ghi cùng lúc mở lượt chạy** và trao
+đi nguyên vẹn, chứ không dựng lại ở đây bằng một phỏng đoán xem lượt này thuộc cuộc trò chuyện nào.
+Lượt chạy không đầu việc **và** không có thông điệp nào ghi kèm thì không ai tả nổi, và một lượt
+chạy không ai tả nổi là một lượt chạy không ai làm được — nó quay lại kệ như mọi ca dựng hỏng.
+
 **Việc không dựng nổi gói thì không được trao đi.** Server dựng thông điệp *sau* khi đổi chủ xong —
 dựng nó đọc thêm nửa tá bảng khác, mà làm việc ấy trong lúc còn giữ khoá của cái máy thì mọi cú xin
 khác của chính máy ấy phải đợi hết quãng đọc. Nhưng nếu dựng hỏng, hoặc ghi lại hỏng, thì lượt chạy

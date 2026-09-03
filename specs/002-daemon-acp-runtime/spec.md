@@ -759,6 +759,12 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   khác, ở **cấp workspace** — không đầu việc, không dự án, vì lúc ấy dự án chưa tồn tại. Nhờ vậy nó xác
   thực bằng chính token của lượt chạy và FR-014a giữ nguyên đúng hai loại token, thay vì phải đúc một loại
   thứ ba chỉ để phục vụ một màn hình. Tầng người dùng không đổi (FR-040b) (chốt 2026-08-29).
+- **FR-040d**: Khi một luồng bỏ kiểu gọi-rồi-đợi để đi đường daemon, **màn hình phải có đường biết
+  việc đã xong** — server đẩy tín hiệu đi đọc lại, và tín hiệu ấy chỉ mang mã, không mang nội dung.
+  Hỏi lại theo đồng hồ không tính (Hiến pháp IV). Cùng chỗ ấy: cái hỏng mà lối cũ báo được ngay
+  trong câu trả lời — agent nhận lượt rồi im, không nói gì — nay xảy ra **sau** khi đã trả lời, nên
+  phải bắt ở chỗ nó thật sự lộ ra là lúc lượt chạy kết thúc, và **cũng phải báo lên màn hình**. Bỏ
+  nửa sau là đổi một lỗi thấy được thành một khung màn hình quay mãi (chốt 2026-09-03, T048a).
 - **FR-041**: Thư mục làm việc của một đầu việc bắt đầu ở trạng thái **trắng**. Hệ thống KHÔNG lấy mã nguồn về và
   KHÔNG quản nhánh làm việc; agent tự lo phần mã nguồn bằng thông tin đăng nhập của chính nó. Armarius là
   nơi làm việc chung cho nhiều loại việc, không riêng việc viết mã.

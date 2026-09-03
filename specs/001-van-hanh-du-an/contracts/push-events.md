@@ -66,6 +66,12 @@ Hiến pháp IV cấm, và đúng thứ nó đã làm trước Đợt 9.
 |---|---|---|
 | `run.status_changed` | Một lượt chạy đổi trạng thái: mở, bắt đầu, kết thúc, bị dừng giữa chừng, bị tuyên treo | Mã lượt chạy, mã agent, mã đầu việc, mã dự án, trạng thái mới |
 | `marius.offline` | Một agent tụt qua ngưỡng im lặng thành đã tắt | Mã agent |
+| `onboarding.changed` | Buổi hỏi–đáp dựng đội có thêm gì đó: agent hỏi câu tiếp, đăng bản nháp, hoặc buổi ấy bị đóng vì lượt chạy kết thúc mà không nói gì | Mã buổi |
+
+`onboarding.changed` có mặt vì buổi phỏng vấn thôi là một cú gọi-rồi-đợi: mỗi lượt của nó là một
+lượt chạy, và lượt chạy diễn ra trên máy nào rảnh (đặc tả 002, FR-040c). Màn hình giữ khung chat
+không còn cách nào khác để biết agent đã nói — nếu không có tin này thì nó chỉ còn nước hỏi lại
+theo đồng hồ, đúng thứ Hiến pháp IV cấm.
 
 `marius.offline` là cặp còn thiếu của `marius.online` đã có sẵn. Chiều sống lại vẫn báo, chiều
 tắt hẳn thì không — nên chấm sống/chết trên màn hình chỉ đi được một chiều, và chiều nó không đi
