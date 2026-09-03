@@ -72,19 +72,20 @@ def _wire_agent(drivers: list) -> FakeAdapter:
 
 
 def _ask(container, key: str, question: str):
-    async def driver(session_id) -> None:
+    async def driver(session_id, run_id) -> None:
         await container.onboarding.agent_post_question(
             session_id,
             {"key": key, "question": question,
              "options": [{"id": "1", "label": "A web app"}, {"id": "other", "label": "Other"}],
              "multi": False},
+            by_run=run_id,
         )
 
     return driver
 
 
 def _complete(container, name: str, objective: str):
-    async def driver(session_id) -> None:
+    async def driver(session_id, run_id) -> None:
         await container.onboarding.agent_post_complete(
             session_id,
             {"name": name, "objective": objective, "success_metrics": None,
@@ -95,6 +96,7 @@ def _complete(container, name: str, objective: str):
                  {"key": "frontend", "title": "Frontend", "seats": 1, "is_leader": False,
                   "description": "Builds the UI."},
              ]},
+            by_run=run_id,
         )
 
     return driver
@@ -336,3 +338,75 @@ async def test_a_turn_that_ends_silent_closes_the_chat_through_the_real_wiring()
         read = await c.get(f"/v1/onboarding/{sid}", headers=h)
     assert read.status_code == 200, read.text
     assert read.json()["status"] == "abandoned"
+
+
+# ── một token còn sống không phải là một lượt còn được nói (review #253) ────────
+
+
+async def test_the_previous_turn_cannot_write_after_the_chat_has_moved_on() -> None:
+    """Token của lượt chạy sống tới lúc lượt ấy được khép, mà khép là **máy báo về** — nên có
+    một quãng token cũ vẫn mở được cửa trong khi buổi phỏng vấn đã sang lượt khác.
+
+    Kịch bản: agent hỏi bằng lượt 1, người chủ trả lời (xoá câu đang chờ, giao lượt 2), rồi
+    lượt 1 gọi lại — gói tin trả lời rơi mất nên nó thử lại, hoặc nó chạy chậm. Câu ấy thuộc
+    một bước đã qua. Cửa "một câu một lúc" không bắt được, vì xoá câu đang chờ đúng là việc
+    trả lời làm.
+
+    Đọc thành **404**, không phải 403: một lượt chạy với tay sang buổi không phải của nó không
+    được biết buổi ấy có tồn tại hay không (Điều I).
+    """
+    async with await _client() as c:
+        token, ws_id = await _register(c, "onbstale@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        await _online_wa(ws_id)
+        await _a_deferring_agent()
+
+        sid = (await c.post(f"/v1/workspaces/{ws_id}/onboarding", headers=h)).json()["id"]
+        _machine, _run, mine = await _hand_the_turn_to_a_machine(ws_id)
+        assert mine
+        first = {"Authorization": f"Bearer {mine[0].run_token}"}
+
+        asked = await c.post(
+            f"/agent/onboarding/{sid}/question",
+            headers=first,
+            json={
+                "question": "What are you building?",
+                "options": [{"id": "1", "label": "A web app"}],
+                "multi": False,
+            },
+        )
+        assert asked.status_code == 200, asked.text
+
+        # Người chủ trả lời: câu đang chờ bị xoá, và lượt kế tiếp được giao cho một lượt chạy
+        # mới. Token của lượt 1 **vẫn chưa bị thu hồi** — máy chưa báo lượt ấy xong.
+        answered = await c.post(
+            f"/v1/onboarding/{sid}/answer", headers=h, json={"answer": "A web app"}
+        )
+        assert answered.status_code == 200, answered.text
+
+        stale = await c.post(
+            f"/agent/onboarding/{sid}/question",
+            headers=first,
+            json={
+                "question": "A question from the step before",
+                "options": [{"id": "1", "label": "Anything"}],
+                "multi": False,
+            },
+        )
+        drafted = await c.post(
+            f"/agent/onboarding/{sid}/complete",
+            headers=first,
+            json={
+                "project": {"name": "Snuck In", "objective": "…"},
+                "roster": [{"title": "Frontend", "description": "Builds the UI.", "seats": 1}],
+            },
+        )
+
+        after = await c.get(f"/v1/onboarding/{sid}", headers=h)
+
+    assert stale.status_code == 404, stale.text
+    assert drafted.status_code == 404, drafted.text
+    # Và buổi phỏng vấn không hề nhúc nhích: vẫn đang đợi lượt mới nói.
+    collected = after.json()["collected"]
+    assert collected["pending_question"] is None
+    assert collected["draft"] is None

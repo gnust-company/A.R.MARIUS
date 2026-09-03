@@ -829,9 +829,11 @@ class FakeAdapter(MariusAdapter):
     """Stands in for a real runtime when driving onboarding in tests.
 
     Each ``execute`` runs one scripted WA callback queued in ``drivers`` (an async
-    ``(session_id) -> None``), then returns the scripted ``status`` — or raises, to simulate an
-    unreachable runtime. A driver typically calls the onboarding service's agent callbacks
-    (``agent_post_question`` / ``agent_post_complete``) to mimic a live Workspace Agent.
+    ``(session_id, run_id) -> None``), then returns the scripted ``status`` — or raises, to
+    simulate an unreachable runtime. A driver typically calls the onboarding service's agent
+    callbacks (``agent_post_question`` / ``agent_post_complete``) to mimic a live Workspace
+    Agent, and is handed the run it is speaking for because those callbacks only accept the run
+    that is taking the chat's current turn.
 
     ``defer=True`` makes it the other kind of runtime: ``dispatch`` accepts the turn and comes
     back **queued**, having run nothing. That is the shape of a turn handed to a machine — put
@@ -873,7 +875,7 @@ class FakeAdapter(MariusAdapter):
             driver = self.drivers.pop(0)
             sid = _onboarding_id(ctx)
             if sid is not None:
-                await driver(sid)
+                await driver(sid, ctx.run_id)
         return ExecResult(status=self.status, session_params=dict(ctx.session_params))
 
     async def test_environment(self, config: dict) -> Diagnostics:

@@ -60,12 +60,15 @@ def downgrade() -> None:
         batch_op.add_column(
             sa.Column("approved_at", sa.DateTime(timezone=True), nullable=True)
         )
+        # `invited`, because that is what the migration which created this column set
+        # (468899ef9a27). Downgrading is putting the old schema back, not putting back a
+        # schema that would have been more convenient.
         batch_op.add_column(
             sa.Column(
                 "invite_status",
                 sa.String(length=20),
                 nullable=False,
-                server_default="approved",
+                server_default="invited",
             )
         )
         batch_op.add_column(sa.Column("agent_token", sa.String(length=120), nullable=True))

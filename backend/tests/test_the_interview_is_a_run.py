@@ -195,6 +195,7 @@ async def test_a_turn_that_ends_after_the_agent_spoke_leaves_the_chat_alone() ->
     await onboarding.agent_post_question(
         session.id,
         {"question": "What are you building?", "options": [], "multi": False},
+        by_run=run.id,
     )
 
     await engine.conclude_run(run.id, status=RunStatus.COMPLETED)
@@ -241,8 +242,11 @@ async def test_the_screen_is_told_when_the_agent_speaks() -> None:
     session = await onboarding.start(ws_id)
     assert trace.published == []  # mở chat chưa phải là một bước của cuộc hỏi–đáp
 
+    run = _the_run(_factory)
     await onboarding.agent_post_question(
-        session.id, {"question": "What are you building?", "options": [], "multi": False}
+        session.id,
+        {"question": "What are you building?", "options": [], "multi": False},
+        by_run=run.id,
     )
 
     assert [t for t, _ in trace.published] == [EVENT_ONBOARDING_CHANGED]

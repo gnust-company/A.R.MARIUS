@@ -28,7 +28,7 @@ func onboardingCommands() []Command {
 			Params: []Param{
 				{Name: "session_id", Type: TypeString, Required: true, Description: "The chat this question belongs to, named in your instructions."},
 				{Name: "question", Type: TypeString, Required: true, Description: "The single question you are asking now."},
-				{Name: "options", Type: TypeString, Description: `The answers to offer, as a JSON array: [{"id":"1","label":"…"}].`},
+				{Name: "options", Type: TypeString, Required: true, Description: `The answers to offer — at least one, as a JSON array: [{"id":"1","label":"…"}]. Add one whose label invites a typed answer when the patron should write their own.`},
 				{Name: "multi", Type: TypeBoolean, Description: "Whether several options may be picked at once."},
 			},
 			Call: func(ctx context.Context, c *Client, args Args) (json.RawMessage, error) {
@@ -92,10 +92,10 @@ func onboardingPath(args Args, suffix string) (string, error) {
 
 // decodeJSONArray reads a list parameter, whichever face it arrived through.
 //
-// MCP hands over decoded JSON; the command line hands over the text it was typed as. Absent
-// means an empty list, which is a real answer — a question with no options is a question the
-// patron types the answer to. Malformed is a usage error rather than an empty list, because an
-// empty list would be sent on and reported as success.
+// MCP hands over decoded JSON; the command line hands over the text it was typed as. Malformed
+// is a usage error rather than an empty list: an empty list would be sent on, and a question
+// with nothing to pick is refused at the far end — so the agent would be told its options are
+// wrong in a message about a field it thought it had filled in.
 func decodeJSONArray(args Args, name string) ([]any, error) {
 	switch raw := args[name].(type) {
 	case nil:
