@@ -19,7 +19,7 @@ from armarius.domain.entities.leader_chat import (
     ChatState,
     ProjectLeaderConversation,
 )
-from armarius.domain.entities.marius import InviteStatus, Liveness, Marius
+from armarius.domain.entities.marius import Liveness, Marius
 from armarius.domain.entities.onboarding import OnboardingSession, OnboardingStatus
 from armarius.domain.entities.orchestration_sweep import OrchestrationSweep
 from armarius.domain.entities.plan import Plan, PlanItem, PlanStatus
@@ -161,9 +161,6 @@ def marius_to_entity(m: MariusModel) -> Marius:
         adapter_config=dict(m.adapter_config or {}),
         placement_options=dict(m.runtime_options or {}),
         owner_user_id=m.owner_user_id,
-        agent_token=m.agent_token,
-        invite_status=InviteStatus(m.invite_status) if m.invite_status else InviteStatus.INVITED,
-        approved_at=m.approved_at,
         liveness=Liveness(m.liveness),
         # The four the liveness rules do arithmetic on, read back through `as_utc`. The
         # column is declared with a timezone, which PostgreSQL honours and SQLite does not,
@@ -274,6 +271,7 @@ def onboarding_to_entity(m: OnboardingSessionModel) -> OnboardingSession:
         transcript=list(m.transcript or []),
         collected=dict(m.collected or {}),
         created_project_id=m.created_project_id,
+        driving_run_id=m.driving_run_id,
         created_at=m.created_at,
         updated_at=m.updated_at,
     )

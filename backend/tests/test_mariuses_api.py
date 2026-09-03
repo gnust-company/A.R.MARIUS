@@ -22,7 +22,6 @@ from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.infrastructure.database.models import RunModel
 from armarius.main import app
 from tests.support.agents import (
-    agent_token_for,
     invite_agent,
     ready_workplace,
 )
@@ -50,9 +49,11 @@ async def test_creating_an_agent_never_returns_its_token_and_reports_no_send() -
         h = {"Authorization": f"Bearer {token}"}
         data = await invite_agent(c, ws_id, h)
 
-    assert data["invite_status"] == "approved"  # there is no approval step to wait for
-    # The token is a secret — it must not leak through the API.
+    # There is nothing to leak: an agent is an identity and holds no bearer of its own
+    # (FR-014a). Named fields rather than a shape check — this is about what the route is
+    # not allowed to start emitting again.
     assert "agent_token" not in data
+    assert "invite_status" not in data
     assert "invite" not in data
     # And there is no send to report on: nothing was dialled out to, nothing was pushed
     # down. A field saying otherwise would be describing an act that no longer happens.
@@ -72,24 +73,31 @@ async def test_agent_me_authenticates_with_the_token_of_a_live_run() -> None:
     assert me.json()["marius"]["liveness"] == "online"
 
 
-async def test_the_long_lived_agent_token_no_longer_opens_anything() -> None:
-    """Loại token thứ ba đã hết việc — và "hết việc" phải *có tác dụng*, không chỉ là một
-    câu trong đặc tả.
+async def test_nothing_the_agent_row_carries_opens_a_door() -> None:
+    """Loại token thứ ba đã hết đường sống, và "hết đường sống" phải *có tác dụng*.
 
-    Nó vẫn được đúc, vì hai lối onboarding chưa có gì để trình (FR-040c, T048a). Bài này canh
-    đúng chỗ nguy hiểm: một token còn nằm trong bảng mà vẫn mở được cửa thì FR-014g mới chỉ đúng
-    trên giấy. Đọc thành **404**, không phải 403 — không-phải-của-bạn và không-tồn-tại đọc y hệt
-    nhau (Điều I), nên ai cầm một chuỗi đã chết cũng không xác nhận được nó từng mở thứ gì.
+    Nó từng được đúc lúc tạo agent và sống bằng hai lối onboarding — thứ duy nhất trong 22
+    lối `/agent/*` không thuộc lượt chạy nào. Buổi phỏng vấn giờ cũng là một lượt chạy
+    (FR-040c), nên chỗ dựa cuối cùng ấy mất, và cùng với nó là cả cột.
+
+    Bài này quét **mọi** chuỗi agent còn mang theo rồi thử từng cái ở cửa: còn một cái mở
+    được thì FR-014g mới chỉ đúng trên giấy. Đọc thành **404**, không phải 403 —
+    không-phải-của-bạn và không-tồn-tại đọc y hệt nhau (Điều I).
     """
     async with await _client() as c:
         token, ws_id = await _register(c, "deadtoken@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
         data = await invite_agent(c, ws_id, h)
-        stale = await agent_token_for(data["id"])
 
-        me = await c.get("/agent/me", headers={"Authorization": f"Bearer {stale}"})
-    assert me.status_code == 404, me.text
-    assert me.json()["code"] == "run_not_found"
+        async with app.state.container.uow_factory() as uow:
+            marius = await uow.mariuses.get(UUID(data["id"]))
+        assert marius is not None
+        carried = [v for v in vars(marius).values() if isinstance(v, str) and len(v) >= 20]
+
+        for value in carried:
+            me = await c.get("/agent/me", headers={"Authorization": f"Bearer {value}"})
+            assert me.status_code == 404, f"{value!r} vẫn mở được cửa: {me.text}"
+            assert me.json()["code"] == "run_not_found"
 
 
 async def test_the_caller_does_not_get_to_choose_a_runtime() -> None:

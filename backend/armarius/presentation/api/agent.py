@@ -8,9 +8,11 @@ token could never answer.
 These endpoints are what make the collaboration loop real: read the task, comment/@mention,
 update status, record next_action, and publish artifacts into the shared store.
 
-The two `/agent/onboarding/*` routes are the one exception, and a dated one: the interview
-is not yet driven through the claim door, so it has no run to be given a token for. See
-`get_onboarding_marius` — it goes when T048a lands FR-040c.
+The two `/agent/onboarding/*` routes used to be an exception, authenticated by a token minted
+once per agent and good for its whole life. They are not one any more: the team-building
+interview is itself a run, at workspace level, so it carries a run token like every other call
+that arrives here (FR-040c). That was the last door the old credential opened, and with it gone
+the credential is gone too (FR-014a).
 """
 
 from __future__ import annotations
@@ -32,7 +34,6 @@ from armarius.presentation.container import Container
 from armarius.presentation.deps import (
     ContainerDep,
     CurrentMarius,
-    OnboardingMarius,
 )
 from armarius.presentation.schemas import (
     AgentArtifactIn,
@@ -119,7 +120,7 @@ async def _wa_onboarding_session(container, marius, session_id: UUID):
 async def post_onboarding_question(
     session_id: UUID,
     body: AgentOnboardingQuestionIn,
-    marius: OnboardingMarius,
+    marius: CurrentMarius,
     container: ContainerDep,
 ) -> OnboardingOut:
     """Post your next onboarding question. One question at a time — 409 if the previous
@@ -138,7 +139,7 @@ async def post_onboarding_question(
 async def post_onboarding_complete(
     session_id: UUID,
     body: AgentOnboardingCompleteIn,
-    marius: OnboardingMarius,
+    marius: CurrentMarius,
     container: ContainerDep,
 ) -> OnboardingOut:
     """Post your final project + roster draft for the Patron to confirm and finalize."""

@@ -23,7 +23,6 @@ from uuid import UUID
 from armarius.application.ports.adapter import AdapterRegistry, ExecContext
 from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.liveness import LivenessEngine
-from armarius.application.use_cases.onboarding import credential_file_for
 from armarius.application.use_cases.seats import (
     leader_marius_id,
     leader_role_ids,
@@ -401,9 +400,6 @@ class LeaderChatService:
                     plan_items=plan_items,
                     leader_role_description=(
                         leader_role.description if leader_role else ""
-                    ),
-                    credential_file=(
-                        credential_file_for(leader, workspace.name) if workspace else None
                     ),
                 )
             )

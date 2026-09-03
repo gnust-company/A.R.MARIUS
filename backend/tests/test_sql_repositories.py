@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from armarius.application.use_cases.projects import ProjectService, RoleSpec
-from armarius.domain.entities.marius import InviteStatus, Liveness, Marius
+from armarius.domain.entities.marius import Liveness, Marius
 from armarius.domain.entities.project import Project, ProjectStatus
 from armarius.domain.entities.role import Role
 from armarius.domain.entities.seat_grant import SeatGrant
@@ -118,15 +118,12 @@ async def test_project_brief_round_trips(uow_factory) -> None:
     assert got.created_by_user_id == "u1"
 
 
-async def test_marius_invite_and_liveness_timers_round_trip(uow_factory) -> None:
+async def test_marius_liveness_timers_round_trip(uow_factory) -> None:
     ws = await _seed_workspace(uow_factory)
     m = Marius(
         workspace_id=ws.id,
         name="Marin",
         role="Backend",
-        agent_token="arm_secrettoken",
-        invite_status=InviteStatus.APPROVED,
-        approved_at=_T,
         liveness=Liveness.CHECKING,
         last_seen_at=_T,
         probe_attempts=2,
@@ -143,9 +140,6 @@ async def test_marius_invite_and_liveness_timers_round_trip(uow_factory) -> None
 
     async with uow_factory() as uow:
         got = await uow.mariuses.get(m.id)
-    assert got.invite_status == InviteStatus.APPROVED
-    assert got.approved_at == _T
-    assert got.agent_token == "arm_secrettoken"
     assert got.liveness == Liveness.CHECKING
     assert got.probe_attempts == 2
     assert got.backoff_step == 1

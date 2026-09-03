@@ -11,13 +11,13 @@ the shape the product actually produces: the token comes back from `claim`, hash
 moment the run is closed because that is the mechanism, not a fixture detail.
 
 **One piece of the door is deliberately left out: the dressing.** `claim` normally composes
-the message the agent will read, and `compose_packet` needs a task — so a project-level or
-workspace-level run cannot be dressed today and is handed straight back, token revoked, by
-the very door that just minted it. That is a real gap and it belongs to T048a, which is
-where FR-040c turns the interview into a workspace-level run; until then a fixture that
-asked for the dressing could only ever produce task-level runs, and the scope rule this
-file exists to test would have nothing to be tested against. So the service used here is
-built without a composer, which is the same door with that one step absent.
+the message the agent will read, and a message has to come from somewhere: a task, for a run
+about one, and otherwise the wake the run was opened for (FR-040c). The runs here are written
+straight into the table with neither — they exist so that something can hold a token and be
+refused at a boundary, and giving each one a task or a wake would make every test built on
+this file a test about wakes. A run nobody can describe is handed straight back by the door
+that minted it, so the service used here is built without a composer: the same door with that
+one step absent.
 """
 
 from __future__ import annotations

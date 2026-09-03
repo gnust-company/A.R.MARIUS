@@ -225,7 +225,6 @@ export interface MariusDTO {
    *  sentence; this side writes the sentence. Absent when the place is open. */
   offline_reason?: string | null
   /** Invite lifecycle: invited → pending_review → approved (#51). */
-  invite_status?: string | null
   last_seen_at?: string | null
   created_at?: string | null
 }

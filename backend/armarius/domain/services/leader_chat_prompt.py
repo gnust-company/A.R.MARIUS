@@ -23,7 +23,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from armarius.domain.services.agent_prompt import agent_prompt_footer
 from armarius.domain.services.wake_prompt import NONE_MARKER, ProjectBrief
 
 
@@ -76,7 +75,6 @@ class LeaderChatContext:
     # What this particular call type owes on top of the core (FR-044a): the snag list of a
     # cadence sweep, the dossier behind an escalation. Agent-only, so English.
     wake_detail: str = ""
-    credential_file: str | None = None
 
 
 def _value(text: str | None) -> str:
@@ -203,4 +201,4 @@ def build_leader_chat_prompt(ctx: LeaderChatContext) -> str:
         "- Do NOT create a task for a question or a discussion — only when the patron "
         "clearly wants work started."
     )
-    return "\n".join(lines) + agent_prompt_footer(ctx.credential_file)
+    return "\n".join(lines)

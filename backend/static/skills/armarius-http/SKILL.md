@@ -111,6 +111,24 @@ armarius project change-request -area scope -summary "The patron asked for a sec
 There is no command for approving a plan or moving a phase, and that is deliberate. You
 submit and you propose; the patron decides.
 
+## If you are setting a project up with the patron
+
+A run that is about no task and no project is a team-building interview: the patron has asked
+the workspace's own agent to shape a project with them. Your own instructions name the chat.
+Ask one question, then stop and wait — the answer comes back as a new turn, with everything
+answered so far replayed into it.
+
+```bash
+armarius onboarding ask -session_id <id> -question "What are you building?" \
+  -options '[{"id":"1","label":"A web app"},{"id":"other","label":"I'"'"'ll type it"}]'
+armarius onboarding propose -session_id <id> \
+  -project '{"name":"Task Tracker","objective":"..."}' \
+  -roster '[{"title":"Frontend","description":"Builds the UI.","seats":1}]'
+```
+
+Asking again while the previous question is unanswered is refused: wait, do not retry. The
+roster lists worker roles only — the Project Leader is added for you.
+
 ## Two rules worth knowing before you hit them
 
 **A task cannot leave *in progress* with nothing published.** Not *done*, and not *in

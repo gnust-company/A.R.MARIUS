@@ -205,7 +205,14 @@ def build_container() -> Container:
         projects,
         workspace_agent,
         registry,
-        settings.public_api_url,
+        # The interview's turn runs where this process cannot watch it, so the screen holding
+        # the chat open is told to come back and read it (FR-040c).
+        workspace_trace=ControlBusWorkspaceTrace(control_bus),
+        # And a turn an in-process runtime carries out inside the dispatch is closed the same
+        # way a turn on a machine is, through the one object that knows what closing a run
+        # means. Two ways of ending a run would be two answers to what a finished run leaves
+        # behind.
+        close_run=wake_engine.conclude_run,
     )
 
     # The single writer of `task.drive` (FR-056). Built before the task service because
@@ -238,6 +245,18 @@ def build_container() -> Container:
             {"workplace_id": str(workplace_id)},
         )
 
+    async def close_run(run_id: UUID, **ending: object) -> None:
+        """A run reported finished from a machine, and everyone who is owed that news.
+
+        The wake engine is what *closing a run* means and stays the only thing that decides
+        it. What follows is a second reader of the same fact, not a second decision: a run
+        may have been taking a turn of a team-building interview, and a chat whose turn ended
+        with the agent saying nothing has nobody left to drive it (FR-040c). Told here rather
+        than from inside the engine, because a chat is not something the run loop knows about.
+        """
+        await wake_engine.conclude_run(run_id, **ending)  # type: ignore[arg-type]
+        await onboarding.run_ended(run_id)
+
     claims = DaemonClaimService(
         on_release=push_reasons.refresh,
         on_offer=nudge_machine,
@@ -258,7 +277,7 @@ def build_container() -> Container:
         # And the end of a run handed to the layer that decides what a task does next — the
         # follow-up wake above all, which is what stops a finished run leaving a task with
         # nothing scheduled to look at it again (FR-030a).
-        on_finish=wake_engine.conclude_run,
+        on_finish=close_run,
     )
     registry.register(DaemonAdapter(claims))
     # Tasks and approvals are built here rather than inline below: the approval service

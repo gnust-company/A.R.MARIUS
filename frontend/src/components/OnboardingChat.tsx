@@ -4,12 +4,19 @@
 // options (with an "Other → type it" free-text escape). Answers accumulate into a project +
 // roster draft; confirming it creates the project. Each mount opens a FRESH session, so
 // re-entering the flow never resurrects stale chat history.
+//
+// **The answer no longer comes back in the reply.** Each turn of the interview is a run, and
+// a run is taken by whichever machine is free (FR-040c) — so `start` and `answer` return
+// before the agent has spoken, and what says it has spoken is the workspace channel. This
+// panel waits on that channel and re-reads the chat, which is why it can show a turn arriving
+// without anything here polling for it.
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Loader2, Sparkles, AlertCircle, Check, ArrowRight, RotateCcw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore, type OnboardingTurn } from '@/store/appStore';
+import { onWorkspaceEvent } from '@/hooks/use-workspace-events';
 import { ApiError, type OnboardingQuestion, type OnboardingDraft } from '@/lib/api';
 
 /** An option whose label invites a typed answer (mirrors the backend's is_free_text_option). */
@@ -29,6 +36,7 @@ export default function OnboardingChat({ onCreated }: OnboardingChatProps) {
   const startOnboarding = useAppStore((s) => s.startOnboarding);
   const answerOnboarding = useAppStore((s) => s.answerOnboarding);
   const finalizeOnboarding = useAppStore((s) => s.finalizeOnboarding);
+  const hydrateActiveOnboarding = useAppStore((s) => s.hydrateActiveOnboarding);
 
   const [phase, setPhase] = useState<Phase>('starting');
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +91,24 @@ export default function OnboardingChat({ onCreated }: OnboardingChatProps) {
     void tryStart();
   }, [tryStart]);
 
+  // The agent's turn happens on a machine, and this is how the browser hears about it. The
+  // event carries an id and nothing else, so it is a signal to go and read the chat again —
+  // never the chat itself.
+  useEffect(
+    () =>
+      onWorkspaceEvent((event) => {
+        if (event.type !== 'onboarding.changed') return;
+        void (async () => {
+          await hydrateActiveOnboarding();
+          // The chat is gone: the turn ended with the agent saying nothing, and the server
+          // closed it. Same panel the patron gets when the agent is offline, because it is
+          // the same problem — there is nobody to interview with.
+          if (useAppStore.getState().activeOnboarding === null) setWaOffline(true);
+        })();
+      }),
+    [hydrateActiveOnboarding],
+  );
+
   // Keep the newest turn in view as the transcript grows.
   useEffect(() => {
     const el = scrollRef.current;
@@ -103,6 +129,10 @@ export default function OnboardingChat({ onCreated }: OnboardingChatProps) {
 
   const pending = session?.pendingQuestion ?? null;
   const draft = session?.phase === 'complete' ? session?.draft ?? null : null;
+  // The chat is open and the agent owes it a turn. Nothing here is waiting on a reply — the
+  // turn is out on a machine — so this is what stands in for the reply that used to arrive
+  // inside the call.
+  const awaitingAgent = phase === 'ready' && session !== null && !pending && !draft;
   // The last agent turn IS the pending question — render it as an interactive panel, not a
   // duplicate bubble. Everything before it is scrollback history.
   const turns = session?.transcript ?? [];
@@ -153,6 +183,13 @@ export default function OnboardingChat({ onCreated }: OnboardingChatProps) {
 
             {phase !== 'starting' && !draft && pending && (
               <QuestionPanel key={pending.key ?? pending.question} question={pending} onSubmit={submitAnswer} />
+            )}
+
+            {awaitingAgent && (
+              <div className="flex items-center gap-2 font-body text-body-sm text-ink-muted">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {t('onboarding.waiting')}
+              </div>
             )}
 
             {error && (

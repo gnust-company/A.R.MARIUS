@@ -33,6 +33,16 @@ class OnboardingSession:
     transcript: list[dict] = field(default_factory=list)  # [{role, text, ts}]
     collected: dict = field(default_factory=dict)  # accumulating plan
     created_project_id: UUID | None = None
+    # The run that is taking the current turn of this interview (FR-040c). The chat is
+    # driven one turn at a time by a workspace-level run, and the turn happens somewhere
+    # this process cannot watch: it is put on a shelf, a machine takes it, and the only
+    # word of it ending arrives later and names the run.
+    #
+    # So the session has to be findable *from* that run. Going the other way — asking
+    # which chat is open in this workspace — answers the wrong question the moment a
+    # patron cancels and starts again: the turn of the chat they left would be read as the
+    # turn of the chat they are now in, and one silent agent would close the other's chat.
+    driving_run_id: UUID | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

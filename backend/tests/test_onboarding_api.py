@@ -36,13 +36,17 @@ async def _register(c: AsyncClient, email: str) -> tuple[str, str]:
 async def _online_wa(ws_id: str) -> None:
     """Seat a real Workspace Agent (operator-invite, #63) and flip it ONLINE for the happy path.
 
-    The WA is never lazy-created anymore — we create + activate an agent directly and seat it
-    as host (the unit-style bypass of the HTTP invite path), so onboarding's wake finds a
-    ready host whose adapter_type the wired FakeAdapter will satisfy.
+    The WA is never lazy-created anymore — we create an agent directly and seat it as host
+    (the unit-style bypass of the HTTP invite path), so onboarding's turn finds a ready host
+    whose adapter_type the wired FakeAdapter will satisfy.
     """
-    from armarius.domain.entities.marius import InviteStatus, Marius
+    from armarius.domain.entities.marius import Marius
+    from tests.support.agents import ready_workplace
 
     ws_uuid = UUID(ws_id)
+    # Placed, like every agent the product can make (FR-007f). A workspace agent with nowhere
+    # to work cannot be handed a turn, and the interview's turn is a run like any other.
+    workplace_id = UUID(await ready_workplace(ws_uuid))
     async with make_uow() as uow:
         host = Marius(
             workspace_id=ws_uuid,
@@ -50,10 +54,9 @@ async def _online_wa(ws_id: str) -> None:
             role="Workspace Agent",
             adapter_type="fake",
             liveness=Liveness.ONLINE,
-            invite_status=InviteStatus.APPROVED,
-            agent_token="arm_wa",
         )
-        await uow.mariuses.add(host)
+        created = await uow.mariuses.add(host)
+        await uow.placements.attach(created.id, ws_uuid, workplace_id)
         ws = await uow.workspaces.get(ws_uuid)
         assert ws is not None
         ws.workspace_agent_id = host.id
@@ -205,3 +208,131 @@ async def test_onboarding_cross_workspace_is_404() -> None:
             await c.post(f"/v1/onboarding/{sid}/answer", headers=h_b, json={"answer": "x"})
         ).status_code == 404
         assert (await c.post(f"/v1/onboarding/{sid}/finalize", headers=h_b)).status_code == 404
+
+
+# ── the interview on the daemon road, through the real wiring ────────────────────
+
+
+async def _the_interview_run(ws_id: str):
+    """The one run the interview opened, read back from the real table."""
+    from sqlalchemy import select
+
+    from armarius.infrastructure.database.engine import get_sessionmaker
+    from armarius.infrastructure.database.models import MariusModel, RunModel
+
+    async with get_sessionmaker()() as session:
+        row = (
+            await session.execute(
+                select(RunModel)
+                .join(MariusModel, MariusModel.id == RunModel.marius_id)
+                .where(MariusModel.workspace_id == UUID(ws_id))
+            )
+        ).scalars().all()
+    assert len(row) == 1, f"mong đúng một lượt chạy, có {len(row)}"
+    return row[0]
+
+
+async def _machine_of(workplace_id: UUID) -> UUID:
+    from armarius.infrastructure.daemon.models import WorkplaceModel
+    from armarius.infrastructure.database.engine import get_sessionmaker
+
+    async with get_sessionmaker()() as session:
+        workplace = await session.get(WorkplaceModel, workplace_id)
+    assert workplace is not None
+    return workplace.machine_id
+
+
+async def _hand_the_turn_to_a_machine(ws_id: str):
+    """Treo lượt phỏng vấn lên kệ rồi xin nó về, qua đúng cửa daemon gọi.
+
+    Trả về `(máy, lượt chạy, phần được giao)`. Đi qua cửa thật chứ không viết thẳng vào bảng,
+    vì thứ đang canh chính là cửa ấy: gói việc được dựng ở đó, và trước T048a nó dựng hỏng.
+    """
+    from uuid import uuid4
+
+    from armarius.infrastructure.daemon.enrollment import MachineIdentity
+    from armarius.infrastructure.daemon.models import AgentWorkplaceBindingModel
+    from armarius.infrastructure.database.engine import get_sessionmaker
+
+    run = await _the_interview_run(ws_id)
+    async with get_sessionmaker()() as session:
+        binding = await session.get(AgentWorkplaceBindingModel, run.marius_id)
+    assert binding is not None
+    machine = MachineIdentity(
+        machine_id=await _machine_of(binding.workplace_id),
+        workspace_id=binding.workspace_id,
+        owner_user_id=uuid4(),
+        token_expires_at=None,
+    )
+    claims = app.state.container.daemon_claims
+    await claims.offer(
+        run_id=run.id,
+        workspace_id=binding.workspace_id,
+        workplace_id=binding.workplace_id,
+    )
+    granted = await claims.claim(
+        machine, workplace_ids=[binding.workplace_id], free_slots=1
+    )
+    return machine, run, [g for g in granted if g.run_id == run.id]
+
+
+async def _a_deferring_agent() -> None:
+    """Một runtime **nhận** lượt rồi để đấy — hình dạng của một lượt giao cho máy."""
+    _wire_agent([])
+    app.state.container.registry._adapters["fake"].defer = True  # type: ignore[attr-defined]
+
+
+async def test_the_machine_is_handed_the_interview_through_the_real_claim_door() -> None:
+    """Cửa nhận việc thật, trên cơ sở dữ liệu thật, phải mặc áo được cho lượt phỏng vấn.
+
+    Trước T048a nó **không** mặc được: gói việc dựng từ đầu việc, mà lượt này không có đầu
+    việc nào, nên cửa trả ngay về kệ và thu hồi token nó vừa đúc.
+    """
+    async with await _client() as c:
+        token, ws_id = await _register(c, "onbclaim@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        await _online_wa(ws_id)
+        await _a_deferring_agent()
+
+        started = await c.post(f"/v1/workspaces/{ws_id}/onboarding", headers=h)
+        assert started.status_code == 201, started.text
+        sid = started.json()["id"]
+        # Trả về trước khi agent kịp nói: lượt chạy còn nằm trên kệ.
+        assert started.json()["collected"]["pending_question"] is None
+
+        _machine, run, mine = await _hand_the_turn_to_a_machine(ws_id)
+
+    assert run.task_id is None and run.project_id is None
+    assert mine, "cửa nhận việc trả lượt phỏng vấn về kệ thay vì giao đi"
+    assert "ARMARIUS · PROJECT ONBOARDING" in mine[0].prompt
+    assert sid in mine[0].prompt
+    assert mine[0].run_token  # và nó giữ token, thay vì bị thu hồi ngay sau khi đúc
+
+
+async def test_a_turn_that_ends_silent_closes_the_chat_through_the_real_wiring() -> None:
+    """Không ai đứng đợi câu trả lời nữa, nên cú khép lượt chạy phải là chỗ bắt cái hỏng.
+
+    Đây là bài canh **dây nối** trong bộ dựng: cửa khép lượt chạy nói cho buổi phỏng vấn biết.
+    Thiếu dây ấy thì lượt chạy vẫn khép đẹp, buổi phỏng vấn vẫn mở, và người chủ ngồi nhìn một
+    khung chat không bao giờ nhúc nhích.
+    """
+    from armarius.domain.entities.run import RunStatus
+
+    async with await _client() as c:
+        token, ws_id = await _register(c, "onbsilent@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        await _online_wa(ws_id)
+        await _a_deferring_agent()
+
+        sid = (await c.post(f"/v1/workspaces/{ws_id}/onboarding", headers=h)).json()["id"]
+        machine, run, mine = await _hand_the_turn_to_a_machine(ws_id)
+        assert mine
+
+        # Máy chạy xong lượt ấy và không nói gì.
+        await app.state.container.daemon_claims.finish(
+            machine, run.id, status=RunStatus.COMPLETED
+        )
+
+        read = await c.get(f"/v1/onboarding/{sid}", headers=h)
+    assert read.status_code == 200, read.text
+    assert read.json()["status"] == "abandoned"

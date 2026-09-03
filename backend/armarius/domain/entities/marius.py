@@ -1,13 +1,17 @@
 """Marius (agent) entity — a named, skilled, autonomous worker seated in a project.
 
-Owns two small state machines, both pure here (the application layer adds I/O):
-  - invite FSM (LLD §3.4) — operator-invite: invited → approved. The operator entering an
-    agent's gateway IS the approval, so the `agent_token` is minted at invite time and
-    embedded in the setup prompt the system pushes to the agent (issue #63). There is no
-    enroll/approve gate anymore.
-  - liveness (LLD §10) — recency+probe model: ONLINE→CHECKING→OFFLINE with backoff. The
-    transition logic lives in `domain.services.liveness_fsm`; this entity just holds the
-    bookkeeping fields it reads/writes.
+Owns one small state machine, pure here (the application layer adds I/O): liveness
+(LLD §10) — recency+probe model: ONLINE→CHECKING→OFFLINE with backoff. The transition
+logic lives in `domain.services.liveness_fsm`; this entity just holds the bookkeeping
+fields it reads/writes.
+
+**An agent holds no credential of its own** (FR-014a). It used to: a token minted when the
+agent was created, good for the agent's whole life, which answered *which agent* and never
+*which run*. The system has exactly two tokens now — the machine's and the run's — and the
+second is minted when a machine takes a run and dies when that run closes. There is
+therefore nothing here to admit an agent through a door, and no invite lifecycle either:
+the invite was the moment that token was minted, so with the token gone the states it
+moved between describe nothing (FR-014a, FR-014g).
 """
 
 from __future__ import annotations
@@ -17,7 +21,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from armarius.shared.errors import CodedError, Conflict
+from armarius.shared.errors import Conflict
 
 
 class Liveness(StrEnum):
@@ -29,17 +33,6 @@ class Liveness(StrEnum):
     CHECKING = "checking"  # probing after T1 of silence
     WORKING = "working"
     HUNG = "hung"
-
-
-class InviteStatus(StrEnum):
-    INVITED = "invited"
-    PENDING_REVIEW = "pending_review"
-    APPROVED = "approved"
-    REVOKED = "revoked"
-
-
-class InviteError(CodedError):
-    """Raised on an illegal invite-lifecycle transition (LLD §3.4)."""
 
 
 class NameTaken(Conflict):
@@ -57,9 +50,9 @@ class Marius:
     """An agent identity bound to a runtime adapter.
 
     `adapter_config` carries whatever connection details that runtime needs, captured
-    from the operator at invite time. `agent_token` is the bearer the
-    agent uses to call back into the Armarius agent-facing API (whoami/comment/publish) —
-    minted at invite time and embedded in the pushed setup prompt (issue #63).
+    from the operator when the agent was created. What the agent calls back with is not
+    here and never will be: it is the token of the run it is taking, handed to the process
+    that runs it (FR-014c, FR-014g).
     """
 
     id: UUID = field(default_factory=uuid4)
@@ -98,10 +91,6 @@ class Marius:
     # means the person never chose, and the tool's own default applies (FR-007k).
     placement_options: dict = field(default_factory=dict)
     owner_user_id: str | None = None
-    agent_token: str | None = None
-    # Invite lifecycle (LLD §3.4) — operator-invite: invited → approved (no enroll/approve).
-    invite_status: InviteStatus = InviteStatus.INVITED
-    approved_at: datetime | None = None
     # Liveness bookkeeping (LLD §10) — driven by LivenessEngine via liveness_fsm.
     liveness: Liveness = Liveness.OFFLINE
     last_seen_at: datetime | None = None
@@ -118,26 +107,3 @@ class Marius:
         owned = {s.lower() for s in self.skills}
         return all(req.lower() in owned for req in required)
 
-    # ── invite FSM (pure; LLD §3.4) ────────────────────────────────────────────
-    def activate(self, agent_token: str, now: datetime) -> None:
-        """Operator-invite activation: mint the token once and flip to approved.
-
-        Inviting an agent IS the approval (issue #63): the operator entering the agent's
-        gateway has already decided to admit it, so the token is minted at invite time and
-        embedded in the setup prompt the system pushes. Idempotent re-activation is an
-        error — a second mint would silently replace the token an agent already holds.
-        Allowed from INVITED (the normal invite path) or PENDING_REVIEW (legacy rows only).
-        """
-        if self.invite_status == InviteStatus.REVOKED:
-            raise InviteError("agent_revoked_cannot_activate")
-        if self.invite_status == InviteStatus.APPROVED:
-            raise InviteError("agent_already_active")
-        self.agent_token = agent_token
-        self.approved_at = now
-        self.invite_status = InviteStatus.APPROVED
-
-    def revoke(self) -> None:
-        """Withdraw an agent's access from any pre-revoked state (LLD §3.4)."""
-        if self.invite_status == InviteStatus.REVOKED:
-            raise InviteError("agent_cannot_revoke", status=self.invite_status)
-        self.invite_status = InviteStatus.REVOKED

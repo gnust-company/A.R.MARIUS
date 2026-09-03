@@ -38,6 +38,11 @@ from armarius.domain.entities.skill import Skill
 from armarius.domain.entities.task import Task, TaskStatus
 from armarius.domain.entities.task_dependency import TaskDependency
 from armarius.domain.entities.task_log import TaskLogEntry
+from armarius.domain.entities.wakeup import (
+    PENDING_WAKEUP_STATUSES,
+    WakeupRequest,
+    WakeupStatus,
+)
 from armarius.domain.entities.workspace import Project, ProjectStatus, Workspace
 from armarius.domain.services.push_reason_rules import watches
 from armarius.shared.errors import Conflict, NotFound
@@ -64,6 +69,7 @@ class _Store:
     placements: dict[UUID, Placement] = field(default_factory=dict)
     attachments: dict[UUID, UUID] = field(default_factory=dict)
     skills: dict[UUID, Skill] = field(default_factory=dict)
+    wakeups: dict[UUID, WakeupRequest] = field(default_factory=dict)
 
 
 class _FakeWorkspaceRepo:
@@ -459,9 +465,6 @@ class _FakeMariusRepo:
     async def get(self, marius_id: UUID) -> Marius | None:
         return self._s.mariuses.get(marius_id)
 
-    async def get_by_token(self, token: str) -> Marius | None:
-        return next((m for m in self._s.mariuses.values() if m.agent_token == token), None)
-
     async def list_by_workspace(self, workspace_id: UUID) -> list[Marius]:
         return [m for m in self._s.mariuses.values() if m.workspace_id == workspace_id]
 
@@ -522,6 +525,11 @@ class _FakeOnboardingRepo:
         self._s.onboardings[session.id] = session
         return session
 
+    async def get_by_run(self, run_id: UUID) -> OnboardingSession | None:
+        return next(
+            (s for s in self._s.onboardings.values() if s.driving_run_id == run_id), None
+        )
+
     async def list_by_workspace(
         self, workspace_id: UUID
     ) -> list[OnboardingSession]:
@@ -531,6 +539,52 @@ class _FakeOnboardingRepo:
         ]
         items.sort(key=lambda s: s.created_at or epoch, reverse=True)
         return items
+
+
+class _FakeWakeupRepo:
+    """Enough of the wake register for the paths that write one and read it back."""
+
+    def __init__(self, store: _Store) -> None:
+        self._s = store
+
+    async def add(self, wakeup: WakeupRequest) -> WakeupRequest:
+        self._s.wakeups[wakeup.id] = wakeup
+        return wakeup
+
+    async def update(self, wakeup: WakeupRequest) -> WakeupRequest:
+        self._s.wakeups[wakeup.id] = wakeup
+        return wakeup
+
+    async def list_active_for(
+        self, marius_id: UUID, task_id: UUID
+    ) -> list[WakeupRequest]:
+        return [
+            w
+            for w in self._s.wakeups.values()
+            if w.marius_id == marius_id
+            and w.task_id == task_id
+            and w.status in PENDING_WAKEUP_STATUSES
+        ]
+
+    async def get_for_run(self, run_id: UUID) -> WakeupRequest | None:
+        return next((w for w in self._s.wakeups.values() if w.run_id == run_id), None)
+
+    async def list_pending_for_task(self, task_id: UUID) -> list[WakeupRequest]:
+        return [
+            w
+            for w in self._s.wakeups.values()
+            if w.task_id == task_id and w.status in PENDING_WAKEUP_STATUSES
+        ]
+
+    async def list_coalesced_into(self, run_id: UUID) -> list[WakeupRequest]:
+        epoch = datetime.min.replace(tzinfo=UTC)
+        folded = [
+            w
+            for w in self._s.wakeups.values()
+            if w.run_id == run_id and w.status == WakeupStatus.COALESCED
+        ]
+        folded.sort(key=lambda w: w.created_at or epoch)
+        return folded
 
 
 class _FakeTaskLogRepo:
@@ -711,6 +765,7 @@ class FakeUnitOfWork(UnitOfWork):
         self.placements = _FakePlacementRepo(s)  # type: ignore[assignment]
         self.queue = _FakeQueueView(s)  # type: ignore[assignment]
         self.skills = _FakeSkillRepo(s)  # type: ignore[assignment]
+        self.wakeups = _FakeWakeupRepo(s)  # type: ignore[assignment]
         return self
 
     async def __aexit__(
@@ -777,6 +832,11 @@ class FakeAdapter(MariusAdapter):
     ``(session_id) -> None``), then returns the scripted ``status`` — or raises, to simulate an
     unreachable runtime. A driver typically calls the onboarding service's agent callbacks
     (``agent_post_question`` / ``agent_post_complete``) to mimic a live Workspace Agent.
+
+    ``defer=True`` makes it the other kind of runtime: ``dispatch`` accepts the turn and comes
+    back **queued**, having run nothing. That is the shape of a turn handed to a machine — put
+    on a shelf here, carried out there, reported later — and it is the only way to exercise a
+    caller that must not wait for its answer.
     """
 
     type = "fake"
@@ -788,11 +848,22 @@ class FakeAdapter(MariusAdapter):
         status: RunStatus = RunStatus.COMPLETED,
         drivers: list | None = None,
         raise_on_execute: BaseException | None = None,
+        defer: bool = False,
     ) -> None:
         self.status = status
         self.drivers: list = list(drivers or [])
         self.raise_on_execute = raise_on_execute
+        self.defer = defer
         self.executes = 0
+        self.dispatched: list = []
+
+    async def dispatch(self, ctx) -> ExecResult:
+        if not self.defer:
+            return await self.execute(ctx)
+        if self.raise_on_execute is not None:
+            raise self.raise_on_execute
+        self.dispatched.append(ctx)
+        return ExecResult(status=RunStatus.QUEUED)
 
     async def execute(self, ctx) -> ExecResult:
         self.executes += 1

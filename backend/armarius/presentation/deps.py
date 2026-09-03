@@ -40,10 +40,10 @@ async def resolve_run(
 
     Two things ask: the scope guard on the router, which needs the run *before* deciding
     whether the route is even in bounds, and `get_current_run` below. FastAPI caches a
-    dependency's result per request, but the guard cannot go through the dependency —
-    resolving it would raise on the two onboarding routes, which have no run yet
-    (FR-040c). So the answer is memoised on the request instead, and both askers share the
-    one lookup.
+    dependency's result per request, but the guard cannot go through the dependency: it must
+    stay silent on a token that opens nothing and let the route's own door give that answer,
+    with the code that names the real cause. So the answer is memoised on the request
+    instead, and both askers share the one lookup.
     """
     cached = getattr(request.state, "run_caller", _NOT_LOOKED_UP)
     if cached is not _NOT_LOOKED_UP:
@@ -60,9 +60,11 @@ async def get_current_run(
 ) -> RunCaller:
     """Resolve the calling run from the token its agent was started with (FR-014g).
 
-    Twenty of the twenty-two `/agent/*` routes come through here — every one except the two
-    onboarding routes below — which is why changing the credential was a change to one
-    function rather than to twenty.
+    **Every** `/agent/*` route comes through here, which is why changing the credential was
+    a change to one function rather than to twenty-two. The two onboarding routes were the
+    last exception, and they stopped being one when the team-building interview became a run
+    of its own (FR-040c): there is now no door left that a long-lived per-agent token could
+    open, and no such token either (FR-014a).
 
     **Nothing resolved reads as 404, not 401 and never 403.** The token *is* the run: a
     string that opens no run names no run, and Constitution I says a thing that is not
@@ -99,30 +101,3 @@ async def get_current_marius(run: CurrentRun) -> Marius:
 
 
 CurrentMarius = Annotated[Marius, Depends(get_current_marius)]
-
-
-async def get_onboarding_marius(
-    authorization: Annotated[str | None, Header()] = None,
-) -> Marius:
-    """The Workspace Agent driving a team-building interview — the one interim door left.
-
-    **This is scaffolding with a date on it.** FR-040c says the interview is a run like any
-    other, at workspace level, and once T048a builds it on the daemon road these two routes
-    take `CurrentMarius` like the other twenty and this function goes, together with
-    `mariuses.agent_token` itself (T039d).
-
-    Until then the interview is still driven through the gateway adapter, which never
-    passes through the claim door and so has no run to be given a token for. Leaving the
-    long-lived token accepted *here only* is the narrow version of that gap: twenty routes
-    move to the run token now instead of waiting for the interview, and the credential this
-    replaces survives on exactly the two routes that have nothing else yet.
-    """
-    token = _bearer(authorization)
-    async with make_uow() as uow:
-        marius = await uow.mariuses.get_by_token(token)
-    if marius is None:
-        raise Unauthorized("invalid_agent_token")
-    return marius
-
-
-OnboardingMarius = Annotated[Marius, Depends(get_onboarding_marius)]

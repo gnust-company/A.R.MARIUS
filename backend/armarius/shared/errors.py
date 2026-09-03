@@ -62,7 +62,6 @@ ENGLISH: dict[str, str] = {
     "no_granted_seat": "No granted seat for that agent and role.",
     # ── who is calling ────────────────────────────────────────────────────────
     "missing_bearer_token": "Missing bearer token.",
-    "invalid_agent_token": "Invalid agent token.",
     "invalid_machine_token": "Invalid or expired machine token.",
     "invalid_access_token": "Invalid or expired access token.",
     "invalid_refresh_token": "Invalid refresh token.",

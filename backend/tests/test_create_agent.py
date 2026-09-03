@@ -12,7 +12,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from armarius.application.use_cases.enrollment import AgentService, PlacementNotReady
-from armarius.domain.entities.marius import InviteStatus, Marius, NameTaken
+from armarius.domain.entities.marius import Marius, NameTaken
 from armarius.domain.entities.placement import Placement
 from armarius.domain.entities.workspace import Workspace
 from armarius.shared.clock import utcnow
@@ -148,14 +148,22 @@ async def test_an_unknown_workspace_is_not_found() -> None:
         await AgentService(factory).create(uuid4(), "Marin", placement_id=place.id)
 
 
-async def test_the_agent_is_live_the_moment_it_is_made() -> None:
+async def test_making_an_agent_mints_no_credential_for_it() -> None:
+    """Adding an agent creates an identity, never a bearer (FR-014a).
+
+    There used to be one, minted right here and good for the agent's whole life. The system
+    has exactly two tokens now — the machine's and the run's — and this is the place a third
+    would come back, because this is the only path that makes an agent."""
     factory, ws, place = _world()
 
     marius = await AgentService(factory).create(ws.id, "Marin", placement_id=place.id)
 
-    # There is no approval step and nothing to wait for: the person adding the agent is the
-    # one who would have approved it.
-    assert marius.invite_status == InviteStatus.APPROVED
+    carried = [
+        name
+        for name, value in vars(marius).items()
+        if isinstance(value, str) and value.startswith("arm_")
+    ]
+    assert not carried, f"agent mới tạo lại mang theo credential: {carried}"
 
 
 # ── The name rule under a race ─────────────────────────────────────────────────

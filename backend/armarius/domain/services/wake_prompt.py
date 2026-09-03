@@ -47,7 +47,6 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from armarius.domain.entities.run import WakeSource
-from armarius.domain.services.agent_prompt import agent_prompt_footer
 from armarius.domain.services.orchestration_cadence import Snag
 
 # What an empty part reads as. One constant so no caller invents its own wording, and so a
@@ -120,23 +119,15 @@ class WakeContext:
     # The approved brief (FR-009). `None` when the project has none approved yet — which
     # is itself worth saying out loud, so the agent knows nobody has set direction.
     project_brief: ProjectBrief | None = None
-    # Where this wake comes from (#15): a multi-workspace agent holds one token per
-    # workspace, so every prompt names its workspace/project and the exact credential
-    # file to read — the agent must never guess among several files.
+    # Where this wake comes from (#15): an agent can work in more than one workspace, and
+    # a packet that does not say which one leaves it guessing.
     workspace_name: str = ""
     project_name: str = ""
-    credential_file: str | None = None
     # What the patron wrote when they created this agent: who it is, what it answers for,
     # what it may change, how it hands work in. The ONLY place an agent's behaviour is
     # defined (FR-007i, Constitution V) — which is why it rides every packet rather than
     # being set up once somewhere and trusted to still be there.
     instructions: str = ""
-    # Whether the packet ends with the hint naming the agent's credential file. True on
-    # the road where the agent reads its token off disk. False where the run's credential
-    # is handed to the process itself and there is no file to point at (FR-014c): a hint
-    # naming a file that is not there costs the agent a wasted read and teaches it to
-    # distrust the packet.
-    credential_hint: bool = True
 
 
 def _value(text: str | None) -> str:
@@ -279,18 +270,17 @@ def _task_extras(ctx: WakeContext, lines: list[str]) -> None:
 
 
 def build_wake_prompt(ctx: WakeContext) -> str:
+    """The packet, and nothing after it.
+
+    It used to end with a footer naming the file the agent's own token lived in. There is
+    no such token and no such file: the credential is the run's, and it is handed to the
+    process that runs the agent (FR-014a, FR-014c). A footer sending the agent to read a
+    file nobody writes costs it a wasted read and teaches it to distrust the packet.
+    """
     lines: list[str] = []
     _core(ctx, lines)
     _task_extras(ctx, lines)
-    body = "\n".join(lines)
-    if not ctx.credential_hint:
-        # The one road that ends here: the credential arrives with the process, so there is
-        # no file to name and naming one anyway would be a lie the agent acts on.
-        return body
-    # Every other system→agent message ends with the SAME token-location footer so even a
-    # weak model always knows where its token lives — identical to the invite, skill-install
-    # and onboarding prompts (#80).
-    return body + agent_prompt_footer(ctx.credential_file)
+    return "\n".join(lines)
 
 
 # ── the orchestration-cadence extra (FR-044a, FR-054) ────────────────────────────

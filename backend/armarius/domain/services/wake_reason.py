@@ -100,6 +100,13 @@ ENGLISH: dict[str, str] = {
         "The worker on {task} was declared offline and the task moved to blocked. "
         "Reassign it, or wait for them."
     ),
+    # ── the team-building interview (FR-040c) ──
+    # It is a run like any other, so its cause is written the way every other cause is.
+    # Naming the two turns apart matters to whoever reads the run afterwards: one of them
+    # opens a conversation and the other continues one, and a log that calls both "the
+    # patron said something" cannot say which run was the first.
+    "onboarding_opened": "The patron opened a chat to set a project up with you.",
+    "onboarding_answered": "The patron answered your question.",
     # ── the manual button ──
     "manual_wake": "The patron woke you from the dashboard.",
     "manual_wake_note": "The patron woke you from the dashboard: {note}",

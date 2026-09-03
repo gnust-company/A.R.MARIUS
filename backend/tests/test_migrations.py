@@ -30,7 +30,15 @@ def test_migrations_upgrade_head_then_downgrade_base(tmp_path, monkeypatch) -> N
     project_cols = {c["name"] for c in insp.get_columns("projects")}
     assert {"status", "objective", "settings", "created_by_user_id"} <= project_cols
     marius_cols = {c["name"] for c in insp.get_columns("mariuses")}
-    assert {"invite_status", "probe_attempts", "next_probe_at", "turn_started_at"} <= marius_cols
+    assert {"probe_attempts", "next_probe_at", "turn_started_at"} <= marius_cols
+    # An agent holds no credential of its own, and the schema is where that stops being a
+    # sentence in the spec (FR-014a). A column still standing here is a column something can
+    # still be read out of, whatever the code above it currently does.
+    assert not ({"agent_token", "invite_status", "approved_at"} & marius_cols)
+    # And the interview's turn is findable from the run taking it (FR-040c).
+    assert "driving_run_id" in {
+        c["name"] for c in insp.get_columns("onboarding_sessions")
+    }
     insp.bind.dispose()
 
     # Down to the baseline: Sprint-3 objects vanish, the baseline tables remain.

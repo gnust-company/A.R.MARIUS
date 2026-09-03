@@ -194,14 +194,22 @@ class OnboardingRepository(ABC):
     ) -> Sequence[OnboardingSession]:
         """All sessions for a workspace (newest first) — the active one is the first OPEN."""
 
+    @abstractmethod
+    async def get_by_run(self, run_id: UUID) -> OnboardingSession | None:
+        """The chat whose current turn is this run, if the run is taking one.
+
+        Asked when a run ends: an interview turn that finished without the agent saying
+        anything leaves a chat with nobody driving it, and the patron is left watching a
+        screen that will never move. The lookup goes this way round on purpose — see
+        ``OnboardingSession.driving_run_id``.
+        """
+
 
 class MariusRepository(ABC):
     @abstractmethod
     async def add(self, marius: Marius) -> Marius: ...
     @abstractmethod
     async def get(self, marius_id: UUID) -> Marius | None: ...
-    @abstractmethod
-    async def get_by_token(self, token: str) -> Marius | None: ...
     @abstractmethod
     async def list_by_workspace(self, workspace_id: UUID) -> Sequence[Marius]: ...
     @abstractmethod
@@ -481,6 +489,15 @@ class WakeupRepository(ABC):
     async def list_active_for(
         self, marius_id: UUID, task_id: UUID
     ) -> Sequence[WakeupRequest]: ...
+
+    @abstractmethod
+    async def get_for_run(self, run_id: UUID) -> WakeupRequest | None:
+        """The wake this run was opened for, if one was written down.
+
+        Read when a run changes hands: a run that is not about a task cannot have its
+        message built from one, so the message it was queued with is what it is given
+        (see ``WakeEngine.compose_packet``).
+        """
 
     @abstractmethod
     async def list_pending_for_task(self, task_id: UUID) -> Sequence[WakeupRequest]:

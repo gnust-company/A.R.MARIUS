@@ -45,35 +45,40 @@ def _ctx(**overrides) -> WakeContext:  # noqa: ANN003
     return WakeContext(**base)
 
 
-def test_prompt_names_workspace_project_and_credential_file():
+def test_prompt_names_the_workspace_and_the_project():
     prompt = build_wake_prompt(
         _ctx(
             workspace_name="Acme Web Platform",
             project_name="Settings Redesign",
-            credential_file="$HOME/.armarius/acme-web-platform_alice.json",
         )
     )
     assert "## Where you are" in prompt
     assert "Acme Web Platform" in prompt
     assert "Settings Redesign" in prompt
-    # The soft credential HINT names the exact file and nudges reading once + reusing (#108).
-    assert "$HOME/.armarius/acme-web-platform_alice.json" in prompt
-    assert "ARMARIUS HINT" in prompt
-    assert "cat" in prompt
     # Orientation still leads the prompt (workspace/project before the task brief).
     assert prompt.index("## Where you are") < prompt.index("## Task:")
 
 
-def test_prompt_without_workspace_context_omits_the_orientation_but_never_the_footer():
+def test_prompt_without_workspace_context_omits_only_the_orientation():
     prompt = build_wake_prompt(_ctx())
     assert "## Where you are" not in prompt
     # The rest of the prompt is intact.
     assert "## Task: Add dark mode" in prompt
     assert "## Why you were woken" in prompt
-    # The footer is UNCONDITIONAL: even with no workspace context, a task-wake must still
-    # tell the agent where its token lives — falling back to the default location (#80).
-    assert "ARMARIUS HINT" in prompt
-    assert "$HOME/.armarius/<workspace>_<agent>.json" in prompt
+
+
+def test_the_packet_never_sends_the_agent_looking_for_a_credential_file():
+    """Gói việc từng kết bằng một dòng chỉ agent tới tệp giữ token của chính nó.
+
+    Không còn token ấy, cũng không còn tệp ấy: chìa khoá là của **lượt chạy**, và nó được
+    trao cho tiến trình chạy agent (FR-014a, FR-014c). Một dòng chỉ đường tới tệp không ai
+    ghi thì tốn của agent một lượt đọc hụt, và dạy nó rằng gói việc có thể sai."""
+    prompt = build_wake_prompt(
+        _ctx(workspace_name="Acme Web Platform", project_name="Settings Redesign")
+    )
+    lowered = prompt.lower()
+    for trace in ("armarius hint", "credential", "agent_token", ".armarius/", "api_base_url"):
+        assert trace not in lowered, f"gói việc vẫn nhắc tới {trace!r}"
 
 
 def test_header_states_the_agents_own_project_role_and_description():
