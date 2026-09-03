@@ -24,6 +24,18 @@ class AdapterCapabilities:
     resumable: bool
     streaming: bool
     transport: str  # "process" | "http" | "webhook" | "ws"
+    # Whether the turn happens inside the call that starts it.
+    #
+    # ``False`` says the work is *handed over*: something else takes it, drives it, and
+    # reports the turn's start, its output and its end through its own door. A caller that
+    # learns this must not wait for the turn, and must not close the run when the call
+    # returns — the run is still owed, by somebody else.
+    #
+    # This is the one thing about a runtime the orchestration layer genuinely has to know,
+    # and it is stated here so that layer can read it off the contract instead of asking
+    # *which* runtime this is (Constitution III). A caller that branched on the name would
+    # have to be reopened for the next runtime; one that reads this does not.
+    turn_ends_in_the_call: bool = True
 
 
 @dataclass

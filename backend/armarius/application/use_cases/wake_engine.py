@@ -19,7 +19,12 @@ import asyncio
 from collections.abc import Sequence
 from uuid import UUID
 
-from armarius.application.ports.adapter import AdapterRegistry, ExecContext, ExecResult
+from armarius.application.ports.adapter import (
+    AdapterRegistry,
+    ExecContext,
+    ExecResult,
+    MariusAdapter,
+)
 from armarius.application.ports.event_bus import EventBus
 from armarius.application.ports.task_trace import TaskTracePublisher
 from armarius.application.ports.unit_of_work import UnitOfWork
@@ -426,10 +431,15 @@ class WakeEngine:
         trace is a warning at interpreter shutdown. The cleanup below is itself a write,
         and a write is exactly the thing that can be refused — so it is retried and its
         failure is spoken, rather than left to become silence (see ``settle``).
+
+        **Unless the turn was handed over**, in which case none of it applies and all of it
+        would be wrong. Everything below this line is what *ending a run* consists of, and a
+        run offered to a machine has not ended — it has not even begun. See ``_hand_over``.
         """
         cause: str | None = None
+        handed_over = False
         try:
-            await self._do_execute_run(run_id)
+            handed_over = await self._take_the_turn(run_id)
         except Exception as exc:
             logger.exception("run %s crashed", run_id)
             cause = _describe(exc)
@@ -437,11 +447,21 @@ class WakeEngine:
             # Release the pair whatever happened — including a cancellation, which is what
             # a container being told to stop looks like from in here. Leaving either half
             # behind wedges this agent out of this task permanently.
-            await self._release_pair(run_id, cause=cause)
+            #
+            # A handed-over run is the one case where letting go is the mistake. The pair is
+            # still held on purpose, by work that is on its way to a machine; releasing it
+            # would mark a queued run *stopped* and free the task the same second the work
+            # left, so the next comment would open a second run for a turn already sent.
+            # Cancellation still lands here with `handed_over` false, which is right: a
+            # process stopped before the hand-off left the run needing exactly this.
+            if not handed_over:
+                await self._release_pair(run_id, cause=cause)
+        if handed_over:
+            return
         # Both of these may enqueue, so they run only after the pair is free. Losing either
         # loses work with nobody the wiser: a cause that arrived mid-turn is never shown to
-        # anyone, or a turn that owed a continuation never gets one. Repeating an `enqueue`
-        # is safe because nothing it does after its commit can throw — see `announce_run`,
+        # anyone, or a turn that owed a continuation never gets one. Repeating an ``enqueue``
+        # is safe because nothing it does after its commit can throw — see ``announce_run``,
         # which is what makes that true rather than merely hoped for.
         await settle(
             f"re-wake run {run_id} for the causes it absorbed",
@@ -786,6 +806,121 @@ class WakeEngine:
                 continue
             bundles.append(SkillBundle(name=skill.slug, files=files))
         return tuple(bundles)
+
+    async def _take_the_turn(self, run_id: UUID) -> bool:
+        """Take this run's turn the way its runtime takes turns. True = it was handed over.
+
+        Two shapes of turn exist and only one of them ends inside this process. A runtime
+        this process can call is called: the message is built, the run is marked running, the
+        events stream through, and the run is closed on the way out. A runtime the work is
+        *handed to* gets none of that, because none of it has happened yet — see
+        ``_hand_over``.
+
+        Which shape it is comes off the adapter's own contract and never off its name: the
+        layer deciding what to do with a turn is not allowed to know which runtimes exist
+        (Constitution III, FR-040b). Asked here, in front of both roads, rather than inside
+        the one that calls — a hand-off must happen with no transaction of ours held open,
+        because the work it shelves is written by somebody else's.
+        """
+        async with self._uow() as uow:
+            run = await uow.runs.get(run_id)
+            marius = (
+                await uow.mariuses.get(run.marius_id)
+                if run is not None and run.marius_id
+                else None
+            )
+        if run is None or marius is None:
+            return False
+        # The agent's own runtime, not the one written on the run when it was opened. Those
+        # come apart when an agent is changed between the two moments, and the road a turn
+        # takes has to be the road the turn is actually going to travel.
+        adapter = self._registry.get(marius.adapter_type)
+        if adapter.capabilities.turn_ends_in_the_call:
+            await self._do_execute_run(run_id)
+            return False
+        return await self._hand_over(run_id, adapter)
+
+    async def _hand_over(self, run_id: UUID, adapter: MariusAdapter) -> bool:
+        """Offer the turn to whoever will actually take it, and let go (FR-009, FR-040b).
+
+        Nothing is prepared first, and that is the point. A run about to be taken by this
+        process is marked *running* and given its message here; a run being handed over is
+        neither, because neither is true yet — it will be taken minutes from now, or not at
+        all, and its message is composed at the moment it changes hands so that it describes
+        the task as it is *then* rather than as it was when somebody commented (FR-011).
+        Marking it running would also hide it from the one door that can hand it over: work
+        is picked up off the shelf by its *queued* status, so a run called running here is a
+        run no machine can ever be given.
+
+        The context carries no message for the same reason. There is nothing to say yet.
+
+        Answers True when the work was accepted. A refusal — an agent with nowhere left to
+        work is the real one — comes back as a terminal status rather than an exception, and
+        then this run has ended after all, right here, and is closed exactly as an in-process
+        turn is closed. Leaving it open would wedge the task for ever: nobody else is coming
+        for a run that was never taken.
+        """
+        async with self._uow() as uow:
+            run = await uow.runs.get(run_id)
+            marius = (
+                await uow.mariuses.get(run.marius_id)
+                if run is not None and run.marius_id
+                else None
+            )
+            if run is None or marius is None or run.task_id is None:
+                return False
+            ctx = ExecContext(
+                prompt="",
+                adapter_config=marius.adapter_config,
+                marius_id=marius.id,
+                task_id=run.task_id,
+                run_id=run.id,
+                timeout_seconds=self._timeout,
+            )
+        result = await adapter.dispatch(ctx)
+        if result.status in ACTIVE_RUN_STATUSES:
+            logger.info("run %s handed over (%s)", run_id, result.status)
+            return True
+        logger.warning("run %s was not taken: %s", run_id, result.error)
+        async with self._uow() as uow:
+            run = await uow.runs.get(run_id)
+            task = await uow.tasks.get(run.task_id) if run and run.task_id else None
+            marius = (
+                await uow.mariuses.get(run.marius_id)
+                if run is not None and run.marius_id
+                else None
+            )
+            if run is None or task is None or marius is None:
+                return False
+            session = await uow.sessions.get_for(marius.id, marius.adapter_type, task.id)
+            await self._finalise(uow, run, task, marius, session, result)
+        return False
+
+    async def run_started(self, run_id: UUID) -> None:
+        """A run this process does not drive has begun — tell the screens watching it.
+
+        The one part of starting a turn that survives a hand-over. Whoever took the work has
+        already written down *that* it started; what is left is the part no machine can do
+        from where it sits, which is saying so on the channel a person is holding open. Miss
+        it and an agent's screen shows the run still waiting for the whole time it runs,
+        which is exactly the failure ``announce_run_state`` exists to prevent (FR-080).
+
+        Announcing only, deliberately. The other thing an in-process turn does at this moment
+        — arming the silence clock on the agent — belongs to a road where this process would
+        be the one to notice. Here the machine's hold and the hung-run reaper already answer
+        for a run that stops talking, and a second clock on one question is two answers
+        waiting to disagree.
+        """
+        async with self._uow() as uow:
+            run = await uow.runs.get(run_id)
+            marius = (
+                await uow.mariuses.get(run.marius_id)
+                if run is not None and run.marius_id
+                else None
+            )
+        if run is None or marius is None:
+            return
+        await self.announce_run(run, marius)
 
     async def _do_execute_run(self, run_id: UUID) -> None:
         async with self._uow() as uow:
