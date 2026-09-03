@@ -24,18 +24,35 @@ import (
 // branch. An agent that needs a repository clones it with its own credentials, which is also the
 // only way it could — the credentials are the agent's, not ours.
 func WorkDir(root, taskID string) (string, error) {
+	return dirUnder(root, taskID, "task")
+}
+
+// TurnDir is the working directory for a run that is about **no task** — the team-building
+// interview (FR-040c).
+//
+// Named after the run, and that is the whole difference from WorkDir. A task's directory is
+// shared by every run of that task on purpose, because a session is tied to the directory it was
+// opened in and the next run has to find it (FR-010a). A turn about no task has nothing to find:
+// what it is carrying on from is a conversation the *server* holds, replayed into the message of
+// every turn, so a directory kept for it would be kept for nobody. The caller takes it away when
+// the turn ends; the disk sweep is the backstop for a daemon that died before it could.
+func TurnDir(root, runID string) (string, error) {
+	return dirUnder(root, runID, "run")
+}
+
+func dirUnder(root, name, what string) (string, error) {
 	if root == "" {
 		return "", fmt.Errorf("a working directory needs a root to sit under")
 	}
-	// The task id arrives from the server, over the wire, and is about to become a path
-	// component on somebody else's machine. Anything that could climb out of the root, or name
-	// the root itself, is refused rather than cleaned: cleaning answers *where would this land*,
-	// which is only useful once compared, and the comparison is the half that gets forgotten.
-	if !safeSegment(taskID) {
-		return "", fmt.Errorf("task %q cannot name a working directory", taskID)
+	// The id arrives from the server, over the wire, and is about to become a path component on
+	// somebody else's machine. Anything that could climb out of the root, or name the root
+	// itself, is refused rather than cleaned: cleaning answers *where would this land*, which is
+	// only useful once compared, and the comparison is the half that gets forgotten.
+	if !safeSegment(name) {
+		return "", fmt.Errorf("%s %q cannot name a working directory", what, name)
 	}
 
-	path := filepath.Join(root, taskID)
+	path := filepath.Join(root, name)
 	switch info, err := os.Lstat(path); {
 	case err == nil && info.Mode()&os.ModeSymlink != 0:
 		// A link here would send the whole run — the brief, the skills, everything the agent
@@ -50,7 +67,7 @@ func WorkDir(root, taskID string) (string, error) {
 	}
 
 	if err := os.MkdirAll(path, 0o700); err != nil {
-		return "", fmt.Errorf("creating the working directory for task %s: %w", taskID, err)
+		return "", fmt.Errorf("creating the working directory for %s %s: %w", what, name, err)
 	}
 	return path, nil
 }
