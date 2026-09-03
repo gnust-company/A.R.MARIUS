@@ -48,7 +48,7 @@ def _services(*, adapter: FakeAdapter | None = None):
 
 
 def _asks(onboarding: OnboardingService, key: str, question: str):
-    async def driver(session_id) -> None:
+    async def driver(session_id, run_id) -> None:
         await onboarding.agent_post_question(
             session_id,
             {
@@ -58,13 +58,14 @@ def _asks(onboarding: OnboardingService, key: str, question: str):
                             {"id": "other", "label": "Other (I'll type it)"}],
                 "multi": False,
             },
+            by_run=run_id,
         )
 
     return driver
 
 
 def _completes(onboarding: OnboardingService, name: str, objective: str):
-    async def driver(session_id) -> None:
+    async def driver(session_id, run_id) -> None:
         await onboarding.agent_post_complete(
             session_id,
             {
@@ -80,6 +81,7 @@ def _completes(onboarding: OnboardingService, name: str, objective: str):
                      "description": "Builds the UI."},
                 ],
             },
+            by_run=run_id,
         )
 
     return driver
@@ -106,6 +108,11 @@ async def _ensure_then_online(onboarding: OnboardingService, ws_id) -> None:
         ws.workspace_agent_id = host.id
         await uow.workspaces.update(ws)
         await uow.commit()
+
+
+def _driving(factory: FakeUowFactory, session_id):
+    """The run this chat's current turn belongs to — what a live agent would be speaking for."""
+    return factory.store.onboardings[session_id].driving_run_id
 
 
 async def _set_wa_liveness(factory: FakeUowFactory, ws_id, liveness: Liveness) -> None:
@@ -297,7 +304,7 @@ async def test_finalize_without_a_draft_still_creates_a_valid_project() -> None:
 
 async def test_agent_post_question_rejected_while_one_is_pending() -> None:
     """One question at a time — posting while unanswered raises (HTTP 409)."""
-    _, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
+    factory, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
     adapter.drivers.append(_asks(onboarding, "objective", "Q1"))
     await _ensure_then_online(onboarding, ws_id)
     session = await onboarding.start(ws_id)  # a question is now pending
@@ -306,6 +313,7 @@ async def test_agent_post_question_rejected_while_one_is_pending() -> None:
         await onboarding.agent_post_question(
             session.id,
             {"question": "Q2?", "options": [{"id": "1", "label": "A"}], "multi": False},
+            by_run=_driving(factory, session.id),
         )
 
 

@@ -44,19 +44,23 @@ func TestAQuestionGoesToTheChatItNames(t *testing.T) {
 	}
 }
 
-func TestAQuestionWithNoOptionsIsStillAQuestion(t *testing.T) {
-	// A question the patron types the answer to. An empty list is a real answer here, so it
-	// must not be refused the way a malformed one is.
+func TestAQuestionWithNothingToPickNeverLeavesTheMachine(t *testing.T) {
+	// The far end refuses a question with no options — there would be nothing for the patron
+	// to answer with. Refused here so the agent is told what it left out, rather than reading
+	// a validation error about a field it believed was optional.
 	server := armarius(t)
 
 	code, _, errs := run(t, interviewEnv(server),
 		"onboarding", "ask", "-session_id", "sess-9", "-question", "What should we call it?")
 
-	if code != ExitOK {
-		t.Fatalf("exit %d: %s", code, errs)
+	if code != ExitUsage {
+		t.Fatalf("exit %d, wanted %d", code, ExitUsage)
 	}
-	if options, ok := server.body["options"].([]any); !ok || len(options) != 0 {
-		t.Fatalf("options should be an empty list: %#v", server.body["options"])
+	if server.path != "" {
+		t.Fatalf("a question with nothing to pick reached the server at %q", server.path)
+	}
+	if !strings.Contains(errs, "options") {
+		t.Fatalf("the refusal does not name what is missing: %q", errs)
 	}
 }
 

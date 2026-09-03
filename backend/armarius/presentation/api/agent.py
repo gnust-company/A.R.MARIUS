@@ -34,6 +34,7 @@ from armarius.presentation.container import Container
 from armarius.presentation.deps import (
     ContainerDep,
     CurrentMarius,
+    CurrentRun,
 )
 from armarius.presentation.schemas import (
     AgentArtifactIn,
@@ -106,7 +107,11 @@ async def whoami(marius: CurrentMarius, container: ContainerDep) -> dict:
 
 # ── onboarding callbacks (a live Workspace-Agent runtime drives the interview) ─
 async def _wa_onboarding_session(container, marius, session_id: UUID):
-    """Load an onboarding session, asserting this Marius is its workspace's host agent."""
+    """Load an onboarding session, asserting this Marius is its workspace's host agent.
+
+    *Whose* interview this is. **Which turn** of it the caller holds is a second question and
+    a different one, asked where the write happens — see ``OnboardingService._driven_by``.
+    """
     session = await container.onboarding.get(session_id)
     if session is None or session.workspace_id is None:
         raise NotFound("onboarding_session_not_found")
@@ -121,6 +126,7 @@ async def post_onboarding_question(
     session_id: UUID,
     body: AgentOnboardingQuestionIn,
     marius: CurrentMarius,
+    run: CurrentRun,
     container: ContainerDep,
 ) -> OnboardingOut:
     """Post your next onboarding question. One question at a time — 409 if the previous
@@ -131,7 +137,9 @@ async def post_onboarding_question(
         "options": [{"id": o.id, "label": o.label} for o in body.options],
         "multi": body.multi,
     }
-    session = await container.onboarding.agent_post_question(session_id, question)
+    session = await container.onboarding.agent_post_question(
+        session_id, question, by_run=run.run_id
+    )
     return OnboardingOut.model_validate(session)
 
 
@@ -140,6 +148,7 @@ async def post_onboarding_complete(
     session_id: UUID,
     body: AgentOnboardingCompleteIn,
     marius: CurrentMarius,
+    run: CurrentRun,
     container: ContainerDep,
 ) -> OnboardingOut:
     """Post your final project + roster draft for the Patron to confirm and finalize."""
@@ -156,7 +165,9 @@ async def post_onboarding_complete(
             for r in body.roster
         ],
     }
-    session = await container.onboarding.agent_post_complete(session_id, draft)
+    session = await container.onboarding.agent_post_complete(
+        session_id, draft, by_run=run.run_id
+    )
     return OnboardingOut.model_validate(session)
 
 

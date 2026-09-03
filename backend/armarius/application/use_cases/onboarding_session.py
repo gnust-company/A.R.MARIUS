@@ -317,11 +317,13 @@ class OnboardingService:
         return fresh
 
     # ── real Workspace-Agent runtime callbacks (the guided agent drives the interview) ──
-    async def agent_post_question(self, session_id: UUID, question: dict) -> OnboardingSession:
+    async def agent_post_question(
+        self, session_id: UUID, question: dict, *, by_run: UUID
+    ) -> OnboardingSession:
         """A live WA posts its next question. 1-at-a-time: reject if one is unanswered."""
         now = utcnow()
         async with self._uow() as uow:
-            session = await self._open(uow, session_id)
+            session = await self._driven_by(uow, session_id, by_run)
             if session.collected.get("pending_question") is not None:
                 raise OnboardingBusy("onboarding_question_pending")
             session.collected = {
@@ -336,11 +338,13 @@ class OnboardingService:
         await self._tell(asked.workspace_id, asked.id)
         return asked
 
-    async def agent_post_complete(self, session_id: UUID, draft: dict) -> OnboardingSession:
+    async def agent_post_complete(
+        self, session_id: UUID, draft: dict, *, by_run: UUID
+    ) -> OnboardingSession:
         """A live WA posts its final draft (project + roster) for the Patron to confirm."""
         now = utcnow()
         async with self._uow() as uow:
-            session = await self._open(uow, session_id)
+            session = await self._driven_by(uow, session_id, by_run)
             session.collected = {
                 **session.collected, "phase": "complete",
                 "pending_question": None, "draft": draft,
@@ -557,6 +561,36 @@ class OnboardingService:
                 session.updated_at = utcnow()
                 await uow.onboardings.update(session)
                 await uow.commit()
+
+    async def _driven_by(
+        self,
+        uow,  # noqa: ANN001 - concrete UoW
+        session_id: UUID,
+        run_id: UUID,
+    ) -> OnboardingSession:
+        """The chat this run is taking the turn of — or nothing it is allowed to write to.
+
+        **A live token is not the same as a live turn.** A run's token stays good until that
+        run is closed, and closing it is a machine reporting back, which happens some time
+        after the agent has finished speaking. So there is a window in which the previous
+        turn's token still opens the door while the chat has already moved on: the patron
+        answers, which clears the pending question and hands the next turn to a new run, and
+        the old run — retrying a request whose reply went missing, or simply slow — writes a
+        question that belongs to a step already passed. The one-at-a-time guard cannot catch
+        it, because clearing the pending question is exactly what answering does.
+
+        `driving_run_id` is the answer, and it is the same answer read the other way round
+        when a turn ends (`run_ended`). Refusing reads as *no such chat* rather than
+        *forbidden*: a run reaching for a chat that is not its own learns nothing about
+        whether that chat exists (Constitution I).
+
+        A chat with no driving run — one opened before the interview became a run — is
+        writable by nobody, which is correct: the road that drove it is gone.
+        """
+        session = await self._open(uow, session_id)
+        if session.driving_run_id != run_id:
+            raise NotFound("onboarding_session_not_found")
+        return session
 
     async def _open(self, uow, session_id: UUID) -> OnboardingSession:  # noqa: ANN001
         session = await uow.onboardings.get(session_id)
