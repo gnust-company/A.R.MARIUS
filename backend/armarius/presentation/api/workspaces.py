@@ -227,7 +227,11 @@ async def create_marius(
     await container.control_bus.publish(
         f"ws:{workspace_id}",
         "marius.status_changed",
-        {"marius_id": str(marius.id), "status": "approved"},
+        # *Created*, not *approved*. There was an approval step once and this said so; the
+        # step went away, every agent has been live from its first second since, and the
+        # word outlived the thing it described. Its pair on the other door is `deleted`,
+        # and between them they are the whole of what this event has ever meant.
+        {"marius_id": str(marius.id), "status": "created"},
     )
     rendered = (await _with_offline_reason(container, [marius]))[0]
     return MariusCreatedOut.model_validate(rendered.model_dump())
@@ -311,8 +315,45 @@ async def update_marius(
         skill_ids=body.skill_ids,
         adapter_type=body.adapter_type,
         adapter_config=body.adapter_config,
+        # Renamed on the way in, the same as on the create route: the caller says *runtime*,
+        # the business layer says what it is allowed to know about — the place this agent
+        # works (Điều III).
+        placement_options=body.runtime_options,
     )
     return (await _with_offline_reason(container, [marius]))[0]
+
+
+@router.get(
+    "/workspaces/{workspace_id}/mariuses/{marius_id}/options",
+    response_model=list[PlacementOptionOut],
+)
+async def list_agent_options(
+    workspace_id: UUID,
+    marius_id: UUID,
+    container: ContainerDep,
+    user: CurrentUser,
+) -> list[PlacementOptionOut]:
+    """What may be changed about how this agent runs (FR-007k).
+
+    Deliberately not read off `/workplaces`. That list exists for choosing where to *put* a
+    new agent: it holds only the places still taking work, and it never says which place an
+    existing agent sits at. Built on it, this screen would show *nothing to choose* for an
+    agent whose CLI somebody uninstalled — when what that tool takes is perfectly well known
+    and will matter again the moment it is put back.
+
+    An empty list is an ordinary answer: this agent's place offers nothing to pick, and it
+    runs on whatever its tool defaults to.
+    """
+    await _require_owned_workspace(container, user, workspace_id)
+    existing = await container.mariuses.get(marius_id)
+    if existing is None or existing.workspace_id != workspace_id:
+        raise NotFound("agent_not_found")
+    return [
+        PlacementOptionOut(
+            key=option.key, values=list(option.values), source=str(option.source.value)
+        )
+        for option in await container.mariuses.options_offered(marius_id)
+    ]
 
 
 @router.post(

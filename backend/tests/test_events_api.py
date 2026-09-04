@@ -142,7 +142,7 @@ async def test_workspace_stream_frames_a_control_event() -> None:
     assert int(ev["id"]) > 0
     # No `send_status`: creating an agent sends nothing anywhere, so the control-plane
     # event has nothing to report about a send (FR-007g).
-    assert json.loads(ev["data"]) == {"marius_id": mid, "status": "approved"}
+    assert json.loads(ev["data"]) == {"marius_id": mid, "status": "created"}
 
 
 async def test_workspace_stream_resumes_from_last_event_id() -> None:

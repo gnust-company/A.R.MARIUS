@@ -32,9 +32,6 @@ function StatusDot({ status }: { status: string }) {
         status === 'offline' && 'bg-status-offline',
         status === 'hung' && 'bg-status-hung',
         status === 'checking' && 'bg-status-checking',
-        status === 'pending' && 'bg-status-pending',
-        status === 'invited' && 'bg-status-invited',
-        status === 'revoked' && 'bg-status-revoked',
       )}
     />
   );

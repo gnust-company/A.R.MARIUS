@@ -305,6 +305,15 @@ class UpdateMariusIn(BaseModel):
     skill_ids: list[str] | None = None
     adapter_type: str | None = None
     adapter_config: dict | None = None
+    # What the person changed about how this agent runs (FR-007k). Only the settings named
+    # here are touched; the rest are left as they were, and an empty value means the tool's
+    # own default. A key the place never offered, or a value outside a set it stated in
+    # full, is refused — by the place, which is the only thing that knows.
+    #
+    # Without this, the only way to change a model or a thinking level was to delete the
+    # agent and make a new one, which throws away everything else it was (found in review
+    # on PR #239).
+    runtime_options: dict[str, str] | None = None
 
 
 class InstallSkillsIn(BaseModel):
@@ -332,6 +341,13 @@ class InstallSkillsOut(_Out):
 
 
 class MariusOut(_Out):
+    # Readable by the entity's name for this field *and* by its own. One route builds this
+    # twice — once off the entity, then once more off the first one's `model_dump()` to widen
+    # it — and with only the entity's name accepted, the second pass silently dropped what
+    # was picked: an agent created with a model came back saying it had none, and the screen
+    # believed it until the next reload.
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     id: UUID
     workspace_id: UUID | None = None
     name: str

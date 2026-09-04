@@ -224,7 +224,9 @@ export interface MariusDTO {
    *  `daemon_stopped`, `quota_exhausted` — never a
    *  sentence; this side writes the sentence. Absent when the place is open. */
   offline_reason?: string | null
-  /** Invite lifecycle: invited → pending_review → approved (#51). */
+  /** What this agent was set to, out of what its workplace offers (FR-007k). An absent key
+   *  means nothing was picked and the tool's own default applies. */
+  runtime_options?: Record<string, string>
   last_seen_at?: string | null
   created_at?: string | null
 }
@@ -571,6 +573,23 @@ export interface UpdateMariusBody {
   skill_ids?: string[]
   adapter_type?: string
   adapter_config?: Record<string, unknown>
+  /** What to change about how this agent runs (FR-007k). Only the settings named here are
+   *  touched — leaving one out is not the same as clearing it — and an empty value means the
+   *  tool's own default. It takes effect on the agent's **next** run: what it was set to is
+   *  read when a machine claims a run, so one already out of the door keeps what it left with. */
+  runtime_options?: Record<string, string>
+}
+
+/** What may be changed about how one agent runs, as the place it works at answered it.
+ *
+ *  Asked per agent rather than read off `listWorkplaces`: that list is for choosing where to
+ *  put a *new* agent, so it holds only the places still taking work and never says which one
+ *  an existing agent sits at. An empty list is ordinary — nothing to pick, tool defaults. */
+export async function listAgentOptions(
+  workspaceId: string,
+  mariusId: string,
+): Promise<PlacementOptionDTO[]> {
+  return get<PlacementOptionDTO[]>(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}/options`)
 }
 
 export async function inviteMarius(workspaceId: string, body: InviteMariusBody): Promise<MariusCreatedDTO> {

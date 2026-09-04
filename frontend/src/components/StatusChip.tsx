@@ -15,9 +15,6 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; dot: string }> =
   offline: { bg: 'bg-[#E8E0D8]', text: 'text-[#8B7A6A]', dot: 'bg-status-offline' },
   hung: { bg: 'bg-[#F5DDD6]', text: 'text-[#8B3A28]', dot: 'bg-status-hung' },
   checking: { bg: 'bg-[#F5DDD6]', text: 'text-[#B84A32]', dot: 'bg-status-checking' },
-  pending: { bg: 'bg-[#F5E8CC]', text: 'text-[#8B6A28]', dot: 'bg-status-pending' },
-  invited: { bg: 'bg-[#E8E0D8]', text: 'text-[#8B7A6A]', dot: 'bg-status-invited' },
-  revoked: { bg: 'bg-[#E8E0D8]', text: 'text-[#8B7A6A]', dot: 'bg-status-revoked' },
   // Project phase (spec 001): setup → planning → operating ⇄ maintaining → closed
   setup: { bg: 'bg-[#F5DDD6]', text: 'text-[#B84A32]', dot: 'bg-[#B84A32]' },
   planning: { bg: 'bg-[#F5E8CC]', text: 'text-[#8B6A28]', dot: 'bg-[#8B6A28]' },
