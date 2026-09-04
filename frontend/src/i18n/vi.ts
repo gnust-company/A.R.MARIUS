@@ -882,6 +882,7 @@ export const vi = {
       cadence_snags: 'Nhịp điều phối tìm ra {{count}} điểm treo trên bảng việc.',
       escalated_to_leader: '{{task}} đang đình trệ và cần bạn quyết bước tiếp. Lần hỏi {{attempt}}/{{ceiling}}.',
       assignee_offline: 'Người phụ trách {{task}} vừa bị tuyên ngoại tuyến, đầu việc chuyển sang bị chặn. Giao lại cho ai, hay chờ họ quay lại?',
+      leader_chat_message: 'Người chủ nhắn cho agent này trong khung chat của dự án.',
       manual_wake: 'Người chủ gọi dậy từ bảng điều khiển.',
       manual_wake_note: 'Người chủ gọi dậy từ bảng điều khiển: {{note}}',
     },

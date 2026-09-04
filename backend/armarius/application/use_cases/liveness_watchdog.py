@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from uuid import UUID
 
@@ -55,6 +56,7 @@ class LivenessWatchdog:
         task_log: TaskLogService | None = None,
         push_reasons: PushReasonService | None = None,
         workspace_trace: WorkspaceTracePublisher | None = None,
+        run_ended: Callable[[UUID], Awaitable[None]] | None = None,
         clock=utcnow,
     ) -> None:
         self._uow = uow_factory
@@ -68,6 +70,12 @@ class LivenessWatchdog:
         # Its own channel, not the wake engine's: reaping a hung run must not depend on
         # whatever else that object can do.
         self._workspace_trace = workspace_trace
+        # Whoever else was waiting on a run that is now gone. A run can be carrying a turn of
+        # a conversation — an interview, the project chat — and those conversations are not
+        # ended by anything above: a task goes back to *todo* and is picked up again, but a
+        # chat left mid-turn stays mid-turn for ever and refuses the patron's every next
+        # message. Reaping is the only ending those runs get, so it has to say so.
+        self._run_ended = run_ended
         self._clock = clock
         self._task: asyncio.Task[None] | None = None
 
@@ -180,6 +188,11 @@ class LivenessWatchdog:
         # anything raised in here would otherwise skip the recovery above.
         if marius is not None:
             await announce_run_state(self._workspace_trace, run, marius)
+        if self._run_ended is not None:
+            try:
+                await self._run_ended(run_id)
+            except Exception:  # pragma: no cover - the run is already reaped
+                logger.exception("could not pass on the end of reaped run %s", run_id)
         return True
 
     # ── background lifecycle ─────────────────────────────────────────────────────

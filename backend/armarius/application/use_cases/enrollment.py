@@ -24,6 +24,7 @@ from uuid import UUID
 
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.marius import Marius, NameTaken
+from armarius.domain.entities.placement import PLACEMENT_CARRIES_NOTHING
 from armarius.shared.clock import utcnow
 from armarius.shared.errors import BadRequest, NotFound
 
@@ -50,7 +51,6 @@ class AgentService:
         placement_id: UUID,
         instructions: str = "",
         description: str = "",
-        adapter_type: str = "echo",
         placement_options: dict[str, str] | None = None,
         skills: list[str] | None = None,
         skill_ids: list[str] | None = None,
@@ -67,6 +67,13 @@ class AgentService:
         No role is taken, here or anywhere. How an agent behaves comes from `instructions`
         and nothing else; a project supplies the work, not a second personality
         (Constitution V, FR-007l).
+
+        **Which tool carries this agent's turns is not a parameter of this call.** It is the
+        place's answer, read off the placement and written down unchanged. There is no
+        default here and there must not be one: a constant in this layer would be the
+        business layer naming a runtime, which is precisely what Constitution III forbids —
+        and the constant that used to sit here sent every agent ever created down a road
+        built for demos.
         """
         now = utcnow()
         async with self._uow() as uow:
@@ -94,6 +101,13 @@ class AgentService:
             # keeps everybody right.
             chosen = {k: v for k, v in (placement_options or {}).items()}
             placement.refuse_unchosen(chosen)
+            if not placement.carried_by:
+                # Nothing a person did causes this, and it is refused all the same: an agent
+                # created with no answer to *who does its work* is an agent no wake can ever
+                # reach, and it would fail at the first turn instead of here.
+                raise PlacementNotReady(
+                    "placement_not_ready", reason=PLACEMENT_CARRIES_NOTHING
+                )
 
             marius = Marius(
                 workspace_id=workspace_id,
@@ -102,7 +116,7 @@ class AgentService:
                 description=description,
                 skills=skills or [],
                 skill_ids=skill_ids or [],
-                adapter_type=adapter_type,
+                adapter_type=placement.carried_by,
                 placement_options=chosen,
                 owner_user_id=owner_user_id,
                 created_at=now,

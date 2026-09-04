@@ -880,6 +880,7 @@ export const en = {
       cadence_snags: 'The orchestration sweep found {{count}} snag(s) on the board.',
       escalated_to_leader: '{{task}} has stalled and needs a decision. Attempt {{attempt}} of {{ceiling}}.',
       assignee_offline: 'The worker on {{task}} was declared offline and the task moved to blocked.',
+      leader_chat_message: 'The patron wrote to this agent in the project chat.',
       manual_wake: 'The patron woke this agent from the dashboard.',
       manual_wake_note: 'The patron woke this agent from the dashboard: {{note}}',
     },

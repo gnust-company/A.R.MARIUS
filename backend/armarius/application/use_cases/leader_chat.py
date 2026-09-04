@@ -17,10 +17,15 @@ Leader's liveness, never persisted.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from uuid import UUID
 
-from armarius.application.ports.adapter import AdapterRegistry, ExecContext
+from armarius.application.ports.adapter import (
+    AdapterRegistry,
+    ExecContext,
+    MariusAdapter,
+)
 from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.seats import (
@@ -36,8 +41,8 @@ from armarius.domain.entities.leader_chat import (
     LeaderChatError,
     ProjectLeaderConversation,
 )
-from armarius.domain.entities.marius import Liveness
-from armarius.domain.entities.run import RunStatus, WakeSource
+from armarius.domain.entities.marius import Liveness, Marius
+from armarius.domain.entities.run import ACTIVE_RUN_STATUSES, Run, RunStatus, WakeSource
 from armarius.domain.entities.wakeup import WakeupRequest, WakeupStatus
 from armarius.domain.services.leader_chat_prompt import (
     ChatDirectoryEntry,
@@ -48,7 +53,7 @@ from armarius.domain.services.leader_chat_prompt import (
 )
 from armarius.domain.services.wake_policy import WakeRole, may_wake
 from armarius.domain.services.wake_prompt import ProjectBrief
-from armarius.domain.services.wake_reason import WakeReason
+from armarius.domain.services.wake_reason import WakeReason, reason
 from armarius.infrastructure.events.topic_bus import TopicEventBus
 from armarius.shared.background import settle
 from armarius.shared.clock import utcnow
@@ -57,9 +62,18 @@ from armarius.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
+# How a run this service opened is closed when it ends here rather than on a machine. Typed
+# as the one call it makes rather than as the whole engine, for the reason the interview
+# states where it declares the same alias: this service has no other business with runs.
+RunCloser = Callable[..., Awaitable[None]]
+
 # A Leader can take a turn unless it is offline/hung; otherwise the chat is disabled.
 _AVAILABLE = {Liveness.ONLINE, Liveness.WORKING, Liveness.CHECKING}
 _PROMPT_TURN_TAIL = 10  # recent turns included in the prompt for grounding
+# What the Leader produced, as the machine writes it down. A turn taken elsewhere leaves its
+# words here and nowhere else, so this is what the reply is rebuilt from — the same name the
+# in-process road coalesces its deltas into, so one reader answers for both roads.
+_SAID = "assistant.message"
 
 
 @dataclass
@@ -81,6 +95,7 @@ class LeaderChatService:
         liveness: LivenessEngine,
         base_url: str,
         run_timeout_seconds: int = 900,
+        close_run: RunCloser | None = None,
     ) -> None:
         self._uow = uow_factory
         self._registry = registry
@@ -88,8 +103,16 @@ class LeaderChatService:
         self._liveness = liveness
         self._base_url = base_url
         self._timeout = run_timeout_seconds
+        self._close_run = close_run
         self._bg: set[asyncio.Task[None]] = set()
         self._active: set[UUID] = set()  # conversation ids with an in-flight turn
+        # Runs handed to a machine, and the project whose chat is waiting on each. Held here
+        # rather than looked up, because the door that reports a run's events reports
+        # *every* run's events: a database read there would be one read per event across the
+        # whole system to answer a question whose answer is almost always no. Losing it in a
+        # restart costs this turn its live typing and nothing more — the reply itself is
+        # rebuilt from what was written down (``run_ended``).
+        self._watching: dict[UUID, UUID] = {}
         self._lock = asyncio.Lock()
 
     # ── queries ──────────────────────────────────────────────────────────────────
@@ -410,6 +433,22 @@ class LeaderChatService:
                     f"armarius:agent:{leader.id}:project:{project_id}"
                 )
 
+        adapter = self._registry.get(adapter_type)
+        if not adapter.capabilities.turn_ends_in_the_call:
+            # A turn the Leader takes somewhere else. Nothing below applies to it — not the
+            # waiting, not the collecting, not the ending — because none of it has happened
+            # yet. Asked off the adapter's own contract and never off its name: this layer
+            # is not allowed to know which runtimes exist (Constitution III, FR-040e).
+            await self._hand_over(
+                conversation_id,
+                adapter,
+                leader=leader,
+                project_id=project_id,
+                prompt=prompt,
+                cause=_cause_of(opening_wake),
+            )
+            return
+
         reply_parts: list[str] = []
 
         async def on_event(event_type: str, payload: dict) -> None:
@@ -427,7 +466,6 @@ class LeaderChatService:
             timeout_seconds=self._timeout,
             on_event=on_event,
         )
-        adapter = self._registry.get(adapter_type)
         # Mark the Leader WORKING for this turn — a turn counts as liveness, and the watchdog
         # measures silence-since-turn (so an active stream never false-HUNGs). record_signal
         # below clears it again when the turn resolves (#82 liveness loop).
@@ -467,6 +505,188 @@ class LeaderChatService:
             await self._liveness.record_signal(leader.id)
         except LookupError:  # pragma: no cover — leader vanished mid-turn
             pass
+
+    # ── the turn taken somewhere else ────────────────────────────────────────────
+    async def _hand_over(
+        self,
+        conversation_id: UUID,
+        adapter: MariusAdapter,
+        *,
+        leader: Marius,
+        project_id: UUID,
+        prompt: str,
+        cause: WakeReason,
+    ) -> None:
+        """Offer this turn to whoever will actually take it, and let go (FR-040b, FR-040e).
+
+        The conversation stays **thinking** and the run stays **queued**, because neither is
+        over and neither has begun: the work is on a shelf until a machine asks for it. What
+        comes back from the offer says only whether it was taken.
+
+        The message is written down with the run rather than composed later. A turn of this
+        chat is one turn of a conversation, and what the Leader has to be told was settled
+        the moment the patron wrote — there is no task to re-read for anything fresher, which
+        is the same reason the interview writes its message down here (FR-040c, FR-011).
+
+        The silence clock is deliberately not armed. On the road this process drives, marking
+        the Leader *working* is what tells the watchdog to measure silence-since-turn; on this
+        one the run's own hold and the hung-run sweep already answer that question, and a
+        second clock on one question is two answers waiting to disagree (FR-040e).
+
+        Nor does the conversation's stored session handle travel with the offer, and it would
+        mean nothing if it did: a turn about no task keeps no session of its own on the far
+        side. What carries this conversation forward is the message — the last several turns
+        are in it — and that is the same answer the machine already gives every task-less run.
+        """
+        now = utcnow()
+        run = Run(
+            project_id=project_id,
+            marius_id=leader.id,
+            adapter_type=leader.adapter_type,
+            wake_source=WakeSource.LEADER_CHAT,
+            trigger_causes=[cause],
+            trigger_detail=cause.render_en(),
+            status=RunStatus.QUEUED,
+            created_at=now,
+        )
+        async with self._uow() as uow:
+            conversation = await uow.leader_chats.get(conversation_id)
+            if conversation is None:  # pragma: no cover - read moments ago
+                return
+            conversation.driving_run_id = run.id
+            conversation.updated_at = now
+            await uow.leader_chats.update(conversation)
+            await uow.runs.add(run)
+            await uow.wakeups.add(
+                WakeupRequest(
+                    project_id=project_id,
+                    marius_id=leader.id,
+                    source=run.wake_source,
+                    causes=[cause],
+                    reason=cause.render_en(),
+                    prompt=prompt,
+                    status=WakeupStatus.DISPATCHED,
+                    run_id=run.id,
+                    created_at=now,
+                )
+            )
+            await uow.commit()
+
+        self._watching[run.id] = project_id
+        ctx = ExecContext(
+            prompt=prompt,
+            adapter_config=dict(leader.adapter_config or {}),
+            marius_id=leader.id,
+            run_id=run.id,
+            timeout_seconds=self._timeout,
+        )
+        # Outside the transaction above, and that is not a tidiness point: handing work over
+        # writes to a store of its own, and holding ours open across it is a lock held for the
+        # length of somebody else's write.
+        try:
+            result = await adapter.dispatch(ctx)
+        except Exception as exc:
+            logger.exception("leader-chat turn %s could not be handed over", conversation_id)
+            await self._not_taken(conversation_id, run.id, RunStatus.FAILED, str(exc))
+            return
+        if result.status in ACTIVE_RUN_STATUSES:
+            return
+        # Refused at the door — no machine to put it on, most often. Nothing is coming for
+        # this run, so it ends where it was offered rather than sitting queued for ever, and
+        # the chat is released with it: a conversation left *thinking* behind a run nobody
+        # will ever finish rejects the patron's every next message with a 409.
+        logger.warning("leader-chat turn %s was not taken: %s", conversation_id, result.error)
+        await self._not_taken(conversation_id, run.id, result.status, result.error)
+
+    async def _not_taken(
+        self,
+        conversation_id: UUID,
+        run_id: UUID,
+        status: RunStatus,
+        error: str | None,
+    ) -> None:
+        """Close a turn that never left the door, run and conversation together."""
+        self._watching.pop(run_id, None)
+        if self._close_run is not None:
+            await self._close_run(run_id, status=status, error=error)
+        await self._finish(
+            conversation_id, text="", ok=False, session_params=None, error=error
+        )
+
+    async def run_event(self, run_id: UUID, event_type: str, payload: dict) -> None:
+        """Something happened in a run — show it if a chat is waiting on that run (FR-046).
+
+        Called for **every** run's every event, so the first thing it does is answer *not
+        mine* for nearly all of them, from memory.
+
+        What the machine reports as one whole message goes out as a delta, and that is the
+        honest reading rather than a rename: on this channel a delta means *more of the reply
+        has arrived*, and a message from a machine is exactly that. The screen grows the same
+        bubble either way, and the reply is replaced by the recorded one when the turn ends.
+        """
+        project_id = self._watching.get(run_id)
+        if project_id is None or event_type != _SAID:
+            return
+        text = payload.get("text")
+        if text:
+            await self._publish(project_id, "assistant.delta", {"text": str(text)})
+
+    async def run_ended(self, run_id: UUID) -> None:
+        """A run is over — if it was carrying a turn of some chat, that turn is over too.
+
+        Called for **every** run that ends, so it says nothing about runs that were driving
+        no conversation.
+
+        The reply is read back out of what was written down rather than out of anything held
+        here. That is what makes the ending survive a restart, and it is also the only source
+        that is true: this process did not watch the turn, and the events are the record of
+        what the Leader actually said.
+        """
+        async with self._uow() as uow:
+            conversation = await uow.leader_chats.get_by_run(run_id)
+            if conversation is None:
+                return
+            run = await uow.runs.get(run_id)
+            conversation_id = conversation.id
+            leader_id = conversation.leader_marius_id
+            ok = run is not None and run.status == RunStatus.COMPLETED
+            text = await self._reply_of(uow, run_id) if ok else ""
+            error = run.error if run is not None else None
+        self._watching.pop(run_id, None)
+        await self._finish(
+            conversation_id,
+            text=text,
+            ok=ok,
+            session_params=None,
+            error=None if ok else (error or None),
+        )
+        # A **completed** turn is contact: the Leader answered, so it is alive. A failed one
+        # is not — see the note on the in-process road, where folding the two together used
+        # to keep a dead Leader permanently online.
+        if ok and leader_id is not None:
+            try:
+                await self._liveness.record_signal(leader_id)
+            except LookupError:  # pragma: no cover - leader vanished mid-turn
+                pass
+
+    async def _reply_of(self, uow: UnitOfWork, run_id: UUID) -> str:
+        """Everything the Leader said in one run, in the order it said it.
+
+        An event that carries only the opening of something long is followed to the rest
+        (FR-049). Rebuilding a reply out of the openings would put a silently truncated answer
+        in the Leader's mouth, which is worse than a missing one: nothing on the screen would
+        say it had been cut.
+        """
+        parts: list[str] = []
+        for event in await uow.run_events.list_by_run(run_id, types=[_SAID]):
+            said = str(event.payload.get("text") or "")
+            if event.full_field:
+                whole = await uow.run_events.full_text(run_id, event.seq)
+                if whole is not None:
+                    said = whole[1]
+            if said:
+                parts.append(said)
+        return "".join(parts).strip()
 
     async def _finish(
         self,
@@ -555,3 +775,22 @@ class LeaderChatService:
                     )
                 )
         return entries
+
+
+def _cause_of(opening_wake: dict | None) -> WakeReason:
+    """Why this turn is happening, as a code the run can be read back by.
+
+    A turn opened by a system wake already has its cause written into the conversation, and
+    it is lifted back out rather than restated: the run and the chat turn are the same event
+    seen from two sides, and giving them two different causes would make the agent screen
+    disagree with the chat about why the Leader was woken.
+
+    Everything else is the patron writing, which is the one cause the chat has of its own.
+    """
+    if opening_wake is None:
+        return reason("leader_chat_message")
+    params = opening_wake.get("params")
+    return reason(
+        str(opening_wake.get("code") or "leader_chat_message"),
+        **(params if isinstance(params, dict) else {}),
+    )

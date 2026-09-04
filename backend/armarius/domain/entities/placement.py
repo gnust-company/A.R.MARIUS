@@ -36,6 +36,12 @@ NOT_PLACED = "not_placed"
 # that shows an agent offline with a blank space beside it is the failure FR-006c names.
 PLACEMENT_NOT_READY = "placement_not_ready"
 
+# The place could not say who would carry the work of an agent put there. Nothing a person
+# did causes this — it means the half of the system that knows what a place *is* did not
+# answer — but it is refused rather than papered over, because an agent created without an
+# answer would be an agent no wake could ever reach.
+PLACEMENT_CARRIES_NOTHING = "placement_carries_nothing"
+
 
 class OptionSource(StrEnum):
     """How firmly a place knows the values it listed.
@@ -77,6 +83,16 @@ class PlacementOption:
 class Placement:
     id: UUID
     workspace_id: UUID
+    # Who carries the work of an agent put here. An opaque key: this layer stores it, hands
+    # it on, and never reads a meaning into it — nothing here compares it to a value, and
+    # nothing here knows which keys exist.
+    #
+    # It is on the *place* because that is where the answer actually comes from. Which tool
+    # carries an agent's turn follows from where the agent was put, which is a thing the
+    # person choosing can see; asking them separately would be asking a question they have
+    # no way to answer well, and answering it with a constant in the business layer would be
+    # that layer naming a runtime (Constitution III, FR-007k).
+    carried_by: str = ""
     # Open for work. A closed placement still exists and still holds every agent that was
     # put there — those agents are offline, which is a state with a defined meaning rather
     # than a silent failure (FR-007f).

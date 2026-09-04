@@ -37,6 +37,13 @@ from armarius.shared.errors import Conflict
 # the two that need no knowledge of machines at all live in the domain beside `Placement`.
 REASON_MACHINE_UNREACHABLE = "machine_unreachable"
 
+# Who carries the work of an agent put at a workplace. This module is the one place in the
+# system entitled to answer that, because it is the one place that knows a placement *is* a
+# CLI on an enrolled machine — and work on an enrolled machine is carried by the daemon that
+# asks for it. Spelled here rather than imported from the adapter: the adapter reaches down
+# into this package, and the two meeting in the middle would be a cycle.
+CARRIED_BY_DAEMON = "daemon"
+
 
 class SqlPlacementRepository(PlacementRepository):
     """`workplaces` read as placements, `agent_workplace_bindings` written once."""
@@ -70,6 +77,7 @@ class SqlPlacementRepository(PlacementRepository):
             ready=row.ready,
             not_ready_reason=row.not_ready_reason,
             options=options_of(row),
+            carried_by=CARRIED_BY_DAEMON,
         )
 
     async def attach(
@@ -146,6 +154,7 @@ class SqlPlacementRepository(PlacementRepository):
                     workspace_id=workspace_id,
                     ready=False,
                     not_ready_reason=reason,
+                    carried_by=CARRIED_BY_DAEMON,
                 )
                 continue
             alive = beat is not None and _at_least(beat) > cutoff
@@ -154,6 +163,9 @@ class SqlPlacementRepository(PlacementRepository):
                 workspace_id=workspace_id,
                 ready=alive,
                 not_ready_reason=None if alive else REASON_MACHINE_UNREACHABLE,
+                # Said whether the place is open or shut: who would do the work does not
+                # change because the machine holding it went quiet.
+                carried_by=CARRIED_BY_DAEMON,
             )
         return placed
 

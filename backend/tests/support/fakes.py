@@ -720,19 +720,27 @@ class _FakePlacementRepo:
 
 
 def a_placement(store_owner, workspace_id: UUID, *, ready: bool = True,
-                not_ready_reason: str | None = None) -> Placement:
+                not_ready_reason: str | None = None,
+                carried_by: str = "echo") -> Placement:
     """Put one placement in a fake store and hand it back.
 
     `store_owner` is a `FakeUowFactory` (or anything with a `.store`). Every agent has to be
     attached to one at creation (FR-007f), so a test that wants an agent needs one of these
     first — which is the point, not an inconvenience: the requirement says there is no such
     thing as an agent that has not been placed.
+
+    It declares who carries the work, because a real one always does (FR-007g2) and a
+    fixture that left it blank would hand every test built on it a state the product cannot
+    produce. The name is a runtime this process can carry out inside the call, which is what
+    the agents made here would need if anything ever ran them; pass `carried_by=""` for the
+    one thing that blank is: a place that could not answer.
     """
     placement = Placement(
         id=uuid4(),
         workspace_id=workspace_id,
         ready=ready,
         not_ready_reason=not_ready_reason,
+        carried_by=carried_by,
     )
     store_owner.store.placements[placement.id] = placement
     return placement

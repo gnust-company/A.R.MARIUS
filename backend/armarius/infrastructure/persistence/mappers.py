@@ -258,6 +258,7 @@ def leader_chat_to_entity(
         session_params=dict(m.session_params or {}),
         transcript=list(m.transcript or []),
         state=ChatState(m.state),
+        driving_run_id=m.driving_run_id,
         created_at=m.created_at,
         updated_at=m.updated_at,
     )

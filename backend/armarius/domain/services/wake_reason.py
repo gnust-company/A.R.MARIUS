@@ -105,6 +105,7 @@ ENGLISH: dict[str, str] = {
     # Naming the two turns apart matters to whoever reads the run afterwards: one of them
     # opens a conversation and the other continues one, and a log that calls both "the
     # patron said something" cannot say which run was the first.
+    "leader_chat_message": "The patron wrote to you in the project chat.",
     "onboarding_opened": "The patron opened a chat to set a project up with you.",
     "onboarding_answered": "The patron answered your question.",
     # ── the manual button ──

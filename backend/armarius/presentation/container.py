@@ -191,6 +191,11 @@ def build_container() -> Container:
         liveness=liveness_for_chat,
         base_url=settings.public_api_url,
         run_timeout_seconds=settings.run_timeout_seconds,
+        # A turn of this chat can be taken on somebody's machine now, and a turn offered to a
+        # machine that has none left is refused at the door. Closing that run is the same act
+        # as closing any other, so it goes through the one object that knows what closing a
+        # run means rather than through a second answer written here (FR-040b).
+        close_run=wake_engine.conclude_run,
     )
     projects = ProjectService(
         uow_factory,
@@ -245,17 +250,45 @@ def build_container() -> Container:
             {"workplace_id": str(workplace_id)},
         )
 
+    async def show_run_event(
+        run_id: UUID, seq: int, event_type: str, payload: dict
+    ) -> None:
+        """One event, put in front of both screens that could be watching this run.
+
+        The run's own channel is the log a person opens to answer *what did this agent do*.
+        The second reader is the project chat: a turn of it can be taken on a machine now, and
+        without this line the patron would watch an empty box until the whole reply landed at
+        once (FR-046, FR-040b). Wired separately from the task channel above because these
+        runs have no task — a chat is about the project, not about a piece of work.
+        """
+        await event_bus.publish(
+            run_id, {"type": event_type, "seq": seq, "payload": payload}
+        )
+        await leader_chat.run_event(run_id, event_type, payload)
+
+    async def run_is_over(run_id: UUID) -> None:
+        """Everyone owed the news that a run ended, other than the run loop itself.
+
+        Second readers of one fact, not second decisions: a run may have been carrying a turn
+        of a team-building interview or of the project chat, and a conversation left mid-turn
+        is not rescued by anything the run loop does — it stays mid-turn and refuses the
+        patron's every next message (FR-040c, FR-040e). Kept apart from the closing itself
+        because a run ends by more than one road, and only one of them goes through the
+        engine: the hung-run reaper writes its own ending, and these readers are owed that
+        one too.
+        """
+        await onboarding.run_ended(run_id)
+        await leader_chat.run_ended(run_id)
+
     async def close_run(run_id: UUID, **ending: object) -> None:
         """A run reported finished from a machine, and everyone who is owed that news.
 
         The wake engine is what *closing a run* means and stays the only thing that decides
-        it. What follows is a second reader of the same fact, not a second decision: a run
-        may have been taking a turn of a team-building interview, and a chat whose turn ended
-        with the agent saying nothing has nobody left to drive it (FR-040c). Told here rather
-        than from inside the engine, because a chat is not something the run loop knows about.
+        it. Told here rather than from inside the engine, because a chat is not something the
+        run loop knows about.
         """
         await wake_engine.conclude_run(run_id, **ending)  # type: ignore[arg-type]
-        await onboarding.run_ended(run_id)
+        await run_is_over(run_id)
 
     claims = DaemonClaimService(
         on_release=push_reasons.refresh,
@@ -271,9 +304,7 @@ def build_container() -> Container:
         # The run's own channel, beside the task's. A person reading one run's log while it
         # happens is subscribed here, and until this existed only the in-process adapter fed
         # it — so a run on a real machine wrote a full record and streamed nothing (FR-046).
-        on_run_event=lambda run_id, seq, event_type, payload: event_bus.publish(
-            run_id, {"type": event_type, "seq": seq, "payload": payload}
-        ),
+        on_run_event=show_run_event,
         # A run that has actually begun, said on the channel an agent's own screen holds
         # open. The in-process road announces this transition itself; without this line the
         # same run carried out on a machine sat at *queued* on screen for the whole time it
@@ -328,6 +359,10 @@ def build_container() -> Container:
         task_log=TaskLogService(uow_factory),
         push_reasons=push_reasons,
         workspace_trace=ControlBusWorkspaceTrace(control_bus),
+        # Reaping is the **only** ending a hung run gets — it writes its own, without going
+        # through the engine — so the conversations a run can be carrying have to be told
+        # from here as well, or a chat whose turn hung waits for ever.
+        run_ended=run_is_over,
     )
     # The Leader's controlled heartbeat (spec 001 FR-052 → FR-055). Ticks often and
     # cheaply; each project is swept on its own rhythm, and only a sweep that found
