@@ -205,6 +205,7 @@ export function mariusToVM(dto: MariusDTO): Marius {
     projectIds: [], // populated by the frontend from roster grants
     skills: dto.skills,
     adapterType: dto.adapter_type,
+    runtimeOptions: dto.runtime_options ?? {},
     offlineReason: dto.offline_reason ?? undefined,
     lastSeen: dto.last_seen_at ?? undefined,
   }

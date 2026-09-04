@@ -8,8 +8,6 @@ import {
   Check,
   Star,
   MoreHorizontal,
-  ChevronDown,
-  ChevronUp,
   Loader2,
   Bot,
   Clock,
@@ -21,11 +19,12 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
-import type { Marius, AgentStatus, WorkplaceChoice } from '@/store/appStore';
+import type { Marius, AgentStatus, WorkplaceChoice, PlacementOption } from '@/store/appStore';
 import VellumPanel from '@/components/VellumPanel';
 import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import RuntimeOptionFields from '@/components/RuntimeOptionFields';
 import PageTitle from '@/components/PageTitle';
 import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
@@ -61,9 +60,6 @@ const STATUS_CONFIG: Record<
   working: { color: '#D4A843', pulse: true, label: 'Working', icon: Activity },
   idle: { color: '#A89880', pulse: false, label: 'Idle', icon: Clock },
   offline: { color: '#8B7A6A', pulse: false, label: 'Offline', icon: WifiOff },
-  pending: { color: '#D4A843', pulse: false, label: 'Pending Review', icon: Clock },
-  invited: { color: '#A89880', pulse: false, label: 'Invited', icon: Bot },
-  revoked: { color: '#8B7A6A', pulse: false, label: 'Revoked', icon: WifiOff },
 };
 
 // There is no adapter picker any more. It offered three choices of which only one was ever
@@ -199,6 +195,8 @@ function AgentCard({
             <button
               onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
               className="p-1.5 rounded-md text-ink-muted hover:text-ink hover:bg-[#EDE4CE] transition-colors"
+              aria-label={t('directory.actions.more')}
+              title={t('directory.actions.more')}
             >
               <MoreHorizontal className="w-4 h-4" />
             </button>
@@ -336,6 +334,7 @@ export default function Directory() {
   const inviteNewAgent = useAppStore((s) => s.inviteNewAgent);
   const listWorkplaces = useAppStore((s) => s.listWorkplaces);
   const updateMarius = useAppStore((s) => s.updateMarius);
+  const listAgentOptions = useAppStore((s) => s.listAgentOptions);
   const deleteMarius = useAppStore((s) => s.deleteMarius);
   const designateWorkspaceAgent = useAppStore((s) => s.designateWorkspaceAgent);
   const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId);
@@ -348,16 +347,22 @@ export default function Directory() {
     [mariuses, activeWorkspaceId]
   );
 
-  // ── Rename / delete / designate state ──────────────────────────────────────
+  // ── Edit / delete / designate state ────────────────────────────────────────
   const [editingAgent, setEditingAgent] = useState<Marius | null>(null);
   const [editAgentName, setEditAgentName] = useState('');
+  // What the agent's own workplace offers, asked of the agent rather than read off the list
+  // of places one may be *put* on — that list is a picker and never says where this one sits.
+  const [editOptions, setEditOptions] = useState<PlacementOption[]>([]);
+  const [editOptionsLoading, setEditOptionsLoading] = useState(false);
+  const [editRuntimeOptions, setEditRuntimeOptions] = useState<Record<string, string>>({});
+  const [editError, setEditError] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
   const [deletingAgent, setDeletingAgent] = useState<Marius | null>(null);
   const [designatingAgent, setDesignatingAgent] = useState<Marius | null>(null);
 
   // ── Filter State ───────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [showPendingOnly, setShowPendingOnly] = useState(false);
 
   // ── Invite Modal State ─────────────────────────────────────────────────────
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
@@ -413,19 +418,13 @@ export default function Directory() {
         if (m.status === 'online') return 3;
         if (m.status === 'working') return 2;
         if (m.status === 'idle') return 1;
-        if (m.status === 'pending') return 0;
-        return -1;
+        return 0;
       };
       return score(b) - score(a) || (a.displayName || a.name).localeCompare(b.displayName || b.name);
     });
 
     return filtered;
   }, [mariuses, searchQuery, statusFilter]);
-
-  const pendingAgents = useMemo(
-    () => mariuses.filter((m) => m.status === 'pending' || m.status === 'invited'),
-    [mariuses]
-  );
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const resetInviteForm = () => {
@@ -517,15 +516,45 @@ export default function Directory() {
     [designateWorkspaceAgent]
   );
 
-  const handleOpenEdit = useCallback((agent: Marius) => {
-    setEditingAgent(agent);
-    setEditAgentName(agent.displayName || agent.name);
-  }, []);
+  const handleOpenEdit = useCallback(
+    (agent: Marius) => {
+      setEditingAgent(agent);
+      setEditAgentName(agent.displayName || agent.name);
+      setEditRuntimeOptions({ ...agent.runtimeOptions });
+      setEditError('');
+      setEditOptions([]);
+      setEditOptionsLoading(true);
+      listAgentOptions(agent.id)
+        .then(setEditOptions)
+        .catch(() => setEditOptions([]))
+        .finally(() => setEditOptionsLoading(false));
+    },
+    [listAgentOptions]
+  );
 
-  const handleRenameAgent = async () => {
-    if (!editingAgent || !editAgentName.trim()) return;
-    await updateMarius(editingAgent.id, { name: editAgentName.trim() });
-    setEditingAgent(null);
+  const handleSaveAgent = async () => {
+    if (!editingAgent || !editAgentName.trim() || savingEdit) return;
+    setSavingEdit(true);
+    setEditError('');
+    // Only what the person actually moved. A setting they never touched is not re-sent, so a
+    // value stored back when the tool still offered it cannot be dragged into this edit and
+    // refused — and the server is left free to keep it exactly as it is.
+    const touched = Object.fromEntries(
+      Object.entries(editRuntimeOptions).filter(
+        ([key, value]) => value !== (editingAgent.runtimeOptions[key] ?? '')
+      )
+    );
+    try {
+      await updateMarius(editingAgent.id, {
+        name: editAgentName.trim(),
+        ...(Object.keys(touched).length > 0 ? { runtimeOptions: touched } : {}),
+      });
+      setEditingAgent(null);
+    } catch (e) {
+      setEditError(errorText(e, t));
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const handleCloseInvite = () => {
@@ -590,8 +619,6 @@ export default function Directory() {
             <option value="working">{t('directory.status.working')} ({mariuses.filter((m) => m.status === 'working').length})</option>
             <option value="idle">{t('directory.status.idle')} ({mariuses.filter((m) => m.status === 'idle').length})</option>
             <option value="offline">{t('directory.status.offline')} ({mariuses.filter((m) => m.status === 'offline').length})</option>
-            <option value="pending">{t('directory.status.pending')} ({mariuses.filter((m) => m.status === 'pending').length})</option>
-            <option value="invited">{t('directory.status.invited')} ({mariuses.filter((m) => m.status === 'invited').length})</option>
           </select>
         </div>
 
@@ -611,49 +638,7 @@ export default function Directory() {
             )}
           />
         </div>
-
-        {/* Pending toggle */}
-        {pendingAgents.length > 0 && (
-          <button
-            onClick={() => setShowPendingOnly(!showPendingOnly)}
-            className={cn(
-              'inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors',
-              showPendingOnly
-                ? 'bg-[#C25E3A] text-white'
-                : 'bg-[#F7F0E0] border border-[#E3D7BC] text-[#6B5E4E] hover:bg-[#EDE4CE]'
-            )}
-          >
-            <Clock className="w-3.5 h-3.5" />
-            {t('directory.pending')} ({pendingAgents.length})
-            {showPendingOnly ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
-        )}
       </motion.div>
-
-      {/* Pending Agents Section */}
-      {showPendingOnly && pendingAgents.length > 0 && (
-        <motion.div
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: 'auto', opacity: 1 }}
-          exit={{ height: 0, opacity: 0 }}
-          className="mb-6"
-        >
-          <h2 className="text-[13px] font-medium text-[#A89880] uppercase tracking-wider mb-3">
-            {t('directory.pendingInvites')}
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {pendingAgents.map((agent) => (
-              <AgentCard
-                key={agent.id}
-                agent={agent}
-                onDesignate={handleDesignate}
-                onEdit={handleOpenEdit}
-                onDelete={setDeletingAgent}
-              />
-            ))}
-          </div>
-        </motion.div>
-      )}
 
       {/* Agent Cards Grid */}
       {filteredAgents.length === 0 ? (
@@ -782,62 +767,13 @@ export default function Directory() {
               {/* What this workplace's tool takes, as the tool itself answered it (FR-007k,
                   FR-017). Nothing here is keyed on which CLI it is: the list arrives with the
                   workplace, and a workplace that offered none simply shows nothing. */}
-              {chosenWorkplace?.options.map((option) => (
-                <div key={option.key}>
-                  <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
-                    {t(`directory.option.${option.key}`, { defaultValue: option.key })}
-                  </label>
-                  {option.source === 'tool_examples' ? (
-                    // The tool named a few by way of example and did not claim they are all,
-                    // so this is a box with suggestions beside it. Offering them as the only
-                    // three would refuse a real model the day a fourth ships.
-                    <>
-                      <input
-                        type="text"
-                        list={`option-${option.key}`}
-                        value={runtimeOptions[option.key] ?? ''}
-                        onChange={(e) =>
-                          setRuntimeOptions((was) => ({ ...was, [option.key]: e.target.value }))
-                        }
-                        placeholder={t('directory.optionDefault')}
-                        className={cn(
-                          'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
-                          'placeholder:text-[#A89880]',
-                          'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
-                          'transition-all'
-                        )}
-                      />
-                      <datalist id={`option-${option.key}`}>
-                        {option.values.map((value) => (
-                          <option key={value} value={value} />
-                        ))}
-                      </datalist>
-                    </>
-                  ) : (
-                    <select
-                      value={runtimeOptions[option.key] ?? ''}
-                      onChange={(e) =>
-                        setRuntimeOptions((was) => ({ ...was, [option.key]: e.target.value }))
-                      }
-                      className={cn(
-                        'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
-                        'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
-                        'transition-all'
-                      )}
-                    >
-                      {/* Blank stays a real choice: FR-007k says an unset setting means the
-                          tool's own default, so the person must be able to get back to it. */}
-                      <option value="">{t('directory.optionDefault')}</option>
-                      {option.values.map((value) => (
-                        <option key={value} value={value}>
-                          {value}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <p className="mt-1 text-[11px] text-[#A89880]">{t('directory.optionHint')}</p>
-                </div>
-              ))}
+              <RuntimeOptionFields
+                options={chosenWorkplace?.options ?? []}
+                chosen={runtimeOptions}
+                onChange={(key, value) =>
+                  setRuntimeOptions((was) => ({ ...was, [key]: value }))
+                }
+              />
 
               {/* What the agent is told to be (FR-007i). This is the whole of how it
                   behaves: there is no per-project role adding to it later. */}
@@ -973,14 +909,14 @@ export default function Directory() {
         </div>
       </Modal>
 
-      {/* Rename Agent Modal */}
+      {/* Edit Agent Modal — its name, and what it runs on (FR-007k) */}
       <Modal
         isOpen={editingAgent !== null}
         onClose={() => setEditingAgent(null)}
         title={
           <span className="font-['Fraunces',Georgia,serif] text-[28px] font-semibold text-[#2A2318]">
-            <span className="title-initial">{t('directory.renameTitle').charAt(0)}</span>
-            {t('directory.renameTitle').slice(1)}
+            <span className="title-initial">{t('directory.editTitle').charAt(0)}</span>
+            {t('directory.editTitle').slice(1)}
           </span>
         }
         maxWidth="max-w-md"
@@ -993,37 +929,67 @@ export default function Directory() {
               {t('common.cancel')}
             </button>
             <button
-              onClick={handleRenameAgent}
-              disabled={!editAgentName.trim()}
+              onClick={handleSaveAgent}
+              disabled={!editAgentName.trim() || savingEdit}
               className={cn(
-                'px-4 py-2 rounded-md text-[13px] font-medium transition-all',
-                editAgentName.trim()
+                'inline-flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-all',
+                editAgentName.trim() && !savingEdit
                   ? 'bg-[#C25E3A] text-white hover:bg-[#D97B5A]'
                   : 'bg-[#E3D7BC] text-[#A89880] cursor-not-allowed'
               )}
             >
+              {savingEdit && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               {t('common.save')}
             </button>
           </>
         }
       >
-        <div>
-          <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
-            {t('directory.renameLabel')} <span className="text-[#C25E3A]">*</span>
-          </label>
-          <input
-            type="text"
-            value={editAgentName}
-            onChange={(e) => setEditAgentName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleRenameAgent(); }}
-            className={cn(
-              'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
-              'placeholder:text-[#A89880]',
-              'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
-              'transition-all'
-            )}
-            autoFocus
-          />
+        <div className="space-y-4">
+          <div>
+            <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
+              {t('directory.renameLabel')} <span className="text-[#C25E3A]">*</span>
+            </label>
+            <input
+              type="text"
+              value={editAgentName}
+              onChange={(e) => setEditAgentName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveAgent(); }}
+              className={cn(
+                'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
+                'placeholder:text-[#A89880]',
+                'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+                'transition-all'
+              )}
+              autoFocus
+            />
+          </div>
+
+          {editOptionsLoading ? (
+            <p className="text-[13px] text-[#A89880]">{t('directory.workplaceLoading')}</p>
+          ) : (
+            <RuntimeOptionFields
+              options={editOptions}
+              chosen={editRuntimeOptions}
+              onChange={(key, value) =>
+                setEditRuntimeOptions((was) => ({ ...was, [key]: value }))
+              }
+              idPrefix="edit-option"
+            />
+          )}
+
+          {/* Said out loud rather than left for the person to discover. What an agent is set
+              to is read when its machine takes a run, so a run already under way keeps what it
+              started with — and a screen that stayed quiet about that would be read as a
+              promise it cannot keep (FR-007k). */}
+          {editOptions.length > 0 && (
+            <p className="text-[11px] text-[#A89880]">{t('directory.optionAppliesNextRun')}</p>
+          )}
+
+          {editError && (
+            <p className="flex items-start gap-1.5 text-[12px] text-[#8A3B22]">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> {editError}
+            </p>
+          )}
         </div>
       </Modal>
 

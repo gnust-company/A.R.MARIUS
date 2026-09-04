@@ -44,9 +44,6 @@ const STATUS_COLORS: Record<AgentStatus, { color: string; label: string }> = {
   working: { color: '#D4A843', label: 'working' },
   idle: { color: '#A89880', label: 'idle' },
   offline: { color: '#8B7A6A', label: 'offline' },
-  pending: { color: '#D4A843', label: 'pending' },
-  invited: { color: '#A89880', label: 'invited' },
-  revoked: { color: '#8B7A6A', label: 'revoked' },
 };
 
 // Run lifecycle → chip tone. Terminal-good greens, in-flight golds, failures terracotta.

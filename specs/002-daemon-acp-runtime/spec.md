@@ -422,6 +422,20 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   - **Danh sách rỗng là trạng thái hợp lệ**, không phải lỗi: chỗ làm ấy không có gì để chọn, và agent trên
     đó chạy bằng mặc định của tool. Kế thừa Multica, gồm cả lời chỉ dẫn khi rỗng — *"confirm the runtime is
     online and the tool is signed in"*.
+  - **Sửa được sau khi agent đã tạo, và có hiệu lực từ lượt chạy sau.** Trước đây muốn hạ mức nghĩ thì phải
+    xoá agent rồi tạo lại — vứt luôn tên, chỉ dẫn, kỹ năng đã nối và cả lịch sử chạy, chỉ để đổi một ô.
+    Thứ đã đặt được đọc lúc cái máy tới **nhận** việc rồi mang theo xuống, nên việc đã rời server thì giữ
+    nguyên thứ nó mang đi; màn hình PHẢI nói ra điều đó chứ không im lặng. Cửa sửa từ chối đúng những thứ
+    cửa tạo từ chối — một luật chỉ chặn ở một cửa thì không phải luật.
+  - **Chỉ đo thứ lần này được chọn, không đo kết quả trộn.** Thứ chỗ làm nhận là câu trả lời của tool lần
+    gần nhất được hỏi, và câu ấy đổi theo thời gian (máy nâng cấp, tool bỏ một mức). Một giá trị lưu từ
+    trước có thể nằm ngoài danh sách hôm nay; đo trên kết quả trộn thì **đổi tên cũng bị từ chối** — một
+    việc chưa từng đi gần ô đã cũ. Thứ không được nhắc tới trong một bản sửa cũng KHÔNG phải thứ bị xoá:
+    muốn trả một ô về mặc định của tool thì đặt nó thành rỗng, đúng nghĩa "bỏ trống" ở trên.
+  - **Danh sách để sửa hỏi theo agent, không đọc từ danh sách chỗ để đặt agent mới.** Danh sách kia là một
+    cái picker: nó chỉ bày chỗ còn nhận việc, và không bao giờ nói agent đang ngồi ở chỗ nào. Dựng màn hình
+    sửa trên nó thì một agent bị gỡ mất CLI sẽ đọc thành *không có gì để chọn* — trong khi thứ tool ấy nhận
+    vẫn biết rõ, và sẽ có nghĩa trở lại ngay khi CLI được cài lại.
 - **FR-007l**: **Bỏ role theo dự án.** Cách cư xử của agent đến từ instructions ở FR-007i, không từ một ghế
   role trong dự án. Thêm agent vào dự án là thêm thẳng agent, không qua role. **Giữ nguyên Trưởng dự án** —
   đó là vị trí điều phối của từng dự án, không phải một ghế trong bộ role đã bỏ (Hiến pháp 2.0.0 — Điều V).

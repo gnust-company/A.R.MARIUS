@@ -188,17 +188,15 @@ export default function CreateProject() {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [mode, setMode] = useState<'manual' | 'agent'>('manual');
 
-  // Approved agents (status not 'invited' or 'revoked')
-  const approvedAgents = useMemo(
-    () => mariuses.filter((m) => m.status !== 'invited' && m.status !== 'revoked'),
-    [mariuses]
-  );
+  // Every agent in the directory is a candidate. There was a filter here for the ones still
+  // waiting on an approval step; that step is gone, and an agent has been approved from its
+  // first second ever since — so the filter was removing nothing (FR-014a).
 
   // Who the team can be picked from. The Leader is left out because the server refuses an
   // agent that both leads a project and sits on it — better not to offer the refusal.
   const teamCandidates = useMemo(
-    () => approvedAgents.filter((m) => m.id !== formData.leaderId),
-    [approvedAgents, formData.leaderId]
+    () => mariuses.filter((m) => m.id !== formData.leaderId),
+    [mariuses, formData.leaderId]
   );
 
   // ─── Validation ────────────────────────────────────────────────────────────
@@ -525,7 +523,7 @@ export default function CreateProject() {
             className="w-full bg-vellum border border-[#E3D7BC] rounded-md px-4 py-2.5 font-body text-body-md text-ink focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)] transition-colors"
           >
             <option value="">{t('createProject.roster.selectAgent')}</option>
-            {approvedAgents.map((agent) => (
+            {mariuses.map((agent) => (
               <option key={agent.id} value={agent.id}>
                 {/* Name and liveness, and nothing in between. There used to be a role in
                     brackets here; the field it read is empty by design, so every agent in
@@ -535,7 +533,7 @@ export default function CreateProject() {
             ))}
             <option value="later">{t('createProject.roster.assignLater')}</option>
           </select>
-          {approvedAgents.length === 0 && (
+          {mariuses.length === 0 && (
             <p className="mt-1 font-body text-body-sm text-ink-muted">
               {t('createProject.roster.noApprovedAgents')}
             </p>
@@ -564,7 +562,7 @@ export default function CreateProject() {
             className="bg-[#EDE4CE] border border-[#E3D7BC] rounded-md p-4"
           >
             {(() => {
-              const agent = approvedAgents.find((a) => a.id === formData.leaderId);
+              const agent = mariuses.find((a) => a.id === formData.leaderId);
               if (!agent) return null;
               return (
                 <div className="flex items-center gap-3">
@@ -665,9 +663,9 @@ export default function CreateProject() {
 
   const renderStep3 = () => {
     const totalSeats = formData.memberIds.length + 1; // + the Leader
-    const selectedLeader = approvedAgents.find((a) => a.id === formData.leaderId);
+    const selectedLeader = mariuses.find((a) => a.id === formData.leaderId);
     const pickedMembers = formData.memberIds
-      .map((id) => approvedAgents.find((a) => a.id === id))
+      .map((id) => mariuses.find((a) => a.id === id))
       .filter((a): a is NonNullable<typeof a> => Boolean(a));
 
     return (

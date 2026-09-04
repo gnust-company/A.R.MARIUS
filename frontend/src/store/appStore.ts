@@ -108,7 +108,13 @@ function saveActiveWorkspace(id: string | null): void {
 
 // ── Types ───────────────────────────────────────────
 
-export type AgentStatus = 'idle' | 'working' | 'offline' | 'invited' | 'revoked' | 'online' | 'pending'
+/** What an agent is, as far as a screen is concerned — and it is only ever liveness.
+ *
+ *  There used to be three more: `invited`, `pending`, `revoked`, read off an invite
+ *  lifecycle. Nothing has produced one since the approval step went away and every agent
+ *  started life approved; the lifecycle itself is gone now too, along with the token whose
+ *  minting was the only moment it ever marked (FR-014a). */
+export type AgentStatus = 'idle' | 'working' | 'offline' | 'online'
 
 /** One place an agent can be put to work — an agent CLI on one of the patron's machines.
  *  The screen only ever sees the ready ones, so there is no state to render here. */
@@ -142,7 +148,9 @@ export interface Marius {
   skills?: string[]
   /** Per-skill install state (post-invite loop #74): slug → pending|installed|failed. */
   adapterType?: string
-  model?: string
+  /** What this agent is set to, out of what its workplace offers (FR-007k). Empty means
+   *  nothing was picked and its tool runs on its own defaults. */
+  runtimeOptions: Record<string, string>
   isWorkspaceAgent?: boolean
   lastSeen?: string
   /** Code for why this agent has nowhere to work (FR-006c). Undefined when it does. */
@@ -546,7 +554,12 @@ interface AppStoreState {
   createWorkspace: (workspace: Workspace) => Promise<Workspace>
   updateWorkspace: (workspaceId: string, name: string) => Promise<void>
   deleteWorkspace: (workspaceId: string) => Promise<void>
-  updateMarius: (mariusId: string, patch: { name?: string; role?: string }) => Promise<void>
+  updateMarius: (
+    mariusId: string,
+    patch: { name?: string; role?: string; runtimeOptions?: Record<string, string> },
+  ) => Promise<void>
+  /** What may be changed about how one agent runs (FR-007k), asked of the place it works at. */
+  listAgentOptions: (mariusId: string) => Promise<PlacementOption[]>
   deleteMarius: (mariusId: string) => Promise<void>
   setActiveWorkspace: (workspaceId: string) => void
   createProject: (input: {
@@ -908,14 +921,30 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     }
   },
 
-  updateMarius: async (mariusId: string, patchBody: { name?: string; role?: string }) => {
+  listAgentOptions: async (mariusId: string) => {
     const m = get().mariuses.find((x) => x.id === mariusId)
     const workspaceId = m?.workspaceId || get().activeWorkspaceId
+    if (!workspaceId) return []
+    const rows = await api.listAgentOptions(workspaceId, mariusId)
+    return rows.map((o) => ({ key: o.key, values: o.values ?? [], source: o.source }))
+  },
+
+  updateMarius: async (
+    mariusId: string,
+    patchBody: { name?: string; role?: string; runtimeOptions?: Record<string, string> },
+  ) => {
+    const m = get().mariuses.find((x) => x.id === mariusId)
+    const workspaceId = m?.workspaceId || get().activeWorkspaceId
+    let settled: Record<string, string> | undefined
     if (workspaceId) {
-      await api.updateMarius(workspaceId, mariusId, {
+      const dto = await api.updateMarius(workspaceId, mariusId, {
         name: patchBody.name,
         role: patchBody.role,
+        runtime_options: patchBody.runtimeOptions,
       })
+      // Where the settings ended up is the server's answer, not this side's arithmetic: only
+      // some of them were sent, and the ones that were not stay whatever they already were.
+      settled = dto.runtime_options ?? {}
     }
     set({
       mariuses: get().mariuses.map((x) =>
@@ -927,6 +956,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
               // displayName in sync so the Directory's `displayName || name` render matches.
               ...(patchBody.name ? { name: patchBody.name, displayName: patchBody.name } : {}),
               ...(patchBody.role ? { role: patchBody.role } : {}),
+              ...(settled ? { runtimeOptions: settled } : {}),
             }
           : x,
       ),
