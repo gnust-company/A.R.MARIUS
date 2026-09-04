@@ -406,7 +406,12 @@ class ProjectService:
             raise NotFound("role_not_in_roster", role=role_key)
         return role
 
-    async def _bench(self, uow, project_id: UUID) -> Role:  # noqa: ANN001
+    async def _bench(
+        self,
+        uow,  # noqa: ANN001
+        project_id: UUID,
+        roles: Sequence[Role],
+    ) -> Role:
         """The row this project's members sit on, made now if the project has none.
 
         Made rather than demanded, because a project created before the bench existed has a
@@ -414,8 +419,11 @@ class ProjectService:
         it. Those rows stay exactly as they are and keep whoever is in them; agents added
         from here on sit on the bench. It is the one row the system makes for itself, and
         what entitles it to: nobody designed this row and nobody can (FR-007l).
+
+        Takes the roster it was read from rather than reading it again: its caller needs the
+        same rows to find the leader, and one transaction asking the same question twice is
+        two chances for the two answers to be written against.
         """
-        roles = await uow.roles.list_by_project(project_id)
         bench = next(
             (r for r in roles if r.key == MEMBERS_ROLE_KEY and not r.is_leader), None
         )
@@ -445,6 +453,10 @@ class ProjectService:
         Leader coordinates the project, which is why Constitution V keeps it while every
         other role goes. Seating the agent already there is a no-op; a second agent is
         refused, because a project with two Leaders has none.
+
+        An agent already on the bench is refused too, the same way `add_member` refuses one
+        that already leads: it is on this project once, and the way to move it is to take it
+        off the bench first.
         """
         return await self.grant_seat(
             project_id,
@@ -475,7 +487,8 @@ class ProjectService:
 
         Idempotent: an agent already on the bench gets its seat back rather than a second
         row. An agent holding the leader seat is refused — it is already on this project,
-        and the honest fix is to say so, not to put it in two places at once.
+        and the honest fix is to say so, not to put it in two places at once. `grant_seat`
+        refuses the mirror of it, so neither door can seat one agent twice.
         """
         now = utcnow()
         async with self._uow() as uow:
@@ -487,15 +500,22 @@ class ProjectService:
             # reads the same either way (Constitution I).
             if agent is None or agent.workspace_id != project.workspace_id:
                 raise NotFound("agent_not_found")
-            bench = await self._bench(uow, project_id)
+            roles = await uow.roles.list_by_project(project_id)
+            bench = await self._bench(uow, project_id, roles)
             seated = await uow.seat_grants.list_by_project(project_id)
-            leaders = leader_role_ids(await uow.roles.list_by_project(project_id))
+            leaders = leader_role_ids(roles)
+            keys = {r.id: r.key for r in roles}
             for g in seated:
                 if g.marius_id != marius_id:
                     continue
                 if g.role_id in leaders:
                     raise BadRequest("agent_leads_this_project")
-                return self._seat_view(g, MEMBERS_ROLE_KEY)
+                # The seat it actually holds, named by the row it is on rather than by the
+                # door that was knocked on. Those are the same row for every project made
+                # since the bench existed; on one made before, the agent may be sitting on a
+                # worker role somebody typed, and answering "members" would describe a seat
+                # that is not the one it has.
+                return self._seat_view(g, keys.get(g.role_id, MEMBERS_ROLE_KEY))
             grant = SeatGrant(
                 project_id=project_id,
                 role_id=bench.id,
@@ -572,6 +592,18 @@ class ProjectService:
             )
             if existing is not None:
                 return self._seat_view(existing, role_key)
+            # One agent, one seat on a project — and the rule has to be read from *every*
+            # row, not just the one being granted. The check above only sees a second row
+            # under the same role; an agent already on the bench asking for the leader seat
+            # is a different role, so it passed, and the project ended up with one agent
+            # holding two seats: counted twice in `seats_filled`, drawn twice on the roster
+            # screen. `add_member` refuses the same collision from the other side, and a
+            # rule enforced in one direction is not a rule.
+            #
+            # Written over the roster rather than over `role_key` so it does not need to
+            # know which row it is on: whatever rows a project has, an agent sits on one.
+            if any(g.marius_id == marius_id for g in seated):
+                raise BadRequest("agent_is_on_this_project")
             # `seats` is what the roster promised, so it has to be what the roster holds.
             # The unique constraint underneath stops *one agent* taking the same seat
             # twice; it says nothing about *two agents* in a one-seat role, which is the

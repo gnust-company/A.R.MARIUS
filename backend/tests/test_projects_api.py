@@ -261,6 +261,30 @@ async def test_an_agent_cannot_be_both_the_leader_and_a_member() -> None:
     assert again.json()["code"] == "agent_leads_this_project"
 
 
+async def test_a_member_cannot_also_become_the_leader() -> None:
+    """Chiều ngược lại của cùng một luật, đo qua cửa thật.
+
+    Cửa `/members` chặn agent đang làm Trưởng; cửa `/leader` thì không chặn agent đang ngồi
+    chỗ chung — nên một agent ngồi được hai chỗ trong cùng một dự án, và bảng nhân sự đếm nó
+    hai lần.
+    """
+    async with await _client() as c:
+        token, ws_id = await _register(c, "p5d@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        pid = (await _create(c, ws_id, h))["id"]
+        mid = await _online_agent(c, ws_id, h, "Bob")
+        await c.post(f"/v1/projects/{pid}/members", headers=h, json={"marius_id": mid})
+
+        promoted = await c.post(f"/v1/projects/{pid}/leader", headers=h, json={"marius_id": mid})
+        roster = await c.get(f"/v1/projects/{pid}/roster", headers=h)
+
+    assert promoted.status_code == 400, promoted.text
+    assert promoted.json()["code"] == "agent_is_on_this_project"
+    # Không dòng ghế thứ hai nào được ghi: agent xuất hiện đúng một lần trên cả bảng.
+    seated = [s["marius_id"] for row in roster.json() for s in row["seated"]]
+    assert seated == [mid], seated
+
+
 async def test_create_rejects_a_leader_without_a_description() -> None:
     async with await _client() as c:
         token, ws_id = await _register(c, "noleaddesc@armarius.dev")

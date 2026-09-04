@@ -3,13 +3,14 @@
 Four call sites used to work this out for themselves, and the four did not agree.
 
 Three read the roster's leader flag; the fourth matched the literal role key ``"leader"``,
-which the flag does not have to imply — `add_role` deliberately skips the roster rule, so a
-leader role under a different key is reachable through the API, and then those two readings
-name different agents. A fifth reader (the wake guard) stopped at the *first* grant row
-matching the agent, without checking it was still in force — back when a revoked seat left
-its row behind and an agent put back on the leader seat had a dead row sitting ahead of its
-live one. That row no longer exists (a revoke deletes it), but the lookup stays here: the
-mistake it prevents is copies of one question, not that one shape of stale data.
+which the flag does not have to imply — back when a caller could add a roster row of its own,
+one under a different key could carry the flag, and then those two readings name different
+agents. A fifth reader (the wake guard) stopped at the *first* grant row matching the agent,
+without checking it was still in force — back when a revoked seat left its row behind and an
+agent put back on the leader seat had a dead row sitting ahead of its live one.
+
+Both shapes of data are gone now: no door builds a roster row (FR-007l), and a revoke deletes
+its row. The lookup stays anyway, and not because of either of them.
 
 Neither is a mistake a reader can be told to stop making. They are copies of one lookup,
 and every copy is another chance to get it wrong. So the lookup lives here, and the callers

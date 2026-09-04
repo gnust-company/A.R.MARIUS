@@ -63,6 +63,9 @@ ENGLISH: dict[str, str] = {
     "agent_leads_this_project": (
         "That agent already leads this project — it cannot also be a member of it."
     ),
+    "agent_is_on_this_project": (
+        "That agent is already on this project — take it off before seating it elsewhere."
+    ),
     # ── who is calling ────────────────────────────────────────────────────────
     "missing_bearer_token": "Missing bearer token.",
     "invalid_machine_token": "Invalid or expired machine token.",

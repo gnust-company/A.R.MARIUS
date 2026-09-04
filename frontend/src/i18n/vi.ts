@@ -932,6 +932,7 @@ export const vi = {
     role_not_in_roster: 'Vai \'{{role}}\' không có trong danh sách vai của dự án.',
     no_granted_seat: 'Agent này chưa được cấp ghế ở vai đó.',
     agent_leads_this_project: 'Agent này đang làm Trưởng dự án này — không thể đồng thời là thành viên của nó.',
+    agent_is_on_this_project: 'Agent này đã ở trong dự án này — hãy rút nó ra trước khi xếp vào chỗ khác.',
     skill_not_linked: 'Kỹ năng \'{{slug}}\' không gắn với agent này.',
     session_expired: 'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.',
     missing_bearer_token: 'Thiếu thẻ truy cập.',

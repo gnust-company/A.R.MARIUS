@@ -17,6 +17,7 @@ from armarius.application.use_cases.projects import (
 )
 from armarius.domain.entities.marius import Liveness, Marius
 from armarius.domain.entities.project import ProjectStatus
+from armarius.domain.entities.role import Role
 from armarius.domain.entities.workspace import Workspace
 from armarius.domain.services.project_rules import InvalidProjectPlan
 from armarius.shared.errors import BadRequest, NotFound
@@ -222,6 +223,64 @@ async def test_the_leader_is_not_also_a_member() -> None:
         await svc.add_member(project.id, m.id)
     assert caught.value.code == "agent_leads_this_project"
     assert len(await svc.list_seat_grants(project.id)) == 1
+
+
+async def test_a_member_cannot_also_become_the_leader() -> None:
+    """Mặt còn lại của cùng một luật, và là mặt từng lọt.
+
+    Cửa `add_member` dò trùng trên cả bảng nhân sự, còn cửa Trưởng dò trong đúng dòng của
+    nó — nên agent đang ngồi chỗ chung xin lên Trưởng thì được cấp thêm một dòng ghế thứ
+    hai. Một luật chỉ chặn một chiều thì không phải luật.
+    """
+    factory, ws = _factory_with_workspace()
+    svc = ProjectService(factory)
+    project = await svc.create_project(ws.id, "Apollo", leader_description="Leads.")
+    m = _seed_marius(factory, ws, Liveness.ONLINE)
+    await svc.add_member(project.id, m.id)
+
+    with pytest.raises(BadRequest) as caught:
+        await svc.seat_leader(project.id, m.id)
+    assert caught.value.code == "agent_is_on_this_project"
+    # Đo cả hệ quả, không chỉ mã lỗi: một dòng ghế thứ hai làm agent bị đếm hai lần.
+    assert len(await svc.list_seat_grants(project.id)) == 1
+    roster = await svc.get_roster(project.id)
+    assert sum(r.filled for r in roster) == 1
+
+
+async def test_a_project_made_before_the_bench_keeps_the_seat_its_agent_has() -> None:
+    """Bảng nhân sự còn mang một vai người chủ tự gõ, và agent đang ngồi ở đó.
+
+    `_bench` là *lấy-hoặc-tạo* chứ không viết lại bảng nhân sự cũ, nên dự án dựng trước
+    T039j vẫn còn những vai có tên thật và có người ngồi. Xin thêm agent ấy vào dự án lần
+    nữa thì nó đã ở đó rồi — và câu trả lời phải gọi đúng **dòng nó đang ngồi**, không gọi
+    tên cái cửa vừa được gõ, nếu không người chủ đọc được một chỗ ngồi mà agent không có.
+    """
+    factory, ws = _factory_with_workspace()
+    svc = ProjectService(factory)
+    project = await svc.create_project(ws.id, "Apollo", leader_description="Leads.")
+    m = _seed_marius(factory, ws, Liveness.ONLINE)
+
+    # Một vai kiểu cũ, đặt thẳng vào kho: không còn cửa nào dựng được nó nữa.
+    legacy = Role(
+        project_id=project.id,
+        key="backend",
+        title="Backend",
+        seats=2,
+        description="API.",
+    )
+    factory.store.roles[legacy.id] = legacy
+    await svc.grant_seat(project.id, "backend", m.id, system=True)
+
+    seat = await svc.add_member(project.id, m.id)
+
+    assert seat.role_key == "backend", seat.role_key
+    assert len(await svc.list_seat_grants(project.id)) == 1
+    # Và bảng nhân sự cũ đứng nguyên: ba dòng, không dòng nào bị viết lại.
+    assert {r.key for r in await svc.list_roles(project.id)} == {
+        LEADER_ROLE_KEY,
+        MEMBERS_ROLE_KEY,
+        "backend",
+    }
 
 
 async def test_revoke_seat_is_system_only_and_leaves_nothing_behind() -> None:
