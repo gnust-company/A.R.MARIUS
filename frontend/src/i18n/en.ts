@@ -931,6 +931,7 @@ export const en = {
     role_not_in_roster: 'Role \'{{role}}\' is not in this project\'s roster.',
     no_granted_seat: 'No granted seat for that agent and role.',
     agent_leads_this_project: 'That agent already leads this project — it cannot also be a member of it.',
+    agent_is_on_this_project: 'That agent is already on this project — take it off before seating it elsewhere.',
     skill_not_linked: 'Skill \'{{slug}}\' is not linked to you.',
     session_expired: 'Your session has expired. Please log in again.',
     missing_bearer_token: 'Missing bearer token.',

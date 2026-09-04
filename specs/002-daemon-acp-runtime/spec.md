@@ -442,7 +442,10 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
       Trưởng dự án vẫn có đúng một chỗ, vì nó là chỗ đã hứa với đúng một agent. Số chỗ khai ra cho người
       chủ đọc là *lớn hơn giữa số đã hứa và số người đang ngồi*, nên một dự án bốn người không đọc ra hai.
     - **Một agent không vừa làm Trưởng dự án vừa là thành viên** của cùng dự án: từ chối, chứ không ngồi
-      hai chỗ.
+      hai chỗ. **Từ chối ở cả hai cửa**, vì một luật chỉ chặn một chiều thì không phải luật: cửa chỗ ngồi
+      chung từ chối agent đang làm Trưởng dự án, và cửa Trưởng dự án từ chối agent đang ngồi chỗ chung.
+      Luật này đọc trên **cả bảng nhân sự**, không đọc trong đúng dòng đang cấp — dò trùng trong một dòng
+      thì hai dòng khác nhau lọt qua, và agent bị đếm hai lần ở số chỗ đã ngồi lẫn trên màn Đội hình.
     - Bản kế hoạch còn mang `roles` bị **từ chối** (422), không bị lặng lẽ bỏ qua — bỏ qua thì cửa trả về
       201 kèm một dự án trống người, và người chủ không biết bước nào của mình hỏng (bài học T048c).
     - Buổi phỏng vấn lập dự án **thôi hỏi về đội**: nó hỏi về dự án, và ai làm dự án là người chủ tự chọn
