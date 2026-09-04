@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter
 
 from armarius.domain.entities.marius import Marius
+from armarius.infrastructure.daemon.workplaces import LinkedMachine
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.container import Container
 from armarius.presentation.deps import ContainerDep
@@ -28,6 +29,7 @@ from armarius.presentation.schemas import (
     ResidentAgentOut,
     RunOut,
     SkillOut,
+    UpdateMachineIn,
     UpdateMariusIn,
     UpdateSkillIn,
     UpdateWorkspaceIn,
@@ -104,31 +106,68 @@ async def list_machines(
     """
     await _require_owned_workspace(container, user, workspace_id)
     machines = await container.daemon_workplaces.list_machines(workspace_id)
-    return [
-        MachineOut(
-            id=machine.id,
-            display_name=machine.display_name,
-            platform=machine.platform,
-            daemon_version=machine.daemon_version,
-            last_heartbeat_at=machine.last_heartbeat_at,
-            reachable=machine.reachable,
-            workplaces=[
-                MachineWorkplaceOut(
-                    id=place.id,
-                    cli_kind=place.cli_kind,
-                    cli_version=place.cli_version,
-                    ready=place.ready,
-                    not_ready_reason=place.not_ready_reason,
-                    agents=[
-                        ResidentAgentOut(id=agent.id, name=agent.name)
-                        for agent in place.agents
-                    ],
-                )
-                for place in machine.workplaces
-            ],
-        )
-        for machine in machines
-    ]
+    return [_machine_out(machine) for machine in machines]
+
+
+@router.patch(
+    "/workspaces/{workspace_id}/machines/{machine_id}", response_model=MachineOut
+)
+async def update_machine(
+    workspace_id: UUID,
+    machine_id: UUID,
+    body: UpdateMachineIn,
+    container: ContainerDep,
+    user: CurrentUser,
+) -> MachineOut:
+    """Set how many runs this machine may hold at once (FR-008).
+
+    The ceiling is the server's word, and the daemon's report of free slots is advice; the
+    claim takes the smaller of the two (FR-008d). So this is the only number in that pair a
+    person can move, and until this door existed it was a column with a default nobody could
+    change — which made *the ceiling is adjustable* true of the schema and false of the
+    product.
+
+    **It takes effect on the next ask for work, not on the runs already out.** Lowering it
+    does not recall anything: the number is read when a machine asks, and work past that
+    point is being executed on a machine that was told to have it.
+
+    A machine in a workspace that is not the caller's reads exactly like one that does not
+    exist (Constitution I).
+    """
+    await _require_owned_workspace(container, user, workspace_id)
+    machine = await container.daemon_workplaces.set_ceiling(
+        workspace_id, machine_id, body.max_concurrent
+    )
+    if machine is None:
+        raise NotFound("machine_not_found")
+    return _machine_out(machine)
+
+
+def _machine_out(machine: LinkedMachine) -> MachineOut:
+    """One machine, shaped for the screen. One assembly, so two doors cannot disagree."""
+    return MachineOut(
+        id=machine.id,
+        display_name=machine.display_name,
+        platform=machine.platform,
+        daemon_version=machine.daemon_version,
+        last_heartbeat_at=machine.last_heartbeat_at,
+        reachable=machine.reachable,
+        max_concurrent=machine.max_concurrent,
+        workplaces=[
+            MachineWorkplaceOut(
+                id=place.id,
+                cli_kind=place.cli_kind,
+                cli_version=place.cli_version,
+                ready=place.ready,
+                not_ready_reason=place.not_ready_reason,
+                agents=[
+                    ResidentAgentOut(id=agent.id, name=agent.name)
+                    for agent in place.agents
+                ],
+            )
+            for place in machine.workplaces
+        ],
+    )
 
 
 @router.get(

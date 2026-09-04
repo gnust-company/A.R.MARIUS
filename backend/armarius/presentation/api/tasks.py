@@ -8,9 +8,10 @@ through the agent token's own workspace; this is its half for patron tokens.
 
 from __future__ import annotations
 
+from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 
 from armarius.domain.entities.comment import AuthorKind
 from armarius.domain.entities.run import WakeSource
@@ -315,10 +316,54 @@ async def list_artifacts(
     return [ArtifactOut.model_validate(a) for a in items]
 
 
+@router.get("/tasks/{task_id}/artifacts/{artifact_id}/content")
+async def download_artifact(
+    task_id: UUID, artifact_id: UUID, container: ContainerDep, user: CurrentUser
+) -> Response:
+    """The bytes of one published artifact (FR-020, SC-004).
+
+    SC-004 asks for an artifact that is **downloadable from the shared store**, and until this
+    door existed only the first half was true: publishing put the bytes in the store and read
+    them back to prove it, and then nothing could ever ask for them again. The screen's link
+    pointed at the store-relative path, which resolves to nothing.
+
+    Named `content` rather than served at the artifact's own path because the row and the bytes
+    are two different things to want: a screen lists rows constantly and fetches bytes when
+    somebody asks.
+
+    Owner-scoped through the task, so an artifact under somebody else's task reads exactly like
+    one that does not exist (Constitution I).
+    """
+    await own_task(container, user, task_id)
+    artifact, blob = await container.artifacts.fetch(task_id, artifact_id)
+    # `attachment` with the agent's own name for it: this is a deliverable somebody asked for,
+    # not a page to render. The media type stays generic because nothing here knows what the
+    # agent produced, and guessing would invite a browser to run it.
+    return Response(
+        content=blob,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{quote(artifact.name)}"',
+            "Content-Length": str(len(blob)),
+        },
+    )
+
+
 @router.post("/tasks/{task_id}/artifacts", response_model=ArtifactOut, status_code=201)
 async def publish_artifact(
-    task_id: UUID, body: PublishArtifactIn, container: ContainerDep, user: CurrentUser
+    task_id: UUID,
+    body: PublishArtifactIn,
+    response: Response,
+    container: ContainerDep,
+    user: CurrentUser,
 ) -> ArtifactOut:
+    """Publish, or find what a retried publish already landed (FR-020c).
+
+    201 the first time, 200 when the very same bytes under the very same name are already
+    recorded — the same answer the agent's own door gives, and for the same reason: a caller
+    whose reply died on the wire cannot tell its first attempt succeeded. Answering 201 to a
+    call that created nothing is a lie in the one field a caller can read without parsing.
+    """
     await own_task(container, user, task_id)
     outcome = await container.artifacts.publish(
         task_id=task_id,
@@ -331,6 +376,8 @@ async def publish_artifact(
         ),
         uri=body.uri,
     )
+    if not outcome.created:
+        response.status_code = 200
     return ArtifactOut.model_validate(outcome.artifact)
 
 

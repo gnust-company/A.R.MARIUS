@@ -103,10 +103,16 @@ async def _seed(c: AsyncClient, h: dict, ws_id: str) -> dict[str, str]:
         json={"name": "Private runbook", "description": "How this shop actually works"},
     )
     assert skill.status_code == 201, skill.text
+    # The machine the workplace above was written onto. Read back rather than remembered,
+    # so this stays true if `ready_workplace` ever links more than one.
+    machines = await c.get(f"/v1/workspaces/{ws_id}/machines", headers=h)
+    assert machines.status_code == 200, machines.text
+    assert machines.json(), "không có máy nào để quét — chỗ làm phải được viết lên một cái máy"
     return {
         "workspace_id": ws_id,
         "marius_id": marius.json()["id"],
         "skill_id": skill.json()["id"],
+        "machine_id": machines.json()[0]["id"],
     }
 
 

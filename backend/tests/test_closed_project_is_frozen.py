@@ -75,6 +75,10 @@ _NEEDS_NO_GUARD: dict[tuple[str, str], str] = {
     # thuộc dự án nào. Một dự án đóng lại không được làm máy tưởng mình mất kết nối.
     ("PUT", "/daemon/workplaces"): "tầng trên dự án",
     ("POST", "/daemon/heartbeat"): "tầng trên dự án",
+    # Trần số lượt chạy đồng thời của một cái máy (FR-008f): một thiết lập của **cái máy**,
+    # dùng chung cho mọi dự án chạy trên nó. Đóng băng nó theo một dự án đã đóng là để một
+    # dự án nào đó quyết hộ mọi dự án còn lại rằng máy này được chạy mấy việc một lúc.
+    ("PATCH", "/v1/workspaces/{workspace_id}/machines/{machine_id}"): "tầng trên dự án",
     # Xin việc và báo đã chạy: chốt nằm **trong**, không nằm ở cửa. Một cú xin không nói về
     # một dự án nào cả — nó là một cái máy hỏi về mọi thứ nó đang chứa — nên chặn cả cú xin
     # vì một đầu việc thuộc dự án đã đóng là đóng băng luôn phần việc không liên quan trên

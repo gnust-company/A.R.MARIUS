@@ -531,6 +531,8 @@ export interface MachineDTO {
   daemon_version: string
   last_heartbeat_at: string | null
   reachable: boolean
+  /** How many runs this machine may hold at once (FR-008). The patron's number, not the machine's. */
+  max_concurrent: number
   workplaces: MachineWorkplaceDTO[]
 }
 
@@ -543,6 +545,20 @@ export interface MachineDTO {
  */
 export async function listMachines(workspaceId: string): Promise<MachineDTO[]> {
   return get<MachineDTO[]>(`/v1/workspaces/${workspaceId}/machines`)
+}
+
+/**
+ * Set how many runs one machine may hold at once (FR-008).
+ *
+ * Answers with the machine as it now stands, so the screen redraws from the server's word
+ * rather than from what it hoped it had written.
+ */
+export async function updateMachine(
+  workspaceId: string,
+  machineId: string,
+  body: { max_concurrent: number },
+): Promise<MachineDTO> {
+  return patch<MachineDTO>(`/v1/workspaces/${workspaceId}/machines/${machineId}`, body)
 }
 
 export interface InviteMariusBody {
@@ -899,6 +915,22 @@ export async function publishArtifact(
 ): Promise<ArtifactDTO> {
   return post<ArtifactDTO>(`/v1/tasks/${taskId}/artifacts`, { name, kind, uri })
 }
+/**
+ * The bytes of one published artifact.
+ *
+ * Fetched through the same door every other call goes through — token, refresh-once and all —
+ * and handed back as a blob rather than linked to directly: the route needs an Authorization
+ * header, and a plain `<a href>` carries none, which is how the artifact link on the task
+ * screen came to point at a store path that resolves to nothing.
+ */
+export async function downloadArtifact(taskId: string, artifactId: string): Promise<Blob> {
+  const answered = await fetchWithAuth(`/v1/tasks/${taskId}/artifacts/${artifactId}/content`)
+  if (!answered.ok) {
+    await throwApiError(answered)
+  }
+  return answered.blob()
+}
+
 
 // ── Chat with Leader (project-level 1-1 chat · #82) ───────────────────────────────────────
 

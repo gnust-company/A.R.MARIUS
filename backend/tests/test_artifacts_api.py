@@ -328,3 +328,136 @@ async def test_a_store_that_cannot_return_the_bytes_records_nothing() -> None:
             json=_file_body("report.md", b"the real bytes\n"),
         )
         assert retry.status_code == 201, retry.text
+
+
+# ── Getting the bytes back out again (SC-004, T129) ──────────────────────────
+#
+# Publishing had been proving only half of SC-004. The bytes went into the shared store and
+# were read back to check the store had kept them — and then nothing could ever ask for them
+# again: no route, and a screen whose link pointed at the store-relative path, which resolves
+# to nothing. *Stored* and *gettable* are two claims, and the second is the one a person needs.
+
+
+async def test_a_published_file_can_be_fetched_back_byte_for_byte() -> None:
+    raw = b"DELIVERED\n"
+    b64 = base64.b64encode(raw).decode()
+    async with await _client() as c:
+        token, ws_id = await _register(c, "art-get@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        task_id = await _task(c, ws_id, h)
+        published = await c.post(
+            f"/v1/tasks/{task_id}/artifacts",
+            headers=h,
+            json={"name": "report.txt", "kind": "file", "content_b64": b64,
+                  "content_sha256": hashlib.sha256(raw).hexdigest()},
+        )
+        assert published.status_code == 201, published.text
+        artifact_id = published.json()["id"]
+
+        got = await c.get(
+            f"/v1/tasks/{task_id}/artifacts/{artifact_id}/content", headers=h
+        )
+    assert got.status_code == 200, got.text
+    assert got.content == raw
+    # The agent's own name for it, so what lands on the person's disk is what they published.
+    assert 'filename="report.txt"' in got.headers["content-disposition"]
+    assert got.headers["content-disposition"].startswith("attachment")
+
+
+async def test_a_link_artifact_says_there_is_nothing_here_to_download() -> None:
+    """A link names something somewhere else. An empty file would be a worse answer."""
+    async with await _client() as c:
+        token, ws_id = await _register(c, "art-link@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        task_id = await _task(c, ws_id, h)
+        published = await c.post(
+            f"/v1/tasks/{task_id}/artifacts",
+            headers=h,
+            json={"name": "PR #42", "kind": "link", "uri": "https://example.invalid/pull/42"},
+        )
+        assert published.status_code == 201, published.text
+
+        refused = await c.get(
+            f"/v1/tasks/{task_id}/artifacts/{published.json()['id']}/content", headers=h
+        )
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["code"] == "artifact_has_no_stored_bytes"
+
+
+async def test_an_artifact_of_another_task_reads_as_no_such_artifact() -> None:
+    """Điều I: the right to be here was decided about *this* task, so the id alone is not a key."""
+    raw = b"not yours"
+    async with await _client() as c:
+        token, ws_id = await _register(c, "art-scope@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        mine = await _task(c, ws_id, h)
+        published = await c.post(
+            f"/v1/tasks/{mine}/artifacts",
+            headers=h,
+            json={"name": "mine.txt", "kind": "file", "content_b64": base64.b64encode(raw).decode(),
+                  "content_sha256": hashlib.sha256(raw).hexdigest()},
+        )
+        assert published.status_code == 201, published.text
+        other = await _task(c, ws_id, h)
+
+        refused = await c.get(
+            f"/v1/tasks/{other}/artifacts/{published.json()['id']}/content", headers=h
+        )
+    assert refused.status_code == 404, refused.text
+    assert refused.json()["code"] == "artifact_not_found"
+
+
+async def test_somebody_elses_artifact_reads_as_no_such_task() -> None:
+    raw = b"theirs"
+    async with await _client() as c:
+        theirs, their_ws = await _register(c, "art-them@armarius.dev")
+        th = {"Authorization": f"Bearer {theirs}"}
+        their_task = await _task(c, their_ws, th)
+        published = await c.post(
+            f"/v1/tasks/{their_task}/artifacts",
+            headers=th,
+            json={"name": "theirs.txt", "kind": "file",
+                  "content_b64": base64.b64encode(raw).decode(),
+                  "content_sha256": hashlib.sha256(raw).hexdigest()},
+        )
+        assert published.status_code == 201, published.text
+
+        mine, _ = await _register(c, "art-me@armarius.dev")
+        refused = await c.get(
+            f"/v1/tasks/{their_task}/artifacts/{published.json()['id']}/content",
+            headers={"Authorization": f"Bearer {mine}"},
+        )
+    assert refused.status_code == 404, refused.text
+    assert refused.json()["code"] == "task_not_found"
+
+
+async def test_a_retried_publish_leaves_one_artifact_that_still_downloads() -> None:
+    """SC-004a end to end: publish, publish the very same bytes again, fetch what is there.
+
+    The retry is the case a dropped reply produces — the caller cannot tell its first attempt
+    landed. One row, one download, and the bytes are the ones that were sent.
+    """
+    raw = b"exactly once\n"
+    body = {"name": "once.txt", "kind": "file",
+            "content_b64": base64.b64encode(raw).decode(),
+            "content_sha256": hashlib.sha256(raw).hexdigest()}
+    async with await _client() as c:
+        token, ws_id = await _register(c, "art-retry@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        task_id = await _task(c, ws_id, h)
+
+        first = await c.post(f"/v1/tasks/{task_id}/artifacts", headers=h, json=body)
+        again = await c.post(f"/v1/tasks/{task_id}/artifacts", headers=h, json=body)
+        assert first.status_code == 201, first.text
+        # 200, not 201: nothing was created the second time, and the status code is the one
+        # field a caller reads without parsing (FR-020c).
+        assert again.status_code == 200, again.text
+        assert again.json()["id"] == first.json()["id"], "một lần thử lại đẻ ra hiện vật thứ hai"
+
+        listed = await c.get(f"/v1/tasks/{task_id}/artifacts", headers=h)
+        got = await c.get(
+            f"/v1/tasks/{task_id}/artifacts/{first.json()['id']}/content", headers=h
+        )
+    assert len(listed.json()) == 1, listed.json()
+    assert got.status_code == 200, got.text
+    assert got.content == raw

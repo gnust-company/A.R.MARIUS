@@ -89,6 +89,7 @@ type scripted struct {
 	fails   error
 	session string
 	refused bool
+	failure string
 	usage   map[string]any
 	waitFor func(ctx context.Context)
 	saw     armruntime.Request
@@ -106,7 +107,7 @@ func (s *scripted) Run(
 		s.waitFor(ctx)
 	}
 	return armruntime.Outcome{
-		Session: s.session, SessionRefused: s.refused, Usage: s.usage,
+		Session: s.session, SessionRefused: s.refused, Usage: s.usage, Failure: s.failure,
 	}, s.fails
 }
 
@@ -977,5 +978,82 @@ func TestARunAboutATaskKeepsItsDirectoryForTheNextRun(t *testing.T) {
 	}
 	if _, err := os.Stat(placed); err != nil {
 		t.Fatalf("the task's directory was taken away: %v", err)
+	}
+}
+
+// ── Which wall a run hit, told to the server (T124a, FR-032a) ────────────────
+//
+// The reading is done in `runtime`, off the CLI's own words. The *pairing* is done here, and it
+// is the part with the consequences: a verdict tells the server not to try this run again and
+// to ask a person instead, so it may only be attached to a run that actually failed.
+
+func TestOnlyARunThatFailedCarriesAVerdictToTheServer(t *testing.T) {
+	broke := errors.New("claude_code ended badly: exit status 1")
+
+	for _, c := range []struct {
+		name            string
+		err             error
+		silent, outside bool
+		said            string
+		want            string
+	}{
+		{name: "ended badly and named the wall", err: broke, said: "quota_exhausted", want: "quota_exhausted"},
+		// An agent can mention a quota while finishing perfectly well — reading a log, quoting
+		// an error it handled. A verdict there puts a task nobody is stuck on in front of a
+		// person.
+		{name: "finished while merely mentioning it", err: nil, said: "quota_exhausted", want: ""},
+		// Silence and a stop from outside are not walls a person can clear: this daemon going
+		// down, or the server taking the run back. The unclassified ending is the one retried,
+		// which is the right answer for both.
+		{name: "cut for going silent", err: broke, silent: true, said: "quota_exhausted", want: ""},
+		{name: "stopped from outside", err: broke, outside: true, said: "quota_exhausted", want: ""},
+		{name: "failed without naming anything", err: broke, said: "", want: ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got := RunOptions{}.walledIn(c.err, c.silent, c.outside, c.said)
+			if got != c.want {
+				t.Fatalf("lý do gửi lên máy chủ là %q, đáng lẽ %q", got, c.want)
+			}
+		})
+	}
+}
+
+func TestTheServerIsToldWhichWallTheRunHit(t *testing.T) {
+	// End to end: a code the runtime read off the CLI has to arrive in the field the server
+	// branches on. It is the field that stops a run being retried, so it travelling is the
+	// whole of T124a's value — reading it and keeping it here would change nothing.
+	w := aWorld(t)
+	w.engine.failure = "quota_exhausted"
+	w.engine.fails = errors.New("claude_code ended badly: exit status 1")
+
+	w.options().Do(context.Background(), w.grant())
+
+	done, ended := w.ledger.ending()
+	if !ended {
+		t.Fatal("lượt chạy không hề được khép lại")
+	}
+	if done.Failure != "quota_exhausted" {
+		t.Fatalf("máy chủ không được cho biết đụng bức tường nào: %+v", done)
+	}
+}
+
+func TestARunThatMerelyMentionedTheWallAndFinishedCarriesNoVerdict(t *testing.T) {
+	// The pair is what makes a verdict. An agent quoting a limit message it read and handled
+	// has said the sentence without hitting anything; a verdict there takes a task nobody is
+	// stuck on and puts it in front of a person.
+	w := aWorld(t)
+	w.engine.failure = "quota_exhausted"
+
+	w.options().Do(context.Background(), w.grant())
+
+	done, ended := w.ledger.ending()
+	if !ended {
+		t.Fatal("lượt chạy không hề được khép lại")
+	}
+	if done.Status != Completed {
+		t.Fatalf("lượt chạy này xong bình thường mới phải: %+v", done)
+	}
+	if done.Failure != "" {
+		t.Fatalf("lượt chạy xong xuôi mà vẫn bị gán một lý do: %+v", done)
 	}
 }

@@ -14,7 +14,12 @@ import { useParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { Bot, Cpu, Laptop, Loader2, RefreshCw, Terminal, WifiOff } from 'lucide-react';
-import { listMachines, type MachineDTO, type MachineWorkplaceDTO } from '@/lib/api';
+import {
+  listMachines,
+  updateMachine,
+  type MachineDTO,
+  type MachineWorkplaceDTO,
+} from '@/lib/api';
 import EmptyState from '@/components/EmptyState';
 import PageTitle from '@/components/PageTitle';
 import VellumPanel from '@/components/VellumPanel';
@@ -106,8 +111,33 @@ function Workplace({ place }: { place: MachineWorkplaceDTO }) {
 
 // ─── One machine ─────────────────────────────────────────────────────────────
 
-function Machine({ machine }: { machine: MachineDTO }) {
+function Machine({ machine, onChanged }: { machine: MachineDTO; onChanged: (m: MachineDTO) => void }) {
   const { t, i18n } = useTranslation();
+  // What is typed, or nothing typed yet. Held as *the edit* rather than as a copy of the
+  // machine, so a reload or somebody else's change corrects the box without an effect
+  // reaching in to overwrite it — and dropping the edit is all it takes to follow the server.
+  const [typed, setTyped] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [ceilingError, setCeilingError] = useState<string | null>(null);
+  const { workspaceId } = useParams();
+  const ceiling = typed ?? String(machine.max_concurrent);
+
+  function save() {
+    const wanted = Number(ceiling);
+    if (!workspaceId || !Number.isInteger(wanted) || wanted === machine.max_concurrent) {
+      setTyped(null);
+      return;
+    }
+    setSaving(true);
+    setCeilingError(null);
+    updateMachine(workspaceId, machine.id, { max_concurrent: wanted })
+      .then(onChanged)
+      .catch((e) => setCeilingError(errorText(e, t)))
+      .finally(() => {
+        setSaving(false);
+        setTyped(null);
+      });
+  }
 
   return (
     <motion.div variants={itemVariants}>
@@ -140,6 +170,36 @@ function Machine({ machine }: { machine: MachineDTO }) {
             </div>
           </div>
         </div>
+
+        {/* The ceiling (FR-008). Beside the machine rather than inside a settings page: it is
+            a fact about this machine, and the person setting it is looking at the machine. */}
+        <div className="mt-3 flex items-center gap-2 flex-wrap">
+          <Cpu className="w-3.5 h-3.5 text-[#8B7A6A]" />
+          <label className="text-[12px] text-[#6B5E4E]" htmlFor={`ceiling-${machine.id}`}>
+            {t('machines.ceilingLabel')}
+          </label>
+          <input
+            id={`ceiling-${machine.id}`}
+            type="number"
+            min={1}
+            max={64}
+            value={ceiling}
+            disabled={saving}
+            onChange={(e) => setTyped(e.target.value)}
+            onBlur={save}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+            }}
+            className="w-16 rounded-md border border-[#E3D7BC] bg-[#FBF6EA] px-2 py-1 text-[13px] text-[#2A2318] disabled:opacity-60"
+          />
+          {saving && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#A89880]" />}
+          <span className="text-[11px] text-[#A89880]">{t('machines.ceilingHint')}</span>
+        </div>
+        {ceilingError && (
+          <p className="mt-1 text-[12px] text-[#8A3B22]" role="alert">
+            {ceilingError}
+          </p>
+        )}
 
         <div className="mt-3 space-y-2">
           {machine.workplaces.length > 0 ? (
@@ -222,7 +282,15 @@ export default function Machines() {
           className="space-y-4"
         >
           {machines.map((machine) => (
-            <Machine key={machine.id} machine={machine} />
+            <Machine
+              key={machine.id}
+              machine={machine}
+              onChanged={(fresh) =>
+                setMachines((rows) =>
+                  (rows ?? []).map((row) => (row.id === fresh.id ? fresh : row))
+                )
+              }
+            />
           ))}
         </motion.div>
       )}

@@ -15,9 +15,12 @@ tiêu chí đo được trong [spec.md](spec.md).
 # Backend + Postgres (cổng 8080 API, 3000 giao diện — 8000/5432 đang bị hàng xóm chiếm)
 docker compose up -d --build
 
-# Daemon
-cd daemon && go build -o ./bin/armarius-daemon ./cmd/armarius-daemon
+# Daemon — **cả hai** binary, chúng đi cùng nhau
+cd daemon && make build
 ```
+
+`make build` dựng cả `armarius-daemon` lẫn `armarius`. Thiếu cái thứ hai thì `start` chết ngay ở
+câu đầu: agent không có đường gọi ngược về Armarius, và daemon từ chối chạy thay vì chạy nửa vời.
 
 Cần **ít nhất một agent CLI thật** trên máy. Đợt đầu hỗ trợ `gemini`, `claude`, `codex`.
 
@@ -35,8 +38,10 @@ Cần **ít nhất một agent CLI thật** trên máy. Đợt đầu hỗ trợ
 
 Mở địa chỉ đó, bấm duyệt.
 
-**Mong đợi**: daemon in ra tên workspace và **danh sách agent CLI dò được**. Vào màn hình Máy trên giao
-diện thấy máy vừa nối, mỗi CLI một chỗ làm ở trạng thái sẵn sàng, kèm tên máy đọc được.
+**Mong đợi**: `login` in ra *đã nối, token nằm ở đâu*. **Danh sách agent CLI dò được là việc của
+`start`**, không phải của `login` — chạy `./bin/armarius-daemon start` rồi vào màn hình Máy trên giao
+diện: thấy máy vừa nối, mỗi CLI một chỗ làm ở trạng thái sẵn sàng, kèm tên máy đọc được, và CLI nào
+không chạy nổi thì bị bỏ qua kèm lý do.
 
 **Bấm giờ từ lúc gõ `login`** — phải dưới 10 phút với người chưa từng cài.
 
@@ -52,10 +57,17 @@ Tạo agent gắn vào chỗ làm vừa có, tạo một đầu việc, giao cho
 - Diễn biến hiện dần trên màn hình theo dõi **không phải tải lại trang** (SC-003)
 
 ```bash
-# Đo mốc 15 giây bằng dữ liệu thật, không bằng cảm giác
+# Đo mốc 15 giây bằng dữ liệu thật, không bằng cảm giác.
+# Bỏ ra những lượt phải **xếp hàng sau một lượt khác trên cùng cái máy**: chờ chỗ trống là
+# trạng thái vận hành bình thường (FR-008a), không phải độ trễ gọi dậy, và để lẫn vào thì con
+# số p95 đo cái trần chứ không đo cái đang hỏi.
 docker compose exec db psql -U armarius -c \
-  "SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (started_at - created_at)))
-   FROM runs WHERE started_at IS NOT NULL;"
+  "WITH r AS (SELECT id, created_at, started_at, finished_at FROM runs WHERE started_at IS NOT NULL)
+   SELECT count(*),
+          percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (started_at - created_at)))
+   FROM r WHERE NOT EXISTS (
+     SELECT 1 FROM r o WHERE o.id <> r.id
+       AND o.started_at < r.started_at AND coalesce(o.finished_at, r.started_at) > r.created_at);"
 ```
 
 ---
@@ -111,16 +123,21 @@ Chạy một lượt có gọi ít nhất hai công cụ. Mở màn hình nhật
 ```bash
 docker compose exec db psql -U armarius -c \
   "SELECT count(*) FROM run_event_blobs b JOIN run_events e ON e.id = b.run_event_id
-   WHERE e.type = 'tool.finished';"
-#   PHẢI ra 0
+   WHERE e.type = 'tool.completed';"
+#   PHẢI ra 0 — và phải là **tên loại sự kiện có thật**: hỏi `tool.finished` (loại không tồn tại)
+#   thì câu lệnh cũng ra 0, nhưng là số 0 của một câu hỏi rỗng, không phải một phép kiểm
 ```
 
 **Che bí mật (SC-015)** — cho agent gọi một công cụ có token trong tham số:
 
 ```bash
 docker compose exec db psql -U armarius -c \
-  "SELECT count(*) FROM run_events WHERE payload::text LIKE '%<token đã gài>%';"
-#   PHẢI ra 0 — che làm ở phía daemon, không phải ở server
+  "SELECT count(*) FROM run_events
+   WHERE type <> 'run.prompt' AND payload::text LIKE '%<token đã gài>%';"
+#   PHẢI ra 0 — che làm ở phía daemon, không phải ở server.
+#   Trừ `run.prompt` ra vì đó là lời nhắc **do chính server soạn** từ chữ người chủ gõ vào: nếu
+#   người chủ gõ một bí mật vào mô tả đầu việc thì nó đã nằm sẵn trên server, không phải thứ
+#   daemon để lọt lên. Cùng câu ấy chạy trên `run_event_blobs` (cột `content`)
 ```
 
 **SC-014** — chạy một lượt sinh 1000 sự kiện, mở màn hình, cuộn. Không được treo.
@@ -130,9 +147,15 @@ docker compose exec db psql -U armarius -c \
 ## 6. Agent offline và phục hồi — SC-005, SC-010
 
 ```bash
-# Gập máy giữa lượt chạy: giết daemon
-pkill -f armarius-daemon
+# Gập máy giữa lượt chạy: giết daemon.
+# `pkill -x` khớp **đúng tên chương trình**; `pkill -f armarius-daemon` khớp cả dòng lệnh, nên
+# nó giết luôn cái shell đang gõ câu lệnh ấy.
+pkill -x armarius-daemon
 ```
+
+Đầu việc phải đang ở một trạng thái **cái lưới an toàn có nhìn tới** (`todo`, `in_progress`,
+`in_review`, `blocked`). Việc mới tạo nằm ở `backlog`, mà `backlog` cố ý không có ai canh — đo
+SC-005 trên một đầu việc `backlog` là đo một thứ khác.
 
 **Mong đợi trong vòng 5 phút** (SC-005): đầu việc **không** mất hết động cơ đẩy mà im lặng. Hoặc nó giữ
 một động cơ hợp lệ, hoặc cờ đình trệ nổi lên.
@@ -149,7 +172,22 @@ việc đó, phải đúng như trước.
 
 ## 7. Hai máy không giẫm chân nhau — SC-009
 
-Chạy 5 đầu việc đồng thời trên một máy.
+**Nâng trần của máy trước** — mặc định là **một**, và một cái máy trần một thì không đời nào chạy
+được năm lượt cùng lúc. Trên màn hình Máy, đặt ô *Chạy cùng lúc* của máy ấy lên 5 (FR-008); trần có
+hiệu lực từ lần máy xin việc kế tiếp.
+
+Rồi chạy 5 đầu việc đồng thời trên một máy. **Năm agent khác nhau**: một agent chỉ giữ một lượt
+chạy tại một thời điểm, nên năm đầu việc dồn vào một agent là đo cái luật ấy chứ không đo cái trần.
+
+```bash
+# Đỉnh số lượt chạy chồng nhau thật sự, tính từ chính mốc thời gian của chúng
+docker compose exec db psql -U armarius -c \
+  "WITH r AS (SELECT id, started_at, finished_at FROM runs WHERE started_at IS NOT NULL)
+   SELECT max((SELECT count(*) FROM r o
+               WHERE o.started_at <= r.started_at
+                 AND coalesce(o.finished_at, now()) > r.started_at)) FROM r;"
+#   PHẢI >= 5
+```
 
 ```bash
 docker compose exec db psql -U armarius -c \
@@ -165,10 +203,10 @@ Rồi ép hai cú xin việc đồng thời từ cùng một máy (bật hai ti�
 ## 8. Thêm một loại agent CLI mà không đụng tầng nghiệp vụ — SC-008
 
 ```bash
-cd backend && uv run pytest tests/test_business_layer_knows_no_runtime.py
+cd backend && uv run pytest tests/test_constitution_guards.py
 ```
 
-Phép kiểm này quét mã và **phải đỏ** nếu chuỗi `daemon`, `machine`, `runtime` xuất hiện trong
+Hai bài đầu tệp ấy quét mã và **phải đỏ** nếu chuỗi `daemon`, `machine`, `runtime` xuất hiện trong
 `application/use_cases/` hay `domain/`. Gỡ mất ranh giới thì test đỏ, không được im lặng trôi (FR-038).
 
 ---

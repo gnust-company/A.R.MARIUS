@@ -92,6 +92,11 @@ type Conclusion struct {
 	// written down here, because a claim about this machine's disk is a claim nobody can check —
 	// and the machine can be rebuilt, switched off, or simply wrong.
 	Session string
+	// Failure is which wall the run hit, as one of the server's codes, when the CLI said so
+	// plainly enough to be sure (FR-032a). Separate from Error because that field is prose and
+	// a retry policy cannot branch on prose twice running. Empty means *no verdict*, which is
+	// the ordinary answer and leaves the run retried exactly as it always was.
+	Failure string
 }
 
 // Ledger is the server, as far as one run is concerned.
@@ -421,6 +426,11 @@ func (o RunOptions) carry(
 		Error:   errorText(err),
 		Usage:   outcome.Usage,
 		Session: outcome.Session,
+		// Only when this run actually failed. An agent can perfectly well *mention* a quota
+		// while finishing its work — reading a log, quoting an error it handled — and a
+		// verdict attached to a run that completed would take a task nobody is stuck on and
+		// put it in front of a person (FR-032).
+		Failure: o.walledIn(err, silent(), endedFromOutside, outcome.Failure),
 	})
 	return outcome
 }
@@ -491,6 +501,23 @@ func (o RunOptions) verdict(runErr error, silent, endedFromOutside bool) string 
 	default:
 		return Failed
 	}
+}
+
+// walledIn is the verdict, but only on a run that actually failed.
+//
+// The reading is the CLI's own words, and words turn up for more than one reason: an agent that
+// finishes its work while quoting a quota message it handled has said the sentence without
+// hitting the wall. What makes it a verdict is the pair — this run ended badly **and** the
+// agent said which wall it was.
+//
+// A run cut off from outside is excluded for a different reason: this daemon stopping, or the
+// server taking the run back, is not a wall a person can clear, and the ending nobody
+// classified is the one that gets tried again — which is the correct answer there.
+func (o RunOptions) walledIn(runErr error, silent, endedFromOutside bool, said string) string {
+	if said == "" || runErr == nil || silent || endedFromOutside {
+		return ""
+	}
+	return said
 }
 
 // close tells the server the run is over, on a context of its own.

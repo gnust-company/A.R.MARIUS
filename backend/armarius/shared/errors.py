@@ -45,6 +45,11 @@ ENGLISH: dict[str, str] = {
     "no_active_onboarding_session": "No onboarding session is open.",
     "run_not_found": "Run not found.",
     "machine_not_found": "Machine not found.",
+    # The bounds are parameters rather than baked into the sentence, so the screen can say
+    # the numbers this server actually enforces instead of a copy that drifts from them.
+    "machine_ceiling_out_of_range": (
+        "A machine may hold between {least} and {most} runs at once."
+    ),
     # The business layer calls this a *placement* because it is forbidden to know it is a
     # workplace on a machine (Constitution III); the sentence says "workplace" because that
     # is the word on the screen the person is looking at. Same thing, two audiences.
@@ -298,6 +303,11 @@ ENGLISH: dict[str, str] = {
     ),
     # ── artifacts and skills ──────────────────────────────────────────────────
     "artifact_link_needs_uri": "A link artifact needs a URI.",
+    # Asked for the bytes of an artifact that never had any here. A link names something
+    # somewhere else, and handing back an empty file would be a worse answer than saying so.
+    "artifact_has_no_stored_bytes": (
+        "This artifact is a link to somewhere else, so there is nothing here to download."
+    ),
     "artifact_needs_content": "A {kind} artifact needs its content.",
     # The store could not hand back the bytes it was just given, so nothing was recorded
     # — the publish never happened and the caller should simply send it again (FR-020,

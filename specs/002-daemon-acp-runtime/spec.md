@@ -494,6 +494,13 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **FR-008d**: Trần là **cấu hình phía server** và server là bên quyết duy nhất có đưa thêm việc hay không.
   Con số daemon báo về chỉ là **số chỗ trống hiện tại**, mang tính tham khảo; server PHẢI lấy **số nhỏ hơn**
   giữa hai giá trị. Daemon báo sai hoặc báo cũ thì server vẫn không đưa quá trần.
+- **FR-008f**: Trần của mỗi máy PHẢI đổi được **qua một cửa của hệ thống**, và con số đang có PHẢI
+  đọc được ở chỗ người ta đổi nó. Đo lúc chạy trọn quickstart (T129): trần là một cột với mặc định
+  bằng 1 mà không cửa nào và không màn hình nào ghi vào, nên FR-008 (*trần ấy PHẢI chỉnh được*) đúng
+  với schema mà sai với sản phẩm — và SC-009 không lần nào đạt được, vì một máy trần một thì không
+  chạy được năm lượt cùng lúc. Trần mới có hiệu lực **từ lần máy xin việc kế tiếp**: hạ trần là ngừng
+  đưa thêm, KHÔNG phải thu về thứ đã ra khỏi tay. Con số nằm trong một khoảng đóng — số không là
+  *ngừng giao việc cho máy này*, một quyết định khác có tên khác.
 - **FR-008c**: Hệ thống KHÔNG hẹn giờ thử lại cho ca chạm trần. **Poll của daemon là cơ chế duy nhất** —
   máy rảnh thì tự xin, không cần ai đánh thức (chốt 2026-08-22).
 
@@ -623,6 +630,13 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   gửi agent** *và* **chặn ở tầng công cụ** — dặn không thay cho chặn (Hiến pháp — Điều II).
 - **FR-020**: Hệ thống PHẢI kiểm được rằng hiện vật đã ghi nhận là **thật sự tải về được**, không chỉ là
   một cái tên trong cơ sở dữ liệu.
+- **FR-020e**: Người chủ PHẢI **lấy lại được bytes** của một hiện vật đã công bố, qua một cửa của hệ
+  thống, và tệp tải về phải mang **đúng cái tên agent đặt cho nó**. Đây là nửa thứ hai của FR-020 và
+  nó là một lời khẳng định khác: *đã lưu* chứng minh kho có giữ, *lấy lại được* mới là thứ người ta
+  cần. Đo lúc chạy trọn quickstart (T129) thì chỉ nửa đầu đúng — bytes vào kho, đọc lại một lần để
+  kiểm, rồi không cửa nào xin lại được, và liên kết trên màn hình trỏ vào đường dẫn tương đối trong
+  kho, tức là trỏ vào không đâu. Hiện vật kiểu **liên kết** không có bytes ở đây: cửa PHẢI nói ra
+  điều đó bằng một mã lý do, KHÔNG ĐƯỢC trả về một tệp rỗng.
 - **FR-020a**: Daemon PHẢI cho agent **thấy được** những gì nó đã đổi trong thư mục làm việc, để agent biết
   mình có gì mà công bố. Đây là thông tin, KHÔNG phải công bố tự động.
 - **FR-020b**: Công bố hiện vật hỏng giữa chừng PHẢI **thử lại được, không giới hạn số lần** — kể cả ở một

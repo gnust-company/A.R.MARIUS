@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	goos "runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -623,5 +624,84 @@ sleep 30`)
 	}
 	if lines := strings.Split(strings.TrimSpace(string(args)), "\n"); len(lines) != 1 {
 		t.Errorf("CLI được chạy %d lần trên đường daemon tắt", len(lines))
+	}
+}
+
+// ── Which wall a run hit, when the CLI said so (T124a, FR-032a, FR-007c) ─────
+//
+// The shape below is the one measured live on 2026-09-04, running the quickstart end to end on
+// Claude Code 2.1.252 with an account past its allowance: one assistant line naming the limit,
+// then a `result` line whose structured fields say **nothing** about which wall it was —
+// `is_error: true` beside `subtype: "success"` — and exit 1. So the sentence is the only place
+// the difference is stated, and these tests hold the daemon to reading exactly that and no more.
+
+const (
+	limitLine = `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text",` +
+		`"text":"You've hit your session limit · resets 5:50pm (Asia/Ho_Chi_Minh)"}]},"session_id":"s"}`
+	badResultLine = `{"type":"result","subtype":"success","is_error":true,"session_id":"s"}`
+)
+
+// sayingCLI writes a program that prints these lines and then exits with this code.
+//
+// Through a file rather than through the shell: the measured sentence carries an apostrophe and
+// a pair of brackets, and a shell script that quotes them wrong fails as a *syntax error* — a
+// green-looking failure that measures the quoting instead of the reading.
+func sayingCLI(t *testing.T, exit int, lines ...string) string {
+	t.Helper()
+	said := filepath.Join(t.TempDir(), "said")
+	if err := os.WriteFile(said, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatalf("viết ra thứ CLI sẽ in: %v", err)
+	}
+	return fakeCLI(t, "cat "+said+"\nexit "+strconv.Itoa(exit))
+}
+
+func TestAnExhaustedQuotaIsReportedAsSomethingAPersonHasToClear(t *testing.T) {
+	cli := sayingCLI(t, 1, limitLine, badResultLine)
+
+	_, out, err := aTurn(t, Request{Binary: cli})
+	if err == nil {
+		t.Fatal("CLI thoát 1 mà lượt chạy vẫn coi là xong")
+	}
+	if out.Failure != "quota_exhausted" {
+		t.Fatalf("không đọc ra cạn hạn mức: %q", out.Failure)
+	}
+}
+
+func TestAnEndingThisFamilyHasNotBeenWatchedSayingIsLeftUnclassified(t *testing.T) {
+	// FR-039's rule, applied to the failure side: a line nobody measured produces nothing.
+	// Guessing here writes a fabricated cause into the record kept as evidence, and stops a
+	// run being retried on the strength of it.
+	const unseen = `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text",` +
+		`"text":"Error: your monthly allowance is spent."}]},"session_id":"s"}`
+	cli := sayingCLI(t, 1, unseen, badResultLine)
+
+	_, out, err := aTurn(t, Request{Binary: cli})
+	if err == nil {
+		t.Fatal("CLI thoát 1 mà lượt chạy vẫn coi là xong")
+	}
+	if out.Failure != "" {
+		t.Fatalf("đoán ra một lý do chưa từng đo được: %q", out.Failure)
+	}
+}
+
+func TestACLIFamilyWithNothingMeasuredNamesNoWall(t *testing.T) {
+	// Codex has never been run here at all (research §9, T130), so it has no table — and a
+	// family with no table must answer *no verdict*, not fall through to another family's.
+	var out Outcome
+	hitAWall("codex", "You've hit your session limit · resets 5:50pm", &out)
+	if out.Failure != "" {
+		t.Fatalf("họ CLI chưa đo được lại nói ra một lý do: %q", out.Failure)
+	}
+}
+
+func TestTheFirstWallNamedIsTheOneKept(t *testing.T) {
+	// A CLI that says why it stopped says it once; everything after is the turn winding down.
+	//
+	// Seeded with a verdict this table could never produce, so an overwrite is *visible*: a
+	// guard checked against the value it would be replaced with measures nothing.
+	out := Outcome{Failure: "credential_rejected"}
+	hitAWall("claude_code", "You've hit your session limit", &out)
+	if out.Failure != "credential_rejected" {
+		t.Fatalf("lý do đầu tiên bị ghi đè thành %q", out.Failure)
 	}
 }
