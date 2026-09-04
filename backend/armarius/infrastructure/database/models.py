@@ -305,6 +305,10 @@ class ProjectLeaderConversationModel(Base):
     session_params: Mapped[dict] = mapped_column(JSON, default=dict)
     transcript: Mapped[list] = mapped_column(JSON, default=list)
     state: Mapped[str] = mapped_column(String(20), default="idle", index=True)
+    # The run taking this chat's current turn — see ``ProjectLeaderConversation``. Indexed
+    # because it is read the other way round: a run ends and asks which chat, if any, it
+    # was driving.
+    driving_run_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

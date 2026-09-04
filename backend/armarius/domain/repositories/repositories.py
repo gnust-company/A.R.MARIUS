@@ -174,6 +174,14 @@ class LeaderChatRepository(ABC):
     ) -> ProjectLeaderConversation | None:
         """The single conversation for a project, or None if it was never opened."""
     @abstractmethod
+    async def get_by_run(self, run_id: UUID) -> ProjectLeaderConversation | None:
+        """The conversation whose current turn this run is taking, if it is taking one.
+
+        Asked in this direction because that is the direction the news arrives from: a run
+        carried out on somebody's machine reports itself finished, and all it names is
+        itself. See ``ProjectLeaderConversation.driving_run_id``.
+        """
+    @abstractmethod
     async def update(
         self, conversation: ProjectLeaderConversation
     ) -> ProjectLeaderConversation: ...

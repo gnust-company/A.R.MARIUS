@@ -44,6 +44,12 @@ class ProjectLeaderConversation:
     session_params: dict = field(default_factory=dict)  # native Leader handle (resume)
     transcript: list[dict] = field(default_factory=list)  # [{role: patron|leader, text, ts}]
     state: ChatState = ChatState.IDLE
+    # The run taking this conversation's current turn, when the turn is one this process
+    # does not carry out itself. A turn handed to a machine ends somewhere else, and the
+    # only thing tying that ending back to this chat is the run it was handed over as —
+    # ``state`` says a turn is running, this says *which* turn, which is the question asked
+    # from the other direction when a run reports itself finished.
+    driving_run_id: UUID | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

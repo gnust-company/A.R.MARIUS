@@ -72,9 +72,10 @@ async def _an_agent_on_a_machine(
 ) -> tuple[LinkedMachine, str]:
     """An agent placed at a real linked machine, whose turns are carried out there.
 
-    The runtime is set through the update route rather than at creation, because creating an
-    agent takes no runtime today — which is the half of FR-040b this task's successor closes.
-    Setting it here through a real door keeps this file about the road, not about the default.
+    Nothing here names a runtime. It used to: creating an agent gave everybody a runtime
+    built for demos, and this helper had to move the agent afterwards before the road below
+    could be measured at all. T048c put the answer where it comes from — the place declares
+    who carries the work — so an agent created on a machine is already carried by it.
     """
     machine = await link_machine(c, email, hostname=hostname)
     agent = await invite_agent(
@@ -83,13 +84,8 @@ async def _an_agent_on_a_machine(
         machine.headers,
         name=hostname,
         workplace_id=machine.workplace_id,
+        adapter_type=None,
     )
-    moved = await c.patch(
-        f"/v1/workspaces/{machine.workspace_id}/mariuses/{agent['id']}",
-        json={"adapter_type": "daemon"},
-        headers=machine.headers,
-    )
-    assert moved.status_code == 200, moved.text
     return machine, agent["id"]
 
 

@@ -73,7 +73,7 @@ async def invite_agent(
     h: dict,
     *,
     name: str = "Marin",
-    adapter_type: str = "echo",
+    adapter_type: str | None = "echo",
     workplace_id: str | None = None,
     is_workspace_agent: bool = False,
     instructions: str = "",
@@ -87,10 +87,18 @@ async def invite_agent(
     created without one (FR-007f) and most callers here care about the agent, not where it
     works.
 
-    No role is taken. How an agent behaves comes from its instructions (Constitution V)."""
+    No role is taken. How an agent behaves comes from its instructions (Constitution V).
+
+    **`adapter_type` moves the agent afterwards, over the same route a person would use.**
+    Creating an agent takes no runtime: the workplace declares who carries the work, and a
+    workplace is a CLI on a machine, so what this route makes is an agent whose turns happen
+    on that machine. Most tests here are about something else entirely and need a runtime
+    this process can carry out inside the call — so they get one, by the ordinary edit, and
+    the two lines it takes are visible rather than hidden in a body field the schema ignored.
+    Pass ``None`` to leave the agent where it was put, which is what a test about the road to
+    a machine wants."""
     body: dict = {
         "name": name,
-        "adapter_type": adapter_type,
         "instructions": instructions,
         "description": description,
         "workplace_id": workplace_id or await ready_workplace(ws_id),
@@ -102,7 +110,16 @@ async def invite_agent(
         body["skill_ids"] = skill_ids
     r = await c.post(f"/v1/workspaces/{ws_id}/mariuses", headers=h, json=body)
     assert r.status_code == 201, r.text
-    return r.json()
+    made = r.json()
+    if adapter_type is None or made["adapter_type"] == adapter_type:
+        return made
+    moved = await c.patch(
+        f"/v1/workspaces/{ws_id}/mariuses/{made['id']}",
+        headers=h,
+        json={"adapter_type": adapter_type},
+    )
+    assert moved.status_code == 200, moved.text
+    return moved.json()
 
 
 async def invite_and_online(

@@ -11,7 +11,7 @@ from __future__ import annotations
 from httpx import ASGITransport, AsyncClient
 
 from armarius.main import app
-from tests.support.agents import ready_workplace
+from tests.support.agents import invite_agent, ready_workplace
 
 
 async def _client() -> AsyncClient:
@@ -36,16 +36,16 @@ async def _project_with_seated_leader(c: AsyncClient, ws_id: str, h: dict) -> st
               "roles": [{"title": "Backend", "seats": 1, "description": "Owns the API."}]},
     )
     pid = proj.json()["id"]
-    leader = await c.post(
-        f"/v1/workspaces/{ws_id}/mariuses",
-        headers=h,
-        json={"name": "Lead", "adapter_type": "echo",
-              "workplace_id": await ready_workplace(ws_id)},
+    # Through the helper, which moves the newcomer onto a runtime this process can carry
+    # out inside the call. Creating an agent puts it wherever its workplace says (FR-007g2),
+    # and these tests are about the chat's own doors rather than about that road.
+    leader = await invite_agent(
+        c, ws_id, h, name="Lead", workplace_id=await ready_workplace(ws_id)
     )
     await c.post(
         f"/v1/projects/{pid}/grant",
         headers=h,
-        json={"marius_id": leader.json()["id"], "role_key": "leader"},
+        json={"marius_id": leader["id"], "role_key": "leader"},
     )
     return pid
 

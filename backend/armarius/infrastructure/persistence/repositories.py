@@ -394,6 +394,7 @@ class SqlLeaderChatRepository(LeaderChatRepository):
                 session_params=dict(conversation.session_params),
                 transcript=list(conversation.transcript),
                 state=str(conversation.state),
+                driving_run_id=conversation.driving_run_id,
                 created_at=conversation.created_at,
                 updated_at=conversation.updated_at,
             )
@@ -419,6 +420,16 @@ class SqlLeaderChatRepository(LeaderChatRepository):
         ).scalar_one_or_none()
         return mappers.leader_chat_to_entity(m) if m else None
 
+    async def get_by_run(self, run_id: UUID) -> ProjectLeaderConversation | None:
+        m = (
+            await self._s.execute(
+                select(ProjectLeaderConversationModel).where(
+                    ProjectLeaderConversationModel.driving_run_id == run_id
+                )
+            )
+        ).scalar_one_or_none()
+        return mappers.leader_chat_to_entity(m) if m else None
+
     async def update(
         self, conversation: ProjectLeaderConversation
     ) -> ProjectLeaderConversation:
@@ -429,6 +440,7 @@ class SqlLeaderChatRepository(LeaderChatRepository):
         m.session_params = dict(conversation.session_params)
         m.transcript = list(conversation.transcript)
         m.state = str(conversation.state)
+        m.driving_run_id = conversation.driving_run_id
         m.updated_at = conversation.updated_at
         await self._s.flush()
         return conversation
