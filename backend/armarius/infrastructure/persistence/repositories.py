@@ -1704,6 +1704,10 @@ class SqlArtifactRepository(ArtifactRepository):
         )
         return int(result.scalar_one())
 
+    async def get(self, artifact_id: UUID) -> Artifact | None:
+        row = await self._s.get(ArtifactModel, artifact_id)
+        return mappers.artifact_to_entity(row) if row else None
+
     async def list_by_task(self, task_id: UUID) -> Sequence[Artifact]:
         rows = (
             await self._s.execute(

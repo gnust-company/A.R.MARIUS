@@ -45,6 +45,7 @@ func (r Reporting) Finish(ctx context.Context, runID string, done Conclusion) er
 	return r.Session.FinishRun(ctx, runID, client.FinishRequest{
 		Status:        done.Status,
 		Error:         done.Error,
+		Failure:       done.Failure,
 		Usage:         done.Usage,
 		SessionHandle: done.Session,
 	})

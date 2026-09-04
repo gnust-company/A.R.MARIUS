@@ -9,6 +9,11 @@ GOBIN          := $(shell $(GO) env GOPATH)/bin
 GOLANGCI_LINT  ?= $(shell command -v golangci-lint 2>/dev/null || printf '%s/golangci-lint' '$(GOBIN)')
 BIN_DIR        := bin
 BINARY         := $(BIN_DIR)/armarius-daemon
+# The callback program, and it is not optional: the daemon refuses to start unless it is
+# beside it, because an agent cannot call Armarius back without it. Measured while running
+# the quickstart end to end (T129) — building only the daemon produced one that exited on
+# the first `start` with "the armarius program is not installed beside this daemon".
+CALLBACK       := $(BIN_DIR)/armarius
 
 .DEFAULT_GOAL := check
 .PHONY: check vet lint test build fmt tidy clean help
@@ -28,9 +33,10 @@ lint: | $(GOLANGCI_LINT)
 test:
 	$(GO) test ./...
 
-## build: a binary for this machine, in ./bin
+## build: both binaries for this machine, in ./bin — they ship together
 build:
 	$(GO) build -o $(BINARY) ./cmd/armarius-daemon
+	$(GO) build -o $(CALLBACK) ./cmd/armarius
 
 ## fmt: rewrite the source into canonical form
 fmt:

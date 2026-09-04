@@ -412,7 +412,21 @@ class MachineOut(_Out):
     # Whether it is answering right now, decided by the same rule that decides whether an
     # agent on it is online — one rule, so the two screens can never contradict each other.
     reachable: bool
+    # The ceiling FR-008 says the patron sets. On the read model as well as behind the door
+    # that changes it, because the screen has to show what it is before offering to change it.
+    max_concurrent: int = 1
     workplaces: list[MachineWorkplaceOut] = Field(default_factory=list)
+
+
+class UpdateMachineIn(BaseModel):
+    """What the patron may change about a linked machine (FR-008).
+
+    Only the ceiling. Everything else on the row — the name, the platform, the version — is
+    the machine's own account of itself, refreshed on every beat, and a value typed over it
+    here would be overwritten by the next one.
+    """
+
+    max_concurrent: int
 
 
 class PlacementOptionOut(_Out):

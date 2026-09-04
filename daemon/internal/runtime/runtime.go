@@ -149,6 +149,11 @@ type Outcome struct {
 	// here: every CLI counts in its own units, and averaging them into a shape of our own would
 	// be inventing a number nobody measured.
 	Usage map[string]any
+	// Failure is which wall this turn hit, as one of the server's closed codes, when the CLI
+	// said so plainly enough to be sure (FR-032a, FR-007c). Empty is the ordinary answer and
+	// the safe one: the server retries an ending nobody classified, and asks a person about an
+	// ending a machine was certain of. A guess here spends somebody's attention on a hiccup.
+	Failure string
 }
 
 // Emit is handed each event as it happens, in the order it happened.

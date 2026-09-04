@@ -367,6 +367,59 @@ func resultOf(raw json.RawMessage) Result {
 	return Result{Exposed: true, Body: joined.String(), Kind: kind}
 }
 
+// The ending this daemon can currently name: the provider has nothing left to give on the
+// login a workplace works under (FR-032, FR-007c).
+//
+// The server holds the whole closed list — an exhausted quota, a credential that was refused,
+// a workplace set up for work it cannot do — and this side may only use words already on it.
+// Only the first is spelled here, because only the first has been measured; a constant for an
+// ending nobody has watched is an invitation to guess at it.
+const failureQuotaExhausted = "quota_exhausted"
+
+// wall is one ending a CLI announces in words, and the code that ending is.
+type wall struct {
+	// saying is a fragment this daemon has **watched** a CLI print. Matched as a substring
+	// rather than a pattern: the sentence around it is one vendor's prose on one day, and the
+	// part worth keying on is the part that was seen.
+	saying  string
+	failure string
+}
+
+// walls is what each CLI family has been observed saying, family by family.
+//
+// **A family with nothing measured has no entry, and that is the design rather than a gap**
+// (FR-039, T124a). A verdict here stops a run being retried and puts it in front of a person,
+// so a line guessed from documentation would write a fabricated cause into the record that is
+// kept as evidence. Reading nothing costs a retry; reading wrong costs the truth.
+var walls = map[string][]wall{
+	"claude_code": {
+		// Measured 2026-09-04 on Claude Code 2.1.252, live, while running the quickstart
+		// end to end (T129): thirty-one runs on an account past its allowance each printed
+		// exactly one assistant line — `You've hit your session limit · resets 5:50pm
+		// (Asia/Ho_Chi_Minh)` — and then exited 1 with `is_error: true` and, notably,
+		// `subtype: "success"`. So the *structured* fields do not distinguish this ending
+		// from any other bad exit; the sentence is the only place the difference is stated,
+		// which is why the table is a table of sentences.
+		{saying: "You've hit your session limit", failure: failureQuotaExhausted},
+	},
+}
+
+// hitAWall reads one thing the agent said for an ending a person has to clear.
+//
+// First verdict wins and later text cannot overwrite it: a CLI that says why it stopped says it
+// once, and anything after that is the same turn winding down.
+func hitAWall(cli, said string, out *Outcome) {
+	if out.Failure != "" || said == "" {
+		return
+	}
+	for _, known := range walls[cli] {
+		if strings.Contains(said, known.saying) {
+			out.Failure = known.failure
+			return
+		}
+	}
+}
+
 func readClaudeCode(line []byte, journal *Journal, out *Outcome) {
 	var parsed claudeLine
 	if json.Unmarshal(line, &parsed) != nil {
@@ -389,6 +442,7 @@ func readClaudeCode(line []byte, journal *Journal, out *Outcome) {
 			switch block.Type {
 			case "text":
 				journal.Text(block.Text)
+				hitAWall("claude_code", block.Text, out)
 			case "thinking":
 				journal.Thought(block.Thinking)
 			case "tool_use":

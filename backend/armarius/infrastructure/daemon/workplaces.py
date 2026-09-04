@@ -41,6 +41,7 @@ from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.infrastructure.database.models import MariusModel
 from armarius.shared.clock import as_utc, utcnow
 from armarius.shared.config import settings
+from armarius.shared.errors import BadRequest
 
 # Why a workplace is not ready. Codes, never sentences. They do not overlap: a CLI that is
 # gone from the machine says so even if the machine also cannot link, because *this CLI is
@@ -53,6 +54,17 @@ REASON_LINK_UNSUPPORTED = "link_unsupported"
 #: reinstall a CLI, the other to start the daemon again. Without this code a routine restart
 #: told every operator their agent CLI had been uninstalled.
 REASON_DAEMON_STOPPED = "daemon_stopped"
+
+# The range a machine's ceiling may be set to (FR-008).
+#
+# One at the bottom rather than zero: zero is *stop giving this machine work*, which is a
+# different decision with a different word for it, and a ceiling of zero would look on the
+# screen like a number somebody mistyped. The top is a guard rather than a measurement —
+# nothing here knows how much a given laptop can stand — but an unbounded box invites a
+# number that turns one person's own machine into the thing that broke, and every real
+# answer is far below it.
+MIN_CEILING = 1
+MAX_CEILING = 64
 
 # How many times a sync is retried when two of them collide on the unique index over
 # (machine_id, cli_kind). One retry is enough by construction: after the loser rolls back, the
@@ -136,6 +148,10 @@ class LinkedMachine:
     last_heartbeat_at: datetime | None
     reachable: bool
     workplaces: list[MachineWorkplace]
+    # How many runs this machine is allowed to hold at once (FR-008). Read here rather than
+    # only enforced in the claim, because a number a person cannot see is a number they
+    # cannot be expected to have chosen — and FR-008 says they choose it.
+    max_concurrent: int = 1
 
 
 class DaemonWorkplaceService:
@@ -457,6 +473,7 @@ class DaemonWorkplaceService:
                 # ISO string as **local time**, so the same beat would be shown hours out
                 # on any machine that is not on UTC — wrong, and wrong quietly.
                 last_heartbeat_at=as_utc(machine.last_heartbeat_at),
+                max_concurrent=machine.max_concurrent,
                 reachable=(
                     machine.last_heartbeat_at is not None
                     and as_utc(machine.last_heartbeat_at) > cutoff
@@ -475,6 +492,51 @@ class DaemonWorkplaceService:
             )
             for machine in machines
         ]
+
+    async def set_ceiling(
+        self, workspace_id: UUID, machine_id: UUID, ceiling: int
+    ) -> LinkedMachine | None:
+        """Set how many runs one machine may hold at once (FR-008). None if it is not here.
+
+        The number is the **server's**, which is the whole of FR-008d: a daemon reports the
+        slots it believes are free and the claim takes the smaller of the two, so this column
+        is the half that cannot be talked up by a machine reporting optimistically. Until it
+        could be written it was a constant 1 in a migration's default, and a constant is not
+        the adjustable ceiling FR-008 asks for — it is a ceiling nobody can reach.
+
+        Scoped by workspace as well as by id, so a machine in somebody else's workspace
+        answers exactly like one that does not exist (Constitution I).
+
+        Takes effect on the **next** ask for work. Runs already out are not recalled: the
+        claim is what reads this number, and a run past that point is being executed on a
+        machine that was told to have it.
+        """
+        if not MIN_CEILING <= ceiling <= MAX_CEILING:
+            raise BadRequest(
+                "machine_ceiling_out_of_range",
+                least=str(MIN_CEILING),
+                most=str(MAX_CEILING),
+            )
+        async with self._sessions()() as session:
+            row = (
+                await session.execute(
+                    select(MachineModel).where(
+                        MachineModel.id == machine_id,
+                        MachineModel.workspace_id == workspace_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                return None
+            row.max_concurrent = ceiling
+            await session.commit()
+        # Read back through the one place that assembles this shape, rather than patching a
+        # copy here: the screen that made the change redraws from this answer, and a second
+        # assembly is a second chance for the two to disagree.
+        for machine in await self.list_machines(workspace_id):
+            if machine.id == machine_id:
+                return machine
+        return None  # pragma: no cover - unlinked between the write and the read
 
     async def _workplaces_of(
         self, session: AsyncSession, machine: MachineIdentity

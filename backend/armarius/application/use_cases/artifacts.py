@@ -14,7 +14,12 @@ from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.artifact import Artifact
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import utcnow
-from armarius.shared.errors import ArtifactStoreUnreliable, BadRequest, NotFound
+from armarius.shared.errors import (
+    ArtifactStoreUnreliable,
+    BadRequest,
+    Conflict,
+    NotFound,
+)
 
 EVENT_TASK_ARTIFACT = "task.artifact_added"
 
@@ -165,3 +170,33 @@ class ArtifactService:
     async def list_by_task(self, task_id: UUID) -> Sequence[Artifact]:
         async with self._uow() as uow:
             return await uow.artifacts.list_by_task(task_id)
+
+    async def fetch(self, task_id: UUID, artifact_id: UUID) -> tuple[Artifact, bytes]:
+        """The artifact and the bytes the store is holding for it (FR-020, SC-004).
+
+        Written because the promise had only half been kept: publishing put the bytes in the
+        shared store and proved they could be read back, and then nothing could ever ask for
+        them again — no door, and a screen whose link pointed at a store-relative path that
+        resolves to nothing. *Stored* and *gettable* are two claims, and only the second is
+        what a person needs.
+
+        Scoped by task as well as by artifact id, so an artifact belonging to a different task
+        reads exactly like one that does not exist (Constitution I) — the caller's right to be
+        here was decided about that task.
+
+        A link artifact has no bytes here at all: it names something somewhere else, and the
+        honest answer is to say so rather than to hand back an empty file.
+        """
+        async with self._uow() as uow:
+            artifact = await uow.artifacts.get(artifact_id)
+        if artifact is None or artifact.task_id != task_id:
+            raise NotFound("artifact_not_found")
+        if artifact.kind == "link" or not artifact.uri:
+            raise Conflict("artifact_has_no_stored_bytes")
+        try:
+            return artifact, await self._store.read_bytes(artifact.uri)
+        except Exception as exc:
+            # The row says the bytes are there and the store disagrees. Not a *missing
+            # artifact*: it was published, it was verified on the way in, and something has
+            # happened to the store since — which is a different thing to go and look at.
+            raise ArtifactStoreUnreliable("artifact_store_unreadable") from exc

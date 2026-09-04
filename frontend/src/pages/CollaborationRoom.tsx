@@ -26,7 +26,13 @@ import {
   Hourglass,
   CircleDashed,
 } from 'lucide-react';
-import { ApiError, listTaskApprovals, signTaskApproval, type ApprovalDTO } from '@/lib/api';
+import {
+  ApiError,
+  downloadArtifact,
+  listTaskApprovals,
+  signTaskApproval,
+  type ApprovalDTO,
+} from '@/lib/api';
 import {
   useAppStore,
   type Priority,
@@ -348,6 +354,30 @@ export default function CollaborationRoom() {
   const waiting = task ? waitKind(task) : undefined;
   const [isTraceActive, setIsTraceActive] = useState(true);
   const [showAddArtifactModal, setShowAddArtifactModal] = useState(false);
+  const [fetchingArtifact, setFetchingArtifact] = useState<string | null>(null);
+  const [artifactError, setArtifactError] = useState<string | null>(null);
+
+  // Fetch the bytes with this person's token, then hand the browser a blob to save. The
+  // object URL is released straight away: it is a handle to memory, and one left behind per
+  // download is a leak on a screen somebody keeps open all day.
+  async function saveArtifact(artifact: { id: string; name?: string; title?: string }) {
+    if (!task) return;
+    setFetchingArtifact(artifact.id);
+    setArtifactError(null);
+    try {
+      const blob = await downloadArtifact(task.id, artifact.id);
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = href;
+      link.download = artifact.name || artifact.title || 'artifact';
+      link.click();
+      URL.revokeObjectURL(href);
+    } catch (e) {
+      setArtifactError(errorText(e, t));
+    } finally {
+      setFetchingArtifact(null);
+    }
+  }
   const [artifactForm, setArtifactForm] = useState({ name: '', url: '', type: 'file' as 'file' | 'link' });
   const [depPicker, setDepPicker] = useState('');
   const [depError, setDepError] = useState<string | null>(null);
@@ -1037,24 +1067,45 @@ export default function CollaborationRoom() {
                 {t('collaborationRoom.context.artifacts')}
               </label>
               <div className="space-y-1.5">
-                {(task.artifacts ?? []).map((artifact) => (
-                  <a
-                    key={artifact.id}
-                    href={artifact.url || '#'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-vellum border border-vellum-dark hover:border-terracotta hover:text-terracotta transition-colors group"
-                  >
-                    {artifact.type === 'file' ? (
-                      <Paperclip className="w-3.5 h-3.5 text-ink-muted group-hover:text-terracotta" />
-                    ) : (
+                {/* Two kinds, two things to do with them. A link names something somewhere
+                    else and opens where it points; a file's bytes live in the shared store
+                    behind a door that needs this person's token, so it is fetched and saved
+                    rather than linked to — an `<a href>` carries no header, which is why the
+                    link on this row used to point at a store path that resolves to nothing. */}
+                {(task.artifacts ?? []).map((artifact) =>
+                  artifact.type === 'link' ? (
+                    <a
+                      key={artifact.id}
+                      href={artifact.url || '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-vellum border border-vellum-dark hover:border-terracotta hover:text-terracotta transition-colors group"
+                    >
                       <ExternalLink className="w-3.5 h-3.5 text-ink-muted group-hover:text-terracotta" />
-                    )}
-                    <span className="font-body text-body-sm text-ink group-hover:text-terracotta truncate">
-                      {artifact.name}
-                    </span>
-                  </a>
-                ))}
+                      <span className="font-body text-body-sm text-ink group-hover:text-terracotta truncate">
+                        {artifact.name}
+                      </span>
+                    </a>
+                  ) : (
+                    <button
+                      key={artifact.id}
+                      type="button"
+                      onClick={() => void saveArtifact(artifact)}
+                      disabled={fetchingArtifact === artifact.id}
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-vellum border border-vellum-dark hover:border-terracotta hover:text-terracotta transition-colors group disabled:opacity-60"
+                    >
+                      <Paperclip className="w-3.5 h-3.5 text-ink-muted group-hover:text-terracotta" />
+                      <span className="font-body text-body-sm text-ink group-hover:text-terracotta truncate">
+                        {artifact.name}
+                      </span>
+                    </button>
+                  )
+                )}
+                {artifactError && (
+                  <p className="font-body text-body-xs text-error" role="alert">
+                    {artifactError}
+                  </p>
+                )}
                 <button
                   onClick={() => setShowAddArtifactModal(true)}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-vellum-dark hover:border-terracotta hover:bg-terracotta/5 font-body text-body-xs text-ink-muted hover:text-terracotta transition-colors"
