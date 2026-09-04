@@ -1,8 +1,12 @@
-"""Contract-conformance — Projects + Roster + Grant (API_CONTRACT §3).
+"""Contract-conformance — Projects, roster and the two seating doors (API_CONTRACT §3).
 
-Drives the roster-driven ProjectService over HTTP: create-with-seat-plan (and the hard
-422 composition rule), project detail/brief/delete, roster CRUD by role_key, system-only
-seat grants, SETUP→ACTIVE activation, and workspace scoping (cross-workspace = 404).
+Drives ProjectService over HTTP: create-with-brief, project detail/brief/delete, the leader
+seat and the bench, SETUP→ACTIVE activation, and workspace scoping (cross-workspace = 404).
+
+*Rewritten 2026-09-04 (T039j)*: there is no role CRUD here any more, because there are no
+role doors. Putting an agent on a project is one call that names no role — the tests that
+used to add, edit, rename and delete roles measured a road that made the patron invent a
+description of the work beside the instructions already written on the agent (FR-007l).
 """
 
 from __future__ import annotations
@@ -44,7 +48,6 @@ def _plan(**overrides) -> dict:
         "description": "ship it",
         "objective": "Launch the platform",
         "leader": {"description": "lead", "marius_id": None},
-        "roles": [{"title": "Backend", "seats": 1, "description": "Owns the API."}],
     }
     plan.update(overrides)
     return plan
@@ -74,7 +77,7 @@ async def test_create_with_plan_starts_setup_with_roster() -> None:
     assert proj["status"] == "setup"
     assert proj["objective"] == "Launch the platform"
     keys = {r["key"] for r in proj["roster"]}
-    assert keys == {"leader", "backend"}
+    assert keys == {"leader", "members"}
     leader = next(r for r in proj["roster"] if r["key"] == "leader")
     assert leader["is_leader"] is True and leader["seats"] == 1
     # #93: mô tả vai trò Leader nay lưu vào MỘT trường `description` (trước rơi vào
@@ -104,33 +107,53 @@ async def test_list_projects_exposes_seat_counts() -> None:
     async with await _client() as c:
         token, ws_id = await _register(c, "seatcounts@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
-        proj = await _create(c, ws_id, h)  # leader (1) + backend (1) = 2 seats, 0 filled
+        proj = await _create(c, ws_id, h)  # the leader seat + a bench waiting for one
         pid = proj["id"]
 
         listed = (await c.get(f"/v1/workspaces/{ws_id}/projects", headers=h)).json()
         assert listed[0]["seats_total"] == 2
         assert listed[0]["seats_filled"] == 0
 
-        # Seat an agent in the leader role → the list reflects the new fill.
+        # Seat the Leader → the list reflects the new fill.
         lead = await _online_agent(c, ws_id, h, "Lead")
-        grant = await c.post(
-            f"/v1/projects/{pid}/grant",
-            headers=h,
-            json={"marius_id": lead, "role_key": "leader"},
+        seated = await c.post(
+            f"/v1/projects/{pid}/leader", headers=h, json={"marius_id": lead}
         )
-        assert grant.status_code == 201, grant.text
+        assert seated.status_code == 201, seated.text
 
         listed2 = (await c.get(f"/v1/workspaces/{ws_id}/projects", headers=h)).json()
         assert listed2[0]["seats_total"] == 2
         assert listed2[0]["seats_filled"] == 1
 
+        # Two on the bench, and the card counts them both — the bench holds as many as sit
+        # on it, so a project of three agents does not read as a project of two seats.
+        for name in ("Dev-1", "Dev-2"):
+            joined = await c.post(
+                f"/v1/projects/{pid}/members",
+                headers=h,
+                json={"marius_id": await _online_agent(c, ws_id, h, name)},
+            )
+            assert joined.status_code == 201, joined.text
 
-async def test_create_without_worker_role_is_422() -> None:
+        listed3 = (await c.get(f"/v1/workspaces/{ws_id}/projects", headers=h)).json()
+        assert listed3[0]["seats_total"] == 3
+        assert listed3[0]["seats_filled"] == 3
+
+
+async def test_a_plan_that_still_carries_roles_is_refused_rather_than_half_read() -> None:
+    """A caller sending the old shape is told, not quietly obeyed (FR-007l).
+
+    Ignoring the field would create a project with nobody on it and answer 201, and the
+    patron would be looking at an empty team wondering which of their steps failed. The last
+    dead parameter in this system was silently accepted for months for exactly that reason.
+    """
     async with await _client() as c:
         token, ws_id = await _register(c, "p2@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
         r = await c.post(
-            f"/v1/workspaces/{ws_id}/projects", headers=h, json=_plan(roles=[])
+            f"/v1/workspaces/{ws_id}/projects",
+            headers=h,
+            json=_plan(roles=[{"title": "Backend", "seats": 1, "description": "API."}]),
         )
     assert r.status_code == 422, r.text
 
@@ -157,7 +180,12 @@ async def test_detail_patch_brief_and_delete() -> None:
     assert gone.status_code == 404
 
 
-async def test_roster_role_crud_by_key() -> None:
+async def test_there_is_no_door_here_that_makes_a_role() -> None:
+    """Measured as absence, which is the only way this rule can be measured (FR-007l).
+
+    All three used to exist — add a role, rename it, delete it — and the first of them was
+    step one of putting an agent on a project.
+    """
     async with await _client() as c:
         token, ws_id = await _register(c, "p4@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
@@ -168,111 +196,69 @@ async def test_roster_role_crud_by_key() -> None:
             headers=h,
             json={"title": "QA", "seats": 2, "description": "Tests the work."},
         )
-        assert added.status_code == 201, added.text
-        assert added.json()["key"] == "qa"
+        edited = await c.patch(f"/v1/projects/{pid}/roles/members", headers=h, json={"seats": 3})
+        removed = await c.delete(f"/v1/projects/{pid}/roles/members", headers=h)
 
-        edited = await c.patch(
-            f"/v1/projects/{pid}/roles/qa",
-            headers=h,
-            json={"seats": 3, "title": "Quality"},
-        )
-        assert edited.status_code == 200, edited.text
-        assert edited.json()["seats"] == 3 and edited.json()["title"] == "Quality"
-
-        removed = await c.delete(f"/v1/projects/{pid}/roles/qa", headers=h)
-        assert removed.status_code == 204
-        roster = await c.get(f"/v1/projects/{pid}/roster", headers=h)
-    assert "qa" not in {r["key"] for r in roster.json()}
+    assert (added.status_code, edited.status_code, removed.status_code) == (404, 404, 404)
 
 
-async def test_grant_is_system_only_and_lists_agent() -> None:
+async def test_an_agent_joins_a_project_in_one_call_and_leaves_in_one() -> None:
     async with await _client() as c:
         token, ws_id = await _register(c, "p5@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
         pid = (await _create(c, ws_id, h))["id"]
         mid = await _online_agent(c, ws_id, h, "Backend-1")
 
-        grant = await c.post(
-            f"/v1/projects/{pid}/grant",
-            headers=h,
-            json={"marius_id": mid, "role_key": "backend"},
+        joined = await c.post(
+            f"/v1/projects/{pid}/members", headers=h, json={"marius_id": mid}
         )
-        assert grant.status_code == 201, grant.text
+        assert joined.status_code == 201, joined.text
         # T199 — a seat is a live row; there is no status on the wire any more.
-        assert "status" not in grant.json()
-        assert grant.json()["role_key"] == "backend"
+        assert "status" not in joined.json()
 
         agents = await c.get(f"/v1/projects/{pid}/agents", headers=h)
         assert agents.status_code == 200
         assert [a["marius_id"] for a in agents.json()] == [mid]
 
-        revoke = await c.request(
-            "DELETE",
-            f"/v1/projects/{pid}/grant",
-            headers=h,
-            json={"marius_id": mid, "role_key": "backend"},
-        )
-        assert revoke.status_code == 200, revoke.text
-        assert revoke.json()["id"] == grant.json()["id"]
+        left = await c.delete(f"/v1/projects/{pid}/members/{mid}", headers=h)
+        assert left.status_code == 200, left.text
+        assert left.json()["id"] == joined.json()["id"]
         agents2 = await c.get(f"/v1/projects/{pid}/agents", headers=h)
     assert agents2.json() == []
 
 
-async def test_remove_role_while_seated_is_rejected() -> None:
+async def test_the_agents_named_in_the_plan_are_on_the_project_already() -> None:
+    """Create and staff in one call, which is what the wizard's last step does."""
     async with await _client() as c:
-        token, ws_id = await _register(c, "p6@armarius.dev")
+        token, ws_id = await _register(c, "p5b@armarius.dev")
+        h = {"Authorization": f"Bearer {token}"}
+        lead = await _online_agent(c, ws_id, h, "Lead")
+        dev = await _online_agent(c, ws_id, h, "Dev")
+
+        proj = await _create(
+            c, ws_id, h,
+            leader={"description": "lead", "marius_id": lead},
+            members=[dev],
+        )
+        agents = await c.get(f"/v1/projects/{proj['id']}/agents", headers=h)
+
+    assert {a["marius_id"] for a in agents.json()} == {lead, dev}
+    # And it opened the planning gate on the way, without a second call.
+    assert proj["status"] in ("setup", "planning")
+
+
+async def test_an_agent_cannot_be_both_the_leader_and_a_member() -> None:
+    async with await _client() as c:
+        token, ws_id = await _register(c, "p5c@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
         pid = (await _create(c, ws_id, h))["id"]
-        mid = await _online_agent(c, ws_id, h, "Backend-1")
-        await c.post(
-            f"/v1/projects/{pid}/grant",
-            headers=h,
-            json={"marius_id": mid, "role_key": "backend"},
-        )
-        r = await c.delete(f"/v1/projects/{pid}/roles/backend", headers=h)
-    assert r.status_code == 400, r.text
+        lead = await _online_agent(c, ws_id, h, "Lead")
+        await c.post(f"/v1/projects/{pid}/leader", headers=h, json={"marius_id": lead})
 
+        again = await c.post(f"/v1/projects/{pid}/members", headers=h, json={"marius_id": lead})
 
-async def test_add_duplicate_role_key_is_409() -> None:
-    async with await _client() as c:
-        token, ws_id = await _register(c, "dup@armarius.dev")
-        h = {"Authorization": f"Bearer {token}"}
-        pid = (await _create(c, ws_id, h))["id"]  # roster already has key "backend"
-        # A second role that slugs to the same key must be rejected, not silently duplicated.
-        r = await c.post(
-            f"/v1/projects/{pid}/roles",
-            headers=h,
-            json={"title": "Backend", "seats": 1, "description": "Dupes the API role."},
-        )
-    assert r.status_code == 409, r.text
-
-
-async def test_add_role_with_long_title_caps_key_length() -> None:
-    async with await _client() as c:
-        token, ws_id = await _register(c, "longkey@armarius.dev")
-        h = {"Authorization": f"Bearer {token}"}
-        pid = (await _create(c, ws_id, h))["id"]
-        # A 200-char title (allowed by the schema) must not overflow RoleModel.key (120).
-        r = await c.post(
-            f"/v1/projects/{pid}/roles",
-            headers=h,
-            json={"title": "Q" * 200, "seats": 1, "description": "Long-title role."},
-        )
-    assert r.status_code == 201, r.text
-    assert len(r.json()["key"]) <= 120
-
-
-async def test_create_rejects_a_role_without_a_description() -> None:
-    async with await _client() as c:
-        token, ws_id = await _register(c, "nodesc@armarius.dev")
-        h = {"Authorization": f"Bearer {token}"}
-        # A worker role with no description → clear 422 at the API boundary (strict #112).
-        r = await c.post(
-            f"/v1/workspaces/{ws_id}/projects",
-            headers=h,
-            json=_plan(roles=[{"title": "Backend", "seats": 1}]),  # description omitted
-        )
-    assert r.status_code == 422, r.text
+    assert again.status_code == 400, again.text
+    assert again.json()["code"] == "agent_leads_this_project"
 
 
 async def test_create_rejects_a_leader_without_a_description() -> None:
@@ -288,40 +274,13 @@ async def test_create_rejects_a_leader_without_a_description() -> None:
     assert r.status_code == 422, r.text
 
 
-async def test_patch_role_cannot_blank_out_its_description() -> None:
-    async with await _client() as c:
-        token, ws_id = await _register(c, "patchblank@armarius.dev")
-        h = {"Authorization": f"Bearer {token}"}
-        pid = (await _create(c, ws_id, h))["id"]
-        # Empty string is caught at the schema (422); whitespace-only at the use-case (422).
-        empty = await c.patch(
-            f"/v1/projects/{pid}/roles/backend", headers=h, json={"description": ""}
-        )
-        assert empty.status_code == 422, empty.text
-        blank = await c.patch(
-            f"/v1/projects/{pid}/roles/backend", headers=h, json={"description": "   "}
-        )
-        assert blank.status_code == 422, blank.text
-        # A real edit still goes through.
-        ok = await c.patch(
-            f"/v1/projects/{pid}/roles/backend",
-            headers=h,
-            json={"description": "Owns the API and the data model."},
-        )
-    assert ok.status_code == 200, ok.text
-
-
 async def test_delete_project_cascades_children() -> None:
     async with await _client() as c:
         token, ws_id = await _register(c, "cascade@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
         pid = (await _create(c, ws_id, h))["id"]
         mid = await _online_agent(c, ws_id, h, "Backend-1")
-        await c.post(
-            f"/v1/projects/{pid}/grant",
-            headers=h,
-            json={"marius_id": mid, "role_key": "backend"},
-        )
+        await c.post(f"/v1/projects/{pid}/members", headers=h, json={"marius_id": mid})
         # FR-003: a real task needs a project past the plan gate. Cascade-on-delete is
         # not what the gate is about, so step over it rather than replaying the loop.
         await force_operating(pid)
@@ -369,19 +328,11 @@ async def test_all_seats_granted_to_online_agents_opens_planning() -> None:
         leader = await _online_agent(c, ws_id, h, "Lead")
         worker = await _online_agent(c, ws_id, h, "Worker")
 
-        await c.post(
-            f"/v1/projects/{pid}/grant",
-            headers=h,
-            json={"marius_id": leader, "role_key": "leader"},
-        )
+        await c.post(f"/v1/projects/{pid}/leader", headers=h, json={"marius_id": leader})
         mid_detail = await c.get(f"/v1/projects/{pid}", headers=h)
-        assert mid_detail.json()["status"] == "setup"  # one seat still empty
+        assert mid_detail.json()["status"] == "setup"  # nobody on the bench yet
 
-        await c.post(
-            f"/v1/projects/{pid}/grant",
-            headers=h,
-            json={"marius_id": worker, "role_key": "backend"},
-        )
+        await c.post(f"/v1/projects/{pid}/members", headers=h, json={"marius_id": worker})
         final = await c.get(f"/v1/projects/{pid}", headers=h)
     # FR-002: a full, online roster opens the *planning* gate — not the work.
     assert final.json()["status"] == "planning"

@@ -22,7 +22,7 @@ from armarius.application.ports.adapter import (
 )
 from armarius.application.use_cases.leader_chat import LeaderChatService
 from armarius.application.use_cases.liveness import LivenessEngine
-from armarius.application.use_cases.projects import ProjectService, RoleSpec
+from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.runs import RunQueryService
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.wake_engine import WakeEngine
@@ -46,13 +46,6 @@ from tests.support.fakes import FakeLivenessProbe
 from tests.support.projects import force_phase
 
 _TERMINAL = (RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.TIMED_OUT)
-
-
-def _roster() -> list[RoleSpec]:
-    return [
-        RoleSpec(key="leader", title="Leader", seats=1, is_leader=True, description="Leads."),
-        RoleSpec(key="backend", title="Backend", seats=1, description="Owns the API."),
-    ]
 
 
 def _chat_service(uow_factory, bus: TopicEventBus, *, step_delay: float = 0.0) -> LeaderChatService:
@@ -106,7 +99,7 @@ async def _register_leader(uow_factory, projects, ws, project, *, online_via=Non
         workspace_id=ws.id, name="Lead", role="Leader",
         skills=[], adapter_type="echo", adapter_config={},
     )
-    await projects.grant_seat(project.id, "leader", leader.id, system=True)
+    await projects.seat_leader(project.id, leader.id)
     if online_via is not None:
         await online_via.record_signal(leader.id)  # → ONLINE
     return leader
@@ -120,7 +113,7 @@ async def test_send_streams_leader_reply_into_transcript(uow_factory) -> None:
     chat = _chat_service(uow_factory, bus)
 
     ws = await workspaces.create_workspace("WS")
-    project = await projects.create_project(ws.id, "Apollo", roles=_roster())
+    project = await projects.create_project(ws.id, "Apollo", leader_description="Leads.")
     await _register_leader(uow_factory, projects, ws, project, online_via=liveness)
 
     view = await chat.send(project_id=project.id, message="How's the project going?")
@@ -146,7 +139,7 @@ async def test_offline_leader_disables_chat(uow_factory) -> None:
     chat = _chat_service(uow_factory, bus)
 
     ws = await workspaces.create_workspace("WS")
-    project = await projects.create_project(ws.id, "Apollo", roles=_roster())
+    project = await projects.create_project(ws.id, "Apollo", leader_description="Leads.")
     await _register_leader(uow_factory, projects, ws, project)  # left OFFLINE
 
     view = await chat.get_or_open(project.id)
@@ -163,7 +156,7 @@ async def test_turn_taking_rejects_concurrent_send(uow_factory) -> None:
     chat = _chat_service(uow_factory, bus, step_delay=0.1)  # keep the turn in flight
 
     ws = await workspaces.create_workspace("WS")
-    project = await projects.create_project(ws.id, "Apollo", roles=_roster())
+    project = await projects.create_project(ws.id, "Apollo", leader_description="Leads.")
     await _register_leader(uow_factory, projects, ws, project, online_via=liveness)
 
     await chat.send(project_id=project.id, message="first")
@@ -180,12 +173,12 @@ async def test_proposed_task_approve_flips_todo_and_wakes(uow_factory) -> None:
     runs = RunQueryService(uow_factory)
 
     ws = await workspaces.create_workspace("WS")
-    project = await projects.create_project(ws.id, "Apollo", roles=_roster())
+    project = await projects.create_project(ws.id, "Apollo", leader_description="Leads.")
     worker = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Dev", role="Backend",
         skills=[], adapter_type="echo", adapter_config={},
     )
-    await projects.grant_seat(project.id, "backend", worker.id, system=True)
+    await projects.add_member(project.id, worker.id)
     # Duyệt một đề xuất là biến nó thành việc thật, nên nó đòi dự án đã qua cổng kế hoạch
     # (FR-003). Bài kiểm này nói về chuyện *duyệt xong thì gọi ai dậy*, nên đưa dự án tới
     # đúng giai đoạn nó phải ở thay vì mượn một cảnh mà luật không cho phép.
@@ -212,7 +205,7 @@ async def test_proposed_task_reject_cancels(uow_factory) -> None:
     tasks = TaskService(uow_factory, wake)
 
     ws = await workspaces.create_workspace("WS")
-    project = await projects.create_project(ws.id, "Apollo", roles=_roster())
+    project = await projects.create_project(ws.id, "Apollo", leader_description="Leads.")
     draft = await tasks.create(
         project_id=project.id, title="Maybe later", status=TaskStatus.DRAFT,
     )
@@ -268,12 +261,12 @@ async def test_a_wake_that_could_not_be_delivered_does_not_mark_the_leader_alive
     workspaces = WorkspaceService(uow_factory)
     projects = ProjectService(uow_factory)
     ws = await workspaces.create_workspace("WS")
-    project = await projects.create_project(ws.id, "Apollo", roles=_roster())
+    project = await projects.create_project(ws.id, "Apollo", leader_description="Leads.")
     leader = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Lead", role="Leader",
         skills=[], adapter_type="unreachable", adapter_config={},
     )
-    await projects.grant_seat(project.id, "leader", leader.id, system=True)
+    await projects.seat_leader(project.id, leader.id)
 
     # Kéo về sát ranh giới rồi gọi một lượt hụt.
     async with uow_factory() as uow:
@@ -347,12 +340,12 @@ async def test_the_leader_is_told_the_approved_brief_not_the_raw_project_columns
     projects = ProjectService(uow_factory)
 
     ws = await workspaces.create_workspace("WS")
-    project = await projects.create_project(ws.id, "Apollo", roles=_roster())
+    project = await projects.create_project(ws.id, "Apollo", leader_description="Leads.")
     leader = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Lead", role="Leader",
         skills=[], adapter_type="capturing", adapter_config={},
     )
-    await projects.grant_seat(project.id, "leader", leader.id, system=True)
+    await projects.seat_leader(project.id, leader.id)
     await liveness.record_signal(leader.id)
 
     # Hai cột thô nói một đằng…

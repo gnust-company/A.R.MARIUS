@@ -34,7 +34,7 @@ async def _task(c: AsyncClient, ws_id: str, h: dict) -> str:
         f"/v1/workspaces/{ws_id}/projects",
         headers=h,
         json={"name": "Apollo", "leader": {"description": "Leads.", "marius_id": None},
-              "roles": [{"title": "Backend", "seats": 1, "description": "Owns the API."}]},
+},
     )
     pid = proj.json()["id"]
     # FR-003: real tasks need a project past the plan gate. The Done-gate is what this

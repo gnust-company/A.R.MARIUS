@@ -184,8 +184,7 @@ async def test_per_task_stream_frames_and_resumes() -> None:
             json={
                 "name": "Apollo",
                 "leader": {"description": "Leads.", "marius_id": None},
-                "roles": [{"title": "Backend", "seats": 1, "description": "Owns the API."}],
-            },
+                },
         )
         pid = proj.json()["id"]
         await force_operating(pid)  # FR-003 — the SSE frame is the subject here

@@ -344,19 +344,21 @@ async def test_fr078_the_two_way_channel_and_the_board_both_exist():
         assert {"status", "title", "identifier"} <= set(board.json()[0])
 
 
-async def test_fr082_one_agent_two_projects_two_roles():
-    """FR-082 — ngữ cảnh lấy theo vai trong **dự án** đang làm, không theo workspace.
+async def test_fr082_one_agent_two_projects_two_seats():
+    """FR-082 — chỗ của một agent là chỗ **trong dự án**, không phải thuộc tính ở workspace.
 
-    Cùng một con agent, hai dự án, hai vai. Nếu vai bị đọc từ tầng workspace thì hai gói
-    tin sẽ giống hệt nhau và agent sẽ mang vai của dự án kia sang dự án này.
+    *Sửa 2026-09-04 (T039j)*: bài kiểm này từng đo bằng **hai vai khác tên** — cùng một agent,
+    hai dự án, hai tên vai — và tên vai giờ không còn: người chủ thêm thẳng agent vào dự án
+    (FR-007l). Nửa còn sống của FR-082 là nửa quan trọng hơn, và vẫn đo được: hai chỗ ngồi là
+    **hai dòng riêng của hai dự án**. Nếu việc-ở-trong-dự-án sống trên chính con agent thì rút
+    nó khỏi dự án này sẽ rút luôn khỏi dự án kia.
     """
     async with client() as c:
         h, ws_id = await register(c, "fr082@armarius.dev")
         marius_id, _ = await invite_and_online(c, ws_id, h, name="Đa-năng")
 
         made = []
-        for name, role_title in (("Alpha", "Backend"), ("Beta", "Frontend")):
-            role_desc = f"Lo phần {role_title} của dự án {name}."
+        for name in ("Alpha", "Beta"):
             created = await c.post(
                 f"/v1/workspaces/{ws_id}/projects",
                 headers=h,
@@ -364,35 +366,31 @@ async def test_fr082_one_agent_two_projects_two_roles():
                     "name": name,
                     "objective": f"Mục tiêu {name}",
                     "leader": {"description": "Điều phối.", "marius_id": None},
-                    "roles": [
-                        {"title": role_title, "seats": 1, "description": role_desc}
-                    ],
                 },
             )
             assert created.status_code == 201, created.text
             pid = created.json()["id"]
             await force_operating(pid)
-            granted = await c.post(
-                f"/v1/projects/{pid}/grant",
-                headers=h,
-                json={"role_key": role_title.lower(), "marius_id": marius_id},
+            joined = await c.post(
+                f"/v1/projects/{pid}/members", headers=h, json={"marius_id": marius_id}
             )
-            assert granted.status_code == 201, granted.text
-            made.append((pid, role_title.lower()))
+            assert joined.status_code == 201, joined.text
+            made.append(pid)
 
-        seen = []
-        for pid, expected_role in made:
+        for pid in made:
             seats = await c.get(f"/v1/projects/{pid}/agents", headers=h)
             assert seats.status_code == 200, seats.text
             mine = [s for s in seats.json() if s["marius_id"] == marius_id]
             assert len(mine) == 1, seats.text
-            # Vai đọc ra phải là vai **của dự án này** — không phải một thuộc tính chung
-            # dính vào con agent ở tầng workspace.
-            assert mine[0]["role_key"] == expected_role
-            seen.append(mine[0]["role_key"])
-        # Và hai vai phải **khác nhau**: nếu chúng giống nhau thì bài kiểm ở trên vẫn xanh
-        # với một vai đọc từ tầng workspace, và không kiểm được gì cả.
-        assert seen[0] != seen[1]
+
+        # Rút khỏi dự án đầu. Dự án thứ hai không được biết gì về chuyện ấy.
+        left = await c.delete(f"/v1/projects/{made[0]}/members/{marius_id}", headers=h)
+        assert left.status_code == 200, left.text
+
+        first = await c.get(f"/v1/projects/{made[0]}/agents", headers=h)
+        second = await c.get(f"/v1/projects/{made[1]}/agents", headers=h)
+        assert [s for s in first.json() if s["marius_id"] == marius_id] == []
+        assert len([s for s in second.json() if s["marius_id"] == marius_id]) == 1
 
 
 async def test_fr082_the_marius_entity_carries_no_project_role() -> None:

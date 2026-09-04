@@ -446,13 +446,10 @@ export interface CreateProjectBody {
   /** JIRA-style project KEY (2–10 uppercase chars). Omitted/blank → server suggests from name. */
   key?: string
   leader?: { marius_id?: string | null; description?: string }
-  roles?: Array<{
-    title: string
-    seats: number
-    description?: string
-    skill_ids?: string[]
-    marius_ids?: (string | null)[]
-  }>
+  /** The agents on the project besides its Leader. No roles: an agent joins as itself, and
+   *  what it does is written on the agent (FR-007l). The server refuses an unknown field, so
+   *  a stale `roles` here would be a 422 rather than a project with nobody on it. */
+  members?: string[]
 }
 
 export async function listProjects(workspaceId: string): Promise<ProjectDTO[]> {
@@ -957,23 +954,16 @@ export interface OnboardingQuestion {
   multi?: boolean
 }
 
-export interface OnboardingRosterRole {
-  key?: string
-  title: string
-  seats?: number
-  is_leader?: boolean
-  description?: string
-  skills?: string[]
-}
-
-/** The final project + roster draft the agent proposes once the interview is complete. */
+/** The final project draft the agent proposes once the interview is complete.
+ *
+ *  The project, and nothing about the team: the interview asks about what is being built, and
+ *  who works on it is picked by the patron from their own agents afterwards (FR-007l). */
 export interface OnboardingDraft {
   name: string
   objective: string
   success_metrics?: Record<string, unknown> | null
   target_date?: string | null
   context?: string | null
-  roster: OnboardingRosterRole[]
 }
 
 export interface OnboardingCollected {
@@ -1026,11 +1016,11 @@ export async function abandonOnboarding(sessionId: string): Promise<OnboardingDT
   return post<OnboardingDTO>(`/v1/onboarding/${sessionId}/abandon`, {})
 }
 
-// ── Roster grant (system‑only) ────────────────────────────────────────────────────────
+// ── Seating an agent on a project (system‑only) ───────────────────────────────────────
 
-export interface GrantSeatBody {
+/** Which agent to seat. Where is said by *which door* is called, not by a field. */
+export interface SeatAgentBody {
   marius_id: string
-  role_key: string
 }
 
 /** A live seat. A vacated seat is a deleted row, so there is no status to carry. */
@@ -1043,8 +1033,16 @@ export interface SeatGrantDTO {
   created_at?: string | null
 }
 
-export async function grantSeat(projectId: string, body: GrantSeatBody): Promise<SeatGrantDTO> {
-  return post<SeatGrantDTO>(`/v1/projects/${projectId}/grant`, body)
+export async function seatLeader(projectId: string, body: SeatAgentBody): Promise<SeatGrantDTO> {
+  return post<SeatGrantDTO>(`/v1/projects/${projectId}/leader`, body)
+}
+
+export async function addProjectMember(projectId: string, body: SeatAgentBody): Promise<SeatGrantDTO> {
+  return post<SeatGrantDTO>(`/v1/projects/${projectId}/members`, body)
+}
+
+export async function removeProjectMember(projectId: string, mariusId: string): Promise<void> {
+  return del(`/v1/projects/${projectId}/members/${mariusId}`)
 }
 
 // ── SSE URLs (the streams themselves are fetched in sse.ts) ───────────────────────────────

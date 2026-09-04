@@ -4,8 +4,7 @@ import { wsHref, suggestProjectKey } from '@/lib/utils';
 import { ApiError } from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Plus, Trash2, AlertTriangle,
-  CheckCircle2, Loader2, ArrowLeft, ArrowRight, X,
+  AlertTriangle, CheckCircle2, Loader2, ArrowLeft, ArrowRight, X,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '@/store/appStore';
@@ -13,14 +12,6 @@ import PageTitle from '@/components/PageTitle';
 import OnboardingChat from '@/components/OnboardingChat';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-interface WorkerRoleForm {
-  id: string;
-  title: string;
-  description: string;
-  skills: string[];
-  seats: number;
-}
 
 interface FormData {
   name: string;
@@ -34,13 +25,19 @@ interface FormData {
   leaderId: string | null;
   leaderDescription: string;
   assignLeaderLater: boolean;
-  workerRoles: WorkerRoleForm[];
+  /** The agents joining the project besides its Leader.
+   *
+   *  Ids, and nothing else. This step used to collect role forms — a title, a seat count, a
+   *  list of skills and a description of the work — and the patron was writing, by hand, a
+   *  second description of behaviour beside the instructions already on each agent (FR-007l).
+   */
+  memberIds: string[];
 }
 
 interface FormErrors {
   name?: string;
   objective?: string;
-  workerRoles?: string;
+  members?: string;
   roster?: string;
   [key: string]: string | undefined;
 }
@@ -64,21 +61,7 @@ const stepVariants = {
   }),
 };
 
-const roleCardVariants = {
-  hidden: { opacity: 0, y: -20, scale: 0.98 },
-  visible: {
-    opacity: 1, y: 0, scale: 1,
-    transition: { duration: 0.3, ease: [0.34, 1.56, 0.64, 1] as [number, number, number, number] },
-  },
-  exit: {
-    opacity: 0, y: -10, scale: 0.98,
-    transition: { duration: 0.2 },
-  },
-};
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const generateId = () => `wr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
 const initialFormData: FormData = {
   name: '',
@@ -91,7 +74,7 @@ const initialFormData: FormData = {
   leaderId: null,
   leaderDescription: '',
   assignLeaderLater: false,
-  workerRoles: [],
+  memberIds: [],
 };
 
 /** JIRA-style project KEY: 2–10 uppercase chars, starts with a letter. Mirrors backend. */
@@ -182,7 +165,6 @@ export default function CreateProject() {
   const { workspaceId } = useParams();
   const createProject = useAppStore((s) => s.createProject);
   const mariuses = useAppStore((s) => s.mariuses);
-  const skills = useAppStore((s) => s.skills);
   const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId);
   const workspaces = useAppStore((s) => s.workspaces);
 
@@ -210,6 +192,13 @@ export default function CreateProject() {
   const approvedAgents = useMemo(
     () => mariuses.filter((m) => m.status !== 'invited' && m.status !== 'revoked'),
     [mariuses]
+  );
+
+  // Who the team can be picked from. The Leader is left out because the server refuses an
+  // agent that both leads a project and sits on it — better not to offer the refusal.
+  const teamCandidates = useMemo(
+    () => approvedAgents.filter((m) => m.id !== formData.leaderId),
+    [approvedAgents, formData.leaderId]
   );
 
   // ─── Validation ────────────────────────────────────────────────────────────
@@ -248,21 +237,10 @@ export default function CreateProject() {
       newErrors.leaderDescription = t('createProject.validation.noLeaderDescription');
     }
 
-    if (formData.workerRoles.length === 0) {
-      newErrors.workerRoles = t('createProject.validation.noWorkerRoles');
-    } else {
-      const invalidSeats = formData.workerRoles.some((r) => r.seats < 1);
-      const invalidTitles = formData.workerRoles.some((r) => !r.title.trim());
-      const invalidDescriptions = formData.workerRoles.some((r) => !r.description.trim());
-      if (invalidSeats) {
-        newErrors.workerRoles = t('createProject.validation.workerRoleNoSeats');
-      }
-      if (invalidTitles) {
-        newErrors.workerRoles = t('createProject.validation.workerRoleNoTitle');
-      }
-      if (invalidDescriptions) {
-        newErrors.workerRoles = t('createProject.validation.workerRoleNoDescription');
-      }
+    // A project needs somebody to do the work. That was the old "at least one worker role"
+    // rule, and it is now the plain thing it always meant: at least one agent on the project.
+    if (formData.memberIds.length === 0) {
+      newErrors.members = t('createProject.validation.noMembers');
     }
 
     setErrors(newErrors);
@@ -272,12 +250,7 @@ export default function CreateProject() {
   const isRosterValid = useMemo(() => {
     const hasLeaderOrLater = formData.assignLeaderLater || !!formData.leaderId;
     const hasLeaderDescription = formData.leaderDescription.trim().length > 0;
-    const hasWorkerRoles = formData.workerRoles.length > 0;
-    const allValidSeats = formData.workerRoles.every((r) => r.seats >= 1);
-    const allValidTitles = formData.workerRoles.every((r) => r.title.trim().length > 0);
-    const allValidDescriptions = formData.workerRoles.every((r) => r.description.trim().length > 0);
-    return hasLeaderOrLater && hasLeaderDescription && hasWorkerRoles
-      && allValidSeats && allValidTitles && allValidDescriptions;
+    return hasLeaderOrLater && hasLeaderDescription && formData.memberIds.length > 0;
   }, [formData]);
 
   // ─── Navigation ────────────────────────────────────────────────────────────
@@ -306,33 +279,6 @@ export default function CreateProject() {
     if (!validateStep1() || !validateStep2()) return;
     setIsSubmitting(true);
 
-    // Build seats from form data
-    const seats: NonNullable<Parameters<typeof createProject>[0]['seats']> = [];
-
-    // Leader seat. Its description stays empty on purpose: the leader's brief
-    // travels as `leaderDescription`, and this seat is filtered out before the
-    // worker roles — the ones the API requires a description for — are built.
-    seats.push({
-      roleKey: 'leader',
-      roleLabel: 'Project Leader',
-      mariusId: formData.leaderId || null,
-      skillsRequired: [],
-      description: '',
-    });
-
-    // Worker role seats
-    formData.workerRoles.forEach((role) => {
-      for (let i = 0; i < role.seats; i++) {
-        seats.push({
-          roleKey: `worker_${role.id}_${i}`,
-          roleLabel: role.title,
-          mariusId: null,
-          skillsRequired: role.skills,
-          description: role.description.trim(),
-        });
-      }
-    });
-
     // Assembled before the block: every `||` fallback in it is a conditional expression,
     // and the React Compiler has no lowering for those inside try/catch.
     const payload = {
@@ -343,7 +289,7 @@ export default function CreateProject() {
       workspaceId: activeWorkspaceId || undefined,
       leaderId: formData.leaderId || '',
       leaderDescription: formData.leaderDescription,
-      seats,
+      memberIds: formData.memberIds,
     };
     try {
       const project = await createProject(payload);
@@ -368,55 +314,16 @@ export default function CreateProject() {
     }
   };
 
-  // ─── Worker Role Helpers ───────────────────────────────────────────────────
+  // ─── Who is on the project ─────────────────────────────────────────────────
 
-  const addWorkerRole = () => {
+  const toggleMember = (mariusId: string) => {
     setFormData((prev) => ({
       ...prev,
-      workerRoles: [
-        ...prev.workerRoles,
-        {
-          id: generateId(),
-          title: '',
-          description: '',
-          skills: [],
-          seats: 1,
-        },
-      ],
+      memberIds: prev.memberIds.includes(mariusId)
+        ? prev.memberIds.filter((id) => id !== mariusId)
+        : [...prev.memberIds, mariusId],
     }));
-    setErrors((prev) => ({ ...prev, workerRoles: undefined }));
-  };
-
-  const removeWorkerRole = (id: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      workerRoles: prev.workerRoles.filter((r) => r.id !== id),
-    }));
-  };
-
-  const updateWorkerRole = (id: string, updates: Partial<WorkerRoleForm>) => {
-    setFormData((prev) => ({
-      ...prev,
-      workerRoles: prev.workerRoles.map((r) =>
-        r.id === id ? { ...r, ...updates } : r
-      ),
-    }));
-  };
-
-  const toggleSkill = (roleId: string, skillName: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      workerRoles: prev.workerRoles.map((r) => {
-        if (r.id !== roleId) return r;
-        const hasSkill = r.skills.includes(skillName);
-        return {
-          ...r,
-          skills: hasSkill
-            ? r.skills.filter((s) => s !== skillName)
-            : [...r.skills, skillName],
-        };
-      }),
-    }));
+    setErrors((prev) => ({ ...prev, members: undefined }));
   };
 
   // ─── Render Step 1: Project Info ───────────────────────────────────────────
@@ -606,7 +513,12 @@ export default function CreateProject() {
               if (val === 'later') {
                 setFormData((p) => ({ ...p, leaderId: null, assignLeaderLater: true }));
               } else {
-                setFormData((p) => ({ ...p, leaderId: val, assignLeaderLater: false }));
+                setFormData((p) => ({
+                  ...p,
+                  leaderId: val,
+                  assignLeaderLater: false,
+                  memberIds: p.memberIds.filter((id) => id !== val),
+                }));
               }
               if (errors.roster) setErrors((p) => ({ ...p, roster: undefined }));
             }}
@@ -615,7 +527,10 @@ export default function CreateProject() {
             <option value="">{t('createProject.roster.selectAgent')}</option>
             {approvedAgents.map((agent) => (
               <option key={agent.id} value={agent.id}>
-                {agent.displayName || agent.name} ({agent.role}) — {agent.status}
+                {/* Name and liveness, and nothing in between. There used to be a role in
+                    brackets here; the field it read is empty by design, so every agent in
+                    this list was offered as "Name () — online". */}
+                {agent.displayName || agent.name} — {agent.status}
               </option>
             ))}
             <option value="later">{t('createProject.roster.assignLater')}</option>
@@ -658,7 +573,7 @@ export default function CreateProject() {
                   </div>
                   <div>
                     <p className="font-body font-medium text-body-md text-ink">{agent.displayName || agent.name}</p>
-                    <p className="font-body text-body-sm text-ink-light">{agent.role} &middot; {agent.adapterType}</p>
+                    <p className="font-body text-body-sm text-ink-light">{agent.adapterType}</p>
                   </div>
                   <button
                     onClick={() => setFormData((p) => ({ ...p, leaderId: null }))}
@@ -685,123 +600,62 @@ export default function CreateProject() {
         )}
       </div>
 
-      {/* ─── Worker Roles Section ─── */}
+      {/* ─── The team ─── */}
       <div>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-baseline justify-between mb-1">
           <h3 className="font-display text-display-sm text-ink">
-            {t('createProject.roster.workerRoles')}
+            {t('createProject.roster.team')}
+            <span className="text-[#C25E3A] ml-1">*</span>
           </h3>
-          <button
-            onClick={addWorkerRole}
-            className="inline-flex items-center gap-1.5 bg-[#EDE4CE] hover:bg-[#E3D7BC] border border-[#E3D7BC] text-ink font-body font-medium text-body-sm px-3 py-1.5 rounded-md transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            {t('createProject.roster.addRoleButton')}
-          </button>
+          <span className="font-mono text-mono-sm text-ink-muted">
+            {t('createProject.roster.teamPicked', { count: formData.memberIds.length })}
+          </span>
         </div>
+        <p className="mb-3 font-body text-body-sm text-ink-light">
+          {t('createProject.roster.teamHint')}
+        </p>
 
-        {errors.workerRoles && (
-          <p className="mb-3 font-body text-body-sm text-[#B84A32]">{errors.workerRoles}</p>
+        {errors.members && (
+          <p className="mb-3 font-body text-body-sm text-[#B84A32]">{errors.members}</p>
         )}
 
-        <AnimatePresence>
-          {formData.workerRoles.map((role) => (
-            <motion.div
-              key={role.id}
-              variants={roleCardVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              className="bg-[#EDE4CE] border border-[#E3D7BC] rounded-md p-4 mb-3"
-            >
-              {/* Role title + remove */}
-              <div className="flex items-center gap-3 mb-3">
-                <input
-                  type="text"
-                  value={role.title}
-                  onChange={(e) => updateWorkerRole(role.id, { title: e.target.value })}
-                  placeholder={t('createProject.roster.roleTitlePlaceholder')}
-                  className="flex-1 bg-vellum border border-[#E3D7BC] rounded-md px-3 py-2 font-body text-body-md text-ink placeholder:text-ink-muted focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)] transition-colors"
-                />
-                <button
-                  onClick={() => removeWorkerRole(role.id)}
-                  className="p-2 text-ink-muted hover:text-[#B84A32] hover:bg-[#F5DDD6] rounded-md transition-colors"
-                  title={t('createProject.roster.removeRole')}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Seats + Skills row */}
-              <div className="flex items-start gap-4 mb-3">
-                {/* Seats */}
-                <div className="w-24">
-                  <label className="block font-body text-body-xs font-medium text-ink-light mb-1">
-                    {t('createProject.roster.seats')}
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={role.seats}
-                    onChange={(e) => updateWorkerRole(role.id, { seats: Math.max(1, parseInt(e.target.value) || 1) })}
-                    className="w-full bg-vellum border border-[#E3D7BC] rounded-md px-3 py-2 font-body text-body-md text-ink focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)] transition-colors"
-                  />
-                </div>
-
-                {/* Skills multi-select */}
-                <div className="flex-1">
-                  <label className="block font-body text-body-xs font-medium text-ink-light mb-1">
-                    {t('createProject.roster.skills')}
-                  </label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {skills.map((skill) => {
-                      const isSelected = role.skills.includes(skill.name);
-                      return (
-                        <button
-                          key={skill.id}
-                          onClick={() => toggleSkill(role.id, skill.name)}
-                          className={`inline-flex items-center gap-1 font-body text-body-xs px-2 py-1 rounded-full transition-colors ${
-                            isSelected
-                              ? 'bg-[#D4A843] text-ink'
-                              : 'bg-[#F7F0E0] text-ink-light border border-[#E3D7BC] hover:border-[#D4A843]'
-                          }`}
-                        >
-                          {skill.name}
-                          {isSelected && <X className="w-3 h-3" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="block font-body text-body-xs font-medium text-ink-light mb-1">
-                  {t('createProject.roster.roleDescription')}
-                </label>
-                <textarea
-                  value={role.description}
-                  onChange={(e) => updateWorkerRole(role.id, { description: e.target.value })}
-                  placeholder={t('createProject.roster.roleDescriptionPlaceholder')}
-                  rows={2}
-                  className="w-full bg-vellum border border-[#E3D7BC] rounded-md px-3 py-2 font-body text-body-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)] transition-colors resize-none"
-                />
-              </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-
-        {formData.workerRoles.length === 0 && (
+        {teamCandidates.length === 0 ? (
           <p className="text-center font-body text-body-sm text-ink-muted py-6">
-            {t('createProject.validation.noWorkerRoles')}.{' '}
-            <button
-              onClick={addWorkerRole}
-              className="text-[#C25E3A] hover:underline"
-            >
-              {t('createProject.roster.addRoleButton')}
-            </button>
+            {t('createProject.roster.noApprovedAgents')}
           </p>
+        ) : (
+          <div className="space-y-2">
+            {teamCandidates.map((agent) => {
+              const picked = formData.memberIds.includes(agent.id);
+              return (
+                <button
+                  key={agent.id}
+                  onClick={() => toggleMember(agent.id)}
+                  className={`w-full flex items-center gap-3 p-3 rounded-md border text-left transition-colors ${
+                    picked
+                      ? 'bg-[#EDE4CE] border-[#C25E3A]'
+                      : 'bg-vellum border-[#E3D7BC] hover:border-[#D4A843]'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-full bg-[#C25E3A] flex items-center justify-center text-white font-display text-xs flex-shrink-0">
+                    {(agent.displayName || agent.name || '?').charAt(0)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-body font-medium text-body-md text-ink truncate">
+                      {agent.displayName || agent.name}
+                    </p>
+                    <p className="font-body text-body-xs text-ink-light truncate">
+                      {agent.description || t('createProject.roster.agentNoDescription')}
+                    </p>
+                  </div>
+                  <span className="font-mono text-mono-sm text-ink-muted flex-shrink-0">
+                    {agent.status}
+                  </span>
+                  {picked && <CheckCircle2 className="w-4 h-4 text-[#C25E3A] flex-shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
@@ -810,8 +664,11 @@ export default function CreateProject() {
   // ─── Render Step 3: Review ─────────────────────────────────────────────────
 
   const renderStep3 = () => {
-    const totalSeats = formData.workerRoles.reduce((sum, r) => sum + r.seats, 0) + 1; // +1 for leader
+    const totalSeats = formData.memberIds.length + 1; // + the Leader
     const selectedLeader = approvedAgents.find((a) => a.id === formData.leaderId);
+    const pickedMembers = formData.memberIds
+      .map((id) => approvedAgents.find((a) => a.id === id))
+      .filter((a): a is NonNullable<typeof a> => Boolean(a));
 
     return (
       <div className="space-y-6">
@@ -875,40 +732,23 @@ export default function CreateProject() {
             )}
           </div>
 
-          {/* Worker Roles */}
-          {formData.workerRoles.length > 0 && (
+          {/* The team */}
+          {pickedMembers.length > 0 && (
             <div className="bg-[#EDE4CE] border border-[#E3D7BC] rounded-md p-4">
               <p className="font-body text-body-sm font-medium text-ink mb-2">
-                {t('createProject.roster.workerRoles')}
+                {t('createProject.roster.team')}
               </p>
               <ul className="space-y-2">
-                {formData.workerRoles.map((role) => (
-                  <li key={role.id} className="flex items-start gap-2">
+                {pickedMembers.map((agent) => (
+                  <li key={agent.id} className="flex items-start gap-2">
                     <span className="text-[#C25E3A] mt-1">&bull;</span>
                     <div>
                       <p className="font-body text-body-md text-ink">
-                        {t('createProject.review.workerRoleItem', {
-                          title: role.title,
-                          seats: role.seats,
-                        })}
+                        {agent.displayName || agent.name}
                       </p>
-                      {role.skills.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {role.skills.map((s) => (
-                            <span
-                              key={s}
-                              className="font-body text-body-xs bg-[#D4A843] text-ink px-2 py-0.5 rounded-full"
-                            >
-                              {s}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {role.skills.length === 0 && (
-                        <p className="font-body text-body-xs text-ink-muted mt-0.5">
-                          {t('createProject.review.noSkills')}
-                        </p>
-                      )}
+                      <p className="font-body text-body-xs text-ink-muted mt-0.5">
+                        {agent.description || t('createProject.roster.agentNoDescription')}
+                      </p>
                     </div>
                   </li>
                 ))}

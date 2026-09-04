@@ -32,8 +32,7 @@ async def _project_with_seated_leader(c: AsyncClient, ws_id: str, h: dict) -> st
     proj = await c.post(
         f"/v1/workspaces/{ws_id}/projects",
         headers=h,
-        json={"name": "Apollo", "leader": {"description": "Leads.", "marius_id": None},
-              "roles": [{"title": "Backend", "seats": 1, "description": "Owns the API."}]},
+        json={"name": "Apollo", "leader": {"description": "Leads.", "marius_id": None}},
     )
     pid = proj.json()["id"]
     # Through the helper, which moves the newcomer onto a runtime this process can carry
@@ -42,11 +41,7 @@ async def _project_with_seated_leader(c: AsyncClient, ws_id: str, h: dict) -> st
     leader = await invite_agent(
         c, ws_id, h, name="Lead", workplace_id=await ready_workplace(ws_id)
     )
-    await c.post(
-        f"/v1/projects/{pid}/grant",
-        headers=h,
-        json={"marius_id": leader["id"], "role_key": "leader"},
-    )
+    await c.post(f"/v1/projects/{pid}/leader", headers=h, json={"marius_id": leader["id"]})
     return pid
 
 

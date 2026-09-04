@@ -19,7 +19,7 @@ def test_guide_prompt_lists_the_ordered_field_plan():
         session_id="s1", workspace_name="Studio"
     )
     # The ordered FIELD PLAN tied to the draft body — every required field is named.
-    for field in ("objective", "name", "roster", "success_metrics", "target_date", "context"):
+    for field in ("objective", "name", "success_metrics", "target_date", "context"):
         assert field in guide, field
     # Anti-drift: tell the agent not to spiral into implementation detail.
     assert "implementation detail" in guide.lower()
@@ -63,10 +63,14 @@ def test_answer_prompt_handles_empty_history():
     assert "`onboarding propose`" in prompt
 
 
-def test_both_prompts_ask_each_worker_role_for_a_description():
-    """Spec 03 §3.1 wants every project role to carry a description; the draft body example must
-    model a per-worker `description` and the instruction must ask for one, on BOTH the first wake
-    and every continuation wake (#112)."""
+def test_neither_prompt_asks_the_agent_to_design_the_team():
+    """T039j — the interview is about the project, not about who works on it (FR-007l).
+
+    It used to end with the agent drafting worker roles: a model inventing titles and
+    descriptions of the work, which then stood in the project beside the instructions already
+    written on each of the patron's own agents. Told on BOTH wakes, because a continuation wake
+    is the only thing a weak model has in front of it by then.
+    """
     guide = build_onboarding_guide_prompt(
         session_id="s1", workspace_name="Studio"
     )
@@ -74,6 +78,8 @@ def test_both_prompts_ask_each_worker_role_for_a_description():
         session_id="s1", history=[]
     )
     for prompt in (guide, answer):
-        assert '"description"' in prompt               # the draft body example carries it
-        assert "one-sentence `description`" in prompt  # the instruction asks for it
-        assert "REQUIRED" in prompt                    # ...and says it's mandatory (strict #112)
+        assert "roster" not in prompt.lower()
+        assert "worker role" not in prompt.lower()
+        # And it is said outright, not merely left out: a field plan that simply stops has a
+        # model guessing what the missing step was.
+        assert "the owner picks that themselves" in prompt or "the owner fills themselves" in prompt

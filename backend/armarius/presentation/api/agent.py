@@ -21,7 +21,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Response
 
-from armarius.application.use_cases.onboarding_brain import _slug
 from armarius.application.use_cases.plans import PlanItemSpec
 from armarius.domain.entities.checklist_item import AcceptanceResult
 from armarius.domain.entities.comment import AuthorKind
@@ -151,7 +150,7 @@ async def post_onboarding_complete(
     run: CurrentRun,
     container: ContainerDep,
 ) -> OnboardingOut:
-    """Post your final project + roster draft for the Patron to confirm and finalize."""
+    """Post your final project draft for the Patron to confirm and finalize."""
     await _wa_onboarding_session(container, marius, session_id)
     draft = {
         "name": body.project.name,
@@ -159,11 +158,6 @@ async def post_onboarding_complete(
         "success_metrics": body.project.success_metrics,
         "target_date": body.project.target_date,
         "context": body.project.context,
-        "roster": [
-            {"key": _slug(r.title), "title": r.title, "seats": r.seats,
-             "is_leader": r.is_leader, "description": r.description, "skills": list(r.skills)}
-            for r in body.roster
-        ],
     }
     session = await container.onboarding.agent_post_complete(
         session_id, draft, by_run=run.run_id

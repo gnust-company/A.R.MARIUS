@@ -101,14 +101,13 @@ func TestACallThatNamesNoChatNeverLeavesTheMachine(t *testing.T) {
 	}
 }
 
-func TestTheDraftCarriesBothHalvesInTheShapeTheServerTakes(t *testing.T) {
+func TestTheDraftCarriesTheProjectAndNothingAboutTheTeam(t *testing.T) {
 	server := armarius(t)
 
 	code, _, errs := run(t, interviewEnv(server),
 		"onboarding", "propose",
 		"-session_id", "sess-9",
 		"-project", `{"name":"Task Tracker","objective":"A web app"}`,
-		"-roster", `[{"title":"Frontend","description":"Builds the UI.","seats":1}]`,
 	)
 
 	if code != ExitOK {
@@ -121,8 +120,9 @@ func TestTheDraftCarriesBothHalvesInTheShapeTheServerTakes(t *testing.T) {
 	if !ok || project["name"] != "Task Tracker" {
 		t.Fatalf("the project did not arrive as an object: %#v", server.body["project"])
 	}
-	if roster, ok := server.body["roster"].([]any); !ok || len(roster) != 1 {
-		t.Fatalf("the roster did not arrive as a list: %#v", server.body["roster"])
+	// Nothing about the team can travel, because there is nothing to put it in (FR-007l).
+	if _, present := server.body["roster"]; present {
+		t.Fatalf("a roster still rode along with the draft: %#v", server.body)
 	}
 }
 

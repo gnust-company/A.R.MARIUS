@@ -89,13 +89,7 @@ def _complete(container, name: str, objective: str):
         await container.onboarding.agent_post_complete(
             session_id,
             {"name": name, "objective": objective, "success_metrics": None,
-             "target_date": None, "context": None,
-             "roster": [
-                 {"key": "leader", "title": "Project Leader", "seats": 1, "is_leader": True,
-                  "description": "Leads."},
-                 {"key": "frontend", "title": "Frontend", "seats": 1, "is_leader": False,
-                  "description": "Builds the UI."},
-             ]},
+             "target_date": None, "context": None},
             by_run=run_id,
         )
 
@@ -158,8 +152,9 @@ async def test_onboarding_start_answer_finalize_creates_project() -> None:
         roster = await c.get(f"/v1/projects/{pid}/roster", headers=h)
         assert roster.status_code == 200
         roles = roster.json()
-        assert any(r["is_leader"] for r in roles)
-        assert any(not r["is_leader"] for r in roles)
+        # The two rows every project gets. The interview drafts no third one (FR-007l).
+        assert {r["key"] for r in roles} == {"leader", "members"}
+        assert sum(1 for r in roles if r["is_leader"]) == 1
 
 
 async def test_answer_mid_interview_when_agent_drops_offline_is_409() -> None:
@@ -396,10 +391,7 @@ async def test_the_previous_turn_cannot_write_after_the_chat_has_moved_on() -> N
         drafted = await c.post(
             f"/agent/onboarding/{sid}/complete",
             headers=first,
-            json={
-                "project": {"name": "Snuck In", "objective": "…"},
-                "roster": [{"title": "Frontend", "description": "Builds the UI.", "seats": 1}],
-            },
+            json={"project": {"name": "Snuck In", "objective": "…"}},
         )
 
         after = await c.get(f"/v1/onboarding/{sid}", headers=h)

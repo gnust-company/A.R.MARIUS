@@ -114,9 +114,6 @@ async def _a_leader_on_a_machine(
             "name": f"Apollo-{uuid4().hex[:4]}",
             "description": "Chở việc xuống máy",
             "leader": {"description": "Điều phối công việc.", "marius_id": agent["id"]},
-            "roles": [
-                {"title": "Người làm", "seats": 1, "description": "Làm việc được giao."}
-            ],
         },
     )
     assert made.status_code == 201, made.text

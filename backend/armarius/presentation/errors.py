@@ -27,7 +27,6 @@ from armarius.application.use_cases.onboarding_session import (
 from armarius.application.use_cases.plans import PlanningError
 from armarius.application.use_cases.projects import (
     DuplicateProjectKey,
-    DuplicateRoleKey,
     SystemOnlyOperation,
 )
 from armarius.application.use_cases.recovery import (
@@ -121,7 +120,6 @@ _ROUTING: tuple[tuple[type[Exception], int, str], ...] = (
     # 409, not 404: the task exists and the caller may see it — what is broken is the seat
     # record it points at, and saying so is the only way it gets fixed.
     (ResponsiblePatronUnknown, 409, "the seat record cannot name who signs"),
-    (DuplicateRoleKey, 409, "that role key is taken in this roster"),
     (DuplicateProjectKey, 409, "project KEY already used in this workspace (JIRA-style)"),
     # No Leader seated / Leader offline / turn already running — the FE also disables the
     # box up-front when the Leader is offline (#82), so this is the second line, not the

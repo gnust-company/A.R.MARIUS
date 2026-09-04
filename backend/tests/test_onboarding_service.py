@@ -18,7 +18,11 @@ from armarius.application.use_cases.onboarding_session import (
     WorkspaceAgentUnavailable,
     plan_from_collected,
 )
-from armarius.application.use_cases.projects import ProjectService
+from armarius.application.use_cases.projects import (
+    LEADER_ROLE_KEY,
+    MEMBERS_ROLE_KEY,
+    ProjectService,
+)
 from armarius.application.use_cases.workspace_agent import (
     WORKSPACE_AGENT_ROLE,
     WorkspaceAgentService,
@@ -74,12 +78,6 @@ def _completes(onboarding: OnboardingService, name: str, objective: str):
                 "success_metrics": None,
                 "target_date": None,
                 "context": None,
-                "roster": [
-                    {"key": "leader", "title": "Project Leader", "seats": 1, "is_leader": True,
-                     "description": "Leads."},
-                    {"key": "frontend", "title": "Frontend", "seats": 1, "is_leader": False,
-                     "description": "Builds the UI."},
-                ],
             },
             by_run=run_id,
         )
@@ -269,7 +267,7 @@ async def test_start_is_fresh_each_time_and_retires_the_prior_session() -> None:
 # ── finalize + the agent callbacks ───────────────────────────────────────────────
 
 
-async def test_complete_then_finalize_creates_project_with_roster() -> None:
+async def test_complete_then_finalize_creates_the_project_and_its_two_rows() -> None:
     factory, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
     adapter.drivers.append(_completes(onboarding, "Live Plan", "Ship the thing"))
     await _ensure_then_online(onboarding, ws_id)
@@ -281,14 +279,16 @@ async def test_complete_then_finalize_creates_project_with_roster() -> None:
     assert finalized.status == OnboardingStatus.FINALIZED
     project = factory.store.projects[finalized.created_project_id]
     roles = [r for r in factory.store.roles.values() if r.project_id == project.id]
+    # The same two rows every project gets, whoever created it — and no third one drafted by
+    # the agent that ran the interview (FR-007l).
+    assert {r.key for r in roles} == {LEADER_ROLE_KEY, MEMBERS_ROLE_KEY}
     assert sum(1 for r in roles if r.is_leader) == 1
-    assert any(not r.is_leader for r in roles)
     assert project.name == "Live Plan"
     assert project.objective == "Ship the thing"
 
 
 async def test_finalize_without_a_draft_still_creates_a_valid_project() -> None:
-    """A session whose draft is missing still finalizes to a valid leader + worker roster."""
+    """A session whose draft is missing still finalizes to a project with a valid roster."""
     factory, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
     adapter.drivers.append(_asks(onboarding, "objective", "Q1"))  # a question, never a draft
     await _ensure_then_online(onboarding, ws_id)
@@ -298,8 +298,7 @@ async def test_finalize_without_a_draft_still_creates_a_valid_project() -> None:
 
     project = factory.store.projects[finalized.created_project_id]
     roles = [r for r in factory.store.roles.values() if r.project_id == project.id]
-    assert any(r.is_leader for r in roles)
-    assert any(not r.is_leader for r in roles)
+    assert {r.key for r in roles} == {LEADER_ROLE_KEY, MEMBERS_ROLE_KEY}
 
 
 async def test_agent_post_question_rejected_while_one_is_pending() -> None:
@@ -317,36 +316,23 @@ async def test_agent_post_question_rejected_while_one_is_pending() -> None:
         )
 
 
-def test_plan_from_collected_defaults_to_a_valid_roster() -> None:
+def test_plan_from_collected_names_a_project_even_from_nothing() -> None:
     plan = plan_from_collected({})
-    assert any(r.is_leader for r in plan["roles"])
-    assert any(not r.is_leader for r in plan["roles"])
     assert plan["name"]
+    assert plan["objective"]
 
 
-def test_plan_from_collected_always_injects_canonical_project_leader() -> None:
-    """A weak agent that casts a worker as the leader still yields a canonical Project Leader;
-    the mis-cast role is dropped and the real workers survive — so the project always has a real
-    PL, never a mislabeled one (#110)."""
+def test_nothing_about_the_team_survives_the_draft() -> None:
+    """Whatever an agent puts in the draft, no role comes out of it (FR-007l).
+
+    The three tests this replaces all guarded the same road: a model drafted worker roles, and
+    the code had to defend against it mis-casting one as the leader, repeating a key, or
+    leaving a description blank. None of that can happen now, because a drafted role has
+    nowhere to go.
+    """
     plan = plan_from_collected({"draft": {"roster": [
         {"title": "Business Analyst", "is_leader": True},
-        {"title": "Developer", "is_leader": False},
+        {"title": "Developer", "is_leader": False, "description": "Builds the SPA."},
     ]}})
-    roles = plan["roles"]
-    leaders = [r for r in roles if r.is_leader]
-    assert len(leaders) == 1
-    assert leaders[0].title == "Project Leader"  # canonical — not the agent's "Business Analyst"
-    # The mis-cast "Business Analyst" is dropped; "Developer" survives as a worker.
-    assert {r.title for r in roles if not r.is_leader} == {"Developer"}
 
-
-def test_plan_from_collected_passes_role_descriptions_through_verbatim() -> None:
-    """Strict (#112): plan_from_collected does NOT invent descriptions — it passes the agent's
-    verbatim and the canonical leader keeps its own. Empty ones are rejected upstream (the
-    complete-draft schema) / downstream (validate_plan), never silently filled here."""
-    plan = plan_from_collected({"draft": {"roster": [
-        {"title": "Frontend", "description": "Builds the SPA."},
-    ]}})
-    by_title = {r.title: r.description for r in plan["roles"]}
-    assert by_title["Frontend"] == "Builds the SPA."   # verbatim passthrough
-    assert by_title["Project Leader"].strip()          # canonical leader carries its own
+    assert "roles" not in plan and "roster" not in plan

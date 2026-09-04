@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from armarius.application.use_cases.projects import ProjectService, RoleSpec
+from armarius.application.use_cases.projects import MEMBERS_ROLE_TITLE, ProjectService
 from armarius.application.use_cases.runs import RunQueryService
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.threads import ThreadService
@@ -100,23 +100,19 @@ async def test_assignment_wakes_agent_runs_and_persists_session(uow_factory) -> 
 
 
 async def test_wake_directory_is_project_scoped_with_project_roles(uow_factory) -> None:
-    """The wake directory is the seat-holders of THIS project, each with their project role
-    resolved via SeatGrant.role_key → Role — never the whole workspace, never Marius.role
-    (issue #87 / spec 03 §3.1, §3.2)."""
+    """The wake directory is the seat-holders of THIS project, each read off the row it sits
+    on — never the whole workspace, never Marius.role (issue #87 / spec 03 §3.1, §3.2).
+
+    What that row says changed with T039j: members share the bench, so the answer is the same
+    for all of them. The half being measured here is not what it says but where it is read
+    from — the seat, not the workspace-level field that is empty on purpose below.
+    """
     wake = _wake_engine(uow_factory)
     workspaces = WorkspaceService(uow_factory)
     projects = ProjectService(uow_factory)
 
     ws = await workspaces.create_workspace("WS")
-    project = await projects.create_project(
-        ws.id,
-        "P",
-        roles=[
-            RoleSpec(key="leader", title="Leader", seats=1, is_leader=True, description="Leads."),
-            RoleSpec(key="backend", title="Backend", seats=1, description="Owns the API."),
-            RoleSpec(key="design", title="Design", seats=1, description="Owns UX."),
-        ],
-    )
+    project = await projects.create_project(ws.id, "P", leader_description="Leads.")
     await force_phase(uow_factory, project.id)  # FR-003 — wake routing is the subject here
 
     async def reg(name: str):
@@ -128,9 +124,9 @@ async def test_wake_directory_is_project_scoped_with_project_roles(uow_factory) 
         )
 
     lead, bob, dana, ext = [await reg(n) for n in ("Lead", "Bob", "Dana", "Ext")]
-    await projects.grant_seat(project.id, "leader", lead.id, system=True)
-    await projects.grant_seat(project.id, "backend", bob.id, system=True)
-    await projects.grant_seat(project.id, "design", dana.id, system=True)
+    await projects.seat_leader(project.id, lead.id)
+    await projects.add_member(project.id, bob.id)
+    await projects.add_member(project.id, dana.id)
     # `ext` is in the workspace but holds NO seat on this project.
 
     async with uow_factory() as uow:
@@ -140,14 +136,15 @@ async def test_wake_directory_is_project_scoped_with_project_roles(uow_factory) 
     assert names == {"Lead", "Bob", "Dana"}  # project members only …
     assert "Ext" not in names  # … the off-project workspace agent is excluded
 
-    # Bob's OWN role is resolved from its seat (Backend), not the empty Marius.role.
-    assert self_role is not None and self_role.title == "Backend"
+    # Bob's OWN row is resolved from its seat, not the empty Marius.role.
+    assert self_role is not None and self_role.title == MEMBERS_ROLE_TITLE
 
-    # Teammate roles come from the project roster, with their descriptions.
+    # Every teammate's row comes from the roster too — the bench for the members, the leader
+    # seat for whoever leads. The bench says nothing about what anybody does; that is written
+    # on each agent (FR-007l).
     role_by_name = {m.name: role for (m, role) in directory}
-    assert role_by_name["Dana"].title == "Design"
-    assert role_by_name["Dana"].description == "Owns UX."
-    assert role_by_name["Lead"].title == "Leader"
+    assert role_by_name["Dana"].title == MEMBERS_ROLE_TITLE
+    assert role_by_name["Lead"].is_leader is True
 
 
 async def test_mention_wakes_the_mentioned_agent(uow_factory) -> None:

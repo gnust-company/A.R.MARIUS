@@ -1,31 +1,33 @@
-"""Project, roster and seat-grant endpoints (human/Patron surface, API_CONTRACT §3).
+"""Project, roster and seat endpoints (human/Patron surface, API_CONTRACT §3).
 
-These wire the roster-driven `ProjectService` (create-with-seat-plan, system-only grants,
-SETUP→ACTIVE activation) to HTTP. Every route is scoped to the caller's workspace —
-touching a project in someone else's workspace is a 404.
+These wire `ProjectService` (create-with-brief, system-only grants, SETUP→ACTIVE activation)
+to HTTP. Every route is scoped to the caller's workspace — touching a project in someone
+else's workspace is a 404.
+
+**There is no door here that makes a role, and putting an agent on a project takes one call**
+(FR-007l). It used to take two, and the first of them asked the patron to invent a role: a
+title, a seat count and a description of the work, written a second time next to the
+instructions already on the agent. What an agent is comes from the agent; the project only
+needs to know it is here, and whether it leads.
 """
 
 from __future__ import annotations
 
-import re
 from datetime import timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from armarius.application.use_cases.projects import RoleSpec
 from armarius.domain.entities.project import Project, ProjectStatus
 from armarius.domain.services.plan_gate import PlanDecision
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.api.frozen import refuse_when_frozen
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
-    AddRoleIn,
     AutoApprovalIn,
     AutoApprovalOut,
     ContextDecisionIn,
     CreateProjectPlanIn,
-    GrantSeatIn,
     OrchestrationOut,
     PhaseChangeIn,
     PlanDecisionIn,
@@ -34,15 +36,14 @@ from armarius.presentation.schemas import (
     ProjectContextViewOut,
     ProjectDetailOut,
     ProjectOut,
-    RoleOut,
     RosterRoleOut,
+    SeatAgentIn,
     SeatGrantOut,
     SeatOut,
     SnagOut,
     ThresholdsIn,
     ThresholdsOut,
     UpdateProjectIn,
-    UpdateRoleIn,
 )
 from armarius.shared.clock import as_utc
 from armarius.shared.errors import BadRequest, NotFound
@@ -50,13 +51,6 @@ from armarius.shared.errors import BadRequest, NotFound
 # FR-005 — a closed project is frozen. The guard hangs on the router, not on each
 # route, so a route added later cannot forget it.
 router = APIRouter(prefix="/v1", tags=["projects"], dependencies=[Depends(refuse_when_frozen)])
-
-
-def _slug(value: str) -> str:
-    # Cap at RoleModel.key's column width (String(120)) — a long title must not overflow
-    # the key column on Postgres (SQLite silently ignores VARCHAR length; Postgres errors).
-    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")[:120].strip("-")
-    return slug or "role"
 
 
 async def _require_owned_workspace(container, user, workspace_id: UUID):
@@ -133,40 +127,10 @@ async def create_project(
 ) -> ProjectDetailOut:
     await _require_owned_workspace(container, user, workspace_id)
 
-    specs = [
-        RoleSpec(
-            key="leader",
-            title="Project Leader",
-            seats=1,
-            is_leader=True,
-            description=body.leader.description,
-        )
-    ]
-    used_keys = {"leader"}
-    worker_keys: list[str] = []
-    for role in body.roles:
-        key = _slug(role.title)
-        base_key = key
-        i = 2
-        while key in used_keys:
-            key = f"{base_key}-{i}"
-            i += 1
-        used_keys.add(key)
-        worker_keys.append(key)
-        specs.append(
-            RoleSpec(
-                key=key,
-                title=role.title,
-                seats=role.seats,
-                description=role.description,
-                skill_ids=[str(x) for x in role.skill_ids],
-            )
-        )
-
     project = await container.projects.create_project(
         workspace_id,
         body.name,
-        roles=specs,
+        leader_description=body.leader.description,
         key=body.key,
         description=body.description,
         objective=body.objective,
@@ -193,25 +157,15 @@ async def create_project(
             settings=body.settings,
         )
 
-    # Pre-seat any agents the plan named (system-only grants → may activate the project).
+    # Seat whoever the plan named (system-only grants → may activate the project).
     if body.leader.marius_id is not None:
-        await container.projects.grant_seat(
-            project.id,
-            "leader",
-            body.leader.marius_id,
-            system=True,
-            granted_by_user_id=str(user.id),
+        await container.projects.seat_leader(
+            project.id, body.leader.marius_id, granted_by_user_id=str(user.id)
         )
-    for role, key in zip(body.roles, worker_keys, strict=True):
-        for marius_id in role.marius_ids:
-            if marius_id is not None:
-                await container.projects.grant_seat(
-                    project.id,
-                    key,
-                    marius_id,
-                    system=True,
-                    granted_by_user_id=str(user.id),
-                )
+    for marius_id in dict.fromkeys(body.members):
+        await container.projects.add_member(
+            project.id, marius_id, granted_by_user_id=str(user.id)
+        )
 
     project = await container.projects.get_project(project.id)
     return await _detail(container, project)
@@ -264,47 +218,6 @@ async def get_roster(
     return detail.roster
 
 
-@router.post("/projects/{project_id}/roles", response_model=RoleOut, status_code=201)
-async def add_role(
-    project_id: UUID, body: AddRoleIn, container: ContainerDep, user: CurrentUser
-) -> RoleOut:
-    await _require_owned_project(container, user, project_id)
-    role = await container.projects.add_role(
-        project_id,
-        RoleSpec(
-            key=_slug(body.title),
-            title=body.title,
-            seats=body.seats,
-            is_leader=body.is_leader,
-            description=body.description,
-            skill_ids=[str(x) for x in body.skill_ids],
-        ),
-    )
-    return RoleOut.model_validate(role)
-
-
-@router.patch("/projects/{project_id}/roles/{role_key}", response_model=RoleOut)
-async def update_role(
-    project_id: UUID,
-    role_key: str,
-    body: UpdateRoleIn,
-    container: ContainerDep,
-    user: CurrentUser,
-) -> RoleOut:
-    await _require_owned_project(container, user, project_id)
-    changes = {k: v for k, v in body.model_dump().items() if v is not None}
-    role = await container.projects.update_role_by_key(project_id, role_key, **changes)
-    return RoleOut.model_validate(role)
-
-
-@router.delete("/projects/{project_id}/roles/{role_key}", status_code=204)
-async def remove_role(
-    project_id: UUID, role_key: str, container: ContainerDep, user: CurrentUser
-) -> None:
-    await _require_owned_project(container, user, project_id)
-    await container.projects.remove_role_by_key(project_id, role_key)
-
-
 # ── auto-approval switch (spec 001 FR-036 → FR-038) ───────────────────────────
 @router.get("/projects/{project_id}/auto-approval", response_model=AutoApprovalOut)
 async def get_auto_approval(
@@ -340,40 +253,59 @@ async def list_seat_grants(
     return [SeatGrantOut.model_validate(g) for g in grants]
 
 
-# ── seat grants (system-only — the Patron action IS the system action) ─────────
-@router.post("/projects/{project_id}/grant", response_model=SeatGrantOut, status_code=201)
-async def grant_seat(
-    project_id: UUID, body: GrantSeatIn, container: ContainerDep, user: CurrentUser
+# ── putting an agent on a project (system-only — the Patron action IS the system action) ──
+async def _tell_the_workspace_if_it_woke(container, project_id: UUID, was_active: bool) -> None:
+    """Announce SETUP→ACTIVE, which a seating may have just caused (§3.3).
+
+    Asked *after* the seating rather than reported by it: activation is a property of the
+    whole roster, so the only honest way to know it happened is to look at the project again.
+    """
+    if was_active:
+        return
+    after = await container.projects.get_project(project_id)
+    if after is not None and str(after.status) == "active":
+        await container.control_bus.publish(
+            f"ws:{after.workspace_id}",
+            "project.active",
+            {"project_id": str(project_id)},
+        )
+
+
+@router.post("/projects/{project_id}/leader", response_model=SeatGrantOut, status_code=201)
+async def seat_leader(
+    project_id: UUID, body: SeatAgentIn, container: ContainerDep, user: CurrentUser
 ) -> SeatGrantOut:
+    """Put an agent in this project's leader seat (FR-007l keeps the Leader)."""
     project = await _require_owned_project(container, user, project_id)
     was_active = str(project.status) == "active"
-    grant = await container.projects.grant_seat(
-        project_id,
-        body.role_key,
-        body.marius_id,
-        system=True,
-        granted_by_user_id=str(user.id),
+    grant = await container.projects.seat_leader(
+        project_id, body.marius_id, granted_by_user_id=str(user.id)
     )
-    if not was_active:
-        after = await container.projects.get_project(project_id)
-        if after is not None and str(after.status) == "active":
-            # SETUP→ACTIVE flips once, when every seat is granted and online (§3.3).
-            await container.control_bus.publish(
-                f"ws:{after.workspace_id}",
-                "project.active",
-                {"project_id": str(project_id)},
-            )
+    await _tell_the_workspace_if_it_woke(container, project_id, was_active)
     return SeatGrantOut.model_validate(grant)
 
 
-@router.delete("/projects/{project_id}/grant", response_model=SeatGrantOut)
-async def revoke_seat(
-    project_id: UUID, body: GrantSeatIn, container: ContainerDep, user: CurrentUser
+@router.post("/projects/{project_id}/members", response_model=SeatGrantOut, status_code=201)
+async def add_member(
+    project_id: UUID, body: SeatAgentIn, container: ContainerDep, user: CurrentUser
 ) -> SeatGrantOut:
-    await _require_owned_project(container, user, project_id)
-    grant = await container.projects.revoke_seat_by_role(
-        project_id, body.marius_id, body.role_key, system=True
+    """Put an agent on this project. One call, and it names no role (FR-007l)."""
+    project = await _require_owned_project(container, user, project_id)
+    was_active = str(project.status) == "active"
+    grant = await container.projects.add_member(
+        project_id, body.marius_id, granted_by_user_id=str(user.id)
     )
+    await _tell_the_workspace_if_it_woke(container, project_id, was_active)
+    return SeatGrantOut.model_validate(grant)
+
+
+@router.delete("/projects/{project_id}/members/{marius_id}", response_model=SeatGrantOut)
+async def remove_member(
+    project_id: UUID, marius_id: UUID, container: ContainerDep, user: CurrentUser
+) -> SeatGrantOut:
+    """Take an agent off this project. The Leader is not reachable from here."""
+    await _require_owned_project(container, user, project_id)
+    grant = await container.projects.remove_member(project_id, marius_id)
     return SeatGrantOut.model_validate(grant)
 
 

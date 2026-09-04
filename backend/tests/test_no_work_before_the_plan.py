@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from armarius.application.use_cases.projects import ProjectService, RoleSpec
+from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.tasks import ProjectNotReadyForTasks, TaskService
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.application.use_cases.workspaces import WorkspaceService
@@ -33,13 +33,6 @@ _LIVE = (ProjectStatus.OPERATING, ProjectStatus.MAINTAINING)
 _NOT_LIVE = (ProjectStatus.SETUP, ProjectStatus.PLANNING, ProjectStatus.CLOSED)
 
 
-def _roster() -> list[RoleSpec]:
-    return [
-        RoleSpec(key="leader", title="Leader", seats=1, is_leader=True, description="Leads."),
-        RoleSpec(key="dev", title="Dev", seats=1, description="Builds."),
-    ]
-
-
 async def _stage(uow_factory, phase: ProjectStatus):
     """Một dự án ép về giai đoạn cần thử, một người thợ, và một đầu việc *nháp* đã đủ mô
     tả — tức là mọi cổng khác đều mở, chỉ còn cổng giai đoạn."""
@@ -51,7 +44,7 @@ async def _stage(uow_factory, phase: ProjectStatus):
     )
 
     ws = await workspaces.create_workspace("WS")
-    project = await projects.create_project(ws.id, "Apollo", roles=_roster())
+    project = await projects.create_project(ws.id, "Apollo", leader_description="Leads.")
     worker = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Alice", role="Dev",
         skills=[], adapter_type="echo", adapter_config={},

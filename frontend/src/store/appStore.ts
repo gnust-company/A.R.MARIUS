@@ -361,7 +361,7 @@ export interface DraftWorker {
 
 // ── Onboarding view-model (backend OnboardingOut → UI) ───────────────────────────────
 // The agent-assisted project-setup chat. The Workspace Agent runs a scripted playbook
-// (greet → propose a roster → confirm); `finalize` creates a real project + roster and the
+// (greet → propose the project → confirm); `finalize` creates a real project and the
 // store swaps the session for the new project id.
 export interface OnboardingTurn {
   id: string
@@ -380,7 +380,7 @@ export interface OnboardingSessionVM {
   phase: 'asking' | 'complete'
   /** The current tick-select question, or null when none is pending. */
   pendingQuestion: OnboardingQuestion | null
-  /** The proposed project + roster, present once the interview is complete. */
+  /** The proposed project, present once the interview is complete. */
   draft: OnboardingDraft | null
   createdProjectId?: string
 }
@@ -557,18 +557,24 @@ interface AppStoreState {
     workspaceId?: string
     leaderId?: string
     leaderDescription?: string
-    seats?: Array<{ roleKey: string; roleLabel: string; mariusId: string | null; skillsRequired: string[]; description: string }>
+    /** The agents joining besides the Leader. No roles — an agent joins as itself (FR-007l). */
+    memberIds?: string[]
   }) => Promise<Project>
   createTask: (task: Partial<Task> & { title: string; status: TaskStatus; priority: Priority; projectId: string }) => Promise<Task>
   deleteProject: (projectId: string) => Promise<void>
-  grantSeat: (projectId: string, mariusId: string, role: string) => Promise<void>
+  /** Put an agent in the project's leader seat. */
+  seatLeader: (projectId: string, mariusId: string) => Promise<void>
+  /** Put an agent on the project. One call, and it names no role (FR-007l). */
+  addProjectMember: (projectId: string, mariusId: string) => Promise<void>
+  /** Take an agent off the project. */
+  removeProjectMember: (projectId: string, mariusId: string) => Promise<void>
 
   // ── Onboarding (agent-driven, question-window project setup · #61) ─────────────────
   /** Open a FRESH agent-setup chat and ask the first question (never rejoins stale history). */
   startOnboarding: () => Promise<OnboardingSessionVM>
   /** Answer the pending tick-select question; the agent asks the next (or emits the draft). */
   answerOnboarding: (answer: string, otherText?: string) => Promise<OnboardingSessionVM>
-  /** Confirm the draft → creates a real project + roster. */
+  /** Confirm the draft → creates a real project. */
   finalizeOnboarding: () => Promise<OnboardingSessionVM>
   /** Drop the active chat. */
   abandonOnboarding: () => Promise<void>
@@ -948,12 +954,19 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     set({ activeWorkspaceId: workspaceId })
   },
 
-  grantSeat: async (projectId: string, mariusId: string, role: string) => {
-    const project = get().projects.find((p) => p.id === projectId)
-    if (!project) return
+  seatLeader: async (projectId: string, mariusId: string) => {
+    // The backend seats the agent (system-only) and recomputes setup→planning.
+    await api.seatLeader(projectId, { marius_id: mariusId })
+    await get().hydrateProject(projectId)
+  },
 
-    // The backend grants the seat (system-only) and recomputes setup→active.
-    await api.grantSeat(projectId, { marius_id: mariusId, role_key: role })
+  addProjectMember: async (projectId: string, mariusId: string) => {
+    await api.addProjectMember(projectId, { marius_id: mariusId })
+    await get().hydrateProject(projectId)
+  },
+
+  removeProjectMember: async (projectId: string, mariusId: string) => {
+    await api.removeProjectMember(projectId, mariusId)
     await get().hydrateProject(projectId)
   },
 
@@ -979,24 +992,17 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
   createProject: async (input) => {
     const workspaceId = input.workspaceId || get().activeWorkspaceId || ''
-    // Reconstruct role specs from the flat seat list the wizard emits (one entry per
-    // seat; group worker seats by their display title → {title, seats, skill_ids}).
-    const workerSeats = (input.seats ?? []).filter((s) => s.roleKey !== 'leader')
-    const roleMap = new Map<string, { title: string; seats: number; skill_ids: string[]; description: string }>()
-    for (const s of workerSeats) {
-      const entry = roleMap.get(s.roleLabel)
-        ?? { title: s.roleLabel, seats: 0, skill_ids: s.skillsRequired ?? [], description: s.description }
-      entry.seats += 1
-      roleMap.set(s.roleLabel, entry)
-    }
+    // Straight through: the wizard names the Leader and the agents joining, and there is no
+    // roster to reconstruct on the way. It used to emit one entry per seat, which this had to
+    // group back into role specs by display title — a shape that existed only because adding
+    // an agent went through a role (FR-007l).
     const body: api.CreateProjectBody = {
       name: input.name,
       key: input.key,
       description: input.description,
       objective: input.objective,
       leader: { marius_id: input.leaderId || undefined, description: input.leaderDescription?.trim() || '' },
-      // description is REQUIRED by the API (strict #112) — every worker role carries its own.
-      roles: [...roleMap.values()].map((r) => ({ title: r.title, seats: r.seats, description: r.description, skill_ids: r.skill_ids })),
+      members: input.memberIds ?? [],
     }
     const dto = await api.createProject(workspaceId, body)
     const project = projectDetailToVM(dto)

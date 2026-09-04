@@ -129,6 +129,7 @@ async def invite_and_online(
     *,
     name: str = "Marin",
     is_workspace_agent: bool = False,
+    instructions: str = "",
     skill_ids: list[str] | None = None,
     task_id: str | None = None,
     project_id: str | None = None,
@@ -147,6 +148,7 @@ async def invite_and_online(
         h,
         name=name,
         is_workspace_agent=is_workspace_agent,
+        instructions=instructions,
         skill_ids=skill_ids,
     )
     mid = data["id"]

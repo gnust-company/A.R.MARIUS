@@ -10,6 +10,7 @@ import {
   Zap,
   Plus,
   ChevronLeft,
+  UserMinus,
 } from 'lucide-react';
 import { useAppStore, type ProjectSeat, type Marius } from '@/store/appStore';
 import VellumPanel from '@/components/VellumPanel';
@@ -100,58 +101,57 @@ function ConfettiBurst() {
   );
 }
 
-// ─── Grant Seat Modal ────────────────────────────────────────────────────────
+// ─── Add Agent Modal ─────────────────────────────────────────────────────────
 
-function GrantSeatModal({
+/** Put an agent on this project, or in its leader seat. Two things to say — which agent, and
+ *  (by which button opened this) whether it leads — and nothing else.
+ *
+ *  It used to be a *seat* dialog: the patron had already created a role, given it a title, a
+ *  seat count, a description of the work and a list of skills, and this was step two. What an
+ *  agent does is written on the agent (FR-007l), so step one is gone and so is this dialog's
+ *  half of it. */
+function AddAgentModal({
   isOpen,
   onClose,
-  roleKey,
-  roleLabel,
+  asLeader,
   projectId,
-  skillsRequired,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  roleKey: string;
-  roleLabel: string;
+  asLeader: boolean;
   projectId: string;
-  skillsRequired: string[];
 }) {
   const { t } = useTranslation();
   const mariuses = useAppStore((s) => s.mariuses);
   const project = useAppStore((s) => s.projects.find((p) => p.id === projectId));
-  const grantSeat = useAppStore((s) => s.grantSeat);
+  const seatLeader = useAppStore((s) => s.seatLeader);
+  const addProjectMember = useAppStore((s) => s.addProjectMember);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
-  // Available agents: approved (not invited/pending) and not already seated in this project
-  const seatedMariusIds = new Set((project?.seats || []).map((s) => s.mariusId).filter(Boolean) || []);
-  const availableAgents = mariuses.filter(
-    (m) =>
-      !['invited', 'pending', 'revoked'].includes(m.status) &&
-      !seatedMariusIds.has(m.id)
-  );
+  // Anyone already on this project is not offered again — the server refuses a second seat,
+  // and an option that can only fail is worse than no option.
+  const seatedMariusIds = new Set((project?.seats || []).map((s) => s.mariusId).filter(Boolean));
+  const availableAgents = mariuses.filter((m) => !seatedMariusIds.has(m.id));
 
-  const handleGrant = async () => {
+  const handleAdd = async () => {
     if (!selectedAgentId) return;
-    await grantSeat(projectId, selectedAgentId, roleKey);
+    if (asLeader) await seatLeader(projectId, selectedAgentId);
+    else await addProjectMember(projectId, selectedAgentId);
     setSelectedAgentId(null);
     onClose();
   };
+
+  const title = asLeader ? t('roster.seatLeaderTitle') : t('roster.addAgentTitle');
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title={
-        (() => {
-          const full = t('roster.grantSeatTitle', { role: roleLabel });
-          return (
-            <span className="font-display text-ink">
-              <span className="title-initial">{full.charAt(0)}</span>
-              {full.slice(1)}
-            </span>
-          );
-        })()
+        <span className="font-display text-ink">
+          <span className="title-initial">{title.charAt(0)}</span>
+          {title.slice(1)}
+        </span>
       }
       footer={
         <>
@@ -162,7 +162,7 @@ function GrantSeatModal({
             {t('common.cancel')}
           </button>
           <button
-            onClick={handleGrant}
+            onClick={handleAdd}
             disabled={!selectedAgentId}
             className={cn(
               'px-4 py-2 rounded-md font-body text-body-md font-medium transition-colors',
@@ -171,72 +171,49 @@ function GrantSeatModal({
                 : 'bg-vellum-dark text-ink-muted cursor-not-allowed'
             )}
           >
-            {t('roster.grantSeat')}
+            {asLeader ? t('roster.seatLeader') : t('roster.addAgent')}
           </button>
         </>
       }
     >
-      <div className="space-y-4">
-        {/* Agent list */}
-        <div className="space-y-2">
-          <p className="font-body text-body-sm font-medium text-ink">{t('roster.selectAgent')}</p>
-          {availableAgents.length === 0 ? (
-            <p className="font-body text-body-sm text-ink-muted italic">
-              No available agents. Invite and approve agents first.
-            </p>
-          ) : (
-            availableAgents.map((agent) => (
-              <button
-                key={agent.id}
-                onClick={() => setSelectedAgentId(agent.id)}
-                className={cn(
-                  'w-full flex items-center gap-3 p-3 rounded-md border transition-all text-left',
-                  selectedAgentId === agent.id
-                    ? 'border-terracotta bg-vellum shadow-sm'
-                    : 'border-vellum-dark hover:border-vellum-dark hover:bg-vellum-deep'
-                )}
-              >
-                <AgentAvatar agent={agent} size={36} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-body text-body-md font-medium text-ink">
-                      {agent.displayName || agent.name}
-                    </span>
-                    <span className="font-body text-body-xs text-ink-light">{agent.role}</span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <StatusDot status={agent.status} />
-                    <span className="font-body text-body-xs text-ink-muted capitalize">
-                      {agent.status}
-                    </span>
-                    <span className="font-mono text-mono-sm text-ink-muted">{agent.adapterType || '—'}</span>
-                  </div>
+      <div className="space-y-2">
+        <p className="font-body text-body-sm font-medium text-ink">{t('roster.selectAgent')}</p>
+        {availableAgents.length === 0 ? (
+          <p className="font-body text-body-sm text-ink-muted italic">
+            {t('roster.noAgentsLeft')}
+          </p>
+        ) : (
+          availableAgents.map((agent) => (
+            <button
+              key={agent.id}
+              onClick={() => setSelectedAgentId(agent.id)}
+              className={cn(
+                'w-full flex items-center gap-3 p-3 rounded-md border transition-all text-left',
+                selectedAgentId === agent.id
+                  ? 'border-terracotta bg-vellum shadow-sm'
+                  : 'border-vellum-dark hover:border-vellum-dark hover:bg-vellum-deep'
+              )}
+            >
+              <AgentAvatar agent={agent} size={36} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-body text-body-md font-medium text-ink">
+                    {agent.displayName || agent.name}
+                  </span>
                 </div>
-                {selectedAgentId === agent.id && (
-                  <Check className="w-4 h-4 text-terracotta" />
-                )}
-              </button>
-            ))
-          )}
-        </div>
-
-        {/* Skills to install */}
-        {skillsRequired.length > 0 && (
-          <div className="pt-2 border-t border-vellum-dark">
-            <p className="font-body text-body-xs text-ink-muted mb-1.5">
-              {t('roster.skillsToInstall')}:
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {skillsRequired.map((skill) => (
-                <span
-                  key={skill}
-                  className="px-2 py-0.5 rounded-sm bg-vellum-deep border border-vellum-dark font-body text-body-xs text-ink-light"
-                >
-                  {skill}
-                </span>
-              ))}
-            </div>
-          </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <StatusDot status={agent.status} />
+                  <span className="font-body text-body-xs text-ink-muted capitalize">
+                    {agent.status}
+                  </span>
+                  <span className="font-mono text-mono-sm text-ink-muted">{agent.adapterType || '—'}</span>
+                </div>
+              </div>
+              {selectedAgentId === agent.id && (
+                <Check className="w-4 h-4 text-terracotta" />
+              )}
+            </button>
+          ))
         )}
       </div>
     </Modal>
@@ -252,14 +229,12 @@ export default function Roster() {
   const projects = useAppStore((s) => s.projects);
   const mariuses = useAppStore((s) => s.mariuses);
   const hydrateProject = useAppStore((s) => s.hydrateProject);
+  const removeProjectMember = useAppStore((s) => s.removeProjectMember);
   const hydrateWorkspace = useAppStore((s) => s.hydrateWorkspace);
   const project = projects.find((p) => p.id === projectId);
 
-  const [grantModalRole, setGrantModalRole] = useState<{
-    roleKey: string;
-    roleLabel: string;
-    skillsRequired: string[];
-  } | null>(null);
+  // Which door the dialog is open on: the leader seat, the team, or neither.
+  const [adding, setAdding] = useState<'leader' | 'member' | null>(null);
 
   // Load the project roster + the workspace's agents on mount.
   useEffect(() => {
@@ -294,7 +269,7 @@ export default function Roster() {
 
   // ─── Roster data calculations ───
   const leaderSeat = project.seats.find((s) => s.role === 'leader');
-  const workerSeats = project.seats.filter((s) => s.role !== 'leader');
+  const memberSeats = project.seats.filter((s) => s.role !== 'leader' && s.mariusId);
 
   const seatsTotal = project.seats.length;
   const seatsGranted = project.seats.filter((s) => s.mariusId).length;
@@ -305,22 +280,17 @@ export default function Roster() {
   }).length;
 
   const isFullyGranted = seatsGranted === seatsTotal;
-  // Past the plan gate — the roster is settled and the board is where work happens.
-  const isActive = project.status === 'operating' || project.status === 'maintaining';
-  const isSetup = project.status === 'setup';
+  // Past the setup gate. A project leaves `setup` exactly when its roster is full and every
+  // agent on it is online, so "not setup" *is* "the roster did its job" — which is what this
+  // page is about. Reading it as operating/maintaining only was a leftover from before the
+  // five phases: a project sitting in `planning` with everyone seated and online was drawn as
+  // still waiting for them, under a chip that already said Planning.
+  const isActive = project.status !== 'setup';
+  // The team can still be changed while there is no work to orphan. A real task only exists
+  // once the patron has approved the plan (FR-003), so that is the honest line.
+  const teamIsStillOpen = project.status === 'setup' || project.status === 'planning';
 
   const progressPercent = seatsTotal > 0 ? (seatsGranted / seatsTotal) * 100 : 0;
-
-  // Group worker seats by role. A plain derivation (no useMemo): it runs only after the
-  // loading guards above, so no hook sits after an early return (rules-of-hooks, #56); the
-  // React Compiler memoizes it automatically.
-  const roleGroups: Record<string, { roleLabel: string; skillsRequired: string[]; seats: typeof workerSeats }> = {};
-  workerSeats.forEach((seat) => {
-    if (!roleGroups[seat.role]) {
-      roleGroups[seat.role] = { roleLabel: seat.role, skillsRequired: [], seats: [] };
-    }
-    roleGroups[seat.role].seats.push(seat);
-  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -362,10 +332,10 @@ export default function Roster() {
               <span
                 className={cn(
                   'font-body text-body-sm font-medium',
-                  isActive ? 'text-success' : isSetup ? 'text-warning' : 'text-ink-muted'
+                  isActive ? 'text-success' : 'text-warning'
                 )}
               >
-                {isActive ? t('projects.status.operating') : t('projects.status.setup')}
+                {t(`projects.status.${project.status}`)}
               </span>
             </p>
             <span className="font-mono text-mono-md text-ink">{Math.round(progressPercent)}%</span>
@@ -402,106 +372,68 @@ export default function Roster() {
             {leaderSeat.mariusId ? (
               <GrantedSeatCard seat={leaderSeat} showBadge />
             ) : (
-              <EmptySeatCard
-                onGrant={() =>
-                  setGrantModalRole({
-                    roleKey: leaderSeat.role,
-                    roleLabel: leaderSeat.role,
-                    skillsRequired: [],
-                  })
-                }
-              />
+              <EmptySeatCard label={t('roster.emptyLeaderSeat')} onAdd={() => setAdding('leader')} />
             )}
           </VellumPanel>
         )}
       </motion.div>
 
-      {/* ─── Worker Roles Section ───────────────────────────────────── */}
+      {/* ─── The team ───────────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2, duration: 0.4 }}
       >
-        <h2 className="font-display text-display-sm text-gold mb-3 flex items-center gap-2">
-          <span className="w-10 h-0.5 bg-gold rounded-full" />
-          {t('roster.workerRoles')}
-        </h2>
-
-        <div className="space-y-4">
-          {Object.entries(roleGroups).map(([roleKey, group], groupIndex) => {
-            const filledCount = group.seats.filter((s) => s.mariusId).length;
-            return (
-              <motion.div
-                key={roleKey}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{
-                  delay: 0.25 + groupIndex * 0.12,
-                  duration: 0.4,
-                }}
-              >
-                <VellumPanel>
-                  {/* Role header */}
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-display text-display-sm text-ink">
-                          {group.roleLabel}
-                        </h3>
-                        <span className="font-mono text-mono-sm text-ink-muted">
-                          {t('roster.seatsUnit', { count: group.seats.length })}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 mb-1">
-                        {[].map((skill) => (
-                          <span
-                            key={skill}
-                            className="px-2 py-0.5 rounded-sm bg-vellum-deep border border-vellum-dark font-body text-body-xs text-ink-light"
-                          >
-                            {skill}
-                          </span>
-                        ))}
-                      </div>
-                      <p className="font-mono text-mono-sm text-ink-light">
-                        {t('roster.seatsFilled', { filled: filledCount, total: group.seats.length })}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Seats grid */}
-                  <div className="space-y-2 mt-4">
-                    {group.seats.map((seat, seatIndex) => (
-                      <motion.div
-                        key={`${seat.role}-${seatIndex}`}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.3 + seatIndex * 0.06 }}
-                      >
-                        <AnimatePresence mode="wait">
-                          {seat.mariusId ? (
-                            <GrantedSeatCard key="granted" seat={seat} />
-                          ) : (
-                            <EmptySeatCard
-                              key="empty"
-                              seatNumber={seatIndex + 1}
-                              onGrant={() =>
-                                setGrantModalRole({
-                                  roleKey: seat.role,
-                                  roleLabel: group.roleLabel,
-                                  skillsRequired: [],
-                                })
-                              }
-                            />
-                          )}
-                        </AnimatePresence>
-                      </motion.div>
-                    ))}
-                  </div>
-                </VellumPanel>
-              </motion.div>
-            );
-          })}
+        <div className="flex items-baseline justify-between mb-3">
+          <h2 className="font-display text-display-sm text-gold flex items-center gap-2">
+            <span className="w-10 h-0.5 bg-gold rounded-full" />
+            {t('roster.team')}
+          </h2>
+          <button
+            onClick={() => setAdding('member')}
+            className={cn(
+              'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md font-body text-body-sm font-medium',
+              'bg-vellum-deep text-terracotta border border-terracotta',
+              'hover:bg-terracotta hover:text-white transition-colors'
+            )}
+          >
+            <Plus className="w-4 h-4" />
+            {t('roster.addAgent')}
+          </button>
         </div>
+
+        <VellumPanel>
+          {/* One flat list. There is nothing to group by: an agent is on the project as
+              itself, and what it does is written on the agent (FR-007l). */}
+          {memberSeats.length === 0 ? (
+            <p className="font-body text-body-sm text-ink-muted italic py-2">
+              {t('roster.noTeamYet')}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <AnimatePresence initial={false}>
+                {memberSeats.map((seat, seatIndex) => (
+                  <motion.div
+                    key={seat.mariusId}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ delay: 0.05 * seatIndex }}
+                  >
+                    <GrantedSeatCard
+                      seat={seat}
+                      onRemove={
+                        teamIsStillOpen
+                          ? () => removeProjectMember(project.id, seat.mariusId!)
+                          : undefined
+                      }
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
+        </VellumPanel>
       </motion.div>
 
       {/* ─── Activation Banner ──────────────────────────────────────── */}
@@ -536,14 +468,12 @@ export default function Roster() {
         )}
       </motion.div>
 
-      {/* ─── Grant Seat Modal ───────────────────────────────────────── */}
-      <GrantSeatModal
-        isOpen={grantModalRole !== null}
-        onClose={() => setGrantModalRole(null)}
-        roleKey={grantModalRole?.roleKey || ''}
-        roleLabel={grantModalRole?.roleLabel || ''}
+      {/* ─── Add Agent Modal ────────────────────────────────────────── */}
+      <AddAgentModal
+        isOpen={adding !== null}
+        onClose={() => setAdding(null)}
+        asLeader={adding === 'leader'}
         projectId={projectId || ''}
-        skillsRequired={grantModalRole?.skillsRequired || []}
       />
     </div>
   );
@@ -556,9 +486,11 @@ export default function Roster() {
 function GrantedSeatCard({
   seat,
   showBadge = false,
+  onRemove,
 }: {
   seat: ProjectSeat;
   showBadge?: boolean;
+  onRemove?: () => void;
 }) {
   const { t } = useTranslation();
   const mariuses = useAppStore((s) => s.mariuses);
@@ -597,19 +529,25 @@ function GrantedSeatCard({
           {t('roster.granted')}
         </span>
       )}
+
+      {/* Only while the project is still being set up. Past that the team is settled, and
+          the way somebody leaves a running project is not a button on this list. */}
+      {onRemove && (
+        <button
+          onClick={onRemove}
+          title={t('roster.removeAgent')}
+          className="p-1.5 rounded-md text-ink-muted hover:text-error hover:bg-error-bg transition-colors"
+        >
+          <UserMinus className="w-4 h-4" />
+        </button>
+      )}
     </motion.div>
   );
 }
 
 // ─── Empty Seat Card ─────────────────────────────────────────────────────────
 
-function EmptySeatCard({
-  seatNumber,
-  onGrant,
-}: {
-  seatNumber?: number;
-  onGrant: () => void;
-}) {
+function EmptySeatCard({ label, onAdd }: { label: string; onAdd: () => void }) {
   const { t } = useTranslation();
 
   return (
@@ -618,19 +556,17 @@ function EmptySeatCard({
         <Plus className="w-4 h-4 text-ink-muted" />
       </div>
       <div className="flex-1">
-        <span className="font-body text-body-sm text-ink-muted">
-          {seatNumber ? `Seat ${seatNumber}:` : ''} {t('roster.emptySeat')}
-        </span>
+        <span className="font-body text-body-sm text-ink-muted">{label}</span>
       </div>
       <button
-        onClick={onGrant}
+        onClick={onAdd}
         className={cn(
           'px-3 py-1.5 rounded-md font-body text-body-sm font-medium',
           'bg-vellum-deep text-terracotta border border-terracotta',
           'hover:bg-terracotta hover:text-white transition-colors'
         )}
       >
-        {t('roster.grantSeat')}
+        {t('roster.seatLeader')}
       </button>
     </div>
   );

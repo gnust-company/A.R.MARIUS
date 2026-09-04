@@ -26,7 +26,7 @@ from armarius.application.ports.workspace_trace import WorkspaceTracePublisher
 from armarius.application.use_cases.leader_chat import LeaderChatService
 from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.liveness_watchdog import LivenessWatchdog
-from armarius.application.use_cases.projects import ProjectService, RoleSpec
+from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.wake_engine import WakeEngine, _describe
 from armarius.application.use_cases.workspaces import WorkspaceService
@@ -387,17 +387,13 @@ async def test_a_leader_chat_turn_that_loses_the_write_race_still_ends(uow_facto
     ws = await workspaces.create_workspace("WS")
     project = await projects.create_project(
         ws.id, "Apollo",
-        roles=[
-            RoleSpec(key="leader", title="Leader", seats=1, is_leader=True,
-                     description="Leads."),
-            RoleSpec(key="backend", title="Backend", seats=1, description="Owns the API."),
-        ],
+        leader_description="Leads.",
     )
     leader = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Lead", role="Leader",
         skills=[], adapter_type="echo", adapter_config={},
     )
-    await projects.grant_seat(project.id, "leader", leader.id, system=True)
+    await projects.seat_leader(project.id, leader.id)
     await liveness.record_signal(leader.id)
 
     chat = LeaderChatService(
