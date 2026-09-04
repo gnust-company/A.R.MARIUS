@@ -194,7 +194,6 @@ async def _live_project_with_a_task(c: AsyncClient, ws: str, h: dict) -> tuple[s
             "name": "Apollo",
             "key": "APO",
             "leader": {"description": "Leads.", "marius_id": None},
-            "roles": [{"title": "Backend", "seats": 1, "description": "Owns the API."}],
         },
     )
     pid = proj.json()["id"]
@@ -233,10 +232,10 @@ async def test_every_kind_of_write_is_refused_once_the_project_is_closed() -> No
             "đặt tiêu chí": c.put(
                 f"/v1/tasks/{tid}/criteria", headers=h, json={"items": ["xong"]}
             ),
-            "thêm vai": c.post(
-                f"/v1/projects/{pid}/roles",
+            "thêm người vào dự án": c.post(
+                f"/v1/projects/{pid}/members",
                 headers=h,
-                json={"key": "qa", "title": "QA", "seats": 1, "description": "Kiểm."},
+                json={"marius_id": str(uuid4())},
             ),
             "đổi ngưỡng": c.put(
                 f"/v1/projects/{pid}/thresholds", headers=h, json={"level1_attempts": 5}

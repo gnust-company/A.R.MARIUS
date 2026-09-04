@@ -12,7 +12,7 @@ from uuid import uuid4
 import pytest
 
 from armarius.application.use_cases.mariuses import MariusService
-from armarius.application.use_cases.projects import ProjectService, RoleSpec
+from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.wake_engine import WakeEngine
 from armarius.application.use_cases.workspaces import WorkspaceService
@@ -37,16 +37,9 @@ def _services(uow_factory):
     )
 
 
-def _roster() -> list[RoleSpec]:
-    return [
-        RoleSpec(key="leader", title="Leader", seats=1, is_leader=True, description="Leads."),
-        RoleSpec(key="worker", title="Worker", seats=1, description="Works."),
-    ]
-
-
 async def _make_project(projects, workspaces, *, name="Proj", key="PROJ", uow_factory=None):
     ws = await workspaces.create_workspace(name + "-WS")
-    project = await projects.create_project(ws.id, name, key=key, roles=_roster())
+    project = await projects.create_project(ws.id, name, key=key, leader_description="Leads.")
     if uow_factory is not None:
         # Cổng FR-003: dự án chưa duyệt kế hoạch thì không nhận đầu việc thật. Bài kiểm
         # này soi cổng phụ thuộc, không soi cổng kế hoạch — đẩy thẳng sang *vận hành*.

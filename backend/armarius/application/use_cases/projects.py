@@ -2,8 +2,10 @@
 
 Three responsibilities the application layer owns on top of the pure rules in
 `domain.services.project_rules`:
-  - **create with the hard rule** — a project is born with a roster that has exactly one
-    leader seat and at least one worker role (`validate_plan`); it starts in SETUP.
+  - **create with the hard rule** — a project is born with the roster the *system* fixes:
+    the leader seat, and the bench everybody else sits on (`validate_plan`); it starts in
+    SETUP. Nobody outside supplies that roster, which is the whole of FR-007l: putting an
+    agent on a project is putting the agent there, not inventing a role for it to be.
   - **system-only seat grants** — only the system assigns a Marius to a seat; every grant
     re-evaluates activation.
   - **activation** — `recompute_active` flips SETUP→PLANNING once every seat is granted
@@ -16,13 +18,15 @@ Three responsibilities the application layer owns on top of the pure rules in
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, fields
 from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 from armarius.application.ports.unit_of_work import UnitOfWork
+from armarius.application.use_cases.seats import leader_role_ids
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.project import Project, ProjectStatus, ProjectThresholds
 from armarius.domain.entities.role import Role
@@ -45,12 +49,30 @@ class SystemOnlyOperation(CodedError):
     """Raised when a seat grant/revoke is attempted by a non-system actor (LLD §3.3)."""
 
 
-class DuplicateRoleKey(CodedError):
-    """Raised when a role would collide with an existing roster key (API_CONTRACT §3.3)."""
-
-
 class DuplicateProjectKey(CodedError):
     """Raised when a project key collides with an existing one in the same workspace."""
+
+
+# The two rows every project's roster is made of, and the only two an agent can be put on.
+#
+# Neither is designed by anyone. The leader row is the project's coordinating position, which
+# survives on purpose (Constitution V). The bench is where every other agent sits, and it
+# describes nobody: what an agent does comes from the instructions written on the agent
+# itself, and a role saying it a second time is a second copy that drifts from the first
+# (FR-007l). So there is no door here that makes a role, and no caller that names one.
+LEADER_ROLE_KEY = "leader"
+LEADER_ROLE_TITLE = "Project Leader"
+MEMBERS_ROLE_KEY = "members"
+# Lower-case because of where it is read: the packet a member is woken with says "you are
+# NAME, the team member on this project".
+MEMBERS_ROLE_TITLE = "team member"
+# English, and written to be read by an agent — it reaches that same packet (Constitution
+# VII). It says where behaviour comes from rather than describing any, because the row it
+# belongs to is not a description of anybody.
+MEMBERS_ROLE_DESCRIPTION = (
+    "A member of this project's team. What this agent does, and how it works, is written in "
+    "its own instructions rather than here."
+)
 
 
 def _slugify(value: str) -> str:
@@ -58,16 +80,15 @@ def _slugify(value: str) -> str:
     return slug or "untitled"
 
 
-@dataclass(frozen=True)
-class RoleSpec:
-    """A roster seat at create/edit time (becomes a `Role`)."""
+def _places(role: Role, seated: int) -> int:
+    """How many places a roster row has: what it asked for, or who is on it — the larger.
 
-    key: str
-    title: str
-    seats: int = 1
-    is_leader: bool = False
-    description: str = ""
-    skill_ids: list[str] = field(default_factory=list)
+    The bench asks for one and holds however many are on it, so the stored number alone
+    would tell the patron a project of four agents had two seats. Written as one rule over
+    both rows rather than a special case for the bench: for a row that really was promised
+    to a fixed number of agents, nobody can be seated past it, so the two agree anyway.
+    """
+    return max(role.seats, seated)
 
 
 @dataclass(frozen=True)
@@ -139,7 +160,7 @@ class ProjectService:
         workspace_id: UUID,
         name: str,
         *,
-        roles: Sequence[RoleSpec],
+        leader_description: str,
         key: str | None = None,
         description: str | None = None,
         objective: str | None = None,
@@ -148,11 +169,35 @@ class ProjectService:
         context: str | None = None,
         created_by_user_id: str | None = None,
     ) -> Project:
-        """Create a SETUP project with its roster. Raises InvalidProjectPlan if the
-        roster violates the leader/worker rule; InvalidProjectKey if `key` is malformed;
-        DuplicateProjectKey if `key` is taken in this workspace; LookupError if the
-        workspace is gone. A missing `key` is suggested from `name` and auto-uniquified."""
-        draft_roles = [self._role_from_spec(spec) for spec in roles]
+        """Create a SETUP project with its roster. Raises InvalidProjectPlan if the leader
+        has no description; InvalidProjectKey if `key` is malformed; DuplicateProjectKey if
+        `key` is taken in this workspace; NotFound if the workspace is gone. A missing `key`
+        is suggested from `name` and auto-uniquified.
+
+        **The roster is not a parameter of this call and must not become one.** It is the
+        same two rows for every project — the leader seat and the bench — and the only thing
+        the caller says about them is what this project's Leader is there to do. A caller
+        that could hand in roles is the flow FR-007l closes: it made the patron design a
+        second description of behaviour beside the one already written on each agent.
+        """
+        draft_roles = [
+            Role(
+                key=LEADER_ROLE_KEY,
+                title=LEADER_ROLE_TITLE,
+                seats=1,
+                is_leader=True,
+                description=(leader_description or "").strip(),
+            ),
+            Role(
+                key=MEMBERS_ROLE_KEY,
+                title=MEMBERS_ROLE_TITLE,
+                seats=1,
+                description=MEMBERS_ROLE_DESCRIPTION,
+            ),
+        ]
+        # Still checked, and deliberately: the rule is what says a project has one leader
+        # and somewhere for workers to be, and it is the one thing standing between a blank
+        # leader brief and a Leader woken with nothing to say it is the Leader.
         project_rules.validate_plan(draft_roles)  # hard rule — raises InvalidProjectPlan
 
         now = utcnow()
@@ -194,93 +239,10 @@ class ProjectService:
             await uow.commit()
             return project
 
-    @staticmethod
-    def _role_from_spec(spec: RoleSpec) -> Role:
-        return Role(
-            key=spec.key,
-            title=spec.title,
-            seats=spec.seats,
-            is_leader=spec.is_leader,
-            description=spec.description,
-            skill_ids=list(spec.skill_ids),
-        )
-
-    # ── roster CRUD ─────────────────────────────────────────────────────────────
+    # ── roster reads ────────────────────────────────────────────────────────────
     async def list_roles(self, project_id: UUID) -> Sequence[Role]:
         async with self._uow() as uow:
             return await uow.roles.list_by_project(project_id)
-
-    async def add_role(self, project_id: UUID, spec: RoleSpec) -> Role:
-        # add_role bypasses validate_plan (it adds one role to an existing roster), so it
-        # enforces the same "every role has a description" rule itself (spec 03 §3.1, #112).
-        if not (spec.description or "").strip():
-            raise project_rules.InvalidProjectPlan(
-                "role_needs_a_description", roles=spec.title or spec.key
-            )
-        async with self._uow() as uow:
-            if await uow.projects.get(project_id) is None:
-                raise NotFound("project_not_found")
-            existing = await uow.roles.list_by_project(project_id)
-            if any(r.key == spec.key for r in existing):
-                raise DuplicateRoleKey("role_key_taken", key=spec.key)
-            role = self._role_from_spec(spec)
-            role.project_id = project_id
-            role.created_at = utcnow()
-            created = await uow.roles.add(role)
-            await uow.commit()
-            return created
-
-    @staticmethod
-    def _mutate_role(
-        role: Role,
-        *,
-        title: str | None = None,
-        seats: int | None = None,
-        description: str | None = None,
-        skill_ids: list[str] | None = None,
-    ) -> None:
-        if title is not None:
-            role.title = title
-        if seats is not None:
-            role.seats = seats
-        if description is not None:
-            # An edit may not blank a role's description (spec 03 §3.1, #112). The empty
-            # string is already refused by the schema; this catches all-whitespace too,
-            # matching `add_role`.
-            if not description.strip():
-                raise project_rules.InvalidProjectPlan("role_description_not_erasable")
-            role.description = description
-        if skill_ids is not None:
-            role.skill_ids = skill_ids
-
-    async def update_role(self, role_id: UUID, **changes) -> Role:
-        async with self._uow() as uow:
-            role = await uow.roles.get(role_id)
-            if role is None:
-                raise NotFound("role_not_found")
-            self._mutate_role(role, **changes)
-            updated = await uow.roles.update(role)
-            await uow.commit()
-            return updated
-
-    async def remove_role(self, role_id: UUID) -> None:
-        """Drop a role. The same refusal `remove_role_by_key` gives, for the same reason.
-
-        The two doors used to disagree: the by-key one refused an occupied role, this one
-        deleted it. That was survivable while a seat pointed at the role by a string; now
-        that it points at the row, this door would hand the caller a foreign-key error
-        instead of a refusal it can act on.
-        """
-        async with self._uow() as uow:
-            role = await uow.roles.get(role_id)
-            if role is None:
-                raise NotFound("role_not_found")
-            if role.project_id is not None:
-                grants = await uow.seat_grants.list_by_project(role.project_id)
-                if any(g.role_id == role_id for g in grants):
-                    raise BadRequest("role_seat_held")
-            await uow.roles.remove(role_id)
-            await uow.commit()
 
     # ── project detail / brief / delete ──────────────────────────────────────────
     async def get_project(self, project_id: UUID) -> Project | None:
@@ -400,7 +362,7 @@ class ProjectService:
                     RosterRoleView(
                         key=role.key,
                         title=role.title,
-                        seats=role.seats,
+                        seats=_places(role, len(seated)),
                         is_leader=role.is_leader,
                         description=role.description,
                         skill_ids=[str(x) for x in role.skill_ids],
@@ -430,12 +392,13 @@ class ProjectService:
             for project in projects:
                 roles = await uow.roles.list_by_project(project.id)
                 grants = await uow.seat_grants.list_by_project(project.id)
-                seats_total = sum(r.seats for r in roles)
+                per_role = Counter(g.role_id for g in grants)
+                seats_total = sum(_places(r, per_role.get(r.id, 0)) for r in roles)
                 seats_filled = len(grants)
                 rows.append((project, seats_total, seats_filled))
             return rows
 
-    # ── roster CRUD by role_key (the contract addresses roles by key) ─────────────
+    # ── the two rows an agent can be put on ───────────────────────────────────────
     async def _role_by_key(self, uow, project_id: UUID, role_key: str) -> Role:
         roles = await uow.roles.list_by_project(project_id)
         role = next((r for r in roles if r.key == role_key), None)
@@ -443,27 +406,122 @@ class ProjectService:
             raise NotFound("role_not_in_roster", role=role_key)
         return role
 
-    async def update_role_by_key(
-        self, project_id: UUID, role_key: str, **changes
-    ) -> Role:
-        # Resolve-by-key and mutate in a single transaction (one round-trip, no read→write
-        # race window between two separate UoWs).
-        async with self._uow() as uow:
-            role = await self._role_by_key(uow, project_id, role_key)
-            self._mutate_role(role, **changes)
-            updated = await uow.roles.update(role)
-            await uow.commit()
-            return updated
+    async def _bench(self, uow, project_id: UUID) -> Role:  # noqa: ANN001
+        """The row this project's members sit on, made now if the project has none.
 
-    async def remove_role_by_key(self, project_id: UUID, role_key: str) -> None:
-        """Remove a role — only if no agent currently holds a seat in it (§3.3)."""
+        Made rather than demanded, because a project created before the bench existed has a
+        roster somebody typed — worker roles with real titles — and this door may not rewrite
+        it. Those rows stay exactly as they are and keep whoever is in them; agents added
+        from here on sit on the bench. It is the one row the system makes for itself, and
+        what entitles it to: nobody designed this row and nobody can (FR-007l).
+        """
+        roles = await uow.roles.list_by_project(project_id)
+        bench = next(
+            (r for r in roles if r.key == MEMBERS_ROLE_KEY and not r.is_leader), None
+        )
+        if bench is not None:
+            return bench
+        return await uow.roles.add(
+            Role(
+                project_id=project_id,
+                key=MEMBERS_ROLE_KEY,
+                title=MEMBERS_ROLE_TITLE,
+                seats=1,
+                description=MEMBERS_ROLE_DESCRIPTION,
+                created_at=utcnow(),
+            )
+        )
+
+    async def seat_leader(
+        self,
+        project_id: UUID,
+        marius_id: UUID,
+        *,
+        granted_by_user_id: str | None = None,
+    ) -> SeatGrantView:
+        """Put an agent in this project's leader seat.
+
+        The one seat in the system that is a *position* and not just a place to be: the
+        Leader coordinates the project, which is why Constitution V keeps it while every
+        other role goes. Seating the agent already there is a no-op; a second agent is
+        refused, because a project with two Leaders has none.
+        """
+        return await self.grant_seat(
+            project_id,
+            LEADER_ROLE_KEY,
+            marius_id,
+            system=True,
+            granted_by_user_id=granted_by_user_id,
+        )
+
+    async def add_member(
+        self,
+        project_id: UUID,
+        marius_id: UUID,
+        *,
+        granted_by_user_id: str | None = None,
+    ) -> SeatGrantView:
+        """Put an agent on this project — the whole of it, in one step (FR-007l).
+
+        Nothing here asks what the agent will *be* on this project, and that is the point.
+        The old road went through a role: the patron wrote a title and a description of the
+        work, then seated somebody under it — a second description of behaviour beside the
+        instructions already written on the agent, kept by hand, drifting from them.
+
+        Its own transaction rather than `grant_seat`, for one reason: the bench has no
+        capacity. `grant_seat` refuses an agent when a role is full, which is the right
+        answer for a seat that was promised to exactly one agent and the wrong one here —
+        there is no number of members a project was promised.
+
+        Idempotent: an agent already on the bench gets its seat back rather than a second
+        row. An agent holding the leader seat is refused — it is already on this project,
+        and the honest fix is to say so, not to put it in two places at once.
+        """
+        now = utcnow()
         async with self._uow() as uow:
-            role = await self._role_by_key(uow, project_id, role_key)
-            grants = await uow.seat_grants.list_by_project(project_id)
-            if any(g.role_id == role.id for g in grants):
-                raise BadRequest("role_seat_held")
-            await uow.roles.remove(role.id)
+            project = await uow.projects.get(project_id)
+            if project is None:
+                raise NotFound("project_not_found")
+            agent = await uow.mariuses.get(marius_id)
+            # Same refusal as *no such agent*, on purpose: an agent the caller may not see
+            # reads the same either way (Constitution I).
+            if agent is None or agent.workspace_id != project.workspace_id:
+                raise NotFound("agent_not_found")
+            bench = await self._bench(uow, project_id)
+            seated = await uow.seat_grants.list_by_project(project_id)
+            leaders = leader_role_ids(await uow.roles.list_by_project(project_id))
+            for g in seated:
+                if g.marius_id != marius_id:
+                    continue
+                if g.role_id in leaders:
+                    raise BadRequest("agent_leads_this_project")
+                return self._seat_view(g, MEMBERS_ROLE_KEY)
+            grant = SeatGrant(
+                project_id=project_id,
+                role_id=bench.id,
+                marius_id=marius_id,
+                granted_by_user_id=granted_by_user_id,
+                granted_at=now,
+                created_at=now,
+            )
+            await uow.seat_grants.add(grant)
+            flipped = await self._recompute_active(uow, project)
             await uow.commit()
+
+        if flipped:
+            await self._announce_planning(project_id)
+        return self._seat_view(grant, MEMBERS_ROLE_KEY)
+
+    async def remove_member(self, project_id: UUID, marius_id: UUID) -> SeatGrantView:
+        """Take an agent off this project. Refuses if it is not on the bench.
+
+        The Leader is not reachable from here, and there is no door that is: a project
+        without a Leader is a project nothing drives, so the way to change who leads is to
+        decide that when the project is set up.
+        """
+        return await self.revoke_seat_by_role(
+            project_id, marius_id, MEMBERS_ROLE_KEY, system=True
+        )
 
     # ── system-only seat grants ─────────────────────────────────────────────────
     async def grant_seat(

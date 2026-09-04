@@ -8,9 +8,12 @@ that a `recompute_active` flip is actually flushed to the database.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from uuid import uuid4
 
-from armarius.application.use_cases.projects import ProjectService, RoleSpec
+from armarius.application.use_cases.projects import (
+    LEADER_ROLE_KEY,
+    MEMBERS_ROLE_KEY,
+    ProjectService,
+)
 from armarius.domain.entities.marius import Liveness, Marius
 from armarius.domain.entities.project import Project, ProjectStatus
 from armarius.domain.entities.role import Role
@@ -41,42 +44,35 @@ async def _seed_marius(factory, ws_id, liveness: Liveness, name: str = "Agent") 
     return m
 
 
-def _valid_roster() -> list[RoleSpec]:
-    return [
-        RoleSpec(key="leader", title="Leader", seats=1, is_leader=True, description="Leads."),
-        RoleSpec(key="backend", title="Backend", seats=1, description="Owns the API.",
-                 skill_ids=[str(uuid4())]),
-    ]
-
-
 async def test_roster_persists_and_reloads(uow_factory) -> None:
     ws = await _seed_workspace(uow_factory)
     svc = ProjectService(uow_factory)
 
-    project = await svc.create_project(ws.id, "Apollo", roles=_valid_roster())
+    project = await svc.create_project(ws.id, "Apollo", leader_description="Leads.")
 
     # Reload through a fresh UoW — proves the roster hit the database, not just memory.
     roles = await svc.list_roles(project.id)
     by_key = {r.key: r for r in roles}
-    assert set(by_key) == {"leader", "backend"}
-    assert by_key["leader"].is_leader is True
-    assert by_key["leader"].seats == 1
-    assert len(by_key["backend"].skill_ids) == 1
+    assert set(by_key) == {LEADER_ROLE_KEY, MEMBERS_ROLE_KEY}
+    assert by_key[LEADER_ROLE_KEY].is_leader is True
+    assert by_key[LEADER_ROLE_KEY].seats == 1
+    assert by_key[LEADER_ROLE_KEY].description == "Leads."
+    assert by_key[MEMBERS_ROLE_KEY].is_leader is False
     assert all(r.project_id == project.id for r in roles)
 
 
 async def test_activation_flip_persists_to_db(uow_factory) -> None:
     ws = await _seed_workspace(uow_factory)
     svc = ProjectService(uow_factory)
-    project = await svc.create_project(ws.id, "Apollo", roles=_valid_roster())
+    project = await svc.create_project(ws.id, "Apollo", leader_description="Leads.")
     leader = await _seed_marius(uow_factory, ws.id, Liveness.ONLINE, name="Lead")
     worker = await _seed_marius(uow_factory, ws.id, Liveness.ONLINE, name="Worker")
 
-    await svc.grant_seat(project.id, "leader", leader.id, system=True)
+    await svc.seat_leader(project.id, leader.id)
     async with uow_factory() as uow:
         assert (await uow.projects.get(project.id)).status == ProjectStatus.SETUP
 
-    await svc.grant_seat(project.id, "backend", worker.id, system=True)
+    await svc.add_member(project.id, worker.id)
 
     # Re-read from a brand-new UoW: the SETUP→ACTIVE flip must be durable.
     async with uow_factory() as uow:

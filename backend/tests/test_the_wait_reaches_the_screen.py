@@ -53,7 +53,6 @@ async def _project(c: AsyncClient, ws_id: str, h: dict) -> str:
             "name": "Apollo",
             "key": "APO",
             "leader": {"description": "Leads.", "marius_id": None},
-            "roles": [{"title": "Backend", "seats": 1, "description": "Owns the API."}],
         },
     )
     pid = made.json()["id"]

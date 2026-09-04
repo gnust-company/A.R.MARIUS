@@ -17,7 +17,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from armarius.application.use_cases.projects import ProjectService, RoleSpec
+from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.task_log import TaskLogService
 from armarius.application.use_cases.tasks import TaskService, TitleRequiredError
 from armarius.application.use_cases.wake_engine import WakeEngine
@@ -34,13 +34,6 @@ from tests.support.projects import force_phase
 _DEADLINE = datetime(2026, 9, 1, 12, 0, 0)
 
 
-def _roster() -> list[RoleSpec]:
-    return [
-        RoleSpec(key="leader", title="Leader", seats=1, is_leader=True, description="Leads."),
-        RoleSpec(key="dev", title="Dev", seats=1, description="Builds."),
-    ]
-
-
 async def _stage(uow_factory, *, phase: ProjectStatus = ProjectStatus.OPERATING):
     workspaces = WorkspaceService(uow_factory)
     projects = ProjectService(uow_factory)
@@ -50,7 +43,7 @@ async def _stage(uow_factory, *, phase: ProjectStatus = ProjectStatus.OPERATING)
         task_logs=TaskLogService(uow_factory),
     )
     ws = await workspaces.create_workspace("WS")
-    project = await projects.create_project(ws.id, "Apollo", roles=_roster())
+    project = await projects.create_project(ws.id, "Apollo", leader_description="Leads.")
     # Tạo đầu việc lúc dự án còn nhận việc, rồi mới đưa dự án tới giai đoạn cần thử —
     # nếu không thì chính cổng FR-003 chặn ngay ở bước dựng cảnh.
     await force_phase(uow_factory, project.id, ProjectStatus.OPERATING)
@@ -208,7 +201,7 @@ async def _staged_with_a_worker_on_it(uow_factory):
     tasks = TaskService(uow_factory, wakes, task_logs=TaskLogService(uow_factory))  # type: ignore[arg-type]
 
     ws = await workspaces.create_workspace("WS")
-    project = await projects.create_project(ws.id, "Apollo", roles=_roster())
+    project = await projects.create_project(ws.id, "Apollo", leader_description="Leads.")
     await force_phase(uow_factory, project.id, ProjectStatus.OPERATING)
     worker = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Alice", role="Dev",

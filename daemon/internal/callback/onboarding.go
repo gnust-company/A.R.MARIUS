@@ -50,11 +50,14 @@ func onboardingCommands() []Command {
 		{
 			Name:    "onboarding propose",
 			Group:   GroupWorkspace,
-			Summary: "Post the project and roster you agreed, for the patron to confirm.",
+			Summary: "Post the project you agreed, for the patron to confirm.",
+			// The project, and nothing about who will be on it. There used to be a second half here
+			// — worker roles this agent drafted — and the patron then had a description of the work
+			// standing beside the instructions written on each of their own agents. Who joins is
+			// theirs to pick, by name, once the project exists (FR-007l).
 			Params: []Param{
 				{Name: "session_id", Type: TypeString, Required: true, Description: "The chat this draft belongs to, named in your instructions."},
 				{Name: "project", Type: TypeString, Required: true, Description: `The project, as a JSON object: {"name":"…","objective":"…"}.`},
-				{Name: "roster", Type: TypeString, Required: true, Description: `The worker roles, as a JSON array. The Project Leader is added for you.`},
 			},
 			Call: func(ctx context.Context, c *Client, args Args) (json.RawMessage, error) {
 				path, err := onboardingPath(args, "/complete")
@@ -65,13 +68,8 @@ func onboardingCommands() []Command {
 				if err != nil {
 					return nil, err
 				}
-				roster, err := decodeJSONArray(args, "roster")
-				if err != nil {
-					return nil, err
-				}
 				return c.Call(ctx, "POST", path, map[string]any{
 					"project": project,
-					"roster":  roster,
 				})
 			},
 		},
@@ -117,7 +115,7 @@ func decodeJSONArray(args Args, name string) ([]any, error) {
 }
 
 // decodeJSONObject is the same for a single object, and absent is *not* a real answer here: the
-// two places it is used are both required, and an empty object would file a nameless project.
+// one place it is used is required, and an empty object would file a nameless project.
 func decodeJSONObject(args Args, name string) (map[string]any, error) {
 	switch raw := args[name].(type) {
 	case map[string]any:

@@ -71,17 +71,21 @@ class LeaderIn(BaseModel):
     marius_id: UUID | None = None
 
 
-class RoleIn(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
-    seats: int = Field(default=1, ge=1)
-    # BẮT BUỘC: mỗi role phải nêu nó làm gì (spec 03 §3.1). Thiếu/rỗng ⇒ 422 (#112).
-    description: str = Field(min_length=1, max_length=2000)
-    skill_ids: list[str] = Field(default_factory=list)
-    marius_ids: list[UUID | None] = Field(default_factory=list)  # pre-seat (len ≤ seats)
-
-
 class CreateProjectPlanIn(BaseModel):
-    """A complete seat plan (API_CONTRACT §3.1): one leader + ≥1 worker role."""
+    """A new project: its brief, who leads it, and which agents are on it (FR-007l).
+
+    There is no roster in here. A project's roster is the leader seat and the bench, the same
+    two for every project, and the system writes both — so the plan says *which agents*, and
+    never what they are to be. It used to say both: the patron typed a role title and a
+    description of the work, then chose somebody to sit under it, and that description then
+    sat beside the instructions written on the agent itself, kept by hand, drifting.
+
+    **Extra fields are refused rather than dropped.** A caller still sending `roles` would
+    otherwise get a 201 and an empty team, and the patron would be staring at a project with
+    nobody on it trying to work out which of their steps failed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=200)
     description: str | None = None
@@ -99,7 +103,9 @@ class CreateProjectPlanIn(BaseModel):
     # Leader is REQUIRED (no empty default): strict #112 means the Patron must describe the
     # leader role too, so the plan can never carry a description-less leader.
     leader: LeaderIn
-    roles: list[RoleIn] = Field(default_factory=list)
+    # The agents on this project besides its Leader. Optional and orderless: a project may
+    # be created empty and staffed from the roster screen afterwards.
+    members: list[UUID] = Field(default_factory=list)
     settings: dict | None = None
     onboarding_session_id: UUID | None = None
 
@@ -153,34 +159,14 @@ class ProjectDetailOut(_Out):
     roster: list[RosterRoleOut] = Field(default_factory=list)
 
 
-class AddRoleIn(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
-    seats: int = Field(default=1, ge=1)
-    # BẮT BUỘC: thêm role mới cũng phải nêu nó làm gì. Thiếu/rỗng ⇒ 422 (#112).
-    description: str = Field(min_length=1, max_length=2000)
-    skill_ids: list[str] = Field(default_factory=list)
-    is_leader: bool = False
+class SeatAgentIn(BaseModel):
+    """Which agent to put on a project — the whole of what those two doors take.
 
+    No role key: the two doors say where by *being* two doors (`/leader`, `/members`), and
+    the caller cannot name a third place because there is not one.
+    """
 
-class UpdateRoleIn(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=200)
-    seats: int | None = Field(default=None, ge=1)
-    # None ⇒ giữ nguyên; nhưng nếu SỬA thì không được về rỗng — mọi role phải có mô tả
-    # (spec 03 §3.1). Chặn chuỗi rỗng ngay ở schema (422); toàn-khoảng-trắng chặn ở use-case.
-    description: str | None = Field(default=None, min_length=1, max_length=2000)
-    skill_ids: list[str] | None = None
-
-
-class RoleOut(_Out):
-    id: UUID
-    project_id: UUID | None = None
-    key: str
-    title: str
-    seats: int
-    is_leader: bool
-    description: str = ""
-    skill_ids: list[str] = Field(default_factory=list)
-    created_at: datetime | None = None
+    marius_id: UUID
 
 
 # ------------------------------------------------------- labels (contract §5.4)
@@ -195,11 +181,6 @@ class LabelOut(_Out):
     name: str
     color: str = ""
     created_at: datetime | None = None
-
-
-class GrantSeatIn(BaseModel):
-    marius_id: UUID
-    role_key: str = Field(min_length=1, max_length=200)
 
 
 class SignApprovalIn(BaseModel):
@@ -898,7 +879,7 @@ class AgentHandbackIn(BaseModel):
 
 # ------------------------------------------------------------------ onboarding
 # Agent-assisted project setup (Sprint 7 / Phase G). The Workspace Agent interviews the
-# Patron; `finalize` materialises the accumulated plan into a Project + roster.
+# Patron; `finalize` materialises the accumulated plan into a Project.
 class OnboardingAnswerIn(BaseModel):
     """The Patron's answer to the pending question. ``answer`` is the picked option label(s)
     (multi-select joined with ', '); ``other_text`` carries a free-text ("Other") reply."""
@@ -928,21 +909,16 @@ class OnboardingProjectDraftIn(BaseModel):
     context: str | None = Field(default=None, max_length=4000)
 
 
-class OnboardingRosterRoleIn(BaseModel):
-    title: str = Field(min_length=1, max_length=120)
-    seats: int = Field(default=1, ge=1, le=20)
-    is_leader: bool = False
-    # BẮT BUỘC: quản gia phải nêu mỗi worker làm gì. Draft thiếu mô tả bất kỳ role nào ⇒ agent
-    # nhận 422 rõ ràng ngay khi POST /agent/onboarding/{s}/complete (strict #112).
-    description: str = Field(min_length=1, max_length=2000)
-    skills: list[str] = Field(default_factory=list)
-
-
 class AgentOnboardingCompleteIn(BaseModel):
-    """A live WA posting its final project + roster draft for the Patron to confirm."""
+    """A live WA posting its final project draft for the Patron to confirm.
+
+    The project, and nothing about the team. The agent used to draft worker roles here — a
+    model inventing titles and descriptions of work, which then stood in the project beside
+    the instructions actually written on each agent (FR-007l). Who is on a project is chosen
+    by the patron, from the agents they already have, once the project exists.
+    """
 
     project: OnboardingProjectDraftIn
-    roster: list[OnboardingRosterRoleIn] = Field(min_length=1)
 
 
 class OnboardingOut(_Out):

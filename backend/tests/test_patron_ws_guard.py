@@ -61,7 +61,6 @@ async def _project_with_task(c: AsyncClient, h: dict, ws_id: str) -> tuple[str, 
             "name": "Private",
             "objective": "Nobody else's business",
             "leader": {"description": "lead", "marius_id": None},
-            "roles": [{"title": "Backend", "seats": 1, "description": "Owns the API."}],
         },
     )
     assert project.status_code == 201, project.text

@@ -1,5 +1,5 @@
 """Onboarding use case (LLD §2.10) — the Workspace Agent interviews the Patron and, on
-completion, materialises the agreed draft into a real Project + roster.
+completion, materialises the agreed draft into a real Project.
 
 There is **no scripted brain**. The Workspace Agent is a real runtime; it MUST be online for
 the interview to start. On ``start`` and ``answer`` the service opens **one run** carrying the
@@ -16,7 +16,7 @@ It also changes when the answer arrives. A run is put on a shelf and taken by wh
 machine is free; nothing here waits for it. So ``start`` and ``answer`` return a session that
 does not yet carry the next question, and the screen is told to come back and read it when the
 agent has spoken — see ``announce_onboarding_step``. What the patron does is unchanged: ask,
-answer, ask again, and out comes a project and a roster (FR-040b).
+answer, ask again, and out comes a project (FR-040b).
 
 Ready / failure is still the hard rule (#61, v3):
 
@@ -48,12 +48,12 @@ from armarius.application.ports.workspace_trace import (
     announce_onboarding_step,
 )
 from armarius.application.use_cases.onboarding_brain import (
-    _leader_role,
+    LEADER_DESCRIPTION,
     _project_name,
     build_onboarding_answer_prompt,
     build_onboarding_guide_prompt,
 )
-from armarius.application.use_cases.projects import ProjectService, RoleSpec
+from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.types import UowFactory
 from armarius.application.use_cases.workspace_agent import WorkspaceAgentService
 from armarius.domain.entities.marius import Liveness, Marius
@@ -113,79 +113,21 @@ def _qa_pairs(transcript: list[dict[str, Any]]) -> list[tuple[str, str]]:
     return pairs
 
 
-def _looks_like_leader(role: dict[str, Any]) -> bool:
-    """An agent-supplied role that is clearly its (mistaken) attempt at the leader — the
-    canonical Project Leader is always injected, so drop these to avoid a duplicate / mislabeled
-    leader (#110)."""
-    if role.get("is_leader"):
-        return True
-    if str(role.get("key", "")).lower() == "leader":
-        return True
-    return str(role.get("title", "")).lower() == "project leader"
-
-
-def _renumber_repeats(rows: list[dict[str, object]]) -> None:
-    """`backend`, `backend2`, `backend3` — in place, keeping the first row on its key.
-
-    First wins because the leader row is first and its key is canonical: a worker the agent
-    happened to key `leader` must be the one that moves.
-    """
-    taken: set[str] = set()
-    for row in rows:
-        base = str(row.get("key") or row.get("title") or "role")
-        key, suffix = base, 2
-        while key in taken:
-            key = f"{base}{suffix}"
-            suffix += 1
-        taken.add(key)
-        row["key"] = key
-
-
 def plan_from_collected(collected: dict) -> dict:
-    """Materialise the accumulated draft into ``{name, objective, roles, ...}`` for finalize.
+    """Materialise the accumulated draft into ``{name, objective, ...}`` for finalize.
 
-    The Project Leader is canonical and ALWAYS present — the agent lists only WORKER roles (the
-    onboarding prompt tells it so), mirroring the normal create-project path
-    (``presentation/api/projects.py`` injects the leader; the caller supplies workers). Any role
-    the (weak) agent still cast as the leader is dropped (``_looks_like_leader``) so
-    ``validate_plan`` sees exactly one leader — the canonical one — not a mislabeled worker, and
-    never a duplicate "Project Leader" (#110).
+    No roster comes out of here any more, because none goes in. The interview used to end with
+    the agent drafting worker roles — a model inventing titles and descriptions of work, which
+    then sat in the project beside the instructions actually written on each agent (FR-007l).
+    The project is created with the two rows every project has, and the patron puts their own
+    agents on it by name.
     """
     draft = collected.get("draft") or {}
-    default_worker = {"key": "frontend", "title": "Frontend", "seats": 1,
-                      "description": "Builds the user-facing UI."}
-    raw = draft.get("roster") or [default_worker]
-    kept = [{**r, "is_leader": False} for r in raw if not _looks_like_leader(r)]
-    workers = kept or [default_worker]
-    spec_rows = [_leader_role(), *workers]
-    # Keys the agent drafted, made unique before they leave this function. `validate_plan`
-    # refuses a repeated key outright, which is right for a roster a human typed — but here
-    # the author is a model that reached for the same obvious word twice, and killing the
-    # whole onboarding over that would make the patron redo a conversation to fix a
-    # machine's word choice. Renumbered the same way the project-key door renumbers.
-    _renumber_repeats(spec_rows)
-    roles = [
-        RoleSpec(
-            key=r.get("key") or r.get("title", "role"),
-            title=r.get("title", r.get("key", "Role")),
-            seats=int(r.get("seats", 1)),
-            is_leader=bool(r.get("is_leader", False)),
-            # Spec 03 §3.1: every project role must carry a description the wake/leader-chat
-            # prompts can show. Strict (#112): the agent's complete-draft schema requires a
-            # description per worker (422 otherwise) and validate_plan rejects any empty one —
-            # so we pass it straight through, no silent fallback. The canonical leader row
-            # carries its own description.
-            description=(r.get("description") or "").strip(),
-            skill_ids=list(r.get("skills") or []),
-        )
-        for r in spec_rows
-    ]
     objective = (draft.get("objective") or "").strip() or "New project"
     name = (draft.get("name") or "").strip() or _project_name(objective)
     return {
         "name": name,
         "objective": objective,
-        "roles": roles,
         "success_metrics": draft.get("success_metrics"),
         "target_date": draft.get("target_date"),
         "context": draft.get("context"),
@@ -341,7 +283,7 @@ class OnboardingService:
     async def agent_post_complete(
         self, session_id: UUID, draft: dict, *, by_run: UUID
     ) -> OnboardingSession:
-        """A live WA posts its final draft (project + roster) for the Patron to confirm."""
+        """A live WA posts its final draft for the Patron to confirm."""
         now = utcnow()
         async with self._uow() as uow:
             session = await self._driven_by(uow, session_id, by_run)
@@ -349,10 +291,9 @@ class OnboardingService:
                 **session.collected, "phase": "complete",
                 "pending_question": None, "draft": draft,
             }
-            names = ", ".join(r.get("title", "") for r in draft.get("roster", []))
             session.add_turn(
                 "agent",
-                f"Here's the plan: **{draft.get('name', '')}** with {names}. Confirm to create it.",
+                f"Here's the plan: **{draft.get('name', '')}**. Confirm to create it.",
                 now,
             )
             session.updated_at = now
@@ -365,20 +306,17 @@ class OnboardingService:
     async def finalize(
         self, session_id: UUID, *, created_by_user_id: str | None = None
     ) -> OnboardingSession:
-        """Materialise the agreed draft into a real Project + roster (``setup`` status)."""
+        """Materialise the agreed draft into a real Project (``setup`` status)."""
         async with self._uow() as uow:
             session = await self._open(uow, session_id)
             plan = plan_from_collected(session.collected)
             workspace_id = session.workspace_id
-            role_names = ", ".join(r.title for r in plan["roles"])
-            session.add_turn(
-                "agent", f"Creating **{plan['name']}** with: {role_names}.", utcnow()
-            )
+            session.add_turn("agent", f"Creating **{plan['name']}**.", utcnow())
 
         project = await self._projects.create_project(
             workspace_id=workspace_id,  # type: ignore[arg-type]
             name=plan["name"],
-            roles=plan["roles"],
+            leader_description=LEADER_DESCRIPTION,
             objective=plan["objective"],
             success_metrics=plan["success_metrics"],
             target_date=_as_datetime(plan["target_date"]),

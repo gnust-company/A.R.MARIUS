@@ -19,7 +19,7 @@ from uuid import UUID
 
 import pytest
 
-from armarius.application.use_cases.projects import ProjectService, RoleSpec
+from armarius.application.use_cases.projects import ProjectService
 from armarius.application.use_cases.seats import leader_marius_id
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.wake_engine import WakeEngine
@@ -37,19 +37,11 @@ from tests.support.projects import force_phase
 pytestmark = pytest.mark.asyncio
 
 
-def _roster() -> list[RoleSpec]:
-    return [
-        RoleSpec(key="leader", title="Trưởng dự án", seats=1, is_leader=True,
-                 description="Điều phối dự án."),
-        RoleSpec(key="backend", title="Backend", seats=1, description="Lo phần máy chủ."),
-    ]
-
-
 async def _world(uow_factory):  # noqa: ANN001, ANN202
     """Một dự án có roster thật, một agent sẵn sàng ngồi ghế."""
     ws = await WorkspaceService(uow_factory).create_workspace("WS")
     projects = ProjectService(uow_factory)
-    project = await projects.create_project(ws.id, "Apollo", roles=_roster())
+    project = await projects.create_project(ws.id, "Apollo", leader_description="Leads.")
     agent = await make_agent(uow_factory, 
         workspace_id=ws.id, name="Leader", role="Backend", skills=[],
         adapter_type="echo", adapter_config={},

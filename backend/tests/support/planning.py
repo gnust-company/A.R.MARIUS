@@ -84,7 +84,6 @@ async def operating_project(
             "description": "ship it",
             "objective": "Ra mắt nền tảng",
             "leader": {"description": "Điều phối dự án.", "marius_id": None},
-            "roles": [{"title": "Backend", "seats": 1, "description": "Lo phần máy chủ."}],
         },
     )
     assert created.status_code == 201, created.text
@@ -92,11 +91,9 @@ async def operating_project(
 
     leader_id, leader_token = await invite_and_online(c, ws_id, h, name="Leader")
     worker_id, worker_token = await invite_and_online(c, ws_id, h, name="Dev")
-    for marius_id, role_key in ((leader_id, "leader"), (worker_id, "backend")):
+    for door, marius_id in (("leader", leader_id), ("members", worker_id)):
         g = await c.post(
-            f"/v1/projects/{pid}/grant",
-            headers=h,
-            json={"role_key": role_key, "marius_id": marius_id},
+            f"/v1/projects/{pid}/{door}", headers=h, json={"marius_id": marius_id}
         )
         assert g.status_code == 201, g.text
 

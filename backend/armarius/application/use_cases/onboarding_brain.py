@@ -14,7 +14,7 @@ and the UI read one shape::
         "phase": "asking" | "complete",
         "answers": {<key>: <resolved answer text>},
         "pending_question": {"key","question","options":[{"id","label"}],"multi"} | None,
-        "draft": {name, objective, success_metrics, target_date, context, roster:[...]} | None,
+        "draft": {name, objective, success_metrics, target_date, context} | None,
     }
 """
 
@@ -29,11 +29,6 @@ _STOPWORDS = {
 }
 
 
-def _slug(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")[:120]
-    return slug or "role"
-
-
 def _project_name(objective: str) -> str:
     """Derive a short, human project name from the objective text (finalize fallback)."""
     words = [w for w in re.split(r"[^a-z0-9]+", objective.lower()) if w and w not in _STOPWORDS]
@@ -41,10 +36,14 @@ def _project_name(objective: str) -> str:
     return name[:80]
 
 
-def _leader_role() -> dict:
-    """The canonical Project Leader roster row (finalize fallback when the draft omits it)."""
-    return {"key": "leader", "title": "Project Leader", "seats": 1, "is_leader": True,
-            "description": "Owns the plan and coordinates the roster.", "skills": []}
+# What the Leader of a project built through the interview is there to do.
+#
+# Canned rather than asked, and it is the one sentence about the roster this flow still has:
+# the interview is about the project, the team is the patron's own agents, and who is on it is
+# something they pick by name on the roster screen afterwards. The agent used to draft worker
+# roles here — titles and descriptions of work, invented by a model, standing beside the
+# instructions actually written on each agent (FR-007l).
+LEADER_DESCRIPTION = "Owns the plan and coordinates the team."
 
 
 def is_free_text_option(label: str) -> bool:
@@ -81,32 +80,26 @@ def build_onboarding_guide_prompt(*, session_id: str, workspace_name: str) -> st
         "FIELD PLAN — ask these IN ORDER, one per turn. Each maps to a field of the final draft:\n"
         "  1. objective       — What are you building? What problem does it solve?\n"
         "  2. name            — A short project name (free text).\n"
-        "  3. roster          — Which WORKER roles does the team need? (multi: Frontend, "
-        "Backend, QA, … + a free-text escape). The Project Leader is added automatically — "
-        "list workers only, do NOT include a leader.\n"
-        "  4. success_metrics — How will you measure success?\n"
-        "  5. target_date     — A target date, or 'none'.\n"
-        "  6. context         — Anything else I should know? (free text)\n"
+        "  3. success_metrics — How will you measure success?\n"
+        "  4. target_date     — A target date, or 'none'.\n"
+        "  5. context         — Anything else I should know? (free text)\n"
         "Ask EXACTLY these fields. Do NOT drift into implementation detail (features, UI, tech "
-        "stack) — that is not needed to stand the project up. After the owner answers #6, post "
-        "the draft.\n\n"
+        "stack) — that is not needed to stand the project up. Do NOT ask who will be on the "
+        "team: the owner picks that themselves, from the agents they already have, once the "
+        "project exists. After the owner answers #5, post the draft.\n\n"
         "ASKING — `onboarding ask`:\n"
         f'  session_id={session_id}\n'
         '  question="..."\n'
         '  options=[{"id":"1","label":"..."},{"id":"2","label":"..."}]\n'
-        "  multi=true when several options can be picked (e.g. roster roles)\n"
+        "  multi=true when several options can be picked\n"
         "  Include a free-text escape when useful: an option whose label contains "
         '"I\'ll type it".\n\n'
         "PROPOSING — when you have all fields, call `onboarding propose`:\n"
         f'  session_id={session_id}\n'
         '  project={"name":"...","objective":"...","success_metrics":{"goal":"..."},'
         '"target_date":null,"context":"..."}\n'
-        '  roster=[{"title":"Frontend","description":"Builds the user-facing UI.","seats":1},'
-        '{"title":"Backend","description":"Owns the API and data layer.","seats":1}]\n'
-        "The roster lists WORKER roles only — the Project Leader is added for you; do NOT set "
-        "is_leader. Give EACH worker role a one-sentence `description` of what it does — this is "
-        "REQUIRED: a draft with any role missing a description is rejected, so fill every one "
-        "before you post.\n"
+        "That is the whole draft. The project is created with a Project Leader seat and a team "
+        "the owner fills themselves — you do not name, choose or describe anybody.\n"
     )
 
 
@@ -123,10 +116,10 @@ def build_onboarding_answer_prompt(
     """
     lines = [
         "ARMARIUS · PROJECT ONBOARDING (continued)\n",
-        "FIELD PLAN (ask in order, one per turn): objective → name → roster (worker roles — "
-        "the Project Leader is automatic) → success_metrics → target_date → context. After the "
-        "last is answered, post the draft. Do NOT drift into implementation detail (features, "
-        "UI, tech stack).",
+        "FIELD PLAN (ask in order, one per turn): objective → name → success_metrics → "
+        "target_date → context. After the last is answered, post the draft. Do NOT drift into "
+        "implementation detail (features, UI, tech stack), and do NOT ask who will be on the "
+        "team — the owner picks that themselves once the project exists.",
         "",
         f"This chat is `{session_id}` — every tool call below needs it as `session_id`.",
     ]
@@ -164,12 +157,7 @@ def build_onboarding_answer_prompt(
         '"target_date":null,"context":"..."}'
     )
     lines.append(
-        '  roster=[{"title":"Frontend","description":"Builds the user-facing UI.","seats":1},'
-        '{"title":"Backend","description":"Owns the API and data layer.","seats":1}]'
-    )
-    lines.append(
-        "The roster lists WORKER roles only — the Project Leader is added for you; do NOT set "
-        "is_leader. Give EACH worker role a one-sentence `description` of what it does — this is "
-        "REQUIRED: a draft with any role missing a description is rejected."
+        "That is the whole draft. The project is created with a Project Leader seat and a team "
+        "the owner fills themselves — you do not name, choose or describe anybody."
     )
     return "\n".join(lines)

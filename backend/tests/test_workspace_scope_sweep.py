@@ -320,7 +320,7 @@ async def test_a_stranger_cannot_rewrite_another_workspaces_agent_or_skill():
 async def test_a_seat_cannot_hold_an_agent_from_another_workspace():
     """Ghế bắc qua ranh giới workspace là cách một agent bị xoá mà ghế ở lại một mình.
 
-    `grant_seat` từng chỉ hỏi *agent này có tồn tại không*. Nên người chủ có hai workspace
+Cửa nhận người vào dự án từng chỉ hỏi *agent này có tồn tại không*. Nên người chủ có hai workspace
     trao được agent của A vào dự án của B — rồi xoá workspace A: agent biến mất, ghế trong
     dự án của B vẫn trỏ vào nó. Trước T199 dòng ấy nằm im vì `marius_id` không có khoá
     ngoại; sau T199 khoá ngoại từ chối thẳng, và lượt xoá workspace **nổ 500**.
@@ -342,17 +342,15 @@ async def test_a_seat_cannot_hold_an_agent_from_another_workspace():
             headers=h,
             json={"name": "Apollo", "key": "APO", "description": "ship it",
                   "objective": "Ra mắt nền tảng",
-                  "leader": {"description": "Điều phối dự án.", "marius_id": None},
-                  "roles": [{"title": "Backend", "seats": 1,
-                             "description": "Lo phần máy chủ."}]},
+                  "leader": {"description": "Điều phối dự án.", "marius_id": None}},
         )
         assert project.status_code == 201, project.text
 
         # 404 chứ không 403: một agent người gọi không được thấy thì đọc ra như không có.
         grant = await c.post(
-            f"/v1/projects/{project.json()['id']}/grant",
+            f"/v1/projects/{project.json()['id']}/members",
             headers=h,
-            json={"role_key": "backend", "marius_id": agent.json()["id"]},
+            json={"marius_id": agent.json()["id"]},
         )
         assert grant.status_code == 404, grant.text
         assert grant.json()["code"] == "agent_not_found"
@@ -385,9 +383,7 @@ async def test_deleting_a_workspace_clears_seats_its_agents_still_hold():
             headers=h,
             json={"name": "Apollo", "key": "APO", "description": "ship it",
                   "objective": "Ra mắt nền tảng",
-                  "leader": {"description": "Điều phối dự án.", "marius_id": None},
-                  "roles": [{"title": "Backend", "seats": 1,
-                             "description": "Lo phần máy chủ."}]},
+                  "leader": {"description": "Điều phối dự án.", "marius_id": None}},
         )
         assert project.status_code == 201, project.text
 

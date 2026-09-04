@@ -2,7 +2,7 @@
 //
 // The Workspace Agent asks one question at a time, each rendered as a window of tick-select
 // options (with an "Other → type it" free-text escape). Answers accumulate into a project +
-// roster draft; confirming it creates the project. Each mount opens a FRESH session, so
+// project draft; confirming it creates the project. Each mount opens a FRESH session, so
 // re-entering the flow never resurrects stale chat history.
 //
 // **The answer no longer comes back in the reply.** Each turn of the interview is a run, and
@@ -303,7 +303,7 @@ function QuestionPanel({
   );
 }
 
-// ─── The final project + roster draft ─────────────────────────────────────────
+// ─── The final project draft ──────────────────────────────────────────────────
 function DraftCard({
   draft,
   finalizing,
@@ -330,23 +330,9 @@ function DraftCard({
         <p className="font-display text-display-sm text-ink">{draft.name}</p>
         {draft.objective && <p className="font-body text-body-sm text-ink-light mt-1">{draft.objective}</p>}
       </div>
-      <div>
-        <p className="font-body text-body-xs text-ink-muted mb-1.5">{t('onboarding.draftRoster')}</p>
-        <div className="flex flex-wrap gap-1.5">
-          {draft.roster.map((role) => (
-            <span
-              key={role.key ?? role.title}
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-body text-body-xs ${
-                role.is_leader
-                  ? 'bg-[#D8EADD] text-[#2F7A4E] border border-[#B8D8C4]'
-                  : 'bg-[#EDE4CE] text-ink border border-[#E3D7BC]'
-              }`}
-            >
-              {role.title}
-            </span>
-          ))}
-        </div>
-      </div>
+      {/* The team is not part of the draft: the agent interviews about the project, and the
+          patron picks who works on it from their own agents once it exists (FR-007l). */}
+      <p className="font-body text-body-xs text-ink-muted">{t('onboarding.draftTeamNext')}</p>
       <div className="flex items-center justify-between gap-2 pt-1">
         <button
           type="button"

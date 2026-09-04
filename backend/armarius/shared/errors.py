@@ -60,6 +60,9 @@ ENGLISH: dict[str, str] = {
     "onboarding_session_has_no_workspace": "This onboarding session has no workspace.",
     "role_not_in_roster": "Role '{role}' is not in this project's roster.",
     "no_granted_seat": "No granted seat for that agent and role.",
+    "agent_leads_this_project": (
+        "That agent already leads this project — it cannot also be a member of it."
+    ),
     # ── who is calling ────────────────────────────────────────────────────────
     "missing_bearer_token": "Missing bearer token.",
     "invalid_machine_token": "Invalid or expired machine token.",
@@ -120,7 +123,6 @@ ENGLISH: dict[str, str] = {
     "unknown_project_phase": "Unknown project phase '{phase}'.",
     "unknown_task_status": "Unknown task status '{status}'.",
     "unknown_inbox_status": "Unknown inbox status '{status}'.",
-    "role_key_taken": "Role key '{key}' already exists in this project's roster.",
     "project_needs_one_leader_role": (
         "A project needs exactly one leader role, found {found}."
     ),
@@ -129,8 +131,6 @@ ENGLISH: dict[str, str] = {
     "role_needs_a_description": (
         "Every role needs a description of what it does — missing for: {roles}."
     ),
-    "role_description_not_erasable": "A role's description cannot be blanked out.",
-    "role_seat_held": "A role cannot be removed while an agent holds its seat.",
     "seat_grants_system_only": "Seat grants are issued by the system only.",
     "seat_revokes_system_only": "Seat revokes are issued by the system only.",
     "last_workspace": "You cannot delete your only workspace — create another one first.",

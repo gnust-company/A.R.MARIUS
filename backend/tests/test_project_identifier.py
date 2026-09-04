@@ -11,7 +11,6 @@ import pytest
 from armarius.application.use_cases.projects import (
     DuplicateProjectKey,
     ProjectService,
-    RoleSpec,
 )
 from armarius.application.use_cases.tasks import TaskService
 from armarius.application.use_cases.wake_engine import WakeEngine
@@ -34,17 +33,12 @@ def _services(uow_factory):
     )
 
 
-def _roster() -> list[RoleSpec]:
-    return [
-        RoleSpec(key="leader", title="Leader", seats=1, is_leader=True, description="Leads."),
-        RoleSpec(key="worker", title="Worker", seats=1, description="Works."),
-    ]
-
-
 async def test_explicit_key_drives_task_identifiers(uow_factory) -> None:
     projects, tasks, workspaces = _services(uow_factory)
     ws = await workspaces.create_workspace("WS")
-    project = await projects.create_project(ws.id, "Calculator", key="CALC", roles=_roster())
+    project = await projects.create_project(
+        ws.id, "Calculator", key="CALC", leader_description="Leads."
+    )
 
     assert project.key == "CALC"
     await force_phase(uow_factory, project.id)
@@ -57,7 +51,7 @@ async def test_explicit_key_drives_task_identifiers(uow_factory) -> None:
 async def test_missing_key_is_suggested_from_name(uow_factory) -> None:
     projects, tasks, workspaces = _services(uow_factory)
     ws = await workspaces.create_workspace("WS")
-    project = await projects.create_project(ws.id, "Calculator", roles=_roster())
+    project = await projects.create_project(ws.id, "Calculator", leader_description="Leads.")
     assert project.key == "CALC"  # suggested from the name
     await force_phase(uow_factory, project.id)
     task = await tasks.create(project_id=project.id, title="a")
@@ -67,17 +61,17 @@ async def test_missing_key_is_suggested_from_name(uow_factory) -> None:
 async def test_duplicate_key_in_same_workspace_is_rejected(uow_factory) -> None:
     projects, _tasks, workspaces = _services(uow_factory)
     ws = await workspaces.create_workspace("WS")
-    await projects.create_project(ws.id, "Calc One", key="CALC", roles=_roster())
+    await projects.create_project(ws.id, "Calc One", key="CALC", leader_description="Leads.")
     with pytest.raises(DuplicateProjectKey):
-        await projects.create_project(ws.id, "Calc Two", key="CALC", roles=_roster())
+        await projects.create_project(ws.id, "Calc Two", key="CALC", leader_description="Leads.")
 
 
 async def test_same_key_in_different_workspaces_is_allowed(uow_factory) -> None:
     projects, _tasks, workspaces = _services(uow_factory)
     ws1 = await workspaces.create_workspace("WS1")
     ws2 = await workspaces.create_workspace("WS2")
-    a = await projects.create_project(ws1.id, "A", key="AB", roles=_roster())
-    b = await projects.create_project(ws2.id, "B", key="AB", roles=_roster())
+    a = await projects.create_project(ws1.id, "A", key="AB", leader_description="Leads.")
+    b = await projects.create_project(ws2.id, "B", key="AB", leader_description="Leads.")
     assert a.key == "AB" and b.key == "AB"
 
 
@@ -85,13 +79,16 @@ async def test_invalid_key_format_is_rejected(uow_factory) -> None:
     projects, _tasks, workspaces = _services(uow_factory)
     ws = await workspaces.create_workspace("WS")
     with pytest.raises(InvalidProjectKey):
-        await projects.create_project(ws.id, "Bad", key="1UP", roles=_roster())  # leading digit
+        # leading digit
+        await projects.create_project(ws.id, "Bad", key="1UP", leader_description="Leads.")
 
 
 async def test_counter_advances_and_identifier_persists(uow_factory) -> None:
     projects, tasks, workspaces = _services(uow_factory)
     ws = await workspaces.create_workspace("WS")
-    project = await projects.create_project(ws.id, "Calculator", key="CALC", roles=_roster())
+    project = await projects.create_project(
+        ws.id, "Calculator", key="CALC", leader_description="Leads."
+    )
     await force_phase(uow_factory, project.id)
     created = await tasks.create(project_id=project.id, title="a")
 
@@ -107,8 +104,10 @@ async def test_counter_advances_and_identifier_persists(uow_factory) -> None:
 async def test_each_project_has_its_own_sequence(uow_factory) -> None:
     projects, tasks, workspaces = _services(uow_factory)
     ws = await workspaces.create_workspace("WS")
-    calc = await projects.create_project(ws.id, "Calculator", key="CALC", roles=_roster())
-    bot = await projects.create_project(ws.id, "AI Bot", key="BOT", roles=_roster())
+    calc = await projects.create_project(
+        ws.id, "Calculator", key="CALC", leader_description="Leads."
+    )
+    bot = await projects.create_project(ws.id, "AI Bot", key="BOT", leader_description="Leads.")
     await force_phase(uow_factory, calc.id)
     await force_phase(uow_factory, bot.id)
     c1 = await tasks.create(project_id=calc.id, title="a")
