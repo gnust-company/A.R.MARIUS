@@ -431,6 +431,26 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   - **Phạm vi ở đặc tả này**: chỉ chốt luật và bảo đảm luồng tạo agent mới không sinh thêm role. Việc gỡ
     bảng role, ghế, và những chỗ đang đọc chúng (chữ ký duyệt, thang phục hồi, màn hình đội hình) đụng vào
     phần lõi của đặc tả 001 nên tách sang **đặc tả riêng**; đặc tả này không gỡ.
+  - **Cách làm (chốt 2026-09-04, T039j)**: bảng nhân sự của mọi dự án là **đúng hai dòng, do hệ thống tự
+    dựng** — ghế Trưởng dự án, và **chỗ ngồi chung** cho mọi agent còn lại. Không cửa nào ở ngoài đưa vai
+    vào được, nên không ai *tạo* được vai, kể cả agent chạy buổi phỏng vấn lập dự án.
+    - Đặt agent vào dự án là **một lượt gọi**, và lượt ấy nói *agent nào*, không nói nó sẽ *là gì*: hai
+      cửa riêng — một cho ghế Trưởng dự án, một cho chỗ ngồi chung — nên nơi ngồi do **gọi cửa nào** mà
+      thành, không do một trường trong thân yêu cầu. Cửa cũ đi hai bước (tạo vai rồi cấp ghế theo khoá
+      vai) không còn.
+    - **Chỗ ngồi chung không có trần**: một con số nói *dự án được hứa mấy người* thì không tồn tại. Ghế
+      Trưởng dự án vẫn có đúng một chỗ, vì nó là chỗ đã hứa với đúng một agent. Số chỗ khai ra cho người
+      chủ đọc là *lớn hơn giữa số đã hứa và số người đang ngồi*, nên một dự án bốn người không đọc ra hai.
+    - **Một agent không vừa làm Trưởng dự án vừa là thành viên** của cùng dự án: từ chối, chứ không ngồi
+      hai chỗ.
+    - Bản kế hoạch còn mang `roles` bị **từ chối** (422), không bị lặng lẽ bỏ qua — bỏ qua thì cửa trả về
+      201 kèm một dự án trống người, và người chủ không biết bước nào của mình hỏng (bài học T048c).
+    - Buổi phỏng vấn lập dự án **thôi hỏi về đội**: nó hỏi về dự án, và ai làm dự án là người chủ tự chọn
+      trong đám agent của chính họ sau khi dự án đã có. Được **nói thẳng ra** trong prompt, không chỉ bỏ
+      khỏi danh sách câu hỏi — một danh sách tự dứt giữa đường thì mô hình yếu sẽ đoán bước còn thiếu.
+    - Chỗ ngồi chung **không mô tả công việc của ai**: dòng của nó chỉ về instructions của chính agent, và
+      đó là câu đi vào gói tin agent nhận được. Dự án dựng trước T039j giữ nguyên bảng nhân sự cũ của nó —
+      cửa mới không viết lại lịch sử, người vào sau ngồi vào chỗ chung.
 - **FR-007c**: Đăng nhập và hạn mức của agent CLI là thuộc tính của **chỗ làm**, không của agent. Cạn hạn
   mức PHẢI làm **mọi agent trên chỗ làm ấy** offline cùng lúc, và PHẢI xếp vào **lỗi cần người xử** —
   KHÔNG ĐƯỢC tiêu ngân sách tự phục hồi (xem FR-032).
