@@ -382,6 +382,15 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   bằng lỗi: nó vốn không phải thứ đường này nhận. Lý do phải viết thành điều khoản: một runtime đặt từ ngoài
   vào có thể là runtime không máy nào chạy nổi, và agent dựng quanh nó là agent không bao giờ chạy được lượt
   nào (bổ sung 2026-08-25, phát hiện lúc gỡ ô chọn adapter ở T039h).
+- **FR-007g2**: **Chỗ làm PHẢI khai ai chở việc**, và luồng tạo agent PHẢI chép lại lời khai ấy. FR-007g1 nói
+  người gọi không được đặt runtime; điều này nói ai đặt thay. Không được là một **hằng số trong tầng nghiệp
+  vụ**: đặt một tên runtime làm mặc định ở đó là để tầng nghiệp vụ gọi tên một runtime, đúng thứ Hiến pháp III
+  cấm, và nó cấm vì cùng lý do FR-007g1 tồn tại — nơi duy nhất biết một chỗ làm *là gì* là nơi duy nhất trả
+  lời được câu ấy. Chỗ làm nào không khai được thì **từ chối nhận agent**: không lỗi nào của người dùng dẫn
+  tới đó, nhưng một agent tạo ra mà không ai chở việc là một agent không cú gọi dậy nào với tới được, và nó
+  sẽ hỏng ở lượt nói đầu tiên thay vì hỏng lúc tạo. *Viết ra vì hằng số mặc định cũ (`"echo"`, một runtime
+  dựng cho bản thử) đã cho **mọi** agent từng tạo qua giao diện đi con đường ấy — bản vá không phải đổi hằng
+  số sang tên khác (chốt 2026-09-04, T048c).*
 - **FR-007h**: Tên agent PHẢI **không trùng trong cùng một workspace**. Trùng tên thì người giao việc không
   biết mình đang gọi ai.
 - **FR-007i**: Agent PHẢI có **instructions** — chữ do người chủ agent viết lúc tạo, mô tả nó là ai, chịu
@@ -781,6 +790,11 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
     gọi-rồi-đợi, bên đổi trạng thái tự loan tin; trên đường daemon, bên đổi trạng thái là cửa của máy, nên
     cửa ấy phải loan. Thiếu nửa này thì cùng một lượt chạy nằm ở *đang chờ* trên màn hình suốt cả lượt
     (chốt 2026-09-03, T048b).
+  - Một lượt nói đã giao đi mà **bên nghe không phải một đầu việc** — khung chat của người chủ chẳng hạn —
+    thì bên nghe ấy phải tra được **từ lượt chạy**, vì tin lượt chạy kết thúc chỉ mang theo tên lượt chạy.
+    Và thứ agent đã nói phải đọc lại từ **bản ghi của lượt chạy**, không từ thứ tiến trình giao việc còn
+    giữ trong tay: tiến trình ấy không ngồi xem lượt nói, nên trí nhớ của nó không sống qua một lần khởi
+    động lại, còn bản ghi thì sống (bổ sung 2026-09-04, T048c).
 - **FR-041**: Thư mục làm việc của một đầu việc bắt đầu ở trạng thái **trắng**. Hệ thống KHÔNG lấy mã nguồn về và
   KHÔNG quản nhánh làm việc; agent tự lo phần mã nguồn bằng thông tin đăng nhập của chính nó. Armarius là
   nơi làm việc chung cho nhiều loại việc, không riêng việc viết mã.
