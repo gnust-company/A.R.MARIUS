@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -683,8 +682,17 @@ func TestAFileChangeTravelsWithWhatItProposesAndThenWithHowItWent(t *testing.T) 
 	if call.Payload["name"] != "patch" || call.OmissionReason != "" {
 		t.Fatalf("một lần sửa tệp có mô tả mà ghi là không nói: %+v", call)
 	}
-	if !strings.Contains(fmt.Sprint(call.Payload["args"]), "hello.txt") {
-		t.Fatalf("mô tả thay đổi không đi kèm: %v", call.Payload)
+	// Đọc lại **bằng JSON**, không bằng `fmt`. Mô tả thay đổi là `json.RawMessage`, và cách `fmt`
+	// in kiểu ấy đổi theo phiên bản Go: từ Go 1.27 nó là alias của `jsontext.Value` nên có
+	// `String()` và in ra chữ JSON, còn Go cũ in ra dãy số byte. Một bài kiểm đọc bằng `fmt` vì
+	// thế xanh hay đỏ theo bộ biên dịch chứ không theo hành vi — đúng loại xanh vô nghĩa. JSON
+	// còn là đường đi thật: sự kiện được `json.Marshal` để rời khỏi máy này.
+	args, err := json.Marshal(call.Payload["args"])
+	if err != nil {
+		t.Fatalf("tham số không gửi đi được: %v", err)
+	}
+	if !strings.Contains(string(args), "hello.txt") {
+		t.Fatalf("mô tả thay đổi không đi kèm: %s", args)
 	}
 	if done := only(t, events, EventToolCompleted); done.Payload["failed"] != false {
 		t.Fatalf("một lần sửa tệp xong lại báo là hỏng: %v", done.Payload)
