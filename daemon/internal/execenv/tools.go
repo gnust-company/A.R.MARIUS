@@ -36,11 +36,12 @@ const toolsSubdir = ".armarius/bin"
 //     one has to be approved interactively before it loads, and there is nobody at this machine
 //     to approve it. A file named on the command line loads without asking, and naming it per
 //     run is what FR-013a asks for.
-//   - Codex is absent because its side is unmeasured (research §9, task T130). It keeps MCP
-//     servers in the same `config.toml` that this daemon links straight to the operator's own —
-//     so declaring anything there would be writing into shared configuration, which FR-013a
-//     forbids outright. Its command-line override may turn out to be the answer; guessing at it
-//     before it is measured is how the Gemini row got its "unverified" instead of a guess.
+//   - Codex is absent because there is no file for it to read. It keeps MCP servers in the same
+//     `config.toml` that this daemon links straight to the operator's own, so declaring anything
+//     there would be writing into shared configuration, which FR-013a forbids outright. Its
+//     answer is a command-line override instead, rendered where its command line is built
+//     (`runtime.toolFlags`) — the same per-run, writes-nothing shape as the file, spelled the way
+//     that CLI accepts.
 //   - Gemini CLI is absent for the reason it is absent from every table in this package
 //     (FR-039a, task T013).
 var mcpConfigs = map[string]string{

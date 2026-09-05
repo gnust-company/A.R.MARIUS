@@ -6,12 +6,13 @@ import (
 	"github.com/gnust-company/armarius-daemon/internal/agentcli"
 )
 
-// FR-035, FR-037: two protocol families, one contract, and nothing above this package learns
-// that either exists. Both are the same interface or the promise is not kept.
-func TestBothFamiliesAreDrivenThroughTheOneContract(t *testing.T) {
+// FR-035, FR-037: three protocol families, one contract, and nothing above this package learns
+// that any of them exists. All are the same interface or the promise is not kept.
+func TestEveryFamilyIsDrivenThroughTheOneContract(t *testing.T) {
 	var engines = map[agentcli.Family]Runtime{
-		agentcli.FamilyOneShot: OneShot{},
-		agentcli.FamilyACP:     ACP{},
+		agentcli.FamilyOneShot:   OneShot{},
+		agentcli.FamilyACP:       ACP{},
+		agentcli.FamilyAppServer: AppServer{},
 	}
 	for _, row := range agentcli.All() {
 		if _, driven := engines[row.Family]; !driven {

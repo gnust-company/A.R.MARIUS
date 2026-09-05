@@ -89,24 +89,6 @@ var oneShots = map[string]invocation{
 		},
 		read: readClaudeCode,
 	},
-
-	// Codex. **Not measured** — the copy installed where this was written is missing its
-	// platform binary and will not run at all, so every line below comes from the published
-	// interface rather than from a run (research §9, task T130).
-	//
-	// It errs the way the capability probe errs: towards doing less. An argument that turns out
-	// to be wrong makes the CLI refuse to start, which is loud; a reader that turns out to be
-	// wrong recognises nothing and emits nothing, which is a quiet record rather than a false
-	// one.
-	"codex": {
-		args: func(req Request) []string {
-			if req.Session != "" {
-				return []string{"exec", "resume", req.Session, "--json", "-"}
-			}
-			return []string{"exec", "--json", "-"}
-		},
-		read: readCodex,
-	},
 }
 
 // chosen renders what a person set on this agent into this CLI's own flags (FR-007k).
@@ -461,46 +443,6 @@ func readClaudeCode(line []byte, journal *Journal, out *Outcome) {
 		if parsed.IsError {
 			journal.Fail("agent_reported_failure", map[string]any{"why": parsed.Subtype})
 		}
-	}
-}
-
-// codexLine is one line of Codex's `--json` output, **as published rather than as measured**
-// (see the note on the codex entry above).
-type codexLine struct {
-	Type     string `json:"type"`
-	ThreadID string `json:"thread_id"`
-	Item     struct {
-		Type    string `json:"type"`
-		ID      string `json:"id"`
-		Text    string `json:"text"`
-		Command string `json:"command"`
-	} `json:"item"`
-}
-
-func readCodex(line []byte, journal *Journal, out *Outcome) {
-	var parsed codexLine
-	if json.Unmarshal(line, &parsed) != nil {
-		return
-	}
-	if out.Session == "" && parsed.ThreadID != "" {
-		out.Session = parsed.ThreadID
-	}
-	if parsed.Type != "item.completed" {
-		return
-	}
-	switch parsed.Item.Type {
-	case "agent_message":
-		journal.Text(parsed.Item.Text)
-	case "reasoning":
-		journal.Thought(parsed.Item.Text)
-	case "command_execution":
-		journal.ToolStarted(parsed.Item.ID, "command", map[string]any{"command": parsed.Item.Command}, true)
-		// The command ran and ended; what it printed is not in a field this side has measured,
-		// so the record says *this CLI did not reveal it* rather than showing a gap that reads
-		// as a command with no output (FR-047). Marked unmeasured for the same reason the rest
-		// of this entry is: a field name taken from documentation and never seen would be an
-		// invented fact in a record meant to be evidence.
-		journal.ToolCompleted(parsed.Item.ID, false, Result{})
 	}
 }
 

@@ -43,10 +43,18 @@ Coding CLI (claude / hermes / codex / ...)
 | Họ                  | Cách nói chuyện                                                                                                             | Ai thuộc họ này                                                                                                    |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
 | **ACP**        | JSON-RPC qua stdio:`initialize` → `session/new` → prompt turn; nối lại bằng `session/resume` hoặc `session/load` | Hermes, Kimi, Kiro, Grok, Qoder, Qoder CN, Reasonix, Trae, QwenPaw, MiniMax Code, DSH                                 |
-| **Một-phát** | Chạy tiến trình một lần, prompt qua tham số dòng lệnh, kết quả đọc về theo luồng JSON                            | **Claude Code**, **Codex**, Copilot, Cursor, OpenCode, OpenClaw, CodeBuddy, Antigravity, DevEco, Pi, Qwen |
+| **Một-phát** | Chạy tiến trình một lần, prompt qua tham số dòng lệnh, kết quả đọc về theo luồng JSON                            | **Claude Code**, Copilot, Cursor, OpenCode, OpenClaw, CodeBuddy, Antigravity, DevEco, Pi, Qwen |
+| **app-server** | JSON-RPC qua stdio bằng từ vựng riêng của Codex: `initialize` → `thread/start` → `turn/start` | **Codex** |
 
 Nhìn bảng này là thấy ngay: **hai runtime phổ biến nhất — Claude Code và Codex — đều KHÔNG nói ACP.** Làm
 ACP-only là tự loại chúng.
+
+> **Sửa 2026-09-05 (T130).** Hàng Codex trong bảng này lúc đầu ghi là *một-phát*, và đó là **sai** — nó
+> đọc từ tài liệu `CLI_AND_DAEMON.md`, không từ mã bật tiến trình. Đọc `server/pkg/agent/codex.go` thì
+> Multica chạy `codex app-server --listen stdio://` và nói JSON-RPC 2.0. Cùng hình dạng đường truyền với
+> ACP, **không chung một tên phương thức nào** — nên nó là họ thứ ba, không phải một biến thể. Bài học
+> nằm ở chỗ đọc: ba mục dưới đây (§Codex) đọc từ bảng ánh xạ brief và cụm adapter môi trường, và cả ba
+> vẫn đúng; cái sai là suy ra *họ giao thức* từ những tệp không nói về giao thức.
 
 ---
 
@@ -254,6 +262,14 @@ Codex có **cả một cụm adapter riêng**: `codex_home.go`, `codex_home_link
   Hermes. Nên Codex nối lại phiên được **chừng nào thư mục còn sống**
 - Lúc dọn rác, Multica giữ lại "Codex auth/config/session state" đúng để agent nối tiếp được
 - Có ngưỡng riêng: `MULTICA_CODEX_SEMANTIC_INACTIVITY_TIMEOUT` mặc định 10 phút
+- **Giao thức** (đọc `server/pkg/agent/codex.go`, 2026-09-05): `codex app-server --listen stdio://`,
+  JSON-RPC 2.0 — `initialize` (+ thông báo `initialized`) → `thread/start` hoặc `thread/resume` →
+  `turn/start`, rồi nghe `item/started` · `item/completed` · `turn/started` · `turn/completed` · `error`.
+  Loại việc: `commandExecution`, `fileChange`, `mcpToolCall`, `agentMessage`, `reasoning`. Codex **hỏi
+  lại** quyền qua `item/commandExecution/requestApproval`, `item/fileChange/requestApproval`,
+  `item/permissions/requestApproval`, `mcpServer/elicitation/request` — không trả lời thì lượt chạy treo.
+  Công cụ MCP là **cấu hình**, không có chỗ trong bắt tay: Multica ghi `$CODEX_HOME/config.toml` và coi nó
+  là bản chính; Armarius không được ghi vào đó (FR-013a) nên dùng cờ `-c mcp_servers.…` một-lần-một-tiến-trình
 
 ### Hermes — họ ACP, và là ca phức tạp nhất
 

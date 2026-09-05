@@ -198,11 +198,14 @@ func Supported(cli string) bool {
 	return agentcli.Ready(cli) && startable(cli)
 }
 
-// startable says whether this package knows how to start a CLI of this kind, either family.
+// startable says whether this package knows how to start a CLI of this kind, whichever family.
 func startable(cli string) bool {
 	if _, oneShot := oneShots[cli]; oneShot {
 		return true
 	}
-	_, acp := acpStart(cli)
-	return acp
+	if _, acp := acpStart(cli); acp {
+		return true
+	}
+	_, appServer := appServerStart(cli)
+	return appServer
 }

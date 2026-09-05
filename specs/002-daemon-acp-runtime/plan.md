@@ -167,7 +167,7 @@ daemon/                            # MỚI — chương trình Go độc lập
 │   │   ├── skills.go              #   ghi kỹ năng — TỆP THẬT, ghi mới mỗi lượt (FR-011b)
 │   │   ├── tools.go               #   cấp bộ công cụ theo lượt chạy (FR-013a)
 │   │   └── changes.go             #   thư mục làm việc có gì — thứ agent tự làm ra (FR-020a)
-│   ├── runtime/                   # hai họ giao thức: ACP và chạy-một-phát
+│   ├── runtime/                   # ba họ giao thức: ACP, chạy-một-phát, app-server (Codex)
 │   ├── redact/                    # che bí mật TRƯỚC khi rời máy (FR-048)
 │   └── supervisor/                # vòng lặp xin việc, heartbeat, trần đồng thời
 └── go.mod

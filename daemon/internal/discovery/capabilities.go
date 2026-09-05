@@ -207,9 +207,8 @@ type choiceQuestion struct {
 //   - claude 2.1.226 prints `-r, --resume`, `-c, --continue`, and `--output-format ...
 //     "stream-json"`, the streaming form that carries tool calls with their full input and
 //     their results.
-//   - codex could not be verified: the copy on the development machine is missing its
-//     platform binary and will not run at all, so it never reaches a probe. Its markers are
-//     read from the published interface and, per the note above, err towards saying less.
+//   - codex is not in this table at all any more: it does not belong to this family. It is
+//     asked the way its own protocol allows, in probeAppServer.
 var selfDescriptions = map[Kind]selfDescription{
 	agentcli.ClaudeCode: {
 		args: []string{"--help"},
@@ -235,14 +234,6 @@ var selfDescriptions = map[Kind]selfDescription{
 		offers: []choiceQuestion{
 			{key: ChoiceThinkingLevel, how: wholeSet, after: "--effort"},
 			{key: ChoiceModel, how: examples, after: "--model"},
-		},
-	},
-	agentcli.Codex: {
-		args: []string{"--help"},
-		proves: map[capability][]string{
-			capResumable:         {"resume"},
-			capExposesToolArgs:   {"--json"},
-			capExposesToolResult: {"--json"},
 		},
 	},
 }
@@ -276,11 +267,12 @@ type prober func(ctx context.Context, found Found, opts Options) (Capabilities, 
 //
 // A family with no entry here is not a bug and not a lie: its CLIs register with every
 // capability unanswered and a code saying so, which is exactly the degraded-but-supported state
-// FR-039a describes. Both families of this release are here now; a third one arriving before
+// FR-039a describes. All three families of this release are here now; a fourth arriving before
 // anybody has written its probe would register that way, rather than with guesses.
 var probers = map[Family]prober{
-	agentcli.FamilyOneShot: probeSelfDescription,
-	agentcli.FamilyACP:     probeHandshake,
+	agentcli.FamilyOneShot:   probeSelfDescription,
+	agentcli.FamilyACP:       probeHandshake,
+	agentcli.FamilyAppServer: probeAppServer,
 }
 
 // Probe asks one discovered CLI what it can do (FR-017).
@@ -532,6 +524,92 @@ func probeHandshake(ctx context.Context, found Found, opts Options) (Capabilitie
 			{Capability: string(capExposesToolResult), Reason: ReasonNotInProtocol},
 		},
 	}, nil
+}
+
+// probeAppServer asks a Codex-family binary the one question this family can be asked: whether
+// it speaks the protocol at all (FR-017).
+//
+// The difference from the ACP probe is what the answer contains. An ACP peer *declares* what it
+// can do, so the probe reads a list. Codex declares nothing of the sort — its `initialize`
+// answers with a user-agent string and where its home is — so there is no list to read, and the
+// three capabilities follow from the protocol itself: an app-server has `thread/resume`, and
+// its `item/*` notifications carry a tool's arguments and, when the tool gave any, its output.
+//
+// That is a stronger claim than reading help text and a weaker one than reading a declaration,
+// and it is worth being plain about which: this says *the binary in front of us speaks this
+// protocol*, and the protocol says the rest. A binary that answers the handshake and then
+// refuses to resume a thread is handled where it shows up — a refused resume opens a fresh
+// conversation with a note (FR-025), which is the same answer the ACP road gives.
+func probeAppServer(ctx context.Context, found Found, opts Options) (Capabilities, error) {
+	row, known := agentcli.Lookup(string(found.Kind))
+	if !known || len(row.ProtocolArgs) == 0 {
+		return unanswered(ReasonNoProbe), nil
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, opts.Timeout)
+	defer cancel()
+
+	err := opts.Handshake(ctx, found.Path, row.ProtocolArgs, func(to io.Writer, from io.Reader) error {
+		return openAppServer(ctx, to, from)
+	})
+	if err != nil {
+		return Capabilities{}, err
+	}
+	return Capabilities{Resumable: true, ExposesToolArgs: true, ExposesToolResult: true}, nil
+}
+
+// openAppServer introduces this client the way the run path does, and waits to be greeted back.
+//
+// Named the same, for the reason given on openConversation: a workplace's stored answer is an
+// answer to a question, and asking it as one client and running as another stores a reply to a
+// question nobody asks again.
+func openAppServer(ctx context.Context, to io.Writer, from io.Reader) error {
+	const askID = 1
+	if err := json.NewEncoder(to).Encode(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      askID,
+		"method":  "initialize",
+		"params": map[string]any{
+			"clientInfo": map[string]any{
+				"name":    "armarius_daemon",
+				"title":   "Armarius",
+				"version": "1",
+			},
+		},
+	}); err != nil {
+		return fmt.Errorf("asking the agent to introduce itself: %w", err)
+	}
+
+	lines := bufio.NewScanner(from)
+	lines.Buffer(make([]byte, 0, 8<<10), maxHandshakeLine)
+	for lines.Scan() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		line := lines.Bytes()
+		if len(line) == 0 || line[0] != '{' {
+			continue
+		}
+		var msg struct {
+			ID    json.RawMessage `json:"id"`
+			Error *struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(line, &msg) != nil || string(msg.ID) != strconv.Itoa(askID) {
+			continue
+		}
+		if msg.Error != nil {
+			return fmt.Errorf("the agent refused to introduce itself: %s (%d)",
+				msg.Error.Message, msg.Error.Code)
+		}
+		return nil
+	}
+	if err := lines.Err(); err != nil {
+		return fmt.Errorf("listening for the agent: %w", err)
+	}
+	return fmt.Errorf("the agent stopped talking without introducing itself")
 }
 
 // openConversation puts the one question a probe has to the agent, and reads its answer.

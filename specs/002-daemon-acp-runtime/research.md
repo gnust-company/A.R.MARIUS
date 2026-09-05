@@ -292,10 +292,11 @@ liệu đang có; 10 phút lấy theo hai giá trị per-CLI tìm được, và 
 | --- | --- | --- |
 | **Gemini CLI** (`--acp`; `--experimental-acp` là tên cũ, còn nhận) | ACP | Người chủ chốt là bắt buộc (FR-039) |
 | **Claude Code** | chạy-một-phát | Đang dùng thật hằng ngày trong dự án |
-| **Codex** | chạy-một-phát | Có mô hình thư mục nhà riêng, thử được cơ chế dựng môi trường |
+| **Codex** | app-server *(bảng này ghi là chạy-một-phát cho tới 2026-09-05 — xem §9.3)* | Có mô hình thư mục nhà riêng, thử được cơ chế dựng môi trường |
 
 **Rationale**: hai họ giao thức đều có đại diện ngay từ đợt đầu, nên ranh giới ở FR-035/FR-037 bị ép phải
-đúng từ sớm thay vì được dựng quanh một họ rồi sửa sau.
+đúng từ sớm thay vì được dựng quanh một họ rồi sửa sau. Hoá ra có **ba** họ, và ranh giới ấy chịu được —
+họ thứ ba nối vào bằng một hàng trong bảng loại CLI và một tệp trong gói runtime, không sửa gì phía trên.
 
 ### Rủi ro lịch trình: Gemini CLI chưa được xác minh
 
@@ -416,6 +417,34 @@ trong câu trả lời của model không; và một lời gọi công cụ mang
 
 
 ---
+
+### 9.3 Codex: đo bằng nguồn của chính nó, không đo bằng cách chạy (2026-09-05, T130)
+
+Máy phát triển không chạy nổi `codex` một lần nào — bản cài npm thiếu gói nền tảng
+(`Missing optional dependency @openai/codex-linux-x64`), nên nó không khởi động, không phải hết quota.
+
+Nên câu trả lời tới từ hai nguồn hạng khác nhau, và chỗ này ghi rõ hạng nào:
+
+| Nguồn | Cho biết | Hạng |
+| --- | --- | --- |
+| `multica-ai/multica`, `server/pkg/agent/codex.go` | Multica chạy `codex app-server --listen stdio://`, không phải `codex exec` | mã của một daemon đang chạy thật — đã bị Codex thật sửa lưng |
+| `openai/codex`, `codex-rs/app-server-protocol` và `codex-rs/app-server/README.md` | tên từng phương thức, hình dạng từng tin, tên từng trường, tập giá trị từng enum | **chính hợp đồng**, không phải mô tả lại hợp đồng |
+| chạy một lượt thật | công cụ có tới tay agent không, mạch có nối lại được không, cạn hạn mức in ra câu gì | **chưa có** — T130a |
+
+Ba thứ hợp đồng nói ra mà đọc Multica một mình không thấy:
+
+1. Bắt tay là **hai** tin: `initialize`, rồi thông báo `initialized`. Mọi câu khác trên đường nối ấy bị từ
+   chối *Not initialized* cho tới khi tin thứ hai tới. Thiếu nó là một daemon nối được rồi bị nói không với
+   mọi thứ nó hỏi.
+2. `thread/resume` mặc định **trả cả lịch sử mạch** về trong `thread.turns`, và cách tắt là `excludeTurns:
+   true`. Không tắt là trả tiền để chuyển một bản ghi qua ống rồi bỏ đi.
+3. `decline` được **định nghĩa trong nguồn** là *người dùng từ chối; agent sẽ đi tiếp lượt của nó* — khác
+   `cancel`, thứ cắt luôn lượt chạy. Nên từ chối quyền theo FR-013b có đúng một từ đúng, và nó không phải
+   từ làm chết lượt chạy.
+
+Và một thứ chỉ đọc mã Multica mới thấy, vì nó là hệ quả của việc không có ai ngồi đây: Codex **gọi ngược
+lại** để xin duyệt, qua bốn phương thức. Bảng khai cũ của Armarius thiếu hẳn nhánh này — tức một lượt chạy
+gặp lệnh cần duyệt sẽ **treo**, không phải hỏng. Đó là FR-039e.
 
 ## 11. Kỹ năng và thông điệp — kế thừa nguyên flow Multica (chốt 2026-08-23)
 

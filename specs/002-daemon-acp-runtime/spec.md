@@ -781,7 +781,8 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 ### Nhóm G — Ba điểm đã chốt (người chủ, 2026-08-21)
 
 - **FR-039**: Hệ thống PHẢI hỗ trợ **cả hai họ giao thức**: họ ACP (nói JSON-RPC qua luồng chuẩn) và họ
-  chạy-một-phát (prompt qua tham số dòng lệnh, kết quả về theo luồng). Cơ chế giao việc kế thừa từ Multica
+  chạy-một-phát (prompt qua tham số dòng lệnh, kết quả về theo luồng). *Xem FR-039d: cách chia này là chia
+  theo hình dạng đường truyền, và Codex hoá ra không nằm gọn trong hai ô ấy.* Cơ chế giao việc kế thừa từ Multica
   Daemon: brief ghi vào đúng file mà từng CLI vốn tự đọc, kỹ năng đặt vào đúng thư mục từng CLI vốn tự dò,
   công cụ bơm qua cơ chế nạp sẵn có của từng CLI. **Gemini CLI PHẢI nằm trong danh sách hỗ trợ** — Multica
   không có nó, đây là phần Armarius tự thêm.
@@ -794,6 +795,23 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   phiên mới kèm câu báo theo FR-025 — và đó **vẫn tính là hỗ trợ**, không phải hỏng. Cam kết ở FR-039 giữ
   nguyên; điều khoản này chỉ nói rõ thước đo, vì tài liệu nghiên cứu ghi Gemini CLI có ACP nhưng **chưa xác
   minh** nó đọc file bối cảnh nào, dò kỹ năng ở đâu, và có nối lại được phiên không.
+- **FR-039d**: Codex nói **giao thức riêng của nó** — `app-server` qua luồng chuẩn, JSON-RPC 2.0 mỗi tin một
+  dòng — nên nó **không thuộc họ chạy-một-phát**, và cũng **không nói ACP**. Hệ thống PHẢI nói đúng giao thức
+  ấy: `initialize`, rồi thông báo `initialized` (thiếu tin thứ hai này thì mọi câu sau đó bị từ chối *Not
+  initialized*), rồi `thread/start` — hoặc `thread/resume` khi có mạch cũ — rồi `turn/start`, và đọc lượt
+  chạy qua các thông báo `item/*` và `turn/*`. Đây là **họ thứ ba**, không phải một biến thể của ACP: hai bên
+  cùng nói JSON-RPC qua cùng hai cái ống mà **không chung một tên phương thức nào**, nên một client chỉ biết
+  "JSON-RPC qua ống" là một client mở được ống rồi nói những câu bên kia không hiểu. Bảng "hai họ" ở FR-039
+  chia theo **hình dạng đường truyền**; chỗ quyết định một họ là **bộ từ vựng**.
+  Cách này kế thừa từ Multica Daemon (FR-039b), và hình dạng từng câu đọc từ chính nguồn của Codex
+  (`codex-rs/app-server-protocol`), không từ tài liệu mô tả lại.
+- **FR-039e**: Một agent **hỏi lại** qua chính đường truyền ấy thì PHẢI được **trả lời**, kể cả khi câu trả
+  lời là không, kể cả khi hệ thống không hiểu câu hỏi. **Im lặng không phải là từ chối** — trên giao thức
+  này bên kia đã dừng và đang chờ, nên không trả lời là một lượt chạy **treo** tới khi có thứ khác giết nó,
+  và từ ngoài nhìn vào thì giống một agent đang không làm gì. Trả lời cụ thể là gì vẫn theo FR-013b: không
+  có ai ngồi đây để cho phép, nên quyền bị từ chối, bằng đúng từ mà giao thức ấy dùng cho việc từ chối —
+  với Codex là `decline`, mà chính tài liệu của nó định nghĩa là *agent bị nói không và vẫn đi tiếp lượt của
+  nó*. Câu hỏi hệ thống không nhận ra PHẢI được trả lời bằng một lỗi của giao thức, không được bỏ qua.
 - **FR-039c**: Đặc tính của một loại agent CLI — tệp bối cảnh, thư mục kỹ năng, hình dạng nhà giả, biến
   môi trường trỏ về nhà ấy, binary để dò, họ giao thức — PHẢI khai ở **một chỗ duy nhất**, và PHẢI khai
   **trọn hoặc không khai gì**. Nửa vời là hỏng kiểu im lặng: chỗ làm vẫn đăng ký, vẫn nhận việc, vẫn bật

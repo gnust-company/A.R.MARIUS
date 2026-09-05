@@ -568,3 +568,57 @@ func TestARealProcessThatNeverAnswersIsGivenUpOn(t *testing.T) {
 		t.Errorf("lý do = %q, mong %q", got.Unanswered[0].Reason, ReasonProbeFailed)
 	}
 }
+
+func codexFound() Found {
+	return Found{Kind: agentcli.Codex, Family: agentcli.FamilyAppServer, Path: "/usr/local/bin/codex"}
+}
+
+// Họ app-server hỏi được đúng một câu: **binary này có nói giao thức ấy không**. Codex không khai
+// một danh sách khả năng nào — `initialize` của nó trả về chuỗi user-agent và chỗ nhà của nó — nên
+// ba khả năng đến từ chính giao thức, và câu duy nhất đáng hỏi là câu ấy.
+func TestAnAppServerCLIIsAskedWhetherItSpeaksTheProtocolAtAll(t *testing.T) {
+	opts, asked := peerSaying(`{"jsonrpc":"2.0","id":1,"result":{"userAgent":"codex/0.144.6","codexHome":"/home/x/.codex"}}`)
+
+	got := Probe(context.Background(), codexFound(), opts)
+
+	if !got.Resumable || !got.ExposesToolArgs || !got.ExposesToolResult {
+		t.Fatalf("nó bắt tay xong mà chỗ làm đăng ký thiếu khả năng: %+v", got)
+	}
+	if len(got.Unanswered) != 0 {
+		t.Errorf("có khả năng ghi là chưa hỏi trong khi đã hỏi được: %+v", got.Unanswered)
+	}
+	if len(*asked) != 1 || (*asked)[0]["method"] != "initialize" {
+		t.Fatalf("câu đã hỏi: %+v", *asked)
+	}
+}
+
+// **Giới thiệu đúng như đường chạy thật giới thiệu.** Lời khai của một bên là lời khai *trả lời cho
+// điều nó được nghe về bên kia*; hỏi bằng một cái tên rồi chạy bằng một cái tên khác là lưu một câu
+// trả lời cho câu hỏi không ai hỏi lại. Codex còn ghi tên ấy vào bản ghi tuân thủ của tài khoản.
+func TestAnAppServerCLIIsToldWhoIsActuallyDrivingIt(t *testing.T) {
+	opts, asked := peerSaying(`{"jsonrpc":"2.0","id":1,"result":{"userAgent":"codex/0.144.6"}}`)
+
+	Probe(context.Background(), codexFound(), opts)
+
+	params, _ := (*asked)[0]["params"].(map[string]any)
+	client, _ := params["clientInfo"].(map[string]any)
+	if client["name"] != "armarius_daemon" {
+		t.Fatalf("daemon tự giới thiệu là %v", client["name"])
+	}
+}
+
+// Một bản cài không nói được giao thức thì **không được khai là nói được**. Bắt tay bị từ chối là
+// một chỗ làm với khả năng chưa trả lời, không phải một chỗ làm khai ba khả năng theo giao thức mà
+// binary này không nói.
+func TestAnAppServerCLIThatRefusesTheHandshakeClaimsNothing(t *testing.T) {
+	opts, _ := peerSaying(`{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"unknown method"}}`)
+
+	got := Probe(context.Background(), codexFound(), opts)
+
+	if got.Resumable || got.ExposesToolArgs || got.ExposesToolResult {
+		t.Fatalf("từ chối bắt tay mà vẫn khai khả năng: %+v", got)
+	}
+	if reason := reasonFor(got, string(capResumable)); reason != ReasonProbeFailed {
+		t.Errorf("lý do = %q, mong %q", reason, ReasonProbeFailed)
+	}
+}
