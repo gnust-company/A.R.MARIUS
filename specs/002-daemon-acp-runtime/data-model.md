@@ -41,7 +41,7 @@ Một cặp (agent CLI có trên máy đó × workspace). Đây là thứ nhận
 | `machine_id` | UUID, FK → `machines` | |
 | `cli_kind` | text | `gemini` / `claude_code` / `codex` |
 | `cli_version` | text | |
-| `protocol_family` | text | `acp` / `one_shot` |
+| `protocol_family` | text | `acp` / `one_shot` / `app_server` |
 | `capabilities` | jsonb | Kết quả **hỏi khả năng** (FR-017): nối lại phiên được không, có lộ tham số công cụ không, có lộ kết quả không |
 | `ready` | bool | |
 | `not_ready_reason` | text \| null | **Mã lý do**, không phải câu (Điều VII). `cli_removed` / `cli_unlaunchable` / `quota_exhausted` / `link_unsupported` |

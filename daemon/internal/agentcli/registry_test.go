@@ -33,19 +33,20 @@ func TestBothProtocolFamiliesAreRepresented(t *testing.T) {
 	for _, row := range All() {
 		counted[row.Family]++
 	}
-	for _, family := range []Family{FamilyACP, FamilyOneShot} {
+	for _, family := range []Family{FamilyACP, FamilyOneShot, FamilyAppServer} {
 		if counted[family] == 0 {
 			t.Errorf("no CLI of the %s family is declared", family)
 		}
 	}
 }
 
-// Every row has a family, and it is one of the two. A row that named a third would be a
+// Every row has a family, and it is one of the three. A row that named a fourth would be a
 // workplace registered under a protocol nothing on this machine can speak.
 func TestNoRowClaimsAFamilyNobodyCanSpeak(t *testing.T) {
+	spoken := map[Family]bool{FamilyACP: true, FamilyOneShot: true, FamilyAppServer: true}
 	for _, row := range All() {
-		if row.Family != FamilyACP && row.Family != FamilyOneShot {
-			t.Errorf("%s is declared as family %q, which is neither of the two", row.Kind, row.Family)
+		if !spoken[row.Family] {
+			t.Errorf("%s is declared as family %q, which is none of the three", row.Kind, row.Family)
 		}
 	}
 }

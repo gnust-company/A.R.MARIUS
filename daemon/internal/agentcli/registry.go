@@ -37,13 +37,22 @@ const (
 // Family is how the daemon talks to a CLI once it runs one.
 type Family string
 
-// The two families. A new CLI joins one of them; neither the wake path nor anything above the
-// adapter contract learns that either exists (FR-035, FR-037).
+// The three families. A new CLI joins one of them; neither the wake path nor anything above the
+// adapter contract learns that any of them exists (FR-035, FR-037).
+//
+// Two of the three speak JSON-RPC down the same pipes, and they are still two families rather
+// than one: a shared wire format is not a shared vocabulary. An ACP peer and a Codex app-server
+// share not one method name between them, so a client that knew only "JSON-RPC over stdio"
+// would be a client that could open the pipe and then say nothing either side understood.
 const (
 	// FamilyACP holds a JSON-RPC conversation over its own standard streams.
 	FamilyACP Family = "acp"
 	// FamilyOneShot is run once per turn and prints an account of what it did.
 	FamilyOneShot Family = "one_shot"
+	// FamilyAppServer holds a JSON-RPC conversation in Codex's own vocabulary: a thread is
+	// opened, a turn is started, and the work arrives as notifications until the turn is
+	// declared over (FR-039d).
+	FamilyAppServer Family = "app_server"
 )
 
 // ACPVersion is the version of the Agent Client Protocol this daemon speaks.
@@ -250,8 +259,9 @@ const (
 	FactSkillsDir   = "skills_dir"
 	FactHomeLayout  = "home_layout"
 	FactHomeVars    = "home_vars"
-	// FactProtocolArgs is asked of the ACP family only. A one-shot CLI has nothing to switch
-	// into, so an empty ProtocolArgs is the right content there and a missing fact here.
+	// FactProtocolArgs is asked of the families that hold a conversation. A one-shot CLI has
+	// nothing to switch into, so an empty ProtocolArgs is the right content there and a
+	// missing fact here.
 	FactProtocolArgs = "protocol_args"
 )
 
@@ -350,12 +360,17 @@ var rows = []CLI{
 	// reads CODEX_HOME to find it (research §11.1). HOME is redirected as well, so that
 	// anything it does not route through CODEX_HOME still lands inside this run's home.
 	{
-		Kind:        Codex,
-		Family:      FamilyOneShot,
-		Binary:      "codex",
-		VersionArgs: []string{"--version"},
-		ContextFile: "AGENTS.md",
-		Skills:      Skills{Path: ".codex/skills", InHome: true},
+		Kind:   Codex,
+		Family: FamilyAppServer,
+		Binary: "codex",
+		// `app-server` is Codex's own interface for programs rather than people, and stdio is
+		// its default transport: newline-delimited JSON-RPC 2.0 down the pipes this daemon
+		// already owns. Named in full anyway rather than relying on the default, because a
+		// default is a thing that changes without anybody's release note.
+		ProtocolArgs: []string{"app-server", "--listen", "stdio://"},
+		VersionArgs:  []string{"--version"},
+		ContextFile:  "AGENTS.md",
+		Skills:       Skills{Path: ".codex/skills", InHome: true},
 		Home: []Entry{
 			{Path: ".codex/auth.json", Lifetime: Operator, Source: ".codex/auth.json"},
 			{Path: ".codex/config.toml", Lifetime: Operator, Source: ".codex/config.toml"},
@@ -416,10 +431,10 @@ func (c CLI) Undeclared() []string {
 	if len(c.HomeVars) == 0 {
 		missing = append(missing, FactHomeVars)
 	}
-	// An ACP row with nothing to start the CLI with is the same shape of silent failure as a
-	// row with no context file: the machine registers the workplace, asks for work, wins a run,
-	// and only then finds it has no way to make the binary speak the protocol.
-	if c.Family == FamilyACP && len(c.ProtocolArgs) == 0 {
+	// A conversational row with nothing to start the CLI with is the same shape of silent
+	// failure as a row with no context file: the machine registers the workplace, asks for
+	// work, wins a run, and only then finds it has no way to make the binary speak a protocol.
+	if c.Family != FamilyOneShot && len(c.ProtocolArgs) == 0 {
 		missing = append(missing, FactProtocolArgs)
 	}
 	return missing

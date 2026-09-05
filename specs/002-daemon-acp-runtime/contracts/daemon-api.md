@@ -96,7 +96,9 @@ Daemon gửi toàn bộ những gì nó dò được. Server đồng bộ: cái 
                             { "key": "thinking_level", "values": ["low","medium","high","xhigh","max"],
                               "source": "tool_declared" },
                             { "key": "model", "values": ["fable","opus","sonnet"],
-                              "source": "tool_examples" } ] } }
+                              "source": "tool_examples" } ] } },
+      { "cli_kind": "codex", "cli_version": "0.144.6", "protocol_family": "app_server",
+        "capabilities": { "resumable": true, "exposes_tool_args": true, "exposes_tool_result": true } }
     ],
     "symlink_capable": true }
 ← 200 { "workplaces": [ { "id": "…", "cli_kind": "gemini", "ready": true,
@@ -104,6 +106,10 @@ Daemon gửi toàn bộ những gì nó dò được. Server đồng bộ: cái 
 ```
 
 `capabilities` là kết quả **hỏi khả năng thật** (FR-017), không được suy từ tên loại CLI.
+
+`protocol_family` có **ba** giá trị — `acp`, `one_shot`, `app_server` (FR-039d) — và server không đọc nó
+để làm gì khác ngoài chuyển tiếp: nó là chữ của daemon nói về chính mình. Một giá trị thứ tư tới trước khi
+server biết nó tồn tại phải đi qua được cửa này y như ba giá trị kia (Điều III).
 
 **`choices` — bổ sung 2026-08-29 lúc hiện thực T039g (FR-007k).** Thứ người dùng đặt được cho một agent
 đặt ở chỗ làm này, và **giá trị nào tool nhận**. Danh sách này là thứ duy nhất quyết ô chọn trên màn hình:

@@ -179,9 +179,11 @@ func TestTheToolDeclarationNamesThisRunsOwnProgram(t *testing.T) {
 }
 
 func TestACLIThatLoadsNoToolsIsGivenNoDeclarationAndStillGetsTheCommand(t *testing.T) {
-	// Codex is not in the table because its side is unmeasured, and Gemini because none of it
-	// is. Neither is thereby left without a way to call back: the command face is the baseline,
-	// and this is the test that says so.
+	// Codex is not in the table because it reads no file — MCP servers are configuration to it,
+	// and its configuration is the operator's own, so its declaration is a command-line override
+	// built where its command line is (`runtime.toolFlags`). Gemini is absent because none of it
+	// is measured. Neither is thereby left without a way to call back: the command face is the
+	// baseline, and this is the test that says so.
 	for _, cli := range []string{"codex", "gemini"} {
 		workDir := t.TempDir()
 		tools, err := execenv.PlaceTools(execenv.ToolsSpec{

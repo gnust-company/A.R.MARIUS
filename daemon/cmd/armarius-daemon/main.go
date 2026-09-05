@@ -559,6 +559,8 @@ func runtimeFor(family string) (runtime.Runtime, bool) {
 		return runtime.OneShot{}, true
 	case agentcli.FamilyACP:
 		return runtime.ACP{}, true
+	case agentcli.FamilyAppServer:
+		return runtime.AppServer{}, true
 	default:
 		return nil, false
 	}
