@@ -121,6 +121,10 @@ func (AppServer) Run(ctx context.Context, req Request, emit Emit) (Outcome, erro
 func toolFlags(req Request) []string {
 	flags := make([]string, 0, 4*len(req.ToolServers))
 	for _, server := range req.ToolServers {
+		// The name goes in as a bare TOML key, which is what it is: one segment of a dotted
+		// path. Every name this daemon mints is the callback program's own constant, so there is
+		// nothing here to escape — a name carrying a dot would silently nest one level deeper,
+		// and the day these names come from anywhere less fixed is the day this needs a guard.
 		at := "mcp_servers." + server.Name
 		flags = append(flags, "-c", at+".command="+asTOML(server.Command))
 		if len(server.Args) > 0 {
@@ -420,7 +424,13 @@ func (c *appConn) itemMoved(msg rpcMessage) {
 		if started {
 			// Arguments only when they were actually sent, so *the CLI does not say* stays
 			// distinguishable from *there was nothing to say* (FR-047).
-			c.journal.ToolStarted(it.ID, "patch", changed(it.Changes), it.Changes != nil)
+			//
+			// Asked of the rendered value, not of the raw one. `json.RawMessage` decodes the
+			// four bytes `null` **into itself** rather than being zeroed the way a map or a
+			// slice is, so a raw field is non-nil for a change set the CLI explicitly said it
+			// has none of — which is the one distinction this line exists to keep.
+			describes := changed(it.Changes)
+			c.journal.ToolStarted(it.ID, "patch", describes, describes != nil)
 			return
 		}
 		// A file change carries its outcome in its status and no output of its own, so there

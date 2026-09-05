@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -663,3 +664,51 @@ for line in sys.stdin:
         send({"jsonrpc": "2.0", "method": "turn/completed",
               "params": {"turn": {"id": "turn_1", "status": "completed"}}})
 `
+
+func TestAFileChangeTravelsWithWhatItProposesAndThenWithHowItWent(t *testing.T) {
+	agent := &fakeCodex{notes: []note{
+		started("fileChange", map[string]any{
+			"id": "f1", "status": "inProgress",
+			"changes": []map[string]any{{"path": "hello.txt", "kind": "add", "diff": "+HELLO"}},
+		}),
+		finished("fileChange", map[string]any{"id": "f1", "status": "completed"}),
+	}}
+
+	events, _, err := attend(t, agent, Request{})
+	if err != nil {
+		t.Fatalf("một lượt qua app-server: %v", err)
+	}
+
+	call := only(t, events, EventToolStarted)
+	if call.Payload["name"] != "patch" || call.OmissionReason != "" {
+		t.Fatalf("một lần sửa tệp có mô tả mà ghi là không nói: %+v", call)
+	}
+	if !strings.Contains(fmt.Sprint(call.Payload["args"]), "hello.txt") {
+		t.Fatalf("mô tả thay đổi không đi kèm: %v", call.Payload)
+	}
+	if done := only(t, events, EventToolCompleted); done.Payload["failed"] != false {
+		t.Fatalf("một lần sửa tệp xong lại báo là hỏng: %v", done.Payload)
+	}
+}
+
+// FR-047, và là cái bẫy của đúng một kiểu dữ liệu: `json.RawMessage` **nhận cả bốn byte `null`
+// vào chính nó** thay vì bị zero-hoá như `map` hay `slice`. Nên hỏi *trường thô có rỗng không* sẽ
+// trả lời **có nội dung** cho một trường mà chính CLI nói là không có gì — đúng cái phân biệt mà
+// dòng ấy tồn tại để giữ. Hỏi giá trị đã dựng, không hỏi giá trị thô.
+func TestAFileChangeCodexDeclinesToDescribeIsNotShownAsAnEmptyChange(t *testing.T) {
+	agent := &fakeCodex{notes: []note{
+		{method: "item/started", params: map[string]any{
+			"item": map[string]any{"type": "fileChange", "id": "f1", "status": "inProgress", "changes": nil},
+		}},
+	}}
+
+	events, _, err := attend(t, agent, Request{})
+	if err != nil {
+		t.Fatalf("một lượt qua app-server: %v", err)
+	}
+
+	call := only(t, events, EventToolStarted)
+	if call.OmissionReason != NotExposedByCLI {
+		t.Fatalf("`changes: null` phải ghi là CLI không nói, ghi được là %q: %+v", call.OmissionReason, call.Payload)
+	}
+}

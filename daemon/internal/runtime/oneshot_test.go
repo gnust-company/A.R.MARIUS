@@ -685,8 +685,11 @@ func TestAnEndingThisFamilyHasNotBeenWatchedSayingIsLeftUnclassified(t *testing.
 }
 
 func TestACLIFamilyWithNothingMeasuredNamesNoWall(t *testing.T) {
-	// Codex has never been run here at all (research §9, T130), so it has no table — and a
-	// family with no table must answer *no verdict*, not fall through to another family's.
+	// A CLI with no table must answer *no verdict* rather than fall through to another's. Asked
+	// here of a name this family does not run at all — Codex belongs to the app-server family
+	// since T130 — which is the strongest form of the question: even a sentence measured word
+	// for word on a different CLI must not be spent on this one, because a wall is a fact about
+	// one program and not about a shape of words.
 	var out Outcome
 	hitAWall("codex", "You've hit your session limit · resets 5:50pm", &out)
 	if out.Failure != "" {
