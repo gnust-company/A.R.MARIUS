@@ -76,6 +76,12 @@ archives:
       - goos: windows
         formats:
           - zip
+    # Named rather than left to the default, which picks up the repository's own README — the
+    # product manifesto. Somebody who unpacks this archive is holding two binaries and looking
+    # for how to install them, and that is a different document.
+    files:
+      - src: daemon/README.md
+        dst: README.md
 
 checksum:
   name_template: checksums.txt

@@ -1,0 +1,44 @@
+# Cutting a release of the daemon.
+#
+# The daemon is the one piece of Armarius that runs on machines we know nothing about, so it
+# ships as a plain per-platform binary rather than as a service we host (FR-008g). This workflow
+# is the only thing that turns `.goreleaser.yml` — which has been correct and unused since it
+# was written — into an archive somebody can actually download.
+#
+# Triggered by a tag, not by a merge. A release is a deliberate act with a version number on it;
+# every push to main producing one would make the version number mean nothing.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  # Needed to create the release and upload its archives. Nothing else is granted: this job
+  # publishes artifacts, it does not touch the repository's contents.
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # goreleaser reads the tag history to build the changelog, and a shallow clone has
+          # none of it — the release would come out with an empty change list and no warning.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          # Read from daemon/go.mod rather than pinned here, so the toolchain that cuts a
+          # release is the one the module asks for and cannot drift away from it.
+          go-version-file: daemon/go.mod
+          cache-dependency-path: daemon/go.sum
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

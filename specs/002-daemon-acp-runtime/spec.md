@@ -503,6 +503,30 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   *ngừng giao việc cho máy này*, một quyết định khác có tên khác.
 - **FR-008c**: Hệ thống KHÔNG hẹn giờ thử lại cho ca chạm trần. **Poll của daemon là cơ chế duy nhất** —
   máy rảnh thì tự xin, không cần ai đánh thức (chốt 2026-08-22).
+- **FR-008g**: Daemon PHẢI có **bản phát hành tải về được** cho từng nền tảng, cắt tự động từ một tag
+  bằng chính cấu hình dựng đã có trong repo. *Chốt 2026-09-06, người chủ.* Lý do là một sự thật đo được
+  chứ không phải một mong muốn: FR-001 đòi *một người cài và chạy daemon trên máy của mình*, trong khi
+  `daemon/README.md` chỉ người ta ra **trang phát hành**, và trang ấy rỗng — không release nào, không tag
+  nào, không có đường nào trong repo cắt được một cái. Nên FR-001 đúng với mã và sai với sản phẩm: người
+  duy nhất cài được daemon là người dựng được nó từ nguồn.
+
+  Kèm một ràng buộc về câu chữ: tài liệu CHỈ ĐƯỢC dẫn tới thứ **đã tồn tại**. Một trang hướng dẫn trỏ vào
+  cái link tải không có gì tệ hơn một câu mơ hồ — câu mơ hồ để người ta đi hỏi, còn cái link chết để người
+  ta tưởng mình làm sai.
+- **FR-008h**: Hệ thống PHẢI có **tài liệu cho người dùng** — không phải cho người viết mã — và mọi câu chỉ
+  dẫn trong giao diện PHẢI **dẫn được** tới nó. *Chốt 2026-09-06, người chủ, sau một lần tự dùng thử.*
+  Điều khoản này sinh ra từ một chỗ cụ thể: màn hình Máy lúc chưa có máy nào chỉ nói *"cài daemon rồi chạy
+  `armarius-daemon login`"* — một câu đúng nhưng không dùng được, vì nó giả định người đọc đã biết daemon
+  là gì và lấy ở đâu.
+
+  Ba ràng buộc:
+  - Tài liệu nằm ở `docs/`, viết bằng Markdown, sơ đồ bằng Mermaid — đọc được ngay trên GitHub, không cần
+    dựng trang web nào trước.
+  - Chỗ nào trong giao diện nói người ta phải làm một việc ngoài giao diện thì chỗ ấy PHẢI có **đường dẫn**
+    tới trang tài liệu nói cách làm việc đó.
+  - Tài liệu cũ đã lỗi thời KHÔNG ĐƯỢC nằm cùng chỗ với tài liệu đang đúng. Một nhãn *ĐÃ LỖI THỜI* dán trên
+    đầu file không đủ: `docs/` đang có năm file như thế, cả năm đều dán nhãn, và nhãn ấy còn trỏ người đọc
+    sang `spec/` — một thư mục cũng đã dỡ đi. Cái sai không phải là thiếu nhãn mà là để chúng ở cùng chỗ.
 
 ### Nhóm B — Giao việc và nói chuyện với agent
 
