@@ -1,4 +1,4 @@
-> ⚠️ **ĐÃ LỖI THỜI (ARCHIVED).** Nguồn sự thật hiện tại là [`spec/`](../spec/) (tiếng Việt). Xem [docs/README.md](README.md).
+> ⚠️ **ĐÃ LỖI THỜI (ARCHIVED).** Nguồn sự thật hiện tại là [`specs/`](../../specs/) (tiếng Việt). Xem [README.md](README.md).
 
 # Armarius — Low-Level Design (LLD)
 

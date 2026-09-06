@@ -19,6 +19,7 @@
 - [Core Philosophy](#core-philosophy)
 - [How the Workshop Runs](#how-the-workshop-runs)
 - [Quick Start](#quick-start)
+- [Documentation](#documentation)
 - [Bring Your Own Agent](#bring-your-own-agent)
 - [Architecture](#architecture)
 - [Where the Truth Lives](#where-the-truth-lives)
@@ -197,6 +198,21 @@ always renders your language from the same code.
 
 ---
 
+## Documentation
+
+Full user documentation lives in **[`docs/`](./docs/)**:
+
+| Page | For |
+| --- | --- |
+| [Quickstart](./docs/quickstart.md) | From nothing to a task an agent has finished |
+| [Core concepts](./docs/concepts.md) | The vocabulary — workspace, workplace, run, artifact |
+| [How A.R.MARIUS works](./docs/how-armarius-works.md) | The real path a task travels |
+| [Machines and the daemon](./docs/machines-and-daemon.md) | Installing the daemon, and fixing a workplace that will not take work |
+| [Agents](./docs/agents.md) · [Skills](./docs/skills.md) | Building the team |
+| [Projects and tasks](./docs/projects-and-tasks.md) · [Patron inbox](./docs/inbox.md) | Everyday work |
+
+---
+
 ## Quick Start
 
 The whole workshop — Postgres, MinIO, the Clean-Architecture API, and the Scriptorium
@@ -214,6 +230,9 @@ demo@acme.dev / demo1234
 ```
 
 - **API + docs** → http://localhost:8080/docs  ·  health: http://localhost:8080/healthz
+
+Agents run on **your** machine, not ours, so the next step is linking one — install the daemon
+and connect it. Full walkthrough: **[docs/quickstart.md](./docs/quickstart.md)**.
 
 On a fresh database the stack seeds the **Acme Web Platform** demo workspace — four Mariuses
 (Alice, Bob, Cleo, Dex) and tasks spanning every lifecycle state. Wakes use a bundled **echo**
@@ -332,7 +351,8 @@ The behaviour of this system is specified before it is built, and the spec is th
 | [`.specify/memory/constitution.md`](./.specify/memory/constitution.md) | The project constitution — the rules no feature may break |
 | [`specs/001-van-hanh-du-an/`](./specs/001-van-hanh-du-an/) | The current feature spec (Vietnamese): `spec.md` · `plan.md` · `tasks.md` · `data-model.md` · `contracts/` |
 | [`PROJECT_DESCRIPTION.md`](./PROJECT_DESCRIPTION.md) | The original product brief that started the project |
-| [`docs/`](./docs/) | **Archived.** Frozen mid-2026 and no longer matching the code — see [`docs/README.md`](./docs/README.md) |
+| [`docs/`](./docs/) | **User documentation** — install, concepts, how a task actually travels |
+| [`_archive/docs-v1/`](./_archive/docs-v1/) | **Archived.** The mid-2026 design docs (HLD/LLD/API contract), no longer matching the code |
 | [`_archive/spec-v1/`](./_archive/spec-v1/) | **Archived.** The pre-spec-kit specification, superseded by `specs/` |
 | [`SPRINT_PLAN.md`](./SPRINT_PLAN.md) | **Historical build log.** Sequencing now lives in `specs/*/tasks.md` |
 
