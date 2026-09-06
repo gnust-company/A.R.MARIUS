@@ -65,6 +65,8 @@ export const en = {
     title: 'Machines',
     subtitle: 'The machines you have linked to this workspace, and who lives where.',
     refresh: 'Reload',
+    linkMachine: 'Link a machine',
+    guide: 'How to add a machine',
     loading: 'Reading the machine list…',
     unnamed: 'Unnamed machine',
     online: 'Connected',
@@ -87,7 +89,9 @@ export const en = {
     },
     empty: {
       title: 'No machine linked yet',
-      description: 'Agents run on your own machines. Install the daemon and run `armarius-daemon login` to link the first one.',
+      description:
+        'Agents run on your machines, not ours. To give them work you install a small program called the daemon on your machine and link it here. The guide covers everything from where to download it to the linking command.',
+      readGuide: 'Read the guide',
     },
   },
   projectPlan: {
@@ -266,6 +270,7 @@ export const en = {
     retry: 'Retry',
   },
   directory: {
+    skillAlwaysOn: 'Built-in — every agent gets it; there is nothing to choose.',
     title: 'Directory',
     pageTitle: 'Agents',
     agentsInWorkspace: '{{count}} agents in workspace',

@@ -14,20 +14,37 @@ import {
   ChevronDown,
   Check,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '@/store/appStore';
 import { cn, wsHref } from '@/lib/utils';
 
 // `external: true` = a top-level route (no workspace prefix), e.g. the launcher.
-const NAV_ITEMS = [
+// `counter` names a store field whose number rides beside the label. It replaced a `badge: true`
+// that painted the dot beside the inbox unconditionally — lit on an empty inbox, lit on a full
+// one. A count is the only honest form of that mark, and a constant cannot be one.
+/** Store fields a nav row may show a number from. One today; add a name, not a branch. */
+type CounterName = 'inboxPending';
+
+interface NavItem {
+  path: string;
+  labelKey: string;
+  icon: LucideIcon;
+  /** A top-level route with no workspace prefix, e.g. the launcher. */
+  external?: boolean;
+  /** Which store count rides beside this label. */
+  counter?: CounterName;
+}
+
+const NAV_ITEMS: NavItem[] = [
   { path: '/projects', labelKey: 'nav.projects', icon: LayoutDashboard },
   { path: '/agents', labelKey: 'nav.directory', icon: Users },
   { path: '/machines', labelKey: 'nav.machines', icon: Laptop },
   { path: '/skills', labelKey: 'nav.skills', icon: Wrench },
-  { path: '/inbox', labelKey: 'nav.inbox', icon: Inbox, badge: true },
+  { path: '/inbox', labelKey: 'nav.inbox', icon: Inbox, counter: 'inboxPending' },
 ];
 
-const BOTTOM_ITEMS = [
+const BOTTOM_ITEMS: NavItem[] = [
   { path: '/account', labelKey: 'nav.account', icon: Settings },
   { path: '/workspaces', labelKey: 'nav.atelier', icon: Palette, external: true },
 ];
@@ -126,6 +143,11 @@ export default function Navbar() {
   const { workspaceId } = useParams();
   const collapsed = useAppStore((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
+  // The numbers a nav row may carry, looked up by the `counter` name on the row. One entry today;
+  // a map rather than a single value so the next row that needs a count adds a key, not a branch.
+  const counters: Record<CounterName, number> = {
+    inboxPending: useAppStore((s) => s.inboxPending),
+  };
 
   // Compare against the workspace-relative sub-path (strip the /w/:workspaceId prefix).
   const base = workspaceId ? `/w/${workspaceId}` : '';
@@ -203,6 +225,7 @@ export default function Navbar() {
       <div className="flex-1 flex flex-col gap-1 px-2 mt-3 overflow-y-auto">
         {NAV_ITEMS.map((item, i) => {
           const active = isActive(item);
+          const waiting = item.counter ? counters[item.counter] : 0;
           return (
             <motion.div
               key={item.path}
@@ -227,8 +250,17 @@ export default function Navbar() {
                 {!collapsed && (
                   <span className="truncate">
                     {t(item.labelKey)}
-                    {item.badge && <span className="ml-2 inline-flex w-2 h-2 rounded-full bg-terracotta" />}
+                    {waiting > 0 && (
+                      <span className="ml-2 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-semibold leading-none text-white bg-terracotta align-middle">
+                        {waiting > 99 ? '99+' : waiting}
+                      </span>
+                    )}
                   </span>
+                )}
+                {/* Collapsed to icons there is no room for a number, so the mark degrades to a
+                    dot — still driven by the same count, so it is still telling the truth. */}
+                {collapsed && waiting > 0 && (
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-terracotta" />
                 )}
               </Link>
             </motion.div>

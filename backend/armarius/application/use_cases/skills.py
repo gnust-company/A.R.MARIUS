@@ -296,6 +296,26 @@ class SkillService:
                 await self._forget_everywhere(uow, skill.workspace_id, skill)
             await uow.commit()
 
+    async def builtins_for(self, workspace_id: UUID) -> Sequence[Skill]:
+        """The skills every agent in this workspace gets whether anyone chose them or not.
+
+        There is one, and it is the sheet that teaches an agent to talk back to Armarius. It is
+        not optional the way a working method is optional: the wake prompt tells every agent to
+        *use your Armarius tools*, and the tools themselves arrive on every run injected by the
+        daemon (FR-013a) — so an agent without the sheet has been handed instructions naming
+        capabilities nobody explained. That was the state until 2026-09-06: the sheet was seeded
+        into every workspace and undeletable, but `mariuses.skill_ids` starts empty and nothing
+        ever added it, so whether an agent could read its own instructions came down to whether
+        a person happened to tick a chip.
+
+        Read off `source` rather than off a hardcoded slug, so a second built-in added to
+        `BUILTIN_SKILLS` is carried without anybody remembering this method exists.
+        """
+        await self.seed_builtins(workspace_id)
+        async with self._uow() as uow:
+            rows = await uow.skills.list_by_workspace(workspace_id)
+        return [row for row in rows if row.source == "builtin"]
+
     async def resolve(self, skill_ids: list[str]) -> Sequence[Skill]:
         if not skill_ids:
             return []

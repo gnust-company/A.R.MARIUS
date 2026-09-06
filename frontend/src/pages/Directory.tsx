@@ -6,6 +6,7 @@ import {
   Plus,
   Search,
   Check,
+  Lock,
   Star,
   MoreHorizontal,
   Loader2,
@@ -852,23 +853,31 @@ export default function Directory() {
                   {t('directory.skills')}
                 </label>
                 <div className="flex flex-wrap gap-1.5">
-                  {skills.map((skill) => (
-                    <button
-                      key={skill.id}
-                      onClick={() => toggleSkill(skill.id)}
-                      className={cn(
-                        'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all',
-                        selectedSkillIds.includes(skill.id)
-                          ? 'bg-[#C25E3A] text-white'
-                          : 'bg-[#E3D7BC] text-[#6B5E4E] hover:bg-[#D9CDB8]'
-                      )}
-                    >
-                      {selectedSkillIds.includes(skill.id) && (
-                        <Check className="w-3 h-3" />
-                      )}
-                      {skill.name}
-                    </button>
-                  ))}
+                  {skills.map((skill) => {
+                    // A built-in rides every run whether or not anybody picks it, so offering it
+                    // as a choice would be offering a switch that is not wired to anything.
+                    // Shown as on and not clickable, because it IS on.
+                    const always = skill.type === 'builtin';
+                    const on = always || selectedSkillIds.includes(skill.id);
+                    return (
+                      <button
+                        key={skill.id}
+                        onClick={() => !always && toggleSkill(skill.id)}
+                        disabled={always}
+                        title={always ? t('directory.skillAlwaysOn') : undefined}
+                        className={cn(
+                          'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all',
+                          on
+                            ? 'bg-[#C25E3A] text-white'
+                            : 'bg-[#E3D7BC] text-[#6B5E4E] hover:bg-[#D9CDB8]',
+                          always && 'cursor-default opacity-90'
+                        )}
+                      >
+                        {on && (always ? <Lock className="w-3 h-3" /> : <Check className="w-3 h-3" />)}
+                        {skill.name}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

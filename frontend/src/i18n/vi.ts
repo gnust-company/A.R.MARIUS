@@ -65,6 +65,8 @@ export const vi = {
     title: 'Máy',
     subtitle: 'Những cái máy anh đã nối vào không gian này, và agent nào đang sống ở đâu.',
     refresh: 'Đọc lại',
+    linkMachine: 'Nối máy',
+    guide: 'Hướng dẫn thêm máy',
     loading: 'Đang đọc danh sách máy…',
     unnamed: 'Máy chưa đặt tên',
     online: 'Đang nối',
@@ -87,7 +89,9 @@ export const vi = {
     },
     empty: {
       title: 'Chưa nối máy nào',
-      description: 'Agent chạy trên máy của chính anh. Cài daemon rồi chạy `armarius-daemon login` để nối cái máy đầu tiên.',
+      description:
+        'Agent chạy trên máy của chính bạn, không phải máy của chúng tôi. Để giao được việc, bạn cần cài một chương trình nhỏ tên là daemon lên máy mình rồi nối nó vào đây. Hướng dẫn có đủ từ chỗ tải về tới lệnh nối máy.',
+      readGuide: 'Đọc hướng dẫn',
     },
   },
   projectPlan: {
@@ -266,6 +270,7 @@ export const vi = {
     retry: 'Thử lại',
   },
   directory: {
+    skillAlwaysOn: 'Kỹ năng có sẵn — mọi agent đều nhận, không cần chọn.',
     title: 'Danh bạ',
     pageTitle: 'Các Agent',
     agentsInWorkspace: '{{count}} agent trong không gian',

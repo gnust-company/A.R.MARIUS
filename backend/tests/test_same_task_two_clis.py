@@ -190,7 +190,13 @@ async def test_the_same_task_is_handed_over_identically_on_both_families() -> No
     # Named as well as compared, because an empty packet on both sides would satisfy an
     # equality check while proving nothing at all.
     assert one_shot["grant"]["prompt"], "gói việc không mang câu nào cho agent đọc"
-    assert [s["files"] for s in one_shot["grant"]["skills"]] == [COOKBOOK]
+    # Hai kỹ năng, và thứ tự là một quyết định: tờ hướng dẫn có sẵn đi trước, kỹ năng người chủ
+    # chọn đi sau (2026-09-06). Bài này chỉ cần biết cái người chủ chọn đi xuống **nguyên vẹn**;
+    # luật "tờ hướng dẫn luôn đi cùng" có bài riêng ở `test_claim_carries_skills.py`.
+    handed = {s["name"]: s["files"] for s in one_shot["grant"]["skills"]}
+    assert "armarius-http" in handed, "gói việc thiếu tờ hướng dẫn giao thức"
+    assert COOKBOOK in handed.values(), "kỹ năng người chủ chọn không đi xuống nguyên vẹn"
+    assert len(handed) == 2, f"gói việc mang {sorted(handed)} thay vì đúng hai kỹ năng"
 
     # The one field left out of the comparison, checked as what it actually is. Two runs
     # seconds apart cannot hold the same moment; they must hold the same *lease*, and a lease
