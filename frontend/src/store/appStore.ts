@@ -496,6 +496,13 @@ interface AppStoreState {
   activeOnboarding: OnboardingSessionVM | null
   sseConnected: boolean
   sidebarCollapsed: boolean
+  /** How many inbox letters are waiting on the patron right now (FR-061).
+   *
+   *  Lives in the store rather than on the Inbox page because the sidebar needs it too, and the
+   *  dot beside *Hộp thư Patron* used to be a literal `true` in the nav table — a lamp that was
+   *  always on, which is the same as no lamp. Read once and then kept true by the inbox channel;
+   *  never polled (Hiến pháp — Điều IV). */
+  inboxPending: number
 
   // Actions
   /** Invite a new agent into the active workspace (operator-invite, #63): the backend mints
@@ -534,6 +541,7 @@ interface AppStoreState {
   logout: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
   setSseConnected: (connected: boolean) => void
+  setInboxPending: (count: number) => void
   updateTask: (taskId: string, updater: TaskUpdate) => Promise<void>
   /** Người chủ sửa thẳng một đầu việc, có hiệu lực ngay (FR-070, FR-070a).
    *  Chỉ gửi đi những khoá thật sự có trong bản vá: khoá vắng mặt là *không đụng*,
@@ -621,6 +629,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   activeOnboarding: null,
   sseConnected: false,
   sidebarCollapsed: false,
+  inboxPending: 0,
 
   listWorkplaces: async () => {
     const workspaceId = get().activeWorkspaceId || 'w1'
@@ -720,6 +729,8 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
 
   setSseConnected: (connected) => set({ sseConnected: connected }),
+
+  setInboxPending: (count) => set({ inboxPending: count }),
 
   logout: () => {
     clearTokens()

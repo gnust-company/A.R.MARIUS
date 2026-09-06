@@ -327,8 +327,13 @@ export function subscribeProjectEvents(
  * Subscribe to the caller's inbox SSE (`/v1/inbox/events`, spec 001).
  *
  * Keyed server-side by the authenticated user — there is no id to pass, and no way to
- * watch anyone else's inbox. This is what keeps the Inbox page off a polling loop
- * (Constitution IV).
+ * watch anyone else's inbox. This is what keeps the inbox count off a polling loop
+ * (Constitution IV): an event says *go and re-read*, and the events carry identifiers and
+ * labels only, never a letter's body.
+ *
+ * Subscribed once, by `useInboxCount` under `Layout`. It sat here with no caller at all from the
+ * day it was written until 2026-09-06 — which is why the mark beside the inbox in the sidebar was
+ * a hardcoded `true` rather than a number: the road existed and nobody was on it.
  */
 export function subscribeInboxEvents(
   onEvent: (event: { type: string; data: Record<string, unknown> }) => void,

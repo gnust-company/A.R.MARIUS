@@ -3,6 +3,7 @@ import { Outlet, Navigate, useParams } from 'react-router';
 import Navbar from './Navbar';
 import TopBar from './TopBar';
 import { useAppStore } from '@/store/appStore';
+import { useInboxCount } from '@/hooks/use-inbox-count';
 import { useWorkspaceEvents } from '@/hooks/use-workspace-events';
 import { cn } from '@/lib/utils';
 
@@ -27,6 +28,11 @@ export default function Layout() {
 
   // Subscribe to this workspace's control-plane SSE.
   useWorkspaceEvents(workspaceId ?? null);
+
+  // And to the patron's own inbox channel, which is a different channel on purpose: a letter is
+  // addressed to a person, not to a workspace, so it arrives keyed by who is asking. Mounted
+  // here because the sidebar shows the count on every screen.
+  useInboxCount(Boolean(workspaceId));
 
   // A stale/unknown workspace id (e.g. an old deep link) → back to the launcher. Guard
   // only after the list has loaded so we don't bounce during the initial hydrate.

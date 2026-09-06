@@ -787,11 +787,29 @@ class WakeEngine:
         pulled from a repository, so this is data from outside, and a half-written skill is
         worse than an absent one — the agent would read a SKILL.md whose companion files
         were silently dropped.
+
+        **The workspace's built-ins ride along whether or not anybody chose them.** One of them
+        is the sheet that teaches an agent to talk back to Armarius, and the prompt this same
+        packet carries already tells the agent to *use your Armarius tools* — so leaving the
+        sheet to a chip somebody has to tick is handing over instructions that name capabilities
+        nobody explained. Added here rather than written into `mariuses.skill_ids`, and the
+        difference matters twice: every agent that already exists is covered without a migration,
+        and nobody can untick it later.
+
+        Built-ins go **first** so that a person's own skills are what gets dropped if a CLI ever
+        caps how many it will read, and the list is de-duplicated by id: ticking the chip anyway
+        is a reasonable thing for a person to have done, and it must not produce the skill twice.
         """
         if self._skills is None:
             return ()
+        granted = list(await self._skills.builtins_for(marius.workspace_id))
+        granted += await self._skills.resolve(list(marius.skill_ids))
+        seen: set[str] = set()
         bundles: list[SkillBundle] = []
-        for skill in await self._skills.resolve(list(marius.skill_ids)):
+        for skill in granted:
+            if str(skill.id) in seen:
+                continue
+            seen.add(str(skill.id))
             if not _is_safe_segment(skill.slug):
                 logger.warning("skill %s has an unusable directory name", skill.id)
                 continue

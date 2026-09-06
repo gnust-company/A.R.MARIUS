@@ -82,6 +82,19 @@ COOKBOOK = {
     "ref/stock.md": "Simmer for six hours.\n",
 }
 
+#: Kỹ năng có sẵn của mọi workspace — tờ hướng dẫn agent nói lại với Armarius.
+BUILTIN = "armarius-http"
+
+
+def chosen(packet: dict) -> list[str]:
+    """Những kỹ năng **người chủ chọn**, theo thứ tự đi xuống.
+
+    Kỹ năng có sẵn đi cùng mọi gói việc dù không ai chọn (2026-09-06), nên gạt nó ra là cách
+    duy nhất để các bài dưới đây còn hỏi đúng câu chúng sinh ra để hỏi. Chính luật mới thì có
+    bài riêng của nó.
+    """
+    return [s["name"] for s in packet["skills"] if s["name"] != BUILTIN]
+
 
 # ── whole, and in the packet ──────────────────────────────────────────────────
 
@@ -95,19 +108,33 @@ async def test_the_packet_carries_the_skill_whole() -> None:
 
         packet = await _claim_for(c, box, agent)
 
-        assert [s["name"] for s in packet["skills"]] == [skill["slug"]]
-        assert packet["skills"][0]["files"] == COOKBOOK
+        assert chosen(packet) == [skill["slug"]]
+        mine = next(s for s in packet["skills"] if s["name"] == skill["slug"])
+        assert mine["files"] == COOKBOOK
 
 
-async def test_an_agent_with_no_skills_is_given_none() -> None:
-    """Không có kỹ năng nào là một câu trả lời, không phải một lỗi."""
+async def test_an_agent_nobody_chose_a_skill_for_still_gets_the_sheet_it_needs() -> None:
+    """Không chọn gì thì vẫn nhận tờ hướng dẫn giao thức — nó không phải một lựa chọn.
+
+    Bài này thay một bài cũ khẳng định *không chọn gì thì nhận về rỗng*, và câu ấy đã sai từ
+    lúc nó được viết chứ không phải sai từ hôm nay: chính thông điệp đi cùng gói việc này bảo
+    agent *use your Armarius tools*, còn bộ công cụ ấy do daemon bơm vào mỗi lượt chạy. Một
+    agent không có tờ hướng dẫn là một agent được đưa lệnh gọi tên những thứ không ai giải
+    thích — và tới 2026-09-06 thì việc nó có đọc được hay không phụ thuộc vào việc có ai bấm
+    đúng một cái chip trên giao diện.
+    """
     async with _client() as c:
         box = await link_machine(c, "skills-none@armarius.dev")
         agent = await _agent(c, box, name="Marin", skill_ids=[])
 
         packet = await _claim_for(c, box, agent)
 
-        assert packet["skills"] == []
+        assert [s["name"] for s in packet["skills"]] == [BUILTIN]
+        assert chosen(packet) == []
+        # Và nó tới **nguyên vẹn**, không phải một cái tên rỗng ruột.
+        sheet = packet["skills"][0]["files"]
+        assert "SKILL.md" in sheet
+        assert "armarius help" in sheet["SKILL.md"]
 
 
 async def test_one_agents_skills_never_ride_another_agents_work() -> None:
@@ -123,7 +150,7 @@ async def test_one_agents_skills_never_ride_another_agents_work() -> None:
 
         packet = await _claim_for(c, box, marin)
 
-        assert [s["name"] for s in packet["skills"]] == [mine["slug"]]
+        assert chosen(packet) == [mine["slug"]]
 
 
 async def test_the_skills_arrive_in_the_order_they_were_granted() -> None:
@@ -138,10 +165,7 @@ async def test_the_skills_arrive_in_the_order_they_were_granted() -> None:
 
         packet = await _claim_for(c, box, agent)
 
-        assert [s["name"] for s in packet["skills"]] == [
-            first["slug"],
-            second["slug"],
-        ]
+        assert chosen(packet) == [first["slug"], second["slug"]]
 
 
 # ── and nothing that could be written outside its own directory ───────────────
@@ -172,4 +196,4 @@ async def test_a_skill_that_could_write_outside_its_own_directory_is_refused(
 
         packet = await _claim_for(c, box, agent)
 
-        assert [s["name"] for s in packet["skills"]] == [good["slug"]]
+        assert chosen(packet) == [good["slug"]]

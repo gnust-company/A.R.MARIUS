@@ -10,10 +10,21 @@
 // Constitution VII); a code with no phrase still produces a sentence rather than leaking the
 // key onto the screen.
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'react-router';
+import { Link, useParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { Bot, Cpu, Laptop, Loader2, RefreshCw, Terminal, WifiOff } from 'lucide-react';
+import {
+  BookOpen,
+  Bot,
+  Cpu,
+  ExternalLink,
+  Laptop,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Terminal,
+  WifiOff,
+} from 'lucide-react';
 import {
   listMachines,
   updateMachine,
@@ -23,6 +34,7 @@ import {
 import EmptyState from '@/components/EmptyState';
 import PageTitle from '@/components/PageTitle';
 import VellumPanel from '@/components/VellumPanel';
+import { DOCS } from '@/lib/docs';
 import { cn } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
 
@@ -245,17 +257,39 @@ export default function Machines() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-8">
-      <div className="flex items-start justify-between gap-4 mb-6">
+    // No padding and no centring of its own. `Layout` already wraps every page in `p-6`, so the
+    // `max-w-4xl mx-auto px-6 py-8` that used to sit here paid the margin twice and pushed this
+    // one screen's title into a narrow column while every other title sat at the top left.
+    <div className="min-h-[100dvh]">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <PageTitle title={t('machines.title')} subtitle={t('machines.subtitle')} />
-        <button
-          onClick={reload}
-          disabled={reloading}
-          className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium text-[#6B5E4E] border border-[#E3D7BC] hover:bg-[#F3ECDA] transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={cn('w-3.5 h-3.5', reloading && 'animate-spin')} />
-          {t('machines.refresh')}
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/link"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium text-white bg-[#C25E3A] hover:bg-[#A94E2E] transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            {t('machines.linkMachine')}
+          </Link>
+          <a
+            href={DOCS.machines}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium text-[#6B5E4E] border border-[#E3D7BC] hover:bg-[#F3ECDA] transition-colors"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            {t('machines.guide')}
+            <ExternalLink className="w-3 h-3 opacity-60" />
+          </a>
+          <button
+            onClick={reload}
+            disabled={reloading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium text-[#6B5E4E] border border-[#E3D7BC] hover:bg-[#F3ECDA] transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={cn('w-3.5 h-3.5', reloading && 'animate-spin')} />
+            {t('machines.refresh')}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -273,6 +307,29 @@ export default function Machines() {
           icon={Cpu}
           title={t('machines.empty.title')}
           description={t('machines.empty.description')}
+          // Two ways out, because the old screen offered none: it named a command and left the
+          // reader to work out what a daemon is and where to get one (FR-008h).
+          action={
+            <div className="flex flex-col sm:flex-row items-center gap-2">
+              <Link
+                to="/link"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium text-white bg-[#C25E3A] hover:bg-[#A94E2E] transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                {t('machines.linkMachine')}
+              </Link>
+              <a
+                href={DOCS.machines}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium text-[#6B5E4E] border border-[#E3D7BC] hover:bg-[#F3ECDA] transition-colors"
+              >
+                <BookOpen className="w-4 h-4" />
+                {t('machines.empty.readGuide')}
+                <ExternalLink className="w-3.5 h-3.5 opacity-60" />
+              </a>
+            </div>
+          }
         />
       ) : (
         <motion.div
