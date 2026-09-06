@@ -34,7 +34,13 @@ jobs:
           # Read from daemon/go.mod rather than pinned here, so the toolchain that cuts a
           # release is the one the module asks for and cannot drift away from it.
           go-version-file: daemon/go.mod
-          cache-dependency-path: daemon/go.sum
+          # Caching off, and not as a shrug: the module has **no external dependencies** — its
+          # go.mod carries no `require` block, so no `go.sum` has ever been generated. There is
+          # nothing to cache. Left on, this step dies before goreleaser is reached: setup-go
+          # resolves a dependency file to key the cache by, finds none, and fails the job — which
+          # would make the release workflow red at *Set up Go*, the one thing this file exists to
+          # prevent. The day a dependency is added, a go.sum appears and this can come back.
+          cache: false
 
       - uses: goreleaser/goreleaser-action@v6
         with:

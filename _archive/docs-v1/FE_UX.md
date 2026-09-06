@@ -6,8 +6,8 @@
 > must implement, derived directly from [ARCHITECTURE.md](./ARCHITECTURE.md) UC1–UC8 (UC9 deferred).
 > This doc supersedes the earlier "reskin the old FE" approach: the current `frontend/` is treated as
 > **deleted** and rebuilt fresh from this spec. Visual language stays the locked **Scriptorium**
-> charter ([FE_DESIGN.md](./FE_DESIGN.md)): warm parchment + terracotta + manuscript gold, high-contrast
-> serifs, **no burn, subtle deckle only**.
+> charter (`docs/FE_DESIGN.md`, deleted in 1345088): warm parchment + terracotta + manuscript
+> gold, high-contrast serifs, **no burn, subtle deckle only**.
 >
 > **Locked this round:** (1) scope = UC1–UC8 only; UC9 agent-onboarding chat deferred. (2) Bilingual
 > EN/VI kept, but the **language toggle lives only in Account** — not the sidebar.
