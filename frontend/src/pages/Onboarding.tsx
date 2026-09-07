@@ -16,6 +16,7 @@ import { motion } from 'framer-motion'
 import { ArrowRight, Check, Copy, Laptop, User as UserIcon } from 'lucide-react'
 
 import { updateMe, updateWorkspace } from '@/lib/api'
+import { subscribeWorkspaceEvents } from '@/lib/sse'
 import { errorText } from '@/lib/errors'
 import { DOCS } from '@/lib/docs'
 import { copyToClipboard, cn, wsHref } from '@/lib/utils'
@@ -27,6 +28,11 @@ const INSTALL =
   'curl -fsSL https://raw.githubusercontent.com/gnust-company/A.R.MARIUS/main/scripts/install.sh | bash'
 
 const STEPS = 3
+
+/** The event the server publishes when somebody approves a machine into this workspace.
+ *  Named here rather than inlined because it is one half of a contract whose other half is
+ *  `EVENT_MACHINE_LINKED` in the backend's workspace-trace port. */
+const MACHINE_LINKED = 'machine.linked'
 
 /** A command a person is meant to run somewhere else, with a button that takes it with them.
  *
@@ -81,6 +87,10 @@ export default function Onboarding() {
   const [busy, setBusy] = useState(false)
 
   const workspace = workspaces[0]
+  // Held apart from the object because it is what the effects below depend on: the store hands
+  // back a fresh array on every hydrate, so depending on the workspace itself would tear down
+  // and reopen the stream underneath for a value that never changed.
+  const workspaceId = workspace?.id
 
   useEffect(() => {
     void hydrateWorkspaces().catch(() => {})
@@ -97,12 +107,29 @@ export default function Onboarding() {
         onboardingStep: saved.onboarding_step ?? STEPS,
         onboarded: saved.onboarded ?? true,
       })
-      navigate(workspace ? wsHref(workspace.id, '/projects') : '/workspaces')
+      navigate(workspaceId ? wsHref(workspaceId, '/projects') : '/workspaces')
     } catch (err) {
       setError(errorText(err, t))
       setBusy(false)
     }
-  }, [navigate, setCurrentUser, t, workspace])
+  }, [navigate, setCurrentUser, t, workspaceId])
+
+  // The last step asks for exactly one thing — a machine — and the daemon opens the approval
+  // page in a window of its own (FR-001b). So whoever approves is, normally, not in this
+  // window, and without this line this window would stand on step three forever while the
+  // work it was waiting for is already done. The person who reported it put it plainly: two
+  // windows open, and no way to tell which one is theirs.
+  //
+  // Pushed, not asked for in a loop (Constitution IV): the server announces the approval on
+  // the workspace channel and this window acts on it. Approving from another browser — a
+  // phone, say — cannot reach here, and that is the accepted limit: the button below still
+  // works, and so does reloading.
+  useEffect(() => {
+    if (step !== STEPS - 1 || !workspaceId) return
+    return subscribeWorkspaceEvents(workspaceId, (event) => {
+      if (event.type === MACHINE_LINKED) void finish()
+    })
+  }, [step, workspaceId, finish])
 
   async function saveName(e: FormEvent) {
     e.preventDefault()
@@ -164,7 +191,7 @@ export default function Onboarding() {
       />
 
       <motion.div
-        className="w-full max-w-md relative z-10"
+        className="w-full max-w-xl relative z-10"
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
@@ -279,6 +306,13 @@ export default function Onboarding() {
                 <Command text={`armarius-daemon login -server ${window.location.origin.replace(/:\d+$/, ':8080')}`} />
                 <p className="font-body text-body-sm text-ink-muted">
                   {t('firstSteps.loginStepHint')}
+                </p>
+                <p className="font-body text-body-sm text-ink-light pt-1">
+                  {t('firstSteps.startStep')}
+                </p>
+                <Command text="armarius-daemon start" />
+                <p className="font-body text-body-sm text-ink-muted">
+                  {t('firstSteps.startStepHint')}
                 </p>
               </div>
 

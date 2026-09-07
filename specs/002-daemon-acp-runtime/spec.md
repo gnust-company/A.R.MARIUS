@@ -505,6 +505,30 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
     - Chỗ ngồi chung **không mô tả công việc của ai**: dòng của nó chỉ về instructions của chính agent, và
       đó là câu đi vào gói tin agent nhận được. Dự án dựng trước T039j giữ nguyên bảng nhân sự cũ của nó —
       cửa mới không viết lại lịch sử, người vào sau ngồi vào chỗ chung.
+- **FR-007m**: Instructions của một agent PHẢI **đọc được và sửa được** sau khi tạo. Hôm nay chúng chỉ
+  viết được đúng một lần, lúc tạo: cửa `PATCH` nhận `name`, `skills`, `adapter_type`, `runtime_options`
+  — không nhận `instructions`; và màn agent không hiện chúng ra chỗ nào.
+
+  Đây là hệ quả trực tiếp của FR-007l và phải sửa cùng chỗ với nó: từ khi vai theo dự án bị bỏ,
+  instructions **là** thứ duy nhất nói agent cư xử thế nào. Một thứ duy nhất mà chỉ viết được một lần
+  thì cách sửa cách cư xử của một agent là **xoá nó đi và tạo lại**, mất theo cả lịch sử lượt chạy,
+  skill đã liên kết và chỗ ngồi trong dự án. *Người chủ báo 2026-09-07: "Agent không có chỗ để edit
+  system prompt".*
+
+  Instructions mới có hiệu lực **từ lượt chạy sau**, như skill — một lượt đang chạy giữ nguyên gói tin
+  nó đã nhận.
+- **FR-007n**: Buổi phỏng vấn lập dự án PHẢI hỏi **cần bao nhiêu người**, và câu trả lời trở thành số
+  chỗ của chỗ ngồi chung.
+
+  Đây là **sửa lại một nửa** của T039j ở trên. Nửa vẫn đúng: buổi phỏng vấn không được **tạo vai**,
+  không được nói ai làm gì — instructions trên agent nói điều đó rồi. Nửa bị bỏ quá tay là **con số**:
+  hỏi *dự án này cần mấy người* không mô tả ai cả, nó là kích cỡ của dự án, và buổi phỏng vấn là chỗ
+  duy nhất đang có cả mục tiêu lẫn ngữ cảnh để hỏi. Không hỏi thì mọi dự án sinh ra với đúng một chỗ
+  trống, và người chủ nhìn thấy đúng cái họ đã hỏi lại: *"tại sao dự án chỉ có 1 PL và 1 Worker đợi
+  grant vậy?"*. Người chủ chốt 2026-09-07: câu hỏi ấy thuộc về Tác nhân Không gian.
+
+  Con số ấy vẫn là **sàn, không phải trần** — luật chỗ ngồi chung không đổi: số chỗ khai ra là lớn hơn
+  giữa số đã hỏi và số người đang ngồi. Nó nói *dự án này chờ mấy người*, không cấm người thứ n+1.
 - **FR-007c**: Đăng nhập và hạn mức của agent CLI là thuộc tính của **chỗ làm**, không của agent. Cạn hạn
   mức PHẢI làm **mọi agent trên chỗ làm ấy** offline cùng lúc, và PHẢI xếp vào **lỗi cần người xử** —
   KHÔNG ĐƯỢC tiêu ngân sách tự phục hồi (xem FR-032).

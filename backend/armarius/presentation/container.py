@@ -461,7 +461,9 @@ def build_container() -> Container:
         skills=skills,
         jwt_service=jwt_service,
         daemon_claims=claims,
-        daemon_enrollment=DaemonEnrollmentService(),
+        daemon_enrollment=DaemonEnrollmentService(
+            workspace_trace=ControlBusWorkspaceTrace(control_bus),
+        ),
         daemon_link_guard=LinkDoorGuard(),
         daemon_housekeeping=DaemonHousekeepingService(),
         daemon_workplaces=DaemonWorkplaceService(),

@@ -35,8 +35,10 @@ from sqlalchemy import CursorResult, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from armarius.application.ports.workspace_trace import WorkspaceTracePublisher
 from armarius.infrastructure.daemon.models import DaemonLinkCodeModel, MachineModel
 from armarius.infrastructure.database.engine import get_sessionmaker
+from armarius.infrastructure.events.workspace_trace import announce_machine_linked
 from armarius.shared.clock import as_utc, utcnow
 from armarius.shared.config import settings
 from armarius.shared.credentials import MACHINE_TOKEN_PREFIX
@@ -146,9 +148,14 @@ class DaemonEnrollmentService:
         sessionmaker: async_sessionmaker[AsyncSession] | None = None,
         *,
         clock: Callable[[], datetime] = utcnow,
+        workspace_trace: WorkspaceTracePublisher | None = None,
     ) -> None:
         self._sessionmaker = sessionmaker
         self._clock = clock
+        # Optional for the same reason it is optional everywhere else it is injected: a test
+        # that only cares whether a code can be approved twice should not have to stand up a
+        # bus to find out. `None` means announce nothing.
+        self._workspace_trace = workspace_trace
 
     def _sessions(self) -> async_sessionmaker[AsyncSession]:
         # Resolved on use, not in __init__: the container is built before the engine has
@@ -311,13 +318,17 @@ class DaemonEnrollmentService:
                 await session.rollback()
                 raise Conflict("daemon_link_code_already_approved")
             await session.commit()
-            return PendingLink(
-                code=row.code,
-                hostname=row.reported_hostname,
-                platform=row.reported_platform,
-                daemon_version=row.reported_daemon_version,
-                expires_at=as_utc(row.expires_at),
-            )
+        # After the commit, and outside the session: a listener told to go and look must find
+        # the approval already there when it does. Only the winner of the conditional update
+        # reaches this line, so a second approver never announces a machine it did not admit.
+        await announce_machine_linked(self._workspace_trace, workspace_id)
+        return PendingLink(
+            code=row.code,
+            hostname=row.reported_hostname,
+            platform=row.reported_platform,
+            daemon_version=row.reported_daemon_version,
+            expires_at=as_utc(row.expires_at),
+        )
 
     # ── the token, afterwards ────────────────────────────────────────────────
 

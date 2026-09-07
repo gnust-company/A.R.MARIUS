@@ -132,6 +132,22 @@ và màn tạo dự án **không còn** tắt chế độ hỏi–đáp.
 - **FR-104**: Ba bước này là **một lần cho một tài khoản**, không phải một cửa. Đi xong rồi thì đăng
   nhập lần sau KHÔNG ĐƯỢC gặp lại. Bỏ dở thì lần sau vào lại đúng chỗ bỏ dở.
 
+- **FR-105**: Bước *nối máy* PHẢI đưa ra **cả ba lệnh**: cài, nối, và **chạy**. Nối chỉ đổi lấy giấy
+  tờ rồi thoát; thứ làm máy có runtime là lệnh chạy. Thiếu lệnh thứ ba thì người ta đi hết ba bước,
+  máy có mặt trong danh sách, và mọi agent trên nó ngoại tuyến — mà không có gì trên màn hình nói tại
+  sao. Lệnh nối, khi tự nó chạy xong, cũng PHẢI nói ra lệnh còn lại.
+- **FR-106**: Duyệt một máy trong lúc ba bước **còn dở** PHẢI **kết thúc ba bước**. Bước ba hỏi một
+  việc duy nhất — nối một máy — nên chính việc ấy xong là bước xong, không phải một cái nút xác nhận
+  lần nữa.
+
+  Trang phê duyệt là **một cửa sổ khác**: daemon tự mở nó ra (FR-001b), nên lúc duyệt xong có hai cửa
+  sổ cùng mở, một cái vừa xong việc và một cái vẫn đứng ở bước ba. Cửa sổ đang đợi KHÔNG ĐƯỢC bị bỏ
+  lại như thế. Nó PHẢI tự đi tiếp khi máy được duyệt, và KHÔNG ĐƯỢC hỏi vòng để biết điều đó (Hiến
+  pháp Điều IV) — tin ấy được **đẩy sang** từ cửa sổ vừa duyệt.
+
+  Hai cửa sổ ở **hai browser khác nhau** thì không đẩy sang được, và đó là giới hạn chấp nhận được:
+  cửa sổ đang đợi vẫn còn nút đi tiếp của chính nó, và tải lại trang là đủ để nó biết ba bước đã xong.
+
 ### Nhóm B — Người chủ nhà của không gian làm việc
 
 - **FR-110**: Mỗi không gian làm việc PHẢI có một **Tác nhân Không gian**, được tạo **cùng lúc với
