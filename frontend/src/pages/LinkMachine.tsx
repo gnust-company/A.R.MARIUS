@@ -23,7 +23,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Check, Laptop, ShieldQuestion } from 'lucide-react'
 
-import { approveMachineLink, getMachineLink, type PendingMachineLinkDTO } from '@/lib/api'
+import { approveMachineLink, getMachineLink, updateMe, type PendingMachineLinkDTO } from '@/lib/api'
 import { errorText } from '@/lib/errors'
 import { useAppStore } from '@/store/appStore'
 import VellumPanel from '@/components/VellumPanel'
@@ -66,10 +66,13 @@ export default function LinkMachine() {
   const workspaces = useAppStore((s) => s.workspaces)
   const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId)
   const hydrateWorkspaces = useAppStore((s) => s.hydrateWorkspaces)
+  const currentUser = useAppStore((s) => s.currentUser)
+  const setCurrentUser = useAppStore((s) => s.setCurrentUser)
 
   const [code, setCode] = useState('')
   const [pending, setPending] = useState<PendingMachineLinkDTO | null>(null)
-  const [workspaceId, setWorkspaceId] = useState('')
+  // What the person picked in the box — empty until they touch it.
+  const [chosenWorkspaceId, setChosenWorkspaceId] = useState('')
   const [approved, setApproved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -78,6 +81,11 @@ export default function LinkMachine() {
   // reading it off their own terminal a moment ago; a person who followed a link has no such
   // evidence and needs telling so.
   const [fromLink, setFromLink] = useState(false)
+  // Whether approving here is what finished this account's first steps. Kept as its own flag
+  // rather than read back off the user: by the time the panel renders, the user has been
+  // updated, so asking *are they onboarded* would answer yes for everybody and the notice
+  // would show to people who never had first steps open.
+  const [closedFirstSteps, setClosedFirstSteps] = useState(false)
 
   useEffect(() => {
     void hydrateWorkspaces().catch(() => {})
@@ -93,6 +101,16 @@ export default function LinkMachine() {
   // Deliberately not `navigate(-1)`. The daemon prints this page's address, so arriving here
   // with no history at all is a normal way to arrive, and going back one step from that
   // leaves the application.
+  // The workspace to approve into: what they picked, else the one they came from, else the
+  // first they own. **Derived, not seeded by an effect.** This cannot be settled inside the
+  // lookup either — on a cold load the list is still arriving while the code is being looked
+  // up, and a machine found before the list lands would leave the approve button disabled with
+  // a workspace visibly selected in the box beside it. An effect that wrote it once solved
+  // that and brought back the fault ESLint names: state written from an effect body is a
+  // second source for one value, and for a frame the two disagree.
+  const workspaceId =
+    chosenWorkspaceId || (pending ? (activeWorkspaceId ?? workspaces[0]?.id ?? '') : '')
+
   const leaveTo = activeWorkspaceId ? wsHref(activeWorkspaceId, '/machines') : '/workspaces'
   const doneTo = workspaceId ? wsHref(workspaceId, '/machines') : leaveTo
 
@@ -102,11 +120,12 @@ export default function LinkMachine() {
     setError(null)
     setCode('')
     setFromLink(false)
+    setClosedFirstSteps(false)
     // The workspace goes too. Before the lookup and the choosing were split apart, every
     // successful lookup reset it; leaving it behind here means asking about a second machine
     // and being handed the workspace picked for the first one, already selected, which is a
     // machine going somewhere nobody chose for it. Caught in review of PR #266.
-    setWorkspaceId('')
+    setChosenWorkspaceId('')
   }, [])
 
   const lookUpCode = useCallback(
@@ -143,15 +162,6 @@ export default function LinkMachine() {
     void lookUpCode(carried)
   }, [params, lookUpCode])
 
-  // The workspace to approve into, chosen as soon as there is one to choose. This cannot be
-  // done inside the lookup: on a cold load the list is still arriving while the code is being
-  // looked up, and a machine found before the list lands would leave the approve button
-  // disabled with a workspace visibly selected in the box beside it.
-  useEffect(() => {
-    if (!pending || workspaceId) return
-    const first = activeWorkspaceId ?? workspaces[0]?.id ?? ''
-    if (first) setWorkspaceId(first)
-  }, [pending, workspaceId, activeWorkspaceId, workspaces])
 
   async function approve() {
     if (!pending || !workspaceId) return
@@ -160,6 +170,28 @@ export default function LinkMachine() {
     try {
       await approveMachineLink(pending.code, workspaceId)
       setApproved(true)
+      // Step three of the first steps asks for one thing: connect a machine. Doing it *is*
+      // finishing the step, so a second button somewhere else confirming what already
+      // happened is a step that never ends. Whoever is standing on that step — this window or
+      // another one — is told by the server's `machine.linked` announcement (FR-106).
+      //
+      // Failing here must not undo an approval that already succeeded: the machine is in, and
+      // the first steps are recoverable from anywhere. So it is caught and dropped.
+      if (currentUser?.onboarded === false) {
+        try {
+          const saved = await updateMe({ onboarding_step: 3, onboarding_done: true })
+          setCurrentUser({
+            id: saved.id,
+            name: saved.full_name,
+            email: saved.email,
+            onboardingStep: saved.onboarding_step ?? 3,
+            onboarded: saved.onboarded ?? true,
+          })
+          setClosedFirstSteps(true)
+        } catch {
+          // Nothing to say here — the machine is linked either way.
+        }
+      }
     } catch (err) {
       setError(errorText(err, t))
     }
@@ -207,6 +239,14 @@ export default function LinkMachine() {
               <p className="font-body text-body-sm text-ink-light">
                 {t('linkMachine.doneBody')}
               </p>
+              <p className="font-body text-body-sm text-ink-light">
+                {t('linkMachine.doneStart')}
+              </p>
+              {closedFirstSteps && (
+                <p className="font-body text-body-sm text-ink-muted">
+                  {t('linkMachine.doneFirstSteps')}
+                </p>
+              )}
               <div className="flex flex-col gap-2 pt-2">
                 <button type="button" onClick={restart} className={buttonCls}>
                   {t('linkMachine.doneAgain')}
@@ -271,7 +311,7 @@ export default function LinkMachine() {
                   <select
                     id="link-workspace"
                     value={workspaceId}
-                    onChange={(e) => setWorkspaceId(e.target.value)}
+                    onChange={(e) => setChosenWorkspaceId(e.target.value)}
                     className={inputCls}
                   >
                     {workspaces.map((ws) => (

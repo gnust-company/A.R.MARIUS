@@ -70,6 +70,33 @@ func linkServer(t *testing.T, approveAfter int, expire bool) *httptest.Server {
 	}))
 }
 
+// TestLoginEndsByNamingTheCommandThatActuallyRuns pins the last line login prints.
+//
+// `login` trades a code for credentials and exits. Nothing is running when it returns, so every
+// agent placed on this machine reads as offline until `start` is up — and a person who followed
+// the screen to the letter has no way to learn that. The owner hit exactly this on 2026-09-07:
+// three steps done, machine listed, everything offline, nothing anywhere saying why.
+//
+// The assertion is the command name rather than the sentence around it: the wording is free to
+// improve, the instruction is not free to disappear.
+func TestLoginEndsByNamingTheCommandThatActuallyRuns(t *testing.T) {
+	server := linkServer(t, 2, false)
+	defer server.Close()
+
+	var out bytes.Buffer
+	path := filepath.Join(t.TempDir(), "daemon.json")
+	if _, err := Login(context.Background(), LoginOptions{
+		Server: server.URL, ConfigPath: path, Hostname: "gnust-thinkpad",
+		Platform: runtime.GOOS, Version: "0.1.0", Out: &out, Sleep: noWait,
+	}); err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+
+	if !strings.Contains(out.String(), "armarius-daemon start") {
+		t.Errorf("login never named the command that runs the daemon; it printed:\n%s", out.String())
+	}
+}
+
 func TestLoginPrintsTheCodeAndWaitsUntilSomeoneApproves(t *testing.T) {
 	server := linkServer(t, 2, false)
 	defer server.Close()

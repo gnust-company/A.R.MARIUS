@@ -117,3 +117,4 @@ async def announce_agent_offline(
         EVENT_MARIUS_OFFLINE,
         {"marius_id": str(marius.id)},
     )
+

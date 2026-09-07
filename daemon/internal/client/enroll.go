@@ -148,6 +148,12 @@ func Login(ctx context.Context, opts LoginOptions) (Credentials, error) {
 		return Credentials{}, err
 	}
 	say(opts.Out, "\nLinked. This machine's token is in %s.\n", opts.ConfigPath)
+	// The last thing this command does is name the next one. `login` trades a code for
+	// credentials and exits; nothing on this machine is running yet, and every agent placed on
+	// it reads as offline until `start` is up. A person who stops here has done everything the
+	// screen asked and still has a machine that takes no work, with nothing anywhere saying
+	// why — which is exactly what was reported on 2026-09-07.
+	say(opts.Out, "Now run `armarius-daemon start` and leave it running — that is what takes work.\n")
 	return creds, nil
 }
 
