@@ -308,7 +308,12 @@ async def test_a_stranger_cannot_rewrite_another_workspaces_agent_or_skill():
         # Nothing moved, and the owner can still write both rows.
         agent = await c.get(f"/v1/workspaces/{ws_a}/mariuses", headers=ha)
         assert agent.status_code == 200
-        assert [m["name"] for m in agent.json()] == ["Alpha"]
+        # Asked as *did the rename take*, not as *how many agents are in here*: every
+        # workspace now comes with its own host agent (FR-110), which has nothing to do with
+        # the question this test exists to ask.
+        names = [m["name"] for m in agent.json()]
+        assert "Alpha" in names, names
+        assert "Owned by B now" not in names, names
 
         skill = await c.get(f"/v1/workspaces/{ws_a}/skills/{seeds['skill_id']}", headers=ha)
         assert skill.status_code == 200

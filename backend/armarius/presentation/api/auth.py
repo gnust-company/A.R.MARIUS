@@ -50,6 +50,12 @@ class UserOut(BaseModel):
     is_verified: bool
     created_at: str | None = None
     last_login_at: str | None = None
+    # Where this person is in the three first steps, and whether they are through them
+    # (FR-100, FR-104). Sent on `/auth/me` because that is the one call the app makes before
+    # it decides which screen to show, and the answer *send them to the first steps* has to
+    # come from the same place as *who they are*.
+    onboarding_step: int = 0
+    onboarded: bool = True
 
     @classmethod
     def from_entity(cls, user: User) -> UserOut:
@@ -63,6 +69,8 @@ class UserOut(BaseModel):
             is_verified=user.is_verified,
             created_at=user.created_at.isoformat() if user.created_at else None,
             last_login_at=user.last_login_at.isoformat() if user.last_login_at else None,
+            onboarding_step=user.onboarding_step,
+            onboarded=user.onboarded,
         )
 
 
@@ -184,3 +192,38 @@ async def refresh(
 async def me(current_user: CurrentUser) -> UserOut:
     """Get current authenticated user."""
     return UserOut.from_entity(current_user)
+
+
+class UpdateMeIn(BaseModel):
+    """What a person may change about themselves (FR-101, FR-104).
+
+    Three things, and the list is short on purpose. Email and password are identity and are
+    changed through their own doors with their own checks; the role is not the holder's to set
+    at all. What is here is the display name — which until now had no door, so whatever somebody
+    typed while signing up was permanent — and where they are in the three first steps.
+
+    Every field is optional and only what is sent is touched. A screen that saves one field
+    must not have to send back the rest, because a client that rebuilds the whole object is a
+    client that can quietly undo a change made in another tab.
+    """
+
+    full_name: str | None = Field(default=None, min_length=1, max_length=200)
+    onboarding_step: int | None = Field(default=None, ge=0, le=3)
+    # Not a step number: finishing is its own fact (see `User.onboarded`). Sending `false` does
+    # not un-finish anything — there is no product reason to put somebody back through the
+    # first steps, and a door that could would be a door that does it by accident.
+    onboarding_done: bool | None = None
+
+
+@router.patch("/me", response_model=UserOut)
+async def update_me(
+    body: UpdateMeIn, current_user: CurrentUser, container: ContainerDep
+) -> UserOut:
+    """Change your own display name, or record how far you got through the first steps."""
+    updated = await container.auth.update_self(
+        current_user.id,
+        full_name=body.full_name,
+        onboarding_step=body.onboarding_step,
+        onboarding_done=body.onboarding_done,
+    )
+    return UserOut.from_entity(updated)

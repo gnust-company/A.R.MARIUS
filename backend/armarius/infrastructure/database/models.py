@@ -528,6 +528,9 @@ class UserModel(Base):
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The three first steps (FR-100, FR-104). `onboarded_at` set means finished.
+    onboarding_step: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    onboarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class TaskLogModel(Base):

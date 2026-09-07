@@ -33,6 +33,20 @@ class User:
     created_at: datetime | None = None
     updated_at: datetime | None = None
     last_login_at: datetime | None = None
+    # How far through the three first steps this person got, and whether they finished
+    # (FR-100, FR-104). On the user rather than in the browser: those steps are once for an
+    # account, not once per device, and a person who signs up on a laptop and comes back on a
+    # phone has not been asked twice.
+    #
+    # `onboarded_at` set is the whole of *finished*. A step number alone cannot say it — step 3
+    # is both *standing on the last step* and *done with it* — and a boolean beside the number
+    # would be two fields that can disagree.
+    onboarding_step: int = 0
+    onboarded_at: datetime | None = None
+
+    @property
+    def onboarded(self) -> bool:
+        return self.onboarded_at is not None
 
     @classmethod
     def create(

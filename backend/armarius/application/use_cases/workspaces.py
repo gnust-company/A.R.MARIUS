@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Sequence
 from uuid import UUID
 
 from armarius.application.use_cases.skills import SkillService
 from armarius.application.use_cases.types import UowFactory
+from armarius.application.use_cases.workspace_agent import WorkspaceAgentService
 from armarius.domain.entities.user import User
 from armarius.domain.entities.workspace import Project, Workspace
 from armarius.shared.clock import utcnow
 from armarius.shared.errors import BadRequest, NotFound
+
+logger = logging.getLogger(__name__)
 
 
 def _slugify(value: str) -> str:
@@ -21,10 +25,37 @@ def _slugify(value: str) -> str:
 
 class WorkspaceService:
     def __init__(
-        self, uow_factory: UowFactory, skills: SkillService | None = None
+        self,
+        uow_factory: UowFactory,
+        skills: SkillService | None = None,
+        workspace_agent: WorkspaceAgentService | None = None,
     ) -> None:
         self._uow = uow_factory
         self._skills = skills or SkillService(uow_factory)
+        self._workspace_agent = workspace_agent or WorkspaceAgentService(uow_factory)
+
+    async def _settle_host(self, workspace_id: UUID) -> None:
+        """Give this workspace its host, and never let that be why creating one failed.
+
+        Every new workspace gets one (FR-110): the host is what someone talks to before there
+        is anything else here, and until now nothing created it, so agent-mode project setup
+        was dead for every account ever made.
+
+        Swallowed on failure, and this is the one place that is right (FR-113). The workspace
+        is already committed by the time this runs; raising here would report failure for
+        something that succeeded, and the caller would have no idea which half went wrong. A
+        workspace the user was told did not exist is not repairable at all.
+
+        What the swallow leaves behind, said plainly: a workspace with no host, and **nothing
+        retries on a schedule**. `provide_host` is idempotent so any later call fixes it, but
+        today the only later callers are this line on the next workspace and the backfill
+        migration — so a failure here means one workspace whose owner cannot use agent-mode
+        project setup, and a logged exception is the only thing that says so.
+        """
+        try:
+            await self._workspace_agent.provide_host(workspace_id)
+        except Exception:  # noqa: BLE001 - see the docstring: this must never be the reason
+            logger.exception("could not give workspace %s a host", workspace_id)
 
     async def create_workspace(
         self, name: str, *, owner_user_id: str | None = None
@@ -38,6 +69,7 @@ class WorkspaceService:
         # (the board's empty state guides them); inviting an agent no longer creates one
         # either (#49).
         await self._skills.seed_builtins(created.id)
+        await self._settle_host(created.id)
         return created
 
     async def list_workspaces(self, owner_user_id: str | None = None) -> Sequence[Workspace]:
@@ -111,6 +143,7 @@ class WorkspaceService:
 
         # Seed the built-in Skill Shop entries for the new workspace.
         await self._skills.seed_builtins(ws.id)
+        await self._settle_host(ws.id)
         return ws
 
     async def create_project(

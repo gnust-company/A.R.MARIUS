@@ -158,16 +158,20 @@ async def test_a_beat_does_not_touch_the_agent_at_all() -> None:
         ).json()["tokens"]["access_token"]
         agent = await _an_agent(c, person, workspace, workplace)
 
-        before = (
-            await c.get(f"/v1/workspaces/{workspace}/mariuses", headers=_auth(person))
-        ).json()[0]
+        # Hỏi đúng agent của bài này, không lấy hàng đầu danh sách: mỗi không gian làm việc nay
+        # có sẵn một người chủ nhà (FR-110), nên "hàng đầu" không còn là "agent tôi vừa tạo".
+        async def mine() -> dict:
+            rows = (
+                await c.get(f"/v1/workspaces/{workspace}/mariuses", headers=_auth(person))
+            ).json()
+            return next(one for one in rows if one["id"] == agent["id"])
+
+        before = await mine()
 
         for _ in range(3):
             await _beat(c, machine)
 
-        after = (
-            await c.get(f"/v1/workspaces/{workspace}/mariuses", headers=_auth(person))
-        ).json()[0]
+        after = await mine()
 
         assert after["id"] == agent["id"]
         assert after["liveness"] == before["liveness"]

@@ -23,6 +23,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import update
 
+from armarius.application.use_cases.workspace_agent import HOST_NAME
 from armarius.infrastructure.daemon.models import MachineModel, WorkplaceModel
 from armarius.infrastructure.daemon.workplaces import REASON_CLI_REMOVED
 from armarius.infrastructure.database.engine import get_sessionmaker
@@ -90,8 +91,12 @@ async def test_a_linked_machine_shows_what_it_can_run_and_who_lives_there() -> N
     assert place["cli_version"] == "1.0.0"
     assert place["ready"] is True
     assert place["not_ready_reason"] is None
-    assert [a["name"] for a in place["agents"]] == ["Marin"]
-    assert place["agents"][0]["id"] == agent["id"]
+    # Người chủ nhà của không gian làm việc cũng ở đây, và đúng ra phải thế: đây là runtime đầu
+    # tiên của nó, nên nó là chỗ người chủ nhà được đặt vào (FR-112). Hỏi theo tên và theo id
+    # chứ không theo vị trí — thứ tự trong danh sách không phải điều bài này đi kiểm.
+    names = sorted(a["name"] for a in place["agents"])
+    assert names == sorted([HOST_NAME, "Marin"]), names
+    assert any(a["id"] == agent["id"] for a in place["agents"]), place["agents"]
 
 
 async def test_a_cli_that_was_uninstalled_turns_red_and_keeps_its_agents() -> None:
@@ -116,8 +121,8 @@ async def test_a_cli_that_was_uninstalled_turns_red_and_keeps_its_agents() -> No
     place = listed[0]["workplaces"][0]
     assert place["ready"] is False
     assert place["not_ready_reason"] == REASON_CLI_REMOVED
-    assert [a["name"] for a in place["agents"]] == ["Marin"], (
-        "chỗ làm hỏng mà không kể ai đang mắc kẹt ở đó thì màn hình không trả lời được "
+    assert "Marin" in [a["name"] for a in place["agents"]], (
+        "runtime hỏng mà không kể ai đang mắc kẹt ở đó thì màn hình không trả lời được "
         "câu người ta mở nó ra để hỏi"
     )
 
