@@ -6,7 +6,8 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 
 import { login, register } from '@/lib/auth'
-import { errorText } from '@/lib/errors';
+import { errorText } from '@/lib/errors'
+import { userToVM } from '@/lib/mappers';
 import { useAppStore } from '@/store/appStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,9 +44,12 @@ export default function Login() {
       } else {
         user = await register(email.trim(), fullName.trim(), password)
       }
-      setCurrentUser({ id: user.id, name: user.full_name, email: user.email })
+      setCurrentUser(userToVM(user))
       await hydrateWorkspaces()
-      navigate('/workspaces')
+      // Somebody who has not been through the first steps goes to them — whether they just
+      // registered or are coming back to a set they left half done (FR-100, FR-104). Everyone
+      // else lands where they always did.
+      navigate(user.onboarded === false ? '/onboarding' : '/workspaces')
     } catch (err) {
       setError(errorText(err, t))
     }

@@ -6,6 +6,7 @@ import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Workspaces from './pages/Workspaces'
 import LinkMachine from './pages/LinkMachine'
+import Onboarding from './pages/Onboarding'
 import Projects from './pages/Projects'
 import CreateProject from './pages/CreateProject'
 import ProjectBoard from './pages/ProjectBoard'
@@ -84,6 +85,11 @@ export default function App() {
       <Route element={<RequireAuth />}>
         {/* Workspaces launcher — no sidebar */}
         <Route path="/workspaces" element={<Workspaces />} />
+
+        {/* The three steps a new account walks through (FR-100). Outside `/w/:workspaceId`:
+            the workspace exists by now, but naming it is one of the steps, so a layout with
+            that workspace's sidebar around it would show the answer beside the question. */}
+        <Route path="/onboarding" element={<Onboarding />} />
 
         {/* Approving a machine into a workspace. Outside /w/:workspaceId on purpose: at the
             moment the code is typed the machine belongs to no workspace, and picking which

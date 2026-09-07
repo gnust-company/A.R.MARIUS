@@ -391,6 +391,17 @@ export async function getMe(): Promise<UserDTO> {
   return get<UserDTO>('/auth/me')
 }
 
+/** Change what a person may change about themselves: their display name, and how far they got
+ *  through the first steps. Only the fields sent are touched, so saving one does not undo
+ *  another changed in a second tab. */
+export async function updateMe(body: {
+  full_name?: string
+  onboarding_step?: number
+  onboarding_done?: boolean
+}): Promise<UserDTO> {
+  return patch<UserDTO>('/auth/me', body)
+}
+
 // ── Workspaces ─────────────────────────────────────────────────────────────────────────
 
 export async function listWorkspaces(): Promise<WorkspaceDTO[]> {

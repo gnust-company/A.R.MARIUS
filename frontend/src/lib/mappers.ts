@@ -25,6 +25,7 @@ import type {
   TaskLogEntryDTO,
   WorkspaceDTO,
 } from './api'
+import type { UserDTO } from './auth'
 import type {
   AgentStatus,
   Artifact,
@@ -43,6 +44,7 @@ import type {
   TaskLogEntryVM,
   TaskStatus,
   TraceEvent,
+  User,
   Workspace,
 } from '@/store/appStore'
 
@@ -191,6 +193,22 @@ export function projectDetailToVM(dto: ProjectDetailDTO): Project {
 }
 
 // ── Marius ──────────────────────────────────────────────────────────────────────────────
+
+/** The signed-in person, as the screens read them.
+ *
+ *  The two onboarding fields are defaulted here rather than left optional downstream: a server
+ *  that does not send them is an older server, and the right thing to do with somebody an older
+ *  server describes is leave them alone — not walk them through a flow meant for new accounts.
+ */
+export function userToVM(dto: UserDTO): User {
+  return {
+    id: dto.id,
+    name: dto.full_name,
+    email: dto.email,
+    onboardingStep: dto.onboarding_step ?? 0,
+    onboarded: dto.onboarded ?? true,
+  }
+}
 
 export function mariusToVM(dto: MariusDTO): Marius {
   return {
