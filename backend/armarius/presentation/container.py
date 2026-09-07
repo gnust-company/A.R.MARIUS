@@ -175,7 +175,11 @@ def build_container() -> Container:
         skills=skills,
     )
 
-    workspaces = WorkspaceService(uow_factory, skills)
+    # Built before the workspace service, which needs it: every new workspace is given a host
+    # as it is made (FR-110). One instance rather than two — nothing here holds state, so two
+    # could not disagree, but one is one fewer thing to wonder about.
+    workspace_agent = WorkspaceAgentService(uow_factory)
+    workspaces = WorkspaceService(uow_factory, skills, workspace_agent)
 
     # The reminder ladder reads each project's own tiers (FR-065), but the full project
     # service needs the inbox — a genuine cycle. Broken with a second, thresholds-only
@@ -204,7 +208,6 @@ def build_container() -> Container:
         inbox=inbox,
         leader_chat=leader_chat,
     )
-    workspace_agent = WorkspaceAgentService(uow_factory)
     onboarding = OnboardingService(
         uow_factory,
         projects,

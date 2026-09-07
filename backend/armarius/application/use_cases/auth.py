@@ -10,7 +10,8 @@ from armarius.application.use_cases.workspaces import WorkspaceService
 from armarius.domain.entities.user import User, UserRole
 from armarius.infrastructure.security.jwt import JWTService
 from armarius.infrastructure.security.password import PasswordService
-from armarius.shared.errors import CodedError
+from armarius.shared.clock import utcnow
+from armarius.shared.errors import CodedError, NotFound
 
 
 class AuthError(CodedError):
@@ -142,6 +143,39 @@ class AuthService:
         refresh_token = self._jwt.create_refresh_token(user.id)
 
         return user, access_token, refresh_token
+
+    async def update_self(
+        self,
+        user_id: UUID,
+        *,
+        full_name: str | None = None,
+        onboarding_step: int | None = None,
+        onboarding_done: bool | None = None,
+    ) -> User:
+        """Change what a person is allowed to change about themselves (FR-101, FR-104).
+
+        Only what was sent is touched, so saving one field cannot undo another that a second
+        tab changed a moment ago.
+
+        Finishing is one-way: `onboarding_done=False` is accepted and does nothing. There is no
+        product reason to put somebody back through the first steps, so a door that could would
+        only ever do it by accident.
+        """
+        now = utcnow()
+        async with self._uow() as uow:
+            user = await uow.users.get(user_id)
+            if user is None:
+                raise NotFound("user_not_found")
+            if full_name is not None:
+                user.full_name = full_name.strip()
+            if onboarding_step is not None:
+                user.onboarding_step = onboarding_step
+            if onboarding_done and user.onboarded_at is None:
+                user.onboarded_at = now
+            user.updated_at = now
+            await uow.users.update(user)
+            await uow.commit()
+            return user
 
     async def refresh_tokens(self, refresh_token: str) -> tuple[str, str]:
         """Refresh access token using refresh token. Returns (access_token, refresh_token).

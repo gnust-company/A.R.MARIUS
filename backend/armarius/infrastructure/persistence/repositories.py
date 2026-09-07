@@ -1851,6 +1851,8 @@ class SqlUserRepository(UserRepository):
                 created_at=user.created_at,
                 updated_at=user.updated_at,
                 last_login_at=user.last_login_at,
+                onboarding_step=user.onboarding_step,
+                onboarded_at=user.onboarded_at,
             )
         )
         await self._s.flush()
@@ -1885,6 +1887,8 @@ class SqlUserRepository(UserRepository):
         m.is_verified = user.is_verified
         m.updated_at = user.updated_at
         m.last_login_at = user.last_login_at
+        m.onboarding_step = user.onboarding_step
+        m.onboarded_at = user.onboarded_at
         await self._s.flush()
         return user
 

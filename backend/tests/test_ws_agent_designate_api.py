@@ -6,6 +6,7 @@ from __future__ import annotations
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from armarius.application.use_cases.workspace_agent import HOST_NAME
 from armarius.infrastructure.adapters.echo import EchoAdapter
 from armarius.infrastructure.database.engine import init_db
 from armarius.main import app
@@ -65,7 +66,19 @@ async def _pointer(c: AsyncClient, h: dict, ws_id: str) -> str | None:
 async def test_designate_swap_and_host_deletion():
     async with await _client() as c:
         h, ws_id = await _register(c, "designate@armarius.dev")
-        assert await _pointer(c, h, ws_id) is None  # fresh workspace: no host yet
+        # A fresh workspace arrives with its own host already seated (FR-110). It used to
+        # arrive with none, and the consequence was that agent-mode project setup was dead for
+        # every account ever created — the screen turned it off and offered no way to turn it on.
+        seated = await _pointer(c, h, ws_id)
+        assert seated is not None, "a new workspace should come with a host"
+        directory = (await c.get(f"/v1/workspaces/{ws_id}/mariuses", headers=h)).json()
+        host = next(m for m in directory if m["id"] == seated)
+        assert host["name"] == HOST_NAME, host
+        assert host["role"] == "Workspace Agent", host
+        # Not placed anywhere yet — no machine has been linked — so it reads as offline with a
+        # reason rather than as a silence (FR-111).
+        assert host["liveness"] == "offline", host
+        assert host["offline_reason"] == "not_placed", host
 
         bob = await _invite(c, h, ws_id, "Bob")
         r = await c.post(

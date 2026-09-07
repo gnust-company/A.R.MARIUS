@@ -443,6 +443,18 @@ async def sync_workplaces(
         symlink_capable=body.symlink_capable,
         stopping=body.stopping,
     )
+    # The first time this workspace has anywhere to work, its host goes to work (FR-112).
+    #
+    # Triggered here, next to the only event that can make it true, while the rule itself —
+    # once, only a place that can take work, and which one when several can — lives in the use
+    # case. Only placement ids cross that line: what tool each one runs is this end's knowledge
+    # and must not become the business layer's (Constitution III).
+    #
+    # A machine on its way out reports `stopping`, and its rows come back not ready, so nothing
+    # is placed on a runtime that is closing.
+    await container.workspace_agent.place_host(
+        machine.workspace_id, [row.id for row in synced if row.ready]
+    )
     return WorkplacesOut(
         workplaces=[
             WorkplaceOut(

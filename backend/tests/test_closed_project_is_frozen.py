@@ -41,6 +41,8 @@ _NEEDS_NO_GUARD: dict[tuple[str, str], str] = {
     ("POST", "/auth/login"): "chưa có dự án nào trong tầm",
     ("POST", "/auth/refresh"): "chưa có dự án nào trong tầm",
     ("POST", "/auth/register"): "chưa có dự án nào trong tầm",
+    # Tên hiển thị và ba bước đầu tiên là chuyện của một *người*, không của dự án nào.
+    ("PATCH", "/auth/me"): "nói về người gọi, không về dự án",
     # Buổi dựng đội: dự án chưa ra đời, kết thúc buổi mới sinh ra nó.
     ("POST", "/v1/onboarding/{session_id}/abandon"): "dự án chưa ra đời",
     ("POST", "/v1/onboarding/{session_id}/answer"): "dự án chưa ra đời",

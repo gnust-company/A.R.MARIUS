@@ -401,6 +401,8 @@ def user_to_entity(m: UserModel) -> User:
         created_at=m.created_at,
         updated_at=m.updated_at,
         last_login_at=m.last_login_at,
+        onboarding_step=m.onboarding_step or 0,
+        onboarded_at=m.onboarded_at,
     )
 
 

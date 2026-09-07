@@ -43,6 +43,61 @@ class AgentService:
     def __init__(self, uow_factory: UowFactory) -> None:
         self._uow = uow_factory
 
+    async def create_unplaced(
+        self,
+        workspace_id: UUID,
+        name: str,
+        *,
+        instructions: str = "",
+        owner_user_id: str | None = None,
+    ) -> Marius:
+        """Make an agent that has **nowhere to work yet** — the one exception to FR-007f.
+
+        It lives here, next to `create`, because this module is the only place in the product
+        that builds a `Marius` and a guard in the test suite keeps it that way. The point of
+        that guard is that somebody reading this file sees *every* way an agent can come into
+        existence; an exception hidden in another module would defeat it, and the last time a
+        second path existed it sat there for a month before anyone noticed.
+
+        So read this beside `create`'s docstring, which says flatly that there is no such thing
+        as an agent that has not been placed. That is the rule for agents a **person** creates,
+        and it stays: the place is the decision they are making, and a default there would
+        quietly abolish the requirement for everybody.
+
+        This is for the one agent nobody chooses a place for — the workspace's own host, which
+        exists from the moment the workspace does, and a workspace exists before any machine has
+        been linked to it (FR-110, FR-114). What *not placed* means is defined already: offline,
+        with a reason a person can read, never a silence (FR-007f). `adapter_type` is left empty
+        for the same reason there is no `runtime` parameter on `create` — which tool carries a
+        turn is the place's answer, and there is no place to ask.
+
+        No role either, and no way to pass one. How an agent behaves comes from `instructions`
+        and nothing else (Constitution V, FR-007l); the seat an agent may hold is written by
+        `WorkspaceAgentService.designate`, which is a separate decision made after the agent
+        exists. A guard in the test suite keeps creation and seating apart.
+
+        No credential is minted here either. An agent is an identity, not a bearer (FR-014a).
+        """
+        now = utcnow()
+        async with self._uow() as uow:
+            if await uow.workspaces.get(workspace_id) is None:
+                raise NotFound("workspace_not_found")
+            taken = await uow.mariuses.list_by_workspace(workspace_id)
+            if any(one.name.strip().lower() == name.strip().lower() for one in taken):
+                raise NameTaken("agent_name_taken", name=name)
+            created = await uow.mariuses.add(
+                Marius(
+                    workspace_id=workspace_id,
+                    name=name,
+                    instructions=instructions,
+                    owner_user_id=owner_user_id,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            await uow.commit()
+            return created
+
     async def create(
         self,
         workspace_id: UUID,

@@ -106,7 +106,10 @@ async def test_an_invite_with_no_workplace_is_refused_and_creates_nothing() -> N
         assert status == 422, "an agent with no workplace was accepted"
 
         directory = await c.get(f"/v1/workspaces/{ws}/mariuses", headers=h)
-        assert directory.json() == [], "a refused invite still left an agent behind"
+        # Asked as *did the refusal create anybody*, not as *is this workspace empty*: every
+        # workspace now comes with its own host agent (FR-110), which nothing here invited.
+        made = [m["name"] for m in directory.json() if m["role"] != "Workspace Agent"]
+        assert made == [], "a refused invite still left an agent behind"
 
 
 async def test_another_workspaces_workplace_reads_as_not_there() -> None:
@@ -143,7 +146,7 @@ async def test_another_workspaces_workplace_reads_as_not_there() -> None:
         assert missing == (404, body)
 
         directory = await c.get(f"/v1/workspaces/{ws}/mariuses", headers=h)
-        assert directory.json() == []
+        assert [m["name"] for m in directory.json() if m["role"] != "Workspace Agent"] == []
 
 
 async def test_a_workplace_that_cannot_work_is_refused_with_its_reason() -> None:
@@ -175,7 +178,7 @@ async def test_a_workplace_that_cannot_work_is_refused_with_its_reason() -> None
         assert body.get("params", {}).get("reason") == "cli_removed"
 
         directory = await c.get(f"/v1/workspaces/{ws}/mariuses", headers=h)
-        assert directory.json() == []
+        assert [m["name"] for m in directory.json() if m["role"] != "Workspace Agent"] == []
 
 
 async def test_many_agents_share_one_workplace() -> None:
@@ -407,5 +410,6 @@ async def test_a_placed_agent_carries_no_reason_at_all() -> None:
         workplace = await ready_workplace(ws)
         await invite_agent(c, ws, h, name="Marin", workplace_id=workplace)
 
-        shown = (await c.get(f"/v1/workspaces/{ws}/mariuses", headers=h)).json()[0]
+        rows = (await c.get(f"/v1/workspaces/{ws}/mariuses", headers=h)).json()
+        shown = next(m for m in rows if m["name"] == "Marin")
         assert shown["offline_reason"] is None
