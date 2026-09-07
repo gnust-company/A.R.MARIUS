@@ -359,7 +359,14 @@ async def start_link(body: LinkStartIn, container: ContainerDep) -> LinkStartOut
     )
     return LinkStartOut(
         code=started.code,
-        verify_url=f"{settings.web_base_url.rstrip('/')}/link",
+        # The code travels *in* the address. The daemon opens this in a browser, so the
+        # person lands on the approval screen with the machine already named rather than
+        # copying eight characters off one window and into another (FR-001a).
+        #
+        # This is a convenience, not a credential: the screen still asks, and the code is
+        # worthless without a signed-in person who says yes to a machine they recognise.
+        # Which is exactly why the approval step is not being removed along with the typing.
+        verify_url=f"{settings.web_base_url.rstrip('/')}/link?code={started.code}",
         expires_in=started.expires_in_seconds,
         interval=started.poll_interval_seconds,
     )

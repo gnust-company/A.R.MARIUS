@@ -98,6 +98,11 @@ func TestSubcommandHelpDescribesItsFlags(t *testing.T) {
 	if !strings.Contains(stdout, "-server") {
 		t.Errorf("login -h does not mention the -server flag: %q", stdout)
 	}
+	// The way out for a machine with no desktop, and for anything running unattended. A flag
+	// nobody can find is a flag that does not exist.
+	if !strings.Contains(stdout, "-no-browser") {
+		t.Errorf("login -h does not mention the -no-browser flag: %q", stdout)
+	}
 }
 
 func TestLoginRefusesToRunWithoutAServer(t *testing.T) {

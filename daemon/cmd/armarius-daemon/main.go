@@ -6,7 +6,7 @@
 //
 // Three subcommands cover the whole life of a machine:
 //
-//	login   link this machine to a workspace, once, by approving a code in the browser
+//	login   link this machine to a workspace, once, by approving it in the browser
 //	start   stay up: announce the CLIs found here, ask for work, run it, report back
 //	status  say what this machine currently knows about itself, then exit
 //
@@ -59,7 +59,7 @@ type command struct {
 var commands = []command{
 	{
 		name:    "login",
-		summary: "link this machine to a workspace by approving a code in the browser",
+		summary: "link this machine to a workspace by approving it in the browser",
 		run:     runLogin,
 	},
 	{
@@ -140,6 +140,7 @@ func runLogin(ctx context.Context, args []string, out io.Writer) error {
 	fs := newFlagSet("login", out)
 	server := fs.String("server", "", "base URL of the Armarius server this machine belongs to")
 	config := fs.String("config", defaultConfigPath(), "where to write this machine's token")
+	noBrowser := fs.Bool("no-browser", false, "print the approval address instead of opening it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -152,6 +153,13 @@ func runLogin(ctx context.Context, args []string, out io.Writer) error {
 		Platform:   gosys.GOOS,
 		Version:    version,
 		Out:        out,
+		// The environment variable exists for the same reason the installer has one: a script,
+		// a CI job, or a test that dispatches this command must have a way to say *do not
+		// touch the desktop* without editing the command line it was handed.
+		NoBrowser: *noBrowser || os.Getenv("ARMARIUS_NO_BROWSER") != "",
+		// Named here rather than defaulted inside the package: this is the one place that
+		// actually wants a page to appear on somebody's screen.
+		OpenBrowser: client.OpenBrowser,
 	})
 	return err
 }

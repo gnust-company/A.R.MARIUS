@@ -78,10 +78,21 @@ a link, at startup, on the real disk; if it cannot, every workplace on the machi
 armarius-daemon login -server https://your-armarius.example.com
 ```
 
-It prints a short code and waits. Open the link page in Armarius in your browser, enter the code,
-and choose the workspace this machine joins. The machine's token is written to
-`~/.armarius/daemon.json` (`%USERPROFILE%\.armarius\daemon.json` on Windows) and never leaves it —
-agents are handed a token minted for one run, never this one.
+It opens the approval page for you, with the code already on the address: look at the machine that
+is asking, choose the workspace it joins, approve. Nothing to copy between windows.
+
+The approving is not skipped along with the typing. A link is something another person can send
+you, so the thing that keeps a stranger's daemon out is a person reading a hostname they do not
+recognise — which is why the page shows what the machine claims about itself and says the code
+arrived by link rather than by hand.
+
+On a machine that can open nothing — a server over SSH, a container, a box with no display — it
+prints the address with the code instead, for you to open on any other device. `-no-browser`, or
+`ARMARIUS_NO_BROWSER=1`, asks for that on a machine that does have a desktop.
+
+The machine's token is written to `~/.armarius/daemon.json`
+(`%USERPROFILE%\.armarius\daemon.json` on Windows) and never leaves it — agents are handed a token
+minted for one run, never this one.
 
 ## Run it
 

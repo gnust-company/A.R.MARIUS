@@ -68,12 +68,22 @@ Rồi nối máy:
 armarius-daemon login -server http://localhost:8080
 ```
 
-> **`-server` là địa chỉ API, không phải địa chỉ trang web.** Ở đây là `:8080`. Daemon nói chuyện
-> với API — nó không mở trang nào. Còn `:3000` là chỗ **bạn** ngồi. Hai cổng, hai việc, và đây là
-> chỗ dễ nhập lẫn nhất trong cả bài này.
+> **`-server` là địa chỉ API, không phải địa chỉ trang web.** Ở đây là `:8080`. Đây là địa chỉ
+> daemon *nói chuyện* với; trang nó **mở ra cho bạn** thì ở `:3000`, và nó tự biết lấy từ câu trả
+> lời của API. Hai cổng, hai việc, và đây là chỗ dễ nhập lẫn nhất trong cả bài này.
 
-Nó in ra một mã ngắn và đứng đợi. Mở trang nối máy — **http://localhost:3000/link** — nhập mã
-đó, chọn không gian làm việc. Xong thì bật daemon lên:
+Nó **tự mở trang phê duyệt** ra, với mã đã nằm sẵn trên địa chỉ — bạn chỉ cần nhìn tên máy, chọn
+không gian làm việc rồi bấm **Đồng ý**. Không phải chép mã đi đâu cả.
+
+> Còn bước bấm đồng ý thì **không** bỏ, và đó là chủ ý: một mã lộ ra — trong log, trong ảnh chụp
+> màn hình, trong một tin nhắn — mà tự vào được thì là một máy lạ vào thẳng không gian làm việc
+> của bạn. Trang ấy hiện tên máy đang hỏi để bạn nhận ra nó, và chỉ có thế.
+
+**Máy không có desktop** — server nối qua SSH, container, máy không màn hình — thì không có gì mở
+được, nên daemon in địa chỉ với mã ra và bạn mở nó ở bất cứ máy nào khác. Muốn thế kể cả khi có
+desktop thì thêm `-no-browser` (hoặc đặt `ARMARIUS_NO_BROWSER=1`).
+
+Xong thì bật daemon lên:
 
 ```sh
 armarius-daemon start

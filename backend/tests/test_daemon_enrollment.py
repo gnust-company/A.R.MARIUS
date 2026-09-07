@@ -67,7 +67,11 @@ async def test_a_machine_gets_a_code_and_nothing_else_until_someone_approves() -
     async with _client() as c:
         started = await _start(c)
         assert started["code"]
-        assert started["verify_url"].endswith("/link")
+        # The address carries the code, so the daemon can open a page that is already about
+        # this machine and nobody has to copy eight characters between two windows (FR-001a).
+        assert started["verify_url"].endswith(f"/link?code={started['code']}"), (
+            f"địa chỉ phê duyệt không mang mã theo: {started['verify_url']}"
+        )
         assert started["expires_in"] == 600
         assert started["interval"] > 0
 

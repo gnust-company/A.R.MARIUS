@@ -49,8 +49,21 @@ type LoginOptions struct {
 	Hostname string
 
 	HTTPClient *http.Client
-	// Out receives the code and the progress a person watches while they walk to a browser.
+	// Out receives the address, the code, and the progress a person watches while approving.
 	Out io.Writer
+	// OpenBrowser shows the approval page. Left nil, nothing is opened and the address is
+	// printed instead — which is why this is not defaulted to the real opener the way the
+	// clock and the HTTP client are: a package that reaches for the desktop unless told not
+	// to reaches for it from every test that forgets to say so. Measured, not guessed: the
+	// first run after this was wired launched `xdg-open` once per test that logs in. The one
+	// caller that wants a browser is the `login` command, and it asks by name.
+	//
+	// Returning an error is not a failure of `login`: the address and the code are printed
+	// either way, and a machine with no desktop is a normal place to link from.
+	OpenBrowser func(ctx context.Context, url string) error
+	// NoBrowser skips opening one even where there is one to open — for a person who wants
+	// to approve from their phone, or from the desktop they are actually sitting at.
+	NoBrowser bool
 	// Sleep waits between polls. It must return the context's error if the wait is cut short,
 	// so that Ctrl-C during a login is not mistaken for the code expiring.
 	Sleep func(ctx context.Context, d time.Duration) error
@@ -87,10 +100,14 @@ var ErrLinkExpired = errors.New("the link code expired before it was approved")
 
 // Login links this machine to a workspace and writes the resulting token to disk.
 //
-// The flow is deliberately one that works on a machine with no browser (research §1): this
-// program prints a short code, a person opens Armarius wherever they already are and approves
-// it, and the poll below picks the token up. Nothing secret is ever typed by hand — the code is
-// worthless without a signed-in person, and the token never leaves this function except into a
+// The usual path is one command: this program asks the server for a code, opens the approval
+// page with the code already on its address, and the poll below picks the token up once a
+// person says yes. The path that works on a machine with no browser at all (research §1) is
+// the same one with the opening left out — the address and the code are printed either way, so
+// a page can be opened on any other device.
+//
+// Nothing secret is ever typed by hand: the code is worthless without a signed-in person who
+// approves a machine they recognise, and the token never leaves this function except into a
 // file only its owner can read.
 func Login(ctx context.Context, opts LoginOptions) (Credentials, error) {
 	opts = opts.withDefaults()
@@ -106,8 +123,7 @@ func Login(ctx context.Context, opts LoginOptions) (Credentials, error) {
 		return Credentials{}, err
 	}
 
-	say(opts.Out, "Open %s and enter this code:\n\n\t%s\n\n", started.VerifyURL, started.Code)
-	say(opts.Out, "Waiting for approval (the code is good for %s)...\n", time.Duration(started.ExpiresIn)*time.Second)
+	announce(opts, started)
 
 	interval := time.Duration(started.Interval) * time.Second
 	if interval <= 0 {
@@ -126,6 +142,33 @@ func Login(ctx context.Context, opts LoginOptions) (Credentials, error) {
 	}
 	say(opts.Out, "\nLinked. This machine's token is in %s.\n", opts.ConfigPath)
 	return creds, nil
+}
+
+// announce tells the person what is happening, and opens the page for them if it can.
+//
+// The address is printed whether or not a browser opened. Three reasons, all of them ordinary:
+// the page may have opened on a desktop they are not looking at, they may want to approve from
+// a phone, and the opener may have reported success while doing nothing useful. The code is
+// printed alongside it for the same reason — it is what makes an address typed on another
+// device work.
+func announce(opts LoginOptions, started linkStartResponse) {
+	opened := false
+	if !opts.NoBrowser && opts.OpenBrowser != nil {
+		// The context is deliberately not the login context: opening a page is done the
+		// moment it is handed over, and tying the browser's lifetime to this command would
+		// close it the instant login returns.
+		if err := opts.OpenBrowser(context.Background(), started.VerifyURL); err == nil {
+			opened = true
+		}
+	}
+	if opened {
+		say(opts.Out, "Opening %s\n", started.VerifyURL)
+		say(opts.Out, "Approve this machine there. If the page did not open, the code is:\n\n\t%s\n\n", started.Code)
+	} else {
+		say(opts.Out, "Open %s\n", started.VerifyURL)
+		say(opts.Out, "It carries the code already. If you have to type it in by hand:\n\n\t%s\n\n", started.Code)
+	}
+	say(opts.Out, "Waiting for approval (the code is good for %s)...\n", time.Duration(started.ExpiresIn)*time.Second)
 }
 
 // maxPollFailures is how many polls in a row may fail before login gives up.
