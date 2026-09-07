@@ -70,7 +70,6 @@ installed_version() {
 
 add_to_path() {
   local dir="$1" line="export PATH=\"$1:\$PATH\""
-  local touched=""
   # A scripted install — CI, a container image, a test of this very script — has no business
   # rewriting somebody's shell configuration, and the first run of this installer proved why:
   # it wrote a throwaway directory into a real ~/.bashrc. Say where to put the line instead.
@@ -78,22 +77,42 @@ add_to_path() {
     warn "$dir is not on your PATH. Add it with: $line"
     return
   fi
-  for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
-    [ -f "$rc" ] || continue
-    grep -qF "$dir" "$rc" && continue
-    printf '\n# Added by the Armarius installer\n%s\n' "$line" >> "$rc"
-    touched="$touched $rc"
-  done
-  if [ -n "$touched" ]; then
-    warn "Added $dir to your PATH in:$touched — open a new shell, or run: $line"
+
+  # One file, picked from the shell in use. Writing the same export into .bashrc and .zshrc and
+  # .profile at once leaves two of them as litter in a config somebody else has to read later.
+  local rc
+  case "${SHELL:-}" in
+    */zsh)  rc="$HOME/.zshrc" ;;
+    */bash) rc="$HOME/.bashrc" ;;
+    *)      rc="$HOME/.profile" ;;
+  esac
+
+  # Matched as the whole line it would be, not as a substring anywhere in the file: the directory
+  # name can appear in a comment, or inside a longer path, and either would silently skip the edit.
+  if [ -f "$rc" ] && grep -qxF "$line" "$rc"; then
+    warn "$dir is already on your PATH in $rc — open a new shell."
+    return
+  fi
+
+  if printf '\n# Added by the Armarius installer\n%s\n' "$line" >> "$rc" 2>/dev/null; then
+    warn "Added $dir to your PATH in $rc — open a new shell, or run: $line"
   else
-    warn "$dir is not on your PATH. Add it with: $line"
+    warn "$dir is not on your PATH, and $rc could not be written. Add it with: $line"
   fi
 }
 
 # Answers where to put them, and whether sudo is needed to do it.
+#
+# Falling back to $HOME/.local/bin is for the **default** only. Somebody who sets ARMARIUS_BIN_DIR
+# has said where they want this, and quietly installing somewhere else — then naming that
+# somewhere else in a line they may not read — is how a person ends up running last month's build
+# out of a directory they had forgotten about.
 choose_bin_dir() {
   local wanted="${ARMARIUS_BIN_DIR:-/usr/local/bin}"
+  local named="${ARMARIUS_BIN_DIR:+yes}"
+
+  [ -d "$wanted" ] || mkdir -p "$wanted" 2>/dev/null || true
+
   if [ -d "$wanted" ] && [ -w "$wanted" ]; then
     BIN_DIR="$wanted"; SUDO=""
     return
@@ -103,8 +122,12 @@ choose_bin_dir() {
     info "$wanted needs root; you may be asked for your password."
     return
   fi
+  if [ -n "$named" ]; then
+    fail "ARMARIUS_BIN_DIR is ${wanted}, which cannot be written to, and there is no sudo here."
+  fi
+
   BIN_DIR="$HOME/.local/bin"; SUDO=""
-  mkdir -p "$BIN_DIR"
+  mkdir -p "$BIN_DIR" || fail "Could not create ${BIN_DIR}."
 }
 
 # ── Download, check, install ─────────────────────────────────────────────────────────────────
@@ -120,23 +143,30 @@ install_binaries() {
   curl -fsSL "${RELEASES}/download/${tag}/${archive}" -o "$tmp/$archive" \
     || fail "Could not download ${archive}. Is there a release for ${OS}/${ARCH} at ${RELEASES}/tag/${tag}?"
 
-  # Verified before anything is unpacked, let alone installed. `--ignore-missing` because the
-  # file lists every platform's archive and this machine downloaded one of them.
-  if curl -fsSL "${RELEASES}/download/${tag}/checksums.txt" -o "$tmp/checksums.txt"; then
-    local sha
-    if   have sha256sum; then sha="sha256sum -c --ignore-missing"
-    elif have shasum;    then sha="shasum -a 256 -c --ignore-missing"
-    fi
-    if [ -n "${sha:-}" ]; then
-      ( cd "$tmp" && $sha checksums.txt >/dev/null 2>&1 ) \
-        || fail "Checksum mismatch on ${archive}. The download is not what this release published — do not use it."
-      ok "Checksum verified"
-    else
-      warn "Neither sha256sum nor shasum is here, so the download could not be verified."
-    fi
-  else
-    warn "This release publishes no checksums.txt, so the download could not be verified."
+  # Verified before anything is unpacked, let alone installed — and *verified or refused*, with no
+  # third outcome. A warn-and-continue here would hollow out the whole point: somebody who can
+  # interfere with the download can just as easily make checksums.txt fail to arrive, and the
+  # install would proceed on unchecked bytes while printing a tick at the end.
+  curl -fsSL "${RELEASES}/download/${tag}/checksums.txt" -o "$tmp/checksums.txt" \
+    || fail "Could not download checksums.txt for ${tag}, so ${archive} cannot be verified. Nothing was installed."
+
+  # The expected hash is read out by name rather than handed to `-c`: the file lists every
+  # platform's archive, only one of which is on this disk, and the flag for that (--ignore-missing)
+  # is missing from the shasum that older macOS ships. Pulling one line out works everywhere and
+  # makes "this release does not list my archive" a failure in its own words.
+  local want
+  want=$(awk -v f="$archive" '$2 == f || $2 == "*" f { print $1; exit }' "$tmp/checksums.txt")
+  [ -n "$want" ] || fail "checksums.txt for ${tag} does not list ${archive}. Nothing was installed."
+
+  local got
+  if   have sha256sum; then got=$(sha256sum "$tmp/$archive" | awk '{print $1}')
+  elif have shasum;    then got=$(shasum -a 256 "$tmp/$archive" | awk '{print $1}')
+  else fail "Neither sha256sum nor shasum is here, so ${archive} cannot be verified. Nothing was installed."
   fi
+
+  [ "$got" = "$want" ] \
+    || fail "Checksum mismatch on ${archive}: expected ${want}, got ${got}. The download is not what this release published — do not use it."
+  ok "Checksum verified"
 
   tar -xzf "$tmp/$archive" -C "$tmp" "$DAEMON" "$CALLBACK" \
     || fail "The archive did not contain both ${DAEMON} and ${CALLBACK}."
@@ -144,15 +174,31 @@ install_binaries() {
 
   choose_bin_dir
 
-  # Both, or neither. `armarius-daemon` looks for `armarius` beside itself and refuses to start
-  # without it, so a half-finished install leaves a daemon that cannot run — and one that says
-  # so only when somebody eventually tries. Failing back to nothing is the kinder end state.
-  $SUDO install -m 0755 "$tmp/$DAEMON" "$BIN_DIR/$DAEMON" \
-    || fail "Could not install ${DAEMON} into ${BIN_DIR}."
-  if ! $SUDO install -m 0755 "$tmp/$CALLBACK" "$BIN_DIR/$CALLBACK"; then
-    $SUDO rm -f "$BIN_DIR/$DAEMON"
-    fail "Could not install ${CALLBACK} into ${BIN_DIR}. Rolled back — the two are no use apart."
-  fi
+  # Both, or neither — and *neither* must mean "what was here before", not "nothing".
+  #
+  # `armarius-daemon` looks for `armarius` beside itself and refuses to start without it, so a
+  # half-finished install leaves a daemon that cannot run and says so only when somebody
+  # eventually tries. The first version of this installed the daemon over the top and deleted it
+  # again if the second one failed — which on an upgrade destroyed a working installation and left
+  # the machine with nothing, worse than the half-state it was written to avoid.
+  #
+  # So both land beside their targets under a `.new` name first, where nothing depends on them,
+  # and only once both are there do they move into place. A failure at any point before that
+  # leaves whatever was already installed exactly as it was.
+  local staged=""
+  for name in "$DAEMON" "$CALLBACK"; do
+    if ! $SUDO install -m 0755 "$tmp/$name" "$BIN_DIR/$name.new"; then
+      # shellcheck disable=SC2086  # `staged` is a deliberate word list of paths we just wrote.
+      [ -n "$staged" ] && $SUDO rm -f $staged
+      fail "Could not write ${name} into ${BIN_DIR}. Nothing was changed."
+    fi
+    staged="$staged $BIN_DIR/$name.new"
+  done
+
+  for name in "$DAEMON" "$CALLBACK"; do
+    $SUDO mv -f "$BIN_DIR/$name.new" "$BIN_DIR/$name" \
+      || fail "Could not put ${name} in place in ${BIN_DIR}. Left ${BIN_DIR}/${name}.new behind for you to move by hand."
+  done
 
   ok "Installed ${DAEMON} and ${CALLBACK} to ${BIN_DIR}"
 
