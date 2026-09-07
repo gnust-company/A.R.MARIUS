@@ -90,7 +90,7 @@ Hệ thống phân biệt **lỗi tạm** với **lỗi cần người xử**, v
 ```mermaid
 flowchart TD
     F["Lượt chạy kết thúc không đẹp"] --> Q{"Có phải bức tường<br/>người ta dọn được?"}
-    Q -->|"Cạn hạn mức · giấy tờ bị từ chối ·<br/>chỗ làm đặt sai"| H["Đóng chỗ làm.<br/>Mọi agent ở đó thành mất liên lạc.<br/>Trưởng dự án được báo."]
+    Q -->|"Cạn hạn mức · giấy tờ bị từ chối ·<br/>runtime đặt sai"| H["Đóng runtime.<br/>Mọi agent ở đó thành mất liên lạc.<br/>Trưởng dự án được báo."]
     Q -->|"Còn lại"| R["Lỗi tạm: tự chạy lại,<br/>có ngân sách chặn"]
     R --> L{"Chạy lại vẫn không xong?"}
     L -->|"có"| E["Leo thang: Trưởng dự án,<br/>rồi tới Hộp thư của bạn"]
@@ -106,7 +106,7 @@ chứng.
 
 ## Máy tắt thì sao
 
-Không có đường xử lý riêng, và đó là chủ ý. Máy tắt thì hết nhịp; hết nhịp thì mọi chỗ làm
+Không có đường xử lý riêng, và đó là chủ ý. Máy tắt thì hết nhịp; hết nhịp thì mọi runtime
 trên đó không sẵn sàng; agent ở đó thành *mất liên lạc*; và **luồng ngoại tuyến đang có** tiếp
 quản — đúng cái luồng vẫn chạy khi một agent offline vì lý do khác. Một tình huống mới đi lại
 con đường cũ thì không phải viết thêm gì, và cái không viết thì không hỏng.
@@ -119,6 +119,6 @@ một lần mạng chập hoặc một lần khởi động lại.
 ## Đọc thêm
 
 - [Khái niệm cốt lõi](concepts.md) — từ vựng
-- [Máy và daemon](machines-and-daemon.md) — chỗ làm không sẵn sàng thì làm gì
+- [Máy và daemon](machines-and-daemon.md) — runtime không sẵn sàng thì làm gì
 - [`specs/002-daemon-acp-runtime/spec.md`](../specs/002-daemon-acp-runtime/spec.md) — đặc tả
   đầy đủ của tầng này, nếu bạn muốn đọc luật thay vì đọc mô tả

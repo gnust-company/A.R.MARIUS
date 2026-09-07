@@ -1,7 +1,7 @@
 # Agent
 
 Một **agent** (trong dự án này còn gọi là **MARIUS**) là một người làm việc có tên, có chỉ dẫn
-riêng, ngồi ở đúng một chỗ làm trên một máy của bạn.
+riêng, chạy trên đúng một runtime ở một máy của bạn.
 
 ---
 
@@ -12,7 +12,7 @@ riêng, ngồi ở đúng một chỗ làm trên một máy của bạn.
 **Tên** — độc nhất trong không gian làm việc. Đây cũng là cái tên người khác `@mention` để gọi
 nó.
 
-**Chỗ làm** — chọn trong danh sách chỗ làm **đang sẵn sàng**. Hai điều đáng biết:
+**Runtime** — chọn trong danh sách runtime **đang sẵn sàng**. Hai điều đáng biết:
 
 - Chọn **một lần**, không đổi được về sau. Một agent làm việc ở đúng một chỗ.
 - Chưa nối máy nào thì danh sách này **rỗng**, và bạn không tạo được agent nào cả. Đây là lý
@@ -25,8 +25,8 @@ của một agent.
 > thứ hai. Một agent bạn tạo với chỉ dẫn *"bạn viết frontend, cẩn thận về accessibility"* thì ở
 > dự án nào nó cũng là người ấy.
 
-Tuỳ chỗ làm mà có thêm những thứ chọn được — ví dụ model nào, mức suy nghĩ tới đâu. Danh sách
-ấy là **câu trả lời của chỗ làm**, không phải của Armarius: nó đọc ra từ chính CLI có trên máy
+Tuỳ runtime mà có thêm những thứ chọn được — ví dụ model nào, mức suy nghĩ tới đâu. Danh sách
+ấy là **câu trả lời của runtime**, không phải của Armarius: nó đọc ra từ chính CLI có trên máy
 bạn.
 
 Kỹ năng gắn được ngay lúc tạo hoặc thêm sau ([Kỹ năng](skills.md)).
@@ -39,7 +39,7 @@ Agent chỉ có **một** trạng thái, và nó trả lời đúng một câu: 
 
 ```mermaid
 stateDiagram-v2
-    [*] --> online: tạo xong, chỗ làm sẵn sàng
+    [*] --> online: tạo xong, runtime sẵn sàng
     online --> working: được gọi dậy
     working --> online: xong lượt
     online --> checking: im lặng quá ngưỡng đầu
@@ -54,7 +54,7 @@ stateDiagram-v2
 | **Đang nối** (`online`) | Gọi được. Cũng là trạng thái *rảnh giữa hai lượt* |
 | **Đang làm** (`working`) | Đang trong một lượt chạy |
 | **Đang dò** (`checking`) | Im lặng quá ngưỡng đầu, hệ thống đang kiểm |
-| **Mất liên lạc** (`offline`) | Không gọi được. Máy tắt, daemon tắt, hoặc chỗ làm đóng |
+| **Mất liên lạc** (`offline`) | Không gọi được. Máy tắt, daemon tắt, hoặc runtime đóng |
 | **Treo** (`hung`) | Lượt chạy còn mở nhưng không tiến triển gì |
 
 Trạng thái này **thuộc Armarius**, không thuộc CLI. Nó đọc ra từ nhịp của máy và từ diễn biến
@@ -73,7 +73,7 @@ dự án — rồi báo bạn, nếu không ai gỡ được.
 | **Codex** (`codex`) | `npm i -g @openai/codex` | `AGENTS.md` |
 | **Gemini CLI** (`gemini`) | `npm i -g @google/gemini-cli` | `GEMINI.md` |
 
-daemon **tự dò** — cài xong CLI rồi chạy lại `armarius-daemon start` là chỗ làm mới hiện lên
+daemon **tự dò** — cài xong CLI rồi chạy lại `armarius-daemon start` là runtime mới hiện lên
 màn hình Máy.
 
 Đề bài của một lượt chạy được đặt vào **đúng file bối cảnh mà CLI ấy tự mở**, còn kỹ năng đặt
@@ -95,4 +95,4 @@ Cùng một agent có thể là Trưởng dự án ở dự án này và ngườ
 
 - [Kỹ năng](skills.md) — dạy agent một cách làm việc
 - [Dự án và đầu việc](projects-and-tasks.md) — dựng đội hình
-- [Máy và daemon](machines-and-daemon.md) — chỗ làm không sẵn sàng thì làm gì
+- [Máy và daemon](machines-and-daemon.md) — runtime không sẵn sàng thì làm gì

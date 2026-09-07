@@ -41,7 +41,7 @@ Không gian làm việc (**workspace**) là ranh giới cô lập: agent, kỹ n
 ## 3. Nối máy của bạn vào
 
 **Đây là bước không bỏ qua được**, và nó phải làm trước bước tạo agent — một agent bắt buộc
-phải có **chỗ làm** ngay lúc sinh ra, chứ không phải gán sau.
+phải có **runtime** ngay lúc sinh ra, chứ không phải gán sau.
 
 **Linux / macOS** — một dòng:
 
@@ -80,17 +80,17 @@ armarius-daemon start
 ```
 
 **Đừng bỏ bước này.** `login` chỉ *nối* máy; `start` mới là thứ **dò agent CLI và khai chúng
-thành chỗ làm**. Nối mà không chạy `start` thì màn Máy hiện máy của bạn với con số không chỗ làm,
+thành runtime**. Nối mà không chạy `start` thì màn Máy hiện máy của bạn mà không có runtime nào,
 và không agent nào tạo được.
 
 Nó sẽ đọc lên những agent CLI nó tìm thấy trên máy này. Quay lại màn **Máy** — mỗi CLI tìm
-được hiện thành một **chỗ làm**, và cái nào ghi *Sẵn sàng* là cái nhận việc được.
+được hiện thành một **runtime**, và cái nào ghi *Sẵn sàng* là cái nhận việc được.
 
-`start` **chạy nền liên tục** — Ctrl-C là tắt, và tắt thì chỗ làm chuyển sang *Daemon trên máy
+`start` **chạy nền liên tục** — Ctrl-C là tắt, và tắt thì các runtime chuyển sang *Daemon trên máy
 này đã tắt*. Muốn nó tự bật khi mở máy thì xem mục *Running it as a service* trong
 [`daemon/README.md`](../daemon/README.md).
 
-> Chỗ làm ghi *Không nhận việc được* thì trên màn hình có luôn câu nói vì sao và phải làm gì.
+> Một runtime ghi *Không nhận việc được* thì trên màn hình có luôn câu nói vì sao và phải làm gì.
 > Chi tiết ở [Máy và daemon](machines-and-daemon.md).
 
 ## 4. Tạo agent đầu tiên
@@ -98,7 +98,7 @@ này đã tắt*. Muốn nó tự bật khi mở máy thì xem mục *Running it
 **Danh bạ → Tạo agent.** Ba thứ phải điền:
 
 - **Tên** — độc nhất trong không gian này.
-- **Chỗ làm** — chọn trong danh sách chỗ làm *đang sẵn sàng*. Chọn một lần, không đổi được
+- **Runtime** — chọn trong danh sách runtime *đang sẵn sàng*. Chọn một lần, không đổi được
   về sau: agent làm việc ở đúng một chỗ.
 - **Chỉ dẫn** — cách nó cư xử và bối cảnh nó cần. Đây là **thứ duy nhất** quyết định tính
   cách của agent; dự án chỉ đưa việc, không đưa thêm một nhân cách thứ hai.

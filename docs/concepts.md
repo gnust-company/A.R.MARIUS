@@ -10,7 +10,7 @@ flowchart TD
     WS --> AG["Agent"]
     WS --> SK["Kỹ năng"]
     WS --> MC["Máy"]
-    MC --> PL["Chỗ làm<br/>(một CLI trên một máy)"]
+    MC --> PL["Runtime<br/>(một CLI trên một máy)"]
     AG -.->|"làm việc tại"| PL
     PRJ --> TK["Đầu việc"]
     TK --> RUN["Lượt chạy"]
@@ -29,7 +29,7 @@ bạn ở những chỗ đã ghi là của bạn: duyệt kế hoạch, đổi c
 đều thuộc đúng một không gian. Thứ không thuộc không gian bạn đang xem thì với bạn nó **không
 tồn tại** — không phải *bị chặn*, mà là *không có*.
 
-## Máy và chỗ làm
+## Máy và runtime
 
 **daemon** — chương trình chạy nền trên máy bạn. Nó nối máy ấy vào một không gian làm việc và
 bật agent CLI lên tại chỗ. Nó là bên **đi hỏi**, nên máy bạn không cần mở cổng nào.
@@ -37,16 +37,16 @@ bật agent CLI lên tại chỗ. Nó là bên **đi hỏi**, nên máy bạn kh
 **agent CLI** — chương trình dòng lệnh của một hãng: `claude`, `codex`, `gemini`. Bạn cài và
 đăng nhập nó bằng tài khoản của mình; Armarius chỉ bật nó lên.
 
-**Chỗ làm** (*workplace*) — một cặp (agent CLI có trên máy đó × không gian làm việc). **Đây
-là thứ nhận việc**, không phải cái máy. Một máy có ba CLI thì có ba chỗ làm.
+**Runtime** (trong mã và trong cơ sở dữ liệu vẫn là *workplace*) — một cặp (agent CLI có trên máy đó × không gian làm việc). **Đây
+là thứ nhận việc**, không phải cái máy. Một máy có ba CLI thì có ba runtime.
 
-**heartbeat** — nhịp daemon phát ra để nói máy còn đó. Mất nhịp quá ngưỡng thì mọi chỗ làm
+**heartbeat** — nhịp daemon phát ra để nói máy còn đó. Mất nhịp quá ngưỡng thì mọi runtime
 trên máy ấy chuyển sang *không sẵn sàng*, và mọi agent ngồi ở đó thành *mất liên lạc*.
 
 ## Agent
 
 **Agent** (trong dự án này còn gọi là **MARIUS**) — một người làm việc có tên, có chỉ dẫn
-riêng, ngồi ở đúng một chỗ làm. Cách nó cư xử đến từ **chỉ dẫn** đặt lúc tạo nó, và chỉ từ đó.
+riêng, chạy trên đúng một runtime. Cách nó cư xử đến từ **chỉ dẫn** đặt lúc tạo nó, và chỉ từ đó.
 
 **Trưởng dự án** (*Project Leader*) — chiếc ghế điều phối trong một dự án: chia việc, xem lại
 việc của người khác, ký chữ ký thứ nhất. Là một vai trong đội hình, không phải một loại agent
