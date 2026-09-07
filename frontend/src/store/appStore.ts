@@ -15,6 +15,7 @@ import {
   projectToVM,
   skillToVM,
   taskToVM,
+  userToVM,
   workspaceToVM,
 } from '@/lib/mappers'
 import { loadTaskTrace } from '@/lib/trace'
@@ -468,6 +469,11 @@ export interface User {
   email?: string
   avatar?: string
   defaultWorkspaceId?: string
+  /** How far through the three first steps, and whether they are done with them. Read from
+   *  the server rather than the browser: those steps are once for an account, not once per
+   *  device (FR-104). Absent on an older server means *leave this person alone*. */
+  onboardingStep: number
+  onboarded: boolean
 }
 
 export interface ChatMessage {
@@ -1098,7 +1104,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   hydrateMe: async () => {
     try {
       const user = await api.getMe()
-      set({ currentUser: { id: user.id, name: user.full_name, email: user.email } })
+      set({ currentUser: userToVM(user) })
     } catch {
       // Not logged in (401) — leave currentUser null; the auth guard redirects to Landing.
     }

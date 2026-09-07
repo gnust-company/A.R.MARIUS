@@ -20,6 +20,11 @@ export interface UserDTO {
   is_verified: boolean
   created_at?: string | null
   last_login_at?: string | null
+  /** Where this person got to in the three first steps, and whether they are through them.
+   *  Defaulted on read rather than made optional at the call sites: an older server that does
+   *  not send them should leave somebody alone, not push them into a flow for new accounts. */
+  onboarding_step?: number
+  onboarded?: boolean
 }
 
 interface TokensDTO {
