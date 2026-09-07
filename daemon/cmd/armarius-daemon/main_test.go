@@ -4,7 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -355,5 +359,148 @@ func TestTheDefaultDrainFitsInsideAnOrdinaryServiceStopTimeout(t *testing.T) {
 			"the default drain is %s, which a service manager stopping at %s would destroy",
 			supervisor.DefaultDrainPatience, systemdDefaultStopTimeout,
 		)
+	}
+}
+
+// linkStub is the two endpoints `login` talks to, answering *approved* on the first poll so the
+// command finishes in about a second.
+func linkStub(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/daemon/link/start":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code":       "KQ7F-M2XD",
+				"verify_url": "http://localhost:3000/link?code=KQ7F-M2XD",
+				"expires_in": 600, "interval": 1,
+			})
+		case "/daemon/link/poll":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status": "approved", "machine_id": "m-1", "workspace_id": "w-1",
+				"token": "armd_secret",
+			})
+		default:
+			t.Errorf("login called an endpoint nobody built: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+}
+
+// fakeDesktop puts an `xdg-open` on PATH that records what it was asked to open and opens
+// nothing, and returns the file it records into.
+//
+// The point of going through a real program rather than a stub function: the opener path is the
+// one review found a hole in, and until this existed **nothing in CI ever ran it** — the tests
+// in internal/client all replace `OpenBrowser` with a function of their own, so `exec.LookPath`,
+// the argument list, and the wiring in `runLogin` were covered by nothing at all.
+func fakeDesktop(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	log := filepath.Join(dir, "opened.txt")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$1\" >> " + log + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "xdg-open"), []byte(script), 0o755); err != nil { //nolint:gosec // a test's own fake program
+		t.Fatalf("could not write the fake opener: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("DISPLAY", ":0")
+	t.Setenv("WAYLAND_DISPLAY", "")
+	return log
+}
+
+func openedURLs(t *testing.T, log string) []string {
+	t.Helper()
+	// The opener is started and not waited on, so give the child a moment to have run.
+	for range 20 {
+		if raw, err := os.ReadFile(log); err == nil { //nolint:gosec // the test's own file
+			if lines := strings.Fields(string(raw)); len(lines) > 0 {
+				return lines
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return nil
+}
+
+func TestLoginOpensThePageThroughTheRealOpener(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the fake desktop is an xdg-open, which is the Linux and BSD branch")
+	}
+	server := linkStub(t)
+	defer server.Close()
+	log := fakeDesktop(t)
+
+	_, _, err := dispatch(t, "login", "-server", server.URL,
+		"-config", filepath.Join(t.TempDir(), "daemon.json"))
+	if err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+	opened := openedURLs(t, log)
+	if len(opened) != 1 || opened[0] != "http://localhost:3000/link?code=KQ7F-M2XD" {
+		t.Errorf("the desktop was asked to open %v, not the address the server gave", opened)
+	}
+}
+
+// The environment variable is the way a script, a CI job, or an image build says *do not touch
+// the desktop*. Asserted at the command level because that is the only layer that reads it.
+func TestTheNoBrowserEnvironmentVariableIsObeyedByTheCommand(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the fake desktop is an xdg-open, which is the Linux and BSD branch")
+	}
+	server := linkStub(t)
+	defer server.Close()
+	log := fakeDesktop(t)
+	t.Setenv("ARMARIUS_NO_BROWSER", "1")
+
+	stdout, _, err := dispatch(t, "login", "-server", server.URL,
+		"-config", filepath.Join(t.TempDir(), "daemon.json"))
+	if err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+	if opened := openedURLs(t, log); len(opened) != 0 {
+		t.Errorf("ARMARIUS_NO_BROWSER was set and the desktop was still asked to open %v", opened)
+	}
+	// And it still says where to go, or the variable would have taken the flow away with the
+	// browser.
+	if !strings.Contains(stdout, "http://localhost:3000/link?code=KQ7F-M2XD") {
+		t.Errorf("nothing opened and nothing printed either; login said:\n%s", stdout)
+	}
+}
+
+func TestTheNoBrowserFlagIsObeyedByTheCommand(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the fake desktop is an xdg-open, which is the Linux and BSD branch")
+	}
+	server := linkStub(t)
+	defer server.Close()
+	log := fakeDesktop(t)
+
+	if _, _, err := dispatch(t, "login", "-no-browser", "-server", server.URL,
+		"-config", filepath.Join(t.TempDir(), "daemon.json")); err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+	if opened := openedURLs(t, log); len(opened) != 0 {
+		t.Errorf("-no-browser was given and the desktop was still asked to open %v", opened)
+	}
+}
+
+// An address the server made up must stop the command, not be printed as somewhere to go.
+func TestAnApprovalAddressThatIsNotAWebPageStopsLogin(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": "KQ7F-M2XD", "verify_url": "file:///etc/passwd",
+			"expires_in": 600, "interval": 1,
+		})
+	}))
+	defer server.Close()
+
+	stdout, _, err := dispatch(t, "login", "-server", server.URL,
+		"-config", filepath.Join(t.TempDir(), "daemon.json"))
+	if err == nil {
+		t.Fatal("login accepted an approval address that is not a web page")
+	}
+	if strings.Contains(stdout, "file:///etc/passwd") {
+		t.Errorf("login printed the address it had just refused:\n%s", stdout)
 	}
 }

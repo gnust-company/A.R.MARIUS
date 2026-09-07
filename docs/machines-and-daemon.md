@@ -123,6 +123,17 @@ bạn là **một người nhìn tên máy và không nhận ra nó**. Nên tran
 phiên bản daemon — máy tự khai, không phải giấy tờ đã kiểm — và nói thẳng ra là mã này đến từ
 đường liên kết chứ không phải bạn tự gõ.
 
+### Địa chỉ ấy được kiểm trước khi mở
+
+Địa chỉ phê duyệt là **câu trả lời của server**, tức là dữ liệu vào, không phải hằng số. Và thứ
+mở trang trên một desktop làm được nhiều hơn là hiện một trang web: một địa chỉ `file:` đọc đĩa
+của bạn, còn trên Windows thì thứ mở trang được đưa đường dẫn tới một chương trình sẽ **chạy**
+chương trình ấy. Nên daemon từ chối mở, và từ chối luôn cả việc *in ra*, bất cứ địa chỉ nào
+không phải một trang `http`/`https` có tên máy chủ hẳn hoi.
+
+Nó **không** đòi địa chỉ ấy cùng máy chủ với `-server`: `-server` là API còn đây là trang web,
+hai cổng khác nhau và thường là hai tên máy chủ khác nhau.
+
 ### Máy không mở được trang nào
 
 Server nối qua SSH, container, máy không màn hình: daemon không thử mở gì cả (trên Linux nó xem

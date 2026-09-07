@@ -122,6 +122,13 @@ func Login(ctx context.Context, opts LoginOptions) (Credentials, error) {
 	if err != nil {
 		return Credentials{}, err
 	}
+	// The approval address is the server's answer, so it is input. Refused here, before it is
+	// either opened or printed: an address that is not an http(s) page cannot be where a person
+	// approves this machine, so there is nothing to carry on with. Printing it instead would be
+	// this program telling somebody to go somewhere it just decided was not safe to go.
+	if err := SafeToOpen(started.VerifyURL); err != nil {
+		return Credentials{}, fmt.Errorf("the server gave an approval address that cannot be used: %w", err)
+	}
 
 	announce(opts, started)
 
