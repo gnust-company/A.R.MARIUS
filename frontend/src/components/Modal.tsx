@@ -51,9 +51,17 @@ export default function Modal({ isOpen, onClose, title, children, footer, maxWid
           <div className="absolute inset-0 bg-ink/50 backdrop-blur-sm" />
 
           {/* Panel */}
+          {/* `max-h-full` and the column below are what keep this panel inside the window.
+              Without them a tall form simply grows past both edges: the overlay is
+              `fixed inset-0`, the body is scroll-locked while a modal is open, and so the
+              header — the close button with it — ends up above the top of the screen with
+              nothing left that can scroll to it. Measured before this line existed: the
+              add-agent form stood 1051px tall once a runtime was picked, which put its
+              close button at y=-53 on a 945px-high window. */}
           <motion.div
             className={cn(
               'relative z-modal bg-vellum-deep rounded-xl w-full shadow-gilt-lg border border-vellum-dark',
+              'max-h-full flex flex-col',
               maxWidth,
               className
             )}
@@ -64,7 +72,7 @@ export default function Modal({ isOpen, onClose, title, children, footer, maxWid
           >
             {/* Header */}
             {title && (
-              <div className="flex items-start justify-between p-6 pb-0">
+              <div className="flex items-start justify-between p-6 pb-0 shrink-0">
                 <div className="font-display text-display-md text-ink">{title}</div>
                 <button
                   onClick={onClose}
@@ -88,11 +96,11 @@ export default function Modal({ isOpen, onClose, title, children, footer, maxWid
             )}
 
             {/* Content */}
-            <div className="p-6">{children}</div>
+            <div className="p-6 overflow-y-auto min-h-0">{children}</div>
 
             {/* Footer */}
             {footer && (
-              <div className="flex justify-end gap-3 px-6 pb-6">{footer}</div>
+              <div className="flex justify-end gap-3 px-6 pb-6 shrink-0">{footer}</div>
             )}
           </motion.div>
         </motion.div>

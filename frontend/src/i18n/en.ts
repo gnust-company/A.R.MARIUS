@@ -43,7 +43,7 @@ export const en = {
     doneTitle: 'Approved',
     doneBody: 'Go back to the terminal — the machine picks it up within a few seconds.',
     doneAgain: 'Link another machine',
-    doneLeave: 'Back to workspaces',
+    doneLeave: 'Go to the machine list',
     back: 'Back',
   },
   nav: {
@@ -76,18 +76,18 @@ export const en = {
     ready: 'Ready',
     notReadyChip: 'Cannot take work',
     noWorkplaces: 'This machine has reported no agent CLI.',
-    neverStarted: 'This machine is linked but the daemon has never run. On that machine, run `armarius-daemon start` — it discovers the agent CLIs and registers them as workplaces.',
+    neverStarted: 'This machine is linked but the daemon has never run. On that machine, run `armarius-daemon start` — it discovers the agent CLIs and registers them as runtimes.',
     noCliFound: 'The daemon is running but found no agent CLI on this machine. Install `claude`, `codex` or `gemini`, then restart the daemon.',
-    noAgentsHere: 'No agent lives at this workplace yet.',
+    noAgentsHere: 'No agent runs on this runtime yet.',
     ceilingLabel: 'Runs at once',
     ceilingHint: 'Takes effect the next time this machine asks for work.',
     notReady: {
-      cli_removed: 'This agent CLI was uninstalled from the machine. Reinstall it and the workplace comes back — the agents stay where they were.',
-      daemon_stopped: 'The daemon on this machine was stopped. Start it again and this workplace comes back — nothing was uninstalled.',
-      quota_exhausted: 'This workplace has run out of provider quota. Top it up or sign in with another account, and every agent working here comes back at once.',
+      cli_removed: 'This agent CLI was uninstalled from the machine. Reinstall it and the runtime comes back — the agents stay where they were.',
+      daemon_stopped: 'The daemon on this machine was stopped. Start it again and this runtime comes back — nothing was uninstalled.',
+      quota_exhausted: 'This runtime has run out of provider quota. Top it up or sign in with another account, and every agent running here comes back at once.',
       link_unsupported: 'This machine cannot create symbolic links, which every run needs.',
       machine_unreachable: 'The machine has stopped beating. Turn it on and start the daemon again.',
-      unknown: 'This workplace cannot take work. Check the daemon on that machine.',
+      unknown: 'This runtime cannot take work. Check the daemon on that machine.',
     },
     empty: {
       title: 'No machine linked yet',
@@ -301,12 +301,16 @@ export const en = {
     agentName: 'Agent Name',
     agentNamePlaceholder: 'e.g., Echo-2',
     skills: 'Skills',
-    workplace: 'Workplace',
+    // The key keeps the domain's name and the text says what the person picked. A place an
+    // agent works is a *workplace* everywhere below the screen — a machine plus one CLI on it
+    // — but nobody outside this codebase calls it that, and the wire already says `runtime`
+    // (`runtime_options` on the create-agent call). So: `workplace*` keys, "Runtime" words.
+    workplace: 'Runtime',
     workplaceLoading: 'Checking which machines are ready…',
-    workplacePlaceholder: 'Choose where this agent works',
+    workplacePlaceholder: 'Choose the runtime this agent runs on',
     workplaceOption: '{{cliKind}} on {{machineName}}',
-    workplaceHint: 'The agent works here for life and cannot be moved later. If the workplace stops working the agent goes offline; nothing reassigns it to another machine.',
-    // What a workplace's tool takes, asked of the tool itself (FR-007k). The labels are here
+    workplaceHint: 'The agent runs here for life and cannot be moved later. If the runtime stops working the agent goes offline; nothing reassigns it to another machine.',
+    // What a runtime's tool takes, asked of the tool itself (FR-007k). The labels are here
     // rather than sent from the server, so the person reads them in their own language even
     // though the keys that travel are codes (Hiến pháp VI, VII).
     option: {
@@ -315,10 +319,10 @@ export const en = {
       service_tier: 'Service tier',
     },
     optionDefault: "The tool's own default",
-    optionHint: 'Offered by the workplace, as its tool answered for itself. Leave it alone to use whatever that tool defaults to.',
+    optionHint: 'Offered by the runtime, as its tool answered for itself. Leave it alone to use whatever that tool defaults to.',
     optionAppliesNextRun: 'Applies from this agent’s next run. One already under way keeps what it started with.',
-    workplaceNone: 'No workplace is ready yet.',
-    workplaceNoneHint: 'Run the daemon on your machine and link it to this workspace. Once it reports an agent CLI it can run, the workplace appears here.',
+    workplaceNone: 'No runtime is ready yet.',
+    workplaceNoneHint: 'Run the daemon on your machine and link it to this workspace. Once it reports an agent CLI it can run, the runtime appears here.',
     instructions: 'Instructions',
     instructionsPlaceholder:
       'e.g. Always write the test first. Never edit config files without asking.',
@@ -797,15 +801,15 @@ export const en = {
       lastSeen: 'Last seen',
     },
     offlineReason: {
-      label: 'Workplace',
+      label: 'Runtime',
       not_placed: 'This agent has not been placed anywhere to work.',
-      machine_unreachable: 'The machine holding this workplace has stopped beating — it is most likely powered off or off the network.',
-      cli_removed: "This workplace's agent CLI is no longer on the machine. Reinstall it and the workplace becomes ready again.",
-      daemon_stopped: "The daemon on the machine holding this workplace was stopped. Start it again and the agent comes back online.",
-      quota_exhausted: "This agent's workplace has run out of provider quota. Top it up or sign in with another account, and the agent comes back online.",
-      link_unsupported: 'This machine cannot create the links a run requires, so no workplace on it can take work.',
-      placement_not_ready: "The agent's workplace is closed.",
-      unknown: "The agent's workplace is closed, for a reason it did not record.",
+      machine_unreachable: 'The machine holding this runtime has stopped beating — it is most likely powered off or off the network.',
+      cli_removed: "This runtime's agent CLI is no longer on the machine. Reinstall it and the runtime becomes ready again.",
+      daemon_stopped: "The daemon on the machine holding this runtime was stopped. Start it again and the agent comes back online.",
+      quota_exhausted: "This agent's runtime has run out of provider quota. Top it up or sign in with another account, and the agent comes back online.",
+      link_unsupported: 'This machine cannot create the links a run requires, so no runtime on it can take work.',
+      placement_not_ready: "The agent's runtime is closed.",
+      unknown: "The agent's runtime is closed, for a reason it did not record.",
     },
     linkSkills: {
       add: 'Link skills',
@@ -923,7 +927,7 @@ export const en = {
     run_not_found: 'Run not found.',
     machine_not_found: 'Machine not found.',
     machine_ceiling_out_of_range: 'A machine may hold between {{least}} and {{most}} runs at once.',
-    placement_not_found: 'Workplace not found.',
+    placement_not_found: 'Runtime not found.',
     agent_name_taken: 'An agent called "{{name}}" is already in this workspace. Pick another name.',
     daemon_link_code_not_found: 'No such link code. Check the code and try again.',
     daemon_link_code_expired: 'That link code has expired. Run `armarius-daemon login` again for a new one.',
@@ -950,8 +954,8 @@ export const en = {
     email_already_registered: 'Email already registered.',
     daemon_link_code_already_approved: 'That link code has already been approved by someone.',
     workplace_reported_twice: 'Agent CLI \'{{cli_kind}}\' was reported twice in one sync.',
-    placement_not_ready: 'That workplace is not ready for work ({{reason}}).',
-    agent_already_placed: 'That agent is already attached to a workplace.',
+    placement_not_ready: 'That runtime is not ready for work ({{reason}}).',
+    agent_already_placed: 'That agent is already attached to a runtime.',
     daemon_link_code_unavailable: 'Could not allocate a link code just now. Please try again.',
     project_closed: 'This project is closed — its history is read-only.',
     project_closed_no_wake: 'This project is closed — its agents are not woken any more.',
@@ -992,9 +996,9 @@ export const en = {
     task_reopen_needs_reason: 'Reopening a closed task must say why.',
     task_stalled_cannot_finish: 'A task flagged as stalled cannot be moved to done — clear the flag first.',
     task_needs_artifact: 'A published artifact must be linked before review or done.',
-    // FR-007k — what may be set on an agent is the workplace's answer, not the caller's.
-    placement_option_unknown: 'This workplace offers no setting called {{option}}.',
-    placement_option_value_unsupported: 'This workplace does not accept {{value}} for {{option}}.',
+    // FR-007k — what may be set on an agent is the runtime's answer, not the caller's.
+    placement_option_unknown: 'This runtime offers no setting called {{option}}.',
+    placement_option_value_unsupported: 'This runtime does not accept {{value}} for {{option}}.',
     task_needs_signatures: 'A task closes only with both signatures.',
     task_needs_signatures_named: 'A task closes only with both signatures — still missing: {{missing}}.',
     task_criteria_unmet: 'A task closes only when every acceptance criterion has passed.',

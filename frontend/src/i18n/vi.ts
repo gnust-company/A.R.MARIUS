@@ -43,7 +43,7 @@ export const vi = {
     doneTitle: 'Đã duyệt',
     doneBody: 'Quay lại cửa sổ dòng lệnh — máy sẽ tự nhận trong vài giây.',
     doneAgain: 'Nối thêm một máy nữa',
-    doneLeave: 'Về danh sách không gian làm việc',
+    doneLeave: 'Sang danh sách máy',
     back: 'Quay lại',
   },
   nav: {
@@ -76,18 +76,18 @@ export const vi = {
     ready: 'Sẵn sàng',
     notReadyChip: 'Không nhận việc được',
     noWorkplaces: 'Máy này chưa khai một agent CLI nào.',
-    neverStarted: 'Máy này đã nối nhưng daemon chưa chạy lần nào. Trên máy ấy chạy `armarius-daemon start` — nó sẽ dò các agent CLI và khai thành chỗ làm.',
+    neverStarted: 'Máy này đã nối nhưng daemon chưa chạy lần nào. Trên máy ấy chạy `armarius-daemon start` — nó sẽ dò các agent CLI và khai thành runtime.',
     noCliFound: 'Daemon đang chạy nhưng không tìm thấy agent CLI nào trên máy này. Cài `claude`, `codex` hoặc `gemini` rồi chạy lại daemon.',
-    noAgentsHere: 'Chưa có agent nào ở chỗ làm này.',
+    noAgentsHere: 'Chưa có agent nào chạy trên runtime này.',
     ceilingLabel: 'Chạy cùng lúc',
     ceilingHint: 'Có hiệu lực từ lần máy này xin việc kế tiếp.',
     notReady: {
-      cli_removed: 'Agent CLI này đã bị gỡ khỏi máy. Cài lại thì chỗ làm sống lại, agent vẫn nguyên chỗ cũ.',
-      daemon_stopped: 'Daemon trên máy này đã tắt. Bật lại là chỗ làm sống lại — không có gì bị gỡ cả.',
-      quota_exhausted: 'Chỗ làm này đã cạn hạn mức của nhà cung cấp. Nạp thêm hoặc đăng nhập tài khoản khác là mọi agent làm ở đây sống lại cùng lúc.',
+      cli_removed: 'Agent CLI này đã bị gỡ khỏi máy. Cài lại thì runtime sống lại, agent vẫn nguyên chỗ cũ.',
+      daemon_stopped: 'Daemon trên máy này đã tắt. Bật lại là runtime sống lại — không có gì bị gỡ cả.',
+      quota_exhausted: 'Runtime này đã cạn hạn mức của nhà cung cấp. Nạp thêm hoặc đăng nhập tài khoản khác là mọi agent chạy ở đây sống lại cùng lúc.',
       link_unsupported: 'Máy này không tạo được liên kết tượng trưng, thứ mà mọi lượt chạy đều cần.',
       machine_unreachable: 'Máy đã ngừng báo nhịp. Bật máy lên và chạy lại daemon.',
-      unknown: 'Chỗ làm này chưa nhận việc được. Xem lại daemon trên máy ấy.',
+      unknown: 'Runtime này chưa nhận việc được. Xem lại daemon trên máy ấy.',
     },
     empty: {
       title: 'Chưa nối máy nào',
@@ -301,12 +301,16 @@ export const vi = {
     agentName: 'Tên Agent',
     agentNamePlaceholder: 'VD: Echo-2',
     skills: 'Kỹ năng',
-    workplace: 'Chỗ làm',
+    // Khoá giữ tên trong hệ thống, còn chữ hiện lên là chữ người dùng chọn. Chỗ một agent
+    // chạy là *workplace* ở mọi tầng dưới màn hình — một máy cộng một CLI trên đó — nhưng
+    // không ai ngoài mã nguồn gọi thế, và trên dây đã là `runtime` (`runtime_options` ở lệnh
+    // tạo agent). Nên: khoá `workplace*`, chữ hiện ra "Runtime".
+    workplace: 'Runtime',
     workplaceLoading: 'Đang xem máy nào đang sẵn sàng…',
-    workplacePlaceholder: 'Chọn chỗ làm cho agent này',
+    workplacePlaceholder: 'Chọn runtime cho agent này',
     workplaceOption: '{{cliKind}} trên {{machineName}}',
-    workplaceHint: 'Agent sẽ làm việc ở đây suốt đời và không đổi được về sau. Chỗ làm chết thì agent ngoại tuyến, hệ thống không tự chuyển sang máy khác.',
-    // Thứ chỗ làm nhận, hỏi thẳng chính tool (FR-007k). Chữ để ở đây chứ không gửi từ server:
+    workplaceHint: 'Agent sẽ chạy ở đây suốt đời và không đổi được về sau. Runtime chết thì agent ngoại tuyến, hệ thống không tự chuyển sang máy khác.',
+    // Thứ runtime nhận, hỏi thẳng chính tool (FR-007k). Chữ để ở đây chứ không gửi từ server:
     // thứ đi trên dây là mã, còn câu thì dựng ở màn hình theo ngôn ngữ người đọc (Điều VI, VII).
     option: {
       model: 'Model',
@@ -314,10 +318,10 @@ export const vi = {
       service_tier: 'Hạng dịch vụ',
     },
     optionDefault: 'Mặc định của chính tool',
-    optionHint: 'Chỗ làm khai ra danh sách này, do chính tool ở đó tự trả lời. Bỏ trống thì dùng mặc định của tool.',
+    optionHint: 'Runtime khai ra danh sách này, do chính tool ở đó tự trả lời. Bỏ trống thì dùng mặc định của tool.',
     optionAppliesNextRun: 'Có hiệu lực từ lượt chạy sau của agent này. Lượt đang chạy dở vẫn giữ nguyên thứ nó mang đi lúc bắt đầu.',
-    workplaceNone: 'Chưa có chỗ làm nào sẵn sàng.',
-    workplaceNoneHint: 'Hãy chạy daemon trên máy của bạn rồi nối máy đó vào không gian làm việc này. Khi máy báo có agent CLI chạy được, chỗ làm sẽ hiện ở đây.',
+    workplaceNone: 'Chưa có runtime nào sẵn sàng.',
+    workplaceNoneHint: 'Hãy chạy daemon trên máy của bạn rồi nối máy đó vào không gian làm việc này. Khi máy báo có agent CLI chạy được, runtime sẽ hiện ở đây.',
     instructions: 'Chỉ dẫn',
     instructionsPlaceholder:
       'Ví dụ: Luôn viết test trước khi viết code. Không sửa file cấu hình khi chưa hỏi.',
@@ -663,7 +667,7 @@ export const vi = {
     trace: {
       error: {
         silence_threshold: 'Agent im lặng quá {{quiet_seconds}} giây nên máy đã dừng lượt chạy này.',
-        setup_failed: 'Máy không dựng nổi chỗ làm cho lượt chạy: {{why}}',
+        setup_failed: 'Máy không dựng nổi runtime cho lượt chạy: {{why}}',
         events_dropped: 'Mất {{count}} sự kiện vì máy gửi không kịp.',
         events_refused: 'Server không nhận {{count}} sự kiện nên bản ghi thiếu chỗ đó.',
         output_unreadable: 'Máy không đọc hết được thứ {{cli}} in ra. Agent vẫn chạy tiếp, chỉ là bản ghi có chỗ hụt.',
@@ -799,15 +803,15 @@ export const vi = {
       lastSeen: 'Lần cuối thấy',
     },
     offlineReason: {
-      label: 'Chỗ làm',
-      not_placed: 'Agent chưa được đặt vào chỗ làm nào.',
-      machine_unreachable: 'Máy giữ chỗ làm này đã ngừng báo nhịp — nhiều khả năng máy đang tắt hoặc mất mạng.',
-      cli_removed: 'Agent CLI của chỗ làm này không còn trên máy nữa. Cài lại rồi chỗ làm tự sẵn sàng trở lại.',
-      daemon_stopped: 'Daemon trên máy giữ chỗ làm này đã tắt. Bật lại là agent trực tuyến trở lại.',
-      quota_exhausted: 'Chỗ làm của agent này đã cạn hạn mức của nhà cung cấp. Nạp thêm hoặc đăng nhập tài khoản khác là agent trực tuyến trở lại.',
-      link_unsupported: 'Máy này không tạo được liên kết bắt buộc, nên không chỗ làm nào trên đó nhận việc được.',
-      placement_not_ready: 'Chỗ làm của agent đang đóng.',
-      unknown: 'Chỗ làm của agent đang đóng, chưa rõ lý do.',
+      label: 'Runtime',
+      not_placed: 'Agent chưa được đặt vào runtime nào.',
+      machine_unreachable: 'Máy giữ runtime này đã ngừng báo nhịp — nhiều khả năng máy đang tắt hoặc mất mạng.',
+      cli_removed: 'Agent CLI của runtime này không còn trên máy nữa. Cài lại rồi runtime tự sẵn sàng trở lại.',
+      daemon_stopped: 'Daemon trên máy giữ runtime này đã tắt. Bật lại là agent trực tuyến trở lại.',
+      quota_exhausted: 'Runtime của agent này đã cạn hạn mức của nhà cung cấp. Nạp thêm hoặc đăng nhập tài khoản khác là agent trực tuyến trở lại.',
+      link_unsupported: 'Máy này không tạo được liên kết bắt buộc, nên không runtime nào trên đó nhận việc được.',
+      placement_not_ready: 'Runtime của agent đang đóng.',
+      unknown: 'Runtime của agent đang đóng, chưa rõ lý do.',
     },
     linkSkills: {
       add: 'Liên kết kỹ năng',
@@ -924,7 +928,7 @@ export const vi = {
     run_not_found: 'Không tìm thấy lượt chạy.',
     machine_not_found: 'Không tìm thấy máy.',
     machine_ceiling_out_of_range: 'Một máy chỉ giữ được từ {{least}} tới {{most}} lượt chạy cùng lúc.',
-    placement_not_found: 'Không tìm thấy chỗ làm.',
+    placement_not_found: 'Không tìm thấy runtime.',
     agent_name_taken: 'Trong không gian này đã có agent tên "{{name}}". Đặt tên khác đi.',
     daemon_link_code_not_found: 'Không có mã nối máy này. Xem lại mã rồi nhập lại.',
     daemon_link_code_expired: 'Mã nối máy đã hết hạn. Chạy lại `armarius-daemon login` để lấy mã mới.',
@@ -951,8 +955,8 @@ export const vi = {
     email_already_registered: 'Email này đã có tài khoản.',
     daemon_link_code_already_approved: 'Mã nối máy này đã có người duyệt rồi.',
     workplace_reported_twice: 'Agent CLI \'{{cli_kind}}\' được báo hai lần trong cùng một lượt đồng bộ.',
-    placement_not_ready: 'Chỗ làm này chưa sẵn sàng nhận việc ({{reason}}).',
-    agent_already_placed: 'Agent này đã được buộc vào một chỗ làm rồi.',
+    placement_not_ready: 'Runtime này chưa sẵn sàng nhận việc ({{reason}}).',
+    agent_already_placed: 'Agent này đã được buộc vào một runtime rồi.',
     daemon_link_code_unavailable: 'Lúc này chưa cấp được mã nối máy. Thử lại giúp.',
     project_closed: 'Dự án đã đóng — lịch sử chỉ đọc, không sửa được.',
     project_closed_no_wake: 'Dự án đã đóng — không đánh thức agent của nó nữa.',
@@ -993,9 +997,9 @@ export const vi = {
     task_reopen_needs_reason: 'Mở lại một đầu việc đã đóng thì phải nêu lý do.',
     task_stalled_cannot_finish: 'Đầu việc đang mang cờ đình trệ thì chưa chuyển sang xong được — gỡ cờ đã.',
     task_needs_artifact: 'Phải gắn thành phẩm đã công bố trước khi chuyển sang chờ rà soát hoặc xong.',
-    // FR-007k — thứ đặt được cho agent là câu trả lời của chỗ làm, không phải của người gọi.
-    placement_option_unknown: 'Chỗ làm này không có thiết lập nào tên {{option}}.',
-    placement_option_value_unsupported: 'Chỗ làm này không nhận {{value}} cho {{option}}.',
+    // FR-007k — thứ đặt được cho agent là câu trả lời của runtime, không phải của người gọi.
+    placement_option_unknown: 'Runtime này không có thiết lập nào tên {{option}}.',
+    placement_option_value_unsupported: 'Runtime này không nhận {{value}} cho {{option}}.',
     task_needs_signatures: 'Đầu việc chỉ đóng khi đủ hai chữ ký.',
     task_needs_signatures_named: 'Đầu việc chỉ đóng khi đủ hai chữ ký — còn thiếu: {{missing}}.',
     task_criteria_unmet: 'Đầu việc chỉ đóng khi mọi tiêu chí công nhận đã chấm đạt.',

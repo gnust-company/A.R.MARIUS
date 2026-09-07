@@ -548,6 +548,29 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   máy của một người nào đó. Và một script sửa file cấu hình shell PHẢI có đường tắt để **không** sửa —
   cần cho cài trong CI, trong image, và cho chính phép kiểm của nó.
 
+- **FR-008j**: Một hộp thoại PHẢI **với tới được** ở đúng khổ màn hình nó mở ra. Nút đóng của nó KHÔNG ĐƯỢC
+  rời khỏi màn hình, và thứ cuộn khi nội dung dài hơn màn hình là **thân hộp thoại**, không phải trang bên
+  dưới — vì trang bên dưới bị khoá cuộn suốt lúc hộp thoại mở.
+  *Chốt 2026-09-07, sau khi người chủ tự dùng thử: "cái modal nó rộng out cả màn hình phải zoom nhỏ vào để đóng".*
+  Đo được: form thêm agent cao 823px lúc mở, **1051px** sau khi chọn runtime (hiện thêm hai thiết lập), trong
+  khi hộp thoại không có giới hạn chiều cao nào. Trên màn 1920×945 đỉnh hộp thoại nằm ở **y=−53**: nút đóng ở
+  ngoài màn hình, và không một thứ gì trên trang cuộn tới được nó. Zoom là cách duy nhất còn lại, và đó là
+  người dùng phải tự sửa cái mình làm sai.
+
+- **FR-008k**: Rời màn phê duyệt máy PHẢI trả người ta về **bên trong không gian làm việc** họ đang ở, chứ
+  không đẩy ra ngoài cùng. Màn ấy sống ngoài mọi không gian làm việc là có lý — lúc gõ mã thì máy chưa thuộc
+  về đâu cả — nhưng đó là lý của hệ thống, không phải đường đi của người dùng: họ bước vào từ màn Máy của một
+  không gian làm việc và mong bước ra ở đúng đó. Sau khi một máy đã được nhận, đích đúng còn rõ hơn: danh
+  sách máy của **không gian làm việc vừa nhận nó**.
+  *Chốt 2026-09-07, người chủ: "click vào quay lại là back về tận ngoài cùng chứ không phải ở workspace".*
+
+- **FR-008l**: Chỗ một agent chạy, khi hiện lên cho người dùng, PHẢI gọi là **runtime**. Bên dưới màn hình nó
+  vẫn là *workplace* — một máy cộng một agent CLI trên đó — và tên ấy giữ nguyên trong mã, trong bảng, trong
+  khoá i18n. Nhưng trên dây thì lệnh tạo agent **đã** gọi là `runtime_options`, nghĩa là "chỗ làm" chưa bao
+  giờ là ngôn ngữ của hệ thống: nó là một chữ dịch thêm ở tầng hiển thị, và là chữ không ai ngoài mã nguồn
+  này dùng.
+  *Chốt 2026-09-07, người chủ: "click chọn runtime tôi đé hiểu sao lại gọi là Chỗ làm?"*
+
 ### Nhóm B — Giao việc và nói chuyện với agent
 
 - **FR-009**: Khi một lượt gọi dậy phát sinh, hệ thống PHẢI đẩy việc xuống chỗ làm phù hợp. Giao diện
