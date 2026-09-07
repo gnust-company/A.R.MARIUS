@@ -68,6 +68,10 @@ Rồi nối máy:
 armarius-daemon login -server http://localhost:8080
 ```
 
+> **`-server` là địa chỉ API, không phải địa chỉ trang web.** Ở đây là `:8080`. Daemon nói chuyện
+> với API — nó không mở trang nào. Còn `:3000` là chỗ **bạn** ngồi. Hai cổng, hai việc, và đây là
+> chỗ dễ nhập lẫn nhất trong cả bài này.
+
 Nó in ra một mã ngắn và đứng đợi. Mở trang nối máy — **http://localhost:3000/link** — nhập mã
 đó, chọn không gian làm việc. Xong thì bật daemon lên:
 
@@ -75,8 +79,16 @@ Nó in ra một mã ngắn và đứng đợi. Mở trang nối máy — **http:
 armarius-daemon start
 ```
 
+**Đừng bỏ bước này.** `login` chỉ *nối* máy; `start` mới là thứ **dò agent CLI và khai chúng
+thành chỗ làm**. Nối mà không chạy `start` thì màn Máy hiện máy của bạn với con số không chỗ làm,
+và không agent nào tạo được.
+
 Nó sẽ đọc lên những agent CLI nó tìm thấy trên máy này. Quay lại màn **Máy** — mỗi CLI tìm
 được hiện thành một **chỗ làm**, và cái nào ghi *Sẵn sàng* là cái nhận việc được.
+
+`start` **chạy nền liên tục** — Ctrl-C là tắt, và tắt thì chỗ làm chuyển sang *Daemon trên máy
+này đã tắt*. Muốn nó tự bật khi mở máy thì xem mục *Running it as a service* trong
+[`daemon/README.md`](../daemon/README.md).
 
 > Chỗ làm ghi *Không nhận việc được* thì trên màn hình có luôn câu nói vì sao và phải làm gì.
 > Chi tiết ở [Máy và daemon](machines-and-daemon.md).

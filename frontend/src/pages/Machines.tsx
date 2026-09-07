@@ -217,7 +217,17 @@ function Machine({ machine, onChanged }: { machine: MachineDTO; onChanged: (m: M
           {machine.workplaces.length > 0 ? (
             machine.workplaces.map((place) => <Workplace key={place.id} place={place} />)
           ) : (
-            <p className="text-[12px] text-[#A89880]">{t('machines.noWorkplaces')}</p>
+            // Two ways to have no workplaces, and they need different things done about them.
+            // A machine that has never sent a beat was linked and then never started — the
+            // discovery that registers workplaces happens in `start`, not in `login`. A machine
+            // that *is* beating and still reports nothing has been asked and genuinely found no
+            // agent CLI installed. Saying only "this machine has reported no agent CLI" is true of
+            // both and useful for neither (FR-008h).
+            <p className="text-[12px] text-[#A89880]">
+              {machine.last_heartbeat_at === null
+                ? t('machines.neverStarted')
+                : t('machines.noCliFound')}
+            </p>
           )}
         </div>
       </VellumPanel>

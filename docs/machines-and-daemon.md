@@ -101,8 +101,12 @@ không ai báo. Không bật thì mọi chỗ làm trên máy báo *không tạo
 ## Nối máy vào không gian làm việc
 
 ```sh
-armarius-daemon login -server <địa-chỉ-Armarius-của-bạn>
+armarius-daemon login -server <địa-chỉ-API-của-Armarius>
 ```
+
+> **`-server` là địa chỉ API, không phải địa chỉ trang web.** Chạy Armarius trên máy mình thì đó là
+> `http://localhost:8080`, còn `:3000` là trang web. Daemon chỉ gọi các cửa API — nó không mở trang
+> nào — nên nhập địa chỉ trang web vào đây thì mọi lệnh của nó đều trượt.
 
 Nó in ra một mã ngắn và đứng đợi. Mở trang nối máy trên giao diện — đường dẫn `/link`, ví dụ
 `http://localhost:3000/link` nếu bạn đang chạy Armarius trên máy mình — nhập mã đó rồi chọn
@@ -120,6 +124,10 @@ Rồi bật daemon:
 ```sh
 armarius-daemon start
 ```
+
+**Đây là bước khai chỗ làm, và nó không nằm trong `login`.** `login` chỉ nối máy; `start` mới dò
+agent CLI trên máy và khai chúng lên. Nối mà chưa chạy `start` thì màn Máy hiện máy của bạn kèm
+câu *daemon chưa chạy lần nào* và không có chỗ làm nào — đúng sự thật, và không tạo được agent nào.
 
 Nó đọc lên những agent CLI nó tìm thấy, rồi đứng đó. Ctrl-C để dừng. Muốn nó tự bật khi mở
 máy thì xem mục *Running it as a service* trong [`daemon/README.md`](../daemon/README.md).

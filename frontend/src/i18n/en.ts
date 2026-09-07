@@ -76,6 +76,8 @@ export const en = {
     ready: 'Ready',
     notReadyChip: 'Cannot take work',
     noWorkplaces: 'This machine has reported no agent CLI.',
+    neverStarted: 'This machine is linked but the daemon has never run. On that machine, run `armarius-daemon start` — it discovers the agent CLIs and registers them as workplaces.',
+    noCliFound: 'The daemon is running but found no agent CLI on this machine. Install `claude`, `codex` or `gemini`, then restart the daemon.',
     noAgentsHere: 'No agent lives at this workplace yet.',
     ceilingLabel: 'Runs at once',
     ceilingHint: 'Takes effect the next time this machine asks for work.',

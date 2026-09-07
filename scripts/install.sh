@@ -66,6 +66,26 @@ installed_version() {
   "$1" version 2>/dev/null | awk 'NR==1{print $2}' || true
 }
 
+# Whether $BIN_DIR already holds this exact release, whole.
+#
+# Two things this deliberately does **not** do, both learned by measuring:
+#
+# It does not ask PATH. It used to — `command -v armarius-daemon` — which meant that somebody who
+# named ARMARIUS_BIN_DIR, with a copy of the same version sitting anywhere else on their PATH, was
+# told "already the latest" and got an empty directory. Naming a directory is asking for a
+# placement, not asking whether the program is reachable from somewhere.
+#
+# And it does not ask about the daemon alone. A directory holding a current daemon with no
+# `armarius` beside it is exactly the broken state the staged install goes to such lengths to
+# prevent — and reporting *already the latest* into it would leave the installer unable to repair
+# the one fault it knows most about.
+already_current() {
+  local tag="$1"
+  [ -x "$BIN_DIR/$DAEMON" ] || return 1
+  [ -x "$BIN_DIR/$CALLBACK" ] || return 1
+  [ "$(installed_version "$BIN_DIR/$DAEMON")" = "${tag#v}" ]
+}
+
 # ── Where the two programs go ────────────────────────────────────────────────────────────────
 
 add_to_path() {
@@ -172,8 +192,6 @@ install_binaries() {
     || fail "The archive did not contain both ${DAEMON} and ${CALLBACK}."
   chmod +x "$tmp/$DAEMON" "$tmp/$CALLBACK"
 
-  choose_bin_dir
-
   # Both, or neither — and *neither* must mean "what was here before", not "nothing".
   #
   # `armarius-daemon` looks for `armarius` beside itself and refuses to start without it, so a
@@ -247,14 +265,23 @@ USAGE
     [ -n "$tag" ] || fail "Could not work out the latest release. Check your network, or set ARMARIUS_VERSION."
   fi
 
-  # Already here and already current? Say so and stop, rather than reinstalling the same bytes.
-  if have "$DAEMON"; then
-    local here; here=$(installed_version "$DAEMON")
-    if [ -n "$here" ] && [ "$here" = "${tag#v}" ]; then
-      ok "${DAEMON} ${here} is already the latest."
-      exit 0
+  # Where these go is settled before asking whether they are already there, because the answer
+  # depends on the where.
+  choose_bin_dir
+
+  # Already here, whole, and already current? Say so and stop, rather than reinstalling the same
+  # bytes.
+  if already_current "$tag"; then
+    ok "${DAEMON} ${tag#v} is already the latest, in ${BIN_DIR}."
+    exit 0
+  fi
+  if [ -x "$BIN_DIR/$DAEMON" ]; then
+    local here; here=$(installed_version "$BIN_DIR/$DAEMON")
+    if [ -n "$here" ] && [ "$here" != "${tag#v}" ]; then
+      info "${DAEMON} ${here} is in ${BIN_DIR}; ${tag} is available — upgrading."
+    elif [ ! -x "$BIN_DIR/$CALLBACK" ]; then
+      info "${BIN_DIR} has ${DAEMON} but no ${CALLBACK} — repairing."
     fi
-    [ -n "$here" ] && info "${DAEMON} ${here} is installed; ${tag} is available — upgrading."
   fi
 
   install_binaries "$tag"
