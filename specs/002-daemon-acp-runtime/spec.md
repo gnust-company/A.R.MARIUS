@@ -527,6 +527,26 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   - Tài liệu cũ đã lỗi thời KHÔNG ĐƯỢC nằm cùng chỗ với tài liệu đang đúng. Một nhãn *ĐÃ LỖI THỜI* dán trên
     đầu file không đủ: `docs/` đang có năm file như thế, cả năm đều dán nhãn, và nhãn ấy còn trỏ người đọc
     sang `spec/` — một thư mục cũng đã dỡ đi. Cái sai không phải là thiếu nhãn mà là để chúng ở cùng chỗ.
+- **FR-008i**: Cài daemon PHẢI là **một lệnh**. *Chốt 2026-09-07, người chủ, sau khi so với Multica.*
+  Điều khoản này sinh ra từ một câu hỏi đúng: *"tải file zip về có hơi phèn không?"* Đọc script cài của
+  Multica thì ra bên dưới họ cũng tải đúng một tar.gz từ GitHub Releases — **cùng cơ chế** — nhưng họ có
+  cái vỏ mình không có: một dòng `curl … | bash` tự dò hệ điều hành, tự chọn archive, tự đặt vào chỗ đúng,
+  tự viết dòng `PATH`. Cái phèn nằm ở lớp vỏ, không ở cách phân phối.
+
+  Bốn ràng buộc:
+  - Người cài KHÔNG ĐƯỢC phải tự dò hệ điều hành, tự chọn archive, tự `chmod`, hay tự sửa `PATH`.
+  - Bản tải về PHẢI được **kiểm chữ ký** trước khi cài bất cứ thứ gì. Đây là chỗ đi xa hơn Multica — script
+    của họ không kiểm gì cả. Một dòng lệnh kéo script từ mạng vào shell đã là một lần đặt niềm tin; tiêu
+    thêm một request để xem thứ chạy xuống dây có đúng thứ bản phát hành công bố không là mức tối thiểu.
+  - Hai chương trình PHẢI được đặt như **một khối**. Đặt được `armarius-daemon` mà không đặt được `armarius`
+    thì phải gỡ cái đầu ra: daemon từ chối khởi động khi thiếu cái thứ hai, nên một lần cài dở dang để lại
+    đúng một thứ chỉ chịu nói ra là nó vô dụng vào lúc người ta cần nó nhất.
+  - Chạy lại PHẢI là **nâng cấp**, và đang mới nhất thì nói vậy rồi dừng — không tải lại cùng một mớ bytes.
+
+  Ghi rõ hai điều **không** nằm trong đây. Installer KHÔNG ĐƯỢC là điều kiện: cài bằng tay phải còn đường và
+  còn được ghi trong tài liệu, vì một script cài là tiện lợi, và tiện lợi nào cũng có ngày không chạy trên
+  máy của một người nào đó. Và một script sửa file cấu hình shell PHẢI có đường tắt để **không** sửa —
+  cần cho cài trong CI, trong image, và cho chính phép kiểm của nó.
 
 ### Nhóm B — Giao việc và nói chuyện với agent
 

@@ -9,21 +9,38 @@ installed them, signed in as you, and the work they do happens on your disk.
 
 ## Install
 
-Every release ships one archive per platform containing **two** binaries:
+**Linux and macOS**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/gnust-company/A.R.MARIUS/main/scripts/install.sh | bash
+```
+
+**Windows** — no installer yet; install by hand (below). One is being built.
+
+That is the whole of it on Linux and macOS. The installer works out your platform, verifies the
+download against the release's published checksums, installs both programs, and tells you what to
+run next. Running it again upgrades; running it when you are already current says so and stops.
+
+It takes three environment variables: `ARMARIUS_BIN_DIR` (where to install), `ARMARIUS_VERSION`
+(a specific tag instead of the latest), and `ARMARIUS_NO_PATH_EDIT` (print the `PATH` line instead
+of writing it into your shell configuration). `bash scripts/install.sh --help` lists them.
+
+### Why there are two programs
 
 | Binary | What it is |
 | --- | --- |
 | `armarius-daemon` | the program you run |
 | `armarius` | the small command an agent uses to call Armarius back during a run |
 
-They ship together and must stay together — the daemon looks for `armarius` beside itself and
+They ship in one archive and must stay together — the daemon looks for `armarius` beside itself and
 refuses to start without it, because an agent handed instructions naming a command that is not
-there fails on every call it makes and nothing on either side reports why.
+there fails on every call it makes and nothing on either side reports why. The installer treats
+them as one unit for that reason: if the second one cannot be placed, the first is removed again.
 
-Download the archive for your platform from the releases page, unpack it, and put both files on
-your `PATH`.
+### Installing by hand
 
-**Linux and macOS**
+The installer is a convenience, not a requirement. Download the archive for your platform from the
+[releases page](https://github.com/gnust-company/A.R.MARIUS/releases/latest), then:
 
 ```sh
 tar -xzf armarius-daemon_<version>_<os>_<arch>.tar.gz
@@ -31,26 +48,29 @@ sudo install -m 0755 armarius-daemon armarius /usr/local/bin/
 armarius-daemon version
 ```
 
-On macOS the first run of an unsigned download is blocked by Gatekeeper. Open **System Settings →
-Privacy & Security** and allow it there, or clear the quarantine flag yourself:
+On Windows, unpack the `.zip` and put both `.exe` files in a directory on your `PATH` — for example
+`%LOCALAPPDATA%\Programs\Armarius`.
+
+### macOS: the first run of an unsigned download
+
+Gatekeeper blocks it. Open **System Settings → Privacy & Security** and allow it there, or clear
+the quarantine flag yourself:
 
 ```sh
 xattr -d com.apple.quarantine /usr/local/bin/armarius-daemon /usr/local/bin/armarius
 ```
 
-**Windows**
+### Windows: Developer Mode is required
 
-Unpack the `.zip` and put both `.exe` files in a directory on your `PATH` — for example
-`%LOCALAPPDATA%\Programs\Armarius`.
+Settings → System → For developers → **Developer Mode**.
 
-Then **turn on Developer Mode**: Settings → System → For developers → Developer Mode. Without it,
-Windows only lets an administrator create symbolic links, and this daemon needs them. It is not a
-convenience. Each run gets a home directory of its own, and the pieces of it that must outlive the
-run — above all the agent's session state — are linked out rather than copied. A copy would take
-everything the run wrote and then be thrown away with the home, so the agent would lose its memory
-of the task and nothing would say so. The daemon therefore **tests** whether it can make a link,
-at startup, on the real disk; if it cannot, every workplace on the machine registers as *not
-ready* with the reason on it, rather than accepting work it would quietly ruin.
+Without it, Windows only lets an administrator create symbolic links, and this daemon needs them.
+It is not a convenience. Each run gets a home directory of its own, and the pieces of it that must
+outlive the run — above all the agent's session state — are linked out rather than copied. A copy
+would take everything the run wrote and then be thrown away with the home, so the agent would lose
+its memory of the task and nothing would say so. The daemon therefore **tests** whether it can make
+a link, at startup, on the real disk; if it cannot, every workplace on the machine registers as
+*not ready* with the reason on it, rather than accepting work it would quietly ruin.
 
 ## Link this machine
 
