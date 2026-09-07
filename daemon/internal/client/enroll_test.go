@@ -45,7 +45,7 @@ func linkServer(t *testing.T, approveAfter int, expire bool) *httptest.Server {
 				t.Error("link/start received no hostname; the approval screen would have nothing to show")
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"code": "KQ7F-M2XD", "verify_url": "https://armarius.example/link",
+				"code": "KQ7F-M2XD", "verify_url": "https://armarius.example/link?code=KQ7F-M2XD",
 				"expires_in": 600, "interval": 5,
 			})
 		case "/daemon/link/poll":
@@ -229,7 +229,7 @@ func TestATemporaryFailureWhileWaitingIsRiddenOutRatherThanFatal(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/daemon/link/start" {
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"code": "KQ7F-M2XD", "verify_url": "https://armarius.example/link",
+				"code": "KQ7F-M2XD", "verify_url": "https://armarius.example/link?code=KQ7F-M2XD",
 				"expires_in": 600, "interval": 5,
 			})
 			return
@@ -265,7 +265,7 @@ func TestAServerThatNeverAnswersIsGivenUpOnRatherThanWaitedOnForever(t *testing.
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/daemon/link/start" {
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"code": "KQ7F-M2XD", "verify_url": "https://armarius.example/link",
+				"code": "KQ7F-M2XD", "verify_url": "https://armarius.example/link?code=KQ7F-M2XD",
 				"expires_in": 600, "interval": 5,
 			})
 			return
@@ -325,7 +325,7 @@ func slowDownServer(t *testing.T, refusals int, seconds string) *httptest.Server
 		switch r.URL.Path {
 		case "/daemon/link/start":
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"code": "KQ7F-M2XD", "verify_url": "https://armarius.example/link",
+				"code": "KQ7F-M2XD", "verify_url": "https://armarius.example/link?code=KQ7F-M2XD",
 				"expires_in": 600, "interval": 5,
 			})
 		case "/daemon/link/poll":
@@ -413,5 +413,122 @@ func TestAWaitThisMachineCannotReadFallsBackToTheInterval(t *testing.T) {
 		if len(waits) < 2 || waits[1] != 5*time.Second {
 			t.Fatalf("seconds=%q: waits = %v, want the 5s interval the server advertised", asked, waits)
 		}
+	}
+}
+
+// openRecorder stands in for the desktop: it remembers what it was asked to open and opens
+// nothing. Every test in this file uses one, or leaves the field nil — a test that reaches a
+// real browser is a test that opens tabs on whoever runs it.
+type openRecorder struct {
+	urls []string
+	fail error
+}
+
+func (o *openRecorder) open(_ context.Context, url string) error {
+	o.urls = append(o.urls, url)
+	return o.fail
+}
+
+func TestLoginOpensTheApprovalPageSoNobodyHasToTypeTheCode(t *testing.T) {
+	server := linkServer(t, 1, false)
+	defer server.Close()
+
+	desktop := &openRecorder{}
+	var out bytes.Buffer
+	if _, err := Login(context.Background(), LoginOptions{
+		Server: server.URL, ConfigPath: filepath.Join(t.TempDir(), "daemon.json"),
+		Hostname: "gnust-thinkpad", Platform: runtime.GOOS, Version: "0.1.0",
+		Out: &out, Sleep: noWait, OpenBrowser: desktop.open,
+	}); err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+
+	if len(desktop.urls) != 1 {
+		t.Fatalf("login opened %d pages, want exactly one: %v", len(desktop.urls), desktop.urls)
+	}
+	// The address the server gave, unaltered. It is the server that decides where approval
+	// happens and what the address carries; this end must not be assembling one of its own.
+	if desktop.urls[0] != "https://armarius.example/link?code=KQ7F-M2XD" {
+		t.Errorf("login opened %q, not the address the server handed it", desktop.urls[0])
+	}
+	// Printed as well as opened. A page can open on a desktop nobody is looking at, and the
+	// person may want to approve from another device entirely.
+	for _, want := range []string{"https://armarius.example/link?code=KQ7F-M2XD", "KQ7F-M2XD"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("login opened a page but never printed %q; it printed:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestAskingForNoBrowserOpensNoneAndStillSaysWhereToGo(t *testing.T) {
+	server := linkServer(t, 1, false)
+	defer server.Close()
+
+	desktop := &openRecorder{}
+	var out bytes.Buffer
+	if _, err := Login(context.Background(), LoginOptions{
+		Server: server.URL, ConfigPath: filepath.Join(t.TempDir(), "daemon.json"),
+		Hostname: "gnust-thinkpad", Platform: runtime.GOOS, Version: "0.1.0",
+		Out: &out, Sleep: noWait, OpenBrowser: desktop.open, NoBrowser: true,
+	}); err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+
+	if len(desktop.urls) != 0 {
+		t.Errorf("-no-browser still opened %v", desktop.urls)
+	}
+	for _, want := range []string{"https://armarius.example/link?code=KQ7F-M2XD", "KQ7F-M2XD"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("-no-browser printed no %q; it printed:\n%s", want, out.String())
+		}
+	}
+}
+
+// A machine with no desktop is a normal place to link from — a server over SSH, a container,
+// a box with no display. It must link exactly as well as a laptop does.
+func TestAMachineWithNoBrowserStillLinks(t *testing.T) {
+	server := linkServer(t, 1, false)
+	defer server.Close()
+
+	desktop := &openRecorder{fail: ErrNoBrowser}
+	var out bytes.Buffer
+	creds, err := Login(context.Background(), LoginOptions{
+		Server: server.URL, ConfigPath: filepath.Join(t.TempDir(), "daemon.json"),
+		Hostname: "headless-box", Platform: runtime.GOOS, Version: "0.1.0",
+		Out: &out, Sleep: noWait, OpenBrowser: desktop.open,
+	})
+	if err != nil {
+		t.Fatalf("a machine with no browser could not link: %v", err)
+	}
+	if creds.Token != "armd_secret" {
+		t.Errorf("login came back without the token: %+v", creds)
+	}
+	for _, want := range []string{"https://armarius.example/link?code=KQ7F-M2XD", "KQ7F-M2XD"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("no browser and no %q printed either; it printed:\n%s", want, out.String())
+		}
+	}
+}
+
+// The field left nil is what every other test in this file does, and it must mean *open
+// nothing* rather than *open with the real opener*. Stated as a test because the cost of
+// getting it wrong is not a failure — it is browser tabs on whoever runs `go test`.
+func TestNoOpenerNamedMeansNothingIsOpened(t *testing.T) {
+	server := linkServer(t, 1, false)
+	defer server.Close()
+
+	var out bytes.Buffer
+	if _, err := Login(context.Background(), LoginOptions{
+		Server: server.URL, ConfigPath: filepath.Join(t.TempDir(), "daemon.json"),
+		Hostname: "gnust-thinkpad", Platform: runtime.GOOS, Version: "0.1.0",
+		Out: &out, Sleep: noWait,
+	}); err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+	if strings.Contains(out.String(), "Opening ") {
+		t.Errorf("login claimed to have opened a page with no opener given; it printed:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "Open https://armarius.example/link?code=KQ7F-M2XD") {
+		t.Errorf("login did not tell the operator where to go; it printed:\n%s", out.String())
 	}
 }

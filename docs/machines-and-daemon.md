@@ -105,15 +105,37 @@ armarius-daemon login -server <địa-chỉ-API-của-Armarius>
 ```
 
 > **`-server` là địa chỉ API, không phải địa chỉ trang web.** Chạy Armarius trên máy mình thì đó là
-> `http://localhost:8080`, còn `:3000` là trang web. Daemon chỉ gọi các cửa API — nó không mở trang
-> nào — nên nhập địa chỉ trang web vào đây thì mọi lệnh của nó đều trượt.
+> `http://localhost:8080`, còn `:3000` là trang web. Đây là địa chỉ daemon **gọi vào**; trang nó
+> **mở ra** cho bạn thì nó lấy từ câu trả lời của API, không tự đoán. Nhập địa chỉ trang web vào
+> đây thì mọi lệnh của nó đều trượt.
 
-Nó in ra một mã ngắn và đứng đợi. Mở trang nối máy trên giao diện — đường dẫn `/link`, ví dụ
-`http://localhost:3000/link` nếu bạn đang chạy Armarius trên máy mình — nhập mã đó rồi chọn
-không gian làm việc máy này tham gia.
+Nó **tự mở trang phê duyệt** ra, với mã đã nằm sẵn trên địa chỉ. Trên trang ấy bạn thấy máy nào
+đang hỏi, chọn không gian làm việc, rồi bấm **Đồng ý**. Không phải chép mã sang đâu cả.
 
 Mã sống **10 phút** và dùng được **một lần**. Hết hạn hoặc đã dùng thì chạy lại `login` để lấy
 mã mới.
+
+### Vì sao vẫn phải bấm đồng ý
+
+Vì cái mở ra là một *đường liên kết*, và đường liên kết là thứ người khác gửi cho bạn được. Mã đi
+trong địa chỉ chỉ tiết kiệm cho bạn việc gõ; thứ chặn một daemon lạ vào không gian làm việc của
+bạn là **một người nhìn tên máy và không nhận ra nó**. Nên trang ấy hiện hostname, hệ điều hành và
+phiên bản daemon — máy tự khai, không phải giấy tờ đã kiểm — và nói thẳng ra là mã này đến từ
+đường liên kết chứ không phải bạn tự gõ.
+
+### Máy không mở được trang nào
+
+Server nối qua SSH, container, máy không màn hình: daemon không thử mở gì cả (trên Linux nó xem
+`DISPLAY`/`WAYLAND_DISPLAY`, rỗng cả hai thì thôi). Nó in địa chỉ **kèm mã** ra, bạn mở ở máy nào
+cũng được — kể cả điện thoại.
+
+Muốn thế kể cả khi máy có desktop:
+
+```sh
+armarius-daemon login -no-browser -server <địa-chỉ-API-của-Armarius>
+```
+
+Hoặc đặt `ARMARIUS_NO_BROWSER=1` — dùng cho script, cho CI, cho ảnh máy dựng sẵn.
 
 Token của máy được ghi vào `~/.armarius/daemon.json` (`%USERPROFILE%\.armarius\daemon.json`
 trên Windows) và **không bao giờ ra khỏi đó**. Agent không bao giờ cầm token này — thứ chúng

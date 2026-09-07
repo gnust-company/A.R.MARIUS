@@ -296,6 +296,28 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 
 - **FR-001**: Hệ thống PHẢI cho phép một người cài và chạy daemon trên máy của mình rồi nối nó vào đúng
   một workspace bằng danh tính của người ấy.
+- **FR-001b**: Nối máy PHẢI là **một lệnh**. Chạy `login` là daemon **tự mở trang phê duyệt**, với mã
+  đã nằm sẵn trên địa chỉ, để người dùng không phải chép tám ký tự từ cửa sổ này sang cửa sổ khác.
+  *Chốt 2026-09-07, người chủ: "sao ko được như multica daemon, chạy lệnh login vào server cái là mở 1
+  cái auth… lại còn mở cái nối máy xong nhập mã device vào nữa, đã bảo là copy như thăng Multica rồi".*
+
+  Ba ràng buộc:
+  - **Địa chỉ mang mã theo.** Server là bên quyết định địa chỉ phê duyệt và những gì nó chở; daemon
+    KHÔNG ĐƯỢC tự lắp một địa chỉ của riêng nó. Mã gồm chữ và số cộng một dấu gạch, nên nó đi trong
+    query string không cần mã hoá gì.
+  - **Bước bấm đồng ý KHÔNG ĐƯỢC bỏ cùng với bước gõ.** Đây là chỗ dừng lại và nói rõ. Cái mở ra là
+    một *đường liên kết*, và đường liên kết là thứ người khác gửi cho người dùng được; nếu mở link là
+    xong thì một mã lộ ra — trong log, trong ảnh chụp màn hình, trong một tin nhắn — trở thành một máy
+    lạ vào thẳng workspace. Thứ chặn nó là **một người đọc hostname và không nhận ra**. Nên trang phê
+    duyệt PHẢI hiện những gì máy tự khai, và khi mã đến từ đường liên kết chứ không phải do người dùng
+    tự gõ thì PHẢI nói ra điều đó.
+  - **Máy không mở được trang nào vẫn nối được y như cũ.** Không phải máy nào cũng có desktop —
+    server qua SSH, container, máy không màn hình. Ở đó daemon in địa chỉ **kèm mã** ra, và PHẢI có
+    đường tắt để không mở kể cả khi mở được.
+
+  Ghi rõ điều **không** nằm trong đây: mã vẫn sống 10 phút và vẫn dùng một lần. Địa chỉ mang mã theo
+  không làm mã dễ đoán hơn — nó chỉ đưa mã tới đúng người đang cầm máy ấy.
+
 - **FR-001a**: Ba cửa của luồng nối máy PHẢI có trần số lần gọi (RFC 8628 §5.2). *Chốt 2026-09-02, T126a.*
   Ba ràng buộc, mỗi ràng buộc trả lời một mối lo khác nhau:
   - **Phía người dùng, chỉ tính lần trượt.** Hai cửa *tra cứu mã* và *duyệt mã* dùng **chung một** hạn

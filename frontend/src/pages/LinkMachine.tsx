@@ -1,16 +1,25 @@
 // The approval screen for a machine asking to join a workspace (T031, FR-001).
 //
 // This is the human half of the device flow the daemon runs: someone types
-// `armarius-daemon login` on their own box, it prints a short code, and they come here to
-// say yes. Deliberately a page of its own rather than something inside a workspace — at
-// the moment the code is typed the machine belongs to no workspace yet, and choosing which
-// one it joins is the decision being made here.
+// `armarius-daemon login` on their own box and says yes here. Deliberately a page of its own
+// rather than something inside a workspace — at the moment the code arrives the machine
+// belongs to no workspace yet, and choosing which one it joins is the decision being made
+// here.
+//
+// The daemon opens this page with the code already on the address, so the usual arrival is
+// straight at the confirmation step with nothing typed (FR-001a). Typing is still here, and
+// still works, for the machine that had no browser to open.
+//
+// What arriving by link does *not* remove is the asking. A code on an address is a
+// convenience; approval is the thing that stops a stranger's daemon from being let in, and a
+// code that leaks — a screenshot, a log, a message — must still meet a person who looks at
+// the hostname and does not recognise it.
 //
 // It is also the only door: nothing anywhere lets a machine admit itself.
 
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Check, Laptop, ShieldQuestion } from 'lucide-react'
 
@@ -53,6 +62,7 @@ function minutesLeft(expiresAt: string | null): number | null {
 export default function LinkMachine() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const [params] = useSearchParams()
   const workspaces = useAppStore((s) => s.workspaces)
   const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId)
   const hydrateWorkspaces = useAppStore((s) => s.hydrateWorkspaces)
@@ -63,6 +73,11 @@ export default function LinkMachine() {
   const [approved, setApproved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // The code came off the address rather than out of somebody's fingers, which changes one
+  // thing on this screen: what the warning has to say. A person who typed the code was
+  // reading it off their own terminal a moment ago; a person who followed a link has no such
+  // evidence and needs telling so.
+  const [fromLink, setFromLink] = useState(false)
 
   useEffect(() => {
     void hydrateWorkspaces().catch(() => {})
@@ -86,21 +101,52 @@ export default function LinkMachine() {
     setApproved(false)
     setError(null)
     setCode('')
+    setFromLink(false)
   }, [])
+
+  const lookUpCode = useCallback(
+    async (typed: string) => {
+      setError(null)
+      setBusy(true)
+      try {
+        setPending(await getMachineLink(typed))
+      } catch (err) {
+        setError(errorText(err, t))
+      }
+      setBusy(false)
+    },
+    [t],
+  )
 
   async function lookUp(e: FormEvent) {
     e.preventDefault()
-    setError(null)
-    setBusy(true)
-    try {
-      const found = await getMachineLink(code)
-      setPending(found)
-      setWorkspaceId(activeWorkspaceId ?? workspaces[0]?.id ?? '')
-    } catch (err) {
-      setError(errorText(err, t))
-    }
-    setBusy(false)
+    await lookUpCode(code)
   }
+
+  // Arriving from the daemon's own link: look the code up once, so the first thing the person
+  // sees is the machine that is asking rather than a box wanting the code they already have.
+  //
+  // A failed lookup deliberately leaves the form behind rather than a dead end — an expired or
+  // mistyped code in an address is exactly the case where typing a fresh one is the answer.
+  const attempted = useRef<string | null>(null)
+  useEffect(() => {
+    const carried = formatCode(params.get('code') ?? '')
+    if (!isComplete(carried) || attempted.current === carried) return
+    attempted.current = carried
+    setCode(carried)
+    setFromLink(true)
+    void lookUpCode(carried)
+  }, [params, lookUpCode])
+
+  // The workspace to approve into, chosen as soon as there is one to choose. This cannot be
+  // done inside the lookup: on a cold load the list is still arriving while the code is being
+  // looked up, and a machine found before the list lands would leave the approve button
+  // disabled with a workspace visibly selected in the box beside it.
+  useEffect(() => {
+    if (!pending || workspaceId) return
+    const first = activeWorkspaceId ?? workspaces[0]?.id ?? ''
+    if (first) setWorkspaceId(first)
+  }, [pending, workspaceId, activeWorkspaceId, workspaces])
 
   async function approve() {
     if (!pending || !workspaceId) return
@@ -191,6 +237,17 @@ export default function LinkMachine() {
                 <span>{t('linkMachine.claimNotice')}</span>
               </p>
 
+              {/* Only when the code arrived on the address. Someone who typed it read it off
+                  their own terminal seconds ago and needs no telling; someone who followed a
+                  link has nothing but the link, and a link is the one thing another person
+                  can send them. */}
+              {fromLink && (
+                <p className="font-body text-body-sm text-terracotta flex items-start gap-2">
+                  <ShieldQuestion className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
+                  <span>{t('linkMachine.fromLinkNotice')}</span>
+                </p>
+              )}
+
               {remaining !== null && (
                 <p className="font-body text-body-sm text-ink-muted">
                   {t('linkMachine.expiresIn', { count: remaining })}
@@ -244,6 +301,10 @@ export default function LinkMachine() {
                 {t('linkMachine.otherCode')}
               </button>
             </div>
+          ) : busy && fromLink ? (
+            <p className="font-body text-body-sm text-ink-light text-center py-4">
+              {t('linkMachine.checking')}
+            </p>
           ) : (
             <form onSubmit={lookUp} className="space-y-4">
               <div>

@@ -28,9 +28,11 @@ export const vi = {
   },
   linkMachine: {
     title: 'Nối máy vào không gian làm việc',
-    lead: 'Trên máy của bạn, chạy `armarius-daemon login`. Nhập mã nó in ra vào đây.',
+    lead: 'Chạy `armarius-daemon login` trên máy của bạn — nó tự mở trang này ra. Nếu máy ấy không mở được browser, nhập mã nó in ra vào đây.',
     codeLabel: 'Mã nối máy',
     codePlaceholder: 'VD: KQ7F-M2XD',
+    checking: 'Đang xem máy nào đang hỏi…',
+    fromLinkNotice: 'Mã này đến từ đường liên kết vừa mở, không phải bạn tự nhập. Chỉ đồng ý nếu đây đúng là máy bạn vừa chạy `armarius-daemon login`.',
     lookupButton: 'Xem máy nào đang xin',
     machineHeading: 'Máy đang xin vào',
     hostnameUnknown: 'Máy không khai tên',

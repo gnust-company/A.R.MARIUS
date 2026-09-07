@@ -28,9 +28,11 @@ export const en = {
   },
   linkMachine: {
     title: 'Link a machine to a workspace',
-    lead: 'On your machine, run `armarius-daemon login`. Type the code it prints here.',
+    lead: 'Run `armarius-daemon login` on your machine — it opens this page for you. If that machine cannot open a browser, type the code it prints here.',
     codeLabel: 'Link code',
     codePlaceholder: 'e.g. KQ7F-M2XD',
+    checking: 'Looking up which machine is asking…',
+    fromLinkNotice: 'This code came from the link you just opened, not from your own typing. Only approve it if this really is the machine where you ran `armarius-daemon login`.',
     lookupButton: 'See which machine is asking',
     machineHeading: 'Machine asking to join',
     hostnameUnknown: 'The machine gave no name',
