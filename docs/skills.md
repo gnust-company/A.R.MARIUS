@@ -98,11 +98,11 @@ Ba điều đứng sau sơ đồ ấy:
 agent phải đi lấy thì nó bắt đầu đọc trước khi file tới, và việc đầu tiên nó làm là đúng việc
 nó chưa được trang bị.
 
-**Ghi mới mỗi lượt, và xoá sạch trước khi ghi.** Nhiều agent dùng chung một chỗ làm, nên nếu
+**Ghi mới mỗi lượt, và xoá sạch trước khi ghi.** Nhiều agent dùng chung một runtime, nên nếu
 không xoá thì kỹ năng của agent A còn nằm đó lúc agent B chạy.
 
-**Chỉ kỹ năng của đúng agent ấy.** Danh sách đọc từ **agent**, không đọc từ chỗ làm — đọc từ
-chỗ làm là gom kỹ năng của mọi agent trên máy ấy lại một lượt.
+**Chỉ kỹ năng của đúng agent ấy.** Danh sách đọc từ **agent**, không đọc từ runtime — đọc từ
+runtime là gom kỹ năng của mọi agent trên máy ấy lại một lượt.
 
 ---
 

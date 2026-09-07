@@ -1,6 +1,6 @@
 # Máy và daemon
 
-Trang này trả lời đúng ba câu: **daemon là gì**, **cài nó thế nào**, và **chỗ làm báo không
+Trang này trả lời đúng ba câu: **daemon là gì**, **cài nó thế nào**, và **runtime báo không
 nhận việc được thì làm gì**.
 
 ---
@@ -96,7 +96,7 @@ xattr -d com.apple.quarantine /usr/local/bin/armarius-daemon /usr/local/bin/arma
 Đây không phải tuỳ chọn. Mỗi lượt chạy được dựng một thư mục home riêng, và những phần phải sống
 lâu hơn lượt chạy — nhất là trạng thái phiên của agent — được **nối** ra ngoài chứ không **copy**.
 Copy thì mọi thứ lượt chạy ghi ra sẽ bị bỏ đi cùng cái home, agent mất sạch ký ức về đầu việc mà
-không ai báo. Không bật thì mọi chỗ làm trên máy báo *không tạo được liên kết tượng trưng*.
+không ai báo. Không bật thì mọi runtime trên máy báo *không tạo được liên kết tượng trưng*.
 
 ## Nối máy vào không gian làm việc
 
@@ -125,9 +125,9 @@ Rồi bật daemon:
 armarius-daemon start
 ```
 
-**Đây là bước khai chỗ làm, và nó không nằm trong `login`.** `login` chỉ nối máy; `start` mới dò
+**Đây là bước khai runtime, và nó không nằm trong `login`.** `login` chỉ nối máy; `start` mới dò
 agent CLI trên máy và khai chúng lên. Nối mà chưa chạy `start` thì màn Máy hiện máy của bạn kèm
-câu *daemon chưa chạy lần nào* và không có chỗ làm nào — đúng sự thật, và không tạo được agent nào.
+câu *daemon chưa chạy lần nào* và không có runtime nào — đúng sự thật, và không tạo được agent nào.
 
 Nó đọc lên những agent CLI nó tìm thấy, rồi đứng đó. Ctrl-C để dừng. Muốn nó tự bật khi mở
 máy thì xem mục *Running it as a service* trong [`daemon/README.md`](../daemon/README.md).
@@ -141,34 +141,34 @@ armarius-daemon status -json   # cho script
 
 ---
 
-## Chỗ làm là gì, và vì sao nó chứ không phải cái máy
+## Runtime là gì, và vì sao nó chứ không phải cái máy
 
-Một **chỗ làm** là một cặp (agent CLI có trên máy đó × không gian làm việc). Máy bạn có cả
-`claude`, `codex` và `gemini` thì màn hình **Máy** sẽ hiện một cái máy với **ba** chỗ làm.
+Một **runtime** là một cặp (agent CLI có trên máy đó × không gian làm việc). Máy bạn có cả
+`claude`, `codex` và `gemini` thì màn hình **Máy** sẽ hiện một cái máy với **ba** runtime.
 
-Nhận việc là **chỗ làm**, không phải cái máy. Nên `claude` cạn hạn mức không kéo theo `codex`
-trên cùng máy ấy — hai chỗ làm khác nhau, hai tài khoản khác nhau.
+Nhận việc là **runtime**, không phải cái máy. Nên `claude` cạn hạn mức không kéo theo `codex`
+trên cùng máy ấy — hai runtime khác nhau, hai tài khoản khác nhau.
 
-Mỗi chỗ làm có một **trần số lượt chạy đồng thời**, đổi được ngay trên màn hình Máy. Trần mới
+Mỗi runtime có một **trần số lượt chạy đồng thời**, đổi được ngay trên màn hình Máy. Trần mới
 có hiệu lực **từ lần máy xin việc kế tiếp**: hạ trần là ngừng đưa thêm, không phải thu về thứ
 đã ra khỏi tay.
 
 ---
 
-## Chỗ làm báo *Không nhận việc được*
+## Runtime báo *Không nhận việc được*
 
 Trên màn hình luôn có câu nói vì sao. Bảng đầy đủ:
 
 | Lý do | Nghĩa là | Làm gì |
 | --- | --- | --- |
-| **Agent CLI này đã bị gỡ khỏi máy** | daemon không còn tìm thấy binary ấy | Cài lại CLI. Chỗ làm sống lại, agent vẫn nguyên chỗ cũ |
+| **Agent CLI này đã bị gỡ khỏi máy** | daemon không còn tìm thấy binary ấy | Cài lại CLI. Runtime sống lại, agent vẫn nguyên chỗ cũ |
 | **Daemon trên máy này đã tắt** | daemon chào tạm biệt rồi thoát | `armarius-daemon start`. Không có gì bị gỡ |
 | **Máy đã ngừng báo nhịp** | máy tắt, ngủ, hoặc mất mạng | Bật máy lên và chạy lại daemon |
-| **Đã cạn hạn mức của nhà cung cấp** | tài khoản của CLI ấy hết lượt | Nạp thêm hoặc đăng nhập tài khoản khác. Mọi agent ở chỗ làm này sống lại cùng lúc |
+| **Đã cạn hạn mức của nhà cung cấp** | tài khoản của CLI ấy hết lượt | Nạp thêm hoặc đăng nhập tài khoản khác. Mọi agent ở runtime này sống lại cùng lúc |
 | **Không tạo được liên kết tượng trưng** | thường là Windows chưa bật Developer Mode | Bật Developer Mode rồi chạy lại daemon |
 | **Chưa nhận việc được** (không rõ lý do) | daemon báo về một tình trạng chưa có tên | Xem `armarius-daemon status` trên máy ấy |
 
-Một chỗ làm đóng thì **mọi agent ngồi ở đó** chuyển sang *mất liên lạc* cùng lúc, và Trưởng dự
+Một runtime đóng thì **mọi agent ngồi ở đó** chuyển sang *mất liên lạc* cùng lúc, và Trưởng dự
 án của chúng được báo. Không có đầu việc nào biến mất — chúng nằm chờ.
 
 ---
