@@ -314,6 +314,21 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   - **Máy không mở được trang nào vẫn nối được y như cũ.** Không phải máy nào cũng có desktop —
     server qua SSH, container, máy không màn hình. Ở đó daemon in địa chỉ **kèm mã** ra, và PHẢI có
     đường tắt để không mở kể cả khi mở được.
+  - **Địa chỉ ấy là dữ liệu vào, và phải được kiểm trước khi mở.** *Thêm 2026-09-07 sau review PR
+    #266, và đây là lỗ chính PR ấy mở ra.* Trước đó `verify_url` chỉ được **in ra**, nên nó vô hại;
+    biến nó thành đối số của một chương trình là mở một bề mặt tấn công mới. Hai ràng buộc, khép hai
+    lớp khác nhau:
+    - **Không một thứ mở trang nào được đi qua trình thông dịch dòng lệnh.** `cmd /c start` nhận cả
+      dòng lệnh rồi **đọc lại nó như một script**, nên `&`, `|`, `^`, `%` là lệnh chứ không phải ký
+      tự — mà phần escape đối số của Go biết dấu cách và dấu nháy, không biết mấy cái đó. Một địa chỉ
+      kết thúc bằng `&calc.exe` là một lệnh thứ hai chạy trên máy người dùng. Đây là ràng buộc **cấu
+      trúc**, và nó là lớp thật: mấy ký tự ấy hợp lệ trong URL, nên chặn bằng danh sách ký tự là chặn
+      cả một phần lớn web thật.
+    - **Chỉ mở `http` và `https`, và phải có tên máy chủ.** Thứ mở trang của desktop không chỉ hiện
+      trang web: `file:` đọc đĩa, và trên Windows `FileProtocolHandler` được đưa đường dẫn tới một
+      chương trình thì **chạy** nó. Địa chỉ không đạt thì PHẢI **từ chối cả việc in ra** — in ra là
+      bảo người ta tự đi tới đúng chỗ mình vừa kết luận là không nên tới. KHÔNG ĐƯỢC đòi cùng máy chủ
+      với `-server`: `-server` là API, đây là trang web, khác cổng và thường khác cả tên máy chủ.
 
   Ghi rõ điều **không** nằm trong đây: mã vẫn sống 10 phút và vẫn dùng một lần. Địa chỉ mang mã theo
   không làm mã dễ đoán hơn — nó chỉ đưa mã tới đúng người đang cầm máy ấy.

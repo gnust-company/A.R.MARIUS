@@ -102,6 +102,11 @@ export default function LinkMachine() {
     setError(null)
     setCode('')
     setFromLink(false)
+    // The workspace goes too. Before the lookup and the choosing were split apart, every
+    // successful lookup reset it; leaving it behind here means asking about a second machine
+    // and being handed the workspace picked for the first one, already selected, which is a
+    // machine going somewhere nobody chose for it. Caught in review of PR #266.
+    setWorkspaceId('')
   }, [])
 
   const lookUpCode = useCallback(
