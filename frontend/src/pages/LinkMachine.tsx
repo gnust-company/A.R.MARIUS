@@ -18,7 +18,7 @@ import { approveMachineLink, getMachineLink, type PendingMachineLinkDTO } from '
 import { errorText } from '@/lib/errors'
 import { useAppStore } from '@/store/appStore'
 import VellumPanel from '@/components/VellumPanel'
-import { cn } from '@/lib/utils'
+import { cn, wsHref } from '@/lib/utils'
 
 /** The alphabet the server draws codes from: no 0/O and no 1/I, because a person copies
  *  this off one screen and onto another. Anything else typed is punctuation to ignore. */
@@ -69,6 +69,17 @@ export default function LinkMachine() {
   }, [hydrateWorkspaces])
 
   const remaining = pending ? minutesLeft(pending.expires_at) : null
+
+  // Where leaving this page leads. `/link` sits outside every workspace on purpose, but the
+  // person walked here from inside one and a way out that drops them at the workspace picker
+  // makes them find their way back in by hand. Once a machine has been admitted the answer is
+  // better still: the workspace it just joined, on the screen it now appears on.
+  //
+  // Deliberately not `navigate(-1)`. The daemon prints this page's address, so arriving here
+  // with no history at all is a normal way to arrive, and going back one step from that
+  // leaves the application.
+  const leaveTo = activeWorkspaceId ? wsHref(activeWorkspaceId, '/machines') : '/workspaces'
+  const doneTo = workspaceId ? wsHref(workspaceId, '/machines') : leaveTo
 
   const restart = useCallback(() => {
     setPending(null)
@@ -151,7 +162,7 @@ export default function LinkMachine() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigate('/workspaces')}
+                  onClick={() => navigate(doneTo)}
                   className="font-body text-body-sm text-ink-muted hover:text-ink transition-colors"
                 >
                   {t('linkMachine.doneLeave')}
@@ -266,7 +277,7 @@ export default function LinkMachine() {
 
         <button
           type="button"
-          onClick={() => navigate('/workspaces')}
+          onClick={() => navigate(leaveTo)}
           className="mt-6 w-full text-center font-body text-body-sm text-ink-muted hover:text-ink transition-colors"
         >
           {t('linkMachine.back')}
