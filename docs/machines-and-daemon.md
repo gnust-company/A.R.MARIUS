@@ -38,21 +38,42 @@ Một máy chạy daemon **không** cần chạy suốt. Việc giao lúc máy t
 
 ## Cài daemon
 
-Tải archive cho hệ điều hành của bạn ở
-**[trang phát hành](https://github.com/gnust-company/A.R.MARIUS/releases/latest)**.
+**Linux / macOS** — một dòng:
 
-Trong mỗi archive có **hai** file, và chúng phải nằm cạnh nhau:
+```sh
+curl -fsSL https://raw.githubusercontent.com/gnust-company/A.R.MARIUS/main/scripts/install.sh | bash
+```
+
+Nó dò hệ điều hành và kiến trúc, tải đúng archive, **kiểm chữ ký** trước khi cài, đặt cả hai
+chương trình vào `/usr/local/bin` (không ghi được thì `$HOME/.local/bin`, kèm dòng `PATH` viết hộ),
+rồi in ra việc kế tiếp. Chạy lại là nâng cấp; đang mới nhất thì nó nói vậy rồi dừng.
+
+Ba biến môi trường nếu bạn cần: `ARMARIUS_BIN_DIR` (cài vào đâu), `ARMARIUS_VERSION` (một bản cụ
+thể thay vì bản mới nhất), `ARMARIUS_NO_PATH_EDIT` (in dòng `PATH` ra thay vì tự ghi vào cấu hình
+shell). Xem hết bằng `--help`.
+
+**Windows** — chưa có installer. Tải `.zip` ở
+[trang phát hành](https://github.com/gnust-company/A.R.MARIUS/releases/latest), đặt cả hai file
+`.exe` vào một thư mục có trong `PATH`, ví dụ `%LOCALAPPDATA%\Programs\Armarius`. Rồi đọc mục
+Developer Mode bên dưới — **bắt buộc**.
+
+### Hai file, và vì sao chúng phải đi cùng nhau
 
 | File | Là gì |
 | --- | --- |
 | `armarius-daemon` | chương trình bạn chạy |
 | `armarius` | lệnh nhỏ agent dùng để gọi ngược về Armarius trong lúc làm việc |
 
-Vì sao bắt buộc phải có cả hai: daemon tìm `armarius` **ở ngay cạnh chính nó** và **từ chối
-khởi động** nếu không thấy. Một agent được đưa đề bài có nhắc tới một lệnh không tồn tại sẽ
-trượt ở mọi lần gọi, và không bên nào báo được vì sao.
+daemon tìm `armarius` **ở ngay cạnh chính nó** và **từ chối khởi động** nếu không thấy. Một agent
+được đưa đề bài có nhắc tới một lệnh không tồn tại sẽ trượt ở mọi lần gọi, và không bên nào báo
+được vì sao — nên thà không chạy.
 
-### Linux và macOS
+Vì thế installer coi hai cái là **một khối**: đặt được cái đầu mà không đặt được cái sau thì nó gỡ
+cái đầu ra, để bạn không còn lại một daemon chỉ chịu nói ra là nó vô dụng vào lúc bạn cần nó nhất.
+
+### Cài bằng tay
+
+Installer là tiện lợi, không phải điều kiện. Tải archive rồi:
 
 ```sh
 tar -xzf armarius-daemon_<phiên-bản>_<os>_<arch>.tar.gz
@@ -60,22 +81,22 @@ sudo install -m 0755 armarius-daemon armarius /usr/local/bin/
 armarius-daemon version
 ```
 
-Trên macOS, lần đầu chạy một file tải về chưa ký sẽ bị Gatekeeper chặn. Vào **System Settings
-→ Privacy & Security** cho phép, hoặc tự xoá cờ cách ly:
+### macOS: lần đầu chạy một file tải về chưa ký
+
+Gatekeeper chặn. Vào **System Settings → Privacy & Security** cho phép, hoặc tự xoá cờ cách ly:
 
 ```sh
 xattr -d com.apple.quarantine /usr/local/bin/armarius-daemon /usr/local/bin/armarius
 ```
 
-### Windows
+### Windows: phải bật Developer Mode
 
-Giải nén rồi đặt cả hai file vào một thư mục có trong `PATH`.
+**Settings → System → For developers → Developer Mode.**
 
-Còn một việc nữa **bắt buộc**: **bật Developer Mode**. Mỗi lượt chạy đều cần tạo symbolic
-link, và trên Windows quyền ấy không có sẵn. Không bật thì chỗ làm sẽ báo *không tạo được liên
-kết tượng trưng*.
-
----
+Đây không phải tuỳ chọn. Mỗi lượt chạy được dựng một thư mục home riêng, và những phần phải sống
+lâu hơn lượt chạy — nhất là trạng thái phiên của agent — được **nối** ra ngoài chứ không **copy**.
+Copy thì mọi thứ lượt chạy ghi ra sẽ bị bỏ đi cùng cái home, agent mất sạch ký ức về đầu việc mà
+không ai báo. Không bật thì mọi chỗ làm trên máy báo *không tạo được liên kết tượng trưng*.
 
 ## Nối máy vào không gian làm việc
 

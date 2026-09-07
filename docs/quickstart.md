@@ -43,24 +43,24 @@ Không gian làm việc (**workspace**) là ranh giới cô lập: agent, kỹ n
 **Đây là bước không bỏ qua được**, và nó phải làm trước bước tạo agent — một agent bắt buộc
 phải có **chỗ làm** ngay lúc sinh ra, chứ không phải gán sau.
 
-Tải daemon cho hệ điều hành của bạn ở **[trang phát hành](https://github.com/gnust-company/A.R.MARIUS/releases/latest)**.
-Mỗi archive có **hai** file và cả hai phải nằm cạnh nhau:
-
-| File | Là gì |
-| --- | --- |
-| `armarius-daemon` | chương trình bạn chạy |
-| `armarius` | lệnh nhỏ mà agent dùng để gọi ngược về Armarius trong lúc làm việc |
-
-**Linux / macOS**
+**Linux / macOS** — một dòng:
 
 ```sh
-tar -xzf armarius-daemon_<phiên-bản>_<os>_<arch>.tar.gz
-sudo install -m 0755 armarius-daemon armarius /usr/local/bin/
-armarius-daemon version
+curl -fsSL https://raw.githubusercontent.com/gnust-company/A.R.MARIUS/main/scripts/install.sh | bash
 ```
 
-**Windows** — giải nén rồi đặt cả hai file vào một thư mục có trong `PATH`. Còn cần **bật
-Developer Mode** để tạo được symbolic link; xem [`daemon/README.md`](../daemon/README.md).
+Nó tự biết máy bạn là gì, **kiểm chữ ký của bản tải về** trước khi cài, đặt cả hai chương trình
+vào chỗ đúng, và nói tiếp phải làm gì. Chạy lại lần nữa là nâng cấp.
+
+**Windows** — chưa có installer, tải `.zip` ở
+[trang phát hành](https://github.com/gnust-company/A.R.MARIUS/releases/latest) rồi đặt cả hai file
+`.exe` vào một thư mục có trong `PATH`. Còn phải **bật Developer Mode** (Settings → System → For
+developers) vì mỗi lượt chạy đều cần tạo symbolic link.
+
+> Trong archive có **hai** file và chúng phải nằm cạnh nhau: `armarius-daemon` là chương trình bạn
+> chạy, `armarius` là lệnh agent dùng để gọi ngược về Armarius. Thiếu cái thứ hai thì daemon từ
+> chối khởi động. Installer coi hai cái là một khối — đặt được cái đầu mà không đặt được cái sau
+> thì nó gỡ cái đầu ra luôn.
 
 Rồi nối máy:
 
