@@ -212,11 +212,15 @@ export interface MariusDTO {
   role: string
   skills: string[]
   skill_ids: string[]
-  /** What the agent is told to be. Sent to it on every run (FR-007i). */
+  /** What the agent is told to be. Sent to it on every run (FR-007i), and editable after it
+   *  was made (FR-007m). */
   instructions?: string
+  /** The product's half of the prompt, for the one agent the product made — the workspace
+   *  host. Empty for every agent a person made. **Read-only**: no door accepts it, and the
+   *  screen shows it so an owner can see what their host is already told. */
+  system_instructions?: string
   /** What the team calls it. Never sent to the agent (FR-007j). */
   description?: string
-  /** Per-skill install state (#74): slug → pending|installed. */
   adapter_type: string
   liveness: string
   /** Why this agent has nowhere to work, when it has nowhere to work (FR-006c). A code —
@@ -596,7 +600,13 @@ export interface InviteMariusBody {
 export interface UpdateMariusBody {
   name?: string
   role?: string
+  /** How this agent behaves. An empty string is a real value — *no instructions of its own* —
+   *  and is not the same as leaving the field out (FR-007m). */
+  instructions?: string
+  description?: string
   skills?: string[]
+  /** The skills this agent carries, in full. A **shorter** list is how one is taken off: there
+   *  is no per-skill remove door, and a whole list says *these and no others*. */
   skill_ids?: string[]
   adapter_type?: string
   adapter_config?: Record<string, unknown>

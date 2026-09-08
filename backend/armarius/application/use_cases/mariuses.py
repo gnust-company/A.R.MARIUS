@@ -35,6 +35,8 @@ class MariusService:
         *,
         name: str | None = None,
         role: str | None = None,
+        instructions: str | None = None,
+        description: str | None = None,
         skills: list[str] | None = None,
         skill_ids: list[str] | None = None,
         adapter_type: str | None = None,
@@ -42,6 +44,14 @@ class MariusService:
         placement_options: dict[str, str] | None = None,
     ) -> Marius:
         """Edit an existing Marius (partial). Token and liveness are untouched.
+
+        `instructions` is here because it had to be: since roles by project were removed it is
+        the *only* thing that says how an agent behaves (FR-007l), and a single source that could
+        be written once meant the way to change an agent's behaviour was to delete it and make a
+        new one — losing its run history, its linked skills and its seats with it (FR-007m).
+
+        `system_instructions` is deliberately **not** here. That half belongs to the product, and
+        the one agent that has it has to keep it.
 
         `placement_options` is the one field here that can be refused, and it is refused by
         the same call the create path makes — `Placement.refuse_unchosen`. Two doors set
@@ -60,6 +70,10 @@ class MariusService:
                 marius.name = name
             if role is not None:
                 marius.role = role
+            if instructions is not None:
+                marius.instructions = instructions
+            if description is not None:
+                marius.description = description
             if skills is not None:
                 marius.skills = skills
             if skill_ids is not None:

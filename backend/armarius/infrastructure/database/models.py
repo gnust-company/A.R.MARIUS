@@ -135,6 +135,10 @@ class MariusModel(Base):
     role: Mapped[str] = mapped_column(String(120), default="")
     # Sent to the agent on every run (FR-007i).
     instructions: Mapped[str] = mapped_column(Text, default="")
+    # The product's half of the prompt, for the one agent the product made (FR-007m). No door
+    # writes it; `server_default` is here because the column arrives on tables that already
+    # have rows.
+    system_instructions: Mapped[str] = mapped_column(Text, default="", server_default="")
     # Shown to the team, never sent to the agent (FR-007j).
     description: Mapped[str] = mapped_column(Text, default="")
     skills: Mapped[list] = mapped_column(JSON, default=list)

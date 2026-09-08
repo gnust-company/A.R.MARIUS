@@ -146,8 +146,15 @@ export interface Marius {
   workspaceId: string
   projectIds: string[]
   description?: string
+  /** How this agent behaves. Since roles by project were removed this is the only thing that
+   *  says it (FR-007l), and it is editable on the agent screen (FR-007m). */
+  instructions?: string
+  /** The product's half of the prompt, for the one agent the product made. Read-only: shown
+   *  so an owner can see what their host is already told, never so they can delete it. */
+  systemInstructions?: string
   skills?: string[]
-  /** Per-skill install state (post-invite loop #74): slug → pending|installed|failed. */
+  /** Ids of the skills this agent carries — what a *remove* has to send back a shorter list of. */
+  skillIds?: string[]
   adapterType?: string
   /** What this agent is set to, out of what its workplace offers (FR-007k). Empty means
    *  nothing was picked and its tool runs on its own defaults. */
@@ -570,7 +577,14 @@ interface AppStoreState {
   deleteWorkspace: (workspaceId: string) => Promise<void>
   updateMarius: (
     mariusId: string,
-    patch: { name?: string; role?: string; runtimeOptions?: Record<string, string> },
+    patch: {
+      name?: string
+      role?: string
+      instructions?: string
+      description?: string
+      skillIds?: string[]
+      runtimeOptions?: Record<string, string>
+    },
   ) => Promise<void>
   /** What may be changed about how one agent runs (FR-007k), asked of the place it works at. */
   listAgentOptions: (mariusId: string) => Promise<PlacementOption[]>
@@ -948,17 +962,39 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
   updateMarius: async (
     mariusId: string,
-    patchBody: { name?: string; role?: string; runtimeOptions?: Record<string, string> },
+    patchBody: {
+      name?: string
+      role?: string
+      instructions?: string
+      description?: string
+      skillIds?: string[]
+      runtimeOptions?: Record<string, string>
+    },
   ) => {
     const m = get().mariuses.find((x) => x.id === mariusId)
     const workspaceId = m?.workspaceId || get().activeWorkspaceId
     let settled: Record<string, string> | undefined
+    let echoed:
+      | { skills: string[]; skillIds: string[]; instructions: string; description: string }
+      | undefined
     if (workspaceId) {
       const dto = await api.updateMarius(workspaceId, mariusId, {
         name: patchBody.name,
         role: patchBody.role,
+        instructions: patchBody.instructions,
+        description: patchBody.description,
+        skill_ids: patchBody.skillIds,
         runtime_options: patchBody.runtimeOptions,
       })
+      // Read back rather than assumed for the same reason the settings are: a shorter skill
+      // list means *these and no others*, and the names beside the ids are the server's to
+      // resolve, not this side's to guess.
+      echoed = {
+        skills: dto.skills,
+        skillIds: dto.skill_ids,
+        instructions: dto.instructions ?? '',
+        description: dto.description ?? '',
+      }
       // Where the settings ended up is the server's answer, not this side's arithmetic: only
       // some of them were sent, and the ones that were not stay whatever they already were.
       settled = dto.runtime_options ?? {}
@@ -974,6 +1010,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
               ...(patchBody.name ? { name: patchBody.name, displayName: patchBody.name } : {}),
               ...(patchBody.role ? { role: patchBody.role } : {}),
               ...(settled ? { runtimeOptions: settled } : {}),
+              ...(echoed ?? {}),
             }
           : x,
       ),

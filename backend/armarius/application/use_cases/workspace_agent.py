@@ -152,7 +152,10 @@ class WorkspaceAgentService:
         host = await self._agents.create_unplaced(
             workspace_id,
             self._free_name(taken),
-            instructions=HOST_INSTRUCTIONS,
+            # The product's half, not the owner's. Their half starts empty and is theirs to
+            # write; this one no door lets them touch, so editing their host cannot delete the
+            # job that makes it one (FR-007m).
+            system_instructions=HOST_INSTRUCTIONS,
             owner_user_id=ws.owner_user_id,
         )
         return await self.designate(workspace_id, host.id)

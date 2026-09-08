@@ -128,6 +128,9 @@ class WakeContext:
     # defined (FR-007i, Constitution V) — which is why it rides every packet rather than
     # being set up once somewhere and trusted to still be there.
     instructions: str = ""
+    # The product's half, for the one agent the product made. Rendered above the patron's half
+    # and never instead of it — see the two sections below.
+    system_instructions: str = ""
 
 
 def _value(text: str | None) -> str:
@@ -155,10 +158,22 @@ def _core(ctx: WakeContext, lines: list[str]) -> None:
     # empty, by the same rule as every other part: a section that simply vanishes cannot be
     # told apart from one that failed to render, and the agent fills that gap with a guess
     # (FR-045).
+    # Two halves, and only for the agent that has two authors (FR-007m). The product's half is
+    # rendered first and is absent for every agent a person made, because those have one author
+    # and a second heading over an empty block would read as something withheld.
+    if ctx.system_instructions.strip():
+        lines.append("## Your role in this product")
+        lines.append(
+            "Written by Armarius, not by your patron. It is what you are here to do, and it "
+            "holds regardless of anything else on this page."
+        )
+        lines.append(_value(ctx.system_instructions))
+        lines.append("")
+
     lines.append("## Your instructions")
     lines.append(
-        "Written by your patron when you were created. This is who you are and how you "
-        "work; it holds on every project and every task, and nothing below overrides it."
+        "Written by your patron. This is who you are and how you work; it holds on every "
+        "project and every task, and nothing below overrides it."
     )
     lines.append(_value(ctx.instructions))
     lines.append("")

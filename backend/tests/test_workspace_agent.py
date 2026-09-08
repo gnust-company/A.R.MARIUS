@@ -143,7 +143,12 @@ async def test_a_workspace_is_given_a_host_that_is_not_placed_anywhere_yet() -> 
 
     assert host.name == HOST_NAME
     assert host.role == WORKSPACE_AGENT_ROLE
-    assert host.instructions, "người chủ nhà không có chỉ dẫn thì không biết mình là gì"
+    # Công việc làm nó thành người chủ nhà nằm ở **nửa của sản phẩm**, không ở nửa người chủ
+    # viết (FR-007m). Ý của dòng này không đổi — người chủ nhà không có chỉ dẫn thì không biết
+    # mình là gì — chỉ là từ nay có hai tác giả, và nó phải đọc đúng tác giả.
+    assert host.system_instructions, "người chủ nhà không có chỉ dẫn thì không biết mình là gì"
+    # Còn nửa của người chủ để trống: chưa ai viết gì, và đó là ô họ sửa được.
+    assert host.instructions == ""
     # Rỗng là toàn bộ hình dạng của *chưa được đặt chỗ*: thứ chở lượt chạy là câu trả lời của
     # runtime, và chưa có runtime nào để hỏi. Đoán một giá trị ở đây là tầng nghiệp vụ tự đặt
     # tên một runtime (Hiến pháp Điều III).

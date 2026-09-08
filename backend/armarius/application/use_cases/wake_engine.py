@@ -1315,6 +1315,7 @@ def _wake_context(
         workspace_name=workspace.name if workspace else "",
         project_name=project.name if project else "",
         instructions=marius.instructions,
+        system_instructions=marius.system_instructions,
     )
 
 
