@@ -460,6 +460,10 @@ export interface CreateProjectBody {
    *  what it does is written on the agent (FR-007l). The server refuses an unknown field, so
    *  a stale `roles` here would be a 422 rather than a project with nobody on it. */
   members?: string[]
+  /** How many workers this project is asking for (FR-007n). Separate from `members`, and that
+   *  is the point: a workspace with no agents yet can still say a project needs three people
+   *  and be shown three empty places. A floor, not a cap. */
+  worker_count?: number
 }
 
 export async function listProjects(workspaceId: string): Promise<ProjectDTO[]> {
@@ -472,6 +476,22 @@ export async function createProject(workspaceId: string, body: CreateProjectBody
 
 export async function getProject(projectId: string): Promise<ProjectDetailDTO> {
   return get<ProjectDetailDTO>(`/v1/projects/${projectId}`)
+}
+
+/** Edit a project's brief, or how many workers it is asking for. Only the fields sent change. */
+export async function updateProject(
+  projectId: string,
+  body: {
+    description?: string
+    objective?: string
+    success_metrics?: Record<string, unknown> | null
+    target_date?: string | null
+    github_url?: string | null
+    context?: string | null
+    worker_count?: number
+  },
+): Promise<ProjectDetailDTO> {
+  return patch<ProjectDetailDTO>(`/v1/projects/${projectId}`, body)
 }
 
 export async function deleteProject(projectId: string): Promise<void> {

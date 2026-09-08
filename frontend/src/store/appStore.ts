@@ -600,6 +600,9 @@ interface AppStoreState {
     leaderDescription?: string
     /** The agents joining besides the Leader. No roles — an agent joins as itself (FR-007l). */
     memberIds?: string[]
+    /** How many workers the project is asking for (FR-007n). Not the same as `memberIds`:
+     *  a workspace with no agents yet still says how large the project is. */
+    workerCount?: number
   }) => Promise<Project>
   createTask: (task: Partial<Task> & { title: string; status: TaskStatus; priority: Priority; projectId: string }) => Promise<Task>
   deleteProject: (projectId: string) => Promise<void>
@@ -1087,6 +1090,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       objective: input.objective,
       leader: { marius_id: input.leaderId || undefined, description: input.leaderDescription?.trim() || '' },
       members: input.memberIds ?? [],
+      worker_count: input.workerCount,
     }
     const dto = await api.createProject(workspaceId, body)
     const project = projectDetailToVM(dto)

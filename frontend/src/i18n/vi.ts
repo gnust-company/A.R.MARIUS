@@ -236,15 +236,18 @@ export const vi = {
       contextPlaceholder: 'Bối cảnh bổ sung cho nhóm...',
     },
     roster: {
-      hardRuleBanner: 'Cần một Trưởng dự án, và ít nhất một agent trong đội, để dự án bắt đầu được.',
+      hardRuleBanner: 'Khai ai dẫn dự án này và nó cần bao nhiêu người làm. Xếp ai vào chỗ thì để sau cũng được.',
       rosterValid: 'Đội đã đủ người!',
       projectLeader: 'Trưởng Dự án',
       assignLeader: 'Chỉ định Trưởng',
       assignLater: 'Chỉ định sau',
       selectAgent: 'Chọn Agent',
       noApprovedAgents: 'Chưa có agent nào',
-      team: 'Đội của dự án',
-      teamHint: 'Chọn những agent sẽ làm dự án này. Mỗi agent làm gì thì đã ghi ngay trên chính nó.',
+      noAgentsYet: 'Chưa có agent nào — chỗ vẫn để đó, thêm agent lúc nào thì vào màn đội hình xếp vào lúc ấy.',
+      workerCount: 'Cần bao nhiêu người làm',
+      workerCountHint: 'Ngoài Trưởng dự án, dự án này cần bao nhiêu người? Nó mở ra đúng bấy nhiêu chỗ. Xếp thêm sau vẫn được — đây là sàn, không phải trần.',
+      team: 'Đội của dự án (không bắt buộc)',
+      teamHint: 'Có agent rồi thì xếp vào luôn. Mỗi agent làm gì thì đã ghi ngay trên chính nó, không ghi ở đây.',
       teamPicked: 'đã chọn {{count}}',
       agentNoDescription: 'Chưa có mô tả',
       leaderDescription: 'Mô tả vai trò Leader',
@@ -252,7 +255,7 @@ export const vi = {
     },
     validation: {
       noLeader: 'Vui lòng chọn trưởng dự án hoặc chọn "Chỉ định sau"',
-      noMembers: 'Hãy chọn ít nhất một agent cho đội',
+      badWorkerCount: 'Cần bao nhiêu người làm? Một số từ {{min}} tới {{max}}.',
       noLeaderDescription: 'Hãy mô tả Leader phụ trách những gì',
     },
     review: {
@@ -265,6 +268,7 @@ export const vi = {
       leaderAssigned: 'Trưởng: {{name}}',
       leaderAssignLater: 'Trưởng: Sẽ chỉ định sau',
       totalSeats: 'Số agent trong dự án: {{count}}',
+      workerPlaces: '{{places}} chỗ cho người làm, đã xếp {{seated}}.',
     },
     buttons: {
       cancel: 'Hủy',
