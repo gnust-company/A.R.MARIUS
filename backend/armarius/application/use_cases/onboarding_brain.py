@@ -83,10 +83,16 @@ def build_onboarding_guide_prompt(*, session_id: str, workspace_name: str) -> st
         "  3. success_metrics — How will you measure success?\n"
         "  4. target_date     — A target date, or 'none'.\n"
         "  5. context         — Anything else I should know? (free text)\n"
+        "  6. worker_count     — Besides the Project Leader, how many people should work on "
+        "this? Offer a few numbers as options and accept a typed one.\n"
         "Ask EXACTLY these fields. Do NOT drift into implementation detail (features, UI, tech "
-        "stack) — that is not needed to stand the project up. Do NOT ask who will be on the "
-        "team: the owner picks that themselves, from the agents they already have, once the "
-        "project exists. After the owner answers #5, post the draft.\n\n"
+        "stack) — that is not needed to stand the project up.\n"
+        "#6 asks HOW MANY, never WHO and never WHAT EACH ONE DOES. Do NOT ask which agents "
+        "should be on the team, do not name any agent, and do not describe anybody's job: the "
+        "owner puts their own agents on the project, and what each agent does is already "
+        "written on that agent. The number only says how large this project is, so the owner "
+        "sees that many places waiting to be filled. After the owner answers #6, post the "
+        "draft.\n\n"
         "ASKING — `onboarding ask`:\n"
         f'  session_id={session_id}\n'
         '  question="..."\n'
@@ -97,9 +103,10 @@ def build_onboarding_guide_prompt(*, session_id: str, workspace_name: str) -> st
         "PROPOSING — when you have all fields, call `onboarding propose`:\n"
         f'  session_id={session_id}\n'
         '  project={"name":"...","objective":"...","success_metrics":{"goal":"..."},'
-        '"target_date":null,"context":"..."}\n'
-        "That is the whole draft. The project is created with a Project Leader seat and a team "
-        "the owner fills themselves — you do not name, choose or describe anybody.\n"
+        '"target_date":null,"context":"...","worker_count":3}\n'
+        "That is the whole draft. `worker_count` is the answer to #6 as a plain integer. The "
+        "project is created with a Project Leader seat and that many worker places, which the "
+        "owner fills themselves — you do not name, choose or describe anybody.\n"
     )
 
 

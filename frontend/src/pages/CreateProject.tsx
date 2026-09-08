@@ -32,15 +32,32 @@ interface FormData {
    *  second description of behaviour beside the instructions already on each agent (FR-007l).
    */
   memberIds: string[];
+  /** How many workers this project is asking for (FR-007n).
+   *
+   *  Kept as text because it is typed: a number state would turn a half-deleted field into 0
+   *  or NaN while somebody is still typing, and the box would fight them. It is read into a
+   *  number once, on submit.
+   *
+   *  This replaces the seat count that used to sit inside a role form. The difference is what
+   *  it belongs to: a role's seat count described a job nobody had written down yet, while
+   *  this describes the project — how many people it wants — and is the only number left on
+   *  this screen (FR-007l, FR-007n). */
+  workerCount: string;
 }
 
 interface FormErrors {
   name?: string;
   objective?: string;
   members?: string;
+  workerCount?: string;
   roster?: string;
   [key: string]: string | undefined;
 }
+
+// How many workers a project may ask for. Mirrors the door (`worker_count`, ge=1 le=50): the
+// server is the one that refuses, and this pair only lets the screen say so first.
+const MIN_WORKERS = 1;
+const MAX_WORKERS = 50;
 
 // ─── Animation variants ──────────────────────────────────────────────────────
 
@@ -73,6 +90,7 @@ const initialFormData: FormData = {
   context: '',
   leaderId: null,
   leaderDescription: '',
+  workerCount: '1',
   assignLeaderLater: false,
   memberIds: [],
 };
@@ -223,6 +241,13 @@ export default function CreateProject() {
     return Object.keys(newErrors).length === 0;
   }, [formData.name, formData.objective, formData.key, t]);
 
+  // The typed number, read once. `parseInt` on a half-typed field is how this stays a text box
+  // that behaves: an empty string is not zero, it is *nothing typed yet*, and it fails the
+  // range check below rather than silently becoming a project of no workers.
+  const workerCount = Number.parseInt(formData.workerCount, 10);
+  const workerCountValid =
+    Number.isInteger(workerCount) && workerCount >= MIN_WORKERS && workerCount <= MAX_WORKERS;
+
   const validateStep2 = useCallback((): boolean => {
     const newErrors: FormErrors = {};
 
@@ -235,21 +260,27 @@ export default function CreateProject() {
       newErrors.leaderDescription = t('createProject.validation.noLeaderDescription');
     }
 
-    // A project needs somebody to do the work. That was the old "at least one worker role"
-    // rule, and it is now the plain thing it always meant: at least one agent on the project.
-    if (formData.memberIds.length === 0) {
-      newErrors.members = t('createProject.validation.noMembers');
+    // How many workers this project wants. This is where the old rule lived — *pick at least
+    // one agent* — and it was the wrong gate: a new account that skipped the machine step has
+    // no agents at all, so the screen refused to create any project, and the only way through
+    // was to seat the Workspace Agent as a worker. What a project has to declare is its size;
+    // who fills it can come later, and usually does (FR-007n).
+    if (!workerCountValid) {
+      newErrors.workerCount = t('createProject.validation.badWorkerCount', {
+        min: MIN_WORKERS,
+        max: MAX_WORKERS,
+      });
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }, [formData, t]);
+  }, [formData, t, workerCountValid]);
 
   const isRosterValid = useMemo(() => {
     const hasLeaderOrLater = formData.assignLeaderLater || !!formData.leaderId;
     const hasLeaderDescription = formData.leaderDescription.trim().length > 0;
-    return hasLeaderOrLater && hasLeaderDescription && formData.memberIds.length > 0;
-  }, [formData]);
+    return hasLeaderOrLater && hasLeaderDescription && workerCountValid;
+  }, [formData, workerCountValid]);
 
   // ─── Navigation ────────────────────────────────────────────────────────────
 
@@ -288,6 +319,7 @@ export default function CreateProject() {
       leaderId: formData.leaderId || '',
       leaderDescription: formData.leaderDescription,
       memberIds: formData.memberIds,
+      workerCount,
     };
     try {
       const project = await createProject(payload);
@@ -598,12 +630,39 @@ export default function CreateProject() {
         )}
       </div>
 
+      {/* ─── How many workers ─── */}
+      <div>
+        <h3 className="font-display text-display-sm text-ink mb-1">
+          {t('createProject.roster.workerCount')}
+          <span className="text-[#C25E3A] ml-1">*</span>
+        </h3>
+        <p className="mb-3 font-body text-body-sm text-ink-light">
+          {t('createProject.roster.workerCountHint')}
+        </p>
+        <input
+          id="cp-worker-count"
+          type="number"
+          inputMode="numeric"
+          min={MIN_WORKERS}
+          max={MAX_WORKERS}
+          value={formData.workerCount}
+          onChange={(e) => {
+            const typed = e.target.value;
+            setFormData((prev) => ({ ...prev, workerCount: typed }));
+            if (errors.workerCount) setErrors((prev) => ({ ...prev, workerCount: undefined }));
+          }}
+          className="w-24 bg-vellum border border-[#E3D7BC] rounded-md px-3 py-2 font-mono text-body-md text-ink focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)] transition-colors"
+        />
+        {errors.workerCount && (
+          <p className="mt-1 font-body text-body-sm text-[#B84A32]">{errors.workerCount}</p>
+        )}
+      </div>
+
       {/* ─── The team ─── */}
       <div>
         <div className="flex items-baseline justify-between mb-1">
           <h3 className="font-display text-display-sm text-ink">
             {t('createProject.roster.team')}
-            <span className="text-[#C25E3A] ml-1">*</span>
           </h3>
           <span className="font-mono text-mono-sm text-ink-muted">
             {t('createProject.roster.teamPicked', { count: formData.memberIds.length })}
@@ -613,13 +672,9 @@ export default function CreateProject() {
           {t('createProject.roster.teamHint')}
         </p>
 
-        {errors.members && (
-          <p className="mb-3 font-body text-body-sm text-[#B84A32]">{errors.members}</p>
-        )}
-
         {teamCandidates.length === 0 ? (
           <p className="text-center font-body text-body-sm text-ink-muted py-6">
-            {t('createProject.roster.noApprovedAgents')}
+            {t('createProject.roster.noAgentsYet')}
           </p>
         ) : (
           <div className="space-y-2">
@@ -662,7 +717,12 @@ export default function CreateProject() {
   // ─── Render Step 3: Review ─────────────────────────────────────────────────
 
   const renderStep3 = () => {
-    const totalSeats = formData.memberIds.length + 1; // + the Leader
+    // Places, not people: the Leader's one, plus however many workers the project asked for —
+    // or however many were seated, when that is more. The same *larger of the two* the roster
+    // screen reports, so the review does not promise a different number than the project shows
+    // a moment later.
+    const workerPlaces = Math.max(workerCountValid ? workerCount : MIN_WORKERS, formData.memberIds.length);
+    const totalSeats = workerPlaces + 1;
     const selectedLeader = mariuses.find((a) => a.id === formData.leaderId);
     const pickedMembers = formData.memberIds
       .map((id) => mariuses.find((a) => a.id === id))
@@ -730,12 +790,21 @@ export default function CreateProject() {
             )}
           </div>
 
-          {/* The team */}
-          {pickedMembers.length > 0 && (
-            <div className="bg-[#EDE4CE] border border-[#E3D7BC] rounded-md p-4">
-              <p className="font-body text-body-sm font-medium text-ink mb-2">
-                {t('createProject.roster.team')}
-              </p>
+          {/* The team. Shown even when nobody was picked — the places are the thing being
+              created here, and a project of three empty places is a normal thing to review
+              (FR-007n). It used to be hidden unless somebody was seated, which is exactly the
+              case a person needs to see before pressing create. */}
+          <div className="bg-[#EDE4CE] border border-[#E3D7BC] rounded-md p-4">
+            <p className="font-body text-body-sm font-medium text-ink mb-2">
+              {t('createProject.roster.team')}
+            </p>
+            <p className="font-body text-body-sm text-ink-light mb-2">
+              {t('createProject.review.workerPlaces', {
+                places: workerPlaces,
+                seated: pickedMembers.length,
+              })}
+            </p>
+            {pickedMembers.length > 0 && (
               <ul className="space-y-2">
                 {pickedMembers.map((agent) => (
                   <li key={agent.id} className="flex items-start gap-2">
@@ -751,13 +820,13 @@ export default function CreateProject() {
                   </li>
                 ))}
               </ul>
-              <div className="border-t border-[#E3D7BC] mt-3 pt-2">
-                <p className="font-body text-body-sm font-medium text-ink">
-                  {t('createProject.review.totalSeats', { count: totalSeats })}
-                </p>
-              </div>
+            )}
+            <div className="border-t border-[#E3D7BC] mt-3 pt-2">
+              <p className="font-body text-body-sm font-medium text-ink">
+                {t('createProject.review.totalSeats', { count: totalSeats })}
+              </p>
             </div>
-          )}
+          </div>
         </div>
       </div>
     );

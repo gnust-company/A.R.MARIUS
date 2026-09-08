@@ -53,7 +53,11 @@ from armarius.application.use_cases.onboarding_brain import (
     build_onboarding_answer_prompt,
     build_onboarding_guide_prompt,
 )
-from armarius.application.use_cases.projects import ProjectService
+from armarius.application.use_cases.projects import (
+    MAX_WORKER_COUNT,
+    MIN_WORKER_COUNT,
+    ProjectService,
+)
 from armarius.application.use_cases.types import UowFactory
 from armarius.application.use_cases.workspace_agent import WorkspaceAgentService
 from armarius.domain.entities.marius import Liveness, Marius
@@ -116,11 +120,16 @@ def _qa_pairs(transcript: list[dict[str, Any]]) -> list[tuple[str, str]]:
 def plan_from_collected(collected: dict) -> dict:
     """Materialise the accumulated draft into ``{name, objective, ...}`` for finalize.
 
-    No roster comes out of here any more, because none goes in. The interview used to end with
-    the agent drafting worker roles — a model inventing titles and descriptions of work, which
-    then sat in the project beside the instructions actually written on each agent (FR-007l).
-    The project is created with the two rows every project has, and the patron puts their own
-    agents on it by name.
+    No roster comes out of here, because none goes in. The interview used to end with the agent
+    drafting worker roles — a model inventing titles and descriptions of work, which then sat in
+    the project beside the instructions actually written on each agent (FR-007l). The project is
+    created with the two rows every project has, and the patron puts their own agents on it.
+
+    One number does come out: how many workers the project is asking for (FR-007n). That is not
+    a role and describes nobody — it is the size of the project, and the interview is the only
+    place that has the objective in front of it while there is still a question to ask. Without
+    it every interviewed project was born asking for one worker, which read on screen as a
+    project that could only ever have one.
     """
     draft = collected.get("draft") or {}
     objective = (draft.get("objective") or "").strip() or "New project"
@@ -131,7 +140,30 @@ def plan_from_collected(collected: dict) -> dict:
         "success_metrics": draft.get("success_metrics"),
         "target_date": draft.get("target_date"),
         "context": draft.get("context"),
+        "worker_count": _worker_count(draft.get("worker_count")),
     }
+
+
+def _worker_count(raw: object) -> int:
+    """The answer as a number, and never a refusal.
+
+    An agent answering a *how many* question can hand back "3", 3, "three people", or nothing
+    at all, and none of those is worth abandoning a finished interview over. Anything that is
+    not a number this side understands falls back to one, which is what every project got
+    before the question existed.
+    """
+    if isinstance(raw, bool):
+        return MIN_WORKER_COUNT
+    if isinstance(raw, int):
+        parsed = raw
+    elif isinstance(raw, str):
+        digits = "".join(ch for ch in raw if ch.isdigit())
+        if not digits:
+            return MIN_WORKER_COUNT
+        parsed = int(digits)
+    else:
+        return MIN_WORKER_COUNT
+    return max(MIN_WORKER_COUNT, min(parsed, MAX_WORKER_COUNT))
 
 
 # ── the use case ──────────────────────────────────────────────────────────────────
@@ -322,6 +354,7 @@ class OnboardingService:
             target_date=_as_datetime(plan["target_date"]),
             context=plan["context"],
             created_by_user_id=created_by_user_id,
+            worker_count=plan["worker_count"],
         )
 
         async with self._uow() as uow:

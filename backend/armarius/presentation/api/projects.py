@@ -135,6 +135,7 @@ async def create_project(
         description=body.description,
         objective=body.objective,
         created_by_user_id=str(user.id),
+        worker_count=body.worker_count,
     )
 
     # Brief fields beyond name/description/objective (validated already → project exists).
@@ -196,6 +197,7 @@ async def update_project(
         github_url=body.github_url,
         context=body.context,
         settings=body.settings,
+        worker_count=body.worker_count,
     )
     return await _detail(container, project)
 
