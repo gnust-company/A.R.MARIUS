@@ -106,6 +106,12 @@ class CreateProjectPlanIn(BaseModel):
     # The agents on this project besides its Leader. Optional and orderless: a project may
     # be created empty and staffed from the roster screen afterwards.
     members: list[UUID] = Field(default_factory=list)
+    # How many workers this project is asking for (FR-007n). Separate from `members` on
+    # purpose, and this is the whole point of it: a workspace with no agents yet — a new
+    # account that skipped the machine step — can still say *this project needs three people*
+    # and be shown three empty places, instead of being unable to create a project at all.
+    # A floor, not a cap: seating a fourth agent is allowed and the count reads back as four.
+    worker_count: int = Field(default=1, ge=1, le=50)
     settings: dict | None = None
     onboarding_session_id: UUID | None = None
 
@@ -118,6 +124,10 @@ class UpdateProjectIn(BaseModel):
     github_url: str | None = None
     context: str | None = None
     settings: dict | None = None
+    # A project that turns out to need more people says so here rather than being created
+    # again (FR-007n). Lowering it below the number already seated is not a refusal: the
+    # roster reports the larger of the two, so nobody is ever un-seated by a number.
+    worker_count: int | None = Field(default=None, ge=1, le=50)
 
 
 class SeatOut(BaseModel):
@@ -937,6 +947,12 @@ class OnboardingProjectDraftIn(BaseModel):
     success_metrics: dict | None = None
     target_date: str | None = None
     context: str | None = Field(default=None, max_length=4000)
+    # How many workers the project is asking for (FR-007n). Deliberately loose on the way in:
+    # a model answering "how many" hands back `3`, `"3"`, or `"three"`, and one interview is
+    # not worth abandoning over which. It is read into a number by `_worker_count`, and a
+    # missing or unreadable answer means one — the same number every project got before the
+    # question existed. Still not a role: it says how large, never who or what each one does.
+    worker_count: int | str | None = None
 
 
 class AgentOnboardingCompleteIn(BaseModel):
@@ -946,6 +962,10 @@ class AgentOnboardingCompleteIn(BaseModel):
     model inventing titles and descriptions of work, which then stood in the project beside
     the instructions actually written on each agent (FR-007l). Who is on a project is chosen
     by the patron, from the agents they already have, once the project exists.
+
+    A count is the one thing about the team that does arrive here, and it is not that: *how
+    many* is the size of the project, while *who* and *what each does* remain the patron's and
+    the agent's own instructions' (FR-007n).
     """
 
     project: OnboardingProjectDraftIn

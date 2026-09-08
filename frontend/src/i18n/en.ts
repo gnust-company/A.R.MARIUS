@@ -236,15 +236,18 @@ export const en = {
       contextPlaceholder: 'Additional context for the team...',
     },
     roster: {
-      hardRuleBanner: 'A Project Leader, and at least one agent on the team, before the project can start.',
+      hardRuleBanner: 'Say who leads this project and how many workers it needs. Filling the places can wait.',
       rosterValid: 'The team is set!',
       projectLeader: 'Project Leader',
       assignLeader: 'Assign Leader',
       assignLater: 'Assign later',
       selectAgent: 'Select Agent',
       noApprovedAgents: 'No agents available',
-      team: 'The team',
-      teamHint: 'Pick the agents who will work on this project. What each one does is written on the agent itself.',
+      noAgentsYet: 'No agents yet — the places wait, and you can fill them from the roster whenever you add one.',
+      workerCount: 'How many workers',
+      workerCountHint: 'Besides the Leader, how many people should this project have? It opens that many places. You can seat more later — this is a floor, not a limit.',
+      team: 'The team (optional)',
+      teamHint: 'Seat agents now if you have them. What each one does is written on the agent itself, not here.',
       teamPicked: '{{count}} picked',
       agentNoDescription: 'No description',
       leaderDescription: 'Leader role description',
@@ -252,7 +255,7 @@ export const en = {
     },
     validation: {
       noLeader: 'Please select a project leader or choose "Assign later"',
-      noMembers: 'Pick at least one agent for the team',
+      badWorkerCount: 'How many workers? A number from {{min}} to {{max}}.',
       noLeaderDescription: 'Describe what the Leader is responsible for',
     },
     review: {
@@ -265,6 +268,7 @@ export const en = {
       leaderAssigned: 'Leader: {{name}}',
       leaderAssignLater: 'Leader: To be assigned later',
       totalSeats: 'Agents on this project: {{count}}',
+      workerPlaces: '{{places}} worker places, {{seated}} seated now.',
     },
     buttons: {
       cancel: 'Cancel',
