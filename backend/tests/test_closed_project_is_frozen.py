@@ -53,7 +53,6 @@ _NEEDS_NO_GUARD: dict[tuple[str, str], str] = {
     ("POST", "/v1/workspaces"): "tầng trên dự án",
     ("PATCH", "/v1/workspaces/{workspace_id}"): "tầng trên dự án",
     ("DELETE", "/v1/workspaces/{workspace_id}"): "tầng trên dự án",
-    ("POST", "/v1/workspaces/{workspace_id}/labels"): "tầng trên dự án",
     ("POST", "/v1/workspaces/{workspace_id}/mariuses"): "tầng trên dự án",
     ("PATCH", "/v1/workspaces/{workspace_id}/mariuses/{marius_id}"): "tầng trên dự án",
     ("DELETE", "/v1/workspaces/{workspace_id}/mariuses/{marius_id}"): "tầng trên dự án",
