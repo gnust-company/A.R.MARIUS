@@ -14,7 +14,6 @@ import type {
   CommentDTO,
   CriterionDTO,
   InboxItemDTO,
-  LabelDTO,
   MariusDTO,
   OnboardingDTO,
   ProjectDTO,
@@ -312,14 +311,6 @@ export function artifactToVM(dto: ArtifactDTO): Artifact {
 
 // ── Label ───────────────────────────────────────────────────────────────────────────────
 
-export function labelToVM(dto: LabelDTO): { id: string; name: string; color: string; workspaceId?: string } {
-  return {
-    id: dto.id,
-    name: dto.name,
-    color: dto.color,
-    workspaceId: dto.workspace_id ?? undefined,
-  }
-}
 
 // ── Skill ───────────────────────────────────────────────────────────────────────────────
 

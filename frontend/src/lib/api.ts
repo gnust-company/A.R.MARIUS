@@ -241,13 +241,6 @@ export interface MariusDTO {
 // called, so creating one sends nothing anywhere (FR-007g).
 export type MariusCreatedDTO = MariusDTO
 
-export interface LabelDTO {
-  id: string
-  workspace_id?: string | null
-  name: string
-  color: string
-  created_at?: string | null
-}
 
 export interface SkillDTO {
   id: string
@@ -707,9 +700,6 @@ export async function readRunEventInFull(runId: string, seq: number): Promise<Ru
 
 // ── Labels ─────────────────────────────────────────────────────────────────────────────
 
-export async function listLabels(workspaceId: string): Promise<LabelDTO[]> {
-  return get<LabelDTO[]>(`/v1/workspaces/${workspaceId}/labels`)
-}
 
 // ── Skills ─────────────────────────────────────────────────────────────────────────────
 

@@ -26,7 +26,6 @@ from armarius.domain.entities.approval import Approval
 from armarius.domain.entities.auto_approval import AutoApproval
 from armarius.domain.entities.checklist_item import ChecklistItem
 from armarius.domain.entities.inbox_item import InboxItem, InboxItemStatus
-from armarius.domain.entities.label import Label
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.onboarding import OnboardingSession
 from armarius.domain.entities.placement import Placement
@@ -51,7 +50,6 @@ from armarius.shared.errors import Conflict, NotFound
 @dataclass
 class _Store:
     workspaces: dict[UUID, Workspace] = field(default_factory=dict)
-    labels: dict[UUID, Label] = field(default_factory=dict)
     onboardings: dict[UUID, OnboardingSession] = field(default_factory=dict)
     projects: dict[UUID, Project] = field(default_factory=dict)
     tasks: dict[UUID, Task] = field(default_factory=dict)
@@ -94,18 +92,6 @@ class _FakeWorkspaceRepo:
             raise LookupError("workspace not found")
         self._s.workspaces[ws.id] = ws
         return ws
-
-
-class _FakeLabelRepo:
-    def __init__(self, store: _Store) -> None:
-        self._s = store
-
-    async def add(self, label: Label) -> Label:
-        self._s.labels[label.id] = label
-        return label
-
-    async def list_by_workspace(self, workspace_id: UUID) -> list[Label]:
-        return [x for x in self._s.labels.values() if x.workspace_id == workspace_id]
 
 
 class _FakeTaskRepo:
@@ -755,7 +741,6 @@ class FakeUnitOfWork(UnitOfWork):
     async def __aenter__(self) -> FakeUnitOfWork:
         s = self._store
         self.workspaces = _FakeWorkspaceRepo(s)  # type: ignore[assignment]
-        self.labels = _FakeLabelRepo(s)  # type: ignore[assignment]
         self.onboardings = _FakeOnboardingRepo(s)  # type: ignore[assignment]
         self.projects = _FakeProjectRepo(s)  # type: ignore[assignment]
         self.tasks = _FakeTaskRepo(s)  # type: ignore[assignment]

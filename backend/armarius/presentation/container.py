@@ -16,7 +16,6 @@ from armarius.application.use_cases.artifacts import ArtifactService
 from armarius.application.use_cases.auth import AuthService
 from armarius.application.use_cases.enrollment import AgentService
 from armarius.application.use_cases.inbox import InboxService
-from armarius.application.use_cases.labels import LabelService
 from armarius.application.use_cases.leader_chat import LeaderChatService
 from armarius.application.use_cases.liveness import LivenessEngine
 from armarius.application.use_cases.liveness_watchdog import LivenessWatchdog
@@ -82,7 +81,6 @@ class Container:
     trace_retention: TraceRetention
     recovery: RecoveryEscalator
     inbox: InboxService
-    labels: LabelService
     mariuses: MariusService
     tasks: TaskService
     approvals: ApprovalService
@@ -432,7 +430,6 @@ def build_container() -> Container:
         trace_retention=trace_retention,
         recovery=recovery,
         inbox=inbox,
-        labels=LabelService(uow_factory),
         mariuses=MariusService(uow_factory),
         tasks=tasks,
         approvals=ApprovalService(

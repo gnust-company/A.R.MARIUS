@@ -14,7 +14,6 @@ from armarius.domain.entities.auto_approval import AutoApproval
 from armarius.domain.entities.checklist_item import ChecklistItem, ChecklistTally
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.inbox_item import InboxItem, InboxItemStatus
-from armarius.domain.entities.label import Label
 from armarius.domain.entities.leader_chat import ProjectLeaderConversation
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.onboarding import OnboardingSession
@@ -50,7 +49,7 @@ class WorkspaceRepository(ABC):
     @abstractmethod
     async def remove(self, workspace_id: UUID) -> None:
         """Delete a workspace and every child it owns (projects + their roster/tasks,
-        mariuses, skills, labels). No FK has ``ON DELETE CASCADE`` so the aggregate
+        mariuses, skills). No FK has ``ON DELETE CASCADE`` so the aggregate
         cascade is explicit — identical behaviour on SQLite and Postgres."""
 
 
@@ -148,15 +147,6 @@ class AutoApprovalRepository(ABC):
     async def set_enabled(
         self, project_id: UUID, user_id: str, *, enabled: bool
     ) -> AutoApproval: ...
-
-
-class LabelRepository(ABC):
-    """Workspace-scoped task tags (API_CONTRACT §5.4)."""
-
-    @abstractmethod
-    async def add(self, label: Label) -> Label: ...
-    @abstractmethod
-    async def list_by_workspace(self, workspace_id: UUID) -> Sequence[Label]: ...
 
 
 class LeaderChatRepository(ABC):

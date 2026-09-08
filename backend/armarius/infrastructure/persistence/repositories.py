@@ -18,7 +18,6 @@ from armarius.domain.entities.auto_approval import AutoApproval
 from armarius.domain.entities.checklist_item import ChecklistItem, ChecklistTally
 from armarius.domain.entities.comment import Comment
 from armarius.domain.entities.inbox_item import InboxItem, InboxItemStatus
-from armarius.domain.entities.label import Label
 from armarius.domain.entities.leader_chat import ProjectLeaderConversation
 from armarius.domain.entities.marius import Marius, NameTaken
 from armarius.domain.entities.onboarding import OnboardingSession
@@ -50,7 +49,6 @@ from armarius.domain.repositories.repositories import (
     ChecklistItemRepository,
     CommentRepository,
     InboxRepository,
-    LabelRepository,
     LeaderChatRepository,
     MariusRepository,
     OnboardingRepository,
@@ -85,7 +83,6 @@ from armarius.infrastructure.database.models import (
     ChecklistItemModel,
     CommentModel,
     InboxItemModel,
-    LabelModel,
     MariusModel,
     OnboardingSessionModel,
     OrchestrationSweepModel,
@@ -244,7 +241,7 @@ class SqlWorkspaceRepository(WorkspaceRepository):
     async def remove(self, workspace_id: UUID) -> None:
         """Delete a workspace and every child it owns. FK columns carry no
         ``ON DELETE CASCADE``, so a bare delete orphans (SQLite) or errors (Postgres) —
-        we cascade explicitly (projects + their roster/tasks, then mariuses/skills/labels)
+        we cascade explicitly (projects + their roster/tasks, then mariuses/skills)
         so the behaviour is identical on both backends.
 
         The runtime/history tables (runs, run_events, agent_task_sessions, wakeup_requests,
@@ -327,7 +324,6 @@ class SqlWorkspaceRepository(WorkspaceRepository):
         )
 
         await _purge_projects(self._s, project_ids)
-        await self._s.execute(delete(LabelModel).where(LabelModel.workspace_id == workspace_id))
         # Any seat still holding one of these agents, wherever it sits. `_purge_projects`
         # clears the seats of *this workspace's* projects; a seat in somebody else's
         # project is not reached that way, and the agents are about to go. `grant_seat`
@@ -349,34 +345,6 @@ class SqlWorkspaceRepository(WorkspaceRepository):
         if m is not None:
             await self._s.delete(m)
         await self._s.flush()
-
-
-class SqlLabelRepository(LabelRepository):
-    def __init__(self, session: AsyncSession) -> None:
-        self._s = session
-
-    async def add(self, label: Label) -> Label:
-        self._s.add(
-            LabelModel(
-                id=label.id,
-                workspace_id=label.workspace_id,
-                name=label.name,
-                color=label.color,
-                created_at=label.created_at,
-            )
-        )
-        await self._s.flush()
-        return label
-
-    async def list_by_workspace(self, workspace_id: UUID) -> Sequence[Label]:
-        rows = (
-            await self._s.execute(
-                select(LabelModel)
-                .where(LabelModel.workspace_id == workspace_id)
-                .order_by(LabelModel.created_at)
-            )
-        ).scalars().all()
-        return [mappers.label_to_entity(m) for m in rows]
 
 
 class SqlLeaderChatRepository(LeaderChatRepository):
