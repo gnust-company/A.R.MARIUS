@@ -13,12 +13,10 @@ from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.container import Container
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
-    CreateLabelIn,
     CreateWorkspaceIn,
     ImportSkillIn,
     InstallSkillsIn,
     InstallSkillsOut,
-    LabelOut,
     MachineOut,
     MachineWorkplaceOut,
     ManualSkillIn,
@@ -308,29 +306,6 @@ async def list_marius_runs(
 
 
 # ---------------------------------------------------------------------- labels
-@router.get("/workspaces/{workspace_id}/labels", response_model=list[LabelOut])
-async def list_labels(
-    workspace_id: UUID, container: ContainerDep, user: CurrentUser
-) -> list[LabelOut]:
-    await _require_owned_workspace(container, user, workspace_id)
-    items = await container.labels.list_labels(workspace_id)
-    return [LabelOut.model_validate(label) for label in items]
-
-
-@router.post(
-    "/workspaces/{workspace_id}/labels", response_model=LabelOut, status_code=201
-)
-async def create_label(
-    workspace_id: UUID,
-    body: CreateLabelIn,
-    container: ContainerDep,
-    user: CurrentUser,
-) -> LabelOut:
-    await _require_owned_workspace(container, user, workspace_id)
-    label = await container.labels.create(workspace_id, body.name, body.color)
-    return LabelOut.model_validate(label)
-
-
 @router.patch(
     "/workspaces/{workspace_id}/mariuses/{marius_id}",
     response_model=MariusOut,

@@ -169,20 +169,6 @@ class SeatAgentIn(BaseModel):
     marius_id: UUID
 
 
-# ------------------------------------------------------- labels (contract §5.4)
-class CreateLabelIn(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
-    color: str = Field(default="", max_length=20)
-
-
-class LabelOut(_Out):
-    id: UUID
-    workspace_id: UUID | None = None
-    name: str
-    color: str = ""
-    created_at: datetime | None = None
-
-
 class SignApprovalIn(BaseModel):
     """One signature on a task's output (spec 001 FR-033, FR-040)."""
 

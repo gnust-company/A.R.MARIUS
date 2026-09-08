@@ -17,7 +17,6 @@ from armarius.infrastructure.persistence.repositories import (
     SqlChecklistItemRepository,
     SqlCommentRepository,
     SqlInboxRepository,
-    SqlLabelRepository,
     SqlLeaderChatRepository,
     SqlMariusRepository,
     SqlOnboardingRepository,
@@ -50,7 +49,6 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         self._session = self._sessionmaker()
         s = self._session
         self.workspaces = SqlWorkspaceRepository(s)
-        self.labels = SqlLabelRepository(s)
         self.leader_chats = SqlLeaderChatRepository(s)
         self.onboardings = SqlOnboardingRepository(s)
         self.projects = SqlProjectRepository(s)

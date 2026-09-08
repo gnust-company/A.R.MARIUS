@@ -17,7 +17,6 @@ from armarius.domain.repositories.repositories import (
     ChecklistItemRepository,
     CommentRepository,
     InboxRepository,
-    LabelRepository,
     LeaderChatRepository,
     MariusRepository,
     OnboardingRepository,
@@ -44,7 +43,6 @@ from armarius.domain.repositories.repositories import (
 
 class UnitOfWork(ABC):
     workspaces: WorkspaceRepository
-    labels: LabelRepository
     leader_chats: LeaderChatRepository
     onboardings: OnboardingRepository
     projects: ProjectRepository
