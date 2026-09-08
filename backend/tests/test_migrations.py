@@ -26,7 +26,12 @@ def test_migrations_upgrade_head_then_downgrade_base(tmp_path, monkeypatch) -> N
 
     insp = inspect(create_engine(f"sqlite:///{db}"))
     tables = set(insp.get_table_names())
-    assert {"roles", "seat_grants", "labels", "project_leader_conversations"} <= tables
+    assert {"roles", "seat_grants", "project_leader_conversations"} <= tables
+    # Nhãn thì **không** còn: một bảng, hai cửa, và không chỗ nào gắn nhãn vào bất cứ thứ gì —
+    # bỏ đi 2026-09-08. Giữ dòng này chứ không chỉ xoá tên khỏi tập trên: chuỗi migration phải
+    # đi lên tới đầu và **kết thúc bằng việc bảng ấy không có ở đó**, không phải bằng việc
+    # không ai hỏi nữa.
+    assert "labels" not in tables
     project_cols = {c["name"] for c in insp.get_columns("projects")}
     assert {"status", "objective", "settings", "created_by_user_id"} <= project_cols
     marius_cols = {c["name"] for c in insp.get_columns("mariuses")}
