@@ -49,6 +49,7 @@ class AgentService:
         name: str,
         *,
         instructions: str = "",
+        system_instructions: str = "",
         owner_user_id: str | None = None,
     ) -> Marius:
         """Make an agent that has **nowhere to work yet** — the one exception to FR-007f.
@@ -77,6 +78,12 @@ class AgentService:
         exists. A guard in the test suite keeps creation and seating apart.
 
         No credential is minted here either. An agent is an identity, not a bearer (FR-014a).
+
+        `system_instructions` is the half of the prompt the product writes, and it is only here
+        because this is the only door the product itself comes through. No door a person reaches
+        accepts it, and none ever should: the host's job is what makes it a host, and the owner
+        editing their host must not be able to delete it by accident. Their own half lives in
+        `instructions` and starts empty (FR-007m).
         """
         now = utcnow()
         async with self._uow() as uow:
@@ -90,6 +97,7 @@ class AgentService:
                     workspace_id=workspace_id,
                     name=name,
                     instructions=instructions,
+                    system_instructions=system_instructions,
                     owner_user_id=owner_user_id,
                     created_at=now,
                     updated_at=now,

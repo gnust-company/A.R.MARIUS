@@ -65,6 +65,15 @@ class Marius:
     # whole of how an agent behaves: there is no per-project role adding to it or
     # overriding it (Constitution V).
     instructions: str = ""
+    # The half of the prompt the product writes and a person may not. Empty for every agent a
+    # person made: they wrote the whole of their own instructions, and there is no second author.
+    #
+    # It exists for the one agent nobody made — the workspace host, which the product creates and
+    # gives a job to (FR-115). That job has to keep working, and it has to be in English because
+    # it is text a machine reads (Constitution VII); the owner still has things to say to their own
+    # host. Both halves at once is the only shape where neither overwrites the other: this one is
+    # read-only at every door, `instructions` stays entirely theirs, and the prompt carries both.
+    system_instructions: str = ""
     # What the humans call this agent among themselves (FR-007j). It never reaches the
     # agent — a line meant for the team would otherwise quietly become an instruction.
     description: str = ""

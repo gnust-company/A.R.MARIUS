@@ -505,18 +505,51 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
     - Chỗ ngồi chung **không mô tả công việc của ai**: dòng của nó chỉ về instructions của chính agent, và
       đó là câu đi vào gói tin agent nhận được. Dự án dựng trước T039j giữ nguyên bảng nhân sự cũ của nó —
       cửa mới không viết lại lịch sử, người vào sau ngồi vào chỗ chung.
-- **FR-007m**: Instructions của một agent PHẢI **đọc được và sửa được** sau khi tạo. Hôm nay chúng chỉ
-  viết được đúng một lần, lúc tạo: cửa `PATCH` nhận `name`, `skills`, `adapter_type`, `runtime_options`
-  — không nhận `instructions`; và màn agent không hiện chúng ra chỗ nào.
+- **FR-007m**: Màn agent PHẢI là **nơi một agent được quản**, không phải một cái thẻ chỉ để xem.
+  Những gì làm nên một agent phải **hiện ra và sửa được** sau khi tạo.
 
-  Đây là hệ quả trực tiếp của FR-007l và phải sửa cùng chỗ với nó: từ khi vai theo dự án bị bỏ,
-  instructions **là** thứ duy nhất nói agent cư xử thế nào. Một thứ duy nhất mà chỉ viết được một lần
-  thì cách sửa cách cư xử của một agent là **xoá nó đi và tạo lại**, mất theo cả lịch sử lượt chạy,
-  skill đã liên kết và chỗ ngồi trong dự án. *Người chủ báo 2026-09-07: "Agent không có chỗ để edit
-  system prompt".*
+  Đo được trước khi sửa: cửa tạo nhận `name`, `instructions`, `description`, `skills`,
+  `runtime_options`, `workplace_id`; cửa sửa chỉ nhận `name`, `role`, `skills`, `adapter_type`,
+  `runtime_options`. Nên `instructions` và `description` **đặt một lần rồi thôi**, `description`
+  không hiện ở đâu, `runtime_options` ghi được mà không đọc lại được, và skill **trao rồi không
+  bỏ được**. Cộng lại: cách đổi cách cư xử của một agent là **xoá đi tạo lại** — mất theo lịch sử
+  lượt chạy, skill đã liên kết và chỗ ngồi trong dự án. *Người chủ báo 2026-09-07.*
 
-  Instructions mới có hiệu lực **từ lượt chạy sau**, như skill — một lượt đang chạy giữ nguyên gói tin
-  nó đã nhận.
+  **Kế thừa từ Multica** (người chủ đưa mã nguồn của họ về 2026-09-08). View Agent của họ chia
+  bốn tầng — Overview · Work · Capabilities · Settings — và Capabilities gồm Instructions ·
+  Skills · MCP · Integrations, Settings gồm General · Access · Environment · Custom args ·
+  Runtime config. Điều đáng học nhất không phải danh sách tab mà là **mọi giá trị là một hàng có
+  nhãn, sửa ngay tại chỗ**: họ không có khái niệm "tạo được mà không sửa được" vì không có màn
+  nào chỉ để đọc.
+
+  Bắt buộc ở đặc tả này:
+
+  - Màn agent chia **mục**, mỗi mục trả lời một câu hỏi khác nhau: agent này *là gì* (chữ, kỹ
+    năng, thiết lập) và nó *đang làm gì* (lượt chạy) không được nhồi vào một mạch cuộn.
+  - `instructions` và `description` sửa được. Chuỗi rỗng là **một giá trị thật** — *agent này
+    không có chỉ dẫn riêng* — khác với *không đổi gì*.
+  - **Bỏ được một kỹ năng khỏi agent.** Không có cửa riêng cho từng kỹ năng, nên gửi lại cả danh
+    sách ngắn hơn: cả danh sách nghĩa là *đúng những cái này, không cái nào khác*.
+  - `runtime_options` **hiện ra**. Đổi thì ở màn đặt chỗ làm, vì tuỳ chọn nào nhận được là câu trả
+    lời của chỗ làm (FR-007k) — nhưng ghi vào rồi không cho xem lại là một sự thật bị giấu.
+  - Chữ mới có hiệu lực **từ lượt chạy sau**, như skill: một lượt đang chạy giữ nguyên gói tin nó
+    đã nhận.
+
+  **Người chủ nhà có hai tác giả**, và đây là chỗ dễ làm sai nhất:
+
+  - Công việc làm nó thành người chủ nhà do **sản phẩm** viết, bằng tiếng Anh vì đó là chữ một cái
+    máy đọc (Hiến pháp VII, FR-115). Người chủ vẫn có điều muốn nói với người chủ nhà của mình.
+  - Một ô cho cả hai thì người chủ đầu tiên sửa chỉ dẫn cho Livia là **xoá luôn** thứ làm nó thành
+    người chủ nhà. Nên **hai nửa**: nửa sản phẩm chỉ đọc, gập lại được, hiện ra để họ thấy nó đang
+    được dặn gì; nửa của họ là một ô trống, trắng từ đầu, và của riêng họ.
+  - Nửa sản phẩm **KHÔNG cửa nào người dùng với tới được ghi vào**. Cửa duy nhất nhận nó là cửa
+    chính sản phẩm đi qua lúc tạo người chủ nhà.
+  - Prompt mang **cả hai**, nửa sản phẩm trước. Agent do người tạo chỉ có **một** nửa và KHÔNG
+    ĐƯỢC mọc thêm một tiêu đề trống — một mục rỗng đọc thành *có gì đang bị giấu* (FR-045).
+  - Dữ liệu cũ phải chuyển: hàng nào đang giữ **đúng từng ký tự** đoạn chữ của sản phẩm thì chuyển
+    sang nửa sản phẩm; người chủ nào đã tự viết lại thì chữ của họ KHÔNG ĐƯỢC chuyển đi đâu và
+    KHÔNG ĐƯỢC nhân đôi.
+
 - **FR-007n**: Buổi phỏng vấn lập dự án PHẢI hỏi **cần bao nhiêu người**, và câu trả lời trở thành số
   chỗ của chỗ ngồi chung.
 

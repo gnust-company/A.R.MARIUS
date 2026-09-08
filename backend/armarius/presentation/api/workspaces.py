@@ -350,6 +350,8 @@ async def update_marius(
         marius_id,
         name=body.name,
         role=body.role,
+        instructions=body.instructions,
+        description=body.description,
         skills=body.skills,
         skill_ids=body.skill_ids,
         adapter_type=body.adapter_type,

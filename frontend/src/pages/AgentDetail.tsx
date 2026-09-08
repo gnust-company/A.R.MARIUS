@@ -36,6 +36,9 @@ import VellumPanel from '@/components/VellumPanel';
 import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
 import { onWorkspaceEvent } from '@/hooks/use-workspace-events';
+import InstructionsTab from '@/components/agent/InstructionsTab';
+import SkillsTab, { type SkillRow } from '@/components/agent/SkillsTab';
+import SettingsTab from '@/components/agent/SettingsTab';
 
 // ─── Status palette (mirrors Directory's Scriptorium tones) ───────────────────
 
@@ -226,6 +229,14 @@ function RunRow({ run }: { run: RunDTO }) {
 // PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/** The sections of this screen, in the order they are offered.
+ *
+ *  Overview and Activity are what was already here; the other three are where an agent can
+ *  actually be changed (FR-007m). Named as one list so the bar and the panels below cannot
+ *  drift apart. */
+const TABS = ['overview', 'activity', 'instructions', 'skills', 'settings'] as const;
+type Tab = (typeof TABS)[number];
+
 export default function AgentDetail() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -234,8 +245,10 @@ export default function AgentDetail() {
   const mariuses = useAppStore((s) => s.mariuses);
   const allSkills = useAppStore((s) => s.skills);
   const installAgentSkills = useAppStore((s) => s.installAgentSkills);
+  const updateMarius = useAppStore((s) => s.updateMarius);
   const agent = mariuses.find((m) => m.id === id);
 
+  const [tab, setTab] = useState<Tab>('overview');
   const [runs, setRuns] = useState<RunDTO[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -297,6 +310,52 @@ export default function AgentDetail() {
   // The picker offers EVERY workspace skill — a linked one can be re-selected to re-push an
   // updated copy of its files (#74/#105), not only newly-linked skills.
   const linkedNameSet = new Set(linkedSkillNames);
+
+  // What this agent carries, as id + name. The ids are what a remove has to send a shorter list
+  // of; the names are what a person reads. Resolved against the workspace's skills so a name
+  // that changed since it was linked reads as its current one.
+  const skillNameById = new Map(allSkills.map((skill) => [skill.id, skill.name]));
+  const carriedSkills: SkillRow[] = (agent?.skillIds ?? []).map((skillId, index) => ({
+    id: skillId,
+    name: skillNameById.get(skillId) ?? linkedSkillNames[index] ?? skillId,
+  }));
+
+  const saveInstructions = async (next: string) => {
+    if (!agent) return;
+    setError(null);
+    try {
+      await updateMarius(agent.id, { instructions: next });
+    } catch (err) {
+      setError(errorText(err, t));
+      throw err;
+    }
+  };
+
+  const saveProfile = async (next: { name: string; description: string }) => {
+    if (!agent) return;
+    setError(null);
+    try {
+      await updateMarius(agent.id, { name: next.name, description: next.description });
+    } catch (err) {
+      setError(errorText(err, t));
+      throw err;
+    }
+  };
+
+  // Taking a skill off is sending the list back one shorter — there is no per-skill door, and a
+  // whole list is what says *these and no others* (FR-007m).
+  const removeSkill = async (skillId: string) => {
+    if (!agent) return;
+    setError(null);
+    try {
+      await updateMarius(agent.id, {
+        skillIds: (agent.skillIds ?? []).filter((one) => one !== skillId),
+      });
+    } catch (err) {
+      setError(errorText(err, t));
+      throw err;
+    }
+  };
 
   const toggleNewSkill = (skillId: string) => {
     setSelectedNewIds((prev) =>
@@ -384,9 +443,76 @@ export default function AgentDetail() {
         </div>
       </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-6">
-        {/* ── Left: Overview + Health ── */}
-        <div className="space-y-6">
+      {/* The screen is a set of sections rather than one page, inherited from Multica's agent
+          view: what an agent *is* (its text, its skills, its settings) is a different question
+          from what it has been *doing*, and one scroll holding both meant the editable half had
+          nowhere to live. Their shape is Overview · Work · Capabilities · Settings; ours is the
+          same idea with the tabs we have things to put in. */}
+      <div className="mb-6 flex flex-wrap gap-1 border-b border-[#E3D7BC]">
+        {TABS.map((id) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            aria-current={tab === id ? 'page' : undefined}
+            className={cn(
+              '-mb-px border-b-2 px-3 py-2 text-[13px] font-medium transition-colors',
+              tab === id
+                ? 'border-[#C25E3A] text-[#2A2318]'
+                : 'border-transparent text-[#6B5E4E] hover:text-[#2A2318]',
+            )}
+          >
+            {t('agentDetail.tab.' + id)}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'instructions' && agent && (
+        <VellumPanel className="rounded-lg border-[#E3D7BC]">
+          <InstructionsTab
+            key={agent.id}
+            instructions={agent.instructions ?? ''}
+            systemInstructions={agent.systemInstructions ?? ''}
+            canEdit
+            onSave={saveInstructions}
+          />
+        </VellumPanel>
+      )}
+
+      {tab === 'skills' && agent && (
+        <VellumPanel className="rounded-lg border-[#E3D7BC]">
+          <SkillsTab
+            carried={carriedSkills}
+            canEdit
+            onRemove={removeSkill}
+            onAdd={() => setLinkSkillsOpen(true)}
+          />
+        </VellumPanel>
+      )}
+
+      {tab === 'settings' && agent && (
+        <VellumPanel className="rounded-lg border-[#E3D7BC]">
+          <SettingsTab
+            key={agent.id}
+            name={agent.displayName || agent.name}
+            description={agent.description ?? ''}
+            runtimeOptions={agent.runtimeOptions ?? {}}
+            adapterType={agent.adapterType ?? ''}
+            canEdit
+            onSave={saveProfile}
+          />
+        </VellumPanel>
+      )}
+
+      <div
+        className={cn(
+          'grid grid-cols-1 gap-6',
+          tab === 'overview' && 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]',
+          tab !== 'overview' && tab !== 'activity' && 'hidden',
+        )}
+      >
+        {/* ── Overview + Health ── */}
+        <div className={cn('space-y-6', tab !== 'overview' && 'hidden')}>
           <VellumPanel className="rounded-lg border-[#E3D7BC]">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A89880] mb-4">
               {t('agentDetail.overview')}
@@ -500,8 +626,13 @@ export default function AgentDetail() {
           </VellumPanel>
         </div>
 
-        {/* ── Right: Activity (system↔agent run log) ── */}
-        <VellumPanel className="rounded-lg border-[#E3D7BC] flex flex-col">
+        {/* ── Activity (system↔agent run log) ── */}
+        <VellumPanel
+          className={cn(
+            'rounded-lg border-[#E3D7BC] flex flex-col',
+            tab !== 'overview' && tab !== 'activity' && 'hidden',
+          )}
+        >
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Activity className="w-4 h-4 text-[#C25E3A]" />

@@ -301,6 +301,18 @@ class RegisterMariusIn(BaseModel):
 class UpdateMariusIn(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     role: str | None = None
+    # How this agent behaves. Since roles by project were removed this is the only thing that
+    # says it (FR-007l), and until now it could be written exactly once — at creation. So the
+    # way to change an agent's behaviour was to delete it and make another, throwing away its
+    # run history, its linked skills and its seats (FR-007m). Empty string is a real value: it
+    # means *this agent has no instructions of its own*, which is different from "unchanged".
+    instructions: str | None = Field(default=None, max_length=20000)
+    # What the team calls it. Never sent to the agent (FR-007j).
+    description: str | None = Field(default=None, max_length=2000)
+    # `system_instructions` is absent, and its absence is the rule: the product writes that
+    # half for the one agent it made itself, and no door a person reaches may change it. A
+    # test holds this, because "just add the field" is a one-line change that would let an
+    # owner delete their host's job by editing the box next to it.
     skills: list[str] | None = None
     skill_ids: list[str] | None = None
     adapter_type: str | None = None
@@ -353,6 +365,9 @@ class MariusOut(_Out):
     name: str
     role: str
     instructions: str = ""
+    # The product's half, sent out so the screen can show it and mark it read-only. Empty for
+    # every agent a person made — one author, one box (FR-007m).
+    system_instructions: str = ""
     description: str = ""
     # What was picked for this agent out of what its workplace offers (FR-007k). An absent
     # key means nothing was picked and the tool's own default applies. Read off the entity's

@@ -822,6 +822,7 @@ class SqlMariusRepository(MariusRepository):
                 name=marius.name,
                 role=marius.role,
                 instructions=marius.instructions,
+                system_instructions=marius.system_instructions,
                 description=marius.description,
                 skills=list(marius.skills),
                 adapter_type=marius.adapter_type,
@@ -880,6 +881,7 @@ class SqlMariusRepository(MariusRepository):
         m.name = marius.name
         m.role = marius.role
         m.instructions = marius.instructions
+        m.system_instructions = marius.system_instructions
         m.description = marius.description
         m.skills = list(marius.skills)
         m.skill_ids = [str(x) for x in marius.skill_ids]

@@ -154,6 +154,7 @@ def marius_to_entity(m: MariusModel) -> Marius:
         name=m.name,
         role=m.role,
         instructions=m.instructions or "",
+        system_instructions=m.system_instructions or "",
         description=m.description or "",
         skills=list(m.skills or []),
         skill_ids=[str(x) for x in (m.skill_ids or [])],
