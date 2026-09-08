@@ -158,6 +158,7 @@ async def post_onboarding_complete(
         "success_metrics": body.project.success_metrics,
         "target_date": body.project.target_date,
         "context": body.project.context,
+        "worker_count": body.project.worker_count,
     }
     session = await container.onboarding.agent_post_complete(
         session_id, draft, by_run=run.run_id

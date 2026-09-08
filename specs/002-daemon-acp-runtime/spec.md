@@ -517,18 +517,38 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 
   Instructions mới có hiệu lực **từ lượt chạy sau**, như skill — một lượt đang chạy giữ nguyên gói tin
   nó đã nhận.
-- **FR-007n**: Buổi phỏng vấn lập dự án PHẢI hỏi **cần bao nhiêu người**, và câu trả lời trở thành số
-  chỗ của chỗ ngồi chung.
+- **FR-007n**: Luồng tạo dự án PHẢI có một bước khai **cần bao nhiêu người làm**, và con số ấy
+  trở thành số chỗ của chỗ ngồi chung. Bước này thay cho việc dựng vai rồi khai số ghế cho vai.
 
-  Đây là **sửa lại một nửa** của T039j ở trên. Nửa vẫn đúng: buổi phỏng vấn không được **tạo vai**,
-  không được nói ai làm gì — instructions trên agent nói điều đó rồi. Nửa bị bỏ quá tay là **con số**:
-  hỏi *dự án này cần mấy người* không mô tả ai cả, nó là kích cỡ của dự án, và buổi phỏng vấn là chỗ
-  duy nhất đang có cả mục tiêu lẫn ngữ cảnh để hỏi. Không hỏi thì mọi dự án sinh ra với đúng một chỗ
-  trống, và người chủ nhìn thấy đúng cái họ đã hỏi lại: *"tại sao dự án chỉ có 1 PL và 1 Worker đợi
-  grant vậy?"*. Người chủ chốt 2026-09-07: câu hỏi ấy thuộc về Tác nhân Không gian.
+  **Nhìn cả luồng trước đã** — người chủ chỉnh 2026-09-08, và đây là chỗ tôi làm hỏng lần đầu:
+  tôi viết luật này chỉ cho buổi phỏng vấn, vì người chủ nhắc buổi phỏng vấn. Đo lại cả hai
+  đường vào mới thấy bất đối xứng nằm ngược:
 
-  Con số ấy vẫn là **sàn, không phải trần** — luật chỗ ngồi chung không đổi: số chỗ khai ra là lớn hơn
-  giữa số đã hỏi và số người đang ngồi. Nó nói *dự án này chờ mấy người*, không cấm người thứ n+1.
+  - **Thủ công** đã có một bước chọn người rồi, và nó **chặn**: xác thực đòi ít nhất một agent
+    trong đội. Một tài khoản mới bỏ qua bước nối máy thì chưa có agent thật nào — nên hoặc không
+    tạo được dự án nào cả, hoặc phải đem chính Tác nhân Không gian ra ngồi làm thợ. Đây là lỗi
+    luồng, không phải lỗi thiếu tính năng.
+  - **Buổi phỏng vấn** thì không hỏi ai cả, và tạo dự án không leader không thành viên. Nên dự án
+    sinh ra từ đó luôn trống người — đúng thứ người chủ nhìn thấy và hỏi *"tại sao chỉ có 1 PL và
+    1 Worker đợi grant"*.
+
+  Con số chữa được cả hai vì nó là thứ **khai được khi chưa có ai**: dự án nói *tôi cần ba người*,
+  màn hình mở ba chỗ trống, và xếp ai vào là việc sau. Không có agent nào vẫn tạo được dự án.
+
+  Luật của con số:
+
+  - **Sàn, không phải trần.** Số chỗ khai ra là lớn hơn giữa số đã hỏi và số đang ngồi, nên xếp
+    người thứ n+1 vẫn được và số đọc ra lớn theo. Hạ con số xuống KHÔNG ĐƯỢC đẩy ai ra khỏi chỗ.
+  - **Sửa được sau.** Dự án hoá ra cần thêm người thì khai lại, không phải tạo lại dự án.
+  - **Không phải một vai.** Nó nói dự án *lớn cỡ nào* — một sự thật về dự án. *Ai làm* là người
+    chủ chọn, *làm gì* đã viết trên chính agent. FR-007l nguyên vẹn: không cửa nào tạo được vai,
+    và buổi phỏng vấn KHÔNG ĐƯỢC hỏi ai sẽ làm, không được gọi tên agent nào, không được mô tả
+    việc của ai.
+  - **Cả hai đường vào hỏi cùng một câu**, để hai đường ra cùng một hình. Buổi phỏng vấn hỏi nó
+    như câu hỏi thứ sáu; màn thủ công hỏi nó ở bước đội hình.
+  - Câu trả lời của agent được **đọc rộng rãi**: `3`, `"3"`, `"3 người"` đều là ba; đọc không ra
+    thì về một. Một buổi phỏng vấn đã xong không đáng bị bỏ vì một con số gõ lạ.
+
 - **FR-007c**: Đăng nhập và hạn mức của agent CLI là thuộc tính của **chỗ làm**, không của agent. Cạn hạn
   mức PHẢI làm **mọi agent trên chỗ làm ấy** offline cùng lúc, và PHẢI xếp vào **lỗi cần người xử** —
   KHÔNG ĐƯỢC tiêu ngân sách tự phục hồi (xem FR-032).

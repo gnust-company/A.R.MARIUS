@@ -74,6 +74,12 @@ MEMBERS_ROLE_DESCRIPTION = (
     "its own instructions rather than here."
 )
 
+# How many workers a project may say it needs. One is the smallest project that means anything;
+# the ceiling is here to stop a typo from drawing ten thousand empty places on a screen, not
+# because a real project could not be large.
+MIN_WORKER_COUNT = 1
+MAX_WORKER_COUNT = 50
+
 
 def _slugify(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
@@ -168,17 +174,23 @@ class ProjectService:
         target_date: datetime | None = None,
         context: str | None = None,
         created_by_user_id: str | None = None,
+        worker_count: int = MIN_WORKER_COUNT,
     ) -> Project:
         """Create a SETUP project with its roster. Raises InvalidProjectPlan if the leader
         has no description; InvalidProjectKey if `key` is malformed; DuplicateProjectKey if
         `key` is taken in this workspace; NotFound if the workspace is gone. A missing `key`
         is suggested from `name` and auto-uniquified.
 
-        **The roster is not a parameter of this call and must not become one.** It is the
-        same two rows for every project — the leader seat and the bench — and the only thing
-        the caller says about them is what this project's Leader is there to do. A caller
-        that could hand in roles is the flow FR-007l closes: it made the patron design a
-        second description of behaviour beside the one already written on each agent.
+        **The roster is still not a parameter of this call.** It is the same two rows for
+        every project — the leader seat and the bench — and no caller can add, name or
+        describe a row. That is FR-007l: a caller that could hand in roles made the patron
+        design a second description of behaviour beside the one already written on each agent.
+
+        ``worker_count`` is not that. It says **how many workers this project is asking for**,
+        which is a fact about the project rather than a description of anybody, and it is the
+        one number both ways in have to agree on. It became a parameter because the bench used
+        to be born asking for exactly one, and a project of six read as a project of one until
+        somebody was seated (FR-007n). It is a floor: see ``_places``.
         """
         draft_roles = [
             Role(
@@ -191,7 +203,10 @@ class ProjectService:
             Role(
                 key=MEMBERS_ROLE_KEY,
                 title=MEMBERS_ROLE_TITLE,
-                seats=1,
+                # Clamped rather than refused: this is a shape the domain can always honour,
+                # and the door above it is where a typed number is rejected with a message a
+                # person can read.
+                seats=max(MIN_WORKER_COUNT, min(worker_count, MAX_WORKER_COUNT)),
                 description=MEMBERS_ROLE_DESCRIPTION,
             ),
         ]
@@ -260,8 +275,15 @@ class ProjectService:
         github_url: str | None = None,
         context: str | None = None,
         settings: dict | None = None,
+        worker_count: int | None = None,
     ) -> Project:
-        """Edit project brief fields (API_CONTRACT §3). Only non-None fields change."""
+        """Edit project brief fields (API_CONTRACT §3). Only non-None fields change.
+
+        ``worker_count`` is the one field here that is not on the project row: it is how many
+        workers the project is asking for, which lives on the bench. It is editable for the
+        same reason it is askable at creation — a project that turns out to need three more
+        people should not have to be created again to say so (FR-007n).
+        """
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)
             if project is None:
@@ -280,6 +302,18 @@ class ProjectService:
                 project.context = context
             if settings is not None:
                 project.settings = settings
+            if worker_count is not None:
+                # The bench, found by its flag rather than its key: the same reading `seats.py`
+                # uses, and the one that survives a row being renamed.
+                bench = next(
+                    (r for r in await uow.roles.list_by_project(project_id) if not r.is_leader),
+                    None,
+                )
+                if bench is not None:
+                    bench.seats = max(
+                        MIN_WORKER_COUNT, min(worker_count, MAX_WORKER_COUNT)
+                    )
+                    await uow.roles.update(bench)
             project.updated_at = utcnow()
             updated = await uow.projects.update(project)
             await uow.commit()
