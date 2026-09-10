@@ -18,7 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronLeft, Loader2, Radio } from 'lucide-react';
 
-import { readRunEventInFull, type RunEventDTO } from '@/lib/api';
+import { getRun, readRunEventInFull, type RunEventDTO } from '@/lib/api';
 import { useRunTrace } from '@/hooks/use-run-trace';
 import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
@@ -242,6 +242,25 @@ export default function RunTrace() {
   const { workspaceId, runId } = useParams<{ workspaceId: string; runId: string }>();
   const { events, kinds, loading, error, live } = useRunTrace(runId);
   const [only, setOnly] = useState<string[]>([]);
+  // The run itself, read once, and only to explain an EMPTY log. A run that produced nothing is
+  // a fact about the run — it timed out, it was refused, it is still starting — and until now
+  // this page answered every empty with *no events match this filter*, which blames the filter
+  // for something the filter did not do (T171, SC-013). Failure to read it is not worth showing:
+  // the page still says the log is empty, just without naming why.
+  const [outcome, setOutcome] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!runId) return;
+    let dropped = false;
+    void getRun(runId)
+      .then((run) => {
+        if (!dropped) setOutcome(run.status);
+      })
+      .catch(() => {});
+    return () => {
+      dropped = true;
+    };
+  }, [runId]);
 
   const shown = useMemo(
     () => (only.length === 0 ? events : events.filter((e) => only.includes(e.type))),
@@ -309,7 +328,13 @@ export default function RunTrace() {
       ) : error ? (
         <p className="px-4 py-3 font-body text-body-xs text-error">{error}</p>
       ) : shown.length === 0 ? (
-        <p className="px-4 py-3 font-body text-body-xs text-ink-muted">{t('runTrace.nothing')}</p>
+        <p className="px-4 py-3 font-body text-body-xs text-ink-muted">
+          {events.length > 0
+            ? t('runTrace.nothing')
+            : outcome
+              ? t('runTrace.noEventsAtAll', { outcome: t('runTrace.outcome.' + outcome, outcome) })
+              : t('runTrace.noEventsAtAllUnknown')}
+        </p>
       ) : (
         <VirtualLog runId={runId!} events={shown} />
       )}

@@ -34,7 +34,6 @@ class MariusService:
         marius_id: UUID,
         *,
         name: str | None = None,
-        role: str | None = None,
         instructions: str | None = None,
         description: str | None = None,
         skills: list[str] | None = None,
@@ -53,6 +52,11 @@ class MariusService:
         `system_instructions` is deliberately **not** here. That half belongs to the product, and
         the one agent that has it has to keep it.
 
+        Neither is `role`, and for the same shape of reason (T172). Vai theo dự án đã bỏ
+        (FR-007l), và `wake_engine` đọc vai của một agent từ ghế nó ngồi trong dự án — never the
+        workspace-level `Marius.role`. Trường ấy còn đúng một việc, đánh dấu ghế chủ nhà, và
+        `WorkspaceAgentService.designate` là chỗ viết nó.
+
         `placement_options` is the one field here that can be refused, and it is refused by
         the same call the create path makes — `Placement.refuse_unchosen`. Two doors set
         this now, and a rule that holds at one of them is not a rule.
@@ -68,8 +72,6 @@ class MariusService:
                 raise NotFound("agent_not_found")
             if name is not None:
                 marius.name = name
-            if role is not None:
-                marius.role = role
             if instructions is not None:
                 marius.instructions = instructions
             if description is not None:

@@ -579,7 +579,6 @@ interface AppStoreState {
     mariusId: string,
     patch: {
       name?: string
-      role?: string
       instructions?: string
       description?: string
       skillIds?: string[]
@@ -967,7 +966,6 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     mariusId: string,
     patchBody: {
       name?: string
-      role?: string
       instructions?: string
       description?: string
       skillIds?: string[]
@@ -983,7 +981,6 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     if (workspaceId) {
       const dto = await api.updateMarius(workspaceId, mariusId, {
         name: patchBody.name,
-        role: patchBody.role,
         instructions: patchBody.instructions,
         description: patchBody.description,
         skill_ids: patchBody.skillIds,
@@ -1011,7 +1008,6 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
               // `name` — the canonical field — not just `displayName` (issue #29). Keep
               // displayName in sync so the Directory's `displayName || name` render matches.
               ...(patchBody.name ? { name: patchBody.name, displayName: patchBody.name } : {}),
-              ...(patchBody.role ? { role: patchBody.role } : {}),
               ...(settled ? { runtimeOptions: settled } : {}),
               ...(echoed ?? {}),
             }
