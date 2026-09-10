@@ -167,6 +167,44 @@ async def test_lowering_the_number_never_unseats_anybody() -> None:
         assert len(bench["seated"]) == 1, bench
 
 
+async def test_the_floor_and_the_no_unseating_rule_hold_at_the_same_time() -> None:
+    """Khai 5, ngồi 3, hạ xuống 1 — và đọc ra 3.
+
+    Hai bài trên giữ hai nửa riêng lẻ: một bài chứng minh *sàn* (khai 2, ngồi 3, đọc ra 3), một
+    bài chứng minh *hạ số không đẩy ai ra* (nhưng chỉ với một người ngồi, nên nó không đi qua
+    nhánh sàn thật). Người duyệt PR #272 chỉ ra rằng hai nửa đúng riêng lẻ chưa chứng minh chúng
+    đúng cùng lúc — và đó chính là hình dạng người chủ sẽ gặp: một dự án đang có người, rồi ai
+    đó hạ con số xuống.
+    """
+    async with _client() as c:
+        headers, ws = await _patron(c, "worker-floor-and-lower@armarius.dev")
+        workplace = await ready_workplace(ws)
+        agents = [
+            await invite_agent(c, ws, headers, name=name, workplace_id=workplace)
+            for name in ("Alice", "Bob", "Cleo")
+        ]
+        project = await _create(c, ws, headers, worker_count=5)
+        for agent in agents:
+            await c.post(
+                f"/v1/projects/{project['id']}/members",
+                json={"marius_id": agent["id"]},
+                headers=headers,
+            )
+
+        lowered = await c.patch(
+            f"/v1/projects/{project['id']}", json={"worker_count": 1}, headers=headers
+        )
+        assert lowered.status_code == 200, lowered.text
+
+        bench = _bench(lowered.json())
+        # Sàn: con số đã hỏi là 1, nhưng ba người đang ngồi, nên đọc ra 3 — không phải 1.
+        assert bench["seats"] == 3, bench
+        assert bench["filled"] == 3, bench
+        # Và không ai bị đẩy ra: đủ ba cái tên vẫn còn trên băng ghế.
+        seated = sorted(seat["name"] for seat in bench["seated"])
+        assert seated == ["Alice", "Bob", "Cleo"], seated
+
+
 async def test_a_refused_number_is_refused_at_the_door() -> None:
     """Số ngoài biên bị từ chối kèm câu đọc được, không bị lặng lẽ kẹp lại."""
     async with _client() as c:
@@ -191,6 +229,11 @@ def test_a_how_many_answer_is_read_loosely_and_never_refused() -> None:
     assert _worker_count("3") == 3
     assert _worker_count("3 người") == 3
     assert _worker_count("around 4 people") == 4
+    # **Số đầu tiên**, không phải mọi chữ số ghép lại. Bản đầu nối hết chữ số nên "4-5 người" ra
+    # bốn mươi lăm và "-5" ra năm — một khoảng và một số âm đều thành con số không ai nói. Người
+    # duyệt PR #272 chỉ ra.
+    assert _worker_count("4-5 người") == 4
+    assert _worker_count("-5") == 1
     # Không đọc được thì về một — đúng con số mọi dự án vẫn có trước khi có câu hỏi này.
     assert _worker_count(None) == 1
     assert _worker_count("three") == 1

@@ -580,7 +580,17 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   - **Cả hai đường vào hỏi cùng một câu**, để hai đường ra cùng một hình. Buổi phỏng vấn hỏi nó
     như câu hỏi thứ sáu; màn thủ công hỏi nó ở bước đội hình.
   - Câu trả lời của agent được **đọc rộng rãi**: `3`, `"3"`, `"3 người"` đều là ba; đọc không ra
-    thì về một. Một buổi phỏng vấn đã xong không đáng bị bỏ vì một con số gõ lạ.
+    thì về một. Một buổi phỏng vấn đã xong không đáng bị bỏ vì một con số gõ lạ. Đọc **số đầu
+    tiên** trong câu, không nối mọi chữ số: nối hết thì `"4-5 người"` ra bốn mươi lăm và `"-5"`
+    ra năm — một khoảng và một số âm đều thành con số không ai nói.
+  - **Kế hoạch field của buổi phỏng vấn PHẢI có đúng một nguồn.** Buổi phỏng vấn hỏi một câu mỗi
+    lượt, và prompt của lượt đầu khác prompt của mọi lượt sau. Hai prompt giữ hai bản sao của cùng
+    một danh sách thì một field thêm vào bản này mà quên bản kia là một field **không bao giờ được
+    hỏi** — trong khi nhìn từ mọi phía khác thì tính năng vẫn như đã xong: cửa nhận, parser đọc,
+    bài kiểm xanh, đặc tả ghi. Đúng chuyện đã xảy ra với `worker_count` (người duyệt PR #272 tìm
+    ra). Chốt phải kiểm **quan hệ**: mọi field trong kế hoạch phải nằm trong **phần kế hoạch field**
+    của cả hai prompt, và phải kiểm cả trên chữ **thật sự được gửi đi** ở lượt thứ hai — không chỉ
+    trên chữ mà hàm dựng prompt trả về.
 
 - **FR-007c**: Đăng nhập và hạn mức của agent CLI là thuộc tính của **chỗ làm**, không của agent. Cạn hạn
   mức PHẢI làm **mọi agent trên chỗ làm ấy** offline cùng lúc, và PHẢI xếp vào **lỗi cần người xử** —

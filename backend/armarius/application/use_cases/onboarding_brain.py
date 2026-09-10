@@ -46,6 +46,64 @@ def _project_name(objective: str) -> str:
 LEADER_DESCRIPTION = "Owns the plan and coordinates the team."
 
 
+# The fields the interview collects, in order — and the ONE place they are written down.
+#
+# There are two prompts: the opening turn, and every turn after it. Each used to carry its own
+# copy of this list, and that is exactly how `worker_count` came to exist in one of them and not
+# the other. The field was added to the opening prompt — which only ever asks question #1 — while
+# the prompt that asks questions 2..n still listed five fields and told the agent to post the
+# draft after `context`. So the interview never reached the question, every interviewed project
+# came out asking for one worker, and the feature looked implemented from every angle except the
+# one that mattered. Caught in review of PR #272.
+#
+# Two copies of one list is the defect; one list read twice is the fix. A test asserts every name
+# here appears in BOTH prompts, so the copies cannot come apart again.
+FIELD_PLAN: tuple[tuple[str, str], ...] = (
+    ("objective", "What are you building? What problem does it solve?"),
+    ("name", "A short project name (free text)."),
+    ("success_metrics", "How will you measure success?"),
+    ("target_date", "A target date, or 'none'."),
+    ("context", "Anything else I should know? (free text)"),
+    (
+        "worker_count",
+        "Besides the Project Leader, how many people should work on this? Offer a few numbers "
+        "as options and accept a typed one.",
+    ),
+)
+
+# The draft shape, once. `worker_count` is a plain integer here for the same reason the field
+# plan is shared: a JSON example that disagrees with the field plan teaches the model to send a
+# draft the server then has to guess at.
+DRAFT_SHAPE = (
+    'project={"name":"...","objective":"...","success_metrics":{"goal":"..."},'
+    '"target_date":null,"context":"...","worker_count":3}'
+)
+
+# The one rule that keeps the last field from turning back into a roster question. Said in both
+# prompts, because a weak model reading only the later one would otherwise have nothing to hold.
+HOW_MANY_NOT_WHO = (
+    "The last field asks HOW MANY, never WHO and never WHAT EACH ONE DOES. Do NOT ask which "
+    "agents should be on the team, do not name any agent, and do not describe anybody's job: "
+    "the owner puts their own agents on the project, and what each agent does is already "
+    "written on that agent. The number only says how large this project is, so the owner sees "
+    "that many places waiting to be filled."
+)
+
+
+def _numbered_field_plan() -> str:
+    """The long form, for the opening turn: one field per line, numbered, with its question."""
+    width = max(len(name) for name, _ in FIELD_PLAN)
+    return "".join(
+        f"  {i}. {name.ljust(width)} — {question}\n"
+        for i, (name, question) in enumerate(FIELD_PLAN, start=1)
+    )
+
+
+def _field_plan_arrow() -> str:
+    """The compact form, for every turn after the first: the order on one line."""
+    return " → ".join(name for name, _ in FIELD_PLAN)
+
+
 def is_free_text_option(label: str) -> bool:
     """An option whose label invites a typed answer (mirrors the guide's free-text escape)."""
     return bool(re.search(r"i'?ll type|type it|type my|other|custom|free\s*text", label, re.I))
@@ -78,21 +136,10 @@ def build_onboarding_guide_prompt(*, session_id: str, workspace_name: str) -> st
         "- Use ONLY the two tools named here. Do not read any skill and do not go looking for "
         "other work — this onboarding is self-contained.\n\n"
         "FIELD PLAN — ask these IN ORDER, one per turn. Each maps to a field of the final draft:\n"
-        "  1. objective       — What are you building? What problem does it solve?\n"
-        "  2. name            — A short project name (free text).\n"
-        "  3. success_metrics — How will you measure success?\n"
-        "  4. target_date     — A target date, or 'none'.\n"
-        "  5. context         — Anything else I should know? (free text)\n"
-        "  6. worker_count     — Besides the Project Leader, how many people should work on "
-        "this? Offer a few numbers as options and accept a typed one.\n"
+        f"{_numbered_field_plan()}"
         "Ask EXACTLY these fields. Do NOT drift into implementation detail (features, UI, tech "
         "stack) — that is not needed to stand the project up.\n"
-        "#6 asks HOW MANY, never WHO and never WHAT EACH ONE DOES. Do NOT ask which agents "
-        "should be on the team, do not name any agent, and do not describe anybody's job: the "
-        "owner puts their own agents on the project, and what each agent does is already "
-        "written on that agent. The number only says how large this project is, so the owner "
-        "sees that many places waiting to be filled. After the owner answers #6, post the "
-        "draft.\n\n"
+        f"{HOW_MANY_NOT_WHO} After the owner answers the last field, post the draft.\n\n"
         "ASKING — `onboarding ask`:\n"
         f'  session_id={session_id}\n'
         '  question="..."\n'
@@ -102,11 +149,11 @@ def build_onboarding_guide_prompt(*, session_id: str, workspace_name: str) -> st
         '"I\'ll type it".\n\n'
         "PROPOSING — when you have all fields, call `onboarding propose`:\n"
         f'  session_id={session_id}\n'
-        '  project={"name":"...","objective":"...","success_metrics":{"goal":"..."},'
-        '"target_date":null,"context":"...","worker_count":3}\n'
-        "That is the whole draft. `worker_count` is the answer to #6 as a plain integer. The "
-        "project is created with a Project Leader seat and that many worker places, which the "
-        "owner fills themselves — you do not name, choose or describe anybody.\n"
+        f"  {DRAFT_SHAPE}\n"
+        "That is the whole draft. `worker_count` is the answer to the last field as a plain "
+        "integer. The project is created with a Project Leader seat and that many worker "
+        "places, which the owner fills themselves — you do not name, choose or describe "
+        "anybody.\n"
     )
 
 
@@ -123,10 +170,11 @@ def build_onboarding_answer_prompt(
     """
     lines = [
         "ARMARIUS · PROJECT ONBOARDING (continued)\n",
-        "FIELD PLAN (ask in order, one per turn): objective → name → success_metrics → "
-        "target_date → context. After the last is answered, post the draft. Do NOT drift into "
-        "implementation detail (features, UI, tech stack), and do NOT ask who will be on the "
-        "team — the owner picks that themselves once the project exists.",
+        f"FIELD PLAN (ask in order, one per turn): {_field_plan_arrow()}. After the LAST one "
+        "is answered, post the draft. Do NOT drift into implementation detail (features, UI, "
+        "tech stack).",
+        "",
+        HOW_MANY_NOT_WHO,
         "",
         f"This chat is `{session_id}` — every tool call below needs it as `session_id`.",
     ]
@@ -159,12 +207,11 @@ def build_onboarding_answer_prompt(
     )
     lines.append("PROPOSING — `onboarding propose`:")
     lines.append(f"  session_id={session_id}")
+    lines.append(f"  {DRAFT_SHAPE}")
     lines.append(
-        '  project={"name":"...","objective":"...","success_metrics":{"goal":"..."},'
-        '"target_date":null,"context":"..."}'
-    )
-    lines.append(
-        "That is the whole draft. The project is created with a Project Leader seat and a team "
-        "the owner fills themselves — you do not name, choose or describe anybody."
+        "That is the whole draft. `worker_count` is the answer to the last field as a plain "
+        "integer. The project is created with a Project Leader seat and that many worker "
+        "places, which the owner fills themselves — you do not name, choose or describe "
+        "anybody."
     )
     return "\n".join(lines)
