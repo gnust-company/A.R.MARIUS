@@ -324,7 +324,6 @@ async def update_marius(
     marius = await container.mariuses.update(
         marius_id,
         name=body.name,
-        role=body.role,
         instructions=body.instructions,
         description=body.description,
         skills=body.skills,

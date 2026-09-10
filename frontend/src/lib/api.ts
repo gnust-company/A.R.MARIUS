@@ -612,7 +612,6 @@ export interface InviteMariusBody {
 /** Editable fields on an existing Marius (backend `UpdateMariusIn`). */
 export interface UpdateMariusBody {
   name?: string
-  role?: string
   /** How this agent behaves. An empty string is a real value — *no instructions of its own* —
    *  and is not the same as leaving the field out (FR-007m). */
   instructions?: string
@@ -711,6 +710,13 @@ export async function listRunEvents(
   if (opts?.limit !== undefined) query.set('limit', String(opts.limit))
   const suffix = query.toString() ? `?${query}` : ''
   return get<RunEventDTO[]>(`/v1/runs/${runId}/events${suffix}`)
+}
+
+/** One run on its own. The log page reads it to explain an EMPTY log: a run that produced
+ *  nothing is a fact about the run — it timed out, it failed, it is still starting — and the
+ *  screen that cannot say which blames the filter instead (T171, SC-013). */
+export async function getRun(runId: string): Promise<RunDTO> {
+  return get<RunDTO>(`/v1/runs/${runId}`)
 }
 
 // The rest of a long field — asked for only when a reader opens that one event (FR-049).

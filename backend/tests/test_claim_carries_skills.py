@@ -197,3 +197,57 @@ async def test_a_skill_that_could_write_outside_its_own_directory_is_refused(
         packet = await _claim_for(c, box, agent)
 
         assert chosen(packet) == [good["slug"]]
+
+
+# ── và thôi đi theo, khi người chủ bỏ nó ra ───────────────────────────────────
+
+
+async def test_a_skill_taken_off_an_agent_stops_riding_its_work() -> None:
+    """Bỏ một kỹ năng khỏi agent thì gói việc **lượt sau** ngừng chở nó (T170, FR-007m).
+
+    Nửa *trao* đã có năm bài ở trên. Nửa *thôi trao* mới có từ 2026-09-08, và cho tới bài này
+    thứ duy nhất đo được nó là danh sách máy chủ trả về — mà danh sách trả về không phải thứ
+    chạy trên máy người dùng. Gói việc mới là. Một kỹ năng đã bỏ mà vẫn được ghi xuống thư mục
+    làm việc ở lượt kế tiếp thì agent vẫn đọc nó, và người chủ không có cách nào biết.
+
+    Không có cửa riêng cho từng kỹ năng: bỏ là **gửi lại cả danh sách ngắn hơn**, vì cả danh
+    sách mới nói được *đúng những cái này, không cái nào khác*.
+    """
+    async with _client() as c:
+        box = await link_machine(c, "skills-removed@armarius.dev")
+        cookbook = await _skill(c, box, name="Cookbook", files=COOKBOOK)
+        pantry = await _skill(
+            c, box, name="Pantry", files={"SKILL.md": "---\nname: pantry\n---\n\n# Pantry\n"}
+        )
+        agent = await _agent(
+            c, box, name="Marin", skill_ids=[cookbook["id"], pantry["id"]]
+        )
+
+        # Trước khi bỏ: cả hai đi cùng gói việc.
+        before = await _claim_for(c, box, agent)
+        assert sorted(chosen(before)) == sorted([cookbook["slug"], pantry["slug"]]), before
+
+        # Trả lượt ấy lại trước khi xin lượt sau. Máy này nhận một việc một lúc, nên một lượt
+        # bị bỏ lửng ở trạng thái *đang cầm* làm mọi lần xin sau trả về rỗng — và một gói việc
+        # rỗng thì bài kiểm nào cũng "đạt", vì kỹ năng đã bỏ đúng là không có trong đó.
+        done = await c.post(
+            f"/daemon/runs/{before['run_id']}/finish",
+            json={"status": "completed"},
+            headers=auth(box.token),
+        )
+        assert done.status_code == 200, done.text
+
+        taken_off = await c.patch(
+            f"/v1/workspaces/{box.workspace_id}/mariuses/{agent['id']}",
+            json={"skill_ids": [cookbook["id"]]},
+            headers=box.headers,
+        )
+        assert taken_off.status_code == 200, taken_off.text
+
+        # Sau khi bỏ: lượt kế tiếp chỉ chở cái còn lại — và chở nó **nguyên vẹn**, nên đây không
+        # phải một gói việc rỗng đọc nhầm thành đúng.
+        after = await _claim_for(c, box, agent)
+        assert chosen(after) == [cookbook["slug"]], after
+        assert pantry["slug"] not in [s["name"] for s in after["skills"]], after
+        kept = next(s for s in after["skills"] if s["name"] == cookbook["slug"])
+        assert kept["files"] == COOKBOOK
