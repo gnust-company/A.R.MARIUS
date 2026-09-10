@@ -143,12 +143,18 @@ async def test_edit_agent_updates_skills():
         edited = await c.patch(
             f"/v1/workspaces/{ws_id}/mariuses/{marius_id}",
             headers=h,
+            # `role` đi kèm ở đây **cố ý**: bài này từng khẳng định cửa sửa ghi được nó, và luật
+            # ấy đã bỏ (T172, FR-007l). Gửi nó thêm một lần nữa để giữ đúng nửa còn lại — kỹ
+            # năng vẫn đổi được, và một trường đã bỏ đi kèm không được làm hỏng lượt sửa.
             json={"role": "Reviewer", "skill_ids": [skill_id]},
         )
     assert edited.status_code == 200, edited.text
     data = edited.json()
-    assert data["role"] == "Reviewer"
     assert data["skill_ids"] == [skill_id]
+    # Vai theo dự án đã bỏ: cách agent cư xử đến từ chỉ dẫn của nó, vai trong một dự án đến từ
+    # ghế nó ngồi. Trường này còn đúng một việc — đánh dấu ghế chủ nhà — và cửa sửa không viết
+    # nó nữa, nên chữ gửi lên rơi xuống đất chứ không hiện lên như thể có nghĩa.
+    assert data["role"] == "", data["role"]
 
 
 async def test_custom_skill_is_workspace_scoped():

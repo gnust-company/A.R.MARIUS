@@ -28,6 +28,8 @@ from armarius.domain.services.wake_prompt import WakeContext, build_wake_prompt
 from armarius.infrastructure.database.engine import init_db
 from armarius.main import app
 from tests.support.agents import invite_agent, ready_workplace
+from tests.support.machines import LinkedMachine, auth, link_machine
+from tests.support.work import a_project, a_task, shelve
 
 pytestmark = pytest.mark.anyio
 
@@ -56,6 +58,22 @@ async def _patron(c: AsyncClient, email: str) -> tuple[dict[str, str], str]:
 async def _host(c: AsyncClient, ws: str, headers: dict[str, str]) -> dict:
     agents = await c.get(f"/v1/workspaces/{ws}/mariuses", headers=headers)
     return next(a for a in agents.json() if a["name"] == "Livia")
+
+
+async def _claim_one(c: AsyncClient, box: LinkedMachine, agent: dict) -> dict:
+    """Xếp một lượt chạy cho agent này rồi nhận nó, trả về cả gói việc."""
+    project_id = await a_project(box.workspace_id)
+    task_id = await a_task(project_id, assigned_to=agent["id"])
+    run_id = await shelve(marius_id=agent["id"], task_id=task_id)
+    answered = await c.post(
+        "/daemon/runs/claim",
+        json={"workplace_ids": [box.workplace_id], "max": 1},
+        headers=auth(box.token),
+    )
+    assert answered.status_code == 200, answered.text
+    runs = answered.json()["runs"]
+    assert [r["run_id"] for r in runs] == [str(run_id)], answered.text
+    return runs[0]
 
 
 async def test_instructions_and_description_can_be_rewritten() -> None:
@@ -225,3 +243,92 @@ async def test_a_skill_can_be_taken_off_an_agent() -> None:
             headers=headers,
         )
         assert one.json()["skill_ids"] == available[:1], one.json()
+
+
+# ── và chữ mới chỉ áp từ lượt chạy sau ────────────────────────────────────────
+
+
+async def test_new_instructions_ride_the_next_run_not_the_one_already_out() -> None:
+    """Sửa chỉ dẫn xong thì lượt **sau** mang chữ mới; lượt đã ra khỏi cửa giữ chữ cũ (T169).
+
+    Màn agent nói thẳng câu ấy với người chủ — *"Đã lưu. Có hiệu lực từ lượt chạy sau."* — và
+    cho tới bài này thứ duy nhất giữ nó là một đoạn chú thích trong mã: gói việc đọc chỉ dẫn
+    lúc một cái máy **nhận** lượt chạy, nên lượt đã đi rồi mang theo thứ đúng vào lúc nó đi.
+    Đúng về cấu trúc, nhưng một lời hứa trên màn hình mà không chốt nào giữ thì lần dọn mã sau
+    nó lặng lẽ thành lời nói dối.
+
+    Bài này giữ **cả hai nửa** của câu ấy, và nửa thứ hai mới là nửa dễ mất: chữ mới phải thật
+    sự đi xuống. Một bản vá làm hỏng đường ấy sẽ để lượt nào cũng mang chữ cũ — vẫn "có hiệu
+    lực từ lượt sau" theo nghĩa đen, và vô dụng.
+    """
+    async with _client() as c:
+        box = await link_machine(c, "instructions-next-run@armarius.dev")
+        agent = await invite_agent(
+            c,
+            box.workspace_id,
+            box.headers,
+            name="Marin",
+            workplace_id=box.workplace_id,
+            instructions="You review pull requests.",
+        )
+
+        first = await _claim_one(c, box, agent)
+        assert "You review pull requests." in first["prompt"], first["prompt"][:400]
+
+        edited = await c.patch(
+            f"/v1/workspaces/{box.workspace_id}/mariuses/{agent['id']}",
+            json={"instructions": "You write release notes."},
+            headers=box.headers,
+        )
+        assert edited.status_code == 200, edited.text
+
+        # Lượt đang cầm được trả về trước, vì máy này nhận một việc một lúc.
+        done = await c.post(
+            f"/daemon/runs/{first['run_id']}/finish",
+            json={"status": "completed"},
+            headers=auth(box.token),
+        )
+        assert done.status_code == 200, done.text
+
+        second = await _claim_one(c, box, agent)
+        assert "You write release notes." in second["prompt"], second["prompt"][:400]
+        # Và chữ cũ đi hẳn — không phải hai bản chồng lên nhau.
+        assert "You review pull requests." not in second["prompt"], second["prompt"][:400]
+
+
+async def test_the_edit_door_cannot_write_an_agents_role() -> None:
+    """`role` không còn là thứ người chủ gõ vào được (T172, FR-007l).
+
+    Vai theo dự án đã bỏ: cách một agent cư xử đến từ chỉ dẫn của nó, và vai nó giữ trong một
+    dự án đến từ ghế nó ngồi — `wake_engine` nói thẳng rằng nó đọc ghế ấy, *never the empty
+    workspace-level* `Marius.role`. Nhưng cửa sửa vẫn nhận `role` và ghi thẳng vào trường đó,
+    nên người chủ gõ được một chữ vào chỗ không gì đọc, rồi thấy nó hiện lên trên màn agent như
+    thể có nghĩa. Không giao diện nào từng gửi nó.
+
+    Trường ấy còn đúng một việc — đánh dấu ghế chủ nhà — và bài dưới giữ luôn việc ấy, vì bỏ
+    một cửa mà làm hỏng cái nó còn dùng thì tệ hơn để nguyên.
+    """
+    async with _client() as c:
+        headers, ws = await _patron(c, "no-role-edit@armarius.dev")
+        workplace = await ready_workplace(ws)
+        agent = await invite_agent(c, ws, headers, name="Alice", workplace_id=workplace)
+        assert agent["role"] == "", agent["role"]
+
+        tried = await c.patch(
+            f"/v1/workspaces/{ws}/mariuses/{agent['id']}",
+            json={"role": "Trưởng nhóm", "name": "Alice"},
+            headers=headers,
+        )
+        # Bị từ chối hay bị bỏ qua đều được — thứ không được phép là *ghi vào*.
+        assert tried.status_code in (200, 422), tried.text
+        after = await c.get(f"/v1/workspaces/{ws}/mariuses", headers=headers)
+        stored = next(a for a in after.json() if a["id"] == agent["id"])
+        assert stored["role"] == "", stored["role"]
+
+
+async def test_the_host_still_carries_the_one_role_the_product_writes() -> None:
+    """Việc duy nhất `role` còn làm — đánh dấu ghế chủ nhà — vẫn nguyên (T172)."""
+    async with _client() as c:
+        headers, ws = await _patron(c, "host-role-kept@armarius.dev")
+        host = await _host(c, ws, headers)
+        assert host["role"] == "Workspace Agent", host["role"]

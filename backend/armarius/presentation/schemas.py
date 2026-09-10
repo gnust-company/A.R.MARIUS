@@ -296,7 +296,12 @@ class RegisterMariusIn(BaseModel):
 
 class UpdateMariusIn(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
-    role: str | None = None
+    # `role` is gone from here, and its absence is the point (T172, FR-007l). Vai theo dự án
+    # đã bỏ: cách một agent cư xử đến từ `instructions`, và vai nó giữ trong một dự án đến từ
+    # ghế nó ngồi — `wake_engine` nói thẳng rằng nó đọc ghế ấy, "never the empty workspace-level
+    # `Marius.role`". Trường ấy còn đúng một việc: đánh dấu ghế chủ nhà, do `designate` viết.
+    # Cửa này từng nhận nó, nên người chủ gõ được một chữ vào một trường không gì đọc, rồi thấy
+    # nó hiện lên trên màn agent như thể có nghĩa. Không giao diện nào từng gửi nó.
     # How this agent behaves. Since roles by project were removed this is the only thing that
     # says it (FR-007l), and until now it could be written exactly once — at creation. So the
     # way to change an agent's behaviour was to delete it and make another, throwing away its
