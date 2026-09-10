@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pytest
 
+from armarius.application.use_cases.onboarding_brain import FIELD_PLAN
 from armarius.application.use_cases.onboarding_session import (
     OnboardingBusy,
     OnboardingService,
@@ -33,6 +34,7 @@ from armarius.domain.entities.run import RunStatus
 from armarius.domain.entities.workspace import Workspace
 from armarius.infrastructure.adapters.registry import InMemoryAdapterRegistry
 from tests.support.fakes import FakeAdapter, FakeUowFactory
+from tests.support.prompts import field_plan_of
 
 
 def _services(*, adapter: FakeAdapter | None = None):
@@ -336,3 +338,57 @@ def test_nothing_about_the_team_survives_the_draft() -> None:
     ]}})
 
     assert "roles" not in plan and "roster" not in plan
+
+
+# ── mọi lượt phải mang cả kế hoạch field, không riêng lượt đầu ───────────────────
+
+
+class _RecordingAdapter(FakeAdapter):
+    """`FakeAdapter`, nhưng giữ lại chữ đã thật sự gửi xuống từng lượt.
+
+    Cần nó vì chỗ hỏng không nằm trong prompt nào cả — nó nằm ở **prompt nào được dùng cho lượt
+    nào**. Đọc riêng từng hàm dựng prompt thì cả hai đều có vẻ ổn; chỉ khi biết lượt thứ hai dùng
+    hàm nào mới thấy `worker_count` không bao giờ tới tay agent.
+    """
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.prompts: list[str] = []
+
+    async def execute(self, ctx):
+        self.prompts.append(ctx.prompt)
+        return await super().execute(ctx)
+
+
+async def test_every_turn_carries_the_whole_field_plan_not_just_the_first() -> None:
+    """Lỗi người duyệt PR #272 tìm ra, giữ ở đúng tầng nó xảy ra.
+
+    Buổi phỏng vấn hỏi một câu mỗi lượt. Lượt đầu dùng prompt mở đầu và chỉ hỏi câu thứ nhất; mọi
+    lượt sau dùng prompt tiếp nối. Nên một field chỉ có trong prompt mở đầu là một field **không
+    bao giờ được hỏi**. `worker_count` đúng như thế: nó vào prompt mở đầu, còn prompt tiếp nối vẫn
+    liệt kê năm field và còn bảo *post draft sau `context`* — nên mọi dự án dựng bằng hỏi–đáp ra
+    đời với đúng một chỗ cho người làm, y hệt trước khi có tính năng.
+
+    Bài kiểm ở `test_onboarding_brain.py` giữ **nội dung** hai prompt. Bài này giữ thứ nó không
+    thấy được: chữ **đã thật sự gửi đi** ở lượt thứ hai và thứ ba.
+    """
+    _, onboarding, ws_id, adapter = _services(adapter=_RecordingAdapter())
+    adapter.drivers.extend([
+        _asks(onboarding, "objective", "What are you building?"),
+        _asks(onboarding, "name", "What should we call it?"),
+        _asks(onboarding, "success_metrics", "How will you measure success?"),
+    ])
+    await _ensure_then_online(onboarding, ws_id)
+
+    session = await onboarding.start(ws_id)
+    session = await onboarding.answer(session.id, "A web app")
+    await onboarding.answer(session.id, "Task Tracker")
+
+    assert len(adapter.prompts) == 3, len(adapter.prompts)
+    for turn, prompt in enumerate(adapter.prompts, start=1):
+        # Đọc **phần kế hoạch field**, không phải cả prompt: mỗi tên field còn xuất hiện lần
+        # nữa trong mẫu JSON của draft, nên tìm khắp prompt thì một kế hoạch đã rơi mất field
+        # vẫn đạt — bản đầu của bài này xanh y nguyên khi tôi thử ngược lại.
+        plan = field_plan_of(prompt)
+        for field, _question in FIELD_PLAN:
+            assert field in plan, f"kế hoạch field ở lượt {turn} thiếu {field}"

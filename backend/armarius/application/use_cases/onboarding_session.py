@@ -37,6 +37,7 @@ so re-entering "create a project with the agent" never resurrects stale chat his
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Any
@@ -151,16 +152,22 @@ def _worker_count(raw: object) -> int:
     at all, and none of those is worth abandoning a finished interview over. Anything that is
     not a number this side understands falls back to one, which is what every project got
     before the question existed.
+
+    **The FIRST number in the text, not every digit in it.** Joining all the digits together
+    read "4-5 people" as forty-five and "-5" as five — a range and a negative both came out as
+    a number nobody said. Reading the first one instead answers "4-5 people" with four, which is
+    the smaller end of what was actually offered, and "-5" with a refusal that clamps to one.
+    Raised in review of PR #272.
     """
     if isinstance(raw, bool):
         return MIN_WORKER_COUNT
     if isinstance(raw, int):
         parsed = raw
     elif isinstance(raw, str):
-        digits = "".join(ch for ch in raw if ch.isdigit())
-        if not digits:
+        found = re.search(r"-?\d+", raw)
+        if found is None:
             return MIN_WORKER_COUNT
-        parsed = int(digits)
+        parsed = int(found.group())
     else:
         return MIN_WORKER_COUNT
     return max(MIN_WORKER_COUNT, min(parsed, MAX_WORKER_COUNT))

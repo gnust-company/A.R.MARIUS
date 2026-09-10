@@ -309,6 +309,14 @@ class ProjectService:
                     (r for r in await uow.roles.list_by_project(project_id) if not r.is_leader),
                     None,
                 )
+                # `None` is unreachable, and the reason is worth writing down rather than
+                # guarding against: `validate_plan` refuses to create a project without a
+                # non-leader row (`project_needs_a_worker_role`), and nothing can take that row
+                # away afterwards — `RoleRepository.remove` has no caller anywhere in the
+                # product and no door deletes a role. So a project always has a bench from
+                # birth. Kept as a check rather than an assertion because a silent no-op is the
+                # right shape for something that cannot happen: raising here would blame a
+                # patron for a bug of ours. Raised in review of PR #272.
                 if bench is not None:
                     bench.seats = max(
                         MIN_WORKER_COUNT, min(worker_count, MAX_WORKER_COUNT)
