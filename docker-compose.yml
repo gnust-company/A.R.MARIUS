@@ -68,6 +68,11 @@ services:
       # Public URL of THIS API that agents call back into — advertised in invitations.
       # For remote agents set ARMARIUS_PUBLIC_URL to a reachable origin (e.g. https://armarius.example.com).
       PUBLIC_BASE_URL: ${ARMARIUS_PUBLIC_URL:-http://localhost:8080}
+      # Where a PERSON opens the interface, for the machine-approval address. Left empty on
+      # purpose: empty means *take it from the request the daemon made*, which is the one
+      # address known to reach this deployment. Set it only when the interface really lives on
+      # another origin than the API (FR-001c).
+      WEB_BASE_URL: ${ARMARIUS_WEB_URL:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       # Shared Artifact Store → MinIO (bucket created on boot). The endpoint is the
       # in-network address of the minio service; only override when pointing at an

@@ -65,12 +65,13 @@ developers) vì mỗi lượt chạy đều cần tạo symbolic link.
 Rồi nối máy:
 
 ```sh
-armarius-daemon login -server http://localhost:8080
+armarius-daemon login -server http://localhost:3000
 ```
 
-> **`-server` là địa chỉ API, không phải địa chỉ trang web.** Ở đây là `:8080`. Đây là địa chỉ
-> daemon *nói chuyện* với; trang nó **mở ra cho bạn** thì ở `:3000`, và nó tự biết lấy từ câu trả
-> lời của API. Hai cổng, hai việc, và đây là chỗ dễ nhập lẫn nhất trong cả bài này.
+> **Đưa cho nó đúng địa chỉ bạn mở Armarius.** Trang web phục vụ luôn cả API bên dưới cùng một
+> origin, nên địa chỉ bạn gõ vào browser cũng là địa chỉ daemon gọi vào được. Ở bản dựng bằng
+> compose thì `:8080` cũng chạy, vì cổng API được mở ra ngoài; còn ở một bản triển khai thật thì
+> thường **chỉ có** địa chỉ trang web, nên cứ dùng nó là đúng ở cả hai nơi.
 
 Nó **tự mở trang phê duyệt** ra, với mã đã nằm sẵn trên địa chỉ — bạn chỉ cần nhìn tên máy, chọn
 không gian làm việc rồi bấm **Đồng ý**. Không phải chép mã đi đâu cả.

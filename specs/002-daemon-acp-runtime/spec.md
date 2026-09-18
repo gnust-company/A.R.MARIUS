@@ -349,6 +349,44 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   Ghi rõ điều **không** nằm trong đây: trần theo mã KHÔNG làm việc dò mã chậm lại, vì mỗi lần đoán là một
   mã khác và do đó là một suất mới. Thứ chặn người dò là trần của cả cửa, còn thứ làm việc dò trở nên vô
   nghĩa là entropy của mã và mười phút nó sống. Trần chỉ đặt giá cho cú gõ cửa.
+- **FR-001c**: Mọi địa chỉ sản phẩm **đưa cho người dùng** PHẢI là địa chỉ dùng được **ở nơi nó
+  đang được triển khai**, không phải địa chỉ của một cái máy tính nào đó. *Người chủ chốt
+  2026-09-18: "tôi muốn là phải work theo kiểu ip:port vì sắp tới tôi deploy nội bộ là deploy ở 1
+  web app và các người dùng khác sẽ vào đó để dùng".*
+
+  Hai chỗ vi phạm luật này, và cùng một gốc — **đoán thay vì đọc**:
+
+  - Địa chỉ phê duyệt máy là hằng số `http://localhost:3000` trong mã, và **không chỗ nào trong
+    compose từng đặt nó**. Nên một cái máy nối vào bản triển khai ở `10.0.0.5:3000` được bảo đi phê
+    duyệt ở *localhost của chính nó* — trên máy người khác thì địa chỉ ấy hoặc không có gì, hoặc là
+    một sản phẩm khác.
+  - Lệnh ở bước ba của màn ba bước tự **đổi cổng** địa chỉ đang mở sang `:8080`. Đúng với một tệp
+    compose của người phát triển, và sai ở mọi nơi khác: bản triển khai thật phục vụ API **cùng
+    origin** với giao diện, còn `:8080` thường không được mở ra ngoài.
+
+  Cả hai lỗi đều **không hiện ra trên máy người phát triển**, vì ở đó localhost tình cờ đúng.
+
+  Luật:
+
+  - Địa chỉ phê duyệt PHẢI lấy từ **chính yêu cầu daemon vừa gọi**. Người dùng đã gõ nó vào
+    `login -server …` và nó tới được server, nên nó là địa chỉ **chắc chắn dùng được** — còn giao
+    diện nằm cùng origin ấy, vì proxy đặt `/auth`, `/v1`, `/agent`, `/daemon` cạnh giao diện.
+  - Scheme PHẢI theo `X-Forwarded-Proto` khi có, để bản triển khai sau TLS không phát ra địa chỉ
+    `http`. Chuỗi nhiều hop thì lấy hop đầu — đó là thứ browser đã nói.
+  - Người vận hành PHẢI khai đè được, cho trường hợp giao diện thật sự ở origin khác API. Nhưng
+    KHÔNG ĐƯỢC có **giá trị mặc định**: một mặc định cố định thì đúng ở đúng một cái máy.
+  - Chỗ nào chỉ cho người dùng một lệnh có địa chỉ thì dùng **địa chỉ trang đang mở**, không đoán
+    cổng. Họ đang nhìn vào nó, nên nó dùng được.
+  - **Proxy PHẢI chuyển tiếp cả cổng.** Đo trên dịch vụ thật 2026-09-18 thì lòi ra lỗi thứ ba,
+    không bắt được bằng bài kiểm ở tầng ứng dụng: nginx gửi tên máy đã **bỏ cổng**, nên một bản
+    triển khai đọc ở `10.0.0.5:3000` tới được API dưới tên `10.0.0.5`, và địa chỉ phê duyệt dựng
+    từ đó quay về thành `http://10.0.0.5/link` — một địa chỉ ở cổng 80 không phục vụ gì cả.
+
+  Một ranh giới nói rõ để khỏi hiểu nhầm: **`/link` do giao diện phục vụ.** Nối daemon thẳng vào
+  cổng API (đường chỉ có ở bản dựng cho người phát triển) thì địa chỉ trả về trỏ đúng vào cổng ấy,
+  mà ở đó không có trang nào. Địa chỉ đưa cho daemon PHẢI là địa chỉ mở Armarius; bản triển khai
+  thật chỉ có đúng một địa chỉ ấy, nên luật này không tạo ra lựa chọn nào để chọn sai.
+
 - **FR-002**: Daemon PHẢI tự dò các agent CLI có trên máy và đăng ký mỗi cái tìm được thành một **chỗ làm**
   gắn với workspace đó.
 - **FR-003**: Mỗi chỗ làm PHẢI mang tên máy đọc được, để người dùng phân biệt được hai máy khác nhau của
