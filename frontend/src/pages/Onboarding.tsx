@@ -303,7 +303,13 @@ export default function Onboarding() {
                 <p className="font-body text-body-sm text-ink-light pt-1">
                   {t('firstSteps.loginStep')}
                 </p>
-                <Command text={`armarius-daemon login -server ${window.location.origin.replace(/:\d+$/, ':8080')}`} />
+                {/* The address this page is being read at, exactly as it is. It used to rewrite
+                    the port to `:8080`, which is true of one developer's compose file and of
+                    nowhere else: a deployment on a real address serves the API from the same
+                    origin as the SPA (nginx proxies `/daemon` beside it), and `:8080` there is
+                    usually not published at all. Whatever address a person reached this page
+                    at is reachable — they are looking at it (FR-001c). */}
+                <Command text={`armarius-daemon login -server ${window.location.origin}`} />
                 <p className="font-body text-body-sm text-ink-muted">
                   {t('firstSteps.loginStepHint')}
                 </p>

@@ -350,8 +350,41 @@ _ENDINGS: dict[str, RunStatus] = {
 # ── the machine's half ────────────────────────────────────────────────────────
 
 
+def _where_to_approve(request: Request) -> str:
+    """The origin a person should open to approve a machine (FR-001c).
+
+    Read off the request the daemon just made, because that is the one address known to work:
+    the person typed it into `armarius-daemon login -server …` and it reached this server, and
+    the web interface is served from the same origin — nginx proxies `/auth`, `/v1`, `/agent`
+    and `/daemon` to the API beside the SPA.
+
+    A configured `web_base_url` still wins, for the deployment where the interface genuinely
+    lives on another origin. What it no longer does is *default* to one: the old default was
+    `http://localhost:3000`, nothing in the compose file ever set it, and so a machine linking
+    to a deployment on a real address was told to go and approve on its own localhost — which
+    on somebody else's computer is either nothing at all or somebody else's product.
+
+    ``Host`` is attacker-controllable in general, and here it is not a risk worth a guard: the
+    only reader of this address is the very daemon whose request carried the header, so what
+    comes back is the person's own `-server` value. Anyone who can set it already runs the
+    daemon. The forwarded scheme is honoured so a deployment behind TLS does not hand out a
+    plain-http address.
+    """
+    configured = settings.web_base_url.strip().rstrip("/")
+    if configured:
+        return configured
+    host = request.headers.get("host") or request.url.netloc
+    scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+    # One value, one scheme: a proxy chain writes `https, http` into this header, and the
+    # first hop is the one the person's browser spoke.
+    scheme = scheme.split(",")[0].strip() or "http"
+    return f"{scheme}://{host}"
+
+
 @router.post("/link/start", response_model=LinkStartOut)
-async def start_link(body: LinkStartIn, container: ContainerDep) -> LinkStartOut:
+async def start_link(
+    body: LinkStartIn, request: Request, container: ContainerDep
+) -> LinkStartOut:
     started = await container.daemon_enrollment.start_link(
         platform=body.platform,
         daemon_version=body.daemon_version,
@@ -366,7 +399,7 @@ async def start_link(body: LinkStartIn, container: ContainerDep) -> LinkStartOut
         # This is a convenience, not a credential: the screen still asks, and the code is
         # worthless without a signed-in person who says yes to a machine they recognise.
         # Which is exactly why the approval step is not being removed along with the typing.
-        verify_url=f"{settings.web_base_url.rstrip('/')}/link?code={started.code}",
+        verify_url=f"{_where_to_approve(request)}/link?code={started.code}",
         expires_in=started.expires_in_seconds,
         interval=started.poll_interval_seconds,
     )

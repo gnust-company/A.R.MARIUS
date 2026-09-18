@@ -101,13 +101,13 @@ không ai báo. Không bật thì mọi runtime trên máy báo *không tạo đ
 ## Nối máy vào không gian làm việc
 
 ```sh
-armarius-daemon login -server <địa-chỉ-API-của-Armarius>
+armarius-daemon login -server <địa-chỉ-bạn-mở-Armarius>
 ```
 
-> **`-server` là địa chỉ API, không phải địa chỉ trang web.** Chạy Armarius trên máy mình thì đó là
-> `http://localhost:8080`, còn `:3000` là trang web. Đây là địa chỉ daemon **gọi vào**; trang nó
-> **mở ra** cho bạn thì nó lấy từ câu trả lời của API, không tự đoán. Nhập địa chỉ trang web vào
-> đây thì mọi lệnh của nó đều trượt.
+> **Đúng cái địa chỉ bạn gõ vào browser.** Ví dụ `http://10.0.0.5:3000`, hay tên miền nội bộ của
+> công ty bạn. Trang web phục vụ luôn API bên dưới cùng một origin, nên một địa chỉ là đủ cho cả
+> hai việc. Trang phê duyệt daemon mở ra cũng nằm ở chính địa chỉ ấy — server đọc nó từ chính yêu
+> cầu daemon vừa gọi, nên nó luôn là địa chỉ bạn tới được.
 
 Nó **tự mở trang phê duyệt** ra, với mã đã nằm sẵn trên địa chỉ. Trên trang ấy bạn thấy máy nào
 đang hỏi, chọn không gian làm việc, rồi bấm **Đồng ý**. Không phải chép mã sang đâu cả.

@@ -48,7 +48,19 @@ class Settings(BaseSettings):
     # Public URL of the web interface a *person* opens. Distinct from `public_base_url`,
     # which is the API agents call: the machine-linking answer has to tell someone where
     # to go and press approve, and that address is the interface, not the API.
-    web_base_url: str = "http://localhost:3000"
+    #
+    # **Empty means derive it from the request**, and empty is the default because a fixed
+    # default is wrong everywhere except one laptop. It used to be `http://localhost:3000`,
+    # nothing ever set it, and so every machine linking to a deployment on a real address was
+    # told to go and approve on *its own* localhost — an address that, on somebody else's
+    # computer, is either nothing or the wrong thing.
+    #
+    # The request is the better source precisely because of who is asking: the daemon reached
+    # this server at an address a person typed, so that address is known-reachable by
+    # construction, and the web interface is served from it (nginx proxies `/daemon` to the
+    # API on the same origin). Set this only when the interface really does live somewhere
+    # else — a separate domain in front of a separate API.
+    web_base_url: str = ""
 
     # Shared Artifact Store backend: "local" (filesystem) or "minio" (S3, ARCHITECTURE §7).
     artifact_store_backend: str = "local"
