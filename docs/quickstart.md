@@ -68,10 +68,12 @@ Rồi nối máy:
 armarius-daemon login -server http://localhost:3000
 ```
 
-> **Đưa cho nó đúng địa chỉ bạn mở Armarius.** Trang web phục vụ luôn cả API bên dưới cùng một
-> origin, nên địa chỉ bạn gõ vào browser cũng là địa chỉ daemon gọi vào được. Ở bản dựng bằng
-> compose thì `:8080` cũng chạy, vì cổng API được mở ra ngoài; còn ở một bản triển khai thật thì
-> thường **chỉ có** địa chỉ trang web, nên cứ dùng nó là đúng ở cả hai nơi.
+> **Đưa cho nó đúng địa chỉ bạn mở Armarius** — ở đây là `:3000`. Trang web phục vụ luôn cả API
+> bên dưới cùng một origin, nên một địa chỉ đủ cho cả hai việc.
+>
+> **Đừng đưa cổng API (`:8080`).** Nó trả lời API được, nhưng **không phục vụ trang phê duyệt**:
+> daemon sẽ mở `http://localhost:8080/link?code=…` và bạn nhận về một trang 404. Cổng ấy không có
+> giao diện, chỉ có cửa API.
 
 Nó **tự mở trang phê duyệt** ra, với mã đã nằm sẵn trên địa chỉ — bạn chỉ cần nhìn tên máy, chọn
 không gian làm việc rồi bấm **Đồng ý**. Không phải chép mã đi đâu cả.

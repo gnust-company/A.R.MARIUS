@@ -382,10 +382,15 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
     triển khai đọc ở `10.0.0.5:3000` tới được API dưới tên `10.0.0.5`, và địa chỉ phê duyệt dựng
     từ đó quay về thành `http://10.0.0.5/link` — một địa chỉ ở cổng 80 không phục vụ gì cả.
 
-  Một ranh giới nói rõ để khỏi hiểu nhầm: **`/link` do giao diện phục vụ.** Nối daemon thẳng vào
-  cổng API (đường chỉ có ở bản dựng cho người phát triển) thì địa chỉ trả về trỏ đúng vào cổng ấy,
-  mà ở đó không có trang nào. Địa chỉ đưa cho daemon PHẢI là địa chỉ mở Armarius; bản triển khai
-  thật chỉ có đúng một địa chỉ ấy, nên luật này không tạo ra lựa chọn nào để chọn sai.
+  Một ranh giới nói rõ để khỏi hiểu nhầm: **`/link` do giao diện phục vụ, cổng API không.** Nối
+  daemon thẳng vào cổng API thì địa chỉ trả về trỏ đúng vào cổng ấy, và ở đó trang phê duyệt trả
+  **404** — đo được 2026-09-18. Nên địa chỉ đưa cho daemon PHẢI là địa chỉ mở Armarius.
+
+  Và cổng API **không phải chỉ có ở máy người phát triển** — sửa lại câu chữ sau review PR #275:
+  compose mở nó ra `0.0.0.0` theo mặc định, nên trên LAN thật nó cũng với tới được. Điều đó không
+  làm hỏng luật ở trên (địa chỉ quay về chỉ quay về đúng người đã gửi nó), nhưng nó có nghĩa là
+  đường chọn sai **có thật** ở mọi nơi, nên tài liệu PHẢI nói thẳng rằng cổng API không mở được
+  trang phê duyệt, chứ không được để người đọc tự suy.
 
 - **FR-002**: Daemon PHẢI tự dò các agent CLI có trên máy và đăng ký mỗi cái tìm được thành một **chỗ làm**
   gắn với workspace đó.
