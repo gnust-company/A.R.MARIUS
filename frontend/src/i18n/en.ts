@@ -91,6 +91,10 @@ export const en = {
     new: 'New',
   },
   machines: {
+    remove: 'Remove this machine',
+    removeConfirm: 'Remove {{name}}? Its credential stops working and the daemon has to link again.',
+    removeYes: 'Remove it',
+    removeNo: 'Keep it',
     title: 'Machines',
     subtitle: 'The machines you have linked to this workspace, and who lives where.',
     refresh: 'Reload',

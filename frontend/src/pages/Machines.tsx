@@ -23,10 +23,12 @@ import {
   Plus,
   RefreshCw,
   Terminal,
+  Trash2,
   WifiOff,
 } from 'lucide-react';
 import {
   listMachines,
+  removeMachine,
   updateMachine,
   type MachineDTO,
   type MachineWorkplaceDTO,
@@ -123,7 +125,15 @@ function Workplace({ place }: { place: MachineWorkplaceDTO }) {
 
 // ─── One machine ─────────────────────────────────────────────────────────────
 
-function Machine({ machine, onChanged }: { machine: MachineDTO; onChanged: (m: MachineDTO) => void }) {
+function Machine({
+  machine,
+  onChanged,
+  onRemoved,
+}: {
+  machine: MachineDTO;
+  onChanged: (m: MachineDTO) => void;
+  onRemoved: (id: string) => void;
+}) {
   const { t, i18n } = useTranslation();
   // What is typed, or nothing typed yet. Held as *the edit* rather than as a copy of the
   // machine, so a reload or somebody else's change corrects the box without an effect
@@ -131,7 +141,26 @@ function Machine({ machine, onChanged }: { machine: MachineDTO; onChanged: (m: M
   const [typed, setTyped] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [ceilingError, setCeilingError] = useState<string | null>(null);
+  // Removing a machine withdraws its credential, and nothing brings it back — the daemon has
+  // to link again. So it asks first, and the question names the machine rather than saying
+  // "are you sure": a person with four machines on screen needs to know which one this is.
+  const [confirming, setConfirming] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const { workspaceId } = useParams();
+
+  function remove() {
+    if (!workspaceId) return;
+    setRemoving(true);
+    setRemoveError(null);
+    removeMachine(workspaceId, machine.id)
+      .then(() => onRemoved(machine.id))
+      .catch((e) => {
+        setRemoveError(errorText(e, t));
+        setRemoving(false);
+        setConfirming(false);
+      });
+  }
   const ceiling = typed ?? String(machine.max_concurrent);
 
   function save() {
@@ -212,6 +241,48 @@ function Machine({ machine, onChanged }: { machine: MachineDTO; onChanged: (m: M
             {ceilingError}
           </p>
         )}
+
+        {/* Removing a machine is the only way to take its token back, and there is no undo:
+            the daemon has to link again. So it asks, and the question names the machine. */}
+        <div className="mt-3 border-t border-[#EDE4CE] pt-3">
+          {confirming ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[12px] text-[#8A3B22]">
+                {t('machines.removeConfirm', { name: machine.display_name || machine.id })}
+              </span>
+              <button
+                type="button"
+                onClick={remove}
+                disabled={removing}
+                className="inline-flex items-center gap-1 rounded-md bg-[#B84A32] px-2.5 py-1 text-[12px] font-medium text-white transition-colors hover:bg-[#C9573D] disabled:opacity-50"
+              >
+                {removing && <Loader2 className="h-3 w-3 animate-spin" />}
+                {t('machines.removeYes')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                disabled={removing}
+                className="rounded-md px-2.5 py-1 text-[12px] text-[#6B5E4E] transition-colors hover:text-[#2A2318]"
+              >
+                {t('machines.removeNo')}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirming(true)}
+              className="inline-flex items-center gap-1 text-[12px] text-[#A89880] transition-colors hover:text-[#B84A32]"
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden /> {t('machines.remove')}
+            </button>
+          )}
+          {removeError && (
+            <p className="mt-1 text-[12px] text-[#8A3B22]" role="alert">
+              {removeError}
+            </p>
+          )}
+        </div>
 
         <div className="mt-3 space-y-2">
           {machine.workplaces.length > 0 ? (
@@ -356,6 +427,9 @@ export default function Machines() {
                 setMachines((rows) =>
                   (rows ?? []).map((row) => (row.id === fresh.id ? fresh : row))
                 )
+              }
+              onRemoved={(id) =>
+                setMachines((rows) => (rows ?? []).filter((row) => row.id !== id))
               }
             />
           ))}

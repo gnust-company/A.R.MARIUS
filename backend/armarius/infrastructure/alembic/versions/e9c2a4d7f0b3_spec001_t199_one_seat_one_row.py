@@ -96,14 +96,6 @@ WHERE g.status = 'granted'
   )
 """
 
-_COPY_BACK = """
-INSERT INTO seat_grants_rebuilt
-    (id, project_id, role_key, marius_id, status, granted_by_user_id, granted_at, created_at)
-SELECT g.id, g.project_id, r.key, g.marius_id, 'granted',
-       g.granted_by_user_id, g.granted_at, g.created_at
-FROM seat_grants g
-JOIN roles r ON r.id = g.role_id
-"""
 
 
 def _swap_in() -> None:
@@ -143,9 +135,38 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Back to the status column and the role key. The revoked rows are not coming back."""
+    """Back to the status column and the role key. The revoked rows are not coming back.
+
+    **Written the long way round, and Postgres is the reason.** The obvious shape — build a
+    scratch table beside the real one, copy across, drop, rename — is what `upgrade` does, and
+    it cannot be mirrored here: constraint names are unique per *schema* on Postgres, not per
+    table, and by the time this runs the live `seat_grants` already carries `pk_seat_grants`
+    and the three `fk_seat_grants_*` this would want to create a second of. It fails with
+    `relation "pk_seat_grants" already exists`. On SQLite the same code passes, because there
+    a constraint name only has to be unique within its table — which is exactly why the test
+    suite, running this chain on SQLite, was green while Postgres was not (T005b).
+
+    So the old table goes **first**, and its rows wait in a plain carrier table with no
+    constraints at all to collide with. `CREATE TABLE … AS SELECT` is understood by both
+    dialects, so this needs no branch on which database is running.
+    """
+    # The transformation and the carrier in one statement: the old shape is the new shape plus
+    # the role's key in place of its id, and a status every surviving row has by definition —
+    # a revoked grant is not a row here any more, so there is nothing else it could be.
+    op.execute(
+        sa.text(
+            """
+            CREATE TABLE seat_grants_carry AS
+            SELECT g.id, g.project_id, r.key AS role_key, g.marius_id,
+                   g.granted_by_user_id, g.granted_at, g.created_at
+            FROM seat_grants g
+            JOIN roles r ON r.id = g.role_id
+            """
+        )
+    )
+    op.drop_table("seat_grants")
     op.create_table(
-        "seat_grants_rebuilt",
+        "seat_grants",
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("project_id", sa.Uuid(), nullable=False),
         sa.Column("role_key", sa.String(length=120), nullable=False),
@@ -159,8 +180,18 @@ def downgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id", name="pk_seat_grants"),
     )
-    op.execute(sa.text(_COPY_BACK))
-    op.drop_table("seat_grants")
-    op.rename_table("seat_grants_rebuilt", "seat_grants")
+    op.execute(
+        sa.text(
+            """
+            INSERT INTO seat_grants
+                (id, project_id, role_key, marius_id, status,
+                 granted_by_user_id, granted_at, created_at)
+            SELECT id, project_id, role_key, marius_id, 'granted',
+                   granted_by_user_id, granted_at, created_at
+            FROM seat_grants_carry
+            """
+        )
+    )
+    op.execute(sa.text("DROP TABLE seat_grants_carry"))
     for column in ("project_id", "marius_id", "granted_by_user_id"):
         op.create_index(f"ix_seat_grants_{column}", "seat_grants", [column])

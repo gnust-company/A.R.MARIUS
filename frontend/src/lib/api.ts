@@ -581,6 +581,15 @@ export async function listMachines(workspaceId: string): Promise<MachineDTO[]> {
  * Answers with the machine as it now stands, so the screen redraws from the server's word
  * rather than from what it hoped it had written.
  */
+/** Take a machine out of a workspace — and take its credential with it (FR-001d).
+ *
+ *  Not a tidy-up: every linked machine holds a live token, so this is the only way to revoke
+ *  one. Agents that lived there are NOT deleted; they become unplaced, which has a defined
+ *  meaning and a way back. */
+export async function removeMachine(workspaceId: string, machineId: string): Promise<void> {
+  await del(`/v1/workspaces/${workspaceId}/machines/${machineId}`)
+}
+
 export async function updateMachine(
   workspaceId: string,
   machineId: string,

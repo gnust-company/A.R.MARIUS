@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
 from armarius.domain.entities.marius import Marius
 from armarius.infrastructure.daemon.workplaces import LinkedMachine
@@ -166,6 +166,34 @@ def _machine_out(machine: LinkedMachine) -> MachineOut:
             for place in machine.workplaces
         ],
     )
+
+
+
+@router.delete("/workspaces/{workspace_id}/machines/{machine_id}", status_code=204)
+async def remove_machine(
+    workspace_id: UUID,
+    machine_id: UUID,
+    container: ContainerDep,
+    user: CurrentUser,
+) -> Response:
+    """Take a machine out of this workspace, and take its credential with it (FR-001d).
+
+    *Người chủ hỏi 2026-09-07: "tại sao thêm máy lại không xóa được máy?"* — và there was no
+    door at all: linking existed, reading and adjusting existed, removing did not. That is not
+    an untidiness. Every linked machine holds a live token, so a machine retired, sold or lost
+    kept working papers for as long as its row stood, and nobody could take them back.
+
+    What it takes with it is spelled out in ``cleanup.forget_machine``. Agents that lived here
+    are **not** deleted — they become unplaced, which is a state with a defined meaning and a
+    way back (FR-006c).
+
+    A machine in a workspace that is not the caller's reads exactly like one that does not
+    exist (Constitution I).
+    """
+    await _require_owned_workspace(container, user, workspace_id)
+    if not await container.daemon_workplaces.remove(workspace_id, machine_id):
+        raise NotFound("machine_not_found")
+    return Response(status_code=204)
 
 
 @router.get(

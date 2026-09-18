@@ -29,6 +29,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from armarius.domain.entities.placement import PlacementOption
+from armarius.infrastructure.daemon.cleanup import forget_machine
 from armarius.infrastructure.daemon.enrollment import MachineIdentity
 from armarius.infrastructure.daemon.models import (
     AgentWorkplaceBindingModel,
@@ -537,6 +538,42 @@ class DaemonWorkplaceService:
             if machine.id == machine_id:
                 return machine
         return None  # pragma: no cover - unlinked between the write and the read
+
+    async def remove(self, workspace_id: UUID, machine_id: UUID) -> bool:
+        """Take a machine out of its workspace. `False` if it is not here (FR-001d).
+
+        **This is a credential withdrawal first and a tidy-up second.** Every linked machine
+        holds a live token, and until this door existed there was no way to take one back:
+        a machine retired, sold or lost kept its papers for as long as the row stood. FR-001
+        gave an in and no out.
+
+        What goes with it is written down in ``cleanup.forget_machine``, beside the tables it
+        is a list of. The short version: the agents that lived here become **unplaced**, not
+        deleted — offline with a reason, and working again the moment they are put somewhere
+        else — and runs this machine held lose their claim, which is what *the machine is
+        gone* honestly means.
+
+        No refusal for a machine that is busy. A machine one wants revoked is exactly the one
+        likely to be holding work, and a door that declines while it is in use is a door that
+        is closed when it is needed.
+
+        Scoped by workspace as well as by id, so a machine in somebody else's workspace
+        answers exactly like one that does not exist (Constitution I).
+        """
+        async with self._sessions()() as session:
+            row = (
+                await session.execute(
+                    select(MachineModel.id).where(
+                        MachineModel.id == machine_id,
+                        MachineModel.workspace_id == workspace_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                return False
+            await forget_machine(session, machine_id)
+            await session.commit()
+        return True
 
     async def _workplaces_of(
         self, session: AsyncSession, machine: MachineIdentity

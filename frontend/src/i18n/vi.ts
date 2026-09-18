@@ -91,6 +91,10 @@ export const vi = {
     new: 'Mới',
   },
   machines: {
+    remove: 'Gỡ máy này',
+    removeConfirm: 'Gỡ {{name}}? Giấy tờ của nó ngừng dùng được, và daemon phải nối lại từ đầu.',
+    removeYes: 'Gỡ đi',
+    removeNo: 'Giữ lại',
     title: 'Máy',
     subtitle: 'Những cái máy anh đã nối vào không gian này, và agent nào đang sống ở đâu.',
     refresh: 'Đọc lại',

@@ -12,10 +12,17 @@ and the UI read one shape::
 
     collected = {
         "phase": "asking" | "complete",
-        "answers": {<key>: <resolved answer text>},
-        "pending_question": {"key","question","options":[{"id","label"}],"multi"} | None,
-        "draft": {name, objective, success_metrics, target_date, context} | None,
+        "pending_question": {"question","options":[{"id","label"}],"multi"} | None,
+        "draft": {name, objective, success_metrics, target_date, context, worker_count} | None,
     }
+
+There is deliberately no map of answers by field name here, and no ``key`` on the pending
+question. Both were in this shape once, describing a design where the server filled the draft
+field by field — and that is not how this works: the server keeps the transcript, hands the
+whole of it back to the agent every turn, and the **agent** posts the finished draft. The door
+that takes a question has no ``key`` to give, nothing ever wrote the answers map, and nothing
+read either. What they left behind was worse than clutter: the tests fabricated a ``key`` the
+real door cannot carry, so the suite was running on a shape production never has.
 """
 
 from __future__ import annotations
