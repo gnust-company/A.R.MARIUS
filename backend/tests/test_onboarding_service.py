@@ -53,12 +53,18 @@ def _services(*, adapter: FakeAdapter | None = None):
 # scripted WA turns — closures over the service so they post back through its callbacks ──
 
 
-def _asks(onboarding: OnboardingService, key: str, question: str):
+def _asks(onboarding: OnboardingService, question: str):
+    """Một lượt agent hỏi, đúng hình dạng cửa thật nhận.
+
+    Không có `key`: cửa `onboarding ask` khai đúng ba trường — câu hỏi, các lựa chọn, và
+    cho-chọn-nhiều — nên agent không gửi tên field được, kể cả muốn. Bản trước của helper này
+    gắn thêm một `key` và bộ kiểm chạy trên một hình dạng đời thật không bao giờ có.
+    """
+
     async def driver(session_id, run_id) -> None:
         await onboarding.agent_post_question(
             session_id,
             {
-                "key": key,
                 "question": question,
                 "options": [{"id": "1", "label": "An option"},
                             {"id": "other", "label": "Other (I'll type it)"}],
@@ -176,7 +182,7 @@ async def test_start_adapter_raises_abandons_session_and_raises() -> None:
 
 async def test_answer_when_agent_went_offline_abandons_and_raises() -> None:
     factory, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
-    adapter.drivers.append(_asks(onboarding, "objective", "What are you building?"))
+    adapter.drivers.append(_asks(onboarding, "What are you building?"))
     await _ensure_then_online(onboarding, ws_id)
     session = await onboarding.start(ws_id)
     assert session.collected["pending_question"]["question"] == "What are you building?"
@@ -191,7 +197,7 @@ async def test_answer_when_agent_went_offline_abandons_and_raises() -> None:
 
 async def test_answer_wake_fails_abandons_and_raises() -> None:
     _, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
-    adapter.drivers.append(_asks(onboarding, "objective", "What are you building?"))
+    adapter.drivers.append(_asks(onboarding, "What are you building?"))
     await _ensure_then_online(onboarding, ws_id)
     session = await onboarding.start(ws_id)
     adapter.status = RunStatus.FAILED  # the answer wake now fails
@@ -205,7 +211,7 @@ async def test_answer_wake_fails_abandons_and_raises() -> None:
 async def test_start_succeeds_when_wa_is_working() -> None:
     """WORKING counts as ready too (not just ONLINE)."""
     factory, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
-    adapter.drivers.append(_asks(onboarding, "objective", "What are you building?"))
+    adapter.drivers.append(_asks(onboarding, "What are you building?"))
     await _ensure_then_online(onboarding, ws_id)
     await _set_wa_liveness(factory, ws_id, Liveness.WORKING)
 
@@ -218,7 +224,7 @@ async def test_start_succeeds_when_wa_is_working() -> None:
 
 async def test_start_wakes_agent_and_its_first_question_lands() -> None:
     factory, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
-    adapter.drivers.append(_asks(onboarding, "objective", "What are you building?"))
+    adapter.drivers.append(_asks(onboarding, "What are you building?"))
     await _ensure_then_online(onboarding, ws_id)
 
     session = await onboarding.start(ws_id)
@@ -234,8 +240,8 @@ async def test_start_wakes_agent_and_its_first_question_lands() -> None:
 async def test_answer_forwards_to_agent_and_advances_then_completes() -> None:
     _, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
     adapter.drivers.extend([
-        _asks(onboarding, "objective", "What are you building?"),
-        _asks(onboarding, "name", "What should we call it?"),
+        _asks(onboarding, "What are you building?"),
+        _asks(onboarding, "What should we call it?"),
         _completes(onboarding, "Task Tracker", "A web app"),
     ])
     await _ensure_then_online(onboarding, ws_id)
@@ -254,11 +260,11 @@ async def test_answer_forwards_to_agent_and_advances_then_completes() -> None:
 async def test_start_is_fresh_each_time_and_retires_the_prior_session() -> None:
     """Re-entering the agent flow starts clean — the stale open chat is abandoned (#61)."""
     _, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
-    adapter.drivers.append(_asks(onboarding, "objective", "Q1"))
+    adapter.drivers.append(_asks(onboarding, "Q1"))
     await _ensure_then_online(onboarding, ws_id)
     first = await onboarding.start(ws_id)
 
-    adapter.drivers.append(_asks(onboarding, "objective", "Q1"))  # re-arm for the 2nd start
+    adapter.drivers.append(_asks(onboarding, "Q1"))  # re-arm for the 2nd start
     second = await onboarding.start(ws_id)
 
     assert second.id != first.id
@@ -292,7 +298,7 @@ async def test_complete_then_finalize_creates_the_project_and_its_two_rows() -> 
 async def test_finalize_without_a_draft_still_creates_a_valid_project() -> None:
     """A session whose draft is missing still finalizes to a project with a valid roster."""
     factory, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
-    adapter.drivers.append(_asks(onboarding, "objective", "Q1"))  # a question, never a draft
+    adapter.drivers.append(_asks(onboarding, "Q1"))  # a question, never a draft
     await _ensure_then_online(onboarding, ws_id)
     session = await onboarding.start(ws_id)
 
@@ -306,7 +312,7 @@ async def test_finalize_without_a_draft_still_creates_a_valid_project() -> None:
 async def test_agent_post_question_rejected_while_one_is_pending() -> None:
     """One question at a time — posting while unanswered raises (HTTP 409)."""
     factory, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
-    adapter.drivers.append(_asks(onboarding, "objective", "Q1"))
+    adapter.drivers.append(_asks(onboarding, "Q1"))
     await _ensure_then_online(onboarding, ws_id)
     session = await onboarding.start(ws_id)  # a question is now pending
 
@@ -374,9 +380,9 @@ async def test_every_turn_carries_the_whole_field_plan_not_just_the_first() -> N
     """
     _, onboarding, ws_id, adapter = _services(adapter=_RecordingAdapter())
     adapter.drivers.extend([
-        _asks(onboarding, "objective", "What are you building?"),
-        _asks(onboarding, "name", "What should we call it?"),
-        _asks(onboarding, "success_metrics", "How will you measure success?"),
+        _asks(onboarding, "What are you building?"),
+        _asks(onboarding, "What should we call it?"),
+        _asks(onboarding, "How will you measure success?"),
     ])
     await _ensure_then_online(onboarding, ws_id)
 
@@ -392,3 +398,51 @@ async def test_every_turn_carries_the_whole_field_plan_not_just_the_first() -> N
         plan = field_plan_of(prompt)
         for field, _question in FIELD_PLAN:
             assert field in plan, f"kế hoạch field ở lượt {turn} thiếu {field}"
+
+
+# ── một không gian làm việc mất người chủ nhà vẫn tự vá được ─────────────────
+
+
+async def test_a_workspace_left_without_a_host_repairs_itself_when_one_is_needed() -> None:
+    """Không gian làm việc không có người chủ nhà thì buổi phỏng vấn tự dựng một cái (T005a).
+
+    Mỗi không gian làm việc được cho một người chủ nhà ngay lúc sinh (FR-110), nhưng lần gọi ấy
+    **cố ý được phép hỏng lặng lẽ**: ném lỗi ở đó là báo thất bại cho một không gian làm việc đã
+    được tạo xong (FR-113). Cái giá của lựa chọn ấy là một không gian làm việc không có chủ nhà và
+    **không gì thử lại** — và hoá đơn tới đúng ở đây, vì chế độ dựng dự án bằng hỏi–đáp là thứ
+    người chủ nhà sinh ra để làm.
+
+    Bài này dựng đúng cái cảnh ấy: một không gian làm việc chưa từng có chủ nhà, rồi mở buổi
+    phỏng vấn. Trước khi vá, nó trả về *chưa dựng người chủ nhà* và người dùng không có đường nào
+    đi tiếp ngoài việc tạo một không gian làm việc khác.
+    """
+    factory, onboarding, ws_id, adapter = _services(adapter=FakeAdapter())
+    adapter.drivers.append(_asks(onboarding, "What are you building?"))
+
+    # Cố ý KHÔNG gọi `_ensure_then_online`: không gian làm việc này chưa có chủ nhà nào cả.
+    async with factory() as uow:
+        assert await uow.mariuses.list_by_workspace(ws_id) == []
+
+    # Lần mở đầu vẫn hỏng, và **đúng là phải hỏng**: người chủ nhà vừa dựng chưa có chỗ làm nào
+    # nên nó ngoại tuyến, mà một agent ngoại tuyến thì không chạy được buổi phỏng vấn. Thứ đổi là
+    # thứ còn lại sau đó.
+    with pytest.raises(WorkspaceAgentUnavailable):
+        await onboarding.start(ws_id)
+
+    async with factory() as uow:
+        hosts = await uow.mariuses.list_by_workspace(ws_id)
+        assert [h.name for h in hosts] == ["Livia"], hosts
+        ws = await uow.workspaces.get(ws_id)
+        assert ws.workspace_agent_id == hosts[0].id
+
+    # Và từ đó trở đi nó là một không gian làm việc bình thường: cho người chủ nhà vừa dựng một
+    # chỗ làm — thứ nó sinh ra mà chưa có — là buổi phỏng vấn mở được. Trước khi vá thì không có
+    # đường nào tới đây cả, vì không có người chủ nhà nào để đặt chỗ.
+    async with factory() as uow:
+        host = (await uow.mariuses.list_by_workspace(ws_id))[0]
+        host.adapter_type = "fake"  # khớp FakeAdapter đã đăng ký ở `_services`
+        host.liveness = Liveness.ONLINE
+        await uow.mariuses.update(host)
+        await uow.commit()
+    session = await onboarding.start(ws_id)
+    assert session.collected["pending_question"]["question"] == "What are you building?"

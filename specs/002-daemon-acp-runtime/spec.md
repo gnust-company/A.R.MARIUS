@@ -392,6 +392,27 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   đường chọn sai **có thật** ở mọi nơi, nên tài liệu PHẢI nói thẳng rằng cổng API không mở được
   trang phê duyệt, chứ không được để người đọc tự suy.
 
+- **FR-001d**: Một máy PHẢI **gỡ được** khỏi không gian làm việc, và gỡ nó PHẢI **thu lại giấy tờ
+  của nó**. *Người chủ hỏi 2026-09-07: "tại sao thêm máy lại không xóa được máy?"*
+
+  Đây không phải chuyện gọn gàng. Mỗi máy đã nối giữ một **token còn sống**, nên trước điều khoản
+  này một cái máy cho nghỉ, bán đi hay mất đều giữ giấy tờ đi làm chừng nào hàng của nó còn đứng
+  đó, và không ai thu lại được. FR-001 cho một đường vào mà không có đường ra.
+
+  - **Token chết ngay.** Sau khi gỡ, token ấy không mở được cửa nào nữa. Đây là nửa đáng giá; phần
+    còn lại là dọn dẹp.
+  - **Agent từng sống ở đó KHÔNG ĐƯỢC xoá theo.** Chúng thành *chưa có chỗ làm* — một trạng thái
+    đã có nghĩa định sẵn và có đường về (FR-006c). Xoá chúng là ném đi lịch sử lượt chạy và chỗ
+    ngồi trong dự án vì một sự thật về cái máy.
+  - **Máy đang cầm việc vẫn gỡ được.** Máy người ta muốn thu giấy tờ nhất đúng là máy đang bận; một
+    cửa từ chối lúc nó đang chạy là một cửa đóng đúng lúc cần. Lượt chạy nó cầm mất chỗ giữ, và
+    daemon còn sống ngoài kia nhận về một lời **từ chối sạch**, không phải một cú vỡ.
+  - **Mã nối máy đã dùng đi theo máy nó đã nhận vào.** Đây là câu hỏi để ngỏ của T159, và thứ chốt
+    nó là: không gì đọc những hàng ấy — chỉ chính luồng nối máy chạm vào bảng mã, và nó tra một mã
+    **còn sống** theo giá trị. Một hàng đã tiêu mà máy của nó không còn là một bản ghi không có
+    người đọc, giữ cho một sổ kiểm toán không tồn tại.
+  - Máy ở không gian làm việc của người khác đọc **y như máy không tồn tại** (Hiến pháp I).
+
 - **FR-002**: Daemon PHẢI tự dò các agent CLI có trên máy và đăng ký mỗi cái tìm được thành một **chỗ làm**
   gắn với workspace đó.
 - **FR-003**: Mỗi chỗ làm PHẢI mang tên máy đọc được, để người dùng phân biệt được hai máy khác nhau của

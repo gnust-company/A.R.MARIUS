@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from uuid import UUID
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from armarius.infrastructure.daemon.models import (
@@ -84,3 +84,47 @@ async def forget_workspace(session: AsyncSession, workspace_id: UUID) -> None:
     await session.execute(
         delete(MachineModel).where(MachineModel.workspace_id == workspace_id)
     )
+
+
+async def forget_machine(session: AsyncSession, machine_id: UUID) -> None:
+    """Everything a removed machine takes with it (FR-001d).
+
+    Same list as :func:`forget_workspace`, same order, narrowed to one machine — a child
+    before its parent, always. The one table that is not narrowed by `machine_id` is the
+    bindings: an agent is attached to a *workplace*, and the workplaces being removed are the
+    ones this machine reported, so they are found through it.
+
+    **A spent link code goes with the machine it admitted**, rather than being unlinked and
+    left behind. That was the open question in T159, and what settles it is that nothing
+    reads these rows: the only code in the product that touches `daemon_link_codes` is the
+    linking flow itself, which looks up a *live* code by its value. A consumed row whose
+    machine is gone would be a record with no reader, kept for an audit trail that does not
+    exist. Deleting it also matches what a deleted workspace already does with the same rows.
+
+    **Agents that lived here become unplaced, not deleted.** Their binding goes, and the
+    absence of a binding already has a defined meaning — offline, reason `not_placed`
+    (FR-006c). That is exactly true of them now, and it is recoverable: put the agent
+    somewhere else and it works again. Deleting the agents would throw away their run
+    history and their seats for a fact about a machine.
+
+    **A run held by this machine loses its claim, and that is the honest outcome.** The
+    machine is gone; the run cannot go on. What the daemon sees if it is still alive and
+    still talking is a refusal rather than a crash — run authentication resolves a token
+    through the claim row, and with the row gone it resolves to nothing.
+    """
+    workplaces = select(WorkplaceModel.id).where(WorkplaceModel.machine_id == machine_id)
+    await session.execute(
+        delete(AgentWorkplaceBindingModel).where(
+            AgentWorkplaceBindingModel.workplace_id.in_(workplaces)
+        )
+    )
+    await session.execute(
+        delete(RunClaimModel).where(RunClaimModel.workplace_id.in_(workplaces))
+    )
+    await session.execute(
+        delete(DaemonLinkCodeModel).where(DaemonLinkCodeModel.machine_id == machine_id)
+    )
+    await session.execute(
+        delete(WorkplaceModel).where(WorkplaceModel.machine_id == machine_id)
+    )
+    await session.execute(delete(MachineModel).where(MachineModel.id == machine_id))

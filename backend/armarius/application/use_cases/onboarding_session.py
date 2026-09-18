@@ -213,6 +213,20 @@ class OnboardingService:
         agent about to speak, which is what it always looked like.
         """
         wa = await self._ws_agent.ensure_workspace_agent(workspace_id)
+        if wa is None:
+            # No host at all. Every workspace is given one the moment it is created (FR-110),
+            # but that one call is deliberately allowed to fail quietly: raising there would
+            # report failure for a workspace that had already been made (FR-113). The cost of
+            # that choice is a workspace with no host and **nothing that retries** — and this
+            # is where the bill arrives, because agent-mode setup is the thing a host is for.
+            #
+            # So repair it here, and only here (T005a). The two other places it was tempting
+            # to put this are both worse: at login it would be paid on every sign-in by every
+            # account that is fine, and on the directory read it would be a write on a read
+            # path. Here it costs nothing until the one moment it is already broken, and the
+            # door is idempotent, so a host that turns up in between is simply returned.
+            await self._ws_agent.provide_host(workspace_id)
+            wa = await self._ws_agent.ensure_workspace_agent(workspace_id)
         if wa is None or not _wa_ready(wa):
             raise WorkspaceAgentUnavailable("workspace_agent_not_set_up")
 
@@ -232,7 +246,7 @@ class OnboardingService:
                 workspace_id=workspace_id, created_at=now, updated_at=now
             )
             session.collected = {
-                "phase": "asking", "answers": {},
+                "phase": "asking",
                 "pending_question": None, "draft": None,
             }
             await uow.onboardings.add(session)
