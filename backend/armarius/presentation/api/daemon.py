@@ -369,6 +369,11 @@ def _where_to_approve(request: Request) -> str:
     comes back is the person's own `-server` value. Anyone who can set it already runs the
     daemon. The forwarded scheme is honoured so a deployment behind TLS does not hand out a
     plain-http address.
+
+    One thing this cannot fix, and the docs say so instead: the approval page is served by the
+    interface, not by this API. A daemon pointed straight at the API port gets an address on
+    that port, where `/link` is a 404 — the compose file publishes that port on every interface,
+    so it is a wrong turn available everywhere rather than only on a developer's laptop.
     """
     configured = settings.web_base_url.strip().rstrip("/")
     if configured:

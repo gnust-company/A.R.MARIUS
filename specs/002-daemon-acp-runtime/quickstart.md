@@ -32,9 +32,12 @@ Cần **ít nhất một agent CLI thật** trên máy. Đợt đầu hỗ trợ
 ## 1. Nối máy vào workspace — SC-001 (10 phút, tự làm)
 
 ```bash
-./bin/armarius-daemon login --server http://localhost:8080
-#   Mở http://localhost:3000/link và nhập mã:  KQ7F-M2XD
+./bin/armarius-daemon login -server http://localhost:3000
+#   Opening http://localhost:3000/link?code=KQ7F-M2XD
 ```
+
+Địa chỉ đưa cho `-server` là **địa chỉ bạn mở Armarius**, không phải cổng API: server dựng địa chỉ
+phê duyệt từ chính yêu cầu này, và trang ấy do giao diện phục vụ chứ không phải cổng API (FR-001c).
 
 Mở địa chỉ đó, bấm duyệt.
 
