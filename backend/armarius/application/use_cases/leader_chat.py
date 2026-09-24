@@ -28,6 +28,7 @@ from armarius.application.ports.adapter import (
 )
 from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.liveness import LivenessEngine
+from armarius.application.use_cases.run_reply import SAID, said_in
 from armarius.application.use_cases.seats import (
     leader_marius_id,
     leader_role_ids,
@@ -70,10 +71,6 @@ RunCloser = Callable[..., Awaitable[None]]
 # A Leader can take a turn unless it is offline/hung; otherwise the chat is disabled.
 _AVAILABLE = {Liveness.ONLINE, Liveness.WORKING, Liveness.CHECKING}
 _PROMPT_TURN_TAIL = 10  # recent turns included in the prompt for grounding
-# What the Leader produced, as the machine writes it down. A turn taken elsewhere leaves its
-# words here and nowhere else, so this is what the reply is rebuilt from — the same name the
-# in-process road coalesces its deltas into, so one reader answers for both roads.
-_SAID = "assistant.message"
 
 
 @dataclass
@@ -625,7 +622,7 @@ class LeaderChatService:
         bubble either way, and the reply is replaced by the recorded one when the turn ends.
         """
         project_id = self._watching.get(run_id)
-        if project_id is None or event_type != _SAID:
+        if project_id is None or event_type != SAID:
             return
         text = payload.get("text")
         if text:
@@ -650,7 +647,7 @@ class LeaderChatService:
             conversation_id = conversation.id
             leader_id = conversation.leader_marius_id
             ok = run is not None and run.status == RunStatus.COMPLETED
-            text = await self._reply_of(uow, run_id) if ok else ""
+            text = await said_in(uow, run_id) if ok else ""
             error = run.error if run is not None else None
         self._watching.pop(run_id, None)
         await self._finish(
@@ -668,25 +665,6 @@ class LeaderChatService:
                 await self._liveness.record_signal(leader_id)
             except LookupError:  # pragma: no cover - leader vanished mid-turn
                 pass
-
-    async def _reply_of(self, uow: UnitOfWork, run_id: UUID) -> str:
-        """Everything the Leader said in one run, in the order it said it.
-
-        An event that carries only the opening of something long is followed to the rest
-        (FR-049). Rebuilding a reply out of the openings would put a silently truncated answer
-        in the Leader's mouth, which is worse than a missing one: nothing on the screen would
-        say it had been cut.
-        """
-        parts: list[str] = []
-        for event in await uow.run_events.list_by_run(run_id, types=[_SAID]):
-            said = str(event.payload.get("text") or "")
-            if event.full_field:
-                whole = await uow.run_events.full_text(run_id, event.seq)
-                if whole is not None:
-                    said = whole[1]
-            if said:
-                parts.append(said)
-        return "".join(parts).strip()
 
     async def _finish(
         self,

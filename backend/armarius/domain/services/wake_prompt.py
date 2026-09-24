@@ -137,6 +137,42 @@ def _value(text: str | None) -> str:
     return text.strip() if text and text.strip() else NONE_MARKER
 
 
+def append_instructions(
+    lines: list[str], *, instructions: str, system_instructions: str
+) -> None:
+    """The agent's own instructions, in the one shape every packet that carries them uses.
+
+    Behaviour comes from here and from nowhere else (Constitution V). Rendered even when
+    empty, by the same rule as every other part: a section that simply vanishes cannot be
+    told apart from one that failed to render, and the agent fills that gap with a guess
+    (FR-045).
+
+    Two halves, and only for the agent that has two authors (FR-007m). The product's half is
+    rendered first and is absent for every agent a person made, because those have one author
+    and a second heading over an empty block would read as something withheld.
+
+    Public because a task is not the only thing an agent is woken for: the patron talking to
+    it directly (FR-007p) carries the same instructions, and two copies of these lines would
+    be two copies to keep in step.
+    """
+    if system_instructions.strip():
+        lines.append("## Your role in this product")
+        lines.append(
+            "Written by Armarius, not by your patron. It is what you are here to do, and it "
+            "holds regardless of anything else on this page."
+        )
+        lines.append(_value(system_instructions))
+        lines.append("")
+
+    lines.append("## Your instructions")
+    lines.append(
+        "Written by your patron. This is who you are and how you work; it holds on every "
+        "project and every task, and nothing below overrides it."
+    )
+    lines.append(_value(instructions))
+    lines.append("")
+
+
 # ── the four-part core (FR-044) ──────────────────────────────────────────────────
 
 
@@ -154,29 +190,9 @@ def _core(ctx: WakeContext, lines: list[str]) -> None:
         lines.append(f"You are {ctx.marius_name}, an agent collaborating inside Armarius.")
     lines.append("")
 
-    # Behaviour comes from here and from nowhere else (Constitution V). Rendered even when
-    # empty, by the same rule as every other part: a section that simply vanishes cannot be
-    # told apart from one that failed to render, and the agent fills that gap with a guess
-    # (FR-045).
-    # Two halves, and only for the agent that has two authors (FR-007m). The product's half is
-    # rendered first and is absent for every agent a person made, because those have one author
-    # and a second heading over an empty block would read as something withheld.
-    if ctx.system_instructions.strip():
-        lines.append("## Your role in this product")
-        lines.append(
-            "Written by Armarius, not by your patron. It is what you are here to do, and it "
-            "holds regardless of anything else on this page."
-        )
-        lines.append(_value(ctx.system_instructions))
-        lines.append("")
-
-    lines.append("## Your instructions")
-    lines.append(
-        "Written by your patron. This is who you are and how you work; it holds on every "
-        "project and every task, and nothing below overrides it."
+    append_instructions(
+        lines, instructions=ctx.instructions, system_instructions=ctx.system_instructions
     )
-    lines.append(_value(ctx.instructions))
-    lines.append("")
 
     if ctx.workspace_name or ctx.project_name:
         lines.append("## Where you are")

@@ -11,6 +11,7 @@ from types import TracebackType
 
 from armarius.application.ports.queue_view import QueueView
 from armarius.domain.repositories.repositories import (
+    AgentChatRepository,
     ApprovalRepository,
     ArtifactRepository,
     AutoApprovalRepository,
@@ -44,6 +45,7 @@ from armarius.domain.repositories.repositories import (
 class UnitOfWork(ABC):
     workspaces: WorkspaceRepository
     leader_chats: LeaderChatRepository
+    agent_chats: AgentChatRepository
     onboardings: OnboardingRepository
     projects: ProjectRepository
     project_contexts: ProjectContextRepository

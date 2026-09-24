@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from armarius.domain.entities.agent_chat import AgentConversation
 from armarius.domain.entities.approval import Approval, ApprovalResult, SignerKind
 from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.auto_approval import AutoApproval
@@ -44,6 +45,7 @@ from armarius.domain.services.escalation import EscalationLevel
 from armarius.domain.services.orchestration_cadence import Snag, SnagKind
 from armarius.domain.services.wake_reason import from_payload as causes_from_payload
 from armarius.infrastructure.database.models import (
+    AgentConversationModel,
     ArtifactModel,
     ChecklistItemModel,
     CommentModel,
@@ -245,6 +247,18 @@ def leader_chat_to_entity(
         project_id=m.project_id,
         leader_marius_id=m.leader_marius_id,
         session_params=dict(m.session_params or {}),
+        transcript=list(m.transcript or []),
+        state=ChatState(m.state),
+        driving_run_id=m.driving_run_id,
+        created_at=m.created_at,
+        updated_at=m.updated_at,
+    )
+
+
+def agent_chat_to_entity(m: AgentConversationModel) -> AgentConversation:
+    return AgentConversation(
+        id=m.id,
+        marius_id=m.marius_id,
         transcript=list(m.transcript or []),
         state=ChatState(m.state),
         driving_run_id=m.driving_run_id,

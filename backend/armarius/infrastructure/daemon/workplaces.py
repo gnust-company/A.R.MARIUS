@@ -109,6 +109,14 @@ class OfferedWorkplace:
 
 
 @dataclass(frozen=True)
+class AgentWorkplace:
+    """Where one agent works, as a person reads it: the CLI, and the machine it is on."""
+
+    cli_kind: str
+    machine_name: str
+
+
+@dataclass(frozen=True)
 class Heartbeat:
     """The answer to one beat."""
 
@@ -393,6 +401,35 @@ class DaemonWorkplaceService:
                 )
                 for row, machine_name in found.all()
             ]
+
+    async def where_agents_work(
+        self, marius_ids: Sequence[UUID]
+    ) -> dict[UUID, AgentWorkplace]:
+        """Which CLI, on which machine, each of these agents works at (FR-003, FR-007o).
+
+        An agent attached nowhere — never placed, or its machine taken out of the workspace —
+        is simply absent. A person asking *what is this agent running on* is asking a
+        question the layers above are not allowed to phrase (Constitution III), so the
+        answer is read here and handed straight to the screen.
+        """
+        wanted = list(marius_ids)
+        if not wanted:
+            return {}
+        async with self._sessions()() as session:
+            found = await session.execute(
+                select(
+                    AgentWorkplaceBindingModel.marius_id,
+                    WorkplaceModel.cli_kind,
+                    MachineModel.display_name,
+                )
+                .join(WorkplaceModel, WorkplaceModel.id == AgentWorkplaceBindingModel.workplace_id)
+                .join(MachineModel, MachineModel.id == WorkplaceModel.machine_id)
+                .where(AgentWorkplaceBindingModel.marius_id.in_(wanted))
+            )
+            return {
+                marius_id: AgentWorkplace(cli_kind=cli_kind, machine_name=machine_name or "")
+                for marius_id, cli_kind, machine_name in found.all()
+            }
 
     async def list_machines(self, workspace_id: UUID) -> list[LinkedMachine]:
         """Every machine here, what it can run, and who lives on it (FR-003, FR-007a, FR-033).

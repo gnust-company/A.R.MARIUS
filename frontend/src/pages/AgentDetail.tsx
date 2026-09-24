@@ -1,8 +1,9 @@
-// Single-agent detail view (#72). Opened by clicking an agent card in the Directory. The
-// right column is the system↔agent interaction log the owner tracks: every Run the system
-// dispatched to this agent (assignment, mention, comment, …), each expandable to its
-// durable per-run trace (RunEvent). Data is read-only, and a live run advances in place off
-// the workspace event channel — no timer (T167, FR-080).
+// Single-agent detail view (#72) — the one screen where an agent is managed (FR-007m, FR-007o).
+// Opened by clicking an agent card in the Directory. Overview answers *what is this agent and
+// where does it work*, with a direct chat beside it (FR-007p); Activity is the system↔agent run
+// log: every Run dispatched to this agent, each expandable to its durable trace. A live run
+// advances in place off the workspace event channel — no timer (T167, FR-080). Removing the
+// agent lives here too, behind the header's menu, rather than on every card of the list.
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -27,9 +28,11 @@ import {
   CheckCircle2,
   Plus,
   ExternalLink,
+  MoreHorizontal,
+  Trash2,
 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
-import type { AgentStatus } from '@/store/appStore';
+import type { AgentStatus, PlacementOption } from '@/store/appStore';
 import { listMariusRuns, listRunEvents, type RunDTO, type RunEventDTO } from '@/lib/api';
 import Modal from '@/components/Modal';
 import VellumPanel from '@/components/VellumPanel';
@@ -39,6 +42,8 @@ import { onWorkspaceEvent } from '@/hooks/use-workspace-events';
 import InstructionsTab from '@/components/agent/InstructionsTab';
 import SkillsTab, { type SkillRow } from '@/components/agent/SkillsTab';
 import SettingsTab from '@/components/agent/SettingsTab';
+import AgentChatPanel from '@/components/agent/AgentChatPanel';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 // ─── Status palette (mirrors Directory's Scriptorium tones) ───────────────────
 
@@ -246,9 +251,16 @@ export default function AgentDetail() {
   const allSkills = useAppStore((s) => s.skills);
   const installAgentSkills = useAppStore((s) => s.installAgentSkills);
   const updateMarius = useAppStore((s) => s.updateMarius);
+  const deleteMarius = useAppStore((s) => s.deleteMarius);
+  const listAgentOptions = useAppStore((s) => s.listAgentOptions);
   const agent = mariuses.find((m) => m.id === id);
 
   const [tab, setTab] = useState<Tab>('overview');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  // What the place this agent works at lets a person pick (FR-007k), read for the Settings tab.
+  const [options, setOptions] = useState<PlacementOption[]>([]);
+  const [optionsLoading, setOptionsLoading] = useState(true);
   const [runs, setRuns] = useState<RunDTO[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -279,6 +291,16 @@ export default function AgentDetail() {
   }, [workspaceId, id, t]);
 
   useEffect(() => { loadRuns(); }, [loadRuns]);
+
+  const loadOptions = useCallback(() => {
+    if (!id) return;
+    listAgentOptions(id)
+      .then(setOptions)
+      .catch(() => setOptions([]))
+      .finally(() => setOptionsLoading(false));
+  }, [id, listAgentOptions]);
+
+  useEffect(() => { loadOptions(); }, [loadOptions]);
 
   // One re-read per burst, not one per event. A single run announces itself three times
   // (opened, started, finished) and several runs can land together, so reacting to each
@@ -339,6 +361,28 @@ export default function AgentDetail() {
     } catch (err) {
       setError(errorText(err, t));
       throw err;
+    }
+  };
+
+  const saveRuntimeOptions = async (touched: Record<string, string>) => {
+    if (!agent) return;
+    setError(null);
+    try {
+      await updateMarius(agent.id, { runtimeOptions: touched });
+    } catch (err) {
+      setError(errorText(err, t));
+      throw err;
+    }
+  };
+
+  const removeAgent = async () => {
+    if (!agent) return;
+    setError(null);
+    try {
+      await deleteMarius(agent.id);
+      navigate(wsHref(workspaceId, '/agents'));
+    } catch (err) {
+      setError(errorText(err, t));
     }
   };
 
@@ -427,11 +471,6 @@ export default function AgentDetail() {
             )}
           </div>
           <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-            {agent?.role && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#E3D7BC] text-[#6B5E4E]">
-                {agent.role}
-              </span>
-            )}
             <span
               className="inline-flex items-center gap-1.5 text-[12px] font-medium"
               style={{ color: statusColor.color }}
@@ -441,6 +480,33 @@ export default function AgentDetail() {
             </span>
           </div>
         </div>
+        {agent && (
+          <div className="relative flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setMenuOpen((open) => !open)}
+              className="p-1.5 rounded-md text-[#6B5E4E] hover:text-[#2A2318] hover:bg-[#EDE4CE] transition-colors"
+              aria-label={t('agentDetail.moreActions')}
+              aria-expanded={menuOpen}
+            >
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
+            {menuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-[#E3D7BC] bg-[#F7F0E0] py-1 shadow-lg">
+                  <button
+                    type="button"
+                    onClick={() => { setMenuOpen(false); setConfirmDelete(true); }}
+                    className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-[13px] text-[#8A3B22] hover:bg-[#F3D9D0] transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> {t('agentDetail.deleteAgent')}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </motion.div>
 
       {/* The screen is a set of sections rather than one page, inherited from Multica's agent
@@ -466,6 +532,14 @@ export default function AgentDetail() {
           </button>
         ))}
       </div>
+
+      {/* One place for what went wrong, above whichever tab is open — a save refused on the
+          Settings tab used to be written into a box that only the Activity tab showed. */}
+      {error && (
+        <div className="mb-4 flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#F3D9D0] text-[12px] text-[#8A3B22] border border-[#E3C0B2]">
+          <AlertTriangle className="w-3.5 h-3.5" /> {error}
+        </div>
+      )}
 
       {tab === 'instructions' && agent && (
         <VellumPanel className="rounded-lg border-[#E3D7BC]">
@@ -497,142 +571,159 @@ export default function AgentDetail() {
             name={agent.displayName || agent.name}
             description={agent.description ?? ''}
             runtimeOptions={agent.runtimeOptions ?? {}}
-            adapterType={agent.adapterType ?? ''}
+            runtime={agent.runtime}
+            options={options}
+            optionsLoading={optionsLoading}
             canEdit
             onSave={saveProfile}
+            onSaveRuntimeOptions={saveRuntimeOptions}
           />
         </VellumPanel>
       )}
 
-      <div
-        className={cn(
-          'grid grid-cols-1 gap-6',
-          tab === 'overview' && 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]',
-          tab !== 'overview' && tab !== 'activity' && 'hidden',
-        )}
-      >
-        {/* ── Overview + Health ── */}
-        <div className={cn('space-y-6', tab !== 'overview' && 'hidden')}>
-          <VellumPanel className="rounded-lg border-[#E3D7BC]">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A89880] mb-4">
-              {t('agentDetail.overview')}
-            </p>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label={t('agentDetail.field.role')}>{agent?.role || '—'}</Field>
-              <Field label={t('agentDetail.field.adapter')}>
-                <span className="inline-flex items-center gap-1.5">
-                  <AdapterIcon className="w-3.5 h-3.5 text-[#6B5E4E]" />
-                  <span className="font-mono text-[12px]">{agent?.adapterType || '—'}</span>
-                </span>
-              </Field>
-              <Field label={t('agentDetail.field.inviteStatus')}>
-                {agent ? t('directory.status.' + status) : '—'}
-              </Field>
-              <Field label={t('agentDetail.field.workspaceAgent')}>
-                {agent?.isWorkspaceAgent ? t('common.yes') : t('common.no')}
-              </Field>
-              <div className="col-span-2">
-                <Field label={t('agentDetail.field.id')}>
-                  <span className="font-mono text-[12px] break-all text-[#6B5E4E]">{id}</span>
-                </Field>
-              </div>
-            </div>
-            <div className="mt-4 pt-4 border-t border-[#E3D7BC]">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#A89880]">
-                  {t('agentDetail.field.skills')}
-                </p>
-                <button
-                  onClick={openLinkSkills}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium text-[#C25E3A] hover:bg-[#F3D9D0] transition-colors"
-                  aria-label={t('agentDetail.linkSkills.add')}
-                  title={t('agentDetail.linkSkills.add')}
-                >
-                  <Plus className="w-3.5 h-3.5" /> {t('agentDetail.linkSkills.add')}
-                </button>
-              </div>
-              {linkedSkillNames.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {linkedSkillNames.map((s) => (
-                    <span
-                      key={s}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#E3D7BC] text-[#6B5E4E]"
-                    >
-                      {s}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[12px] text-[#A89880]">{t('agentDetail.noSkills')}</p>
-              )}
-            </div>
-          </VellumPanel>
-
-          <VellumPanel className="rounded-lg border-[#E3D7BC]">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A89880]">
-                {t('agentDetail.health')}
+      {/* Overview: what this agent is and where it works, beside a direct line to it
+          (FR-007p). The run log is its own tab and is not repeated here — showing it in both
+          places was the same panel twice. */}
+      {tab === 'overview' && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+          <div className="space-y-6">
+            <VellumPanel className="rounded-lg border-[#E3D7BC]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A89880] mb-4">
+                {t('agentDetail.overview')}
               </p>
-              <span
-                className="inline-flex items-center gap-1.5 text-[12px] font-medium"
-                style={{ color: statusColor.color }}
-              >
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColor.color }} />
-                {t('directory.status.' + status)}
-              </span>
-            </div>
-            <div className="space-y-3 text-[13px]">
-              <div className="flex items-center justify-between">
-                <span className="text-[#6B5E4E]">{t('agentDetail.field.liveness')}</span>
-                <span className="text-[#2A2318] font-medium">{t('directory.status.' + status)}</span>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label={t('agentDetail.field.runtime')}>
+                  <span className="inline-flex items-center gap-1.5">
+                    <AdapterIcon className="w-3.5 h-3.5 text-[#6B5E4E]" />
+                    <span className="font-mono text-[12px]">
+                      {agent?.runtime
+                        ? t('agentDetail.runtimeLine', {
+                            cli: agent.runtime.cli_kind,
+                            machine: agent.runtime.machine_name,
+                          })
+                        : t('agentDetail.runtimeNone')}
+                    </span>
+                  </span>
+                </Field>
+                <Field label={t('agentDetail.field.model')}>
+                  <span className="font-mono text-[12px]">
+                    {agent?.runtimeOptions?.model || t('agentDetail.modelDefault')}
+                  </span>
+                </Field>
+                <Field label={t('agentDetail.field.workspaceAgent')}>
+                  {agent?.isWorkspaceAgent ? t('common.yes') : t('common.no')}
+                </Field>
+                <div className="col-span-2">
+                  <Field label={t('agentDetail.field.id')}>
+                    <span className="font-mono text-[12px] break-all text-[#6B5E4E]">{id}</span>
+                  </Field>
+                </div>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[#6B5E4E]">{t('agentDetail.field.lastSeen')}</span>
-                <span className="text-[#2A2318]" title={formatAbsolute(agent?.lastSeen)}>
-                  {agent?.lastSeen ? rel(agent.lastSeen) : t('agentDetail.never')}
+              <div className="mt-4 pt-4 border-t border-[#E3D7BC]">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#A89880]">
+                    {t('agentDetail.field.skills')}
+                  </p>
+                  <button
+                    onClick={openLinkSkills}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium text-[#C25E3A] hover:bg-[#F3D9D0] transition-colors"
+                    aria-label={t('agentDetail.linkSkills.add')}
+                    title={t('agentDetail.linkSkills.add')}
+                  >
+                    <Plus className="w-3.5 h-3.5" /> {t('agentDetail.linkSkills.add')}
+                  </button>
+                </div>
+                {linkedSkillNames.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {linkedSkillNames.map((s) => (
+                      <span
+                        key={s}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#E3D7BC] text-[#6B5E4E]"
+                      >
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[12px] text-[#A89880]">{t('agentDetail.noSkills')}</p>
+                )}
+              </div>
+            </VellumPanel>
+
+            <VellumPanel className="rounded-lg border-[#E3D7BC]">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A89880]">
+                  {t('agentDetail.health')}
+                </p>
+                <span
+                  className="inline-flex items-center gap-1.5 text-[12px] font-medium"
+                  style={{ color: statusColor.color }}
+                >
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColor.color }} />
+                  {t('directory.status.' + status)}
                 </span>
               </div>
-              {/* Why, not just whether (FR-006c). Every way an agent can be unreachable —
-                  never placed, its CLI uninstalled, its machine switched off — reaches the
-                  business layers as the one word "offline"; this is the only place the
-                  difference is allowed to show, because this is the only place it helps.
-                  The server sends a code and the sentence is built here, so the same state
-                  reads in whichever language the person set (Hiến pháp VI + VII). An
-                  unrecognised code still gets a sentence rather than a raw key: a screen
-                  that leaks `agentDetail.offlineReason.x` is a screen that told them
-                  nothing.
-
-                  The row is labelled for the *place*, not for the verdict, and that is not
-                  cosmetic. Liveness is decided on a clock and this is decided on the state
-                  of a place, so there is a real window — the workplace shut a moment ago,
-                  the three-probe decay has not run yet — where the agent still reads
-                  online. Labelling this "why offline" would have printed a contradiction
-                  on screen during exactly the window when the person could still act on
-                  it. Named for the place, the same sentence is a warning before the fall
-                  and the explanation after it. */}
-              {agent?.offlineReason && (
-                <div className="flex items-start justify-between gap-4 pt-3 border-t border-[#E3D7BC]">
-                  <span className="text-[#6B5E4E] shrink-0">
-                    {t('agentDetail.offlineReason.label')}
-                  </span>
-                  <span className="text-[#8A3B22] text-right">
-                    {t('agentDetail.offlineReason.' + agent.offlineReason, {
-                      defaultValue: t('agentDetail.offlineReason.unknown'),
-                    })}
+              <div className="space-y-3 text-[13px]">
+                <div className="flex items-center justify-between">
+                  <span className="text-[#6B5E4E]">{t('agentDetail.field.liveness')}</span>
+                  <span className="text-[#2A2318] font-medium">{t('directory.status.' + status)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[#6B5E4E]">{t('agentDetail.field.lastSeen')}</span>
+                  <span className="text-[#2A2318]" title={formatAbsolute(agent?.lastSeen)}>
+                    {agent?.lastSeen ? rel(agent.lastSeen) : t('agentDetail.never')}
                   </span>
                 </div>
-              )}
-            </div>
+                {/* Why, not just whether (FR-006c). Every way an agent can be unreachable —
+                    never placed, its CLI uninstalled, its machine switched off — reaches the
+                    business layers as the one word "offline"; this is the only place the
+                    difference is allowed to show, because this is the only place it helps.
+                    The server sends a code and the sentence is built here, so the same state
+                    reads in whichever language the person set (Hiến pháp VI + VII). An
+                    unrecognised code still gets a sentence rather than a raw key: a screen
+                    that leaks `agentDetail.offlineReason.x` is a screen that told them
+                    nothing.
+
+                    The row is labelled for the *place*, not for the verdict, and that is not
+                    cosmetic. Liveness is decided on a clock and this is decided on the state
+                    of a place, so there is a real window — the workplace shut a moment ago,
+                    the three-probe decay has not run yet — where the agent still reads
+                    online. Labelling this "why offline" would have printed a contradiction
+                    on screen during exactly the window when the person could still act on
+                    it. Named for the place, the same sentence is a warning before the fall
+                    and the explanation after it. */}
+                {agent?.offlineReason && (
+                  <div className="flex items-start justify-between gap-4 pt-3 border-t border-[#E3D7BC]">
+                    <span className="text-[#6B5E4E] shrink-0">
+                      {t('agentDetail.offlineReason.label')}
+                    </span>
+                    <span className="text-[#8A3B22] text-right">
+                      {t('agentDetail.offlineReason.' + agent.offlineReason, {
+                        defaultValue: t('agentDetail.offlineReason.unknown'),
+                      })}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </VellumPanel>
+          </div>
+          <VellumPanel className="rounded-lg border-[#E3D7BC]">
+            {agent && workspaceId && (
+              <AgentChatPanel
+                key={agent.id}
+                workspaceId={workspaceId}
+                mariusId={agent.id}
+                agentName={displayName}
+                online={status !== 'offline'}
+              />
+            )}
           </VellumPanel>
         </div>
+      )}
 
-        {/* ── Activity (system↔agent run log) ── */}
-        <VellumPanel
-          className={cn(
-            'rounded-lg border-[#E3D7BC] flex flex-col',
-            tab !== 'overview' && tab !== 'activity' && 'hidden',
-          )}
-        >
+      {/* ── Activity (system↔agent run log) ── */}
+      {tab === 'activity' && (
+        <VellumPanel className="rounded-lg border-[#E3D7BC] flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Activity className="w-4 h-4 text-[#C25E3A]" />
@@ -646,12 +737,6 @@ export default function AgentDetail() {
               </span>
             )}
           </div>
-
-          {error && (
-            <div className="mb-3 flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#F3D9D0] text-[12px] text-[#8A3B22] border border-[#E3C0B2]">
-              <AlertTriangle className="w-3.5 h-3.5" /> {error}
-            </div>
-          )}
 
           {runs === null ? (
             <div className="flex items-center justify-center gap-2 py-16 text-[13px] text-[#A89880]">
@@ -679,7 +764,7 @@ export default function AgentDetail() {
             </p>
           )}
         </VellumPanel>
-      </div>
+      )}
 
       {/* Post-invite skill install (#74) — link more skills + push a one-time install prompt. */}
       <Modal
@@ -757,6 +842,16 @@ export default function AgentDetail() {
           </p>
         )}
       </Modal>
+
+      <ConfirmDialog
+        isOpen={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={removeAgent}
+        title={t('agentDetail.deleteTitle')}
+        message={t('directory.deleteConfirm', { name: displayName })}
+        confirmLabel={t('agentDetail.deleteAgent')}
+        danger
+      />
     </div>
   );
 }

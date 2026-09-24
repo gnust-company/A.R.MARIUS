@@ -13,6 +13,9 @@ from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.container import Container
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
+    AgentChatOut,
+    AgentChatSendIn,
+    AgentRuntimeOut,
     CreateWorkspaceIn,
     ImportSkillIn,
     InstallSkillsIn,
@@ -231,19 +234,31 @@ async def list_workplaces(
     ]
 
 
-async def _with_offline_reason(
-    container: Container, mariuses: Sequence[Marius]
-) -> list[MariusOut]:
-    """Render agents for the screen, each carrying why it has nowhere to work (FR-006c).
+async def _as_shown(container: Container, mariuses: Sequence[Marius]) -> list[MariusOut]:
+    """Render agents for the screen: why each has nowhere to work (FR-006c), and where it
+    works when it does (FR-007o).
 
     Every route that hands an agent to a person goes through here, rather than only the
     one the roster happens to load from today. The screen keeps agents in a single store
     and writes back whatever the last call returned, so a route that skipped this would
-    quietly blank the reason out the next time somebody renamed an agent.
+    quietly blank both out the next time somebody renamed an agent.
     """
-    reasons = await container.mariuses.offline_reasons([m.id for m in mariuses])
+    ids = [m.id for m in mariuses]
+    reasons = await container.mariuses.offline_reasons(ids)
+    where = await container.daemon_workplaces.where_agents_work(ids)
     return [
-        MariusOut.model_validate(m).model_copy(update={"offline_reason": reasons.get(m.id)})
+        MariusOut.model_validate(m).model_copy(
+            update={
+                "offline_reason": reasons.get(m.id),
+                "runtime": (
+                    AgentRuntimeOut(
+                        cli_kind=where[m.id].cli_kind, machine_name=where[m.id].machine_name
+                    )
+                    if m.id in where
+                    else None
+                ),
+            }
+        )
         for m in mariuses
     ]
 
@@ -298,7 +313,7 @@ async def create_marius(
         # and between them they are the whole of what this event has ever meant.
         {"marius_id": str(marius.id), "status": "created"},
     )
-    rendered = (await _with_offline_reason(container, [marius]))[0]
+    rendered = (await _as_shown(container, [marius]))[0]
     return MariusCreatedOut.model_validate(rendered.model_dump())
 
 
@@ -308,7 +323,7 @@ async def list_directory(
 ) -> list[MariusOut]:
     await _require_owned_workspace(container, user, workspace_id)
     items = await container.mariuses.list_directory(workspace_id)
-    return await _with_offline_reason(container, items)
+    return await _as_shown(container, items)
 
 
 @router.get(
@@ -363,7 +378,7 @@ async def update_marius(
         # works (Điều III).
         placement_options=body.runtime_options,
     )
-    return (await _with_offline_reason(container, [marius]))[0]
+    return (await _as_shown(container, [marius]))[0]
 
 
 @router.get(
@@ -415,7 +430,7 @@ async def designate_workspace_agent(
         "workspace_agent.designated",
         {"marius_id": str(marius_id)},
     )
-    return (await _with_offline_reason(container, [marius]))[0]
+    return (await _as_shown(container, [marius]))[0]
 
 
 @router.post(
@@ -496,6 +511,54 @@ async def delete_marius(
         "marius.status_changed",
         {"marius_id": str(marius_id), "status": "deleted"},
     )
+
+
+# ------------------------------------------------------------- direct chat
+async def _owned_agent(container: Container, user, workspace_id: UUID, marius_id: UUID) -> None:  # noqa: ANN001
+    """The agent is the caller's, or it is not there at all (Constitution I)."""
+    await _require_owned_workspace(container, user, workspace_id)
+    marius = await container.mariuses.get(marius_id)
+    if marius is None or marius.workspace_id != workspace_id:
+        raise NotFound("agent_not_found")
+
+
+def _chat_out(marius_id: UUID, view) -> AgentChatOut:  # noqa: ANN001 - AgentChatView
+    return AgentChatOut(
+        marius_id=marius_id,
+        agent_online=view.agent_online,
+        state=str(view.state),
+        transcript=list(view.transcript),
+    )
+
+
+@router.get(
+    "/workspaces/{workspace_id}/mariuses/{marius_id}/chat", response_model=AgentChatOut
+)
+async def get_agent_chat(
+    workspace_id: UUID, marius_id: UUID, container: ContainerDep, user: CurrentUser
+) -> AgentChatOut:
+    """The patron's direct conversation with this agent (FR-007p). Reading it creates
+    nothing: an agent nobody has written to has an empty transcript, not a row."""
+    await _owned_agent(container, user, workspace_id, marius_id)
+    return _chat_out(marius_id, await container.agent_chat.view(marius_id))
+
+
+@router.post(
+    "/workspaces/{workspace_id}/mariuses/{marius_id}/chat/messages",
+    response_model=AgentChatOut,
+)
+async def send_agent_chat(
+    workspace_id: UUID,
+    marius_id: UUID,
+    body: AgentChatSendIn,
+    container: ContainerDep,
+    user: CurrentUser,
+) -> AgentChatOut:
+    """Write to the agent. Returns at once with the conversation *thinking*; the reply
+    streams on ``.../chat/stream`` and lands in the transcript when the turn ends. 409 when
+    the agent cannot be reached or is still answering."""
+    await _owned_agent(container, user, workspace_id, marius_id)
+    return _chat_out(marius_id, await container.agent_chat.send(marius_id, body.message))
 
 
 # ---------------------------------------------------------------------- skills

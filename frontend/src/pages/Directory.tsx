@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   Users,
   Plus,
@@ -8,7 +8,7 @@ import {
   Check,
   Lock,
   Star,
-  MoreHorizontal,
+  Server,
   Loader2,
   Bot,
   Clock,
@@ -16,11 +16,9 @@ import {
   Activity,
   Zap,
   AlertTriangle,
-  Pencil,
-  Trash2,
 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
-import type { Marius, AgentStatus, WorkplaceChoice, PlacementOption } from '@/store/appStore';
+import type { Marius, AgentStatus, WorkplaceChoice } from '@/store/appStore';
 import VellumPanel from '@/components/VellumPanel';
 import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
@@ -92,27 +90,22 @@ function StatusDot({ status, size = 8 }: { status: AgentStatus; size?: number })
 function AgentCard({
   agent,
   onDesignate,
-  onEdit,
-  onDelete,
 }: {
   agent: Marius;
   onDesignate: (id: string) => void;
-  onEdit: (agent: Marius) => void;
-  onDelete: (agent: Marius) => void;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { workspaceId } = useParams();
   const config = STATUS_CONFIG[agent.status] || STATUS_CONFIG.offline;
-  const [expanded, setExpanded] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const StatusIcon = config.icon;
   const displayName = agent.displayName || agent.name;
   const agentSkills = agent.skills || [];
 
-  // Click the card → the agent's detail view (system↔agent run log, #72). The row's own
-  // buttons stop propagation so acting on an agent never doubles as opening it.
+  // Click the card → the agent's page, which is where an agent is managed (FR-007o): renaming,
+  // settings and removal all live there rather than behind a menu on every card. The one button
+  // left on the card stops propagation so acting on an agent never doubles as opening it.
   const openDetail = () => navigate(wsHref(workspaceId, `/agents/${agent.id}`));
 
   return (
@@ -160,14 +153,11 @@ function AgentCard({
                 <span
                   className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#D4A843] text-[#2A2318]"
                 >
-                  <Star className="w-3 h-3" /> WA
+                  <Star className="w-3 h-3" /> {t('directory.workspaceAgent')}
                 </span>
               )}
             </div>
             <div className="flex items-center gap-2 mt-1">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#E3D7BC] text-[#6B5E4E]">
-                {agent.role}
-              </span>
               <span
                 className="inline-flex items-center gap-1 text-[11px] font-medium"
                 style={{ color: config.color }}
@@ -178,78 +168,19 @@ function AgentCard({
             </div>
           </div>
 
-          {/* Delete — a visible affordance (not buried in the ⋯ menu) so removing an
-              agent is discoverable, matching the workspace/skill cards (#44). The
-              Workspace Agent is just a flag (#50): it can be deleted too — doing so
-              simply vacates its host seat. */}
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete(agent); }}
-            className="p-1.5 rounded-md text-ink-muted hover:text-[#C0492B] hover:bg-[#F3D9D0] transition-colors"
-            aria-label={t('directory.actions.delete')}
-            title={t('directory.actions.delete')}
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-
-          {/* Menu button */}
-          <div className="relative">
-            <button
-              onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
-              className="p-1.5 rounded-md text-ink-muted hover:text-ink hover:bg-[#EDE4CE] transition-colors"
-              aria-label={t('directory.actions.more')}
-              title={t('directory.actions.more')}
-            >
-              <MoreHorizontal className="w-4 h-4" />
-            </button>
-            <AnimatePresence>
-              {menuOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); }} />
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                    transition={{ duration: 0.15 }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="absolute right-0 top-full mt-1 w-48 bg-[#F7F0E0] border border-[#E3D7BC] rounded-lg shadow-lg z-20 py-1"
-                  >
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); setMenuOpen(false); }}
-                      className="w-full text-left px-3 py-2 text-[13px] text-[#2A2318] hover:bg-[#EDE4CE] transition-colors"
-                    >
-                      {expanded ? t('directory.collapseDetails') : t('directory.viewDetails')}
-                    </button>
-                    {agent.status === 'online' && agent.isWorkspaceAgent !== true && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onDesignate(agent.id); setMenuOpen(false); }}
-                        className="w-full text-left px-3 py-2 text-[13px] text-[#D4A843] hover:bg-[#EDE4CE] transition-colors"
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <Star className="w-3.5 h-3.5" /> {t('directory.actions.designate')}
-                        </span>
-                      </button>
-                    )}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onEdit(agent); setMenuOpen(false); }}
-                      className="w-full text-left px-3 py-2 text-[13px] text-[#2A2318] hover:bg-[#EDE4CE] transition-colors"
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <Pencil className="w-3.5 h-3.5" /> {t('directory.actions.edit')}
-                      </span>
-                    </button>
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
-          </div>
         </div>
 
-        {/* Metadata */}
-        <div className="mt-3 flex items-center gap-2 text-[12px] font-mono text-[#6B5E4E]">
-          <span>{agent.adapterType || '—'}</span>
-          <span className="text-[#A89880]">&middot;</span>
-          <span className="text-[#A89880]">
-            {agent.status ? t('directory.statusLabel', { status: t('directory.status.' + agent.status) }) : t('directory.unknownStatus')}
+        {/* Where it works — the CLI and the machine, which is what tells two agents apart at a
+            glance (FR-007o). The status is already said once, beside the name. */}
+        <div className="mt-3 flex items-center gap-1.5 text-[12px] font-mono text-[#6B5E4E]">
+          <Server className="w-3.5 h-3.5 flex-shrink-0" aria-hidden />
+          <span className="truncate">
+            {agent.runtime
+              ? t('agentDetail.runtimeLine', {
+                  cli: agent.runtime.cli_kind,
+                  machine: agent.runtime.machine_name,
+                })
+              : t('agentDetail.runtimeNone')}
           </span>
         </div>
 
@@ -283,42 +214,8 @@ function AgentCard({
               {t('directory.actions.designate')}
             </button>
           )}
-          {agent.isWorkspaceAgent === true && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium bg-[#F5E8CC] text-[#8B6A28]">
-              <Star className="w-3 h-3" /> {t('directory.workspaceAgent')}
-            </span>
-          )}
         </div>
 
-        {/* Expanded details */}
-        <AnimatePresence>
-          {expanded && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="overflow-hidden"
-            >
-              <div className="mt-4 pt-4 border-t border-[#E3D7BC]">
-                <div className="text-[12px] font-mono text-[#6B5E4E] space-y-1">
-                  <p>
-                    <span className="text-[#A89880]">{t('directory.details.id')}:</span> {agent.id}
-                  </p>
-                  <p>
-                    <span className="text-[#A89880]">{t('directory.details.role')}:</span> {agent.role}
-                  </p>
-                  <p>
-                    <span className="text-[#A89880]">{t('directory.details.adapter')}:</span> {agent.adapterType || '—'}
-                  </p>
-                  <p>
-                    <span className="text-[#A89880]">{t('directory.details.workspace')}:</span> {agent.workspaceId}
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </VellumPanel>
     </motion.div>
   );
@@ -334,9 +231,6 @@ export default function Directory() {
   const skills = useAppStore((s) => s.skills);
   const inviteNewAgent = useAppStore((s) => s.inviteNewAgent);
   const listWorkplaces = useAppStore((s) => s.listWorkplaces);
-  const updateMarius = useAppStore((s) => s.updateMarius);
-  const listAgentOptions = useAppStore((s) => s.listAgentOptions);
-  const deleteMarius = useAppStore((s) => s.deleteMarius);
   const designateWorkspaceAgent = useAppStore((s) => s.designateWorkspaceAgent);
   const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId);
 
@@ -348,17 +242,8 @@ export default function Directory() {
     [mariuses, activeWorkspaceId]
   );
 
-  // ── Edit / delete / designate state ────────────────────────────────────────
-  const [editingAgent, setEditingAgent] = useState<Marius | null>(null);
-  const [editAgentName, setEditAgentName] = useState('');
-  // What the agent's own workplace offers, asked of the agent rather than read off the list
-  // of places one may be *put* on — that list is a picker and never says where this one sits.
-  const [editOptions, setEditOptions] = useState<PlacementOption[]>([]);
-  const [editOptionsLoading, setEditOptionsLoading] = useState(false);
-  const [editRuntimeOptions, setEditRuntimeOptions] = useState<Record<string, string>>({});
-  const [editError, setEditError] = useState('');
-  const [savingEdit, setSavingEdit] = useState(false);
-  const [deletingAgent, setDeletingAgent] = useState<Marius | null>(null);
+  // ── Designate state ────────────────────────────────────────────────────────
+  // Renaming, the runtime settings and removal moved to the agent's own page (FR-007o).
   const [designatingAgent, setDesignatingAgent] = useState<Marius | null>(null);
 
   // ── Filter State ───────────────────────────────────────────────────────────
@@ -517,47 +402,6 @@ export default function Directory() {
     [designateWorkspaceAgent]
   );
 
-  const handleOpenEdit = useCallback(
-    (agent: Marius) => {
-      setEditingAgent(agent);
-      setEditAgentName(agent.displayName || agent.name);
-      setEditRuntimeOptions({ ...agent.runtimeOptions });
-      setEditError('');
-      setEditOptions([]);
-      setEditOptionsLoading(true);
-      listAgentOptions(agent.id)
-        .then(setEditOptions)
-        .catch(() => setEditOptions([]))
-        .finally(() => setEditOptionsLoading(false));
-    },
-    [listAgentOptions]
-  );
-
-  const handleSaveAgent = async () => {
-    if (!editingAgent || !editAgentName.trim() || savingEdit) return;
-    setSavingEdit(true);
-    setEditError('');
-    // Only what the person actually moved. A setting they never touched is not re-sent, so a
-    // value stored back when the tool still offered it cannot be dragged into this edit and
-    // refused — and the server is left free to keep it exactly as it is.
-    const touched = Object.fromEntries(
-      Object.entries(editRuntimeOptions).filter(
-        ([key, value]) => value !== (editingAgent.runtimeOptions[key] ?? '')
-      )
-    );
-    try {
-      await updateMarius(editingAgent.id, {
-        name: editAgentName.trim(),
-        ...(Object.keys(touched).length > 0 ? { runtimeOptions: touched } : {}),
-      });
-      setEditingAgent(null);
-    } catch (e) {
-      setEditError(errorText(e, t));
-    } finally {
-      setSavingEdit(false);
-    }
-  };
-
   const handleCloseInvite = () => {
     setInviteModalOpen(false);
   };
@@ -678,8 +522,6 @@ export default function Directory() {
               key={agent.id}
               agent={agent}
               onDesignate={handleDesignate}
-              onEdit={handleOpenEdit}
-              onDelete={setDeletingAgent}
             />
           ))}
         </motion.div>
@@ -918,100 +760,6 @@ export default function Directory() {
         </div>
       </Modal>
 
-      {/* Edit Agent Modal — its name, and what it runs on (FR-007k) */}
-      <Modal
-        isOpen={editingAgent !== null}
-        onClose={() => setEditingAgent(null)}
-        title={
-          <span className="font-['Fraunces',Georgia,serif] text-[28px] font-semibold text-[#2A2318]">
-            <span className="title-initial">{t('directory.editTitle').charAt(0)}</span>
-            {t('directory.editTitle').slice(1)}
-          </span>
-        }
-        maxWidth="max-w-md"
-        footer={
-          <>
-            <button
-              onClick={() => setEditingAgent(null)}
-              className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC] transition-colors"
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              onClick={handleSaveAgent}
-              disabled={!editAgentName.trim() || savingEdit}
-              className={cn(
-                'inline-flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-all',
-                editAgentName.trim() && !savingEdit
-                  ? 'bg-[#C25E3A] text-white hover:bg-[#D97B5A]'
-                  : 'bg-[#E3D7BC] text-[#A89880] cursor-not-allowed'
-              )}
-            >
-              {savingEdit && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              {t('common.save')}
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
-              {t('directory.renameLabel')} <span className="text-[#C25E3A]">*</span>
-            </label>
-            <input
-              type="text"
-              value={editAgentName}
-              onChange={(e) => setEditAgentName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveAgent(); }}
-              className={cn(
-                'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
-                'placeholder:text-[#A89880]',
-                'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
-                'transition-all'
-              )}
-              autoFocus
-            />
-          </div>
-
-          {editOptionsLoading ? (
-            <p className="text-[13px] text-[#A89880]">{t('directory.workplaceLoading')}</p>
-          ) : (
-            <RuntimeOptionFields
-              options={editOptions}
-              chosen={editRuntimeOptions}
-              onChange={(key, value) =>
-                setEditRuntimeOptions((was) => ({ ...was, [key]: value }))
-              }
-              idPrefix="edit-option"
-            />
-          )}
-
-          {/* Said out loud rather than left for the person to discover. What an agent is set
-              to is read when its machine takes a run, so a run already under way keeps what it
-              started with — and a screen that stayed quiet about that would be read as a
-              promise it cannot keep (FR-007k). */}
-          {editOptions.length > 0 && (
-            <p className="text-[11px] text-[#A89880]">{t('directory.optionAppliesNextRun')}</p>
-          )}
-
-          {editError && (
-            <p className="flex items-start gap-1.5 text-[12px] text-[#8A3B22]">
-              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> {editError}
-            </p>
-          )}
-        </div>
-      </Modal>
-
-      {/* Delete Agent confirmation */}
-      <ConfirmDialog
-        isOpen={deletingAgent !== null}
-        onClose={() => setDeletingAgent(null)}
-        onConfirm={async () => { if (deletingAgent) await deleteMarius(deletingAgent.id); }}
-        title={t('directory.deleteTitle')}
-        message={t('directory.deleteConfirm', { name: deletingAgent?.displayName || deletingAgent?.name || '' })}
-        confirmLabel={t('directory.actions.delete')}
-      />
-
       {/* Designate (swap) confirmation — the sitting host is demoted, kept (#32) */}
       <ConfirmDialog
         isOpen={designatingAgent !== null}
@@ -1027,7 +775,7 @@ export default function Directory() {
         confirmLabel={t('directory.actions.designate')}
       />
 
-      {/* Invite-as-host confirmation — generating the invite performs the swap (#32) */}
+      {/* Create-as-host confirmation — creating the agent performs the swap (#32) */}
       <ConfirmDialog
         isOpen={inviteSwapConfirmOpen}
         onClose={() => setInviteSwapConfirmOpen(false)}
@@ -1040,7 +788,7 @@ export default function Directory() {
           name: agentName.trim(),
           current: currentHost?.displayName || currentHost?.name || '',
         })}
-        confirmLabel={t('directory.generateInvite')}
+        confirmLabel={t('directory.createAndSwap')}
       />
     </div>
   );

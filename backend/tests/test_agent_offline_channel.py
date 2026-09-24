@@ -19,6 +19,7 @@ from uuid import UUID
 
 from armarius.application.ports.workspace_trace import (
     EVENT_MARIUS_OFFLINE,
+    EVENT_MARIUS_ONLINE,
     WorkspaceTracePublisher,
 )
 from armarius.application.use_cases.liveness import LivenessEngine
@@ -185,3 +186,81 @@ async def test_an_unwired_channel_changes_nothing() -> None:
 
     assert factory.store.mariuses[m.id].liveness == Liveness.OFFLINE
     assert fallout.seen == [m.id]
+
+
+# ── the opposite edge (FR-007p, 2026-09-24) ──────────────────────────────────────────
+#
+# `marius.online` used to come from /agent/me. Agents stopped calling it when the work moved
+# onto machines, so an agent the clock brought back came back silently: every screen that had
+# shown it offline kept showing it offline, and the direct chat's box stayed locked for an
+# agent that had been reachable for minutes. Đo được trên dịch vụ thật trước khi sửa.
+
+
+def _online_events(bus: TopicEventBus, workspace_id) -> list[dict]:
+    return [
+        event.data
+        for event in bus.backlog(f"ws:{workspace_id}")
+        if event.type == EVENT_MARIUS_ONLINE
+    ]
+
+
+async def _drive_back(engine: LivenessEngine, ws_id, store, marius: Marius) -> None:
+    """An offline agent whose place opened again: the clock re-checks it, the probe answers."""
+    now = T0 + timedelta(seconds=1)
+    await engine.tick(workspace_id=ws_id, now=now)
+    now = store.mariuses[marius.id].next_probe_at or now
+    await engine.tick(workspace_id=ws_id, now=now)
+
+
+async def test_an_agent_the_clock_brings_back_says_so_without_anyone_asking() -> None:
+    factory, ws, m = _setup(Marius(liveness=Liveness.OFFLINE, next_probe_at=T0))
+    bus = TopicEventBus()
+    engine = LivenessEngine(
+        factory, FakeLivenessProbe(True), cfg=CFG, workspace_trace=ControlBusWorkspaceTrace(bus)
+    )
+
+    await _drive_back(engine, ws.id, factory.store, m)
+
+    assert factory.store.mariuses[m.id].liveness == Liveness.ONLINE
+    events = _online_events(bus, ws.id)
+    assert events == [{"marius_id": str(m.id)}], (
+        "agent quay lại mà không có tin — màn hình vẫn hiện nó ngoại tuyến tới khi tải lại"
+    )
+
+
+async def test_a_signal_that_revives_an_agent_says_so_once() -> None:
+    factory, ws, m = _setup(Marius(liveness=Liveness.OFFLINE))
+    bus = TopicEventBus()
+    engine = LivenessEngine(
+        factory, FakeLivenessProbe(True), cfg=CFG, workspace_trace=ControlBusWorkspaceTrace(bus)
+    )
+
+    await engine.record_signal(m.id, now=T0)
+    await engine.record_signal(m.id, now=T0 + timedelta(seconds=5))
+
+    assert _online_events(bus, ws.id) == [{"marius_id": str(m.id)}], (
+        "chỉ mép đổi trạng thái mới có tin — agent đang online thì không báo lại mỗi lần"
+    )
+
+
+async def test_an_agent_that_stays_online_says_nothing() -> None:
+    factory, ws, m = _setup(Marius(liveness=Liveness.ONLINE, last_seen_at=T0))
+    bus = TopicEventBus()
+    engine = LivenessEngine(
+        factory, FakeLivenessProbe(True), cfg=CFG, workspace_trace=ControlBusWorkspaceTrace(bus)
+    )
+
+    await engine.tick(workspace_id=ws.id, now=T0 + timedelta(seconds=5))
+
+    assert _online_events(bus, ws.id) == []
+
+
+async def test_a_broken_channel_does_not_stop_an_agent_coming_back() -> None:
+    factory, ws, m = _setup(Marius(liveness=Liveness.OFFLINE))
+    engine = LivenessEngine(
+        factory, FakeLivenessProbe(True), cfg=CFG, workspace_trace=ExplodingTrace()
+    )
+
+    await engine.record_signal(m.id, now=T0)
+
+    assert factory.store.mariuses[m.id].liveness == Liveness.ONLINE

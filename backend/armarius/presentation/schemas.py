@@ -353,6 +353,13 @@ class InstallSkillsOut(_Out):
     installed: list[str] = Field(default_factory=list)  # slugs linked this call (now "pending")
 
 
+class AgentRuntimeOut(BaseModel):
+    """The CLI an agent runs as and the machine it runs on (FR-003, FR-007o)."""
+
+    cli_kind: str
+    machine_name: str
+
+
 class MariusOut(_Out):
     # Readable by the entity's name for this field *and* by its own. One route builds this
     # twice — once off the entity, then once more off the first one's `model_dump()` to widen
@@ -390,6 +397,11 @@ class MariusOut(_Out):
     # whatever the status says rather than instead of it; anything that tried to derive one
     # of the two from the other would be inventing an agreement neither field promises.
     offline_reason: str | None = None
+    # Where this agent works, as a person reads it: which agent CLI, on which of their
+    # machines. `null` when it works nowhere — never placed, or its machine was taken out of
+    # the workspace. Filled here in presentation, because the layers below are not allowed to
+    # know that a place is a CLI on a machine (Constitution III).
+    runtime: AgentRuntimeOut | None = None
     # `adapter_config` is deliberately omitted — it holds secrets, never serialized out.
     last_seen_at: datetime | None = None
     created_at: datetime | None = None
@@ -814,6 +826,20 @@ class AgentArtifactIn(BaseModel):
 # ------------------------------------------------------------ Chat with Leader (#82)
 class LeaderChatSendIn(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
+
+
+class AgentChatSendIn(BaseModel):
+    message: str = Field(min_length=1, max_length=8000)
+
+
+class AgentChatOut(BaseModel):
+    """The patron's direct conversation with one agent (FR-007p). ``agent_online`` is read
+    live, never stored: an agent that cannot be reached cannot be written to."""
+
+    marius_id: UUID
+    agent_online: bool = False
+    state: str = "idle"
+    transcript: list[dict] = Field(default_factory=list)
 
 
 class LeaderChatOut(BaseModel):
