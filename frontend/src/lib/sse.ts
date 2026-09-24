@@ -300,6 +300,28 @@ export function subscribeLeaderChat(
 }
 
 /**
+ * Subscribe to the patron's direct conversation with one agent
+ * (`/v1/workspaces/{ws}/mariuses/{id}/chat/stream`, FR-007p). The reply arrives as
+ * `assistant.delta`, then `agent.message` and `chat.state` mark the end of the turn.
+ */
+export function subscribeAgentChat(
+  workspaceId: string,
+  mariusId: string,
+  onEvent: (event: { type: string; data: Record<string, unknown> }) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  const url = `${API_BASE}/v1/workspaces/${workspaceId}/mariuses/${mariusId}/chat/stream`
+  return subscribeSSE(
+    url,
+    (msg) => {
+      const parsed = parseData(msg.data)
+      onEvent({ type: msg.type, data: (parsed ?? {}) as Record<string, unknown> })
+    },
+    onError,
+  )
+}
+
+/**
  * Subscribe to the project board SSE (`/v1/projects/{id}/events`, spec 001).
  *
  * Carries phase changes, task status changes, stall flags and plan decisions. The

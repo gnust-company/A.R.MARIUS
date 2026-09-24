@@ -153,6 +153,23 @@ async def leader_chat_stream(
     return await _stream(container, request, f"leader-chat:{project_id}")
 
 
+@router.get("/workspaces/{workspace_id}/mariuses/{marius_id}/chat/stream")
+async def agent_chat_stream(
+    workspace_id: UUID,
+    marius_id: UUID,
+    request: Request,
+    container: ContainerDep,
+    user: CurrentUser,
+) -> EventSourceResponse:
+    """Live turn of the patron's direct conversation with one agent (FR-007p): the reply
+    streams as ``assistant.delta``, then ``agent.message`` and ``chat.state``."""
+    await _require_own_workspace(container, user, workspace_id, "workspace_not_found")
+    marius = await container.mariuses.get(marius_id)
+    if marius is None or marius.workspace_id != workspace_id:
+        raise NotFound("agent_not_found")
+    return await _stream(container, request, f"agent-chat:{marius_id}")
+
+
 @router.get("/projects/{project_id}/events")
 async def project_events(
     project_id: UUID,

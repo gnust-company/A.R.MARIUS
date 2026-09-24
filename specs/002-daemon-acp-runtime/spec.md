@@ -614,6 +614,63 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
     sang nửa sản phẩm; người chủ nào đã tự viết lại thì chữ của họ KHÔNG ĐƯỢC chuyển đi đâu và
     KHÔNG ĐƯỢC nhân đôi.
 
+- **FR-007o**: Màn agent là **chỗ duy nhất quản một agent**, và nó PHẢI nói ngay agent ấy **chạy ở
+  đâu, bằng gì**. *Người chủ dùng thử trên một môi trường mới tinh 2026-09-24.*
+
+  Đo được trước khi sửa:
+
+  - Mỗi thẻ trong danh sách agent có một **thùng rác** và một **menu ba chấm**: *xem chi tiết* sổ ra
+    bốn dòng (id, vai, adapter, workspace), *sửa* mở hộp đổi tên kèm chọn model. Còn trang agent thì
+    **không xoá được**.
+  - Tab Tổng quan và tab Hoạt động hiện **cùng một khung nhật ký**.
+  - Trang agent chỉ ghi kiểu adapter (`gemini`), không ghi CLI ấy nằm trên **máy nào**, và không ghi
+    **model**.
+  - Nút xác nhận khi thay Workspace Agent hiện nguyên key dịch `directory.generateInvite` — key bị xoá
+    cùng luồng mời agent, nút thì ở lại.
+  - Tiếng Việt gọi một khái niệm bằng **bốn** tên: *Danh bạ*, *Tác nhân Không gian*, *Agent không
+    gian*, *Workspace Agent*. Vài câu còn chỉ người dùng đi "điền thông tin gateway" — một luồng đã bỏ.
+
+  Luật, kế thừa view agent của Multica:
+
+  - Thẻ trong danh sách chỉ để **mở** agent, cộng nút đặt làm Workspace Agent. Không thùng rác, không
+    menu ba chấm.
+  - **Xoá nằm trong menu của trang agent**, sau một hộp xác nhận nêu tên agent và nói rõ lịch sử
+    lượt chạy mất theo. Multica đặt đúng chỗ ấy.
+  - Đổi tên, **model** và **mức suy nghĩ** đều ở tab Thiết lập. Chỉ gửi đi thiết lập người dùng thật
+    sự đã đổi: một giá trị lưu từ hồi CLI còn nhận nó không được kéo theo rồi bị từ chối.
+  - Tab Tổng quan có một ô **CLI + tên máy** và một ô **model** (hoặc *mặc định của CLI*); thẻ trong
+    danh sách có dòng CLI + tên máy thay cho kiểu adapter. Agent không có chỗ làm (máy đã gỡ, hoặc chưa
+    từng được đặt) nói đúng như thế, không để trống.
+  - **Mỗi sự thật hiện một lần trên một màn.** Thẻ Workspace Agent từng nói mình là Workspace Agent ba
+    lần (nhãn, ô vai trò, một ô nữa ở cuối thẻ) và nói trạng thái hai lần; ô *vai trò* thì luôn trống
+    vì vai theo dự án đã bỏ (FR-007l). Bỏ hết chỗ lặp và ô trống.
+  - Tầng nghiệp vụ không được biết chỗ làm là một CLI trên một máy (Hiến pháp III), nên thông tin này
+    ghép ở **tầng trình bày**, đọc thẳng từ hạ tầng, trên mọi cửa trả agent cho người đọc.
+  - Tab Tổng quan: thông tin và tình trạng bên trái, **khung chat trực tiếp** (FR-007p) bên phải. Nhật
+    ký lượt chạy **chỉ** ở tab Hoạt động.
+  - Tiếng Việt gọi đúng một tên cho mỗi thứ: **Agent** cho mục và menu, **Workspace Agent** cho người
+    chủ nhà. Thuật ngữ IT giữ tiếng Anh.
+
+- **FR-007p**: Người chủ PHẢI **nhắn thẳng được cho một agent** từ trang của nó, không qua dự án nào.
+  *Người chủ yêu cầu 2026-09-24: "sửa cho tôi cái tab hoạt động thành 1 khung chat trực tiếp với
+  agent".*
+
+  - Mỗi agent **một** cuộc trò chuyện. **Một lượt một lúc**: câu thứ hai trong lúc agent còn đang trả
+    lời bị từ chối (409). Một lượt hỏng trả khung lại cho người chủ, không khoá nó.
+  - Agent không liên lạc được thì khung **tắt**, không xếp hàng — cùng luật với chat dự án. Và khung
+    PHẢI **mở lại khi agent quay lại** mà không cần tải trang: bộ máy đo sống báo cả mép *vào* làm được
+    lẫn mép *ra*, chứ không chỉ mép ra.
+  - Mỗi lượt là **một lượt chạy thật** (FR-040c): chạy ở chỗ agent làm, hiện trong tab Hoạt động với lý
+    do *người chủ nhắn thẳng*, và kết thúc bằng đúng những đường mọi lượt chạy kết thúc.
+  - Lượt không gắn đầu việc chỉ nhận đúng chữ ghi sẵn cùng nó, nên gói việc PHẢI tự mang **chỉ dẫn của
+    agent** — cả hai nửa, dựng bằng **cùng một hàm** với gói việc của đầu việc — cộng đoạn hội thoại gần
+    nhất và câu vừa viết. Chữ gửi agent tiếng Anh; lý do lưu mã (Hiến pháp VII).
+  - Nói trong chat **không tạo việc**. Việc tới agent qua dự án.
+  - Câu trả lời hiện ra **dần** khi agent viết (đẩy, không hỏi lại — Hiến pháp IV), và dựng lại từ thứ
+    máy ghi xuống khi lượt xong — cùng một hàm đọc với chat dự án.
+  - **Đọc** cuộc trò chuyện không tạo gì. Agent của người khác đọc y như không có (404, Hiến pháp I).
+    Xoá agent hay workspace thì cuộc trò chuyện đi theo.
+
 - **FR-007n**: Luồng tạo dự án PHẢI có một bước khai **cần bao nhiêu người làm**, và con số ấy
   trở thành số chỗ của chỗ ngồi chung. Bước này thay cho việc dựng vai rồi khai số ghế cho vai.
 

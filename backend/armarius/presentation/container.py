@@ -11,6 +11,7 @@ from uuid import UUID
 
 from armarius.application.ports.artifact_store import ArtifactStore
 from armarius.application.ports.event_bus import EventBus
+from armarius.application.use_cases.agent_chat import AgentChatService
 from armarius.application.use_cases.approvals import ApprovalService
 from armarius.application.use_cases.artifacts import ArtifactService
 from armarius.application.use_cases.auth import AuthService
@@ -72,6 +73,7 @@ class Container:
     onboarding: OnboardingService
     agents: AgentService
     leader_chat: LeaderChatService
+    agent_chat: AgentChatService
     liveness: LivenessEngine
     liveness_watchdog: LivenessWatchdog
     orchestrator: OrchestrationLoop
@@ -199,6 +201,17 @@ def build_container() -> Container:
         # run means rather than through a second answer written here (FR-040b).
         close_run=wake_engine.conclude_run,
     )
+    # The patron talking to one agent directly (FR-007p). Built beside the project chat and
+    # wired to the same two pieces of news, for the same reason: a turn of it can be taken on
+    # a machine, and only the run knows when that turn has ended.
+    agent_chat = AgentChatService(
+        uow_factory,
+        registry=registry,
+        control_bus=control_bus,
+        liveness=liveness_for_chat,
+        run_timeout_seconds=settings.run_timeout_seconds,
+        close_run=wake_engine.conclude_run,
+    )
     projects = ProjectService(
         uow_factory,
         system_thresholds=_system_thresholds(),
@@ -257,21 +270,23 @@ def build_container() -> Container:
         """One event, put in front of both screens that could be watching this run.
 
         The run's own channel is the log a person opens to answer *what did this agent do*.
-        The second reader is the project chat: a turn of it can be taken on a machine now, and
-        without this line the patron would watch an empty box until the whole reply landed at
-        once (FR-046, FR-040b). Wired separately from the task channel above because these
-        runs have no task — a chat is about the project, not about a piece of work.
+        The other readers are the two chats — the project's, and the patron's direct one with
+        an agent (FR-007p): a turn of either can be taken on a machine, and without these lines
+        the patron would watch an empty box until the whole reply landed at once (FR-046,
+        FR-040b). Wired separately from the task channel above because these runs have no
+        task — a chat is about a project or an agent, not about a piece of work.
         """
         await event_bus.publish(
             run_id, {"type": event_type, "seq": seq, "payload": payload}
         )
         await leader_chat.run_event(run_id, event_type, payload)
+        await agent_chat.run_event(run_id, event_type, payload)
 
     async def run_is_over(run_id: UUID) -> None:
         """Everyone owed the news that a run ended, other than the run loop itself.
 
         Second readers of one fact, not second decisions: a run may have been carrying a turn
-        of a team-building interview or of the project chat, and a conversation left mid-turn
+        of a team-building interview or of either chat, and a conversation left mid-turn
         is not rescued by anything the run loop does — it stays mid-turn and refuses the
         patron's every next message (FR-040c, FR-040e). Kept apart from the closing itself
         because a run ends by more than one road, and only one of them goes through the
@@ -280,6 +295,7 @@ def build_container() -> Container:
         """
         await onboarding.run_ended(run_id)
         await leader_chat.run_ended(run_id)
+        await agent_chat.run_ended(run_id)
 
     async def close_run(run_id: UUID, **ending: object) -> None:
         """A run reported finished from a machine, and everyone who is owed that news.
@@ -422,6 +438,7 @@ def build_container() -> Container:
         onboarding=onboarding,
         agents=AgentService(uow_factory),
         leader_chat=leader_chat,
+        agent_chat=agent_chat,
         liveness=liveness,
         liveness_watchdog=liveness_watchdog,
         orchestrator=orchestrator,

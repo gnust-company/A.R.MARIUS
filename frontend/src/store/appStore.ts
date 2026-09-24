@@ -159,6 +159,9 @@ export interface Marius {
   /** What this agent is set to, out of what its workplace offers (FR-007k). Empty means
    *  nothing was picked and its tool runs on its own defaults. */
   runtimeOptions: Record<string, string>
+  /** Which agent CLI, on which machine, this agent works at (FR-007o). Undefined when it
+   *  works nowhere. */
+  runtime?: { cli_kind: string; machine_name: string }
   isWorkspaceAgent?: boolean
   lastSeen?: string
   /** Code for why this agent has nowhere to work (FR-006c). Undefined when it does. */

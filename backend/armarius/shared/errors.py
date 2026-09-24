@@ -39,6 +39,7 @@ ENGLISH: dict[str, str] = {
     "inbox_item_not_found": "Inbox item not found.",
     "seat_grant_not_found": "Seat grant not found.",
     "leader_chat_conversation_not_found": "Leader chat conversation not found.",
+    "agent_chat_conversation_not_found": "Conversation with this agent not found.",
     "wakeup_not_found": "Wake-up request not found.",
     "task_or_agent_not_found": "Task or agent not found.",
     "onboarding_session_not_found": "Onboarding session not found.",
@@ -269,6 +270,10 @@ ENGLISH: dict[str, str] = {
     "no_leader_seated": "No Leader is seated on this project.",
     "leader_offline": "The Leader is offline — the chat is disabled until it comes back.",
     "leader_still_replying": "The Leader is still replying — wait for its answer.",
+    # ── talking to one agent directly (FR-007p) ───────────────────────────────
+    "agent_offline": "This agent cannot be reached right now, so it cannot be written to.",
+    "agent_still_replying": "The agent is still replying — wait for its answer.",
+    "agent_chat_empty_message": "There is nothing to send.",
     "wake_pair_busy_run": "A run is already holding this agent and task.",
     "wake_pair_busy_wakeup": "A wake is already pending for this agent and task.",
     "wake_cause_refused": (

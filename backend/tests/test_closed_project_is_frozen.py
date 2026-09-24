@@ -64,6 +64,10 @@ _NEEDS_NO_GUARD: dict[tuple[str, str], str] = {
     ("POST", "/v1/workspaces/{workspace_id}/mariuses/{marius_id}/designate"): "tầng trên dự án",
     (
         "POST",
+        "/v1/workspaces/{workspace_id}/mariuses/{marius_id}/chat/messages",
+    ): "tầng trên dự án — nói chuyện thẳng với agent, không thuộc dự án nào (FR-007p)",
+    (
+        "POST",
         "/v1/workspaces/{workspace_id}/mariuses/{marius_id}/install-skills",
     ): "tầng trên dự án",
     ("POST", "/v1/workspaces/{workspace_id}/skills/import"): "tầng trên dự án",

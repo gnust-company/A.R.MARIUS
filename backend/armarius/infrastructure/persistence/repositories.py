@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from armarius.domain.entities.agent_chat import AgentConversation
 from armarius.domain.entities.approval import Approval
 from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.auto_approval import AutoApproval
@@ -43,6 +44,7 @@ from armarius.domain.entities.wakeup import (
 )
 from armarius.domain.entities.workspace import Project, Workspace
 from armarius.domain.repositories.repositories import (
+    AgentChatRepository,
     ApprovalRepository,
     ArtifactRepository,
     AutoApprovalRepository,
@@ -79,6 +81,7 @@ from armarius.infrastructure.daemon.cleanup import (
 )
 from armarius.infrastructure.daemon.models import RunEventBlobModel
 from armarius.infrastructure.database.models import (
+    AgentConversationModel,
     ArtifactModel,
     ChecklistItemModel,
     CommentModel,
@@ -314,6 +317,11 @@ class SqlWorkspaceRepository(WorkspaceRepository):
                     )
                 )
             )
+            await self._s.execute(
+                delete(AgentConversationModel).where(
+                    AgentConversationModel.marius_id.in_(marius_ids)
+                )
+            )
         await self._s.execute(
             delete(OnboardingSessionModel).where(
                 or_(
@@ -345,6 +353,61 @@ class SqlWorkspaceRepository(WorkspaceRepository):
         if m is not None:
             await self._s.delete(m)
         await self._s.flush()
+
+
+class SqlAgentChatRepository(AgentChatRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, conversation: AgentConversation) -> AgentConversation:
+        self._s.add(
+            AgentConversationModel(
+                id=conversation.id,
+                marius_id=conversation.marius_id,
+                transcript=list(conversation.transcript),
+                state=str(conversation.state),
+                driving_run_id=conversation.driving_run_id,
+                created_at=conversation.created_at,
+                updated_at=conversation.updated_at,
+            )
+        )
+        await self._s.flush()
+        return conversation
+
+    async def get(self, conversation_id: UUID) -> AgentConversation | None:
+        m = await self._s.get(AgentConversationModel, conversation_id)
+        return mappers.agent_chat_to_entity(m) if m else None
+
+    async def get_by_agent(self, marius_id: UUID) -> AgentConversation | None:
+        m = (
+            await self._s.execute(
+                select(AgentConversationModel).where(
+                    AgentConversationModel.marius_id == marius_id
+                )
+            )
+        ).scalar_one_or_none()
+        return mappers.agent_chat_to_entity(m) if m else None
+
+    async def get_by_run(self, run_id: UUID) -> AgentConversation | None:
+        m = (
+            await self._s.execute(
+                select(AgentConversationModel).where(
+                    AgentConversationModel.driving_run_id == run_id
+                )
+            )
+        ).scalar_one_or_none()
+        return mappers.agent_chat_to_entity(m) if m else None
+
+    async def update(self, conversation: AgentConversation) -> AgentConversation:
+        m = await self._s.get(AgentConversationModel, conversation.id)
+        if m is None:
+            raise NotFound("agent_chat_conversation_not_found")
+        m.transcript = list(conversation.transcript)
+        m.state = str(conversation.state)
+        m.driving_run_id = conversation.driving_run_id
+        m.updated_at = conversation.updated_at
+        await self._s.flush()
+        return conversation
 
 
 class SqlLeaderChatRepository(LeaderChatRepository):
@@ -897,6 +960,9 @@ class SqlMariusRepository(MariusRepository):
         )
         await self._s.execute(
             delete(SeatGrantModel).where(SeatGrantModel.marius_id == marius_id)
+        )
+        await self._s.execute(
+            delete(AgentConversationModel).where(AgentConversationModel.marius_id == marius_id)
         )
         m = await self._s.get(MariusModel, marius_id)
         if m is not None:

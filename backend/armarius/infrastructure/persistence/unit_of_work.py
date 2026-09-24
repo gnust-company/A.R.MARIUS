@@ -11,6 +11,7 @@ from armarius.infrastructure.daemon.placement import SqlPlacementRepository
 from armarius.infrastructure.daemon.queue_view import SqlQueueView
 from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.infrastructure.persistence.repositories import (
+    SqlAgentChatRepository,
     SqlApprovalRepository,
     SqlArtifactRepository,
     SqlAutoApprovalRepository,
@@ -50,6 +51,7 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         s = self._session
         self.workspaces = SqlWorkspaceRepository(s)
         self.leader_chats = SqlLeaderChatRepository(s)
+        self.agent_chats = SqlAgentChatRepository(s)
         self.onboardings = SqlOnboardingRepository(s)
         self.projects = SqlProjectRepository(s)
         self.project_contexts = SqlProjectContextRepository(s)

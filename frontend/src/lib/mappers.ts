@@ -227,6 +227,7 @@ export function mariusToVM(dto: MariusDTO): Marius {
     systemInstructions: dto.system_instructions ?? '',
     adapterType: dto.adapter_type,
     runtimeOptions: dto.runtime_options ?? {},
+    runtime: dto.runtime ?? undefined,
     offlineReason: dto.offline_reason ?? undefined,
     lastSeen: dto.last_seen_at ?? undefined,
   }

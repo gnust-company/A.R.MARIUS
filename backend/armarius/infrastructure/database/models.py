@@ -304,6 +304,23 @@ class ProjectLeaderConversationModel(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class AgentConversationModel(Base):
+    """The patron's direct conversation with one agent (FR-007p). At most one per agent
+    (``marius_id`` is unique). Plain UUID ref, no FK — the same choice as the other chat
+    tables, and cleared explicitly wherever an agent or a workspace is removed."""
+
+    __tablename__ = "agent_conversations"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    marius_id: Mapped[UUID] = mapped_column(Uuid, unique=True, index=True)
+    transcript: Mapped[list] = mapped_column(JSON, default=list)
+    state: Mapped[str] = mapped_column(String(20), default="idle")
+    # Read the other way round, like the project chat's: a run ends and asks which
+    # conversation, if any, it was carrying.
+    driving_run_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class OnboardingSessionModel(Base):
     """Agent-assisted project-setup chat (LLD §2.10, Sprint 7 / Phase G). Plain UUID
     ref to the workspace (no FK) — consistent with the other runtime chat tables."""

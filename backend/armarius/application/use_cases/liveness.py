@@ -24,6 +24,7 @@ from armarius.application.ports.liveness_probe import LivenessProbe
 from armarius.application.ports.workspace_trace import (
     WorkspaceTracePublisher,
     announce_agent_offline,
+    announce_agent_online,
 )
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.marius import Liveness, Marius
@@ -97,11 +98,14 @@ class LivenessEngine:
             marius = await uow.mariuses.get(marius_id)
             if marius is None:
                 raise NotFound("agent_not_found")
+            was = marius.liveness
             apply_state(marius, on_signal(now))
             marius.updated_at = now
             await uow.mariuses.update(marius)
             await uow.commit()
-            return marius
+        if _crossed_into_working_order(was, marius.liveness):
+            await self._announce_online(marius)
+        return marius
 
     async def begin_turn(self, marius_id: UUID, now: datetime | None = None) -> Marius:
         """The wake engine starts a turn → WORKING (a turn counts as liveness)."""
@@ -142,6 +146,8 @@ class LivenessEngine:
                 settled = marius.liveness
                 if _crossed_into_offline(was, settled):
                     await self._announce_offline(marius_id, now)
+                if _crossed_into_working_order(was, settled):
+                    await self._announce_online(marius)
                 return decision.state
             # A probe is due — count the attempt + space the next BEFORE firing.
             registered = register_probe(decision.state, now, self._cfg)
@@ -166,11 +172,21 @@ class LivenessEngine:
             await uow.mariuses.update(marius)
             await uow.commit()
             crossed = _crossed_into_offline(before_fold, marius.liveness)
+            recovered = _crossed_into_working_order(before_fold, marius.liveness)
         # Outside the transaction: the fallout writes tasks and wakes people, and doing
         # that inside the liveness write would hold a lock across another service's I/O.
         if crossed:
             await self._announce_offline(marius_id, now)
+        if recovered:
+            await self._announce_online(marius)
         return result.state
+
+    async def _announce_online(self, marius: Marius) -> None:
+        """Tell the workspace channel an agent can work again. Never breaks the clock."""
+        try:
+            await announce_agent_online(self._workspace_trace, marius)
+        except Exception:  # pragma: no cover - the clock must keep ticking
+            logger.exception("online announce failed for marius %s", marius.id)
 
     async def _announce_offline(self, marius_id: UUID, now: datetime) -> None:
         """Hand the crossing to the fallout handler and tell the workspace channel.
@@ -199,6 +215,19 @@ class LivenessEngine:
                 await announce_agent_offline(self._workspace_trace, marius)
         except Exception:  # pragma: no cover - the clock must keep ticking
             logger.exception("offline announce failed for marius %s", marius_id)
+
+
+_WORKING_ORDER = (Liveness.ONLINE, Liveness.WORKING)
+
+
+def _crossed_into_working_order(before: Liveness, after: Liveness) -> bool:
+    """True only on the *edge* back into being able to work.
+
+    The mirror of ``_crossed_into_offline``, and an edge for the same reason: an agent that
+    has been online all week is online on every tick, and announcing the state would put a
+    re-read on every screen every thirty seconds for nothing.
+    """
+    return after in _WORKING_ORDER and before not in _WORKING_ORDER
 
 
 def _crossed_into_offline(before: Liveness, after: Liveness) -> bool:

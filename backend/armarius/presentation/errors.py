@@ -38,6 +38,7 @@ from armarius.application.use_cases.tasks import (
     ProjectNotReadyForTasks,
     TitleRequiredError,
 )
+from armarius.domain.entities.agent_chat import AgentChatError
 from armarius.domain.entities.approval import RejectionNeedsReasonError
 from armarius.domain.entities.checklist_item import (
     CriteriaLockedError,
@@ -125,6 +126,7 @@ _ROUTING: tuple[tuple[type[Exception], int, str], ...] = (
     # box up-front when the Leader is offline (#82), so this is the second line, not the
     # first.
     (LeaderChatError, 409, "the Leader cannot take a turn right now"),
+    (AgentChatError, 409, "the agent cannot take a turn right now"),
     (OnboardingError, 409, "illegal session transition on a non-open chat"),
     (OnboardingBusy, 409, "one question at a time — the last one is unanswered"),
     # The Workspace Agent is not online (or a wake failed) — onboarding cannot proceed.

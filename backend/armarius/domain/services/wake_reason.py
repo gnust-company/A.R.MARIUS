@@ -106,6 +106,7 @@ ENGLISH: dict[str, str] = {
     # opens a conversation and the other continues one, and a log that calls both "the
     # patron said something" cannot say which run was the first.
     "leader_chat_message": "The patron wrote to you in the project chat.",
+    "agent_chat_message": "The patron wrote to you directly.",
     "onboarding_opened": "The patron opened a chat to set a project up with you.",
     "onboarding_answered": "The patron answered your question.",
     # ── the manual button ──

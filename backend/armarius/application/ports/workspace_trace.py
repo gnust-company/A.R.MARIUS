@@ -27,11 +27,18 @@ from armarius.domain.entities.run import Run
 # it — and two separate callers emit it (the wake engine and the hung-run reaper).
 EVENT_RUN_STATE_CHANGED = "run.status_changed"
 
-# The missing half of the pair. `marius.online` (published by /agent/me on first contact
-# after silence) said an agent came back; nothing said one had gone. The directory's status
-# dot could therefore only ever move one way, and the direction it could not move is the one
-# a patron needs to see. Emitted on the *edge* into offline, never on every idle tick.
+# The two edges of an agent's liveness, as a screen keyed by agent needs them. Emitted on the
+# *edge*, never on every tick.
+#
+# `marius.offline` came first, as the missing half of a pair: `marius.online` used to be
+# published by /agent/me on first contact after silence, so the status dot could only ever move
+# one way. Then agents stopped calling /agent/me at all — the work runs on a machine now — and
+# the pair flipped: an agent brought back by the liveness clock came back *silently*, and every
+# screen that had shown it offline kept showing it offline until somebody reloaded the page.
+# The direct chat (FR-007p) is where that bites hardest: its box stays locked for an agent that
+# has been reachable for minutes. So the clock announces both edges now.
 EVENT_MARIUS_OFFLINE = "marius.offline"
+EVENT_MARIUS_ONLINE = "marius.online"
 
 # The team-building interview moved a step: the agent asked its next question, or posted the
 # draft it wants confirmed. The screen holding that chat open cannot learn this any other way
@@ -115,6 +122,23 @@ async def announce_agent_offline(
     await trace.publish(
         marius.workspace_id,
         EVENT_MARIUS_OFFLINE,
+        {"marius_id": str(marius.id)},
+    )
+
+
+async def announce_agent_online(
+    trace: WorkspaceTracePublisher | None, marius: Marius
+) -> None:
+    """Announce that an agent crossed back into being able to work (no-op if not wired).
+
+    The opposite edge of ``announce_agent_offline``, and the same shape for the same reason:
+    an id, and nothing a listener could mistake for the state itself.
+    """
+    if trace is None or marius.workspace_id is None:
+        return
+    await trace.publish(
+        marius.workspace_id,
+        EVENT_MARIUS_ONLINE,
         {"marius_id": str(marius.id)},
     )
 

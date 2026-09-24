@@ -603,3 +603,77 @@ cả**.
 **Alternatives considered**: *ô nhập tự do cho model* — đơn giản nhất, bỏ vì người dùng gõ sai thì lượt chạy
 hỏng lúc khởi chạy chứ không hỏng lúc chọn. *Để task đứng tới khi có CLI liệt kê được* — bỏ vì mức suy nghĩ
 đã liệt kê được ngay, và chặn cả hai vì một nửa là bỏ phí nửa đo được.
+
+## 14. Gemini CLI — đo lại khi người chủ chạy nó thật (2026-09-24)
+
+**Bối cảnh**: người chủ chạy một Workspace Agent bằng `gemini` trên một máy Linux, nền tảng triển khai ở
+chỗ khác. Tạo dự án bằng agent thì màn hình báo *agent không online*; nhật ký hoạt động ghi:
+
+> `gemini: opening a session: Internal error (-32603): Ripgrep is not available. Falling back to GrepTool.
+> [ERROR][IDEClient] Failed to connect to IDE companion extension…`
+
+Câu ấy ghép từ **hai** nguồn: `opening a session: Internal error (-32603)` là **gemini trả lời lệnh mở
+phiên** (`session/new`), còn hai dòng Ripgrep và IDE là **stderr của gemini** bị daemon dán thêm vào đuôi.
+Hai dòng stderr không phải nguyên nhân.
+
+**Đo trên binary thật** `gemini 0.56.0`, cùng lệnh daemon dùng (`gemini --acp`), ba lần mở phiên:
+
+| Gửi | `session/new` trả |
+| --- | --- |
+| MCP server đúng hình daemon đang gửi — `{name, command, args}`, **không `env`** | **`-32603 Internal error`**, kèm lỗi kiểm dữ liệu: nhánh stdio thiếu `env` |
+| Đủ bốn trường theo schema — thêm `env: []` | `-32000`: *"This client is no longer supported for Gemini Code Assist for individuals. To continue using Gemini, please migrate to the Antigravity suite of products"* |
+| Không có MCP server nào | `-32000`, cùng câu trên |
+
+Ra **ba lớp chồng lên nhau**. Sửa lớp trên mới thấy lớp dưới.
+
+**Lớp 1 — lỗi của ta: daemon gửi sai hình dạng giao thức.** Schema ACP v1 (`McpServerStdio`) bắt buộc đủ
+bốn trường `name`, `command`, `args`, `env`. Daemon **luôn bỏ `env`** (có chủ ý, để tiến trình con thừa kế
+môi trường) và **bỏ `args` khi rỗng**. Gemini kiểm dữ liệu vào **trước** khi kiểm đăng nhập, nên mọi lượt
+chạy gemini chết ở đây, bất kể tài khoản. Bộ kiểm không bắt được vì nó chạy giao thức với **một peer giả
+không kiểm schema** — đúng cái bẫy chú thích trong `acp.go` đã tự nói: CLI ACP duy nhất của đợt này là CLI
+chưa ai chạy được. Sửa: luôn gửi `args: []` và `env: []`. Schema chỉ nói `env` là biến *đặt lúc khởi chạy*;
+gemini thì ghép chúng **lên trên** môi trường của chính nó (`{...process.env, ...env}`, đọc trong mã), nên
+`env: []` không cắt mất biến nào — nhưng CLI ACP khác phải đo lại chứ không suy từ gemini.
+
+**Lớp 2 — không phải của ta: Google đã khai tử Gemini CLI cho tài khoản cá nhân.** Từ **2026-06-18**, Gemini
+CLI ngừng phục vụ tài khoản miễn phí, Google AI Pro và Ultra, và bỏ đăng nhập bằng tài khoản Google cá nhân.
+Thứ thay thế là **Antigravity CLI** (lệnh `agy`, mã đóng, viết bằng Go). **Còn chạy**: API key Gemini trả
+phí (AI Studio), Vertex AI, và giấy phép Gemini Code Assist Standard/Enterprise. Câu từ chối ở bảng trên đo
+được ngay trên máy này. Nguồn:
+[Google Developers Blog](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/),
+[thảo luận #27274](https://github.com/google-gemini/gemini-cli/discussions/27274).
+
+**Lớp 3 — đọc từ mã nguồn, chưa đo được vì không có tài khoản: quyền gọi công cụ.** Trong `gemini 0.56.0`,
+một lần gọi công cụ MCP **phải xin quyền**, trừ khi thư mục được tin **và** server được đánh dấu `trust` —
+server đưa qua ACP thì không có dấu ấy. Qua ACP, lời xin quyền tới daemon thành `session/request_permission`,
+và daemon **huỷ mọi lời xin** (`permission_refused_nobody_to_ask`). Tức là sửa xong lớp 1, gemini vẫn **không
+gọi được** công cụ hỏi của buổi phỏng vấn. Đây đúng là chỗ T130a đo được ở codex: model gọi `armarius` qua
+shell và bị từ chối vì không có ai duyệt. **Cùng một câu hỏi thiết kế cho mọi CLI.**
+
+**Multica làm gì — bản mới nhất, kéo về 2026-09-24:**
+
+- **Đã gỡ hẳn Gemini CLI** ngày 2026-06-24 (MUL-3617, PR #4503), sáu ngày sau khi Google khai tử nó. Trước
+  đó họ lái gemini bằng **chế độ một phát**, không qua ACP: `gemini -p <prompt> --yolo -o stream-json`,
+  kèm `GEMINI_CLI_TRUST_WORKSPACE=true` để không chết ở cổng tin thư mục (mã thoát 55).
+- **Thay bằng Antigravity**: `agy -p <prompt> --dangerously-skip-permissions [--model …]
+  [--conversation <id>]`, đọc `stream-json` từ `agy 1.1.8`, lấy danh sách model từ `agy models`. Công cụ
+  của Multica tới agent qua **lệnh CLI trong shell**, không qua MCP.
+- **Quyền**: không có người trông thì **đồng ý tất cả** — `--yolo` cho gemini,
+  `--dangerously-skip-permissions` cho agy, còn codex thì mọi `requestApproval` đều trả `accept`.
+
+**Thêm một chuyện đo được trong lúc lần**: Workspace Agent được **tự đặt** lên chỗ làm có id nhỏ nhất khi
+máy đầu tiên báo lên (FR-112), không ai chọn. Máy có cả `claude` lẫn `gemini` thì Workspace Agent có thể rơi
+vào gemini vì một cái id — rồi theo FR-007 thì **không dời đi được**.
+
+**Chờ người chủ chốt** (T182):
+
+1. **Gemini còn giữ không?** Giữ thì chỉ phục vụ người có API key trả phí hoặc giấy phép doanh nghiệp. Multica
+   đã bỏ.
+2. **Có thêm Antigravity (`agy`) không?** Đây là thứ Google đưa cho tài khoản cá nhân bây giờ. Phải đo riêng:
+   chạy không đầu, đưa công cụ vào bằng cách nào, xin quyền ra sao.
+3. **Không có người trông thì daemon trả lời xin quyền thế nào?** Ba đường: *từ chối tất cả* (hiện tại —
+   codex và gemini không dùng được công cụ); *đồng ý tất cả* (Multica — agent làm được mọi thứ trên máy
+   người vận hành); *chỉ đồng ý công cụ của chính Armarius, từ chối phần còn lại*. Đề xuất đường thứ ba.
+   Câu này quyết luôn T130a.
+
+Lớp 1 thì **sửa bất kể** ba câu trên chốt thế nào: gửi sai giao thức là lỗi của ta.

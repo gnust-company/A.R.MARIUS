@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from uuid import UUID
 
+from armarius.domain.entities.agent_chat import AgentConversation
 from armarius.domain.entities.approval import Approval
 from armarius.domain.entities.artifact import Artifact
 from armarius.domain.entities.auto_approval import AutoApproval
@@ -147,6 +148,24 @@ class AutoApprovalRepository(ABC):
     async def set_enabled(
         self, project_id: UUID, user_id: str, *, enabled: bool
     ) -> AutoApproval: ...
+
+
+class AgentChatRepository(ABC):
+    """The patron's direct conversations with their agents (FR-007p). One per agent."""
+
+    @abstractmethod
+    async def add(self, conversation: AgentConversation) -> AgentConversation: ...
+    @abstractmethod
+    async def get(self, conversation_id: UUID) -> AgentConversation | None: ...
+    @abstractmethod
+    async def get_by_agent(self, marius_id: UUID) -> AgentConversation | None:
+        """The single conversation with this agent, or None if nobody has written to it."""
+    @abstractmethod
+    async def get_by_run(self, run_id: UUID) -> AgentConversation | None:
+        """The conversation whose current turn this run is taking, if any — see
+        ``LeaderChatRepository.get_by_run`` for why it is asked in this direction."""
+    @abstractmethod
+    async def update(self, conversation: AgentConversation) -> AgentConversation: ...
 
 
 class LeaderChatRepository(ABC):

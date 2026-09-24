@@ -231,8 +231,16 @@ export interface MariusDTO {
   /** What this agent was set to, out of what its workplace offers (FR-007k). An absent key
    *  means nothing was picked and the tool's own default applies. */
   runtime_options?: Record<string, string>
+  /** Where this agent works: which agent CLI, on which machine (FR-007o). `null` when it works
+   *  nowhere — never placed, or its machine was taken out of the workspace. */
+  runtime?: AgentRuntimeDTO | null
   last_seen_at?: string | null
   created_at?: string | null
+}
+
+export interface AgentRuntimeDTO {
+  cli_kind: string
+  machine_name: string
 }
 
 // POST /workspaces/{id}/mariuses response (backend `MariusCreatedOut`). The agent's token is
@@ -994,6 +1002,35 @@ export interface LeaderChatTurn {
   /** `system` turns only: what fills the cause's placeholders. */
   params?: Record<string, string> | null
   ts?: string | null
+}
+
+/** The patron's direct conversation with one agent (FR-007p). */
+export interface AgentChatTurn {
+  role: 'patron' | 'agent' | string
+  text: string
+  ts?: string
+}
+
+export interface AgentChatDTO {
+  marius_id: string
+  /** Read live: an agent that cannot be reached cannot be written to. */
+  agent_online: boolean
+  state: string // 'idle' | 'thinking' | 'failed'
+  transcript: AgentChatTurn[]
+}
+
+export async function getAgentChat(workspaceId: string, mariusId: string): Promise<AgentChatDTO> {
+  return get<AgentChatDTO>(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}/chat`)
+}
+
+export async function sendAgentChatMessage(
+  workspaceId: string,
+  mariusId: string,
+  message: string,
+): Promise<AgentChatDTO> {
+  return post<AgentChatDTO>(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}/chat/messages`, {
+    message,
+  })
 }
 
 export interface LeaderChatDTO {
