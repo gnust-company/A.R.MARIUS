@@ -137,6 +137,12 @@ phép. Nền đối chiếu: [research.md](research.md) §14.
 - Q: Với Codex, "đồng ý tất cả" có gồm cả tắt sandbox (mở thread không hỏi, không sandbox) không? → A:
   **Không.** Chế độ duyệt và sandbox để nguyên theo thiết lập Codex của người vận hành; daemon chỉ trả
   `accept` cho mọi lời xin tới được nó (FR-013b).
+- Q: Mỗi lần chạy daemon phải giữ một terminal mở và chạy lại bằng tay — có chế độ chạy nền không? → A:
+  **Có, mặc định.** `start` chạy nền, ghi log ra file; `-foreground` để chạy trong terminal hoặc dưới bộ
+  quản dịch vụ; `stop` để dừng (FR-008m).
+- Q: Daemon có tự cập nhật phiên bản không? → A: **Có, mặc định bật** — hỏi bản phát hành mới nhất định kỳ,
+  chỉ nâng cấp và khởi động lại lúc rảnh, và cũng tự khởi động lại khi binary trên đĩa đã được thay; tắt được
+  trong file cấu hình (FR-008n).
 
 ---
 
@@ -840,6 +846,47 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   giờ là ngôn ngữ của hệ thống: nó là một chữ dịch thêm ở tầng hiển thị, và là chữ không ai ngoài mã nguồn
   này dùng.
   *Chốt 2026-09-07, người chủ: "click chọn runtime tôi đé hiểu sao lại gọi là Chỗ làm?"*
+- **FR-008m**: Daemon PHẢI **chạy nền** mà không cần giữ một terminal mở (chốt 2026-09-28, người chủ: *"chạy
+  mỗi lần phải chạy lại thủ công rất phiền"*).
+  - `armarius-daemon start` PHẢI chạy nền **mặc định**: tách khỏi terminal — đóng terminal không dừng daemon —
+    và ghi mọi thứ nó nói ra `daemon.log` cạnh file cấu hình. `start` chỉ báo *đã chạy* khi daemon đã đăng ký
+    xong runtime của máy; daemon chết ngay lúc khởi động (token hỏng, server không tới được…) thì `start`
+    PHẢI báo hỏng kèm những dòng log của lần khởi động ấy, không được báo thành công rồi để người ta tự đi
+    tìm vì sao máy không hiện lên.
+  - `-foreground` giữ cách chạy cũ, cho bộ quản dịch vụ (systemd, launchd) và cho gỡ lỗi. Unit systemd trong
+    tài liệu PHẢI dùng `-foreground`: chạy nền dưới systemd là tiến trình systemd theo dõi thoát ngay, và
+    systemd dọn cả tiến trình con theo.
+  - `armarius-daemon stop` PHẢI dừng daemon theo đúng đường dừng có trật tự của FR-034 — thôi xin việc, chờ
+    lượt đang chạy, trả runtime — và đợi nó dừng hẳn rồi mới trả lời. Lời yêu cầu dừng đi qua **một file cạnh
+    file trạng thái**, không qua cổng mạng: daemon không mở cổng nào trên máy, và một file thì chạy như nhau
+    trên mọi nền tảng. Dừng bằng tín hiệu (Ctrl-C, SIGTERM) vẫn đi đúng đường ấy.
+  - Đã có một daemon đang chạy — không phải đang dừng — thì `start` PHẢI từ chối và nêu tiến trình đang giữ
+    máy, như FR-034a.
+  - `daemon.log` KHÔNG ĐƯỢC lớn mãi: quá 20 MB lúc khởi động thì cất sang một bản cũ duy nhất.
+  - Chạy lại sau khi **máy khởi động lại** không phải việc của daemon mà của bộ quản dịch vụ của hệ điều
+    hành: tài liệu PHẢI chỉ cách cài daemon thành dịch vụ của người dùng (systemd `--user` trên Linux).
+- **FR-008n**: Daemon PHẢI **tự cập nhật**, bằng hai đường độc lập (chốt 2026-09-28, người chủ):
+  - **Kéo bản mới.** Hai phút sau khi khởi động rồi cứ sáu giờ một lần, daemon hỏi bản phát hành mới nhất ở
+    đúng nơi lệnh cài hỏi (FR-008i) và theo đúng cách ấy: đọc tag qua đường chuyển hướng của
+    `/releases/latest`, không gọi API — không token, không giới hạn lượt. Mới hơn bản đang chạy thì tải
+    archive của đúng hệ điều hành và kiến trúc, **kiểm SHA-256 theo `checksums.txt` trước khi giải nén**, và
+    đặt hai chương trình như **một khối**: cả hai vào chỗ, hoặc không cái nào — y như FR-008i. Chỉ bản phát
+    hành có số hiệu `X.Y.Z` mới tự cập nhật: bản dựng từ nguồn thì không, vì nâng nó lên một bản phát hành là
+    xoá mất thứ đang được thử trên máy ấy.
+  - **Theo binary trên đĩa.** Cứ mười phút, daemon hỏi file `armarius-daemon` trên đĩa `--version`; khác bản
+    đang chạy — người vận hành vừa chạy lại lệnh cài, chẳng hạn — thì khởi động lại vào bản ấy. Đây là đường
+    nâng cấp của máy mà daemon không tự ghi được vào thư mục cài (cài bằng `sudo` vào `/usr/local/bin`).
+  - Chỉ khởi động lại khi **rảnh** (FR-034): không lượt nào đang chạy. Kiểm rảnh phải **thôi xin việc trước**,
+    để không một lượt nào lọt vào giữa lúc kiểm và lúc dừng; đang bận thì hoãn sang nhịp sau, không cắt ngang
+    gì. Khởi động lại đi đúng đường dừng có trật tự rồi chạy bản mới **với cùng tham số**; trên Linux và
+    macOS nó giữ nguyên số tiến trình, nên bộ quản dịch vụ không thấy gì đổi.
+  - Hỏng ở bất cứ bước nào — không tới được nơi phát hành, checksum không khớp, không ghi được vào thư mục cài
+    — thì PHẢI nói ra trong log và thử lại nhịp sau, KHÔNG ĐƯỢC dừng daemon và KHÔNG ĐƯỢC để lại một nửa bản
+    cài.
+  - **Mặc định bật**; tắt bằng `"auto_update": false` (kéo bản mới) và `"auto_reload": false` (theo binary trên
+    đĩa) trong file cấu hình. Bật mặc định vì bản phát hành daemon và server Armarius ra từ **cùng một repo và
+    cùng một người vận hành**. Rủi ro đã biết: server chưa được triển khai lên bản mới mà daemon đã lên thì hai
+    bên có thể không nói chuyện được với nhau — khi ấy tắt `auto_update` trên máy.
 
 ### Nhóm B — Giao việc và nói chuyện với agent
 
