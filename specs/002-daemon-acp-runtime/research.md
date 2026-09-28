@@ -441,8 +441,8 @@ Ba thứ hợp đồng nói ra mà đọc Multica một mình không thấy:
 3. `decline` được **định nghĩa trong nguồn** là *người dùng từ chối; agent sẽ đi tiếp lượt của nó* — khác
    `cancel`, thứ cắt luôn lượt chạy. ~~Nên từ chối quyền theo FR-013b có đúng một từ đúng, và nó không phải
    từ làm chết lượt chạy.~~ **Sửa 2026-09-28**: FR-013b giờ là **đồng ý** mọi lời xin phép — với Codex là
-   `accept` (FR-039e). `decline` chỉ còn dùng cho **câu hỏi xin thông tin** (`mcpServer/elicitation/request`),
-   và lý do chọn nó thay cho `cancel` vẫn giữ nguyên: nó không làm chết lượt chạy.
+   `accept` (FR-039e), kể cả câu hỏi xin thông tin (`mcpServer/elicitation/request`, không kèm nội dung).
+   Daemon không còn trả `decline` ở đâu cả.
 
 Và một thứ chỉ đọc mã Multica mới thấy, vì nó là hệ quả của việc không có ai ngồi đây: Codex **gọi ngược
 lại** để xin duyệt, qua bốn phương thức. Bảng khai cũ của Armarius thiếu hẳn nhánh này — tức một lượt chạy
@@ -691,6 +691,4 @@ Lớp 1 thì **sửa bất kể** ba câu trên chốt thế nào: gửi sai gia
 thành FR-013b, FR-039e, làm ở T191, T192; (4) `gemini` **chạy một lần mỗi lượt**, không qua ACP — FR-039f,
 T193. Cách chạy đọc từ bản gemini cuối cùng của Multica trước khi họ gỡ (commit `76c58a4ee^`,
 `server/pkg/agent/gemini.go`): `gemini -p <prompt> --yolo -o stream-json [-m <model>] [-r <session>]`, kèm
-`GEMINI_CLI_TRUST_WORKSPACE=true`, brief ở `GEMINI.md`. Armarius đưa thông điệp qua đầu vào chuẩn thay cho
-`-p`: bundle đọc đầu vào chuẩn khi nó không phải terminal và coi đó là chế độ không tương tác
-(`isHeadlessMode`).
+`GEMINI_CLI_TRUST_WORKSPACE=true`, brief ở `GEMINI.md`. Armarius làm y như vậy.
