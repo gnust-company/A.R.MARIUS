@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -159,6 +160,32 @@ func TestTheSweepReportsInAStableOrder(t *testing.T) {
 				t.Fatalf("position %d = %q, want %q", i, got.Found[i].Kind, kind)
 			}
 		}
+	}
+}
+
+// What a CLI is started with to speak its protocol comes off its own row and travels with what
+// was found, so the probe asks the program a run will hand work to. A CLI run once per turn has
+// nothing to switch into and carries nothing (FR-039f moved gemini there).
+func TestWhatWasFoundCarriesTheFlagsItsRowStartsItWith(t *testing.T) {
+	m := &machine{
+		installed: map[string]string{"codex": "/usr/local/bin/codex", "gemini": "/usr/local/bin/gemini"},
+		answers:   map[string]string{"/usr/local/bin/codex": "0.155.0", "/usr/local/bin/gemini": "0.56.0"},
+	}
+
+	got := Discover(context.Background(), m.options())
+
+	for _, found := range got.Found {
+		row, _ := agentcli.Lookup(string(found.Kind))
+		if strings.Join(found.ProtocolArgs, " ") != strings.Join(row.ProtocolArgs, " ") {
+			t.Errorf("%s được tìm thấy với cờ %v, dòng của nó khởi chạy bằng %v",
+				found.Kind, found.ProtocolArgs, row.ProtocolArgs)
+		}
+		if found.Kind == agentcli.Gemini && len(found.ProtocolArgs) != 0 {
+			t.Errorf("gemini chạy một lần mỗi lượt mà vẫn mang cờ giao thức %v", found.ProtocolArgs)
+		}
+	}
+	if len(got.Found) != 2 {
+		t.Fatalf("tìm thấy %+v, mong cả hai", got.Found)
 	}
 }
 

@@ -31,16 +31,34 @@ type invocation struct {
 	// flags says how this CLI spells the settings a person may pick (FR-007k). Keyed by the
 	// server's name for the setting; a key absent here is a setting this CLI does not take.
 	flags map[string]string
-	// args builds the command line. The message is never one of them — it goes in on standard
-	// input, so that its length is not the operating system's business and so that it does not
-	// sit in the process table for everyone on a shared machine to read.
+	// args builds the command line, without the message.
 	args func(req Request) []string
-	// read turns one line of the CLI's output into events, and picks up whatever the outcome
-	// needs. A line it does not recognise produces nothing: these streams carry banners,
-	// progress and warnings alongside the events, and guessing at an unknown shape would put
-	// invented facts in a record that is meant to be evidence.
-	read func(line []byte, journal *Journal, out *Outcome)
+	// prompt is the flag the message is handed over with, for a CLI that is driven that way; empty
+	// means standard input. Standard input where the CLI allows it — then the message's length is
+	// not the operating system's business and it does not sit in the process table for everyone
+	// on a shared machine to read — and a flag where the CLI is driven by one.
+	prompt string
+	// reader builds what reads one turn's output. A fresh one per turn, because a CLI that
+	// streams its text in fragments has to be read with memory of the fragments before.
+	reader func() lineReader
 }
+
+// lineReader turns a CLI's output into events, one line at a time, and picks up whatever the
+// outcome needs. A line it does not recognise produces nothing: these streams carry banners,
+// progress and warnings alongside the events, and guessing at an unknown shape would put
+// invented facts in a record that is meant to be evidence.
+type lineReader interface {
+	read(line []byte, journal *Journal, out *Outcome)
+	// finish is told the output has ended, so whatever was held back is said now rather than
+	// lost with the process.
+	finish(journal *Journal, out *Outcome)
+}
+
+// eachLine is a reader that needs no memory between lines.
+type eachLine func(line []byte, journal *Journal, out *Outcome)
+
+func (f eachLine) read(line []byte, journal *Journal, out *Outcome) { f(line, journal, out) }
+func (eachLine) finish(*Journal, *Outcome)                          {}
 
 // oneShots is every CLI this family knows how to run.
 var oneShots = map[string]invocation{
@@ -59,14 +77,16 @@ var oneShots = map[string]invocation{
 	//     passed: it would also switch off whatever tools the operator configured for their own
 	//     installation, which is theirs to decide and is not what FR-013a asks for. What FR-013a
 	//     asks for is that *ours* be declared per run and never written into their configuration.
-	//   - `--allowed-tools mcp__<server>` is what makes the declaration usable, and it was
-	//     **measured, not assumed**: declared and not allowed, the tools appear in the agent's
-	//     list, the agent calls one, and the call comes back denied — nobody is sitting here to
-	//     grant it. This does not answer a permission question on the patron's behalf (FR-013b):
-	//     it names the toolset this run was *given*, which is the scope decision itself
-	//     (FR-013d). Handing an agent a set of tools and then refusing every use of them is not
-	//     a stricter reading of the rule, it is a run that cannot report what it did. Only our
-	//     own server is named; everything the agent asks to do in the world is untouched.
+	//   - `--permission-mode bypassPermissions` because nobody is sitting here to grant anything,
+	//     and FR-013b says an unattended run is allowed what it asks for. Claude Code in print
+	//     mode does not ask: whatever its settings do not already allow is refused in silence, so
+	//     the only way to say yes is to start it in the mode that does not need asking. This
+	//     replaced an allow-list naming our own tools alone, which left every other step — a
+	//     file written, a command run — to whatever the operator happened to have allowed.
+	//   - `--disallowed-tools AskUserQuestion` because that tool waits for somebody to answer a
+	//     dialog, and with no dialog it comes back empty and the agent carries on guessing. A
+	//     question for the person goes through Armarius instead, which ends the turn and wakes
+	//     the agent again with the answer (FR-013b).
 	"claude_code": {
 		// Measured on 2.1.226, and measured **together with the probe that offers them**: the
 		// values a person picks come out of `--effort (low, medium, high, xhigh, max)` and
@@ -75,19 +95,55 @@ var oneShots = map[string]invocation{
 		// screen ends up offering a setting nothing applies.
 		flags: map[string]string{"model": "--model", "thinking_level": "--effort"},
 		args: func(req Request) []string {
-			args := []string{"-p", "--output-format", "stream-json", "--verbose"}
+			args := []string{
+				"-p", "--output-format", "stream-json", "--verbose",
+				"--permission-mode", "bypassPermissions",
+				"--disallowed-tools", "AskUserQuestion",
+			}
 			if req.ToolConfig != "" {
 				args = append(args, "--mcp-config", req.ToolConfig)
-			}
-			if granted := grantedTools(req); len(granted) > 0 {
-				args = append(args, "--allowed-tools", strings.Join(granted, " "))
 			}
 			if req.Session != "" {
 				args = append(args, "--resume", req.Session)
 			}
 			return args
 		},
-		read: readClaudeCode,
+		reader: func() lineReader { return eachLine(readClaudeCode) },
+	},
+
+	// Gemini CLI, one process per turn (FR-039f). Read off the bundle `gemini 0.56.0` ships, not
+	// run on the machine this was written on: nobody here has an account it will serve.
+	//
+	//   - `-p <message>`, the way Multica's daemon drove it before Gemini CLI was dropped there
+	//     (`git show 76c58a4ee^:server/pkg/agent/gemini.go`), and the same way the rest of this
+	//     command line is spelled. Standard input is left empty: the bundle would put whatever it
+	//     finds there in front of `-p`, and a message said twice is not the message.
+	//   - `--yolo` approves every tool call without asking (FR-013b). Its `ask_user` dialog needs
+	//     no flag to switch off: the bundle drops that tool by itself whenever it runs without a
+	//     terminal, which is the whole of what FR-013b asks for here.
+	//   - `--output-format stream-json` prints one JSON object per line: `init`, `message`,
+	//     `tool_use`, `tool_result`, `error`, `result`.
+	//   - `--resume <id>` takes the session id the `init` line carried. An id it cannot find ends
+	//     the process before anything is printed, which is the shape the retry in Run looks for.
+	//
+	// No tool declaration is passed: this mode has no flag naming a file of MCP servers for one
+	// run, and the servers it would read from settings are started with every variable whose name
+	// looks like a credential stripped out — this run's token among them. The command face does
+	// not have that problem, because gemini's shell keeps the environment by default.
+	//
+	// No settings are spent either: the help text offers no model list to pick from, and a flag
+	// with nothing to choose is a setting nobody can reach (choices_test.go holds the two tables
+	// to that).
+	"gemini": {
+		prompt: "-p",
+		args: func(req Request) []string {
+			args := []string{"--yolo", "--output-format", "stream-json"}
+			if req.Session != "" {
+				args = append(args, "--resume", req.Session)
+			}
+			return args
+		},
+		reader: func() lineReader { return &geminiReader{} },
 	},
 }
 
@@ -121,23 +177,6 @@ func chosen(req Request, flags map[string]string) []string {
 		args = append(args, flag, req.Options[key])
 	}
 	return args
-}
-
-// grantedTools names the tool servers this run was handed, in the form a CLI's allow-list uses.
-//
-// Derived from the declaration itself rather than written out again, so that the set a run is
-// allowed to use and the set it was given are the same set by construction. A second list here
-// would be a second answer to what this agent may do, and the two would part company on the day
-// a server is added.
-func grantedTools(req Request) []string {
-	granted := make([]string, 0, len(req.ToolServers))
-	for _, server := range req.ToolServers {
-		if server.Name == "" {
-			continue
-		}
-		granted = append(granted, "mcp__"+server.Name)
-	}
-	return granted
 }
 
 // OneShot runs the CLIs that take one turn per process: hand them a message, read what they
@@ -221,8 +260,15 @@ func refusedTheHandle(ctx context.Context, req Request, journal *Journal, err er
 func takeTurn(
 	ctx context.Context, req Request, shape invocation, journal *Journal, notice string,
 ) (Outcome, error) {
-	cmd := newProcess(ctx, req, append(shape.args(req), chosen(req, shape.flags)...))
-	cmd.Stdin = strings.NewReader(ahead(notice, req.Message))
+	said := ahead(notice, req.Message)
+	args := append(shape.args(req), chosen(req, shape.flags)...)
+	if shape.prompt != "" {
+		args = append([]string{shape.prompt, said}, args...)
+	}
+	cmd := newProcess(ctx, req, args)
+	if shape.prompt == "" {
+		cmd.Stdin = strings.NewReader(said)
+	}
 
 	streams, err := plumb(cmd)
 	if err != nil {
@@ -241,6 +287,7 @@ func takeTurn(
 		reading    sync.WaitGroup
 		complaints tail
 		overflow   atomic.Bool
+		reader     = shape.reader()
 	)
 	reading.Add(2)
 	go func() {
@@ -252,8 +299,9 @@ func takeTurn(
 			if len(line) == 0 || line[0] != '{' {
 				continue
 			}
-			shape.read(line, journal, &out)
+			reader.read(line, journal, &out)
 		}
+		reader.finish(journal, &out)
 		if lines.Err() != nil && !errors.Is(lines.Err(), os.ErrClosed) {
 			// The stream is unreadable from here on, but the process is still running and is
 			// still doing the work. Say so and let it finish: killing a healthy agent because
@@ -445,6 +493,106 @@ func readClaudeCode(line []byte, journal *Journal, out *Outcome) {
 			journal.Fail("agent_reported_failure", map[string]any{"why": parsed.Subtype})
 		}
 	}
+}
+
+// geminiLine is one line of Gemini CLI's stream-json output, in the fields read here.
+//
+// Shapes read off the `gemini 0.56.0` bundle (`JsonStreamEventType` and the non-interactive loop
+// that emits it), which are also the shapes Multica's reader of this CLI was written against.
+type geminiLine struct {
+	Type      string `json:"type"`
+	SessionID string `json:"session_id"`
+	// message
+	Role    string `json:"role"`
+	Content string `json:"content"`
+	// tool_use
+	ToolName   string         `json:"tool_name"`
+	ToolID     string         `json:"tool_id"`
+	Parameters map[string]any `json:"parameters"`
+	// tool_result, and result
+	Status string `json:"status"`
+	// Output is a pointer because absent is not empty (FR-047): the bundle leaves the field out
+	// when a tool had nothing to display, and that is not a tool that printed nothing.
+	Output *string `json:"output"`
+	// error
+	Severity string `json:"severity"`
+	Message  string `json:"message"`
+	// result
+	Error *struct {
+		Type    string `json:"type"`
+		Message string `json:"message"`
+	} `json:"error"`
+	Stats map[string]any `json:"stats"`
+}
+
+// geminiReader reads one turn of Gemini CLI.
+//
+// It has memory because the agent's words arrive in fragments — every `message` line from the
+// agent is marked `delta: true` — and one event per fragment would turn a paragraph into dozens of
+// entries in the record. The fragments are held until something else happens (a tool is called,
+// the turn ends) and then said as one piece, which is the same grain Claude Code reports text at.
+type geminiReader struct {
+	said strings.Builder
+}
+
+func (g *geminiReader) read(line []byte, journal *Journal, out *Outcome) {
+	var parsed geminiLine
+	if json.Unmarshal(line, &parsed) != nil {
+		return
+	}
+	// Only `init` carries the id, and it arrives before the agent has said anything — so a turn
+	// that dies halfway still leaves behind the handle that carries the conversation on (FR-023).
+	if out.Session == "" && parsed.SessionID != "" {
+		out.Session = parsed.SessionID
+	}
+
+	switch parsed.Type {
+	case "message":
+		// The bundle also echoes the message it was given, as `role: "user"`. That is ours, not
+		// the agent's, and it is already in the record.
+		if parsed.Role == "assistant" {
+			g.said.WriteString(parsed.Content)
+		}
+	case "tool_use":
+		g.finish(journal, out)
+		journal.ToolStarted(parsed.ToolID, parsed.ToolName, parsed.Parameters, parsed.Parameters != nil)
+	case "tool_result":
+		g.finish(journal, out)
+		result := Result{}
+		if parsed.Output != nil {
+			result = Result{Exposed: true, Body: *parsed.Output}
+		}
+		journal.ToolCompleted(parsed.ToolID, parsed.Status == "error", result)
+	case "error":
+		g.finish(journal, out)
+		// Warnings are the CLI narrating a retry or a hook, and the next line may well disprove
+		// them; only an error is a fact about this turn.
+		if parsed.Severity == "error" && parsed.Message != "" {
+			journal.Fail("agent_reported_failure", map[string]any{"why": parsed.Message})
+		}
+	case "result":
+		g.finish(journal, out)
+		if parsed.Stats != nil {
+			out.Usage = parsed.Stats
+		}
+		// A failed result names its cause only on the fatal path. Otherwise the cause was an
+		// `error` line just before it, already recorded, and saying it twice would read as two.
+		if parsed.Status == "error" && parsed.Error != nil {
+			why := parsed.Error.Message
+			if why == "" {
+				why = parsed.Error.Type
+			}
+			journal.Fail("agent_reported_failure", map[string]any{"why": why})
+		}
+	}
+}
+
+// finish says whatever the agent has written since the last thing that was not words.
+func (g *geminiReader) finish(journal *Journal, out *Outcome) {
+	said := g.said.String()
+	g.said.Reset()
+	journal.Text(said)
+	hitAWall("gemini", said, out)
 }
 
 // tail keeps the last bytes written to it and forgets the rest.

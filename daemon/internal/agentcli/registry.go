@@ -276,23 +276,20 @@ var rows = []CLI{
 	// bundle it ships (see research §9.2). That distinction is the whole of FR-039a: what is
 	// forbidden is guessing, not writing.
 	//
-	// What the probe reached, and what it did not, matters for reading this row. The ACP
-	// handshake **completed** with the process started by another program and no terminal, and
-	// Gemini declared its own capabilities in it — so the failure this row was held back for,
-	// a daemon waiting forever on a handshake that was never coming, is measured not to happen.
-	// What could not be reached was a prompt: Google refuses this account outright
-	// (`IneligibleTierError`, `UNSUPPORTED_CLIENT` on the individual free tier). So the four
-	// paths below are read from the shipped source rather than watched being used, and the day
-	// a working account exists they are the first thing to check.
+	// **One process per turn, not ACP** (FR-039f, 2026-09-28). The ACP road completed its
+	// handshake here, and was left for two things found behind it: the MCP servers it starts are
+	// given an environment with every credential-looking variable stripped out — this run's token
+	// among them — and it refuses to open a session unless each server is declared in all four
+	// fields. Run once per turn, it has the same shape as Claude Code and neither of those walls.
+	// No prompt was ever run through either road on this machine: Google refuses its account
+	// (`IneligibleTierError`, `UNSUPPORTED_CLIENT` on the individual free tier), so the paths
+	// below are read from the shipped source, and the day a working account exists they are the
+	// first thing to check.
 	{
 		Kind:        Gemini,
-		Family:      FamilyACP,
+		Family:      FamilyOneShot,
 		Binary:      "gemini",
 		VersionArgs: []string{"--version"},
-		// `--acp` rather than `--experimental-acp`: the binary's own help calls the older
-		// spelling deprecated and names this one. Both were measured to work, so the older one
-		// remains the fallback if a build ever refuses this.
-		ProtocolArgs: []string{"--acp"},
 		// `"GEMINI.md"` and `contextFileName` in the bundle. Project-level, in the working
 		// directory, which is why the trust variable below is not optional.
 		ContextFile: "GEMINI.md",
@@ -324,7 +321,8 @@ var rows = []CLI{
 		// the silent failure this table exists to prevent. Gemini will not read project-level
 		// configuration out of a folder nobody has trusted — and the daemon makes a fresh
 		// folder for every task, which nobody ever has. Untrusted, it says so on its error
-		// stream and carries on with the brief unread.
+		// stream and carries on with the brief unread — or, without a terminal and with the
+		// operator's folder-trust setting on, exits 55 before doing anything at all.
 		//
 		// The variable is checked before the on-disk list (`checkPathTrust` in the bundle), so
 		// it settles the question without editing a file the operator owns.

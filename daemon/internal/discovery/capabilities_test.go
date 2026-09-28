@@ -130,7 +130,7 @@ func TestACLIThatRefusesToDescribeItselfIsUnansweredNotAssumed(t *testing.T) {
 
 func TestEveryFoundCLIGetsAskedInOrder(t *testing.T) {
 	found := []Found{
-		{Kind: agentcli.Gemini, Family: agentcli.FamilyACP, Path: "/usr/local/bin/gemini"},
+		{Kind: anACPCLI, Family: agentcli.FamilyACP, Path: "/usr/local/bin/an-acp-cli"},
 		{Kind: agentcli.ClaudeCode, Family: agentcli.FamilyOneShot, Path: "/usr/bin/claude"},
 	}
 
@@ -144,6 +144,52 @@ func TestEveryFoundCLIGetsAskedInOrder(t *testing.T) {
 	}
 	if !got[1].Resumable {
 		t.Error("the one-shot one was asked and answered")
+	}
+}
+
+// geminiHelp is the part of `gemini --help` the probe reads, laid out the way yargs prints it from
+// the option definitions in the `gemini 0.56.0` bundle (descriptions copied from there verbatim).
+// Rebuilt from the source rather than captured from a run, which is the one way it can be
+// written on a machine where Gemini CLI is not run.
+const geminiHelp = `Usage: gemini [options] [command]
+
+Options:
+  -m, --model          Model                                                        [string]
+  -p, --prompt         Run in non-interactive (headless) mode with the given prompt. Appended
+                       to input on stdin (if any).                                  [string]
+  -y, --yolo           Automatically accept all actions (aka YOLO mode, see
+                       https://www.youtube.com/watch?v=xvFZjo5PgG0 for more details)?
+                                                                  [boolean] [default: false]
+  -r, --resume         Resume a previous session. Use "latest" for most recent or index
+                       number (e.g. --resume 5)                                     [string]
+  -o, --output-format  The format of the CLI output.
+                                     [string] [choices: "text", "json", "stream-json"]
+`
+
+// Gemini CLI is asked the way every CLI run once per turn is asked (FR-039f): what its own help
+// says. It resumes by id, and its stream-json form carries tool calls with their arguments and
+// what they returned.
+func TestGeminiIsAskedWhatItsHelpSays(t *testing.T) {
+	found := Found{Kind: agentcli.Gemini, Family: agentcli.FamilyOneShot, Path: "/usr/local/bin/gemini"}
+	var askedFor []string
+	opts := askedWith(geminiHelp, nil)
+	opts.Run = func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		askedFor = args
+		return []byte(geminiHelp), nil
+	}
+
+	got := Probe(context.Background(), found, opts)
+
+	if strings.Join(askedFor, " ") != "--help" {
+		t.Errorf("gemini được hỏi bằng %v, mong --help", askedFor)
+	}
+	if !got.Resumable || !got.ExposesToolArgs || !got.ExposesToolResult {
+		t.Fatalf("trợ giúp có --resume và stream-json mà chỗ làm thiếu khả năng: %+v", got)
+	}
+	// `-m, --model` stands beside the word "Model" and nothing else, so there is no list to offer.
+	// Its first bracket is `(headless)` on the next line, which is prose rather than a list.
+	if len(got.Choices) != 0 {
+		t.Fatalf("trợ giúp không kể model nào mà vẫn bày ra lựa chọn: %+v", got.Choices)
 	}
 }
 
@@ -320,6 +366,10 @@ func TestEveryCapabilityTheServerStoresCanBeReportedMissing(t *testing.T) {
 // outright (`IneligibleTierError`). Copied rather than invented, and the refusal matters: the
 // handshake completes anyway, which is why a workplace can be asked what it can do without
 // anybody having a working account.
+//
+// Gemini CLI no longer runs on this road (FR-039f), and no CLI of this release does. The answer is
+// kept as the one real ACP introduction on record, spoken here by a peer with no row of its own:
+// the family stays in the daemon for a CLI that comes later, and its probe with it.
 const geminiIntroduction = `{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,` +
 	`"authMethods":[{"id":"oauth-personal","name":"Log in with Google"}],` +
 	`"agentInfo":{"name":"gemini-cli","title":"Gemini CLI","version":"0.56.0"},` +
@@ -352,8 +402,15 @@ func (w *capturingWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func geminiFound() Found {
-	return Found{Kind: agentcli.Gemini, Family: agentcli.FamilyACP, Path: "/usr/local/bin/gemini"}
+// anACPCLI is the kind the ACP probe is exercised under. No row of this release is ACP, so the
+// flag it is started with travels on the Found, as it would for a row that was.
+const anACPCLI Kind = "an-acp-cli"
+
+func acpPeerFound() Found {
+	return Found{
+		Kind: anACPCLI, Family: agentcli.FamilyACP, Path: "/usr/local/bin/an-acp-cli",
+		ProtocolArgs: []string{"--acp"},
+	}
 }
 
 // Cái trần của FR-017 trong cả daemon này: không phải một dấu hiệu đọc mò trong trang trợ giúp,
@@ -361,7 +418,7 @@ func geminiFound() Found {
 func TestAnACPCLIsResumingComesFromItsOwnHandshake(t *testing.T) {
 	opts, _ := peerSaying(geminiIntroduction)
 
-	got := Probe(context.Background(), geminiFound(), opts)
+	got := Probe(context.Background(), acpPeerFound(), opts)
 
 	if !got.Resumable {
 		t.Error("nó tự khai loadSession: true, mà chỗ làm đăng ký là không nối lại được phiên")
@@ -374,7 +431,7 @@ func TestTheSameACPCLIThatCannotLoadSessionsIsReportedThatWay(t *testing.T) {
 	opts, _ := peerSaying(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,` +
 		`"agentCapabilities":{"loadSession":false}}}`)
 
-	got := Probe(context.Background(), geminiFound(), opts)
+	got := Probe(context.Background(), acpPeerFound(), opts)
 
 	if got.Resumable {
 		t.Fatal("nó nói không nối lại được phiên, không ai được nói hộ nó câu ngược lại")
@@ -392,7 +449,7 @@ func TestTheSameACPCLIThatCannotLoadSessionsIsReportedThatWay(t *testing.T) {
 func TestWhatTheProtocolCannotAskIsNotReportedAsTheAgentSayingNo(t *testing.T) {
 	opts, _ := peerSaying(geminiIntroduction)
 
-	got := Probe(context.Background(), geminiFound(), opts)
+	got := Probe(context.Background(), acpPeerFound(), opts)
 
 	for _, want := range []capability{capExposesToolArgs, capExposesToolResult} {
 		if reason := reasonFor(got, string(want)); reason != ReasonNotInProtocol {
@@ -414,7 +471,7 @@ func TestABannerAndANotificationDoNotStopTheProbeReading(t *testing.T) {
 		geminiIntroduction,
 	)
 
-	got := Probe(context.Background(), geminiFound(), opts)
+	got := Probe(context.Background(), acpPeerFound(), opts)
 
 	if !got.Resumable {
 		t.Error("câu trả lời đúng số hiệu nằm sau ba dòng khác, và nó là câu duy nhất được đọc")
@@ -428,7 +485,7 @@ func TestAnACPCLIThatWillNotIntroduceItselfIsUnansweredNotAssumed(t *testing.T) 
 	opts, _ := peerSaying(`{"jsonrpc":"2.0","id":1,"result":null,` +
 		`"error":{"code":-32601,"message":"unknown method"}}`)
 
-	got := Probe(context.Background(), geminiFound(), opts)
+	got := Probe(context.Background(), acpPeerFound(), opts)
 
 	if len(got.Unanswered) != len(everyCapability) {
 		t.Fatalf("mong mọi khả năng đều là không hỏi được, nhận %+v", got.Unanswered)
@@ -451,7 +508,7 @@ func TestACLIThatNeverAnswersDoesNotHoldUpTheSweep(t *testing.T) {
 	}
 
 	done := make(chan Capabilities, 1)
-	go func() { done <- Probe(context.Background(), geminiFound(), opts) }()
+	go func() { done <- Probe(context.Background(), acpPeerFound(), opts) }()
 
 	select {
 	case got := <-done:
@@ -469,7 +526,7 @@ func TestACLIThatNeverAnswersDoesNotHoldUpTheSweep(t *testing.T) {
 func TestTheProbeIntroducesThisClientTheWayARunDoes(t *testing.T) {
 	opts, asked := peerSaying(geminiIntroduction)
 
-	Probe(context.Background(), geminiFound(), opts)
+	Probe(context.Background(), acpPeerFound(), opts)
 
 	if len(*asked) != 1 {
 		t.Fatalf("mong đúng một câu hỏi, nhận %+v", *asked)
@@ -484,9 +541,9 @@ func TestTheProbeIntroducesThisClientTheWayARunDoes(t *testing.T) {
 	}
 }
 
-// Một hàng của họ ACP mà không có gì để khởi động thì không nói lên điều gì về chính CLI ấy —
-// đó là chuyện của bảng ở đây, và mã lý do phải chỉ về đúng phía ấy.
-func TestAnACPKindTheRegistryDoesNotCarryIsNotGuessedAt(t *testing.T) {
+// Một CLI họ ACP mà không có gì để khởi động thì không nói lên điều gì về chính CLI ấy — đó là
+// chuyện của bảng ở đây, và mã lý do phải chỉ về đúng phía ấy.
+func TestAnACPCLIWithNothingToStartItWithIsNotGuessedAt(t *testing.T) {
 	found := Found{Kind: "acp_cli_nobody_wrote_a_row_for", Family: agentcli.FamilyACP, Path: "/usr/bin/x"}
 
 	got := Probe(context.Background(), found, askedWith("", nil))
@@ -535,7 +592,7 @@ func TestARealProcessIsStartedAndAnswersOverItsOwnPipes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	found := Found{Kind: agentcli.Gemini, Family: agentcli.FamilyACP, Path: script}
+	found := Found{Kind: anACPCLI, Family: agentcli.FamilyACP, Path: script, ProtocolArgs: []string{"--acp"}}
 	got := Probe(context.Background(), found, Options{Timeout: 10 * time.Second})
 
 	if !got.Resumable {
@@ -557,7 +614,7 @@ func TestARealProcessThatNeverAnswersIsGivenUpOn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	found := Found{Kind: agentcli.Gemini, Family: agentcli.FamilyACP, Path: script}
+	found := Found{Kind: anACPCLI, Family: agentcli.FamilyACP, Path: script, ProtocolArgs: []string{"--acp"}}
 	started := time.Now()
 	got := Probe(context.Background(), found, Options{Timeout: 300 * time.Millisecond})
 
@@ -569,8 +626,14 @@ func TestARealProcessThatNeverAnswersIsGivenUpOn(t *testing.T) {
 	}
 }
 
+// codexFound carries the start flags off Codex's own row, the way discovery does, so the probe
+// here is asked through the same flags a run uses.
 func codexFound() Found {
-	return Found{Kind: agentcli.Codex, Family: agentcli.FamilyAppServer, Path: "/usr/local/bin/codex"}
+	row, _ := agentcli.Lookup(string(agentcli.Codex))
+	return Found{
+		Kind: agentcli.Codex, Family: agentcli.FamilyAppServer, Path: "/usr/local/bin/codex",
+		ProtocolArgs: row.ProtocolArgs,
+	}
 }
 
 // Họ app-server hỏi được đúng một câu: **binary này có nói giao thức ấy không**. Codex không khai

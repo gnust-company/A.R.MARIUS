@@ -15,8 +15,8 @@ import (
 
 // fakeAgent is an ACP peer that is not a CLI at all.
 //
-// The one ACP CLI of this release is the one nobody has been able to run yet (T013), so a
-// protocol tested only by running one would be a protocol nobody had tested.
+// No CLI of this release runs over ACP — Gemini CLI, the only one that did, runs once per turn
+// since FR-039f — so a protocol tested only by running one would be a protocol nobody had tested.
 type fakeAgent struct {
 	t *testing.T
 
@@ -24,7 +24,9 @@ type fakeAgent struct {
 	loadFails     bool
 	updates       []map[string]any
 	askPermission bool
-	silentAfter   string
+	// permissionOptions are what the permission request offers, in ACP's own shape.
+	permissionOptions []map[string]any
+	silentAfter       string
 
 	// what it saw
 	cwd              string
@@ -32,6 +34,7 @@ type fakeAgent struct {
 	loaded           string
 	prompt           string
 	permissionAnswer json.RawMessage
+	permissionError  *rpcError
 }
 
 func (a *fakeAgent) serve(in io.Reader, out io.Writer) {
@@ -109,13 +112,17 @@ func (a *fakeAgent) serve(in io.Reader, out io.Writer) {
 					JSONRPC: "2.0",
 					ID:      json.RawMessage("900"),
 					Method:  "session/request_permission",
-					Params:  mustRaw(map[string]any{"sessionId": "session-just-opened"}),
+					Params: mustRaw(map[string]any{
+						"sessionId": "session-just-opened",
+						"options":   a.permissionOptions,
+						"toolCall":  map[string]any{"toolCallId": "call-1", "status": "pending"},
+					}),
 				})
 				// The answer arrives as the next thing the client says.
 				if lines.Scan() {
 					var answer rpcMessage
 					if json.Unmarshal(lines.Bytes(), &answer) == nil {
-						a.permissionAnswer = answer.Result
+						a.permissionAnswer, a.permissionError = answer.Result, answer.Error
 					}
 				}
 			}
@@ -239,26 +246,86 @@ func TestArgumentsTheCLIDoesSendTravelInFull(t *testing.T) {
 	}
 }
 
-func TestNobodyIsHereToGrantPermissionSoNobodyDoes(t *testing.T) {
-	// The daemon holds a machine's credentials, not a patron's judgement. Saying yes on their
-	// behalf would put an approval nobody gave on every unattended run (FR-013b).
-	agent := &fakeAgent{askPermission: true}
+// The options a real ACP peer offers for a tool call it wants confirmed, in the order gemini 0.56.0
+// listed them: the session-wide and permanent grants first, then the one-off allow and reject.
+var offeredForAToolCall = []map[string]any{
+	{"optionId": "proceed_always", "name": "Allow for this session", "kind": "allow_always"},
+	{"optionId": "proceed_always_and_save", "name": "Allow for all future sessions", "kind": "allow_always"},
+	{"optionId": "proceed_once", "name": "Allow", "kind": "allow_once"},
+	{"optionId": "cancel", "name": "Reject", "kind": "reject_once"},
+}
+
+// selected reads which option an answer picked, or empty when it picked none.
+func selected(t *testing.T, raw json.RawMessage) string {
+	t.Helper()
+	var answered struct {
+		Outcome struct {
+			Outcome  string `json:"outcome"`
+			OptionID string `json:"optionId"`
+		} `json:"outcome"`
+	}
+	if json.Unmarshal(raw, &answered) != nil || answered.Outcome.Outcome != "selected" {
+		return ""
+	}
+	return answered.Outcome.OptionID
+}
+
+// FR-013b (sửa 2026-09-28): không có ai ở đây để hỏi, nên lời xin được đồng ý — nhưng **một lần**.
+// Lựa chọn "luôn luôn" được CLI ghi vào cấu hình của người vận hành và sống lâu hơn đầu việc, nên
+// daemon không bao giờ tự chọn nó, dù nó đứng đầu danh sách.
+func TestAPermissionAskedOverACPIsGrantedOnceNeverAlways(t *testing.T) {
+	agent := &fakeAgent{askPermission: true, permissionOptions: offeredForAToolCall}
 
 	events, _, err := talkTo(t, agent, Request{})
 	if err != nil {
 		t.Fatalf("một lượt qua ACP: %v", err)
 	}
 
-	var answered struct {
-		Outcome struct {
-			Outcome string `json:"outcome"`
-		} `json:"outcome"`
+	if picked := selected(t, agent.permissionAnswer); picked != "proceed_once" {
+		t.Fatalf("chọn %q trong lời xin phép, mong proceed_once: %s", picked, agent.permissionAnswer)
 	}
-	if json.Unmarshal(agent.permissionAnswer, &answered) != nil || answered.Outcome.Outcome != "cancelled" {
-		t.Fatalf("câu trả lời cho lời xin phép: %s", agent.permissionAnswer)
+	for _, e := range events {
+		if e.Type == EventRunError {
+			t.Fatalf("đồng ý mà vẫn ghi lỗi: %v", e.Payload)
+		}
+	}
+}
+
+// Chỉ được mời "luôn luôn" thì daemon từ chối **đúng việc ấy** — `reject_once`, không huỷ cả lượt —
+// và bản ghi nói vì sao.
+func TestOfferedOnlyAnAlwaysGrantOnlyThatActionIsRefused(t *testing.T) {
+	agent := &fakeAgent{askPermission: true, permissionOptions: []map[string]any{
+		{"optionId": "proceed_always", "kind": "allow_always"},
+		{"optionId": "cancel", "kind": "reject_once"},
+	}}
+
+	events, _, err := talkTo(t, agent, Request{})
+	if err != nil {
+		t.Fatalf("một lượt qua ACP: %v", err)
+	}
+
+	if picked := selected(t, agent.permissionAnswer); picked != "cancel" {
+		t.Fatalf("chọn %q, mong cancel (reject_once): %s", picked, agent.permissionAnswer)
 	}
 	if refused := only(t, events, EventRunError); refused.Payload["code"] != "permission_refused_nobody_to_ask" {
-		t.Fatalf("lời xin phép bị từ chối mà không để lại dấu: %v", refused.Payload)
+		t.Fatalf("từ chối mà không để lại dấu: %v", refused.Payload)
+	}
+}
+
+// Không có gì chọn được một cách trung thực thì câu trả lời là lỗi của giao thức — không bịa ra
+// một kết quả, và không im lặng để agent treo.
+func TestAnAskWithNothingSelectableIsAnsweredWithAProtocolError(t *testing.T) {
+	agent := &fakeAgent{askPermission: true, permissionOptions: []map[string]any{
+		{"optionId": "proceed_always", "kind": "allow_always"},
+		{"optionId": "never", "kind": "reject_always"},
+	}}
+
+	if _, _, err := talkTo(t, agent, Request{}); err != nil {
+		t.Fatalf("một lượt qua ACP: %v", err)
+	}
+
+	if agent.permissionError == nil {
+		t.Fatalf("không có lựa chọn nào hợp lệ mà vẫn trả kết quả: %s", agent.permissionAnswer)
 	}
 }
 
@@ -346,11 +413,9 @@ func TestRunningAnACPAgentWithNothingToSayIsRefused(t *testing.T) {
 	}
 }
 
-func TestNoACPCLIIsStartedBeforeItHasActuallyBeenProbed(t *testing.T) {
-	// The invocation table is empty on purpose. Gemini CLI's ACP flag is known from a help page
-	// rather than from a session, and T013 forbids writing its code before the probe has run —
-	// a guess here would be a daemon that starts a CLI and waits forever for a handshake that
-	// was never coming.
+func TestNoCLIOfThisReleaseIsStartedAsAnACPPeer(t *testing.T) {
+	// No row is ACP: Gemini CLI runs once per turn since FR-039f, Claude Code always has. Started
+	// as a peer, either would wait for a handshake that was never coming.
 	for _, cli := range []string{"gemini", "claude_code"} {
 		if _, err := (ACP{}).Run(context.Background(), Request{
 			CLI: cli, Binary: "/bin/true", WorkDir: t.TempDir(), Message: "hello",
@@ -385,11 +450,37 @@ func TestAnACPPeerIsOfferedThisRunsOwnToolsWhenTheSessionOpens(t *testing.T) {
 	if offered["name"] != "armarius" || offered["command"] != program {
 		t.Fatalf("bộ công cụ được khai không phải của lượt chạy này: %v", offered)
 	}
-	// No credential in the handshake. The peer starts the program as its own child, so it
-	// inherits the environment this run was built with — the only place FR-013c allows the
-	// token to be.
-	if _, carried := offered["env"]; carried {
-		t.Fatalf("token đi kèm lời khai công cụ: %v", offered)
+	// No credential in the handshake: `env` is there, because the schema requires it, and empty.
+	// The peer starts the program as its own child, so it inherits the environment this run was
+	// built with — the only place FR-013c allows the token to be.
+	if env, carried := offered["env"].([]any); !carried || len(env) != 0 {
+		t.Fatalf("mong env là danh sách rỗng, nhận %v", offered["env"])
+	}
+}
+
+// ACP v1's `McpServerStdio` requires all four of `name`, `command`, `args`, `env`, and a peer that
+// checks its input refuses the whole session over one missing — gemini 0.56.0 answered `-32603`
+// (T182). So a server with no arguments is still declared with an empty list, not without one.
+func TestEveryToolServerIsDeclaredInAllFourFields(t *testing.T) {
+	agent := &fakeAgent{}
+
+	_, _, err := talkTo(t, agent, Request{
+		ToolServers: []execenv.ToolServer{{Name: "armarius", Command: "/somewhere/armarius"}},
+	})
+	if err != nil {
+		t.Fatalf("một lượt qua ACP: %v", err)
+	}
+
+	if len(agent.offeredTools) != 1 {
+		t.Fatalf("mong đúng một bộ công cụ: %v", agent.offeredTools)
+	}
+	for _, field := range []string{"name", "command", "args", "env"} {
+		if _, declared := agent.offeredTools[0][field]; !declared {
+			t.Errorf("thiếu trường %q mà schema ACP bắt buộc: %v", field, agent.offeredTools[0])
+		}
+	}
+	if args, _ := agent.offeredTools[0]["args"].([]any); args == nil || len(args) != 0 {
+		t.Errorf("mong args là danh sách rỗng, nhận %v", agent.offeredTools[0]["args"])
 	}
 }
 
