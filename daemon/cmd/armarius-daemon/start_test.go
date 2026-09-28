@@ -258,7 +258,8 @@ func aRunningDaemon(t *testing.T, turnTakes time.Duration) (
 		printed.Lock()
 		w := &lockedWriter{mu: &printed, to: &out}
 		printed.Unlock()
-		_ = runStart(ctx, []string{"-config", config}, w)
+		// In the foreground: the daemon under test is this process, not one it launches.
+		_ = runStart(ctx, []string{"-foreground", "-config", config}, w)
 	}()
 
 	wait := func() string {
@@ -384,7 +385,7 @@ func TestARunThatOutlastsThePatienceIsCutAndSaidOutLoud(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_ = runStart(ctx, []string{"-config", config}, &lockedWriter{mu: &printed, to: &out})
+		_ = runStart(ctx, []string{"-foreground", "-config", config}, &lockedWriter{mu: &printed, to: &out})
 	}()
 
 	waitFor(t, "the agent to start its turn", func() bool { return exists(startedMarker) })

@@ -79,6 +79,11 @@ type ClaimOptions struct {
 	// OnGranted is handed each run, one at a time. Optional only so the loop can be tested;
 	// a daemon that claims work and does nothing with it is worse than one that never asked.
 	OnGranted func(ctx context.Context, grant Grant)
+	// Admit is asked before every ask, and the ask happens only if it answers yes. Its release
+	// is called once everything that ask was granted has been handed to OnGranted — so a gate
+	// that counts admitted asks knows when the last granted run is on the books (FR-008n).
+	// Optional: nil admits every ask.
+	Admit func() (release func(), ok bool)
 	// Report is told about an ask that did not get through. Optional.
 	Report func(error)
 	// Tick answers when the next ask is due. A channel rather than a blocking wait because
@@ -112,6 +117,13 @@ func RunClaimLoop(ctx context.Context, opts ClaimOptions) error {
 
 // askOnce asks for work at most once, and may decide not to ask at all.
 func (o ClaimOptions) askOnce(ctx context.Context) {
+	if o.Admit != nil {
+		release, ok := o.Admit()
+		if !ok {
+			return
+		}
+		defer release()
+	}
 	room := o.Capacity()
 	if room <= 0 {
 		return

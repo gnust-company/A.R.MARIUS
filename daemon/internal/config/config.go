@@ -29,7 +29,7 @@ import (
 // only so ClaimLease can be checked against it.
 const wakeToRunBudget = 15 * time.Second
 
-// Config is one machine's copy of the five numbers.
+// Config is one machine's copy of the numbers and switches an operator may set.
 //
 // The file it comes from also carries what `login` wrote — which server this machine belongs to
 // and its token. Those are not read here: unknown fields are ignored, so both halves can share a
@@ -95,6 +95,21 @@ type Config struct {
 	// for its own sake: that clock acts on something the server stated, this one acts on the
 	// absence of a statement, and an absence is the weaker evidence of the two.
 	OrphanRetention Duration `json:"orphan_retention"`
+
+	// AutoUpdate is whether this daemon fetches newer releases by itself (FR-008n). On unless the
+	// operator says otherwise: the daemon's releases and the server come out of one repository,
+	// cut by the same people. The one thing it can get wrong is a server not yet moved onto the
+	// release the daemon just took — turning this off is the answer to that.
+	AutoUpdate bool `json:"auto_update"`
+
+	// AutoUpdateInterval is how often a newer release is looked for.
+	AutoUpdateInterval Duration `json:"auto_update_interval"`
+
+	// AutoReload is whether this daemon restarts into the armarius-daemon on disk once that no
+	// longer reports the version it is running (FR-008n) — the road an upgrade takes on a machine
+	// where the daemon cannot write to its own install directory and the operator re-ran the
+	// installer instead.
+	AutoReload bool `json:"auto_reload"`
 }
 
 // Defaults are the values a machine runs with when its config file says nothing. Every one of
@@ -111,6 +126,9 @@ func Defaults() Config {
 		WorkDirRetention:      Duration(execenv.DefaultWorkDirRetention),
 		SessionRetention:      Duration(execenv.DefaultSessionRetention),
 		OrphanRetention:       Duration(execenv.DefaultOrphanRetention),
+		AutoUpdate:            true,
+		AutoUpdateInterval:    Duration(6 * time.Hour),
+		AutoReload:            true,
 	}
 }
 
@@ -154,6 +172,7 @@ func (c Config) Validate() error {
 		{"work_dir_retention", c.WorkDirRetention.Duration()},
 		{"session_retention", c.SessionRetention.Duration()},
 		{"orphan_retention", c.OrphanRetention.Duration()},
+		{"auto_update_interval", c.AutoUpdateInterval.Duration()},
 	}
 	for _, p := range positive {
 		if p.value <= 0 {

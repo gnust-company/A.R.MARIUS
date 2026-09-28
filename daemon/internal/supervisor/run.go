@@ -166,8 +166,25 @@ type RunOptions struct {
 // to: this is called from the ask loop, which has already moved on to the next thing.
 func (o RunOptions) Do(ctx context.Context, grant Grant) {
 	o = o.withDefaults()
-
 	ctx, release := o.Runs.begin(ctx, grant)
+	o.see(ctx, grant, release)
+}
+
+// Start is Do on a goroutine of its own, with one difference that matters: the run is on this
+// machine's books **before Start returns**, not whenever the goroutine gets round to it.
+//
+// The ask loop hands each granted run over and moves on, and the question *is this machine idle*
+// is answered from the same books (FR-008n). Registered inside the goroutine, a run just granted
+// would be invisible to that question for as long as the scheduler took to start it — long enough
+// for a daemon to decide it was idle and restart with a run on its way in.
+func (o RunOptions) Start(ctx context.Context, grant Grant) {
+	o = o.withDefaults()
+	ctx, release := o.Runs.begin(ctx, grant)
+	go o.see(ctx, grant, release)
+}
+
+// see takes a run that is already held from being handed over to being closed.
+func (o RunOptions) see(ctx context.Context, grant Grant, release func()) {
 	defer release()
 
 	place, known := o.Workplace(grant.WorkplaceID)
