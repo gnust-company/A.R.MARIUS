@@ -114,6 +114,21 @@ nào?"*. Nền đối chiếu: [research-multica-daemon.md](research-multica-dae
   bằng gì? → A: **nó cũng là một lượt chạy** — cấp workspace, không đầu việc, không dự án, vì lúc ấy dự án
   chưa tồn tại (FR-040c). Nhờ vậy FR-014a giữ nguyên đúng hai loại token.
 
+### Session 2026-09-28
+
+Sau khi `gemini` không mở được buổi phỏng vấn trên môi trường mới, và `codex` chạy thật thì dừng ở chỗ xin
+phép. Nền đối chiếu: [research.md](research.md) §14.
+
+- Q: Giữ `gemini` CLI không, và có thêm Antigravity (`agy`) — thứ Google đưa cho tài khoản cá nhân thay
+  cho `gemini` — không? → A: **Giữ `gemini` CLI, không thêm Antigravity.** Hệ quả phải nói với người dùng:
+  `gemini` chỉ còn chạy với API key trả phí, Vertex AI, hoặc giấy phép Gemini Code Assist
+  Standard/Enterprise; tài khoản Google cá nhân bị từ chối.
+- Q: Agent dừng giữa lượt để xin phép làm một việc, mà không có ai ngồi đó để cho phép. Daemon trả lời thế
+  nào — từ chối tất cả, đồng ý tất cả, hay chỉ đồng ý công cụ của Armarius? → A: **Đồng ý tất cả.** Thay
+  cho luật từ chối trước đây (FR-013b). Chỉ đồng ý công cụ của Armarius là không đủ: `codex` gửi câu hỏi
+  phỏng vấn bằng một **lệnh shell** chứ không bằng công cụ MCP, nên đường ấy vẫn từ chối đúng lời xin cần
+  cho qua.
+
 ---
 
 ## User Scenarios & Testing *(mandatory)*
@@ -867,15 +882,34 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   ấy thuộc về người dùng và dùng chung cho mọi agent trên chỗ làm đó. Và KHÔNG ĐƯỢC là **một địa chỉ từ xa
   mà agent phải tự khai vào cấu hình** — cùng lý do đã gỡ đường agent tự đi lấy kỹ năng rồi tự ghi
   (FR-011c): thứ gì agent phải tự cài thì có lúc nó cài hỏng, và hệ thống không biết để mà chờ.
-- **FR-013b**: Khi agent dừng giữa lượt để **xin phép** làm một việc, daemon **KHÔNG ĐƯỢC** cho phép thay
-  người chủ. Nó cầm thông tin xác thực của một cái máy, không cầm quyền phán của người chủ, nên câu trả lời
-  duy nhất nó được phép đưa là **từ chối**, kèm một mã ghi lại đúng thứ agent muốn làm. Lý do viết thành
-  điều khoản: lượt chạy diễn ra khi không ai ngồi đó, nên nói "được" hộ là gắn một lời chấp thuận không ai
-  đưa vào mọi lượt chạy về sau; còn im lặng thì agent treo tới lúc ngưỡng im lặng cắt, và bản ghi không nói
-  được vì sao. Đây là **luật, không phải chỗ tạm**: đặc tả này không hứa hẹn một đường xin phép nào cả. Nếu
-  sau này người chủ muốn một luồng phê duyệt thật — hỏi ai, hỏi ở đâu trên màn hình, đợi bao lâu, quá hạn thì
-  sao — đó là một tính năng phải được đặt ra thành yêu cầu, không phải một mẩu còn thiếu của cụm này (bổ sung
-  2026-08-26, phát hiện lúc dựng họ ACP ở T066).
+- **FR-013b**: Khi agent dừng giữa lượt để **xin phép** làm một việc, daemon PHẢI **đồng ý** — mọi lời xin,
+  bằng đúng từ mà giao thức của CLI ấy dùng cho việc đồng ý — và PHẢI ghi lại agent đã xin làm gì (sửa
+  2026-09-28, thay cho luật **từ chối** viết ngày 2026-08-26). Lý do: lượt chạy diễn ra khi không ai ngồi
+  đó, nên không có ai để hỏi. Từ chối thì agent cầm công cụ trong tay mà không dùng được, và lượt chạy dừng
+  giữa chừng dù không có gì hỏng — đo được ở `codex`: lượt chạy tới được model, model gọi lệnh gửi câu hỏi
+  phỏng vấn, bị từ chối, rồi kết thúc bằng câu *"I need permission to post the onboarding question"*
+  (T130a). Người vận hành nối máy vào workspace và chọn CLI cho agent là đã giao việc trên máy ấy cho agent;
+  daemon không hỏi lại từng bước.
+  - **CLI không hỏi mà tự quyết bằng thiết lập lúc khởi chạy** (chế độ duyệt, sandbox, danh sách công cụ
+    được phép) thì daemon PHẢI khởi chạy nó ở chế độ **cho phép tất cả** của chính CLI ấy, bằng cờ hoặc
+    biến môi trường của từng lượt chạy — KHÔNG ĐƯỢC ghi vào cấu hình của CLI trên máy (FR-013a). Đây là
+    cùng một luật chứ không phải luật khác: một CLI tự từ chối trong im lặng và một daemon từ chối thành
+    tiếng cho ra cùng một lượt chạy làm không xong.
+  - **Đồng ý không nới phạm vi của lượt chạy.** Phạm vi vẫn là bộ công cụ cấp cho lượt ấy (FR-013d), và
+    server VẪN PHẢI từ chối cú ghi vượt phạm vi (FR-059). Đồng ý là cho những gì agent làm **trên máy**,
+    không phải cho những gì nó ghi lên server.
+  - **Câu hỏi xin thông tin không phải lời xin phép.** Agent hay một công cụ hỏi người dùng một giá trị thì
+    không ai ở đây trả lời được, nên daemon PHẢI **từ chối** câu ấy bằng từ từ chối của giao thức: đồng ý
+    mà không có nội dung là một câu trả lời rỗng giả làm câu trả lời thật.
+  - **Im lặng vẫn không phải câu trả lời** (FR-039e): lời xin nào cũng PHẢI được trả lời, không thì agent
+    treo tới lúc ngưỡng im lặng cắt và bản ghi không nói được vì sao.
+  - **Người dùng PHẢI được nói trước khi nối máy**: agent chạy trên máy họ được làm mọi việc nó xin làm,
+    không ai duyệt từng bước. Tài liệu hướng dẫn nối máy và trang phê duyệt nối máy PHẢI nói điều đó bằng
+    lời thường, không giấu trong một tuỳ chọn.
+
+  Đặc tả này **không hứa hẹn một luồng phê duyệt** do người duyệt. Nếu sau này người chủ muốn một luồng như
+  vậy — hỏi ai, hỏi ở đâu trên màn hình, đợi bao lâu, quá hạn thì sao — đó là một tính năng phải được đặt ra
+  thành yêu cầu riêng.
 - **FR-013c**: Thứ agent dùng để gọi ngược PHẢI nhận thông tin xác thực qua **biến môi trường**, và KHÔNG
   ĐƯỢC nhận qua **tham số dòng lệnh**. Lý do là một luật khác của chính đặc tả này: FR-043 bắt ghi **đầy đủ
   tham số** mỗi lần agent gọi công cụ, nên một credential nằm trong tham số là một credential nằm trong bản
@@ -1121,10 +1155,10 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **FR-039e**: Một agent **hỏi lại** qua chính đường truyền ấy thì PHẢI được **trả lời**, kể cả khi câu trả
   lời là không, kể cả khi hệ thống không hiểu câu hỏi. **Im lặng không phải là từ chối** — trên giao thức
   này bên kia đã dừng và đang chờ, nên không trả lời là một lượt chạy **treo** tới khi có thứ khác giết nó,
-  và từ ngoài nhìn vào thì giống một agent đang không làm gì. Trả lời cụ thể là gì vẫn theo FR-013b: không
-  có ai ngồi đây để cho phép, nên quyền bị từ chối, bằng đúng từ mà giao thức ấy dùng cho việc từ chối —
-  với Codex là `decline`, mà chính tài liệu của nó định nghĩa là *agent bị nói không và vẫn đi tiếp lượt của
-  nó*. Câu hỏi hệ thống không nhận ra PHẢI được trả lời bằng một lỗi của giao thức, không được bỏ qua.
+  và từ ngoài nhìn vào thì giống một agent đang không làm gì. Trả lời cụ thể là gì theo FR-013b (sửa
+  2026-09-28): lời xin phép thì **đồng ý**, bằng đúng từ mà giao thức ấy dùng cho việc đồng ý — với Codex
+  là `accept`; câu hỏi xin thông tin thì từ chối, vì không ai ở đây có nội dung để trả lời. Câu hỏi hệ thống
+  không nhận ra PHẢI được trả lời bằng một lỗi của giao thức, không được bỏ qua.
 - **FR-039c**: Đặc tính của một loại agent CLI — tệp bối cảnh, thư mục kỹ năng, hình dạng nhà giả, biến
   môi trường trỏ về nhà ấy, binary để dò, họ giao thức — PHẢI khai ở **một chỗ duy nhất**, và PHẢI khai
   **trọn hoặc không khai gì**. Nửa vời là hỏng kiểu im lặng: chỗ làm vẫn đăng ký, vẫn nhận việc, vẫn bật

@@ -677,3 +677,7 @@ vào gemini vì một cái id — rồi theo FR-007 thì **không dời đi đư
    Câu này quyết luôn T130a.
 
 Lớp 1 thì **sửa bất kể** ba câu trên chốt thế nào: gửi sai giao thức là lỗi của ta.
+
+**Người chủ chốt 2026-09-28**: (1) giữ `gemini`; (2) không thêm Antigravity; (3) **đồng ý tất cả** — ghi
+thành FR-013b, FR-039e, làm ở T191, T192. Còn mở một câu: `gemini` đi tiếp qua ACP, hay chuyển sang chạy một
+lần mỗi lượt.
