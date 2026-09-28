@@ -134,6 +134,9 @@ phép. Nền đối chiếu: [research.md](research.md) §14.
   giống chat (FR-013b).
 - Q: Báo trước cho người dùng ở đâu, dài cỡ nào? → A: **Một dòng cảnh báo** trên trang phê duyệt nối máy và
   trong tài liệu.
+- Q: Với Codex, "đồng ý tất cả" có gồm cả tắt sandbox (mở thread không hỏi, không sandbox) không? → A:
+  **Không.** Chế độ duyệt và sandbox để nguyên theo thiết lập Codex của người vận hành; daemon chỉ trả
+  `accept` cho mọi lời xin tới được nó (FR-013b).
 
 ---
 
@@ -889,9 +892,9 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   mà agent phải tự khai vào cấu hình** — cùng lý do đã gỡ đường agent tự đi lấy kỹ năng rồi tự ghi
   (FR-011c): thứ gì agent phải tự cài thì có lúc nó cài hỏng, và hệ thống không biết để mà chờ.
 - **FR-013b**: Khi agent dừng giữa lượt để **xin phép** làm một việc, daemon PHẢI **đồng ý** — mọi lời xin,
-  bằng đúng từ mà giao thức của CLI ấy dùng cho việc đồng ý, và chọn mức **một lần** khi CLI cho chọn, vì
-  mức "luôn luôn" có thể được CLI ghi vào cấu hình của người vận hành (FR-013a) (sửa 2026-09-28, thay cho
-  luật **từ chối** viết ngày 2026-08-26). Lý do: lượt chạy diễn ra khi không ai ngồi
+  bằng đúng từ mà giao thức của CLI ấy dùng cho việc đồng ý, và chỉ ở mức **một lần**: mức "luôn luôn"
+  được CLI ghi vào cấu hình của người vận hành và sống lâu hơn đầu việc (FR-013a), nên CLI chỉ cho chọn mức
+  ấy thì daemon **từ chối đúng việc ấy** (sửa 2026-09-28, thay cho luật **từ chối** viết ngày 2026-08-26). Lý do: lượt chạy diễn ra khi không ai ngồi
   đó, nên không có ai để hỏi. Từ chối thì agent cầm công cụ trong tay mà không dùng được, và lượt chạy dừng
   giữa chừng dù không có gì hỏng — đo được ở `codex`: lượt chạy tới được model, model gọi lệnh gửi câu hỏi
   phỏng vấn, bị từ chối, rồi kết thúc bằng câu *"I need permission to post the onboarding question"*
@@ -902,6 +905,10 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
     biến môi trường của từng lượt chạy — KHÔNG ĐƯỢC ghi vào cấu hình của CLI trên máy (FR-013a). Đây là
     cùng một luật chứ không phải luật khác: một CLI tự từ chối trong im lặng và một daemon từ chối thành
     tiếng cho ra cùng một lượt chạy làm không xong.
+  - **Riêng Codex: chế độ duyệt và sandbox để nguyên theo thiết lập của người vận hành** (người chủ chốt
+    2026-09-28). Daemon KHÔNG gửi chế độ duyệt hay sandbox khi mở hoặc nối thread; mọi lời xin tới được
+    daemon thì trả `accept` (FR-039e). Hệ quả được chấp nhận: sandbox của Codex có thể tự chặn một số việc
+    — ghi ra ngoài thư mục làm việc, gọi mạng — mà không hỏi ai, tuỳ người vận hành đã đặt nó thế nào.
   - **Đồng ý không nới phạm vi của lượt chạy.** Phạm vi vẫn là bộ công cụ cấp cho lượt ấy (FR-013d), và
     server VẪN PHẢI từ chối cú ghi vượt phạm vi (FR-059). Đồng ý là cho những gì agent làm **trên máy**,
     không phải cho những gì nó ghi lên server.
@@ -910,10 +917,9 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
     đứng chờ người trả lời. Ở đây không có ai ngồi trước hộp thoại ấy, nên công cụ đó trả về một câu trả
     lời **rỗng** và agent tự đoán rồi làm tiếp — người dùng không bao giờ thấy câu hỏi. Vì vậy:
     - CLI nào cho tắt công cụ ấy lúc khởi chạy thì daemon PHẢI **tắt** nó (Claude Code: `AskUserQuestion`).
-    - Câu hỏi xin thông tin vẫn tới được daemon qua giao thức (ví dụ một MCP server hỏi người dùng một giá
-      trị) thì daemon PHẢI **từ chối** bằng từ từ chối của giao thức, và ghi mã
-      `question_declined_nobody_to_answer`. Đồng ý mà không có nội dung là một câu trả lời rỗng giả làm câu
-      trả lời thật.
+      Gemini CLI tự bỏ công cụ ấy khi chạy không có terminal, nên không có gì phải tắt.
+    - Câu hỏi xin thông tin vẫn tới được daemon qua giao thức (Codex: một MCP server hỏi người dùng một giá
+      trị) thì trả **`accept` không kèm nội dung**, như mọi lời xin khác — không để lượt chạy treo chờ.
     - Agent muốn hỏi người dùng thì hỏi qua **kênh của Armarius** — câu hỏi phỏng vấn, trả lời trong chat
       trực tiếp hay chat Trưởng dự án, mục hộp thư. Những kênh này **kết thúc lượt** bằng câu hỏi, người
       dùng trả lời lúc nào cũng được, và câu trả lời gọi agent dậy ở lượt sau, nối đúng phiên cũ (FR-040f).
@@ -1177,12 +1183,12 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   này bên kia đã dừng và đang chờ, nên không trả lời là một lượt chạy **treo** tới khi có thứ khác giết nó,
   và từ ngoài nhìn vào thì giống một agent đang không làm gì. Trả lời cụ thể là gì theo FR-013b (sửa
   2026-09-28): lời xin phép thì **đồng ý**, bằng đúng từ mà giao thức ấy dùng cho việc đồng ý — với Codex
-  là `accept`; câu hỏi xin thông tin thì từ chối, vì không ai ở đây có nội dung để trả lời. Câu hỏi hệ thống
-  không nhận ra PHẢI được trả lời bằng một lỗi của giao thức, không được bỏ qua.
+  là `accept`, kể cả câu hỏi xin thông tin (không kèm nội dung). Câu hỏi hệ thống không nhận ra PHẢI được
+  trả lời bằng một lỗi của giao thức, không được bỏ qua.
 - **FR-039f**: **Gemini CLI chạy theo họ chạy-một-phát, không qua ACP** (chốt 2026-09-28). Mỗi lượt là một
-  tiến trình: thông điệp đi vào qua đầu vào chuẩn (không qua tham số dòng lệnh, cùng lý do với Claude Code),
-  kết quả về qua `--output-format stream-json`, nối phiên bằng `--resume <mã phiên>`, và `--yolo` là chế độ
-  cho phép tất cả theo FR-013b. Lý do bỏ đường ACP: trên đường ấy gemini **lọc khỏi môi trường** của MCP
+  tiến trình: `gemini -p <thông điệp> --yolo --output-format stream-json [--model <model>] [--resume <mã
+  phiên>]` — thông điệp đi bằng `-p`, kết quả về theo dòng JSON, và `--yolo` là chế độ cho phép tất cả theo
+  FR-013b. Lý do bỏ đường ACP: trên đường ấy gemini **lọc khỏi môi trường** của MCP
   server mọi biến có tên chứa `TOKEN`, `KEY`, `SECRET`, `AUTH`… — token của lượt chạy nằm đúng trong số đó —
   và đòi đủ bốn trường khai MCP server mới mở phiên; chạy-một-phát thì cùng một hình dạng với Claude Code,
   ít chỗ hỏng hơn. Công cụ gọi ngược tới agent qua **mặt lệnh** (FR-013): gemini chạy-một-phát không có cờ
