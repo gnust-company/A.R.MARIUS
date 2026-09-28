@@ -65,6 +65,7 @@ export const vi = {
     expiresIn: 'Mã còn hiệu lực khoảng {{count}} phút',
     workspaceLabel: 'Duyệt vào không gian làm việc',
     noWorkspace: 'Bạn chưa có không gian làm việc nào để nối máy vào.',
+    unattendedWarning: 'Agent chạy trên máy này được làm mọi việc nó xin làm — chạy lệnh, sửa tệp — không ai duyệt từng bước.',
     approveButton: 'Duyệt máy này',
     otherCode: 'Nhập mã khác',
     doneTitle: 'Đã duyệt',

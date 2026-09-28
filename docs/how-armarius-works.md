@@ -32,9 +32,9 @@ sự khác nhau đó:
 
 | Họ | CLI | Cách nói |
 | --- | --- | --- |
-| **one-shot** | `claude` | Bật một lần cho mỗi lượt, in ra từng dòng JSON, rồi thoát |
-| **ACP** | `gemini` | Giữ một cuộc hội thoại JSON-RPC qua luồng chuẩn |
-| **app-server** | `codex` | Cũng JSON-RPC, nhưng bằng từ vựng riêng của Codex |
+| **one-shot** | `claude`, `gemini` | Bật một lần cho mỗi lượt, in ra từng dòng JSON, rồi thoát |
+| **app-server** | `codex` | Giữ một cuộc hội thoại JSON-RPC bằng từ vựng riêng của Codex |
+| **ACP** | *(chưa CLI nào)* | JSON-RPC theo chuẩn ACP — daemon vẫn nói được, dành cho CLI sau này |
 
 Bạn không cần biết CLI của mình thuộc họ nào. Đây là chỗ để bạn hiểu vì sao thêm một loại CLI
 mới không phải là sửa lại hệ thống.

@@ -21,7 +21,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Check, Laptop, ShieldQuestion } from 'lucide-react'
+import { ArrowLeft, Check, Laptop, ShieldQuestion, TriangleAlert } from 'lucide-react'
 
 import { approveMachineLink, getMachineLink, updateMe, type PendingMachineLinkDTO } from '@/lib/api'
 import { errorText } from '@/lib/errors'
@@ -328,6 +328,16 @@ export default function LinkMachine() {
                   {error}
                 </p>
               )}
+
+              {/* One line, right where the yes is given (FR-013b): a run on this machine is
+                  granted whatever it asks for, because nobody is there to be asked. */}
+              <p
+                className="font-body text-body-sm text-ink flex items-start gap-2"
+                data-testid="link-unattended-warning"
+              >
+                <TriangleAlert className="w-4 h-4 mt-0.5 shrink-0 text-terracotta" aria-hidden />
+                <span>{t('linkMachine.unattendedWarning')}</span>
+              </p>
 
               <button
                 type="button"

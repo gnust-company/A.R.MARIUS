@@ -65,6 +65,7 @@ export const en = {
     expiresIn: 'Code valid for roughly another {{count}} min',
     workspaceLabel: 'Approve into workspace',
     noWorkspace: 'You have no workspace yet to link a machine into.',
+    unattendedWarning: 'Agents running on this machine may do anything they ask to — run commands, change files — with nobody approving each step.',
     approveButton: 'Approve this machine',
     otherCode: 'Enter a different code',
     doneTitle: 'Approved',

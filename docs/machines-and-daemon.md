@@ -112,6 +112,9 @@ armarius-daemon login -server <địa-chỉ-bạn-mở-Armarius>
 Nó **tự mở trang phê duyệt** ra, với mã đã nằm sẵn trên địa chỉ. Trên trang ấy bạn thấy máy nào
 đang hỏi, chọn không gian làm việc, rồi bấm **Đồng ý**. Không phải chép mã sang đâu cả.
 
+> ⚠️ **Agent chạy trên máy này được làm mọi việc nó xin làm — chạy lệnh, sửa tệp — không ai duyệt
+> từng bước.**
+
 Mã sống **10 phút** và dùng được **một lần**. Hết hạn hoặc đã dùng thì chạy lại `login` để lấy
 mã mới.
 
