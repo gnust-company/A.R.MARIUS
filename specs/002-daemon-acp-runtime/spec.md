@@ -663,8 +663,9 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   - Mỗi lượt là **một lượt chạy thật** (FR-040c): chạy ở chỗ agent làm, hiện trong tab Hoạt động với lý
     do *người chủ nhắn thẳng*, và kết thúc bằng đúng những đường mọi lượt chạy kết thúc.
   - Lượt không gắn đầu việc chỉ nhận đúng chữ ghi sẵn cùng nó, nên gói việc PHẢI tự mang **chỉ dẫn của
-    agent** — cả hai nửa, dựng bằng **cùng một hàm** với gói việc của đầu việc — cộng đoạn hội thoại gần
-    nhất và câu vừa viết. Chữ gửi agent tiếng Anh; lý do lưu mã (Hiến pháp VII).
+    agent** — cả hai nửa, dựng bằng **cùng một hàm** với gói việc của đầu việc — cộng câu vừa viết. Đoạn
+    hội thoại **không** đi kèm mỗi lượt: nó nằm trong phiên của chính agent, và chỉ được kể lại khi phiên
+    ấy không còn (FR-040f). Chữ gửi agent tiếng Anh; lý do lưu mã (Hiến pháp VII).
   - Nói trong chat **không tạo việc**. Việc tới agent qua dự án.
   - Câu trả lời hiện ra **dần** khi agent viết (đẩy, không hỏi lại — Hiến pháp IV), và dựng lại từ thứ
     máy ghi xuống khi lượt xong — cùng một hàm đọc với chat dự án.
@@ -1176,6 +1177,33 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
     Và thứ agent đã nói phải đọc lại từ **bản ghi của lượt chạy**, không từ thứ tiến trình giao việc còn
     giữ trong tay: tiến trình ấy không ngồi xem lượt nói, nên trí nhớ của nó không sống qua một lần khởi
     động lại, còn bản ghi thì sống (bổ sung 2026-09-04, T048c).
+- **FR-040f**: Chat trực tiếp với agent (FR-007p) và chat với Trưởng dự án PHẢI **giữ phiên của chính
+  agent** giữa các lượt, như lượt chạy của một đầu việc giữ phiên theo đầu việc (FR-023). Buổi phỏng vấn
+  dựng dự án (FR-040c) thì **không**: xong hoặc gãy là xoá. *Người chủ chốt 2026-09-28: "chat trực tiếp
+  trong agent hay chat với trưởng dự án thì nên lưu session id của runtime để sau còn resume".*
+
+  Trước điều khoản này, mọi lượt không gắn đầu việc đều chạy trong một thư mục của riêng lượt ấy, xoá khi
+  xong, và agent "nhớ" nhờ server kể lại 10–20 câu gần nhất vào mỗi lượt — cũ hơn thế thì người chủ thấy
+  trên màn hình mà agent không còn thấy.
+
+  Kế thừa cách Multica quản lý phiên chat, và theo đúng đường đầu việc đã đi:
+
+  - **Một luồng, một phiên.** Mỗi agent đúng một luồng chat trực tiếp; mỗi dự án đúng một luồng chat với
+    Trưởng dự án. Hai luồng **không đụng nhau**: một agent vừa được nhắn thẳng vừa làm Trưởng dự án thì
+    có hai phiên, hai thư mục, và điều nói ở luồng này không lọt sang luồng kia.
+  - **Lượt chạy nói nó thuộc luồng nào.** Khoá luồng thay cho mã đầu việc: chỗ làm giữ thư mục và phiên
+    của luồng dưới khoá ấy, và lượt sau quay về đúng chỗ. Khoá của chat dự án **gồm cả Trưởng dự án đang
+    ngồi ghế** — ghế đổi chủ thì người mới mở phiên riêng, không nói tiếp bằng giọng người cũ.
+  - **Lượt nối phiên chỉ nói câu mới.** Mỗi lượt vẫn gửi kèm bản thứ hai — cùng câu ấy, có kể lại các
+    lượt gần nhất — cho lượt **không nối được**: chưa có phiên, phiên quá hạn giữ, hoặc CLI từ chối nạp
+    nó. Mất phiên không bao giờ làm mất mạch. Chỉ nơi giữ phiên mới biết lượt này thuộc trường hợp nào,
+    nên chọn bản nào là việc của nơi ấy.
+  - **Luật giữ và quên mã phiên là luật của đầu việc**, không viết lại: lượt không trả mã phiên thì mã cũ
+    giữ nguyên; phiên bị từ chối thì quên nó và chạy lại bằng phiên mới, kèm câu báo cho agent (FR-025).
+  - Bản ghi lượt chạy nói nó đã nối phiên nào, lượt chat cũng như lượt của đầu việc.
+  - Thư mục của luồng bị bỏ lâu thì được dọn như thư mục không ai nhận; lượt sau mở phiên mới và được kể
+    lại lịch sử. Transcript trên server là bản ghi của cuộc trò chuyện, không phụ thuộc phiên.
+
 - **FR-041**: Thư mục làm việc của một đầu việc bắt đầu ở trạng thái **trắng**. Hệ thống KHÔNG lấy mã nguồn về và
   KHÔNG quản nhánh làm việc; agent tự lo phần mã nguồn bằng thông tin đăng nhập của chính nó. Armarius là
   nơi làm việc chung cho nhiều loại việc, không riêng việc viết mã.

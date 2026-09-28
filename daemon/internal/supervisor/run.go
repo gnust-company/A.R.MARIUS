@@ -196,11 +196,13 @@ func (o RunOptions) Do(ctx context.Context, grant Grant) {
 		if err := os.RemoveAll(home); err != nil {
 			o.Report(fmt.Errorf("clearing the home of run %s: %w", grant.RunID, err))
 		}
-		// A run about no task worked in a directory of its own, and nobody comes back to it —
-		// there is no next run of this task, because there is no task. Taken away here rather
-		// than left to the sweep so that an interview does not leave one directory per question
-		// on somebody's disk for hours; the sweep stays the backstop for a daemon that died.
-		if grant.TaskID == "" {
+		// A run about no task and no conversation worked in a directory of its own, and nobody
+		// comes back to it — the team-building interview. Taken away here rather than left to
+		// the sweep so that an interview does not leave one directory per question on somebody's
+		// disk for hours; the sweep stays the backstop for a daemon that died. A chat's
+		// directory is not taken away: the next turn comes back to it for its session
+		// (FR-040c).
+		if grant.TaskID == "" && grant.Conversation == "" {
 			if err := os.RemoveAll(req.WorkDir); err != nil {
 				o.Report(fmt.Errorf("clearing the turf of run %s: %w", grant.RunID, err))
 			}
@@ -265,21 +267,52 @@ func (o RunOptions) remember(
 	}
 }
 
-// turf is where this run works: the task's directory, or one of the run's own when it is about
-// no task.
+// turf is where this run works: the task's directory, the conversation's when it carries a chat
+// on, or one of the run's own when it is about neither.
+//
+// A conversation's directory is the same kind of thing as a task's, and it sits beside them for
+// the same reason: most CLIs key a session on the directory it was opened in, so coming back to
+// the directory is what lets the next turn find the session (FR-010a, FR-040c). The sweep asks
+// the server about every name it finds here; a conversation's is not a task's, so the server
+// does not claim it, and it is reclaimed once it has gone cold — after which the next turn simply
+// starts a fresh session with the recent turns written back in.
 func (o RunOptions) turf(grant Grant) (string, error) {
-	if grant.TaskID == "" {
+	switch {
+	case grant.TaskID != "":
+		return execenv.WorkDir(o.WorkRoot, grant.TaskID)
+	case grant.Conversation != "":
+		return execenv.WorkDir(o.WorkRoot, grant.Conversation)
+	default:
 		return execenv.TurnDir(o.WorkRoot, grant.RunID)
 	}
-	return execenv.WorkDir(o.WorkRoot, grant.TaskID)
 }
 
 // storeKey names the store that outlives this run — see the note where it is used.
 func (o RunOptions) storeKey(grant Grant) string {
-	if grant.TaskID == "" {
+	switch {
+	case grant.TaskID != "":
+		return grant.TaskID
+	case grant.Conversation != "":
+		return grant.Conversation
+	default:
 		return grant.RunID
 	}
-	return grant.TaskID
+}
+
+// message is what the agent is told this turn, given whether it is carrying a session on.
+//
+// A chat sends two forms of one turn (FR-040c): the new message alone, for a session that holds
+// the thread, and the same message with the recent turns written back in, for a turn that has no
+// session to carry on. Only here is it known which of those this turn is. A task's run sends one
+// form, and it serves both.
+func message(grant Grant, carryingOn bool) (said, fresh string) {
+	if grant.FreshPrompt == "" {
+		return grant.Prompt, ""
+	}
+	if carryingOn {
+		return grant.Prompt, grant.FreshPrompt
+	}
+	return grant.FreshPrompt, ""
 }
 
 // prepare puts everything the agent needs on disk and builds the environment it runs in.
@@ -309,20 +342,21 @@ func (o RunOptions) prepare(
 		return runtime.Request{}, "", execenv.Thread{}, err
 	}
 	handle, restart := runtime.Continue(prior, verdict, grant.WorkplaceID, place.Resumable, o.Now())
+	said, fresh := message(grant, handle != "")
 	if _, err := execenv.Build(execenv.Spec{
 		CLI:          place.CLI,
 		Home:         home,
 		StateRoot:    o.StateRoot,
 		OperatorHome: o.OperatorHome,
-		// The key of the store that outlives the run. A turn about no task has nothing to
-		// outlive it — the conversation it is carrying on lives on the server and is replayed
-		// into the message of every turn — so the key names this one turn, and what it points at
-		// is swept on the same clock as any other session store nobody comes back to.
+		// The key of the store that outlives the run: the task's, or the conversation's for a
+		// chat (FR-040c). A turn about neither has nothing to outlive it, so the key names this
+		// one turn, and what it points at is swept on the same clock as any other session store
+		// nobody comes back to.
 		TaskID: o.storeKey(grant),
 	}); err != nil {
 		return runtime.Request{}, home, prior, err
 	}
-	brief, err := execenv.WriteContextFile(place.CLI, workDir, grant.Prompt)
+	brief, err := execenv.WriteContextFile(place.CLI, workDir, said)
 	if err != nil {
 		return runtime.Request{}, home, prior, err
 	}
@@ -367,14 +401,15 @@ func (o RunOptions) prepare(
 		return runtime.Request{}, home, prior, err
 	}
 	return runtime.Request{
-		CLI:         place.CLI,
-		Binary:      place.Binary,
-		WorkDir:     workDir,
-		Env:         env,
-		Message:     grant.Prompt,
-		ToolConfig:  tools.ConfigFile,
-		ToolServers: tools.Servers,
-		Options:     grant.RuntimeOptions,
+		CLI:          place.CLI,
+		Binary:       place.Binary,
+		WorkDir:      workDir,
+		Env:          env,
+		Message:      said,
+		FreshMessage: fresh,
+		ToolConfig:   tools.ConfigFile,
+		ToolServers:  tools.Servers,
+		Options:      grant.RuntimeOptions,
 		// The two values this run must never let out in anything it says (FR-048a). The run's
 		// own token goes in through the environment and the message, so it can come back out
 		// through either; the machine's is here because losing it is worse than losing the

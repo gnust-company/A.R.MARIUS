@@ -77,6 +77,12 @@ class Run:
     status: RunStatus = RunStatus.QUEUED
     external_run_id: str | None = None
     session_id_before: str | None = None
+    # Which conversation this run carries on, when it carries one on that is not a task's.
+    # A task's runs share a conversation by being runs of the same task; the patron's direct
+    # chat with an agent and a project's chat with its Leader have no task, so they name their
+    # conversation here instead (FR-040c). Empty for a task's run and for a turn that is meant
+    # to leave nothing behind — the team-building interview.
+    conversation_key: str | None = None
     session_id_after: str | None = None
     usage_json: dict = field(default_factory=dict)
     error: str | None = None

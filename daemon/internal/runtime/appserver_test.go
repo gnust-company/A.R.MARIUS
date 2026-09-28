@@ -462,6 +462,23 @@ func TestWhatATurnCostComesBackAsTheServerGaveIt(t *testing.T) {
 	}
 }
 
+// Một lượt chat nối mạch chỉ mang câu mới; mạch không nối được thì agent phải đọc bản có lịch
+// sử (FR-040c) — cùng luật với hai họ còn lại.
+func TestAThreadThatWillNotResumeIsToldTheHistoryInstead(t *testing.T) {
+	agent := &fakeCodex{refuseResume: true}
+
+	if _, _, err := attend(t, agent, Request{
+		Session:      "thr_long_gone",
+		Message:      "Their message: and now?",
+		FreshMessage: "Conversation so far: Patron: hello. Their message: and now?",
+	}); err != nil {
+		t.Fatalf("một lượt qua app-server: %v", err)
+	}
+	if !strings.Contains(agent.prompt, "Patron: hello") {
+		t.Fatalf("mạch không nối được mà agent không được kể lại lịch sử: %q", agent.prompt)
+	}
+}
+
 // FR-025, FR-039a: một mạch không nối lại được thì mở mạch mới kèm câu báo, chứ không phải hỏng.
 func TestAThreadThatCannotBeResumedStartsAFreshOneRatherThanFailing(t *testing.T) {
 	agent := &fakeCodex{refuseResume: true}

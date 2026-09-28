@@ -471,3 +471,41 @@ async def test_a_run_driving_no_chat_leaves_every_chat_alone() -> None:
         conversation = await _conversation(chatting.project_id)
         assert conversation.state == str(ChatState.THINKING), conversation.state
         assert conversation.driving_run_id == driving
+
+
+# ── the Leader keeps its own session of the project's chat (FR-040c, 2026-09-28) ──────
+
+
+async def test_a_turn_of_the_project_chat_names_the_conversation_and_the_leader() -> None:
+    """Khoá luồng gồm cả Trưởng dự án đang ngồi ghế.
+
+    Ghế đổi chủ thì người mới không được nối vào phiên của người cũ — nói bằng giọng của
+    người khác. Người mới mở phiên riêng, kèm các lượt gần nhất được kể lại.
+    """
+    async with _client() as c:
+        chatting = await _a_leader_on_a_machine(c, "lead-key@acme.dev")
+        said = await _say(c, chatting, "Tuần này thế nào?")
+        assert said.status_code == 200, said.text
+        run_id = await _driving_run(chatting.project_id)
+        claimed = await c.post(
+            "/daemon/runs/claim",
+            headers=chatting.as_machine,
+            json={"workplace_ids": [chatting.machine.workplace_id], "free_slots": 1},
+        )
+        mine = next(r for r in claimed.json()["runs"] if r["run_id"] == str(run_id))
+        conversation = await _conversation(chatting.project_id)
+        assert mine["conversation"] == (
+            f"project-chat-{conversation.id}-{chatting.marius_id}"
+        )
+        assert "Tuần này thế nào?" in mine["fresh_prompt"], (
+            "không có bản kèm lịch sử cho lượt mất phiên"
+        )
+        assert "not repeated here" in mine["prompt"], (
+            "bản nối phiên không nói rõ lịch sử nằm trong phiên — agent tưởng mình mất trí nhớ"
+        )
+        # Đo được trên dịch vụ thật 2026-09-28: bản nối phiên từng bỏ luôn câu người chủ vừa viết,
+        # vì trong chat dự án câu ấy nằm lẫn trong danh sách các lượt gần nhất. Agent nối đúng
+        # phiên rồi trả lời "chưa thấy tin nhắn mới nào".
+        assert "Tuần này thế nào?" in mine["prompt"], (
+            "bản nối phiên không mang câu người chủ vừa viết — agent không biết đang được hỏi gì"
+        )

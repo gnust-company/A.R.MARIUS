@@ -60,6 +60,15 @@ type GrantedRun struct {
 	// than one of those. Numbering from a number the server chose is what keeps the pair
 	// (run, number) unique without a round trip per event to agree on the next one.
 	FirstSeq int `json:"first_seq"`
+	// Conversation names the conversation this run carries on when it is not a task's — the
+	// patron's direct chat with an agent, a project's chat with its Leader (FR-040c). The
+	// machine keeps that conversation's session under this name, the way it keeps a task's
+	// under the task. Empty for a task's run and for a turn meant to leave nothing behind.
+	Conversation string `json:"conversation"`
+	// FreshPrompt is what to tell the agent instead of Prompt when the conversation cannot be
+	// carried on: the same message with the recent turns written back in. Empty when Prompt
+	// already says everything.
+	FreshPrompt string `json:"fresh_prompt"`
 }
 
 // GrantedSkill is one skill as it arrives: a directory name and everything that goes in it.

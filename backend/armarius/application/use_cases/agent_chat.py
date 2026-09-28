@@ -9,6 +9,11 @@ A turn is a run like any other. It is taken wherever the agent works, it shows i
 activity, and it ends by the same roads every run ends by. What it carries is written down with
 it when the patron writes (FR-040c): there is no task to re-read for anything fresher.
 
+The conversation lives in the agent's own session, which the place it works keeps between turns
+under the conversation's key — so each turn sends only what is new. It also sends the same
+message with the recent turns written back in, for the turn that finds no session to carry on;
+the transcript here stays the record either way.
+
 Constitution III holds here the way it holds in the project chat: whether a turn ends inside
 the call or somewhere else is asked of the adapter's contract, never of its name.
 """
@@ -177,23 +182,30 @@ class AgentChatService:
         if latest is None:  # pragma: no cover - a turn is only ever started by a message
             await self._finish(conversation_id, text="", ok=False)
             return
-        prompt = build_agent_chat_prompt(
-            AgentChatContext(
-                agent_name=agent.name,
-                workspace_name=workspace.name if workspace else "",
-                instructions=agent.instructions,
-                system_instructions=agent.system_instructions,
-                history=[
-                    ChatTurn(role=str(t.get("role", "")), text=str(t.get("text", "")))
-                    for t in tail
-                ],
-                message=str(latest.get("text", "")),
-            )
+        context = AgentChatContext(
+            agent_name=agent.name,
+            workspace_name=workspace.name if workspace else "",
+            instructions=agent.instructions,
+            system_instructions=agent.system_instructions,
+            history=[
+                ChatTurn(role=str(t.get("role", "")), text=str(t.get("text", ""))) for t in tail
+            ],
+            message=str(latest.get("text", "")),
         )
+        # Both forms, always: which one the agent reads is decided where the session is, and
+        # only there is it known whether the session is still there (FR-040c).
+        prompt = build_agent_chat_prompt(context)
 
         adapter = self._registry.get(agent.adapter_type)
         if not adapter.capabilities.turn_ends_in_the_call:
-            await self._hand_over(conversation_id, adapter, agent=agent, prompt=prompt)
+            await self._hand_over(
+                conversation_id,
+                adapter,
+                agent=agent,
+                key=conversation.key,
+                prompt=build_agent_chat_prompt(context, carrying_on=True),
+                fresh_prompt=prompt,
+            )
             return
 
         reply_parts: list[str] = []
@@ -234,12 +246,23 @@ class AgentChatService:
             await self._signal(agent.id)
 
     async def _hand_over(
-        self, conversation_id: UUID, adapter: MariusAdapter, *, agent: Marius, prompt: str
+        self,
+        conversation_id: UUID,
+        adapter: MariusAdapter,
+        *,
+        agent: Marius,
+        key: str,
+        prompt: str,
+        fresh_prompt: str,
     ) -> None:
         """Offer the turn to wherever the agent works, and let go (FR-040b, FR-040e).
 
         The conversation stays thinking and the run stays queued until it is taken; what
         comes back from the offer says only whether it was accepted.
+
+        `prompt` is the turn for a session that carries on; `fresh_prompt` the same turn with
+        the recent history written back in, for one that cannot. The run names the
+        conversation by `key`, which is what lets the next turn find this one's session.
         """
         now = utcnow()
         run = Run(
@@ -252,6 +275,7 @@ class AgentChatService:
             trigger_causes=[_CAUSE],
             trigger_detail=_CAUSE.render_en(),
             status=RunStatus.QUEUED,
+            conversation_key=key,
             created_at=now,
         )
         async with self._uow() as uow:
@@ -269,6 +293,7 @@ class AgentChatService:
                     causes=[_CAUSE],
                     reason=_CAUSE.render_en(),
                     prompt=prompt,
+                    fresh_prompt=fresh_prompt,
                     status=WakeupStatus.DISPATCHED,
                     run_id=run.id,
                     created_at=now,

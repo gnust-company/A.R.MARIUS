@@ -153,9 +153,13 @@ func Converse(ctx context.Context, toAgent io.Writer, fromAgent io.Reader, req R
 	var turn struct {
 		StopReason string `json:"stopReason"`
 	}
+	said := req.Message
+	if c.refused != nil {
+		said = req.messageWithoutSession()
+	}
 	if err := c.call(ctx, "session/prompt", map[string]any{
 		"sessionId": c.outcome.Session,
-		"prompt":    []any{map[string]any{"type": "text", "text": ahead(notice, req.Message)}},
+		"prompt":    []any{map[string]any{"type": "text", "text": ahead(notice, said)}},
 	}, &turn); err != nil {
 		return c.outcome, fmt.Errorf("taking the turn: %w", err)
 	}

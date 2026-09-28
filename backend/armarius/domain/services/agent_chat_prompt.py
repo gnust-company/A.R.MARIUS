@@ -8,9 +8,11 @@ is nothing to work inside. What the agent needs is who it is — its instruction
 shape every packet renders them (``append_instructions``) — the conversation so far, and the
 message it is answering.
 
-The conversation travels inside the message rather than in a session kept on the far side.
-A turn with no task keeps no session of its own where it runs, which is the same answer the
-project chat gives for the same reason.
+Two forms of the same packet (FR-040c). The conversation lives in the agent's own session,
+which the machine keeps between turns, so the ordinary turn says only what is new —
+`carrying_on`. When that session is not there to carry on (the first message, a session past its
+keeping, one the CLI refused), the recent turns are written back in instead, so losing a
+session never costs the patron the thread.
 
 English throughout: it is the agent's copy (Constitution VII).
 """
@@ -37,7 +39,7 @@ class AgentChatContext:
     history: list[ChatTurn] = field(default_factory=list)
 
 
-def build_agent_chat_prompt(ctx: AgentChatContext) -> str:
+def build_agent_chat_prompt(ctx: AgentChatContext, *, carrying_on: bool = False) -> str:
     lines: list[str] = [
         f"You are {ctx.agent_name}, an agent in the {ctx.workspace_name or 'unnamed'} "
         "workspace inside Armarius.",
@@ -60,7 +62,15 @@ def build_agent_chat_prompt(ctx: AgentChatContext) -> str:
     # Always rendered (FR-045): an agent that cannot tell "this is the first message" from
     # "the history failed to load" answers as though it had forgotten.
     lines.append("## Conversation so far")
-    if ctx.history:
+    if carrying_on:
+        # Said, not left out: a section that simply vanishes cannot be told apart from one that
+        # failed to render (FR-045), and an agent that thinks its history was lost answers as
+        # though it had been.
+        lines.append(
+            "- The earlier turns are in this conversation's own history; they are not repeated "
+            "here."
+        )
+    elif ctx.history:
         for turn in ctx.history:
             who = {"patron": "Patron", "agent": "You"}.get(turn.role, "System")
             lines.append(f"- {who}: {turn.text}")

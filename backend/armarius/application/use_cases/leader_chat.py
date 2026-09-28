@@ -398,31 +398,31 @@ class LeaderChatService:
             opening_wake = (
                 tail.pop() if tail and tail[-1].get("role") == "system" else None
             )
-            prompt = build_leader_chat_prompt(
-                LeaderChatContext(
-                    leader_name=leader.name,
-                    project_id=project_id,
-                    project_name=project.name,
-                    workspace_name=workspace.name if workspace else "",
-                    project_brief=brief,
-                    commission=project.context or project.objective or "",
-                    directory=directory,
-                    recent_turns=[
-                        ChatTurn(role=str(t.get("role", "")), text=str(t.get("text", "")))
-                        for t in tail
-                    ],
-                    wake_reason=(
-                        str(opening_wake.get("text", "")) if opening_wake else ""
-                    ),
-                    wake_detail=(
-                        str(opening_wake.get("detail", "")) if opening_wake else ""
-                    ),
-                    plan_items=plan_items,
-                    leader_role_description=(
-                        leader_role.description if leader_role else ""
-                    ),
-                )
+            context = LeaderChatContext(
+                leader_name=leader.name,
+                project_id=project_id,
+                project_name=project.name,
+                workspace_name=workspace.name if workspace else "",
+                project_brief=brief,
+                commission=project.context or project.objective or "",
+                directory=directory,
+                recent_turns=[
+                    ChatTurn(role=str(t.get("role", "")), text=str(t.get("text", "")))
+                    for t in tail
+                ],
+                wake_reason=(
+                    str(opening_wake.get("text", "")) if opening_wake else ""
+                ),
+                wake_detail=(
+                    str(opening_wake.get("detail", "")) if opening_wake else ""
+                ),
+                plan_items=plan_items,
+                leader_role_description=(
+                    leader_role.description if leader_role else ""
+                ),
             )
+            prompt = build_leader_chat_prompt(context)
+            key = conversation.key_for(leader.id)
             session_params = dict(conversation.session_params)
             if not session_params.get("session_id"):
                 session_params["session_id"] = f"armarius:project:{project_id}:leader"
@@ -441,7 +441,11 @@ class LeaderChatService:
                 adapter,
                 leader=leader,
                 project_id=project_id,
-                prompt=prompt,
+                # The Leader's session carries the thread on; the full form is for the turn
+                # that finds no session to carry on (FR-040c).
+                prompt=build_leader_chat_prompt(context, carrying_on=True),
+                fresh_prompt=prompt,
+                key=key,
                 cause=_cause_of(opening_wake),
             )
             return
@@ -512,6 +516,8 @@ class LeaderChatService:
         leader: Marius,
         project_id: UUID,
         prompt: str,
+        fresh_prompt: str,
+        key: str,
         cause: WakeReason,
     ) -> None:
         """Offer this turn to whoever will actually take it, and let go (FR-040b, FR-040e).
@@ -530,10 +536,11 @@ class LeaderChatService:
         one the run's own hold and the hung-run sweep already answer that question, and a
         second clock on one question is two answers waiting to disagree (FR-040e).
 
-        Nor does the conversation's stored session handle travel with the offer, and it would
-        mean nothing if it did: a turn about no task keeps no session of its own on the far
-        side. What carries this conversation forward is the message — the last several turns
-        are in it — and that is the same answer the machine already gives every task-less run.
+        The conversation's stored session handle does not travel with the offer; the run names
+        the conversation instead (`key`), and the place the Leader works keeps that
+        conversation's session under the name, the way it keeps a task's under the task
+        (FR-040c). `prompt` is the turn for a session that carries on; `fresh_prompt` is the
+        same turn with the recent history written back in, for one that cannot.
         """
         now = utcnow()
         run = Run(
@@ -544,6 +551,7 @@ class LeaderChatService:
             trigger_causes=[cause],
             trigger_detail=cause.render_en(),
             status=RunStatus.QUEUED,
+            conversation_key=key,
             created_at=now,
         )
         async with self._uow() as uow:
@@ -562,6 +570,7 @@ class LeaderChatService:
                     causes=[cause],
                     reason=cause.render_en(),
                     prompt=prompt,
+                    fresh_prompt=fresh_prompt,
                     status=WakeupStatus.DISPATCHED,
                     run_id=run.id,
                     created_at=now,

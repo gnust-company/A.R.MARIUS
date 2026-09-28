@@ -53,6 +53,15 @@ class ProjectLeaderConversation:
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
+    def key_for(self, leader_id: UUID) -> str:
+        """The name this conversation's session is kept under where its Leader works (FR-040c).
+
+        The Leader is part of the name, and that is the point: the seat can change hands, and a
+        new Leader picking up the old one's session would be talking in somebody else's voice.
+        A new Leader starts its own session, with the recent turns written back in.
+        """
+        return f"project-chat-{self.id}-{leader_id}"
+
     def append(self, role: str, text: str, ts: datetime) -> None:
         self.transcript = [
             *self.transcript,

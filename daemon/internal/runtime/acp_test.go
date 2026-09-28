@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gnust-company/armarius-daemon/internal/agentcli"
@@ -279,6 +280,38 @@ func TestASessionThatCannotBeCarriedOnStartsANewOneRatherThanFailing(t *testing.
 	}
 	if lost := only(t, events, EventRunError); lost.Payload["code"] != "session_not_resumed" {
 		t.Fatalf("mất mạch cũ mà không để lại dấu: %v", lost.Payload)
+	}
+}
+
+// Một lượt chat nối phiên chỉ mang câu mới; phiên không nạp được thì agent phải đọc bản có lịch
+// sử, không thì nó bắt đầu lại mà không biết gì về cuộc trò chuyện (FR-040c).
+func TestASessionThatWillNotLoadIsToldTheHistoryInstead(t *testing.T) {
+	agent := &fakeAgent{loadFails: true}
+
+	if _, _, err := talkTo(t, agent, Request{
+		Session:      "an-old-session",
+		Message:      "Their message: and now?",
+		FreshMessage: "Conversation so far: Patron: hello. Their message: and now?",
+	}); err != nil {
+		t.Fatalf("một lượt qua ACP: %v", err)
+	}
+	if !strings.Contains(agent.prompt, "Patron: hello") {
+		t.Fatalf("phiên không nạp được mà agent không được kể lại lịch sử: %q", agent.prompt)
+	}
+}
+
+func TestASessionThatLoadsIsToldOnlyWhatIsNew(t *testing.T) {
+	agent := &fakeAgent{}
+
+	if _, _, err := talkTo(t, agent, Request{
+		Session:      "an-old-session",
+		Message:      "Their message: and now?",
+		FreshMessage: "Conversation so far: Patron: hello. Their message: and now?",
+	}); err != nil {
+		t.Fatalf("một lượt qua ACP: %v", err)
+	}
+	if strings.Contains(agent.prompt, "Patron: hello") {
+		t.Fatalf("phiên nạp được mà agent vẫn bị kể lại lịch sử: %q", agent.prompt)
 	}
 }
 

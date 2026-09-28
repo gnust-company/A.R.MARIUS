@@ -194,6 +194,7 @@ func (OneShot) Run(ctx context.Context, req Request, emit Emit) (Outcome, error)
 	out.SessionRefused = true
 	fresh := req
 	fresh.Session = ""
+	fresh.Message = req.messageWithoutSession()
 	again, err := takeTurn(ctx, fresh, shape, journal,
 		ahead(notice, tell(journal, &Restart{
 			Code:   RestartRefused,

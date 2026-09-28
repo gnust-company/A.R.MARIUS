@@ -231,6 +231,17 @@ class GrantedRunOut(BaseModel):
     # this run sits below it — the message above all — so the pair (run, number) stays unique
     # even for a run that was put back and handed out a second time.
     first_seq: int = 1
+    # The conversation this run carries on when it is not a task's (FR-040c): the patron's
+    # direct chat with an agent, or a project's chat with its Leader. The machine keeps that
+    # conversation's session under this name, the way it keeps a task's under the task, and
+    # carries it on at the next turn. Empty for a task's run, and for a turn meant to leave
+    # nothing behind.
+    conversation: str = ""
+    # What to tell the agent instead of `prompt` when the conversation cannot be carried on —
+    # no session yet, one past its keeping, or one the CLI refused. The same message with the
+    # recent turns written back in, so losing a session never loses the thread. Empty when
+    # `prompt` already says everything.
+    fresh_prompt: str = ""
 
 
 class ClaimOut(BaseModel):
@@ -550,6 +561,8 @@ async def claim_runs(
                 skills=[SkillOut(name=b.name, files=b.files) for b in g.skills],
                 runtime_options=dict(g.runtime_options),
                 first_seq=g.first_seq,
+                conversation=g.conversation,
+                fresh_prompt=g.fresh_prompt,
             )
             for g in granted
         ]

@@ -36,6 +36,12 @@ type Request struct {
 	// the server before it was ever sent (FR-011a, FR-012a). Nothing here composes any part of
 	// it, and nothing here may abbreviate it.
 	Message string
+	// FreshMessage is what to say instead of Message if the session offered in Session turns
+	// out not to load (FR-040c). A chat carrying its session on is told only what is new; a
+	// session the CLI refuses leaves the agent with no history at all, so the turn is taken
+	// again with this — the same message, the recent turns written back in. Empty when there
+	// is nothing to add, which is every task's run.
+	FreshMessage string
 	// Session is the handle of the conversation to carry on, empty to start a new one (FR-023).
 	// A CLI that cannot resume ignores it and opens a new session, which is a supported outcome
 	// rather than a failure (FR-039a).
@@ -208,4 +214,16 @@ func startable(cli string) bool {
 	}
 	_, appServer := appServerStart(cli)
 	return appServer
+}
+
+// messageWithoutSession is what the agent is told on a turn whose offered session would not load.
+//
+// One rule for every family, which is why it is a method and not three copies: the same turn
+// written for a conversation the agent can no longer see (FR-040c). Falls back to Message when
+// the server sent one form only — a task's run, where the message already says everything.
+func (r Request) messageWithoutSession() string {
+	if r.FreshMessage != "" {
+		return r.FreshMessage
+	}
+	return r.Message
 }

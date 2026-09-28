@@ -46,6 +46,13 @@ type Grant struct {
 	// (FR-045). Chosen by the server, which owns the log and already has things written in
 	// it — the message this run was given, and any earlier hand-out of the same run.
 	FirstSeq int
+	// Conversation names the conversation this run carries on when it is not a task's
+	// (FR-040c). A run that has one works in that conversation's own directory and keeps its
+	// session there between turns, exactly as a task's runs do under the task.
+	Conversation string
+	// FreshPrompt replaces Prompt for a turn that finds no session to carry on — the first
+	// turn, a session past its keeping, or one the CLI refused. Empty means Prompt serves both.
+	FreshPrompt string
 }
 
 // ClaimOptions is everything the ask loop needs from the rest of the daemon.
