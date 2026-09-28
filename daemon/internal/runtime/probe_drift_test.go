@@ -56,8 +56,11 @@ func introductionFromProbe(t *testing.T) map[string]any {
 		return err
 	}
 
+	// No row of this release is ACP (FR-039f), so the peer is one with no row of its own, carrying
+	// the flag it is started with the way discovery hands a row's flag on.
 	got := discovery.Probe(context.Background(), discovery.Found{
-		Kind: agentcli.Gemini, Family: agentcli.FamilyACP, Path: "/usr/local/bin/gemini",
+		Kind: "an-acp-cli", Family: agentcli.FamilyACP, Path: "/usr/local/bin/an-acp-cli",
+		ProtocolArgs: []string{"--acp"},
 	}, opts)
 	if !got.Resumable {
 		t.Fatalf("phép dò không đọc được câu trả lời, nên dòng nó gửi chưa chắc là dòng thật: %+v", got)
@@ -102,7 +105,7 @@ func introductionFromRun(t *testing.T) map[string]any {
 	}()
 
 	_, err := Converse(context.Background(), hears, answers, Request{
-		CLI: string(agentcli.Gemini), WorkDir: t.TempDir(), Message: "hello",
+		CLI: "an-acp-cli", WorkDir: t.TempDir(), Message: "hello",
 	}, func(Event) {})
 	_ = hears.Close()
 	if err != nil {

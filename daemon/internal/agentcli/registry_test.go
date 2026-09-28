@@ -26,17 +26,23 @@ func TestEveryKindIsNamedOnceAndSpelledTheServersWay(t *testing.T) {
 	}
 }
 
-// FR-039: both protocol families are represented from the start, so the boundary between them
-// is forced to be right early rather than discovered later around a single family.
-func TestBothProtocolFamiliesAreRepresented(t *testing.T) {
+// FR-039 kept more than one protocol family from the start, so the boundary between them is
+// forced to be right early rather than discovered later around a single family. ACP is no longer
+// among them: Gemini CLI, its only row, runs once per turn since 2026-09-28 (FR-039f), and the
+// family stays in the daemon for a CLI that comes later, held by the runtime's own tests.
+func TestTheFamiliesInUseAreStillMoreThanOne(t *testing.T) {
 	counted := map[Family]int{}
 	for _, row := range All() {
 		counted[row.Family]++
 	}
-	for _, family := range []Family{FamilyACP, FamilyOneShot, FamilyAppServer} {
+	for _, family := range []Family{FamilyOneShot, FamilyAppServer} {
 		if counted[family] == 0 {
 			t.Errorf("no CLI of the %s family is declared", family)
 		}
+	}
+	if counted[FamilyACP] != 0 {
+		t.Errorf("%d rows are ACP again; FR-039f moved the only one off it, so this is a decision "+
+			"somebody has to have made, and this test is where it gets written down", counted[FamilyACP])
 	}
 }
 
@@ -72,15 +78,10 @@ func TestARowIsAllOfACLIOrNoneOfIt(t *testing.T) {
 	}
 }
 
-// Gemini's row is the one written from a measurement rather than from documentation, so what
-// was measured is pinned here.
-//
-// The distinction FR-039a draws is between guessing and knowing, not between waiting and
-// writing. Two things were watched happening on `gemini 0.56.0` and they are the two that
-// decide whether any of the rest can be true: the flag starts an ACP peer when a program starts
-// it with no terminal, and the trust gate exists. The four paths come from the bundle the
-// binary ships. If a working account ever contradicts one of them, this test is where the
-// correction lands.
+// Gemini's row is pinned here, as read off the bundle `gemini 0.56.0` ships and off the way
+// Multica's daemon drove it: one process per turn (FR-039f), the brief in GEMINI.md, skills in the
+// personal directory of the home, the home redirected by HOME alone. If a working account ever
+// contradicts one of them, this test is where the correction lands.
 func TestGeminisRowSaysWhatWasMeasured(t *testing.T) {
 	row, known := Lookup(string(Gemini))
 	if !known {
@@ -89,8 +90,12 @@ func TestGeminisRowSaysWhatWasMeasured(t *testing.T) {
 	if !Ready(string(Gemini)) {
 		t.Fatalf("Gemini is missing %v", row.Undeclared())
 	}
-	if row.Family != FamilyACP {
-		t.Errorf("Gemini is declared %q, and the handshake that was measured is ACP", row.Family)
+	if row.Family != FamilyOneShot {
+		t.Errorf("Gemini is declared %q, and FR-039f runs it once per turn", row.Family)
+	}
+	if len(row.ProtocolArgs) != 0 {
+		t.Errorf("Gemini is started with %v: a CLI run once per turn has no protocol to switch into",
+			row.ProtocolArgs)
 	}
 	if row.ContextFile != "GEMINI.md" {
 		t.Errorf("the brief goes to %q, want GEMINI.md", row.ContextFile)

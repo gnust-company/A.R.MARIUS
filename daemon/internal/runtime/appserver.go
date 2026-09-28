@@ -250,9 +250,9 @@ func (c *appConn) openThread(ctx context.Context, req Request) error {
 	}
 
 	var opened thread
-	// Nothing is sent about approvals, the sandbox, or the model's permissions, and that is
-	// deliberate: those are settings of the operator's own Codex, and answering them here would
-	// be this daemon deciding on their behalf what an unattended agent may do (FR-013b).
+	// Nothing is sent about approvals or the sandbox: those stay the operator's own Codex
+	// settings (FR-013b, decided 2026-09-28). What reaches this daemon as a request is answered
+	// yes in `asked`; what the operator's sandbox refuses without asking stays refused.
 	if err := c.call(ctx, "thread/start", map[string]any{"cwd": c.cwd}, &opened); err != nil {
 		return fmt.Errorf("opening a thread: %w", err)
 	}
@@ -394,8 +394,8 @@ type item struct {
 
 // ended says whether an item's status is one this side should record as having gone wrong.
 //
-// Declined counts. A command the daemon refused permission for did not run, and a record that
-// showed it as an ordinary completed step would be a record of work that never happened.
+// Declined counts. A declined command did not run, and a record that showed it as an ordinary
+// completed step would be a record of work that never happened.
 func ended(status string) bool { return status == "failed" || status == "declined" }
 
 func (c *appConn) notified(msg rpcMessage) {
@@ -542,11 +542,12 @@ func (c *appConn) wentWrong(msg rpcMessage) {
 
 // asked replies to something the app-server asked of us.
 //
-// **Permission is refused, for the reason it is refused on the other family** (FR-013b): a run
-// happens with no person watching, and this daemon holds a machine's credentials rather than a
-// patron's judgement. Codex's own vocabulary has the right word for it — `decline` means the
-// agent is told no and carries on with the turn, which costs it one step and puts a code in the
-// record saying exactly what it wanted.
+// **Everything asked is granted, because nobody is here to be asked** (FR-013b, changed
+// 2026-09-28 from a refusal). A command or a file change is answered `accept` — once, not
+// `acceptForSession` — and a request for more permissions is answered with exactly the permissions
+// requested, for this turn. A request for information from an MCP server is accepted too, with no
+// content: nobody here has any to give, and an unanswered one would hold the turn. These are the
+// answers Multica's daemon gives to the same four requests (`server/pkg/agent/codex.go`).
 //
 // What must never happen here is silence. On this protocol the server has stopped and is
 // waiting for an answer, so a request this daemon does not recognise has to be answered with an
@@ -555,22 +556,49 @@ func (c *appConn) wentWrong(msg rpcMessage) {
 func (c *appConn) asked(msg rpcMessage) error {
 	switch msg.Method {
 	case "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
-		c.journal.Fail("permission_refused_nobody_to_ask", nil)
-		return c.answer(msg.ID, map[string]any{"decision": "decline"})
+		return c.answer(msg.ID, map[string]any{"decision": "accept"})
 	case "item/permissions/requestApproval":
-		// Answered in the shape it was asked in — a profile of what is granted — and granting
-		// nothing. An empty profile is this daemon's refusal written in the server's own terms.
-		c.journal.Fail("permission_refused_nobody_to_ask", nil)
-		return c.answer(msg.ID, map[string]any{"permissions": map[string]any{}, "scope": "turn"})
+		return c.answer(msg.ID, map[string]any{"permissions": requested(msg.Params), "scope": "turn"})
 	case "mcpServer/elicitation/request":
-		c.journal.Fail("permission_refused_nobody_to_ask", nil)
-		return c.answer(msg.ID, map[string]any{"action": "decline"})
+		return c.answer(msg.ID, map[string]any{"action": "accept", "content": nil, "_meta": nil})
 	}
 	return c.out.Encode(rpcMessage{
 		JSONRPC: "2.0",
 		ID:      msg.ID,
 		Error:   &rpcError{Code: -32601, Message: "this client does not provide " + msg.Method},
 	})
+}
+
+// requested is the permission profile a request asked for, handed back as the grant.
+//
+// Only the two parts the protocol defines a grant for — `network` and `fileSystem` — and each
+// passed back exactly as it was asked, rather than rebuilt from what this side understands of it:
+// a profile re-rendered by a reader that missed a field is a grant narrower than the ask, which
+// is a refusal that does not say so.
+func requested(params json.RawMessage) map[string]any {
+	var ask struct {
+		Permissions struct {
+			Network    json.RawMessage `json:"network"`
+			FileSystem json.RawMessage `json:"fileSystem"`
+		} `json:"permissions"`
+	}
+	granted := map[string]any{}
+	if json.Unmarshal(params, &ask) != nil {
+		return granted
+	}
+	if present(ask.Permissions.Network) {
+		granted["network"] = ask.Permissions.Network
+	}
+	if present(ask.Permissions.FileSystem) {
+		granted["fileSystem"] = ask.Permissions.FileSystem
+	}
+	return granted
+}
+
+// present says whether a raw field carried a value. `null` decodes into a RawMessage as the four
+// bytes themselves rather than leaving it empty, so both have to be asked about.
+func present(raw json.RawMessage) bool {
+	return len(raw) > 0 && string(raw) != "null"
 }
 
 func (c *appConn) answer(id json.RawMessage, result any) error {

@@ -236,6 +236,19 @@ var selfDescriptions = map[Kind]selfDescription{
 			{key: ChoiceModel, how: examples, after: "--model"},
 		},
 	},
+	// Read off the options the `gemini 0.56.0` bundle declares for its main command, which is
+	// what its `--help` prints: `-r, --resume` and `--output-format ... [choices: "text",
+	// "json", "stream-json"]` (FR-039f). Its `-m, --model` is described as just `Model`, with no
+	// values or examples beside it, so no choice is read from here — the person leaves the model
+	// blank and gets the CLI's own default (FR-007k).
+	agentcli.Gemini: {
+		args: []string{"--help"},
+		proves: map[capability][]string{
+			capResumable:         {"--resume"},
+			capExposesToolArgs:   {"stream-json"},
+			capExposesToolResult: {"stream-json"},
+		},
+	},
 }
 
 // FlagRead answers, for one kind of CLI, which flag each pickable setting's values were read
@@ -500,8 +513,7 @@ type acpDeclaration struct {
 // paid once, when the daemon starts, and it buys a workplace that carries conversations on
 // instead of losing them.
 func probeHandshake(ctx context.Context, found Found, opts Options) (Capabilities, error) {
-	row, known := agentcli.Lookup(string(found.Kind))
-	if !known || len(row.ProtocolArgs) == 0 {
+	if len(found.ProtocolArgs) == 0 {
 		// A CLI of this family with nothing to start it with cannot be spoken to — and that is a
 		// fact about what has been written down here, not about the CLI.
 		return unanswered(ReasonNoProbe), nil
@@ -511,7 +523,7 @@ func probeHandshake(ctx context.Context, found Found, opts Options) (Capabilitie
 	defer cancel()
 
 	var declared acpDeclaration
-	err := opts.Handshake(ctx, found.Path, row.ProtocolArgs, func(to io.Writer, from io.Reader) error {
+	err := opts.Handshake(ctx, found.Path, found.ProtocolArgs, func(to io.Writer, from io.Reader) error {
 		return openConversation(ctx, to, from, &declared)
 	})
 	if err != nil {
@@ -541,15 +553,14 @@ func probeHandshake(ctx context.Context, found Found, opts Options) (Capabilitie
 // refuses to resume a thread is handled where it shows up — a refused resume opens a fresh
 // conversation with a note (FR-025), which is the same answer the ACP road gives.
 func probeAppServer(ctx context.Context, found Found, opts Options) (Capabilities, error) {
-	row, known := agentcli.Lookup(string(found.Kind))
-	if !known || len(row.ProtocolArgs) == 0 {
+	if len(found.ProtocolArgs) == 0 {
 		return unanswered(ReasonNoProbe), nil
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, opts.Timeout)
 	defer cancel()
 
-	err := opts.Handshake(ctx, found.Path, row.ProtocolArgs, func(to io.Writer, from io.Reader) error {
+	err := opts.Handshake(ctx, found.Path, found.ProtocolArgs, func(to io.Writer, from io.Reader) error {
 		return openAppServer(ctx, to, from)
 	})
 	if err != nil {

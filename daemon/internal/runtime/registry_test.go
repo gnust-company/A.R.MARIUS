@@ -71,9 +71,8 @@ func TestNothingIsStartableUnderANameTheRegistryDoesNotCarry(t *testing.T) {
 	}
 }
 
-// Gemini is the case the two halves exist to handle, so it is checked as itself. It was the
-// kind held out of both — no row and no invocation — and it is now in both, which is the only
-// state that lets a machine ask for work there without spoiling it (FR-039, FR-039a).
+// Gemini is the case the two halves exist to handle, so it is checked as itself: its row and its
+// invocation have to agree, and since FR-039f they agree on one process per turn.
 func TestGeminiIsDrivableFromBothHalvesOrNeither(t *testing.T) {
 	kind := string(agentcli.Gemini)
 	if agentcli.Ready(kind) != startable(kind) {
@@ -82,24 +81,20 @@ func TestGeminiIsDrivableFromBothHalvesOrNeither(t *testing.T) {
 			"it never looks", agentcli.Ready(kind), startable(kind))
 	}
 	if !Supported(kind) {
-		t.Fatal("Gemini is in neither half, and the handshake was measured to work")
+		t.Fatal("Gemini is in neither half")
 	}
 }
 
-// The flag is the half that was measured, so it is named here rather than left to the table.
-// A guessed flag is a daemon that starts a CLI and waits forever for a handshake that was
-// never coming — which is the failure the whole of task T013 was held open for.
-func TestGeminiIsStartedWithTheFlagThatWasWatchedWorking(t *testing.T) {
-	flags, known := acpStart(string(agentcli.Gemini))
-	if !known {
-		t.Fatal("nothing here knows how to start Gemini as an ACP peer")
+// One process per turn, and not an ACP peer as well: two ways to start the same kind would be two
+// answers to how its runs go, and which one a run got would depend on the order code is asked in.
+func TestGeminiIsRunOncePerTurnAndNotAsAPeer(t *testing.T) {
+	kind := string(agentcli.Gemini)
+	if _, oneShot := oneShots[kind]; !oneShot {
+		t.Fatal("nothing here knows how to run Gemini once per turn")
 	}
-	for _, flag := range flags {
-		if flag == "--acp" || flag == "--experimental-acp" {
-			return
-		}
+	if flags, peer := acpStart(kind); peer {
+		t.Fatalf("Gemini can also be started as an ACP peer with %v", flags)
 	}
-	t.Errorf("Gemini is started with %v, and neither spelling of the ACP flag is among them", flags)
 }
 
 // A kind nobody has heard of is not supported, and asking is not an error.

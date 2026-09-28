@@ -260,8 +260,9 @@ echo '`+doneLine+`'`)
 }
 
 func TestACLIThisFamilyDoesNotKnowIsRefused(t *testing.T) {
-	// Gemini CLI is the ACP family's, and unverified besides (T013).
-	if _, _, err := aTurn(t, Request{CLI: "gemini", Binary: fakeCLI(t, "exit 0")}); err == nil {
+	// Codex holds a conversation in its own protocol; started as a one-shot CLI it would be
+	// handed a message on a road it never reads.
+	if _, _, err := aTurn(t, Request{CLI: "codex", Binary: fakeCLI(t, "exit 0")}); err == nil {
 		t.Fatal("CLI không thuộc họ này mà vẫn chạy được")
 	}
 }
@@ -359,15 +360,11 @@ echo '`+doneLine+`'`)
 	}
 }
 
-func TestToolsThatWereHandedOverAreAlsoAllowedToBeUsed(t *testing.T) {
-	// Đo thật, không suy đoán (claude 2.1.226, 2026-08-29): khai mà không cho phép thì công cụ
-	// **hiện ra** trong danh sách của agent, agent gọi, và lời gọi trả về *permission denied* —
-	// không có ai ngồi đây mà cấp. Một bộ công cụ được trao rồi bị chặn mọi lần dùng là một lượt
-	// chạy không báo cáo lại được gì.
-	//
-	// Danh sách cho phép lấy từ chính lời khai, nên phạm vi được trao và phạm vi được dùng là
-	// một (FR-013d) — và **chỉ** máy chủ công cụ của ta, không đụng thứ agent xin làm ngoài đời
-	// (FR-013b).
+// FR-013b (sửa 2026-09-28): không có ai ở đây để hỏi, nên Claude Code chạy ở chế độ không cần hỏi —
+// nó không hỏi ai trong chế độ in, mà lặng lẽ từ chối mọi thứ thiết lập chưa cho. Và công cụ hỏi-
+// tại-chỗ bị tắt: không có hộp thoại thì nó trả về rỗng và agent tự đoán tiếp. Danh sách chỉ cho
+// phép công cụ của Armarius không còn nữa: giờ không có gì cần cho phép riêng.
+func TestClaudeIsAllowedEverythingAndCannotAskMidTurn(t *testing.T) {
 	seen := filepath.Join(t.TempDir(), "args")
 	cli := fakeCLI(t, `echo "$@" > `+seen+`
 echo '`+doneLine+`'`)
@@ -382,21 +379,13 @@ echo '`+doneLine+`'`)
 	}
 
 	got := readFile(t, seen)
-	if !strings.Contains(got, "--allowed-tools mcp__armarius") {
-		t.Fatalf("công cụ được trao mà không được phép dùng: %q", got)
+	for _, want := range []string{"--permission-mode bypassPermissions", "--disallowed-tools AskUserQuestion"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("thiếu %q: %q", want, got)
+		}
 	}
-}
-
-func TestARunWithNoToolsAllowsNothingExtra(t *testing.T) {
-	seen := filepath.Join(t.TempDir(), "args")
-	cli := fakeCLI(t, `echo "$@" > `+seen+`
-echo '`+doneLine+`'`)
-
-	if _, _, err := aTurn(t, Request{Binary: cli}); err != nil {
-		t.Fatalf("chạy một lượt: %v", err)
-	}
-	if got := readFile(t, seen); strings.Contains(got, "--allowed-tools") {
-		t.Fatalf("cho phép một thứ không ai trao: %q", got)
+	if strings.Contains(got, "--allowed-tools") {
+		t.Errorf("vẫn còn danh sách chỉ cho phép một phần: %q", got)
 	}
 }
 

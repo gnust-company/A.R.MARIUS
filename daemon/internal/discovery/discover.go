@@ -38,6 +38,11 @@ type Found struct {
 	Family  Family
 	Path    string
 	Version string
+	// ProtocolArgs is what the CLI is started with to speak its family's protocol, copied off the
+	// same row a run reads it from — so the probe asks the program the run will give work to.
+	// Carried here rather than looked up again by kind, because a family can be probed that no
+	// row of this release belongs to: ACP has none since Gemini CLI left it (FR-039f).
+	ProtocolArgs []string
 }
 
 // Skipped is a binary that is on PATH but would not run.
@@ -118,10 +123,11 @@ func Discover(ctx context.Context, opts Options) Result {
 			continue
 		}
 		result.Found = append(result.Found, Found{
-			Kind:    c.Kind,
-			Family:  c.Family,
-			Path:    path,
-			Version: version,
+			Kind:         c.Kind,
+			Family:       c.Family,
+			Path:         path,
+			Version:      version,
+			ProtocolArgs: c.ProtocolArgs,
 		})
 	}
 	return result

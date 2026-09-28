@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/gnust-company/armarius-daemon/internal/agentcli"
@@ -18,10 +19,10 @@ import (
 // starts the same binary with the same flag** (FR-017). Two copies of that flag would let the
 // question be put to one program and the work given to another, which nothing would report.
 //
-// Gemini's row is measured, which is the only reason the ACP road exists at all: `gemini 0.56.0`
-// was started with that flag by a program, over pipes, with no terminal, and it completed the
-// `initialize` handshake (research §9.2). A guessed flag would have been a daemon starting a CLI
-// and then waiting forever for a handshake that was never coming.
+// No row of this release is ACP: Gemini CLI, the one that was, runs once per turn since FR-039f,
+// so this answers no for every kind today. The road stays for a CLI that comes later, and its flag
+// has to be measured the way gemini's `--acp` was (research §9.2) — a guessed one is a daemon
+// starting a CLI and then waiting forever for a handshake that was never coming.
 func acpStart(kind string) ([]string, bool) {
 	row, known := agentcli.Lookup(kind)
 	if !known || row.Family != agentcli.FamilyACP || len(row.ProtocolArgs) == 0 {
@@ -175,17 +176,31 @@ func Converse(ctx context.Context, toAgent io.Writer, fromAgent io.Reader, req R
 //
 // It answers with an empty list rather than nothing when a run was given no tools, because the
 // two mean the same thing here and an absent field would leave the peer guessing which.
+//
+// All four fields, every time (T182). ACP v1's `McpServerStdio` requires `name`, `command`, `args`
+// and `env`, and a peer that checks its input refuses the whole session over one missing —
+// measured on gemini 0.56.0, which answered `-32603` before it looked at anything else. The
+// fake peers in this package's tests never checked, which is how leaving out an empty list
+// passed them.
+//
+// `env` is sent empty rather than carrying the run's credential. The peer starts the program as
+// a child of itself, and what that child inherits is the peer's business: gemini strips every
+// variable whose name looks like a credential before starting one, which is part of why it no
+// longer runs on this road (FR-039f). A peer that does not strip passes the run's own token down
+// the way FR-013c allows, and one that does needs its own measurement rather than a guess here.
 func mcpServers(req Request) []map[string]any {
 	servers := make([]map[string]any, 0, len(req.ToolServers))
 	for _, s := range req.ToolServers {
-		declared := map[string]any{"name": s.Name, "command": s.Command}
-		if len(s.Args) > 0 {
-			declared["args"] = s.Args
+		args := s.Args
+		if args == nil {
+			args = []string{}
 		}
-		// No env. The peer starts the program as a child of itself, so it inherits the
-		// environment this run was built with — which is where the run's own credential already
-		// is, and the only place FR-013c allows it to be.
-		servers = append(servers, declared)
+		servers = append(servers, map[string]any{
+			"name":    s.Name,
+			"command": s.Command,
+			"args":    args,
+			"env":     []any{},
+		})
 	}
 	return servers
 }
@@ -393,20 +408,33 @@ func (c *acpConn) notified(msg rpcMessage) {
 
 // answer replies to something the agent asked of us.
 //
-// **Permission is refused, because there is nobody here to grant it.** A run happens with no
-// person watching, and this daemon was given a machine's credentials, not a patron's judgement.
-// Answering *yes* on their behalf would make every unattended run carry an approval nobody gave;
-// answering *no* costs the agent one tool call and puts a code in the record saying exactly what
-// it wanted. Refusing is the rule rather than a placeholder (FR-013b): this system does not
-// promise an approval road, and if one is ever wanted it will arrive as a requirement of its
-// own rather than as the missing half of this.
+// **Permission is granted, because nobody is here to be asked** (FR-013b, changed 2026-09-28 from
+// a refusal) — but only ever once at a time. The option picked is the one the agent itself offered
+// as allowing *this once*. An option that allows *always* is never picked by this daemon: the CLI
+// remembers it in the operator's own configuration, where it outlives the task (FR-013a). Offered
+// nothing but that, the daemon refuses just this one action rather than cancelling the whole turn,
+// and says so in the record. Offered neither, there is nothing it may honestly select, and the
+// protocol's own error is the answer. The same order Multica's daemon picks in
+// (`selectACPPermissionOption`, `server/pkg/agent/hermes.go`).
 func (c *acpConn) answer(msg rpcMessage) error {
 	if msg.Method == "session/request_permission" {
-		c.journal.Fail("permission_refused_nobody_to_ask", nil)
+		option, grants, selectable := pickPermission(msg.Params)
+		if selectable {
+			if !grants {
+				c.journal.Fail("permission_refused_nobody_to_ask", nil)
+			}
+			return c.out.Encode(rpcMessage{
+				JSONRPC: "2.0",
+				ID:      msg.ID,
+				Result: mustRaw(map[string]any{
+					"outcome": map[string]any{"outcome": "selected", "optionId": option},
+				}),
+			})
+		}
 		return c.out.Encode(rpcMessage{
 			JSONRPC: "2.0",
 			ID:      msg.ID,
-			Result:  mustRaw(map[string]any{"outcome": map[string]any{"outcome": "cancelled"}}),
+			Error:   &rpcError{Code: -32602, Message: "no option this client may select without a person"},
 		})
 	}
 	// Everything else is something this client said it could not do during the handshake. The
@@ -416,6 +444,36 @@ func (c *acpConn) answer(msg rpcMessage) error {
 		ID:      msg.ID,
 		Error:   &rpcError{Code: -32601, Message: "this client does not provide " + msg.Method},
 	})
+}
+
+// pickPermission chooses, out of the options an ACP permission request carries, what to answer
+// with: the first `allow_once`, or failing that the first `reject_once`. It says whether the pick
+// grants, and whether there was anything to pick at all.
+//
+// Read by `kind` rather than by id or label: the ids are the agent's own vocabulary and the
+// labels are prose, while the kind is the protocol's (`allow_once`, `allow_always`,
+// `reject_once`, `reject_always`). An unknown kind is never read as a grant.
+func pickPermission(params json.RawMessage) (option string, grants bool, selectable bool) {
+	var asked struct {
+		Options []struct {
+			OptionID string `json:"optionId"`
+			Kind     string `json:"kind"`
+		} `json:"options"`
+	}
+	if json.Unmarshal(params, &asked) != nil {
+		return "", false, false
+	}
+	for _, want := range []struct {
+		kind   string
+		grants bool
+	}{{"allow_once", true}, {"reject_once", false}} {
+		for _, offered := range asked.Options {
+			if offered.OptionID != "" && strings.EqualFold(strings.TrimSpace(offered.Kind), want.kind) {
+				return offered.OptionID, want.grants, true
+			}
+		}
+	}
+	return "", false, false
 }
 
 func mustRaw(v any) json.RawMessage {

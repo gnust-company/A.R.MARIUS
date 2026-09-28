@@ -42,8 +42,10 @@ const toolsSubdir = ".armarius/bin"
 //     answer is a command-line override instead, rendered where its command line is built
 //     (`runtime.toolFlags`) — the same per-run, writes-nothing shape as the file, spelled the way
 //     that CLI accepts.
-//   - Gemini CLI is absent for the reason it is absent from every table in this package
-//     (FR-039a, task T013).
+//   - Gemini CLI is absent because, run once per turn (FR-039f), it has no flag naming a file of
+//     MCP servers for one run, and the servers its settings declare are started with every
+//     variable that looks like a credential stripped out — this run's token among them. It gets
+//     the command face, which its shell keeps the environment for.
 var mcpConfigs = map[string]string{
 	"claude_code": ".armarius/mcp.json",
 }

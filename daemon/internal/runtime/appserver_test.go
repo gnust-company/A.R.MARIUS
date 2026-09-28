@@ -55,6 +55,8 @@ type fakeCodex struct {
 	opened       int
 	answerToAsk  json.RawMessage
 	errorToAsk   *rpcError
+	// threadParams is everything each thread/start and thread/resume was sent, by method.
+	threadParams map[string]map[string]any
 }
 
 func (a *fakeCodex) serve(from io.Reader, to io.Writer) {
@@ -89,6 +91,15 @@ func (a *fakeCodex) serve(from io.Reader, to io.Writer) {
 		if msg.Method != "initialize" && a.refuseBeforeInitialized && !a.initialized {
 			refuse(msg.ID, "Not initialized")
 			continue
+		}
+
+		if msg.Method == "thread/start" || msg.Method == "thread/resume" {
+			if a.threadParams == nil {
+				a.threadParams = map[string]map[string]any{}
+			}
+			var sent map[string]any
+			_ = json.Unmarshal(msg.Params, &sent)
+			a.threadParams[msg.Method] = sent
 		}
 
 		switch msg.Method {
@@ -332,9 +343,10 @@ func TestACommandWhoseOutputCodexWithholdsIsNotDressedUpAsACommandThatPrintedNot
 	}
 }
 
-// Một lệnh bị từ chối quyền thì **không chạy**, nên bản ghi phải nói là nó hỏng. Hiện ra như một
-// bước xong bình thường là bản ghi của một việc chưa từng xảy ra.
-func TestACommandTheDaemonRefusedIsRecordedAsHavingGoneWrong(t *testing.T) {
+// Một lệnh bị từ chối thì **không chạy**, nên bản ghi phải nói là nó hỏng. Daemon không còn từ chối
+// gì (FR-013b), nhưng sandbox Codex của người vận hành thì vẫn có thể; hiện ra như một bước xong
+// bình thường là bản ghi của một việc chưa từng xảy ra.
+func TestADeclinedCommandIsRecordedAsHavingGoneWrong(t *testing.T) {
 	agent := &fakeCodex{notes: []note{
 		finished("commandExecution", map[string]any{"id": "c1", "command": "rm -rf /", "status": "declined"}),
 	}}
@@ -348,9 +360,10 @@ func TestACommandTheDaemonRefusedIsRecordedAsHavingGoneWrong(t *testing.T) {
 	}
 }
 
-// FR-013b: không có ai ở đây để cho phép, nên không ai cho phép. Codex có đúng từ cho việc ấy —
-// `decline` nghĩa là agent bị nói không và **vẫn đi tiếp lượt của nó**.
-func TestNobodyIsHereToGrantAnAppServerPermissionSoNobodyDoes(t *testing.T) {
+// FR-013b (sửa 2026-09-28): không có ai ở đây để hỏi, nên mọi lời xin đều được đồng ý — `accept`,
+// một lần, đúng câu trả lời daemon của Multica đưa cho hai lời xin này. Và không để lại mã lỗi nào:
+// việc được đồng ý rồi chạy hiện ra thành lượt gọi công cụ như mọi lượt khác.
+func TestWhatCodexAsksToDoIsAccepted(t *testing.T) {
 	for _, asked := range []string{
 		"item/commandExecution/requestApproval",
 		"item/fileChange/requestApproval",
@@ -363,21 +376,27 @@ func TestNobodyIsHereToGrantAnAppServerPermissionSoNobodyDoes(t *testing.T) {
 		var answer struct {
 			Decision string `json:"decision"`
 		}
-		if json.Unmarshal(agent.answerToAsk, &answer) != nil || answer.Decision != "decline" {
+		if json.Unmarshal(agent.answerToAsk, &answer) != nil || answer.Decision != "accept" {
 			t.Fatalf("%s: trả lời xin phép là %s", asked, agent.answerToAsk)
 		}
-		if refused := only(t, events, EventRunError); refused.Payload["code"] != "permission_refused_nobody_to_ask" {
-			t.Fatalf("%s: mã ghi lại: %v", asked, refused.Payload)
+		for _, e := range events {
+			if e.Type == EventRunError {
+				t.Fatalf("%s: đồng ý mà vẫn ghi lỗi: %v", asked, e.Payload)
+			}
 		}
 	}
 }
 
-// Xin quyền được trả lời **bằng chính hình dạng nó hỏi** — một bộ quyền — và bộ ấy rỗng. Trả lời
-// sai hình dạng thì server không đọc được câu trả lời, và im lặng thì lượt chạy treo.
-func TestAPermissionProfileIsAnsweredWithAnEmptyProfileRatherThanARefusalItCannotRead(t *testing.T) {
+// Xin thêm quyền thì được **đúng bộ quyền đã xin**, cho lượt này — không rộng hơn, và không hẹp hơn
+// vì một bên đọc lại bỏ sót trường. Phần giao thức không định nghĩa cách cấp thì không gửi lại.
+func TestAPermissionProfileIsGrantedExactlyAsAsked(t *testing.T) {
 	agent := &fakeCodex{
 		askMethod: "item/permissions/requestApproval",
-		askParams: map[string]any{"permissions": map[string]any{"network": map[string]any{"enabled": true}}},
+		askParams: map[string]any{"permissions": map[string]any{
+			"network":      map[string]any{"enabled": true},
+			"fileSystem":   map[string]any{"write": []any{"/srv/shared"}},
+			"somethingNew": true,
+		}},
 	}
 
 	_, _, err := attend(t, agent, Request{})
@@ -392,8 +411,52 @@ func TestAPermissionProfileIsAnsweredWithAnEmptyProfileRatherThanARefusalItCanno
 	if json.Unmarshal(agent.answerToAsk, &answer) != nil {
 		t.Fatalf("trả lời không đọc được: %s", agent.answerToAsk)
 	}
-	if len(answer.Permissions) != 0 || answer.Scope != "turn" {
-		t.Fatalf("bộ quyền cấp ra: %s", agent.answerToAsk)
+	network, _ := answer.Permissions["network"].(map[string]any)
+	files, _ := answer.Permissions["fileSystem"].(map[string]any)
+	if network["enabled"] != true || files == nil || answer.Scope != "turn" {
+		t.Fatalf("bộ quyền cấp ra khác bộ đã xin: %s", agent.answerToAsk)
+	}
+	if _, echoed := answer.Permissions["somethingNew"]; echoed {
+		t.Fatalf("cấp cả thứ giao thức không định nghĩa cách cấp: %s", agent.answerToAsk)
+	}
+}
+
+// Một MCP server hỏi người dùng một giá trị thì cũng được `accept`, không kèm nội dung — như daemon
+// của Multica. Không có ai để trả lời, và để câu hỏi treo là giữ cả lượt chạy lại.
+func TestAnMCPServersQuestionIsAcceptedWithNoContent(t *testing.T) {
+	agent := &fakeCodex{askMethod: "mcpServer/elicitation/request"}
+
+	if _, _, err := attend(t, agent, Request{}); err != nil {
+		t.Fatalf("một lượt qua app-server: %v", err)
+	}
+
+	var answer map[string]any
+	if json.Unmarshal(agent.answerToAsk, &answer) != nil || answer["action"] != "accept" {
+		t.Fatalf("trả lời câu hỏi của MCP server: %s", agent.answerToAsk)
+	}
+	if content, sent := answer["content"]; !sent || content != nil {
+		t.Fatalf("mong content: null, nhận %s", agent.answerToAsk)
+	}
+}
+
+// Chế độ duyệt và sandbox là thiết lập Codex của người vận hành (người chủ chốt 2026-09-28): daemon
+// không gửi gì về chúng, lúc mở mạch cũng như lúc nối lại.
+func TestTheOperatorsApprovalAndSandboxSettingsAreLeftAlone(t *testing.T) {
+	for _, session := range []string{"", "thr_earlier"} {
+		agent := &fakeCodex{}
+		if _, _, err := attend(t, agent, Request{Session: session}); err != nil {
+			t.Fatalf("một lượt qua app-server: %v", err)
+		}
+		for method, sent := range agent.threadParams {
+			for _, setting := range []string{"approvalPolicy", "sandbox"} {
+				if _, touched := sent[setting]; touched {
+					t.Errorf("%s gửi %s=%v, thứ thuộc về người vận hành", method, setting, sent[setting])
+				}
+			}
+		}
+		if len(agent.threadParams) == 0 {
+			t.Fatal("không mạch nào được mở hay nối lại")
+		}
 	}
 }
 
