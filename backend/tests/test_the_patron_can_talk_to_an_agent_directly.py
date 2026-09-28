@@ -314,3 +314,74 @@ async def test_an_agent_says_which_cli_on_which_machine_it_works_at() -> None:
         )
         mine = next(a for a in listed.json() if a["id"] == t.marius_id)
         assert mine["runtime"] is None, "máy đã gỡ mà agent vẫn khai là làm ở đó"
+
+
+# ── the chat keeps the agent's own session between turns (FR-040c, 2026-09-28) ─────────
+
+
+async def test_every_turn_names_the_conversation_its_session_is_kept_under() -> None:
+    async with _client() as c:
+        t = await _an_agent(c)
+        await _write(c, t, "Một")
+        run_id = await _driving_run(t.marius_id)
+        granted = await _machine_takes(t, c, run_id)
+        conversation = await _conversation(t.marius_id)
+        assert granted["conversation"] == f"agent-chat-{conversation.id}", (
+            "lượt chat không nói nó thuộc cuộc trò chuyện nào — máy không biết giữ phiên ở đâu"
+        )
+
+
+async def test_a_later_turn_says_only_whats_new_and_keeps_history_for_a_lost_session() -> None:
+    async with _client() as c:
+        t = await _an_agent(c)
+        await _write(c, t, "Tên tôi là Minh.")
+        first = await _driving_run(t.marius_id)
+        granted = await _machine_takes(t, c, first)
+        await _machine_says(t, c, first, granted["first_seq"], "Chào Minh.")
+        await _machine_finishes(t, c, first)
+        await _settled(t.marius_id)
+
+        await _write(c, t, "Tôi tên là gì?")
+        second = await _driving_run_after(t.marius_id, first)
+        granted = await _machine_takes(t, c, second)
+
+        assert "Tôi tên là gì?" in granted["prompt"]
+        assert "Tên tôi là Minh." not in granted["prompt"], (
+            "lượt nối phiên vẫn bị kể lại lịch sử — phiên của agent đã giữ nó rồi"
+        )
+        assert "Tên tôi là Minh." in granted["fresh_prompt"], (
+            "không có bản kèm lịch sử cho lượt mất phiên — agent sẽ quên sạch"
+        )
+        assert "Tôi tên là gì?" in granted["fresh_prompt"]
+
+
+async def test_the_session_a_chat_turn_carried_on_is_written_on_its_run() -> None:
+    async with _client() as c:
+        t = await _an_agent(c)
+        await _write(c, t, "Một")
+        run_id = await _driving_run(t.marius_id)
+        claimed = await c.post(
+            "/daemon/runs/claim",
+            headers=t.as_machine,
+            json={"workplace_ids": [t.machine.workplace_id], "free_slots": 1},
+        )
+        assert claimed.status_code == 200, claimed.text
+        started = await c.post(
+            f"/daemon/runs/{run_id}/start",
+            headers=t.as_machine,
+            json={"session_handle": "sess-carried"},
+        )
+        assert started.status_code == 200, started.text
+        run = await _run(run_id)
+        assert run.session_id_before == "sess-carried", (
+            "nhật ký lượt chat không cho biết nó đã nối phiên nào"
+        )
+
+
+async def _driving_run_after(marius_id: str, earlier: UUID, *, attempts: int = 200) -> UUID:
+    for _ in range(attempts):
+        conversation = await _conversation(marius_id)
+        if conversation is not None and conversation.driving_run_id not in (None, earlier):
+            return conversation.driving_run_id
+        await asyncio.sleep(0.02)
+    raise AssertionError("câu thứ hai không được giao cho lượt chạy nào")

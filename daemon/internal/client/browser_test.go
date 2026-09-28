@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"os"
 	"runtime"
 	"strings"
@@ -92,7 +93,7 @@ func TestOpenBrowserRefusesBeforeItRunsAnything(t *testing.T) {
 	if err == nil {
 		t.Fatal("OpenBrowser accepted a file: address")
 	}
-	if err == ErrNoBrowser {
+	if errors.Is(err, ErrNoBrowser) {
 		t.Fatal("OpenBrowser got as far as looking for an opener before refusing the address")
 	}
 	if !strings.Contains(err.Error(), "http") {

@@ -965,6 +965,98 @@ func TestARunAboutNoTaskWorksInATurfOfItsOwnAndLeavesNothingBehind(t *testing.T)
 	}
 }
 
+// ── a chat keeps its session between turns (FR-040c, 2026-09-28) ──────────────
+//
+// The patron's direct chat with an agent and a project's chat with its Leader carry the agent's
+// own session on from turn to turn, the way a task's runs do — under the conversation's name,
+// since there is no task. The interview does not: it is the turn above, and it leaves nothing.
+
+// aChatTurn is one turn of a chat: no task, a conversation, and both forms of the message.
+func (w *world) aChatTurn(runID string) Grant {
+	grant := w.grant()
+	grant.RunID, grant.TaskID, grant.ProjectID = runID, "", ""
+	grant.Conversation = "agent-chat-c1"
+	grant.Prompt = "## Conversation so far\n- (in this session)\n## Their message\nAnd now?\n"
+	grant.FreshPrompt = "## Conversation so far\n- Patron: hello\n## Their message\nAnd now?\n"
+	return grant
+}
+
+func TestAChatTurnWorksInItsConversationsDirectoryAndKeepsIt(t *testing.T) {
+	w := aWorld(t)
+	w.engine.session = "sess-chat"
+
+	w.options().Do(context.Background(), w.aChatTurn("run-chat-1"))
+
+	placed := w.engine.saw.WorkDir
+	if filepath.Base(placed) != "agent-chat-c1" {
+		t.Fatalf("the chat worked in %q, wanted the conversation's own directory", filepath.Base(placed))
+	}
+	if _, err := os.Stat(placed); err != nil {
+		t.Fatalf("the conversation's directory was taken away after one turn: %v", err)
+	}
+	// A chat is about no task, and is told so: the toolset follows from that (FR-013d).
+	if value, ok := valueIn(w.engine.saw.Env, execenv.TaskIDVar); ok && value != "" {
+		t.Fatalf("a chat turn was told it is about task %q", value)
+	}
+}
+
+func TestTheFirstChatTurnHasNoSessionAndIsToldTheHistory(t *testing.T) {
+	w := aWorld(t)
+	w.engine.session = "sess-chat"
+
+	w.options().Do(context.Background(), w.aChatTurn("run-chat-1"))
+
+	if w.engine.saw.Session != "" {
+		t.Fatalf("the first turn was handed a session out of nowhere: %q", w.engine.saw.Session)
+	}
+	if !strings.Contains(w.engine.saw.Message, "Patron: hello") {
+		t.Fatalf("a turn with no session to carry on was not told the history: %q", w.engine.saw.Message)
+	}
+}
+
+func TestTheNextChatTurnCarriesTheSessionOnAndIsToldOnlyWhatIsNew(t *testing.T) {
+	w := aWorld(t)
+	w.engine.session = "sess-chat"
+	w.options().Do(context.Background(), w.aChatTurn("run-chat-1"))
+
+	w.engine.saw = armruntime.Request{}
+	w.options().Do(context.Background(), w.aChatTurn("run-chat-2"))
+
+	if w.engine.saw.Session != "sess-chat" {
+		t.Fatalf("the second turn was handed %q, wanted the session the first one left", w.engine.saw.Session)
+	}
+	if strings.Contains(w.engine.saw.Message, "Patron: hello") {
+		t.Fatalf("a turn carrying its session on was told the history again: %q", w.engine.saw.Message)
+	}
+	// And the history is still at hand, for the CLI that refuses the session after all.
+	if !strings.Contains(w.engine.saw.FreshMessage, "Patron: hello") {
+		t.Fatalf("a session the CLI refuses would leave the agent with nothing: %q",
+			w.engine.saw.FreshMessage)
+	}
+}
+
+func TestTwoChatsOfOneAgentKeepTwoSessions(t *testing.T) {
+	// One agent can be talked to directly and lead a project: two conversations, and nothing
+	// said in one may carry into the other.
+	w := aWorld(t)
+	w.engine.session = "sess-direct"
+	w.options().Do(context.Background(), w.aChatTurn("run-direct-1"))
+
+	project := w.aChatTurn("run-project-1")
+	project.Conversation = "project-chat-p1-a1"
+	w.engine.session = "sess-project"
+	w.options().Do(context.Background(), project)
+	if w.engine.saw.Session != "" {
+		t.Fatalf("the project's chat was handed the direct chat's session %q", w.engine.saw.Session)
+	}
+
+	w.engine.session = "sess-direct"
+	w.options().Do(context.Background(), w.aChatTurn("run-direct-2"))
+	if w.engine.saw.Session != "sess-direct" {
+		t.Fatalf("the direct chat came back to %q, wanted its own session", w.engine.saw.Session)
+	}
+}
+
 func TestARunAboutATaskKeepsItsDirectoryForTheNextRun(t *testing.T) {
 	// The other half, and the reason the two are not one rule: a task's directory is where its
 	// conversation was opened, and the next run has to find it again (FR-010a).

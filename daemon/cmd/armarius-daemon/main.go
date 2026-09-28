@@ -593,6 +593,8 @@ func grantsFrom(granted []client.GrantedRun) []supervisor.Grant {
 			Prompt:         run.Prompt,
 			Skills:         skills,
 			FirstSeq:       run.FirstSeq,
+			Conversation:   run.Conversation,
+			FreshPrompt:    run.FreshPrompt,
 		})
 	}
 	return grants

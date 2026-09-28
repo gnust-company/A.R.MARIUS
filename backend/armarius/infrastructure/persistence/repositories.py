@@ -1463,6 +1463,7 @@ class SqlRunRepository(RunRepository):
                 status=str(run.status),
                 external_run_id=run.external_run_id,
                 session_id_before=run.session_id_before,
+                conversation_key=run.conversation_key,
                 session_id_after=run.session_id_after,
                 usage_json=dict(run.usage_json),
                 error=run.error,
@@ -1501,6 +1502,7 @@ class SqlRunRepository(RunRepository):
         m.trigger_detail = run.trigger_detail
         m.external_run_id = run.external_run_id
         m.session_id_before = run.session_id_before
+        m.conversation_key = run.conversation_key
         m.session_id_after = run.session_id_after
         m.usage_json = dict(run.usage_json)
         m.error = run.error
@@ -1790,6 +1792,7 @@ class SqlWakeupRepository(WakeupRepository):
                 causes=causes_to_payload(wakeup.causes),
                 reason=wakeup.reason,
                 prompt=wakeup.prompt,
+                fresh_prompt=wakeup.fresh_prompt,
                 status=str(wakeup.status),
                 run_id=wakeup.run_id,
                 created_at=wakeup.created_at,
@@ -1814,6 +1817,7 @@ class SqlWakeupRepository(WakeupRepository):
         m.causes = causes_to_payload(wakeup.causes)
         m.reason = wakeup.reason
         m.prompt = wakeup.prompt
+        m.fresh_prompt = wakeup.fresh_prompt
         m.status = str(wakeup.status)
         m.run_id = wakeup.run_id
         m.updated_at = wakeup.updated_at

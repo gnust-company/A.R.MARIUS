@@ -131,6 +131,10 @@ class GrantedRun:
     # shelf is handed out again with a message composed afresh, and that message is written
     # down too.
     first_seq: int = 1
+    # The conversation this run carries on when it is not a task's, and the message for when
+    # it cannot be carried on (FR-040c). See `WorkPacket`.
+    conversation: str = ""
+    fresh_prompt: str = ""
 
 
 @dataclass(frozen=True)
@@ -613,6 +617,8 @@ class DaemonClaimService:
                     # out: this is the boundary, and it is the only place they are renamed.
                     runtime_options=tuple(packet.placement_options),
                     first_seq=written_at + 1,
+                    conversation=packet.conversation,
+                    fresh_prompt=packet.fresh_prompt,
                 )
             )
         return dressed
@@ -803,9 +809,16 @@ class DaemonClaimService:
         if not handle:
             return
         run = await db.get(RunModel, run_id)
-        if run is None or run.marius_id is None or run.task_id is None:
+        if run is None:
             return
+        # Every run that carried a conversation on says which, a chat's as much as a task's: it
+        # is what the run's record answers when somebody asks whether this turn remembered the
+        # last one (FR-040c).
         run.session_id_before = handle
+        # The per-task row is the task's alone. A chat's session belongs to its conversation,
+        # which the machine keeps under the conversation's own name (`runs.conversation_key`).
+        if run.marius_id is None or run.task_id is None:
+            return
         marius = await db.get(MariusModel, run.marius_id)
         if marius is None:
             return

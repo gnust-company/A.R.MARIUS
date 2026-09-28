@@ -251,3 +251,23 @@ async def test_a_skill_taken_off_an_agent_stops_riding_its_work() -> None:
         assert pantry["slug"] not in [s["name"] for s in after["skills"]], after
         kept = next(s for s in after["skills"] if s["name"] == cookbook["slug"])
         assert kept["files"] == COOKBOOK
+
+
+# ── a task's run carries no conversation of a chat's (FR-040c) ────────────────
+
+
+async def test_a_tasks_run_names_no_conversation_and_sends_one_form_of_its_message() -> None:
+    """Lượt chạy của đầu việc nối phiên theo đầu việc, không theo khoá của một cuộc chat.
+
+    Hai trường dành cho chat phải để trống ở đây: một khoá luồng gắn nhầm vào lượt của đầu việc
+    là máy đổi thư mục làm việc của đầu việc sang chỗ khác, và mất mạch của nó.
+    """
+    async with _client() as c:
+        box = await link_machine(c, "task-no-conversation@armarius.dev")
+        agent = await _agent(c, box, name="Marin", skill_ids=[])
+
+        packet = await _claim_for(c, box, agent)
+
+        assert packet["conversation"] == ""
+        assert packet["fresh_prompt"] == ""
+        assert packet["prompt"]

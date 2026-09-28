@@ -45,3 +45,10 @@ class WorkPacket:
     # means to the tool that will read it (Constitution III). Empty means nothing was picked,
     # and the tool's own default applies.
     placement_options: tuple[tuple[str, str], ...] = ()
+    # The conversation this run carries on, when it is not a task's (FR-040c) — see
+    # `Run.conversation_key`. Empty for a task's run and for a turn meant to leave nothing
+    # behind.
+    conversation: str = ""
+    # The message for when that conversation cannot be carried on: `prompt` with the recent
+    # turns written back in. Empty when there is no difference to make.
+    fresh_prompt: str = ""

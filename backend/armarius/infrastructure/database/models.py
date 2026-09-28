@@ -387,6 +387,8 @@ class RunModel(Base):
     status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
     external_run_id: Mapped[str | None] = mapped_column(String(200))
     session_id_before: Mapped[str | None] = mapped_column(Text)
+    # See `Run.conversation_key`.
+    conversation_key: Mapped[str | None] = mapped_column(String(120))
     session_id_after: Mapped[str | None] = mapped_column(Text)
     usage_json: Mapped[dict] = mapped_column(JSON, default=dict)
     error: Mapped[str | None] = mapped_column(Text)
@@ -488,6 +490,8 @@ class WakeupModel(Base):
     causes: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list)
     reason: Mapped[str | None] = mapped_column(Text)
     prompt: Mapped[str | None] = mapped_column(Text)
+    # See `WakeupRequest.fresh_prompt`.
+    fresh_prompt: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="queued")
     run_id: Mapped[UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -743,3 +747,6 @@ refuse_credentials_in(daemon_models.RunEventBlobModel, "content")
 # The copy of the message that went out, filled in on the road that writes no `run_events`
 # row for it at all — the same text, under a different column name.
 refuse_credentials_in(WakeupModel, "prompt")
+# Its twin for a turn that cannot carry its conversation on — the same text with the recent
+# turns written back in, and so the same rule.
+refuse_credentials_in(WakeupModel, "fresh_prompt")

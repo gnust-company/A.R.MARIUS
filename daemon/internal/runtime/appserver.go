@@ -192,9 +192,13 @@ func Attend(ctx context.Context, toAgent io.Writer, fromAgent io.Reader, req Req
 	notice = ahead(notice, tell(c.journal, c.refused))
 	c.outcome.SessionRefused = c.refused != nil
 
+	said := req.Message
+	if c.refused != nil {
+		said = req.messageWithoutSession()
+	}
 	if err := c.call(ctx, "turn/start", map[string]any{
 		"threadId": c.outcome.Session,
-		"input":    []any{map[string]any{"type": "text", "text": ahead(notice, req.Message)}},
+		"input":    []any{map[string]any{"type": "text", "text": ahead(notice, said)}},
 	}, nil); err != nil {
 		return c.outcome, fmt.Errorf("taking the turn: %w", err)
 	}

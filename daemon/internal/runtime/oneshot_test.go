@@ -560,6 +560,27 @@ func TestTheSecondAttemptDoesNotCarryTheHandleThatJustFailed(t *testing.T) {
 	}
 }
 
+// Một lượt chat nối phiên chỉ được gửi câu mới. Phiên bị CLI từ chối thì lần chạy lại phải được
+// gửi **bản có lịch sử**, không thì agent bắt đầu lại mà không biết gì về cuộc trò chuyện (FR-040c).
+func TestARefusedSessionIsRetriedWithTheHistoryWrittenBackIn(t *testing.T) {
+	tally := filepath.Join(t.TempDir(), "seen")
+	if _, _, err := aTurn(t, Request{
+		Binary:       resumeRefusingCLI(t, tally),
+		Session:      "00000000-dead-beef-0000-000000000000",
+		Message:      "Their message: and now?",
+		FreshMessage: "Conversation so far: Patron: hello. Their message: and now?",
+	}); err != nil {
+		t.Fatalf("chạy một lượt: %v", err)
+	}
+	stdin, err := os.ReadFile(tally + ".stdin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(stdin), "Patron: hello") {
+		t.Errorf("lần chạy lại sau khi phiên bị từ chối không được kể lại lịch sử; nó đọc: %q", stdin)
+	}
+}
+
 // Ranh giới quan trọng nhất của phép thử lại: một lượt chạy đã **làm gì đó** thì không bao giờ
 // chạy lại. Một lỗi không phải là agent đang làm việc; một dòng agent nói ra thì có.
 func TestATurnTheAgentActuallyWorkedInIsNeverRunTwice(t *testing.T) {

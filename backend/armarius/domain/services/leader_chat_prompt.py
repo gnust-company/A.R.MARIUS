@@ -82,7 +82,7 @@ def _value(text: str | None) -> str:
     return text.strip() if text and text.strip() else NONE_MARKER
 
 
-def build_leader_chat_prompt(ctx: LeaderChatContext) -> str:
+def build_leader_chat_prompt(ctx: LeaderChatContext, *, carrying_on: bool = False) -> str:
     lines: list[str] = []
     lines.append(
         f"You are {ctx.leader_name}, the Leader of this project inside Armarius."
@@ -150,7 +150,27 @@ def build_leader_chat_prompt(ctx: LeaderChatContext) -> str:
         lines.append(f"- {NONE_MARKER} — nobody else holds a seat on this project yet.")
     lines.append("")
 
-    if ctx.recent_turns:
+    if carrying_on:
+        # The Leader's own session holds the thread (FR-040f), so what it has already answered
+        # is not told again — but everything since its last reply is, because that is what this
+        # turn is *for*. The patron's new message lives in this list rather than in a section of
+        # its own, and dropping the list whole once sent a Leader into a turn it had no question
+        # for. Said rather than left out, so an absent history is never read as one that failed
+        # to load (FR-045).
+        lines.append("## Conversation so far")
+        lines.append(
+            "- The earlier turns are in this conversation's own history; they are not repeated "
+            "here."
+        )
+        lines.append("")
+        new = _since_last_reply(ctx.recent_turns)
+        if new:
+            lines.append("## New since your last reply")
+            for t in new:
+                who = {"patron": "Patron", "leader": "You"}.get(t.role, "System")
+                lines.append(f"- {who}: {t.text}")
+            lines.append("")
+    elif ctx.recent_turns:
         lines.append("## Conversation so far")
         for t in ctx.recent_turns:
             # A system line is neither the patron speaking nor the Leader: attributing it
@@ -202,3 +222,12 @@ def build_leader_chat_prompt(ctx: LeaderChatContext) -> str:
         "clearly wants work started."
     )
     return "\n".join(lines)
+
+
+def _since_last_reply(turns: list[ChatTurn]) -> list[ChatTurn]:
+    """The turns after the Leader last spoke — what a session that carries on has not seen.
+
+    All of them when the Leader has not spoken yet: nothing in the list is in its session then.
+    """
+    last = max((i for i, t in enumerate(turns) if t.role == "leader"), default=-1)
+    return list(turns[last + 1 :])

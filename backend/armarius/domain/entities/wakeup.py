@@ -66,6 +66,11 @@ class WakeupRequest:
     causes: list[WakeReason] = field(default_factory=list)
     reason: str | None = None
     prompt: str | None = None  # optional pre-built wake prompt
+    # The same message for a turn that cannot carry its conversation on, when the two differ
+    # (FR-040c). A chat that keeps its conversation in the agent's own session sends only the
+    # new message; if that session turns out to be gone, this is what goes instead — the same
+    # message with the recent turns written back in, so a lost session never costs the thread.
+    fresh_prompt: str | None = None
     status: WakeupStatus = WakeupStatus.QUEUED
     run_id: UUID | None = None
     created_at: datetime | None = None

@@ -757,11 +757,13 @@ class WakeEngine:
             marius = await uow.mariuses.get(run.marius_id) if run.marius_id else None
             if marius is None:
                 return None
+            fresh = ""
             if run.task_id is None:
                 standing = await uow.wakeups.get_for_run(run_id)
                 if standing is None or not standing.prompt:
                     return None
                 prompt = standing.prompt
+                fresh = standing.fresh_prompt or ""
             else:
                 task = await uow.tasks.get(run.task_id)
                 if task is None:
@@ -772,6 +774,8 @@ class WakeEngine:
             prompt=prompt,
             skills=await self._bundles(marius),
             placement_options=tuple(sorted((marius.placement_options or {}).items())),
+            conversation=run.conversation_key or "",
+            fresh_prompt=fresh,
         )
 
     async def _bundles(self, marius: Marius) -> tuple[SkillBundle, ...]:

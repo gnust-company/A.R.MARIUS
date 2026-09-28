@@ -5,10 +5,12 @@ the Leader answering for a project; this is the patron and one agent, the way a 
 messages a colleague before there is any work to hand them. At most one per agent.
 
 Every turn is a run like any other, so it shows in the agent's activity and is taken where
-the agent works. The transcript is the durable history; the live typing streams on the
-``agent-chat:{marius_id}`` channel; ``state`` does the turn-taking. Whether the agent can be
-reached at all is read live off its liveness and never stored here — the same rule the
-project chat follows.
+the agent works — and it carries the agent's own session on from the last turn, the way a
+task's runs do, under this conversation's `key` (FR-040c). The transcript is the durable
+history, shown to the patron and written back into a turn whose session is gone; the live typing
+streams on the ``agent-chat:{marius_id}`` channel; ``state`` does the turn-taking. Whether the
+agent can be reached at all is read live off its liveness and never stored here — the same rule
+the project chat follows.
 """
 
 from __future__ import annotations
@@ -37,6 +39,14 @@ class AgentConversation:
     driving_run_id: UUID | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    @property
+    def key(self) -> str:
+        """The name the conversation's session is kept under where the agent works (FR-040c).
+
+        One per agent, so the conversation alone names it: the agent cannot change under it.
+        """
+        return f"agent-chat-{self.id}"
 
     def append(self, role: str, text: str, ts: datetime) -> None:
         self.transcript = [
