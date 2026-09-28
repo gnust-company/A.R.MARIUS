@@ -35,6 +35,12 @@ import (
 // machine this box belongs to and there is no reason for other accounts to read that.
 const stateFile = "state.json"
 
+// The two other files a running daemon keeps beside its config (FR-008m).
+const (
+	logFile         = "daemon.log"
+	stopRequestFile = "stop.request"
+)
+
 // RunState is what a running daemon leaves on disk for `status` to read.
 type RunState struct {
 	PID       int       `json:"pid"`
@@ -66,6 +72,20 @@ func (s RunState) Leaving() bool { return !s.LeavingAt.IsZero() }
 // Exported because the daemon that is starting up has to ask it about the daemon that is
 // stopping, and that question is asked from the supervisor rather than from here.
 func ProcessAlive(pid int) bool { return processAlive(pid) }
+
+// LogPath is where a daemon started in the background writes everything it says (FR-008m) —
+// beside the config file, like the state file, so one directory holds a machine's whole account
+// of itself.
+func LogPath(configPath string) string {
+	return filepath.Join(filepath.Dir(configPath), logFile)
+}
+
+// StopRequestPath is the file `armarius-daemon stop` leaves for the running daemon (FR-008m). A
+// file rather than a port: the daemon opens no port on this machine, and a file works the same
+// on every platform it runs on.
+func StopRequestPath(configPath string) string {
+	return filepath.Join(filepath.Dir(configPath), stopRequestFile)
+}
 
 // StatePath is where the state file sits for a given config file — beside it, never inside it.
 // The config file is shared with the operator's own settings and is theirs to edit; this one
@@ -132,7 +152,9 @@ type Status struct {
 	MachineID   string `json:"machine_id,omitempty"`
 
 	DaemonRunning bool `json:"daemon_running"`
-	DaemonPID     int  `json:"daemon_pid,omitempty"`
+	// LogPath is where the daemon's log is, when there is one to read (FR-008m).
+	LogPath   string `json:"log_path,omitempty"`
+	DaemonPID int    `json:"daemon_pid,omitempty"`
 	// The two timestamps are pointers so that "never" is an absent field rather than the year
 	// one. `omitzero` would say the same thing in fewer characters, but it arrived in Go 1.24
 	// and this module builds from 1.23 — a tag the toolchain does not know is ignored in
@@ -223,6 +245,9 @@ func Report(ctx context.Context, opts StatusOptions) (Status, error) {
 			Detail:   detail,
 		})
 	}
+	if _, err := os.Stat(LogPath(opts.ConfigPath)); err == nil {
+		status.LogPath = LogPath(opts.ConfigPath)
+	}
 	return status, nil
 }
 
@@ -261,6 +286,9 @@ func (s Status) WriteText(w io.Writer, now time.Time) {
 		say(w, "Daemon:     not running — a daemon started %s did not shut down cleanly\n", stamp(s.StartedAt))
 	default:
 		say(w, "Daemon:     not running\n")
+	}
+	if s.LogPath != "" {
+		say(w, "Log:        %s\n", s.LogPath)
 	}
 	switch {
 	case s.LastBeatError != "":

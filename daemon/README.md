@@ -100,9 +100,19 @@ minted for one run, never this one.
 armarius-daemon start
 ```
 
-It announces the agent CLIs it found here, then stays up: a beat that says the machine is
-reachable, a road that carries *there is work, come and ask*, and its own unhurried rhythm of
-asking whether or not anything nudged it. Stop it with Ctrl-C.
+It runs **in the background**: `start` launches the daemon detached from the terminal, waits until
+it has announced this machine's agent CLIs, prints its process id and where its log is, and hands
+the terminal back. Closing the terminal does not stop it. A daemon that dies while starting is
+reported as failed, with what it wrote to its log on the way down.
+
+Once up it stays up: a beat that says the machine is reachable, a road that carries *there is work,
+come and ask*, and its own unhurried rhythm of asking whether or not anything nudged it.
+
+```sh
+armarius-daemon stop                 # stop, once the runs it holds have finished
+tail -f ~/.armarius/daemon.log       # what it is saying
+armarius-daemon start -foreground    # stay in this terminal instead; Ctrl-C stops it
+```
 
 ## Ask it what is going on
 
@@ -127,7 +137,12 @@ Description=Armarius daemon
 After=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/armarius-daemon start
+# -foreground: in the background, the process systemd watches would exit at once, and systemd
+# would clean up the daemon it left behind along with it.
+ExecStart=/usr/local/bin/armarius-daemon start -foreground
+# systemd does not read your shell's PATH. Without this the daemon finds no agent CLI installed
+# under your home directory (~/.local/bin, nvm, …): paste the output of `echo $PATH`.
+Environment=PATH=/home/you/.local/bin:/usr/local/bin:/usr/bin:/bin
 Restart=on-failure
 # Must be longer than drain_patience below. See "Upgrading" — this is the one
 # number that has to be set in two places at once.
@@ -149,7 +164,22 @@ allowed to finish: it waits up to `drain_patience`, then cuts whatever is still 
 which runs those were. Only when nothing is left running does it hand its workplaces back, so its
 agents go offline at once instead of after the missed-beat threshold.
 
-So an upgrade is: stop, replace the binaries, start. A daemon starting while the previous one is
+The daemon does its own upgrades (FR-008n), and never over a run: it restarts only once nothing is
+running, and asks for no new work while it checks.
+
+- Every **6 hours** it looks for a newer release, where the installer looks. A newer one is
+  downloaded, checksum-verified the way the installer verifies it, both programs are put in place
+  as one, and the daemon restarts into it. A build from source is never replaced.
+- Every **10 minutes** it asks the `armarius-daemon` on disk for its version. Re-run the installer,
+  or replace the file yourself, and the daemon restarts into it — no stop and start needed. This is
+  the road when the daemon cannot write to its own install directory (installed with `sudo`).
+
+On Linux and macOS the restart keeps the process id, so a service manager sees nothing change.
+Turn either road off in the config file: `"auto_update": false`, `"auto_reload": false`; the check
+interval is `"auto_update_interval"` (default `"6h"`). Turn `auto_update` off when your Armarius
+server has not been moved onto a new release yet and you do not want the daemon ahead of it.
+
+By hand, an upgrade is: stop, replace the binaries, start. A daemon starting while the previous one is
 still finishing its runs **waits** for it rather than registering on top of it; a daemon starting
 beside one that is not going anywhere refuses to start at all and names the process holding the
 machine, because two daemons on one machine would quietly run up to twice the concurrency you set.
@@ -178,9 +208,13 @@ Durations are written the way you say them: `"5s"`, `"10m"`, `"24h"`.
 | `work_dir_retention` | `"24h"` | how long a task's working directory survives after the server said that task was finished with |
 | `session_retention` | `"336h"` | how long a conversation may sit idle and still be carried on |
 | `orphan_retention` | `"72h"` | how long a working directory the server cannot account for survives. Longer than `work_dir_retention` on purpose: that clock acts on something the server stated, this one acts on the absence of a statement |
+| `auto_update` | `true` | whether the daemon fetches newer releases by itself and restarts into them when idle |
+| `auto_update_interval` | `"6h"` | how often it looks for a newer release |
+| `auto_reload` | `true` | whether it restarts into the `armarius-daemon` on disk once that reports a different version |
 
 Point `start` at a different file with `-config`, which is how one machine runs two daemons
-against two servers.
+against two servers. Each keeps its state file, its log and its stop request beside its own config
+file, so `stop -config <file>` stops the one you name.
 
 ## Built on Multica
 

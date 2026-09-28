@@ -4,10 +4,12 @@
 // That direction is the whole design: a laptop behind a closed lid, a home router or a company
 // firewall needs no inbound port for the agents on it to do their jobs.
 //
-// Three subcommands cover the whole life of a machine:
+// Four subcommands cover the whole life of a machine:
 //
 //	login   link this machine to a workspace, once, by approving it in the browser
-//	start   stay up: announce the CLIs found here, ask for work, run it, report back
+//	start   stay up in the background: announce the CLIs found here, ask for work, run it,
+//	        report back — or, with -foreground, do the same in this terminal
+//	stop    ask the daemon on this machine to stop, and wait for it to have stopped
 //	status  say what this machine currently knows about itself, then exit
 //
 // `start` is where the three roads meet: it says this machine is alive on a beat, holds the push
@@ -25,6 +27,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	gosys "runtime"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -35,6 +38,7 @@ import (
 	"github.com/gnust-company/armarius-daemon/internal/execenv"
 	"github.com/gnust-company/armarius-daemon/internal/runtime"
 	"github.com/gnust-company/armarius-daemon/internal/supervisor"
+	"github.com/gnust-company/armarius-daemon/internal/update"
 )
 
 // Stamped by the linker when a release is cut; see .goreleaser.yml at the repository root.
@@ -64,8 +68,13 @@ var commands = []command{
 	},
 	{
 		name:    "start",
-		summary: "run the daemon: announce this machine, ask for work, execute it",
+		summary: "run the daemon in the background (-foreground to stay in this terminal)",
 		run:     runStart,
+	},
+	{
+		name:    "stop",
+		summary: "stop the daemon on this machine once its runs have finished",
+		run:     runStop,
 	},
 	{
 		name:    "status",
@@ -81,11 +90,27 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
+	err := run(ctx, os.Args[1:], os.Stdout, os.Stderr)
+	var restart restarting
+	if errors.As(err, &restart) {
+		// Everything `start` holds has been handed back by now; what is left is to become the
+		// program on disk (FR-008n).
+		stop()
+		err = restartInto(restart.program)
+	}
+	if err != nil {
 		emit(os.Stderr, "armarius-daemon: %v\n", err)
 		os.Exit(1)
 	}
 }
+
+// restarting is how `start` says it stopped in order to come back as the program on disk: an
+// update was put in place, or somebody else put one there (FR-008n). It travels as an error so
+// that every deferred clean-up in `start` runs before the handover — the state file removed, the
+// workplaces given back — exactly as on any other stop.
+type restarting struct{ program string }
+
+func (r restarting) Error() string { return "restarting into " + r.program }
 
 // run is main with its edges handed in, so the whole dispatch is reachable from a test.
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -176,12 +201,22 @@ func runLogin(ctx context.Context, args []string, out io.Writer) error {
 func runStart(ctx context.Context, args []string, out io.Writer) error {
 	fs := newFlagSet("start", out)
 	configPath := fs.String("config", defaultConfigPath(), "path to this machine's daemon configuration")
+	foreground := fs.Bool("foreground", false,
+		"stay in this terminal instead of running in the background — for systemd, launchd, or debugging")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *configPath == "" {
 		return errors.New("start: -config must not be empty")
 	}
+	if !*foreground {
+		return startInBackground(ctx, *configPath, out)
+	}
+
+	// Stopping is one road whatever asks for it: a signal, `armarius-daemon stop`, or an update
+	// that needs this process out of the way (FR-008m, FR-008n). All of them end this context.
+	ctx, stopDaemon := context.WithCancel(ctx)
+	defer stopDaemon()
 
 	settings, err := config.Load(*configPath)
 	if err != nil {
@@ -209,6 +244,9 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// Only now: a request left for a predecessor that was still stopping is that daemon's, and
+	// reading it before the handover would stop this one the moment it arrived.
+	go watchStopRequest(ctx, *configPath, stopDaemon, out)
 
 	// What this machine can link is established by linking, once, on the disk the daemon's own
 	// state lives on — the same filesystem every agent home will be built on (research §5).
@@ -331,6 +369,9 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 	}
 
 	held := &supervisor.Runs{}
+	// Stops the ask loop, so the question *is this machine idle* can be answered for certain
+	// before an update restarts it (FR-008n).
+	gate := &supervisor.Gate{}
 	work := supervisor.RunOptions{
 		WorkRoot:         filepath.Join(filepath.Dir(*configPath), "work"),
 		StateRoot:        filepath.Join(filepath.Dir(*configPath), "stores"),
@@ -380,6 +421,7 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 		_ = supervisor.RunClaimLoop(ctx, supervisor.ClaimOptions{
 			Interval: settings.PollInterval.Duration(),
 			Nudge:    nudges,
+			Admit:    gate.Admit,
 			Capacity: func() int { return settings.MaxConcurrentRuns - held.Count() },
 			Workplaces: func() []string {
 				ids := make([]string, 0, len(places))
@@ -404,7 +446,10 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 				//
 				// `runCtx`, deliberately not the context the ask loop was called with. That one
 				// dies with the loop, and the run has to outlive the loop that fetched it.
-				go work.Do(runCtx, grant)
+				//
+				// Start rather than `go Do`: the run is on the books before this returns, which
+				// is what lets the gate above answer *idle* truthfully (FR-008n).
+				work.Start(runCtx, grant)
 			},
 			Report: func(err error) { emit(out, "asking for work: %v\n", err) },
 		})
@@ -434,7 +479,30 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 		})
 	}()
 
-	emit(out, "Beating every %s. Stop with Ctrl-C.\n", settings.HeartbeatInterval)
+	// Keeping this daemon on the newest release (FR-008n). Resolved now, while the file this
+	// process was started from is still the one on disk.
+	var restartRequested atomic.Bool
+	program, programErr := os.Executable()
+	if programErr != nil {
+		emit(out, "Auto-update is off: this program cannot find its own file (%v).\n", programErr)
+	} else {
+		go update.Run(ctx, update.Options{
+			Version:      version,
+			Executable:   program,
+			Pull:         settings.AutoUpdate,
+			PullInterval: settings.AutoUpdateInterval.Duration(),
+			Reload:       settings.AutoReload,
+			Idle:         func() bool { return gate.PauseIfIdle(held.Count) },
+			Busy:         gate.Resume,
+			Restart: func() {
+				restartRequested.Store(true)
+				stopDaemon()
+			},
+			Say: func(format string, args ...any) { emit(out, format+"\n", args...) },
+		})
+	}
+
+	emit(out, "Beating every %s. Stop with Ctrl-C or `armarius-daemon stop`.\n", settings.HeartbeatInterval)
 	err = supervisor.RunHeartbeat(ctx, supervisor.HeartbeatOptions{
 		Interval: settings.HeartbeatInterval.Duration(),
 		State: func() supervisor.Beat {
@@ -524,6 +592,9 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 		// delay and nothing else; hiding it would leave an operator wondering why their
 		// machine's agents took three beats to go offline.
 		emit(out, "could not hand this machine's workplaces back: %v\n", leaveErr)
+	}
+	if restartRequested.Load() {
+		return restarting{program: program}
 	}
 	return err
 }
