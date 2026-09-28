@@ -138,4 +138,5 @@ Tám mục của [quickstart.md](quickstart.md), theo đúng thứ tự ấy, tr
 3. **CLI của người vận hành phải được phép làm việc trong thư mục của nó.** Daemon cố ý không trả
    lời câu hỏi về quyền thay người chủ (FR-013b): nó chỉ cho phép đúng bộ công cụ gọi ngược của
    chính nó. Mọi quyền khác là thiết lập của CLI ấy, và không có nó thì agent viết một tệp cũng
-   không xong.
+   không xong. *Đổi 2026-09-28: FR-013b giờ là **đồng ý** mọi lời xin phép, và CLI được khởi chạy ở chế
+   độ cho phép tất cả; điều kiện này bỏ khi T191 xong (T192 sửa đoạn này).*

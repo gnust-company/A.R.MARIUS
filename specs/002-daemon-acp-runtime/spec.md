@@ -120,14 +120,20 @@ Sau khi `gemini` không mở được buổi phỏng vấn trên môi trường 
 phép. Nền đối chiếu: [research.md](research.md) §14.
 
 - Q: Giữ `gemini` CLI không, và có thêm Antigravity (`agy`) — thứ Google đưa cho tài khoản cá nhân thay
-  cho `gemini` — không? → A: **Giữ `gemini` CLI, không thêm Antigravity.** Hệ quả phải nói với người dùng:
-  `gemini` chỉ còn chạy với API key trả phí, Vertex AI, hoặc giấy phép Gemini Code Assist
-  Standard/Enterprise; tài khoản Google cá nhân bị từ chối.
+  cho `gemini` — không? → A: **Giữ `gemini` CLI, không thêm Antigravity.**
+- Q: `gemini` chạy qua ACP hay chạy một lần mỗi lượt như Claude Code? → A: **Chạy một lần mỗi lượt**
+  (FR-039f). Đăng nhập là việc của người vận hành: hệ thống giả định môi trường của họ đã sẵn sàng.
 - Q: Agent dừng giữa lượt để xin phép làm một việc, mà không có ai ngồi đó để cho phép. Daemon trả lời thế
   nào — từ chối tất cả, đồng ý tất cả, hay chỉ đồng ý công cụ của Armarius? → A: **Đồng ý tất cả.** Thay
   cho luật từ chối trước đây (FR-013b). Chỉ đồng ý công cụ của Armarius là không đủ: `codex` gửi câu hỏi
   phỏng vấn bằng một **lệnh shell** chứ không bằng công cụ MCP, nên đường ấy vẫn từ chối đúng lời xin cần
   cho qua.
+- Q: Agent hỏi người dùng một câu giữa lượt (kiểu hộp thoại `ask_user` trong IDE) thì sao — daemon có
+  chuyển câu hỏi lên màn hình rồi chờ không? → A: **Không chờ giữa lượt.** Tắt công cụ hỏi-tại-chỗ của CLI;
+  agent hỏi qua kênh của Armarius, kết thúc lượt, người dùng trả lời rồi agent được gọi dậy ở lượt sau —
+  giống chat (FR-013b).
+- Q: Báo trước cho người dùng ở đâu, dài cỡ nào? → A: **Một dòng cảnh báo** trên trang phê duyệt nối máy và
+  trong tài liệu.
 
 ---
 
@@ -883,8 +889,9 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   mà agent phải tự khai vào cấu hình** — cùng lý do đã gỡ đường agent tự đi lấy kỹ năng rồi tự ghi
   (FR-011c): thứ gì agent phải tự cài thì có lúc nó cài hỏng, và hệ thống không biết để mà chờ.
 - **FR-013b**: Khi agent dừng giữa lượt để **xin phép** làm một việc, daemon PHẢI **đồng ý** — mọi lời xin,
-  bằng đúng từ mà giao thức của CLI ấy dùng cho việc đồng ý — và PHẢI ghi lại agent đã xin làm gì (sửa
-  2026-09-28, thay cho luật **từ chối** viết ngày 2026-08-26). Lý do: lượt chạy diễn ra khi không ai ngồi
+  bằng đúng từ mà giao thức của CLI ấy dùng cho việc đồng ý, và chọn mức **một lần** khi CLI cho chọn, vì
+  mức "luôn luôn" có thể được CLI ghi vào cấu hình của người vận hành (FR-013a) (sửa 2026-09-28, thay cho
+  luật **từ chối** viết ngày 2026-08-26). Lý do: lượt chạy diễn ra khi không ai ngồi
   đó, nên không có ai để hỏi. Từ chối thì agent cầm công cụ trong tay mà không dùng được, và lượt chạy dừng
   giữa chừng dù không có gì hỏng — đo được ở `codex`: lượt chạy tới được model, model gọi lệnh gửi câu hỏi
   phỏng vấn, bị từ chối, rồi kết thúc bằng câu *"I need permission to post the onboarding question"*
@@ -898,14 +905,27 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   - **Đồng ý không nới phạm vi của lượt chạy.** Phạm vi vẫn là bộ công cụ cấp cho lượt ấy (FR-013d), và
     server VẪN PHẢI từ chối cú ghi vượt phạm vi (FR-059). Đồng ý là cho những gì agent làm **trên máy**,
     không phải cho những gì nó ghi lên server.
-  - **Câu hỏi xin thông tin không phải lời xin phép.** Agent hay một công cụ hỏi người dùng một giá trị thì
-    không ai ở đây trả lời được, nên daemon PHẢI **từ chối** câu ấy bằng từ từ chối của giao thức: đồng ý
-    mà không có nội dung là một câu trả lời rỗng giả làm câu trả lời thật.
+  - **Hỏi người dùng thì đi đường của Armarius, không đi đường hỏi-tại-chỗ của CLI.** Một số CLI có công
+    cụ hỏi người dùng **ngay giữa lượt** (kiểu hộp thoại bật lên trong IDE): lượt chạy dừng lại, tiến trình
+    đứng chờ người trả lời. Ở đây không có ai ngồi trước hộp thoại ấy, nên công cụ đó trả về một câu trả
+    lời **rỗng** và agent tự đoán rồi làm tiếp — người dùng không bao giờ thấy câu hỏi. Vì vậy:
+    - CLI nào cho tắt công cụ ấy lúc khởi chạy thì daemon PHẢI **tắt** nó (Claude Code: `AskUserQuestion`).
+    - Câu hỏi xin thông tin vẫn tới được daemon qua giao thức (ví dụ một MCP server hỏi người dùng một giá
+      trị) thì daemon PHẢI **từ chối** bằng từ từ chối của giao thức, và ghi mã
+      `question_declined_nobody_to_answer`. Đồng ý mà không có nội dung là một câu trả lời rỗng giả làm câu
+      trả lời thật.
+    - Agent muốn hỏi người dùng thì hỏi qua **kênh của Armarius** — câu hỏi phỏng vấn, trả lời trong chat
+      trực tiếp hay chat Trưởng dự án, mục hộp thư. Những kênh này **kết thúc lượt** bằng câu hỏi, người
+      dùng trả lời lúc nào cũng được, và câu trả lời gọi agent dậy ở lượt sau, nối đúng phiên cũ (FR-040f).
+      Không có đường nào giữ một lượt chạy treo để chờ người: lượt treo chiếm chỗ chạy của máy, bị ngưỡng
+      im lặng cắt, và mất theo daemon khi nó khởi động lại.
   - **Im lặng vẫn không phải câu trả lời** (FR-039e): lời xin nào cũng PHẢI được trả lời, không thì agent
     treo tới lúc ngưỡng im lặng cắt và bản ghi không nói được vì sao.
-  - **Người dùng PHẢI được nói trước khi nối máy**: agent chạy trên máy họ được làm mọi việc nó xin làm,
-    không ai duyệt từng bước. Tài liệu hướng dẫn nối máy và trang phê duyệt nối máy PHẢI nói điều đó bằng
-    lời thường, không giấu trong một tuỳ chọn.
+  - **Việc agent đã làm vẫn nằm trong bản ghi**, không cần một sự kiện riêng cho lời xin: một lời xin được
+    đồng ý rồi chạy thì hiện ra thành lượt gọi công cụ kèm đủ tham số (FR-043), như mọi lượt gọi khác.
+  - **Người dùng PHẢI được cảnh báo trước khi nối máy, bằng đúng một dòng**: agent chạy trên máy này được
+    làm mọi việc nó xin làm, không ai duyệt từng bước. Dòng ấy nằm trên trang phê duyệt nối máy và trong
+    tài liệu hướng dẫn nối máy, không giấu trong một tuỳ chọn.
 
   Đặc tả này **không hứa hẹn một luồng phê duyệt** do người duyệt. Nếu sau này người chủ muốn một luồng như
   vậy — hỏi ai, hỏi ở đâu trên màn hình, đợi bao lâu, quá hạn thì sao — đó là một tính năng phải được đặt ra
@@ -1159,6 +1179,16 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   2026-09-28): lời xin phép thì **đồng ý**, bằng đúng từ mà giao thức ấy dùng cho việc đồng ý — với Codex
   là `accept`; câu hỏi xin thông tin thì từ chối, vì không ai ở đây có nội dung để trả lời. Câu hỏi hệ thống
   không nhận ra PHẢI được trả lời bằng một lỗi của giao thức, không được bỏ qua.
+- **FR-039f**: **Gemini CLI chạy theo họ chạy-một-phát, không qua ACP** (chốt 2026-09-28). Mỗi lượt là một
+  tiến trình: thông điệp đi vào qua đầu vào chuẩn (không qua tham số dòng lệnh, cùng lý do với Claude Code),
+  kết quả về qua `--output-format stream-json`, nối phiên bằng `--resume <mã phiên>`, và `--yolo` là chế độ
+  cho phép tất cả theo FR-013b. Lý do bỏ đường ACP: trên đường ấy gemini **lọc khỏi môi trường** của MCP
+  server mọi biến có tên chứa `TOKEN`, `KEY`, `SECRET`, `AUTH`… — token của lượt chạy nằm đúng trong số đó —
+  và đòi đủ bốn trường khai MCP server mới mở phiên; chạy-một-phát thì cùng một hình dạng với Claude Code,
+  ít chỗ hỏng hơn. Công cụ gọi ngược tới agent qua **mặt lệnh** (FR-013): gemini chạy-một-phát không có cờ
+  nạp một file khai MCP cho riêng lượt chạy, và lệnh shell thì giữ nguyên môi trường theo mặc định của
+  gemini. Đăng nhập là việc của người vận hành: hệ thống **giả định** gemini trên máy đã đăng nhập và dùng
+  được. Họ ACP **vẫn ở lại** trong daemon cho CLI sau này; hôm nay không CLI nào dùng nó.
 - **FR-039c**: Đặc tính của một loại agent CLI — tệp bối cảnh, thư mục kỹ năng, hình dạng nhà giả, biến
   môi trường trỏ về nhà ấy, binary để dò, họ giao thức — PHẢI khai ở **một chỗ duy nhất**, và PHẢI khai
   **trọn hoặc không khai gì**. Nửa vời là hỏng kiểu im lặng: chỗ làm vẫn đăng ký, vẫn nhận việc, vẫn bật
