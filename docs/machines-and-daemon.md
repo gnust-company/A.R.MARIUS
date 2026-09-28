@@ -165,15 +165,74 @@ armarius-daemon start
 agent CLI trên máy và khai chúng lên. Nối mà chưa chạy `start` thì màn Máy hiện máy của bạn kèm
 câu *daemon chưa chạy lần nào* và không có runtime nào — đúng sự thật, và không tạo được agent nào.
 
-Nó đọc lên những agent CLI nó tìm thấy, rồi đứng đó. Ctrl-C để dừng. Muốn nó tự bật khi mở
-máy thì xem mục *Running it as a service* trong [`daemon/README.md`](../daemon/README.md).
-
-Hỏi nó đang làm gì:
+`start` **chạy nền**: nó bật daemon, đợi daemon khai xong runtime, in ra số tiến trình và chỗ để
+log, rồi trả terminal lại cho bạn. Đóng terminal không làm daemon dừng. Daemon hỏng ngay lúc khởi
+động (token hết hạn, không tới được server…) thì `start` báo hỏng kèm những dòng log của lần ấy.
 
 ```sh
-armarius-daemon status
-armarius-daemon status -json   # cho script
+armarius-daemon stop                 # dừng — đợi các lượt đang chạy xong trước
+armarius-daemon status               # đang làm gì, log ở đâu
+armarius-daemon status -json         # như trên, cho script
+tail -f ~/.armarius/daemon.log       # daemon đang nói gì
+armarius-daemon start -foreground    # chạy ngay trong terminal này, Ctrl-C để dừng
 ```
+
+### Tự bật lại khi máy khởi động lại
+
+Chạy nền không có nghĩa là tự bật lại sau khi máy khởi động lại — việc đó là của bộ quản dịch vụ
+của hệ điều hành. Trên Linux, cài daemon thành dịch vụ **của chính bạn**, không phải của `root`:
+agent CLI trên máy đăng nhập bằng tài khoản của bạn và đọc cấu hình trong thư mục nhà của bạn.
+
+```ini
+# ~/.config/systemd/user/armarius-daemon.service
+[Unit]
+Description=Armarius daemon
+After=network-online.target
+
+[Service]
+# Đường dẫn theo `command -v armarius-daemon` trên máy bạn.
+ExecStart=/usr/local/bin/armarius-daemon start -foreground
+# systemd không đọc PATH của shell: dán vào đây kết quả `echo $PATH`, không thì daemon không
+# thấy các agent CLI cài trong thư mục nhà (~/.local/bin, nvm…).
+Environment=PATH=/home/ban/.local/bin:/usr/local/bin:/usr/bin:/bin
+Restart=on-failure
+# Phải dài hơn drain_patience (mặc định 60s): quá giới hạn này systemd giết daemon giữa lúc nó
+# đang đợi các lượt chạy xong.
+TimeoutStopSec=120
+
+[Install]
+WantedBy=default.target
+```
+
+```sh
+systemctl --user daemon-reload
+systemctl --user enable --now armarius-daemon
+loginctl enable-linger "$USER"   # chạy cả khi bạn chưa đăng nhập vào máy
+```
+
+Dưới systemd **phải có `-foreground`**: `start` chạy nền là tiến trình systemd theo dõi thoát ngay,
+và systemd dọn luôn tiến trình con của nó. Dừng thì dùng `systemctl --user stop armarius-daemon`.
+
+### Tự cập nhật
+
+Daemon tự giữ mình ở bản mới nhất, theo hai đường:
+
+- **Cứ 6 tiếng** nó hỏi bản phát hành mới nhất. Có bản mới thì tải về, kiểm checksum như lệnh cài,
+  thay cả `armarius-daemon` lẫn `armarius`, rồi tự khởi động lại vào bản mới.
+- **Cứ 10 phút** nó xem file `armarius-daemon` trên đĩa. Bạn vừa chạy lại lệnh cài — hay thay file
+  bằng tay — thì nó tự khởi động lại vào bản ấy, không cần `stop` rồi `start`.
+
+Nó chỉ khởi động lại lúc **không có lượt chạy nào**; đang bận thì đợi nhịp sau, không cắt ngang gì.
+Daemon không có quyền ghi vào thư mục cài (cài bằng `sudo` vào `/usr/local/bin`) thì đường thứ nhất
+ghi lỗi vào log và thử lại sau — nâng cấp khi ấy là chạy lại lệnh cài, đường thứ hai lo phần còn lại.
+
+Tắt trong `~/.armarius/daemon.json`, cạnh những gì `login` đã ghi:
+
+```json
+{ "auto_update": false, "auto_reload": false }
+```
+
+Tắt `auto_update` khi server Armarius của bạn chưa lên bản mới mà bạn không muốn daemon đi trước nó.
 
 ---
 
