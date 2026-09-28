@@ -135,8 +135,7 @@ Tám mục của [quickstart.md](quickstart.md), theo đúng thứ tự ấy, tr
 1. **Cả hai binary** (`make build`), không thì `start` chết ngay.
 2. **Một agent CLI thật chạy được và còn hạn mức.** Hạn mức cạn giữa phiên đo thì mọi lượt sau đó
    hỏng, và bản ghi sẽ đầy những con số của một thứ khác.
-3. **CLI của người vận hành phải được phép làm việc trong thư mục của nó.** Daemon cố ý không trả
-   lời câu hỏi về quyền thay người chủ (FR-013b): nó chỉ cho phép đúng bộ công cụ gọi ngược của
-   chính nó. Mọi quyền khác là thiết lập của CLI ấy, và không có nó thì agent viết một tệp cũng
-   không xong. *Đổi 2026-09-28: FR-013b giờ là **đồng ý** mọi lời xin phép, và CLI được khởi chạy ở chế
-   độ cho phép tất cả; điều kiện này bỏ khi T191 xong (T192 sửa đoạn này).*
+3. ~~**CLI của người vận hành phải được phép làm việc trong thư mục của nó.**~~ **Bỏ từ 2026-09-28**
+   (T191, T192): FR-013b giờ là **đồng ý** mọi lời xin phép, và Claude Code chạy với
+   `--permission-mode bypassPermissions`, nên người vận hành không phải tự mở quyền cho CLI nữa.
+   Riêng Codex vẫn theo chế độ duyệt và sandbox người vận hành đã đặt.
