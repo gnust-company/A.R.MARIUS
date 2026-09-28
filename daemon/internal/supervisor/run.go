@@ -289,6 +289,18 @@ func (o RunOptions) turf(grant Grant) (string, error) {
 
 // storeKey names the store that outlives this run — see the note where it is used.
 func (o RunOptions) storeKey(grant Grant) string {
+	return workKey(grant)
+}
+
+// workKey is the one name everything this run keeps on disk goes by: its working directory is
+// called this (see turf), and so is the store its session lives in.
+//
+// One function, because three readers have to agree on it — the directory, the store, and the
+// register the sweep asks before it deletes either. The register once keyed on the task alone,
+// so a chat's directory, which has no task, read as nobody's while a turn was running in it:
+// the one check that must outweigh everything else in the sweep, silently off for exactly the
+// directories this name was introduced for (FR-022, FR-040f).
+func workKey(grant Grant) string {
 	switch {
 	case grant.TaskID != "":
 		return grant.TaskID
@@ -655,8 +667,10 @@ type Runs struct {
 }
 
 type holding struct {
-	taskID string
-	stop   context.CancelFunc
+	// key is the name this run's directory and session store go by (workKey): a task's id, a
+	// conversation's, or the run's own for a turn about neither.
+	key  string
+	stop context.CancelFunc
 }
 
 // begin registers one run and hands back a context that Cancel can end.
@@ -666,7 +680,7 @@ func (r *Runs) begin(ctx context.Context, grant Grant) (context.Context, func())
 	if r.held == nil {
 		r.held = make(map[string]holding)
 	}
-	r.held[grant.RunID] = holding{taskID: grant.TaskID, stop: stop}
+	r.held[grant.RunID] = holding{key: workKey(grant), stop: stop}
 	r.mu.Unlock()
 
 	return ctx, func() {
@@ -714,15 +728,15 @@ func (r *Runs) Cancel(runID string) bool {
 
 // Holding answers the sweep: is anyone working in this directory right now (FR-021)?
 //
-// The sweep names a working directory by the task it belongs to, which is the same name this
-// register keys on — so the comparison is on task, not on a path that would have to be built
-// the same way in two places to agree.
+// The sweep names a directory by its last segment, which is the same name this register keys
+// on (workKey) — a task's id, a conversation's, or a run's own — so the comparison is on that
+// name, not on a path that would have to be built the same way in two places to agree.
 func (r *Runs) Holding(dir string) bool {
-	task := filepath.Base(dir)
+	name := filepath.Base(dir)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, held := range r.held {
-		if held.taskID == task {
+		if held.key == name {
 			return true
 		}
 	}

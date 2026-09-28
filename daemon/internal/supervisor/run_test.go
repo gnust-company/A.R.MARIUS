@@ -653,6 +653,71 @@ func TestARealSweepLeavesTheDirectoryOfARunInFlightAlone(t *testing.T) {
 	}
 }
 
+// nobodysName is a server that accounts for no name it is asked about — which is what it says of a
+// conversation's directory, since a conversation is not a task.
+type nobodysName struct{}
+
+func (nobodysName) Lookup(_ context.Context, _ []string) (map[string]execenv.TaskState, error) {
+	return map[string]execenv.TaskState{}, nil
+}
+
+// Nửa kia của FR-022 cho **luồng chat** (review PR #278). Thư mục và kho phiên của một luồng chat
+// sống qua nhiều lượt, nên chúng là thứ bộ dọn sẽ gặp khi có lượt đang chạy bên trong. Sổ "đang
+// giữ" từng chỉ ghi mã task — lượt chat không có — nên cửa chặn đầu tiên của bộ dọn tắt lặng lẽ
+// đúng với loại thư mục này.
+func TestARealSweepLeavesAChatInFlightAlone(t *testing.T) {
+	w := aWorld(t)
+	inside := make(chan struct{})
+	w.engine.waitFor = func(ctx context.Context) {
+		close(inside)
+		<-ctx.Done()
+	}
+	go w.options().Do(context.Background(), w.aChatTurn("run-chat-1"))
+	<-inside
+
+	workDir := filepath.Join(w.root, "work", "agent-chat-c1")
+	store := filepath.Join(w.root, "stores", "claude_code", "sessions", "agent-chat-c1")
+	if _, err := os.Stat(store); err != nil {
+		t.Fatalf("lượt chat không có kho phiên để bộ dọn nhắm vào — bài này sẽ đo nhầm: %v", err)
+	}
+	// Mọi thứ về hai chỗ này đều nói "xoá đi": server không nhận tên ấy, và hạn nguội gần như
+	// bằng không. Điều duy nhất được thắng là có người đang ở trong đó.
+	sweeper := execenv.Collector{
+		WorkRoot:         filepath.Join(w.root, "work"),
+		StateRoot:        filepath.Join(w.root, "stores"),
+		Tasks:            nobodysName{},
+		Runs:             w.held,
+		OrphanRetention:  time.Nanosecond,
+		SessionRetention: time.Nanosecond,
+	}
+	later := time.Now().Add(time.Hour)
+
+	if _, err := sweeper.Sweep(context.Background(), later); err != nil {
+		t.Fatalf("quét: %v", err)
+	}
+	if _, err := os.Stat(workDir); err != nil {
+		t.Fatalf("vòng quét xoá mất thư mục của một lượt chat đang chạy: %v", err)
+	}
+	if _, err := os.Stat(store); err != nil {
+		t.Fatalf("vòng quét xoá mất kho phiên của một lượt chat đang chạy: %v", err)
+	}
+
+	// Không còn ai trong đó thì chính vòng quét ấy dọn được — nên phần trên đo đúng việc giữ,
+	// không đo một bộ dọn chẳng bao giờ xoá gì.
+	w.held.Cancel("run-chat-1")
+	until(t, func() bool { return w.held.Count() == 0 })
+
+	if _, err := sweeper.Sweep(context.Background(), later); err != nil {
+		t.Fatalf("quét lần hai: %v", err)
+	}
+	if _, err := os.Stat(workDir); !os.IsNotExist(err) {
+		t.Fatalf("lượt chat xong rồi, thư mục nguội mà vẫn nằm lại: %v", err)
+	}
+	if _, err := os.Stat(store); !os.IsNotExist(err) {
+		t.Fatalf("lượt chat xong rồi, kho phiên nguội mà vẫn nằm lại: %v", err)
+	}
+}
+
 func keptFor(report execenv.Report, path, reason string) bool {
 	for _, kept := range report.Kept {
 		if kept.Path == path && kept.Reason == reason {
@@ -660,6 +725,28 @@ func keptFor(report execenv.Report, path, reason string) bool {
 		}
 	}
 	return false
+}
+
+// Sổ "đang giữ" gọi mỗi lượt bằng đúng cái tên thư mục của nó mang — mã task, khoá luồng, hoặc
+// mã lượt cho một lượt không thuộc cả hai — nên bộ dọn hỏi tên nào cũng nhận đúng câu trả lời.
+func TestTheRegisterNamesEachRunByItsDirectory(t *testing.T) {
+	held := &Runs{}
+	for _, grant := range []Grant{
+		{RunID: "run-task", TaskID: "task-1"},
+		{RunID: "run-chat", Conversation: "agent-chat-c1"},
+		{RunID: "run-interview"},
+	} {
+		_, release := held.begin(context.Background(), grant)
+		defer release()
+	}
+	for _, name := range []string{"task-1", "agent-chat-c1", "run-interview"} {
+		if !held.Holding(filepath.Join("/work", name)) {
+			t.Errorf("có lượt đang chạy trong %q mà sổ nói không ai giữ", name)
+		}
+	}
+	if held.Holding(filepath.Join("/work", "agent-chat-other")) {
+		t.Error("sổ nhận giữ một thư mục không ai ở trong")
+	}
 }
 
 func TestCancellingARunNobodyHoldsChangesNothing(t *testing.T) {
