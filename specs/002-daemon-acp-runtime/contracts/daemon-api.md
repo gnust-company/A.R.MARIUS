@@ -107,6 +107,9 @@ Daemon gửi toàn bộ những gì nó dò được. Server đồng bộ: cái 
 
 `capabilities` là kết quả **hỏi khả năng thật** (FR-017), không được suy từ tên loại CLI.
 
+*Ví dụ trên viết khi `gemini` còn đi đường ACP. Từ 2026-09-28 nó chạy một lần mỗi lượt và báo
+`"protocol_family": "one_shot"` (FR-039f); hình dạng `not_in_protocol` vẫn là của mọi CLI họ ACP.*
+
 `protocol_family` có **ba** giá trị — `acp`, `one_shot`, `app_server` (FR-039d) — và server không đọc nó
 để làm gì khác ngoài chuyển tiếp: nó là chữ của daemon nói về chính mình. Một giá trị thứ tư tới trước khi
 server biết nó tồn tại phải đi qua được cửa này y như ba giá trị kia (Điều III).

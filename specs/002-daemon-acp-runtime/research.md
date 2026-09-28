@@ -439,8 +439,10 @@ Ba thứ hợp đồng nói ra mà đọc Multica một mình không thấy:
 2. `thread/resume` mặc định **trả cả lịch sử mạch** về trong `thread.turns`, và cách tắt là `excludeTurns:
    true`. Không tắt là trả tiền để chuyển một bản ghi qua ống rồi bỏ đi.
 3. `decline` được **định nghĩa trong nguồn** là *người dùng từ chối; agent sẽ đi tiếp lượt của nó* — khác
-   `cancel`, thứ cắt luôn lượt chạy. Nên từ chối quyền theo FR-013b có đúng một từ đúng, và nó không phải
-   từ làm chết lượt chạy.
+   `cancel`, thứ cắt luôn lượt chạy. ~~Nên từ chối quyền theo FR-013b có đúng một từ đúng, và nó không phải
+   từ làm chết lượt chạy.~~ **Sửa 2026-09-28**: FR-013b giờ là **đồng ý** mọi lời xin phép — với Codex là
+   `accept` (FR-039e). `decline` chỉ còn dùng cho **câu hỏi xin thông tin** (`mcpServer/elicitation/request`),
+   và lý do chọn nó thay cho `cancel` vẫn giữ nguyên: nó không làm chết lượt chạy.
 
 Và một thứ chỉ đọc mã Multica mới thấy, vì nó là hệ quả của việc không có ai ngồi đây: Codex **gọi ngược
 lại** để xin duyệt, qua bốn phương thức. Bảng khai cũ của Armarius thiếu hẳn nhánh này — tức một lượt chạy
@@ -632,8 +634,15 @@ môi trường) và **bỏ `args` khi rỗng**. Gemini kiểm dữ liệu vào *
 chạy gemini chết ở đây, bất kể tài khoản. Bộ kiểm không bắt được vì nó chạy giao thức với **một peer giả
 không kiểm schema** — đúng cái bẫy chú thích trong `acp.go` đã tự nói: CLI ACP duy nhất của đợt này là CLI
 chưa ai chạy được. Sửa: luôn gửi `args: []` và `env: []`. Schema chỉ nói `env` là biến *đặt lúc khởi chạy*;
-gemini thì ghép chúng **lên trên** môi trường của chính nó (`{...process.env, ...env}`, đọc trong mã), nên
-`env: []` không cắt mất biến nào — nhưng CLI ACP khác phải đo lại chứ không suy từ gemini.
+~~gemini thì ghép chúng **lên trên** môi trường của chính nó (`{...process.env, ...env}`, đọc trong mã), nên
+`env: []` không cắt mất biến nào~~ — **câu này sai, sửa 2026-09-28.** Đọc lại bundle `gemini 0.56.0`: trước
+khi khởi chạy một MCP server qua stdio, gemini **lọc** môi trường của chính nó (`sanitizeEnvironment`, bật
+cứng `enableEnvironmentVariableRedaction: true` cho nhánh này), bỏ mọi biến có tên khớp `TOKEN`, `SECRET`,
+`PASSWORD`, `KEY`, `AUTH`, `CREDENTIAL`… rồi mới ghép `env` khai trong lời mở phiên lên trên. Nên
+`ARMARIUS_RUN_TOKEN` **không tới** MCP server; muốn tới thì phải khai trong `env` dạng
+`${ARMARIUS_RUN_TOKEN}` — gemini tự thay giá trị từ môi trường chưa lọc của nó. Lệnh shell của gemini thì
+**không** bị lọc theo mặc định (`security.environmentVariableRedaction.enabled` mặc định `false`). CLI ACP
+khác phải đo lại chứ không suy từ gemini.
 
 **Lớp 2 — không phải của ta: Google đã khai tử Gemini CLI cho tài khoản cá nhân.** Từ **2026-06-18**, Gemini
 CLI ngừng phục vụ tài khoản miễn phí, Google AI Pro và Ultra, và bỏ đăng nhập bằng tài khoản Google cá nhân.
@@ -679,5 +688,9 @@ vào gemini vì một cái id — rồi theo FR-007 thì **không dời đi đư
 Lớp 1 thì **sửa bất kể** ba câu trên chốt thế nào: gửi sai giao thức là lỗi của ta.
 
 **Người chủ chốt 2026-09-28**: (1) giữ `gemini`; (2) không thêm Antigravity; (3) **đồng ý tất cả** — ghi
-thành FR-013b, FR-039e, làm ở T191, T192. Còn mở một câu: `gemini` đi tiếp qua ACP, hay chuyển sang chạy một
-lần mỗi lượt.
+thành FR-013b, FR-039e, làm ở T191, T192; (4) `gemini` **chạy một lần mỗi lượt**, không qua ACP — FR-039f,
+T193. Cách chạy đọc từ bản gemini cuối cùng của Multica trước khi họ gỡ (commit `76c58a4ee^`,
+`server/pkg/agent/gemini.go`): `gemini -p <prompt> --yolo -o stream-json [-m <model>] [-r <session>]`, kèm
+`GEMINI_CLI_TRUST_WORKSPACE=true`, brief ở `GEMINI.md`. Armarius đưa thông điệp qua đầu vào chuẩn thay cho
+`-p`: bundle đọc đầu vào chuẩn khi nó không phải terminal và coi đó là chế độ không tương tác
+(`isHeadlessMode`).
