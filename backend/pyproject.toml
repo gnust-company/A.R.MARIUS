@@ -1,6 +1,6 @@
 [project]
 name = "armarius-backend"
-version = "0.1.0"
+version = "0.2.0"
 description = "Armarius — provisioner for cross-team agent collaboration (Clean Architecture core API)"
 requires-python = ">=3.12"
 dependencies = [
