@@ -67,7 +67,23 @@ type LoginOptions struct {
 	// Sleep waits between polls. It must return the context's error if the wait is cut short,
 	// so that Ctrl-C during a login is not mistaken for the code expiring.
 	Sleep func(ctx context.Context, d time.Duration) error
+
+	// Confirm asks the person running `login` a yes-or-no question and reports their answer. It
+	// is asked only on a machine that is already linked, after being told what logging in again
+	// replaces (FR-001e). Left nil, there is nobody to ask — a script, a pipe — and a login that
+	// would replace a link is refused rather than carried out in silence.
+	Confirm func(question string) (bool, error)
+	// Yes is the person having agreed in advance (`-yes`): the link is replaced without asking.
+	// They are still told what it replaces.
+	Yes bool
+	// Alive reports whether a process id is still running here, to tell a person that a daemon
+	// is running on the link they are about to replace. Defaults to the real check.
+	Alive func(pid int) bool
 }
+
+// ErrLoginDeclined is the person answering *no* to replacing this machine's link. Nothing was
+// changed, and nothing went wrong: it is an answer, so the command exits cleanly on it.
+var ErrLoginDeclined = errors.New("login declined; the current link was kept")
 
 // linkStartResponse mirrors the answer to POST /daemon/link/start.
 type linkStartResponse struct {
@@ -118,6 +134,21 @@ func Login(ctx context.Context, opts LoginOptions) (Credentials, error) {
 		return Credentials{}, errors.New("no config path given")
 	}
 
+	// Read before anything is asked of the server. A machine that is already linked has to be
+	// told what logging in again replaces and say yes to it (FR-001e); and a config file that
+	// cannot be read would only fail at the very end otherwise — after a person had approved and
+	// the server had made a machine for a token with nowhere to go.
+	prior, linked, err := currentLink(opts.ConfigPath)
+	if err != nil {
+		return Credentials{}, err
+	}
+	running, isRunning := runningDaemon(opts)
+	if linked {
+		if err := confirmRelink(opts, prior, running, isRunning); err != nil {
+			return Credentials{}, err
+		}
+	}
+
 	started, err := startLink(ctx, opts)
 	if err != nil {
 		return Credentials{}, err
@@ -153,8 +184,88 @@ func Login(ctx context.Context, opts LoginOptions) (Credentials, error) {
 	// it reads as offline until `start` is up. A person who stops here has done everything the
 	// screen asked and still has a machine that takes no work, with nothing anywhere saying
 	// why — which is exactly what was reported on 2026-09-07.
-	say(opts.Out, "Now run `armarius-daemon start` and leave it running — that is what takes work.\n")
+	//
+	// With a daemon already running, `start` alone is refused (FR-034a) and the running one
+	// keeps the link that was just replaced — reported on 2026-10-12 as a machine that never
+	// showed up. So the instruction is the restart.
+	if isRunning {
+		say(opts.Out, "The daemon running here (process %d) is still on the previous link. "+
+			"Restart it so it uses this one: `armarius-daemon stop`, then `armarius-daemon start`.\n", running.PID)
+	} else {
+		say(opts.Out, "Now run `armarius-daemon start` and leave it running — that is what takes work.\n")
+	}
 	return creds, nil
+}
+
+// currentLink reads the link this machine already has, if it has one. A file that holds only the
+// operator's settings, with no token yet, is not a link: there is nothing in it to replace.
+func currentLink(path string) (Credentials, bool, error) {
+	raw, err := os.ReadFile(path) //nolint:gosec // the operator's own config file
+	if errors.Is(err, os.ErrNotExist) {
+		return Credentials{}, false, nil
+	}
+	if err != nil {
+		return Credentials{}, false, fmt.Errorf("reading %s: %w", path, err)
+	}
+	var creds Credentials
+	if err := json.Unmarshal(raw, &creds); err != nil {
+		return Credentials{}, false, fmt.Errorf("%s is not readable as JSON; move it aside and log in again: %w", path, err)
+	}
+	return creds, creds.Server != "" && creds.Token != "", nil
+}
+
+// runningDaemon is the daemon running beside this config file, if there is one. A state file
+// that cannot be read is no reason to stop a login, so it reads as no daemon at all.
+func runningDaemon(opts LoginOptions) (RunState, bool) {
+	state, present, err := LoadState(StatePath(opts.ConfigPath))
+	if err != nil || !present {
+		return RunState{}, false
+	}
+	return state, opts.Alive(state.PID)
+}
+
+// confirmRelink tells the person what logging in again replaces, then asks (FR-001e).
+//
+// Told first, asked second: a question put before its consequences is a question about nothing
+// in particular. They are told even when they agreed in advance with `-yes`, because agreeing
+// to replace a link is not the same as knowing which one went.
+func confirmRelink(opts LoginOptions, prior Credentials, running RunState, isRunning bool) error {
+	machine := prior.MachineID
+	for _, workplace := range running.Workplaces {
+		if workplace.MachineName != "" {
+			machine += " (" + workplace.MachineName + ")"
+			break
+		}
+	}
+	say(opts.Out, "This machine is already linked:\n")
+	say(opts.Out, "  Server:     %s\n", prior.Server)
+	say(opts.Out, "  Workspace:  %s\n", prior.WorkspaceID)
+	say(opts.Out, "  Machine:    %s\n", machine)
+	say(opts.Out, "Logging in again replaces that link in %s. The machine stays in that workspace until "+
+		"someone removes it on the Machines screen, and the agents placed on it go offline once a "+
+		"daemon runs on the new link.\n", opts.ConfigPath)
+	if isRunning {
+		say(opts.Out, "A daemon is running here (process %d). It keeps using the current link until it is restarted.\n",
+			running.PID)
+	}
+
+	if opts.Yes {
+		return nil
+	}
+	if opts.Confirm == nil {
+		return fmt.Errorf("this machine is already linked to workspace %s on %s and there is nobody here to "+
+			"confirm replacing that link, so nothing was changed; run login in a terminal to be asked, or "+
+			"pass -yes to replace it without asking", prior.WorkspaceID, prior.Server)
+	}
+	agreed, err := opts.Confirm("Replace the current link?")
+	if err != nil {
+		return fmt.Errorf("asking whether to replace the current link: %w", err)
+	}
+	if !agreed {
+		say(opts.Out, "Nothing was changed.\n")
+		return ErrLoginDeclined
+	}
+	return nil
 }
 
 // announce tells the person what is happening, and opens the page for them if it can.
@@ -353,6 +464,9 @@ func (o LoginOptions) withDefaults() LoginOptions {
 	}
 	if o.Sleep == nil {
 		o.Sleep = sleep
+	}
+	if o.Alive == nil {
+		o.Alive = processAlive
 	}
 	if o.Hostname == "" {
 		if name, err := os.Hostname(); err == nil {

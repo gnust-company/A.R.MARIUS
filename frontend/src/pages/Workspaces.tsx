@@ -14,6 +14,7 @@ import VellumPanel from '@/components/VellumPanel';
 import Modal from '@/components/Modal';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { cn, wsHref } from '@/lib/utils';
+import { agentsOf } from '@/lib/workspaceScope';
 import { useTranslation } from 'react-i18next';
 
 const containerVariants = {
@@ -148,7 +149,7 @@ export default function Workspaces() {
       >
         {workspaces.map((ws) => {
           const wsProjects = projects.filter((p) => p.workspaceId === ws.id);
-          const wsAgents = mariuses.filter((m) => m.workspaceId === ws.id);
+          const wsAgents = agentsOf(mariuses, ws.id);
 
           return (
             <motion.div

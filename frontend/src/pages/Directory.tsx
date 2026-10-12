@@ -27,6 +27,7 @@ import RuntimeOptionFields from '@/components/RuntimeOptionFields';
 import PageTitle from '@/components/PageTitle';
 import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
+import { agentsOf } from '@/lib/workspaceScope';
 import { useTranslation } from 'react-i18next';
 
 // ─── Animation Variants ──────────────────────────────────────────────────────
@@ -227,12 +228,17 @@ function AgentCard({
 
 export default function Directory() {
   const { t } = useTranslation();
-  const mariuses = useAppStore((s) => s.mariuses);
+  const everyAgent = useAppStore((s) => s.mariuses);
   const skills = useAppStore((s) => s.skills);
   const inviteNewAgent = useAppStore((s) => s.inviteNewAgent);
   const listWorkplaces = useAppStore((s) => s.listWorkplaces);
   const designateWorkspaceAgent = useAppStore((s) => s.designateWorkspaceAgent);
   const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId);
+  // This page is about one workspace: its list, its counts and its host (FR-007q).
+  const mariuses = useMemo(
+    () => agentsOf(everyAgent, activeWorkspaceId),
+    [everyAgent, activeWorkspaceId]
+  );
 
   // The sitting host — designating anyone else is a swap and asks for confirmation (#32).
   // Scoped to the active workspace: the store holds every workspace's mariuses.

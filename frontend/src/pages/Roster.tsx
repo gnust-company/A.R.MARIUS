@@ -18,6 +18,7 @@ import StatusChip from '@/components/StatusChip';
 import Modal from '@/components/Modal';
 import PageTitle from '@/components/PageTitle';
 import { cn, wsHref } from '@/lib/utils';
+import { agentsOf } from '@/lib/workspaceScope';
 
 // ─── Status Dot ──────────────────────────────────────────────────────────────
 
@@ -128,7 +129,10 @@ function AddAgentModal({
   // Anyone already on this project is not offered again — the server refuses a second seat,
   // and an option that can only fail is worse than no option.
   const seatedMariusIds = new Set((project?.seats || []).map((s) => s.mariusId).filter(Boolean));
-  const availableAgents = mariuses.filter((m) => !seatedMariusIds.has(m.id));
+  // Only agents of the project's own workspace can be seated; the server refuses the rest (FR-007q).
+  const availableAgents = agentsOf(mariuses, project?.workspaceId).filter(
+    (m) => !seatedMariusIds.has(m.id)
+  );
 
   const handleAdd = async () => {
     if (!selectedAgentId) return;

@@ -594,3 +594,23 @@ kiểm lại đã giãn tới 16 phút; gắn nó vào chỗ làm không báo g�
   agent ở đó chuyển sang *đang kiểm* ngay; kênh workspace có đủ tin `marius.online` để màn hình mở khoá chat.
   Bảy bài cũ đỏ vì dựa vào một sự tình cờ — agent vừa tạo thì chưa ai kiểm nên *offline* — đã được sửa để nói
   thẳng điều chúng cần, ví dụ một agent offline thì tự đặt nó offline.
+- [x] T197 **Giao diện chỉ hiện agent của workspace đang xét** per FR-007q, issue #284. Một hàm lọc dùng chung
+  theo workspace, có bài kiểm riêng; trang Agents (danh sách và con số đếm), tạo dự án (ô chọn Trưởng dự án và
+  thành viên, lọc theo workspace dự án sẽ được tạo vào), mời agent vào dự án (lọc theo workspace của dự án), và
+  màn chọn workspace đều đi qua nó. Kiểm bằng Playwright trên container đã build lại: một tài khoản hai
+  workspace, mỗi workspace một agent cùng tên.
+  **Xong 2026-10-12.** Playwright trên container dựng lại, một tài khoản hai workspace: trang Agents mỗi
+  workspace một Livia, con số đếm `Offline (1)`, ô chọn Trưởng dự án chỉ có Livia của workspace ấy — 4/4 và
+  đạt. Cùng kịch bản trên một frontend dựng từ `main` thì trượt cả 0/4 (thấy hai Livia, `Offline (2)`), đúng
+  lỗi người chủ gặp.
+- [x] T198 **`login` trên máy đã nối thì báo rồi hỏi** per FR-001e, issue #285. Báo server, workspace, máy hiện
+  tại cùng hậu quả; hỏi xác nhận mặc định không; trả lời không thì không xin mã và không đổi file; cờ `-yes`;
+  không có terminal mà không có cờ thì từ chối; có daemon đang chạy thì nói ra và dòng cuối hướng dẫn dừng rồi
+  chạy lại. Daemon ghi máy, workspace, server nó đang dùng vào file trạng thái; `status` nói thẳng khi chỗ ấy
+  khác file cấu hình. Đo trên máy thật bằng một cấu hình riêng, không đụng daemon của người chủ.
+  **Xong 2026-10-12.** Mười tám bài kiểm mới, thử ngược mười bốn chỗ, chỗ nào cũng bị một bài bắt. Đo trên
+  máy thật với daemon dựng từ nhánh này, cấu hình riêng và PATH chỉ có `claude`, hai tài khoản kiểm: 13/13.
+  **Lần đo đầu bắt được một lỗi của chính task này**: nhận ra *có người ở terminal* bằng cách xem stdin có là
+  thiết bị ký tự không, mà `/dev/null` cũng là một — nên script chạy `< /dev/null` bị hỏi, đọc rỗng, rồi thoát
+  như thể người ta nói không, thay vì từ chối và nêu `-yes`. Sửa bằng cách hỏi thẳng thiết bị ấy có phải
+  terminal không (Linux, macOS, Windows), kèm một bài kiểm đỏ trên cách cũ.

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/gnust-company/armarius-daemon/internal/client"
 )
 
 // This file drives `start` itself — the whole command, against a server that answers and a CLI
@@ -410,5 +413,39 @@ func TestARunThatOutlastsThePatienceIsCutAndSaidOutLoud(t *testing.T) {
 	defer fake.mu.Unlock()
 	if !fake.deregistered {
 		t.Error("a stop that had to cut a run still owes the server its goodbye")
+	}
+}
+
+// FR-001e: a running daemon says which link it runs on. `login` can replace the config file
+// underneath it, and without this `status` paired the new link from the file with the old
+// daemon's beats — reporting a machine that had never beaten once as healthy.
+func TestARunningDaemonRecordsTheLinkItRunsOn(t *testing.T) {
+	aStubCLI(t, time.Second) // PATH holds nothing but a stub, so no real agent CLI is asked anything
+	fake := &fakeServer{handedOut: true}
+	server := httptest.NewServer(fake.handler(t))
+	t.Cleanup(server.Close)
+	t.Setenv("ARMARIUS_CALLBACK_PROGRAM", filepath.Join(t.TempDir(), "armarius"))
+	if err := os.WriteFile(os.Getenv("ARMARIUS_CALLBACK_PROGRAM"), []byte("#!/bin/sh\n"), 0o700); err != nil { //nolint:gosec // a test's own scratch file
+		t.Fatal(err)
+	}
+
+	config := aLinkedMachine(t, server.URL)
+	ctx, stop := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = runStart(ctx, []string{"-foreground", "-config", config}, io.Discard)
+	}()
+	t.Cleanup(func() { stop(); <-done })
+
+	statePath := client.StatePath(config)
+	waitFor(t, "the daemon to write its state file", func() bool { return exists(statePath) })
+	state, _, err := client.LoadState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.MachineID != "m-1" || state.WorkspaceID != "ws-1" || state.Server != server.URL {
+		t.Errorf("daemon không ghi lại kết nối nó đang chạy: máy %q, workspace %q, server %q",
+			state.MachineID, state.WorkspaceID, state.Server)
 	}
 }
