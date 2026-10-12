@@ -155,6 +155,30 @@ Token của máy được ghi vào `~/.armarius/daemon.json` (`%USERPROFILE%\.ar
 trên Windows) và **không bao giờ ra khỏi đó**. Agent không bao giờ cầm token này — thứ chúng
 cầm là token đúc cho một lượt chạy.
 
+### Chạy `login` trên một máy đã nối
+
+Mỗi máy nối vào **đúng một** không gian làm việc. Chạy `login` lần nữa — để chuyển máy sang không
+gian làm việc khác, hay sang tài khoản khác — là **thay** kết nối cũ. Nên trước khi làm gì, `login`
+nói máy đang nối với đâu, nói điều gì sẽ xảy ra, rồi hỏi:
+
+```
+This machine is already linked:
+  Server:     https://armarius.example.com
+  Workspace:  …
+  Machine:    … (tên-máy)
+Logging in again replaces that link in ~/.armarius/daemon.json. …
+Replace the current link? [y/N]
+```
+
+- Mặc định là **không**: Enter, hay gõ bất cứ gì khác `y`, thì không đổi gì cả.
+- Máy cũ **vẫn nằm** trong không gian làm việc cũ cho tới khi bạn gỡ nó ở màn **Máy**; agent đặt
+  trên nó sẽ offline khi daemon chạy với kết nối mới.
+- **Daemon đang chạy vẫn dùng kết nối cũ** cho tới khi được khởi động lại. Nối xong thì chạy
+  `armarius-daemon stop` rồi `armarius-daemon start`. Trong lúc chưa khởi động lại, `status` nói rõ
+  daemon đang chạy với máy nào và file cấu hình đã trỏ sang máy nào.
+- Script không có ai để hỏi: `login` từ chối và không đổi gì. Muốn thay mà không hỏi thì thêm
+  `-yes`.
+
 Rồi bật daemon:
 
 ```sh

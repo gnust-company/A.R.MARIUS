@@ -45,6 +45,14 @@ const (
 type RunState struct {
 	PID       int       `json:"pid"`
 	StartedAt time.Time `json:"started_at"`
+	// Server, MachineID and WorkspaceID are the link this daemon runs on, as it read them at start
+	// (FR-001e). `login` can replace the config file under a running daemon, which carries on with
+	// the link it started on; without these, `status` paired the new link from the file with the
+	// old daemon's beats and reported a machine that had never once beaten as healthy. None of
+	// them is a secret — the token stays in the config file only.
+	Server      string `json:"server,omitempty"`
+	MachineID   string `json:"machine_id,omitempty"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
 	// Workplaces is the server's own last answer, kept verbatim. `status` must be able to say
 	// what the server thinks while the server is unreachable, which is exactly the case where
 	// asking it would fail.
@@ -170,6 +178,13 @@ type Status struct {
 	LeavingAt     *time.Time `json:"leaving_at,omitempty"`
 	LastBeatOKAt  *time.Time `json:"last_beat_ok_at,omitempty"`
 	LastBeatError string     `json:"last_beat_error,omitempty"`
+	// Relinked is a running daemon on a different link from the one the config file now holds:
+	// `login` replaced it after the daemon started (FR-001e). The beat lines above are about the
+	// link it runs on, which is the Running* one, not the one printed at the top.
+	Relinked           bool   `json:"relinked"`
+	RunningServer      string `json:"running_server,omitempty"`
+	RunningMachineID   string `json:"running_machine_id,omitempty"`
+	RunningWorkspaceID string `json:"running_workspace_id,omitempty"`
 
 	CLIs       []FoundCLI            `json:"clis"`
 	Workplaces []RegisteredWorkplace `json:"workplaces"`
@@ -219,6 +234,15 @@ func Report(ctx context.Context, opts StatusOptions) (Status, error) {
 		status.StoppedUncleanly = !status.DaemonRunning
 		status.DaemonLeaving = state.Leaving()
 		status.LeavingAt = whenSet(state.LeavingAt)
+		// Only a daemon that said which link it runs on can be told apart from the file. One that
+		// did not — `v0.2.0` and earlier — is taken at its word rather than guessed about.
+		if status.DaemonRunning && status.Linked && state.MachineID != "" &&
+			(state.MachineID != status.MachineID || state.Server != status.Server) {
+			status.Relinked = true
+			status.RunningServer = state.Server
+			status.RunningMachineID = state.MachineID
+			status.RunningWorkspaceID = state.WorkspaceID
+		}
 	}
 	if status.Workplaces == nil {
 		status.Workplaces = []RegisteredWorkplace{}
@@ -287,16 +311,25 @@ func (s Status) WriteText(w io.Writer, now time.Time) {
 	default:
 		say(w, "Daemon:     not running\n")
 	}
+	if s.Relinked {
+		say(w, "            on another link: machine %s in workspace %s (%s).\n",
+			s.RunningMachineID, s.RunningWorkspaceID, s.RunningServer)
+		say(w, "            The link above takes effect once it restarts: `armarius-daemon stop`, then `armarius-daemon start`.\n")
+	}
 	if s.LogPath != "" {
 		say(w, "Log:        %s\n", s.LogPath)
+	}
+	beatOf := ""
+	if s.Relinked {
+		beatOf = " (on the link it runs on)"
 	}
 	switch {
 	case s.LastBeatError != "":
 		// The case the whole command exists for: the process is up and nothing it says is
 		// reaching the server.
-		say(w, "Last beat:  failing — %s\n", s.LastBeatError)
+		say(w, "Last beat:  failing%s — %s\n", beatOf, s.LastBeatError)
 	case s.LastBeatOKAt != nil:
-		say(w, "Last beat:  %s ago\n", now.Sub(*s.LastBeatOKAt).Round(time.Second))
+		say(w, "Last beat:  %s ago%s\n", now.Sub(*s.LastBeatOKAt).Round(time.Second), beatOf)
 	}
 
 	say(w, "\nAgent CLIs on this machine now:\n")

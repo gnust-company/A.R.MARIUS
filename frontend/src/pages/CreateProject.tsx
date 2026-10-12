@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { wsHref, suggestProjectKey } from '@/lib/utils';
 import { ApiError } from '@/lib/api';
+import { agentsOf } from '@/lib/workspaceScope';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertTriangle, CheckCircle2, Loader2, ArrowLeft, ArrowRight, X,
@@ -182,9 +183,15 @@ export default function CreateProject() {
   const navigate = useNavigate();
   const { workspaceId } = useParams();
   const createProject = useAppStore((s) => s.createProject);
-  const mariuses = useAppStore((s) => s.mariuses);
+  const everyAgent = useAppStore((s) => s.mariuses);
   const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId);
   const workspaces = useAppStore((s) => s.workspaces);
+  // The project is created in the active workspace, so only its agents can lead it or join it.
+  // The server refuses any other (FR-007q) — better not to offer the refusal.
+  const mariuses = useMemo(
+    () => agentsOf(everyAgent, activeWorkspaceId),
+    [everyAgent, activeWorkspaceId]
+  );
 
   // Get the active workspace to check for Workspace Agent
   const activeWorkspace = useMemo(

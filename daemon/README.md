@@ -94,6 +94,14 @@ The machine's token is written to `~/.armarius/daemon.json`
 (`%USERPROFILE%\.armarius\daemon.json` on Windows) and never leaves it — agents are handed a token
 minted for one run, never this one.
 
+A machine is linked to exactly one workspace. Running `login` on a machine that is already linked
+replaces that link, so it first says what the machine is linked to and what replacing it means,
+then asks — and the answer defaults to *no*, which changes nothing. The old machine stays in its
+workspace until someone removes it on the Machines screen. A daemon already running keeps the old
+link until it is restarted (`armarius-daemon stop`, then `armarius-daemon start`), and `status`
+says so in the meantime. With nobody at a terminal to answer, `login` refuses; `-yes` replaces the
+link without asking.
+
 ## Run it
 
 ```sh

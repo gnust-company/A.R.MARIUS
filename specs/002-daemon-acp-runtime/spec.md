@@ -443,6 +443,26 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
     người đọc, giữ cho một sổ kiểm toán không tồn tại.
   - Máy ở không gian làm việc của người khác đọc **y như máy không tồn tại** (Hiến pháp I).
 
+- **FR-001e**: Chạy `login` trên một máy **đã được nối** PHẢI **báo trước rồi hỏi xác nhận**, không âm
+  thầm ghi đè (chốt 2026-10-12, issue #285, người chủ chọn phương án tối thiểu: giữ mô hình một máy một
+  workspace của FR-001). Trước điều khoản này, `login` lần hai mở trang phê duyệt, server tạo một máy mới ở
+  workspace người duyệt chọn, rồi token mới đè lên file cấu hình. Daemon đang chạy vẫn dùng token cũ, nên máy
+  mới không bao giờ beat, agent ở đó offline, và `status` ghép thông tin của máy mới với nhịp beat của máy cũ.
+  Đến lần khởi động lại tới, daemon lặng lẽ chuyển sang workspace mới.
+  - **Báo trước khi làm gì cả**: máy đang nối với server nào, workspace nào, máy nào; rằng kết nối ấy sẽ bị
+    thay; rằng máy cũ vẫn nằm trong workspace cũ cho tới khi có người gỡ nó (FR-001d); và rằng agent đặt trên
+    máy cũ sẽ offline khi daemon chạy lại với kết nối mới.
+  - **Hỏi xác nhận, mặc định là không.** Trả lời không, hoặc không trả lời, thì thoát mà **không đổi gì**:
+    không xin mã, không mở trang, file cấu hình giữ nguyên. Một cờ cho phép đồng ý trước (`-yes`), dành cho
+    script. **Không có terminal để hỏi mà cũng không có cờ ấy thì từ chối**, kèm câu nói cách chạy lại.
+  - **Có daemon đang chạy thì nói ra**: nó vẫn dùng kết nối cũ cho tới khi được khởi động lại. Nối xong, dòng
+    hướng dẫn cuối PHẢI là dừng rồi chạy lại daemon, vì `start` một mình sẽ bị từ chối (FR-034a).
+  - **`status` không được trộn hai nguồn.** Daemon đang chạy ghi máy và workspace nó đang dùng vào file trạng
+    thái. Khi chỗ ấy khác file cấu hình, `status` PHẢI nói thẳng: daemon đang chạy với máy nào, file cấu hình
+    đã trỏ sang máy nào, và phải khởi động lại để đổi.
+  - Máy chưa từng được nối thì `login` giữ nguyên như cũ, không hỏi gì.
+  - Ngoài phạm vi: đăng nhập theo người dùng với một daemon cho nhiều workspace và profile như Multica; tự thu
+    hồi máy cũ khi đăng nhập lại; daemon tự đọc lại file cấu hình mà không cần khởi động lại.
 - **FR-002**: Daemon PHẢI tự dò các agent CLI có trên máy và đăng ký mỗi cái tìm được thành một **chỗ làm**
   gắn với workspace đó.
 - **FR-003**: Mỗi chỗ làm PHẢI mang tên máy đọc được, để người dùng phân biệt được hai máy khác nhau của
@@ -718,6 +738,18 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   - **Đọc** cuộc trò chuyện không tạo gì. Agent của người khác đọc y như không có (404, Hiến pháp I).
     Xoá agent hay workspace thì cuộc trò chuyện đi theo.
 
+- **FR-007q**: Mọi chỗ hiện hoặc cho chọn agent **của một workspace** PHẢI chỉ có agent của workspace ấy
+  (chốt 2026-10-12, issue #284). Giao diện nạp agent của mọi workspace vào một danh sách chung, để màn chọn
+  workspace đếm được số agent của từng cái; vì vậy từng chỗ đọc danh sách ấy phải tự lọc. Trước điều khoản
+  này, trang Agents, các con số đếm theo trạng thái, các ô chọn Trưởng dự án và thành viên khi tạo dự án, và
+  danh sách agent mời được vào dự án đều hiện cả agent của workspace khác. Chọn nhầm một agent như thế thì
+  server từ chối (Hiến pháp Điều I), nên việc tạo dự án hỏng.
+  - Trong một dự án, workspace để lọc là **workspace của dự án**. Lúc tạo dự án là workspace dự án sẽ được
+    tạo vào, tức workspace đang mở.
+  - Luật lọc nằm ở **một chỗ dùng chung**. Một trang mới cần danh sách agent của một workspace thì đi qua chỗ
+    ấy, không tự viết lại phép lọc.
+  - Chỗ cố ý đọc mọi workspace (màn chọn workspace đếm agent của từng cái) và chỗ tra một agent theo mã thì
+    không đổi.
 - **FR-007n**: Luồng tạo dự án PHẢI có một bước khai **cần bao nhiêu người làm**, và con số ấy
   trở thành số chỗ của chỗ ngồi chung. Bước này thay cho việc dựng vai rồi khai số ghế cho vai.
 

@@ -504,3 +504,117 @@ func TestAnApprovalAddressThatIsNotAWebPageStopsLogin(t *testing.T) {
 		t.Errorf("login printed the address it had just refused:\n%s", stdout)
 	}
 }
+
+// ── `login` trên một máy đã được nối (FR-001e, issue #285) ───────────────────────────────────────
+
+// asPerson makes this test the person at the terminal, answering with what they type.
+func asPerson(t *testing.T, terminal bool, typed string) {
+	t.Helper()
+	oldIn, oldTerminal := stdin, stdinIsTerminal
+	stdin = strings.NewReader(typed)
+	stdinIsTerminal = func() bool { return terminal }
+	t.Cleanup(func() { stdin, stdinIsTerminal = oldIn, oldTerminal })
+}
+
+func linkedConfig(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "daemon.json")
+	if err := client.SaveCredentials(path, client.Credentials{
+		Server: "https://old.example", Token: "armd_old", MachineID: "m-old", WorkspaceID: "ws-old",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestAYesOrNoQuestionIsNoUnlessTheAnswerIsYes(t *testing.T) {
+	for typed, want := range map[string]bool{
+		"y\n": true, "yes\n": true, "Y\n": true, " YES \n": true,
+		"\n": false, "n\n": false, "no\n": false, "maybe\n": false, "": false, "y": true,
+	} {
+		var out bytes.Buffer
+		got, err := askYesNo(strings.NewReader(typed), &out)("Replace the current link?")
+		if err != nil {
+			t.Fatalf("%q: %v", typed, err)
+		}
+		if got != want {
+			t.Errorf("gõ %q thì được hiểu là %v, muốn %v — mặc định phải là không", typed, got, want)
+		}
+		if !strings.Contains(out.String(), "[y/N]") {
+			t.Errorf("câu hỏi không cho thấy mặc định là không: %q", out.String())
+		}
+	}
+}
+
+func TestLoginOnALinkedMachineWithNoTerminalRefusesAndChangesNothing(t *testing.T) {
+	asPerson(t, false, "")
+	path := linkedConfig(t)
+	before, _ := os.ReadFile(path)
+
+	_, _, err := dispatch(t, "login", "-server", "https://armarius.invalid", "-config", path)
+	if err == nil || !strings.Contains(err.Error(), "-yes") {
+		t.Fatalf("không có terminal để hỏi mà login không từ chối kèm cách đồng ý trước: %v", err)
+	}
+	if after, _ := os.ReadFile(path); !bytes.Equal(before, after) {
+		t.Error("bị từ chối mà file cấu hình vẫn bị đổi")
+	}
+}
+
+func TestAnsweringNoIsAnAnswerNotAFailure(t *testing.T) {
+	asPerson(t, true, "n\n")
+	path := linkedConfig(t)
+	before, _ := os.ReadFile(path)
+
+	stdout, _, err := dispatch(t, "login", "-server", "https://armarius.invalid", "-config", path)
+	if err != nil {
+		t.Fatalf("người ta trả lời không, mà lệnh báo hỏng: %v", err)
+	}
+	if !strings.Contains(stdout, "ws-old") || !strings.Contains(stdout, "Nothing was changed") {
+		t.Errorf("không báo kết nối nào được giữ:\n%s", stdout)
+	}
+	if after, _ := os.ReadFile(path); !bytes.Equal(before, after) {
+		t.Error("trả lời không mà file cấu hình vẫn bị đổi")
+	}
+}
+
+func TestLoginOffersAWayToAgreeInAdvance(t *testing.T) {
+	stdout, _, err := dispatch(t, "login", "-h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout, "-yes") {
+		t.Errorf("login -h không có cờ đồng ý trước cho script:\n%s", stdout)
+	}
+}
+
+// The bug the first live run of FR-001e caught: stdin redirected from /dev/null is a character
+// device, and asking only that took a script for a person — it was asked, read nothing, and
+// exited as if someone had said no, instead of refusing and naming -yes.
+func TestNeitherNullNorAPipeNorAFileIsAPersonAtATerminal(t *testing.T) {
+	null, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = null.Close() }()
+	if isTerminal(null.Fd()) {
+		t.Error("/dev/null được coi là một người ngồi ở terminal")
+	}
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = r.Close(); _ = w.Close() }()
+	if isTerminal(r.Fd()) {
+		t.Error("một pipe được coi là một người ngồi ở terminal")
+	}
+
+	file, err := os.CreateTemp(t.TempDir(), "stdin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = file.Close() }()
+	if isTerminal(file.Fd()) {
+		t.Error("một file thường được coi là một người ngồi ở terminal")
+	}
+}

@@ -18,6 +18,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -27,6 +28,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	gosys "runtime"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -46,6 +48,13 @@ var (
 	version = "dev"
 	commit  = "none"
 	date    = "unknown"
+)
+
+// stdin and stdinIsTerminal are where a question to the person running a command is put, and
+// whether there is a person there at all. Variables so a test can be that person.
+var (
+	stdin           io.Reader = os.Stdin
+	stdinIsTerminal           = func() bool { return isTerminal(os.Stdin.Fd()) }
 )
 
 // A command is one subcommand of armarius-daemon.
@@ -166,11 +175,18 @@ func runLogin(ctx context.Context, args []string, out io.Writer) error {
 	server := fs.String("server", "", "base URL of the Armarius server this machine belongs to")
 	config := fs.String("config", defaultConfigPath(), "where to write this machine's token")
 	noBrowser := fs.Bool("no-browser", false, "print the approval address instead of opening it")
+	yes := fs.Bool("yes", false, "on a machine that is already linked, replace that link without asking (for scripts)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *server == "" {
 		return errors.New("login: -server is required")
+	}
+	// Asked only where somebody can answer. Without a terminal there is nobody, and a login that
+	// would replace this machine's link is refused instead of done in silence (FR-001e).
+	var confirm func(question string) (bool, error)
+	if stdinIsTerminal() {
+		confirm = askYesNo(stdin, out)
 	}
 	_, err := client.Login(ctx, client.LoginOptions{
 		Server:     *server,
@@ -185,8 +201,33 @@ func runLogin(ctx context.Context, args []string, out io.Writer) error {
 		// Named here rather than defaulted inside the package: this is the one place that
 		// actually wants a page to appear on somebody's screen.
 		OpenBrowser: client.OpenBrowser,
+		Confirm:     confirm,
+		Yes:         *yes,
 	})
+	// Saying no is an answer, and the command has already said what was kept.
+	if errors.Is(err, client.ErrLoginDeclined) {
+		return nil
+	}
 	return err
+}
+
+// askYesNo puts a question to the person at the terminal. Anything but a yes is a no — an empty
+// line, a typo, the input closing — because the question is whether to replace something, and
+// the safe reading of an unclear answer is to leave it alone.
+func askYesNo(in io.Reader, out io.Writer) func(question string) (bool, error) {
+	reader := bufio.NewReader(in)
+	return func(question string) (bool, error) {
+		emit(out, "%s [y/N] ", question)
+		line, err := reader.ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return false, err
+		}
+		switch strings.ToLower(strings.TrimSpace(line)) {
+		case "y", "yes":
+			return true, nil
+		}
+		return false, nil
+	}
 }
 
 // runStart brings this machine online: it works out what it can run, tells the server, and then
@@ -317,9 +358,14 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 	// written now and refreshed on every beat, so a daemon whose token expired stops looking
 	// identical to a healthy one.
 	state := client.RunState{
-		PID:        os.Getpid(),
-		StartedAt:  time.Now(),
-		Workplaces: registered.Workplaces,
+		PID:       os.Getpid(),
+		StartedAt: time.Now(),
+		// The link this process runs on. `login` can replace the config file underneath it, and
+		// `status` has to be able to tell the two apart (FR-001e).
+		Server:      creds.Server,
+		MachineID:   creds.MachineID,
+		WorkspaceID: creds.WorkspaceID,
+		Workplaces:  registered.Workplaces,
 	}
 	if err := client.SaveState(statePath, state); err != nil {
 		return err
