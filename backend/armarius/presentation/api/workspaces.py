@@ -194,8 +194,13 @@ async def remove_machine(
     exist (Constitution I).
     """
     await _require_owned_workspace(container, user, workspace_id)
-    if not await container.daemon_workplaces.remove(workspace_id, machine_id):
+    unplaced = await container.daemon_workplaces.remove(workspace_id, machine_id)
+    if unplaced is None:
         raise NotFound("machine_not_found")
+    # Losing a place is a change of place too: without this, an agent that answered a moment
+    # ago is believed online for another ninety seconds on a machine that no longer exists
+    # (FR-006e).
+    await container.liveness.placement_changed(unplaced)
     return Response(status_code=204)
 
 

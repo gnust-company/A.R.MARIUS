@@ -574,3 +574,23 @@ daemon của Multica làm (`server/cmd/multica/cmd_daemon.go`, `server/internal/
   `auto_update_interval`. Tài liệu người dùng: tự cập nhật là gì, tắt ở đâu.
   **Xong 2026-09-28.** Đo trên dịch vụ thật, hai đường: (1) theo binary trên đĩa — daemon `0.9.0` chạy nền, file trên đĩa được thay bằng `0.9.1` theo kiểu lệnh cài (ghi `.new` rồi đổi tên); đúng lượt kiểm đầu (2 phút) daemon khởi động lại vào `0.9.1` **giữ nguyên PID**, log ghi tiếp, runtime ready lại; (2) kéo bản mới — daemon `0.0.1` hỏi GitHub thật qua đường chuyển hướng, thấy `v0.1.0`, cài lúc rảnh: hai chương trình trên đĩa trùng từng byte với archive `v0.1.0` đã công bố (hash archive khớp `checksums.txt`), không sót `.new`, rồi khởi động lại vào nó — `v0.1.0` ra trước tính năng này nên không biết `-foreground` và dừng, đúng như một bản cũ phải thế. Bài kiểm: số hiệu phiên bản, tag qua chuyển hướng, cài khi khớp checksum, sai checksum / archive không có trong `checksums.txt` / thiếu chương trình gọi ngược thì không đổi gì, vòng kiểm (rảnh thì cài và khởi động lại, bận thì hoãn, cài hỏng thì mở lại cổng xin việc, bản dựng từ nguồn không bị kéo đè), cổng rảnh (không đóng khi đang giữ lượt hay đang xin việc dở), `Start` ghi lượt vào sổ trước khi trả về.
 
+
+## Phase 13: Dùng thử với một tài khoản mới tinh (2026-10-12)
+
+*Người chủ xoá sạch DB, cài daemon `v0.2.0` như một người dùng mới, đăng ký, nối máy — và agent mặc định vẫn
+offline dù máy đã chạy và runtime ready. Gốc: agent mặc định được tạo lúc đăng ký, khi chưa có máy, nên lịch
+kiểm lại đã giãn tới 16 phút; gắn nó vào chỗ làm không báo gì cho bộ kiểm.*
+
+- [x] T196 **Đổi chỗ làm thì kiểm ngay** per FR-006e. Ba lúc: tạo agent, đặt người chủ nhà khi máy đầu tiên
+  khai runtime, gỡ máy (agent ở đó mất chỗ làm). Bộ kiểm có một lối "chỗ làm vừa đổi": đưa agent về trạng
+  thái *đang kiểm* với lần kiểm đến hạn ngay và quãng giãn về đầu, rồi kiểm luôn — agent đang chạy một lượt
+  thì để yên. Lối này nuốt lỗi của chính nó (ghi log) để việc đổi chỗ làm không bao giờ hỏng vì nó. Bài kiểm
+  đi qua cửa thật: người chủ nhà đã giãn tới 16 phút thì nối máy xong là **online ngay**, không cần vòng kiểm
+  định kỳ; tạo agent trên một chỗ làm sẵn sàng thì câu trả lời của lệnh tạo đã nói online; gỡ máy thì agent ở
+  đó thôi online ngay.
+  **Xong 2026-10-12.** Bảy bài kiểm mới, ba bài đầu đỏ trước khi sửa. Thử ngược tám chỗ, chỗ nào cũng bị một
+  bài bắt. Đo trên dịch vụ thật bằng một tài khoản kiểm riêng, máy giả đi đúng luồng nối máy: người chủ nhà đã
+  giãn tới 16 phút thì nối máy xong là online sau 0,2 giây; tạo agent thì câu trả lời đã nói online; gỡ máy thì
+  agent ở đó chuyển sang *đang kiểm* ngay; kênh workspace có đủ tin `marius.online` để màn hình mở khoá chat.
+  Bảy bài cũ đỏ vì dựa vào một sự tình cờ — agent vừa tạo thì chưa ai kiểm nên *offline* — đã được sửa để nói
+  thẳng điều chúng cần, ví dụ một agent offline thì tự đặt nó offline.

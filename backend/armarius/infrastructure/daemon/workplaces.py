@@ -576,8 +576,12 @@ class DaemonWorkplaceService:
                 return machine
         return None  # pragma: no cover - unlinked between the write and the read
 
-    async def remove(self, workspace_id: UUID, machine_id: UUID) -> bool:
-        """Take a machine out of its workspace. `False` if it is not here (FR-001d).
+    async def remove(self, workspace_id: UUID, machine_id: UUID) -> list[UUID] | None:
+        """Take a machine out of its workspace (FR-001d).
+
+        Answers with the agents that lived here and are now unplaced, so the caller can have
+        them measured at once (FR-006e) — or `None` if the machine is not here at all. An
+        empty list is a machine nobody was put on, which is a successful removal.
 
         **This is a credential withdrawal first and a tidy-up second.** Every linked machine
         holds a live token, and until this door existed there was no way to take one back:
@@ -607,10 +611,23 @@ class DaemonWorkplaceService:
                 )
             ).scalar_one_or_none()
             if row is None:
-                return False
+                return None
+            # Read before the bindings go: afterwards nothing records who lived here.
+            unplaced = list(
+                (
+                    await session.execute(
+                        select(AgentWorkplaceBindingModel.marius_id)
+                        .join(
+                            WorkplaceModel,
+                            WorkplaceModel.id == AgentWorkplaceBindingModel.workplace_id,
+                        )
+                        .where(WorkplaceModel.machine_id == machine_id)
+                    )
+                ).scalars()
+            )
             await forget_machine(session, machine_id)
             await session.commit()
-        return True
+        return unplaced
 
     async def _workplaces_of(
         self, session: AsyncSession, machine: MachineIdentity

@@ -91,7 +91,9 @@ async def test_agents_that_lived_there_survive_as_unplaced() -> None:
         rows = {a["id"]: a for a in listed.json()}
         assert agent["id"] in rows, "agent bị xoá theo máy — không được"
         mine = rows[agent["id"]]
-        assert mine["liveness"] == "offline", mine
+        # Mất chỗ làm là đổi chỗ làm, nên lần kiểm đã bắt đầu ngay (FR-006e). Nó đang kiểm,
+        # chưa offline: ba lần trượt mới tuyên offline, luật ấy đứng nguyên (FR-006b).
+        assert mine["liveness"] == "checking", mine
         assert mine["offline_reason"] == "not_placed", mine
 
 

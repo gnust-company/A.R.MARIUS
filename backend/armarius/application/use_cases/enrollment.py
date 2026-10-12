@@ -20,6 +20,7 @@ compressed session cannot lose it.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from armarius.application.use_cases.types import UowFactory
@@ -27,6 +28,9 @@ from armarius.domain.entities.marius import Marius, NameTaken
 from armarius.domain.entities.placement import PLACEMENT_CARRIES_NOTHING
 from armarius.shared.clock import utcnow
 from armarius.shared.errors import BadRequest, NotFound
+
+if TYPE_CHECKING:
+    from armarius.application.use_cases.liveness import LivenessEngine
 
 
 class PlacementNotReady(BadRequest):
@@ -40,8 +44,15 @@ class PlacementNotReady(BadRequest):
 class AgentService:
     """The one create path. There is no second one, by design (FR-007f)."""
 
-    def __init__(self, uow_factory: UowFactory) -> None:
+    def __init__(
+        self, uow_factory: UowFactory, liveness: LivenessEngine | None = None
+    ) -> None:
         self._uow = uow_factory
+        # Optional only so a test about naming or placement rules need not build a clock.
+        # The running service always passes it: an agent made on a ready place is measured
+        # before the answer goes back, so the screen does not say offline for its first
+        # half-minute (FR-006e).
+        self._liveness = liveness
 
     async def create_unplaced(
         self,
@@ -192,4 +203,10 @@ class AgentService:
             created = await uow.mariuses.add(marius)
             await uow.placements.attach(created.id, workspace_id, placement.id)
             await uow.commit()
+        if self._liveness is None:
             return created
+        # Its place was just given to it, which is a change of place like any other (FR-006e).
+        # Read back afterwards so the answer to *create* carries what the look found.
+        await self._liveness.placement_changed([created.id])
+        async with self._uow() as uow:
+            return await uow.mariuses.get(created.id) or created

@@ -24,6 +24,7 @@ What #63 decided and still stands: nothing here mints a credential, and the host
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from armarius.application.use_cases.enrollment import AgentService
@@ -31,6 +32,9 @@ from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.marius import Marius
 from armarius.shared.clock import utcnow
 from armarius.shared.errors import Conflict, NotFound
+
+if TYPE_CHECKING:
+    from armarius.application.use_cases.liveness import LivenessEngine
 
 WORKSPACE_AGENT_ROLE = "Workspace Agent"
 
@@ -53,11 +57,19 @@ HOST_INSTRUCTIONS = (
 
 
 class WorkspaceAgentService:
-    def __init__(self, uow_factory: UowFactory, agents: AgentService | None = None) -> None:
+    def __init__(
+        self,
+        uow_factory: UowFactory,
+        agents: AgentService | None = None,
+        liveness: LivenessEngine | None = None,
+    ) -> None:
         self._uow = uow_factory
         # The one thing in the product that builds an agent. Handed in rather than reached for
         # so this service stays about the seat, and so a test can watch what was asked of it.
         self._agents = agents or AgentService(uow_factory)
+        # Who measures the host once it has somewhere to work (FR-006e). Optional only so a
+        # test about the seat rules need not build a clock; the running service passes it.
+        self._liveness = liveness
 
     async def ensure_workspace_agent(self, workspace_id: UUID) -> Marius | None:
         """The workspace's designated host agent, or ``None`` if none was set up.
@@ -234,7 +246,14 @@ class WorkspaceAgentService:
             host.updated_at = utcnow()
             await uow.mariuses.update(host)
             await uow.commit()
+        if self._liveness is None:
             return host
+        # The host was made at sign-up, before anywhere existed to run it, so by now its looks
+        # have been missing for as long as the person took to install a daemon — and its next
+        # one can be up to half an hour away. Measure it now (FR-006e).
+        await self._liveness.placement_changed([host.id])
+        async with self._uow() as uow:
+            return await uow.mariuses.get(host.id) or host
 
     async def designate(self, workspace_id: UUID, marius_id: UUID) -> Marius:
         """Hand the host seat to this Marius. Any sitting host is demoted to a plain

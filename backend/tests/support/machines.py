@@ -56,7 +56,34 @@ async def link_machine(
     person = auth(registered.json()["tokens"]["access_token"])
     workspaces = await c.get("/v1/workspaces", headers=person)
     workspace_id = workspaces.json()[0]["id"]
+    return await link_machine_to(
+        c,
+        person,
+        workspace_id,
+        hostname=hostname,
+        cli_kind=cli_kind,
+        protocol_family=protocol_family,
+    )
 
+
+async def link_machine_to(
+    c: AsyncClient,
+    person: dict[str, str],
+    workspace_id: str,
+    *,
+    hostname: str = "thinkpad",
+    cli_kind: str = "claude_code",
+    protocol_family: str = "one_shot",
+    symlink_capable: bool = True,
+) -> LinkedMachine:
+    """Link a machine to a workspace somebody already has, and report one workplace.
+
+    For a test that has to do something between registering and linking — which is what a
+    real person does: they sign up, look around, and only later install the daemon.
+
+    `symlink_capable=False` reports a machine that cannot link a CLI's home, so the workplace
+    exists from the first report but cannot take work.
+    """
     started = await c.post(
         "/daemon/link/start",
         json={"platform": "linux", "daemon_version": "0.1.0", "hostname": hostname},
@@ -81,7 +108,7 @@ async def link_machine(
                     "capabilities": {"resumable": True},
                 }
             ],
-            "symlink_capable": True,
+            "symlink_capable": symlink_capable,
         },
         headers=auth(token),
     )
