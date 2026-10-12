@@ -205,6 +205,10 @@ gửi cho nó có trả lời.
   thì danh sách tự cập nhật, không cần tải lại trang.
 - **Runtime đã chọn tắt đi trước khi bấm xong.** Hệ thống từ chối và nói vì sao. Livia không bị đặt
   vào đâu cả, và danh sách hiện đúng trạng thái mới.
+- **Máy của người chủ nhà bị gỡ khỏi không gian làm việc.** Người chủ nhà mất chỗ làm, ngoại tuyến với
+  lý do *chưa được chọn runtime*, và trang của nó lại có đường chọn (FR-128). Đây không phải đổi chỗ
+  làm, vì chỗ làm cũ đã không còn. Agent **thường** mất chỗ làm theo cách này thì **không** có đường ấy:
+  FR-007 vẫn đứng, và việc cho đổi chỗ làm của agent thường là một quyết định riêng, chưa chốt.
 - **Hai cửa sổ cùng bấm xong bước *agent đầu tiên*, mỗi cửa sổ chọn một runtime.** Lần bấm tới trước
   được nhận. Cửa sổ kia được báo là Livia đã chạy trên runtime nào. Không bao giờ có hai người chủ
   nhà, và Livia không bao giờ bị chuyển chỗ.
@@ -349,11 +353,13 @@ gửi cho nó có trả lời.
   được nhận. Lần sau KHÔNG ĐƯỢC sinh người chủ nhà thứ hai và KHÔNG ĐƯỢC chuyển chỗ người chủ nhà. Cửa
   sổ tới sau được báo là người chủ nhà đã chạy trên runtime nào, rồi đi tiếp như đã xong.
 
-- **FR-128**: Người chủ nhà **chưa được đặt chỗ** PHẢI hiện
-  ngoại tuyến với lý do là *chưa được chọn runtime* (FR-111). Trang của nó PHẢI có đường chọn runtime cho nó, **một lần**, với đúng danh sách
-  và đúng luật chọn của FR-125. Đường này biến mất khi người chủ nhà đã được đặt chỗ. Đây không phải
-  đổi chỗ làm: người chủ nhà là agent duy nhất được sinh ra mà chưa có chỗ làm (FR-114), và đây là lần
-  đầu nó có chỗ làm.
+- **FR-128**: Người chủ nhà **chưa được đặt chỗ** PHẢI hiện ngoại tuyến với lý do là *chưa được chọn
+  runtime* (FR-111). Trang của nó PHẢI có đường chọn runtime cho nó, với đúng danh sách và đúng luật
+  chọn của FR-125. Đường này biến mất khi người chủ nhà đã được đặt chỗ, và **chỉ có ở người chủ nhà**.
+
+  Đây không phải đổi chỗ làm: lúc ấy người chủ nhà không có chỗ làm nào. Hoặc nó chưa từng có, vì nó là
+  agent duy nhất được sinh ra mà chưa có chỗ làm (FR-114). Hoặc máy của nó vừa bị gỡ khỏi không gian
+  làm việc, và chỗ làm cũ đã không còn.
 
 ## Success Criteria *(mandatory)*
 
