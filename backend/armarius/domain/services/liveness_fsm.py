@@ -98,6 +98,28 @@ def on_signal(now: datetime) -> LivenessState:
     )
 
 
+def on_placement_changed(state: LivenessState, now: datetime) -> LivenessState:
+    """Where this agent can work has just changed: look now, not when its wait runs out.
+
+    Not a signal — nothing here says the agent is alive, and the look that follows is what
+    decides (FR-006e). Two things change: the next probe is due at once, and the backoff
+    earned at the old place is forgotten, so a miss at the new one waits R again rather than
+    inheriting a wait measured against somewhere it no longer is.
+
+    A turn in flight is left alone. WORKING is its own evidence, and the end of the turn is
+    measured anyway; pulling it into CHECKING would erase the hang watchdog's start time.
+    """
+    if state.liveness == Liveness.WORKING:
+        return state
+    return replace(
+        state,
+        liveness=Liveness.CHECKING,
+        probe_attempts=0,
+        backoff_step=0,
+        next_probe_at=now,
+    )
+
+
 def begin_turn(state: LivenessState, now: datetime) -> LivenessState:
     """The wake engine starts a turn ⇒ WORKING (a turn counts as liveness)."""
     return replace(state, liveness=Liveness.WORKING, turn_started_at=now)

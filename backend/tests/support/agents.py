@@ -122,6 +122,39 @@ async def invite_agent(
     return moved.json()
 
 
+async def gone_offline(marius_id: str | UUID) -> None:
+    """Put an agent where the clock would have left it after three missed looks.
+
+    An agent made on a ready workplace is measured as it is made (FR-006e), so it answers
+    *online* from its first second. A test about what offline does — a disabled chat, a
+    refused message — has to say that the agent is gone, rather than lean on the old
+    accident that nobody had looked at it yet. The next look is pushed an hour out so
+    nothing in the test brings it back by itself.
+    """
+    from datetime import timedelta
+
+    from sqlalchemy import update
+
+    from armarius.infrastructure.database.engine import get_sessionmaker
+    from armarius.infrastructure.database.models import MariusModel
+    from armarius.shared.clock import utcnow
+
+    now = utcnow()
+    async with get_sessionmaker()() as session:
+        await session.execute(
+            update(MariusModel)
+            .where(MariusModel.id == UUID(str(marius_id)))
+            .values(
+                liveness="offline",
+                probe_attempts=3,
+                backoff_step=1,
+                offline_since=now,
+                next_probe_at=now + timedelta(hours=1),
+            )
+        )
+        await session.commit()
+
+
 async def invite_and_online(
     c: AsyncClient,
     ws_id: str,

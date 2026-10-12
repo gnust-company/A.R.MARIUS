@@ -126,8 +126,9 @@ async def test_the_directory_says_nothing_about_an_invite_lifecycle():
     row = next(m for m in directory if m["id"] == mid)
     assert "invite_status" not in row
     assert "approved_at" not in row
-    # Cái nó *có* nói là thứ vẫn đổi thật: agent ấy đang sống hay không.
-    assert row["liveness"] == "offline"
+    # Cái nó *có* nói là thứ vẫn đổi thật: agent ấy đang sống hay không. Vừa thêm trên một
+    # chỗ làm sẵn sàng thì đã được kiểm ngay lúc thêm, nên nó nói *online* (FR-006e).
+    assert row["liveness"] == "online"
 
 
 async def test_edit_agent_updates_skills():

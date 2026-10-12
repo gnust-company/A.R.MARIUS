@@ -34,6 +34,7 @@ from armarius.domain.services.liveness_fsm import (
     LivenessState,
     apply_state,
     begin_turn,
+    on_placement_changed,
     on_probe_result,
     on_signal,
     plan_tick,
@@ -119,6 +120,38 @@ class LivenessEngine:
             await uow.mariuses.update(marius)
             await uow.commit()
             return marius
+
+    # ── a change of place (FR-006e) ─────────────────────────────────────────────
+    async def placement_changed(
+        self, marius_ids: Sequence[UUID], now: datetime | None = None
+    ) -> None:
+        """Measure these agents now: where they can work has just changed (FR-006e).
+
+        The backoff between looks is right only while nothing changes. An agent made before
+        anywhere existed to run it — the workspace host, made at sign-up — has been missing
+        its probes all along and can be a quarter of an hour from its next one by the time a
+        machine arrives; without this, it sat offline on a machine that was ready for it.
+
+        Called **after** the change is committed, so the look reads the new place. A failure
+        here is logged and swallowed, never raised: the change itself has already happened
+        and is what the caller asked for, and the watchdog will measure the agent on its own
+        rhythm anyway. Turning a successful attach into an error because the follow-up look
+        stumbled would be the worse of the two outcomes.
+        """
+        now = now or self._clock()
+        for marius_id in dict.fromkeys(marius_ids):
+            try:
+                async with self._uow() as uow:
+                    marius = await uow.mariuses.get(marius_id)
+                    if marius is None:
+                        continue
+                    apply_state(marius, on_placement_changed(snapshot_of(marius), now))
+                    marius.updated_at = now
+                    await uow.mariuses.update(marius)
+                    await uow.commit()
+                await self.advance(marius_id, now)
+            except Exception:
+                logger.exception("measuring marius %s after a change of place failed", marius_id)
 
     # ── the clock tick ──────────────────────────────────────────────────────────
     async def tick(

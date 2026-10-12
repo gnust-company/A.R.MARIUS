@@ -178,7 +178,7 @@ def build_container() -> Container:
     # Built before the workspace service, which needs it: every new workspace is given a host
     # as it is made (FR-110). One instance rather than two — nothing here holds state, so two
     # could not disagree, but one is one fewer thing to wonder about.
-    workspace_agent = WorkspaceAgentService(uow_factory)
+    workspace_agent = WorkspaceAgentService(uow_factory, liveness=liveness_for_chat)
     workspaces = WorkspaceService(uow_factory, skills, workspace_agent)
 
     # The reminder ladder reads each project's own tiers (FR-065), but the full project
@@ -436,7 +436,7 @@ def build_container() -> Container:
             task_logs=TaskLogService(uow_factory),
         ),
         onboarding=onboarding,
-        agents=AgentService(uow_factory),
+        agents=AgentService(uow_factory, liveness=liveness),
         leader_chat=leader_chat,
         agent_chat=agent_chat,
         liveness=liveness,

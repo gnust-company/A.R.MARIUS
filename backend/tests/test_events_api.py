@@ -136,9 +136,11 @@ async def test_workspace_stream_frames_a_control_event() -> None:
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/event-stream")
     events = _parse_events(resp.text)
-    assert len(events) == 1
-    ev = events[0]
-    assert ev["event"] == "marius.status_changed"
+    # Creating an agent on a ready place also measures it, which puts a `marius.online` on the
+    # same channel just before (FR-006e). This test is about how one control event is framed.
+    created = [e for e in events if e["event"] == "marius.status_changed"]
+    assert len(created) == 1, events
+    ev = created[0]
     assert int(ev["id"]) > 0
     # No `send_status`: creating an agent sends nothing anywhere, so the control-plane
     # event has nothing to report about a send (FR-007g).
@@ -152,17 +154,19 @@ async def test_workspace_stream_resumes_from_last_event_id() -> None:
         await _invite(c, ws_id, h, "One")
 
         r1 = await c.get(f"/v1/workspaces/{ws_id}/events?live=0", headers=h)
-        first_id = _parse_events(r1.text)[0]["id"]
+        # Caught up on everything so far — the first agent's arrival is more than one event
+        # now that it is measured as it is made (FR-006e).
+        first_id = _parse_events(r1.text)[-1]["id"]
 
         mid2 = await _invite(c, ws_id, h, "Two")  # a later event the client missed
 
         resume_h = {**h, "Last-Event-ID": first_id}
         r2 = await c.get(f"/v1/workspaces/{ws_id}/events?live=0", headers=resume_h)
     resumed = _parse_events(r2.text)
-    # Resume skips everything ≤ first_id and delivers only the missed second event.
-    assert len(resumed) == 1
-    assert int(resumed[0]["id"]) > int(first_id)
-    assert json.loads(resumed[0]["data"])["marius_id"] == mid2
+    # Resume skips everything ≤ first_id and delivers only what the second agent caused.
+    assert resumed, "nothing was delivered after the last id the client had seen"
+    assert all(int(e["id"]) > int(first_id) for e in resumed), resumed
+    assert {json.loads(e["data"])["marius_id"] for e in resumed} == {mid2}, resumed
 
 
 async def test_workspace_stream_cross_workspace_is_404() -> None:

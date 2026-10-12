@@ -15,7 +15,7 @@ from httpx import ASGITransport, AsyncClient
 from armarius.application.use_cases.workspace_agent import HOST_NAME
 from armarius.infrastructure.database.engine import init_db
 from armarius.main import app
-from tests.support.machines import auth, link_machine
+from tests.support.machines import auth, link_machine, link_machine_to
 
 
 @pytest.fixture(autouse=True)
@@ -193,17 +193,16 @@ async def test_linking_the_first_machine_puts_the_host_to_work() -> None:
 async def test_a_machine_reporting_nothing_it_can_run_leaves_the_host_where_it_was() -> None:
     """Máy khai một runtime **không nhận việc được** thì không phải một chỗ để đặt ai vào."""
     async with _client() as c:
-        machine = await link_machine(c, "nothing-ready@armarius.dev")
-        # Máy nói nó đang tắt: mọi runtime của nó đóng lại.
-        stopping = await c.put(
-            "/daemon/workplaces",
-            headers=auth(machine.token),
-            json={"workplaces": [], "symlink_capable": True, "stopping": True},
-        )
-        assert stopping.status_code == 200, stopping.text
+        headers, ws = await _register(c, "nothing-ready@armarius.dev")
+        # Ngay từ lần khai đầu tiên, runtime của máy có mặt mà không nhận việc được: máy không
+        # tạo được liên kết cho nhà của CLI.
+        #
+        # Từng viết là nối máy *bình thường* rồi mới khai đang tắt — nhưng lần nối ấy đã đặt
+        # người chủ nhà vào chỗ làm, nên bài này không còn hỏi đúng câu của nó. Nó chỉ lộ ra
+        # khi người chủ nhà được kiểm ngay lúc được đặt chỗ (FR-006e).
+        await link_machine_to(c, headers, ws, symlink_capable=False)
 
-        directory = (
-            await c.get(f"/v1/workspaces/{machine.workspace_id}/mariuses", headers=machine.headers)
-        ).json()
+        directory = (await c.get(f"/v1/workspaces/{ws}/mariuses", headers=headers)).json()
         host = next(m for m in directory if m["role"] == "Workspace Agent")
+        assert host["offline_reason"] == "not_placed", host
         assert host["liveness"] == "offline", host

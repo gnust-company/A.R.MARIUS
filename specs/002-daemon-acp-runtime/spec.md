@@ -485,6 +485,22 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   phải nhánh rẽ trong tầng nghiệp vụ.
 - **FR-006d**: Armarius PHẢI tự sở hữu kết luận sống/chết. Hệ thống KHÔNG ĐƯỢC uỷ quyền kết luận ấy cho
   nhịp tim của một runtime bên ngoài (Hiến pháp — Định vị sản phẩm).
+- **FR-006e**: Khi **chỗ làm của một agent đổi**, hệ thống PHẢI **kiểm ngay** agent ấy sống hay chết, không
+  đợi hết quãng chờ giãn dần của lần kiểm trước (chốt 2026-10-12, người chủ: *"không chat được với nó ngay
+  để test"*). Chỗ làm đổi là một trong ba lúc:
+  - agent vừa được tạo, gắn vào chỗ làm người dùng chọn (FR-007f);
+  - người chủ nhà vừa được đặt vào chỗ làm, khi máy đầu tiên khai runtime (FR-112 của spec 003);
+  - agent vừa mất chỗ làm, vì máy giữ nó bị gỡ (FR-001d).
+
+  Lý do: lịch giãn dần (1, 2, 4… tới 30 phút) chỉ đúng khi **không có gì đổi**. Người chủ nhà được tạo lúc
+  đăng ký, khi chưa có máy nào, nên đã kịp giãn tới mười mấy phút trước khi máy đầu tiên nối vào. Không có
+  luật này, người dùng mới thấy agent của mình offline dù máy đã chạy, và không chat được với nó.
+
+  Việc đổi chỗ làm **không phải** tín hiệu sống. Nó chỉ kéo lần kiểm lên ngay và xoá quãng giãn đã tích
+  ở chỗ cũ; sống hay chết vẫn do lần kiểm kết luận, theo FR-006a. Agent đang chạy một lượt thì để yên: lượt
+  đang chạy đã là bằng chứng sống, và lúc lượt kết thúc sẽ được đo. Lần kiểm ngay ấy hỏng thì việc đổi chỗ
+  làm **vẫn thành công**: vòng kiểm định kỳ sẽ đo lại. Ngoài phạm vi (người chủ chốt tạm thời chỉ một luật
+  này): máy beat lại sau khi mất liên lạc, và runtime báo ready lại.
 - **FR-007**: Một agent PHẢI được **buộc vào đúng một chỗ làm** lúc tạo, và mối buộc ấy **KHÔNG đổi được**
   về sau. Chỗ làm chết thì agent offline; hệ thống KHÔNG tự chuyển agent sang máy khác — đổi người là quyết
   định của Trưởng dự án ở Mức 2 (chốt 2026-08-21).

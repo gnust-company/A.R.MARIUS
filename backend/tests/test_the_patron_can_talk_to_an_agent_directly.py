@@ -32,7 +32,7 @@ from armarius.domain.entities.leader_chat import ChatState
 from armarius.infrastructure.database.engine import get_sessionmaker
 from armarius.infrastructure.database.models import AgentConversationModel, RunModel
 from armarius.main import app
-from tests.support.agents import invite_agent
+from tests.support.agents import gone_offline, invite_agent
 from tests.support.machines import LinkedMachine, auth, link_machine
 
 pytestmark = pytest.mark.anyio
@@ -73,6 +73,8 @@ async def _an_agent(c: AsyncClient, *, online: bool = True, hostname: str = "thi
     )
     if online:
         await app.state.container.liveness.record_signal(UUID(agent["id"]))
+    else:
+        await gone_offline(agent["id"])
     return Talking(machine, agent["id"])
 
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 from httpx import ASGITransport, AsyncClient
 
 from armarius.main import app
-from tests.support.agents import invite_agent, ready_workplace
+from tests.support.agents import gone_offline, invite_agent, ready_workplace
 
 
 async def _client() -> AsyncClient:
@@ -28,7 +28,9 @@ async def _register(c: AsyncClient, email: str) -> tuple[str, str]:
     return token, ws.json()[0]["id"]
 
 
-async def _project_with_seated_leader(c: AsyncClient, ws_id: str, h: dict) -> str:
+async def _project_with_seated_leader(
+    c: AsyncClient, ws_id: str, h: dict, *, online: bool = True
+) -> str:
     proj = await c.post(
         f"/v1/workspaces/{ws_id}/projects",
         headers=h,
@@ -42,6 +44,8 @@ async def _project_with_seated_leader(c: AsyncClient, ws_id: str, h: dict) -> st
         c, ws_id, h, name="Lead", workplace_id=await ready_workplace(ws_id)
     )
     await c.post(f"/v1/projects/{pid}/leader", headers=h, json={"marius_id": leader["id"]})
+    if not online:
+        await gone_offline(leader["id"])
     return pid
 
 
@@ -49,7 +53,7 @@ async def test_leader_chat_get_send_offline_and_proposed_list() -> None:
     async with await _client() as c:
         token, ws_id = await _register(c, "lc1@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
-        pid = await _project_with_seated_leader(c, ws_id, h)
+        pid = await _project_with_seated_leader(c, ws_id, h, online=False)
 
         # GET lazily opens the conversation; the Leader is offline → box disabled.
         got = await c.get(f"/v1/projects/{pid}/leader-chat", headers=h)
