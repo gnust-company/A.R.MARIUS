@@ -44,6 +44,111 @@ Hai đợt, và thứ tự không đổi được: giao diện ba bước không
 
 ---
 
+# Lần sửa 2026-10-12 — onboarding dạy từ thêm máy tới agent đầu tiên
+
+**Đặc tả**: FR-100, FR-104, FR-106, FR-112, FR-115 (sửa) · Nhóm C FR-120 đến FR-128 · SC-103 đến SC-108.
+**Thiết kế**: [plan.md](./plan.md), [research.md](./research.md) R1–R10,
+[contracts/](./contracts/), [quickstart.md](./quickstart.md) K1–K8. Hiến pháp **2.1.0**.
+
+Hai PR code, theo tầng: **PR backend** (T015, T016, T018, T019, T021, T022), rồi **PR giao diện và tài
+liệu** (T017, T020, T023–T027). Mỗi PR đều kiểm trên dịch vụ thật trước khi báo xong. Bài kiểm nằm
+**trong** từng task, như các đợt trước.
+
+## Phase 4 — Nền: thứ cả US2 và US3 cùng cần
+
+- [ ] T015 [P] `onboarding_step` nhận 0–4 (research R6). Sửa `le=3` thành `le=4` ở `backend/armarius/presentation/api/auth.py` (lớp body của `PATCH /auth/me`), và sửa chú thích "three first steps" ở `backend/armarius/infrastructure/database/models.py` cùng `backend/armarius/domain/entities/user.py` cho khớp bốn bước. Cột không đổi, không migration. *Đo*: thêm bài vào `backend/tests/test_the_first_steps_of_a_new_account.py`: bước 4 được nhận; 5 trả 422; `onboarding_done: false` sau khi đã xong vẫn không làm gì.
+- [ ] T016 Sự kiện `machine.workplaces_reported` (contracts/push-events.md, research R4). Thêm `EVENT_WORKPLACES_REPORTED` và `announce_workplaces_reported(trace, workspace_id)` cạnh `announce_machine_linked` ở `backend/armarius/infrastructure/events/workspace_trace.py`. Payload chỉ có `{"workspace_id"}`. Gọi nó trong `sync_workplaces` ở `backend/armarius/presentation/api/daemon.py`, ngay sau khi `container.daemon_workplaces.sync(...)` trả về, **kể cả** khi `stopping`. Container phải đưa được trace publisher tới chỗ ấy: xem cách `infrastructure/daemon/enrollment.py` đang giữ `_workspace_trace`. Tên sự kiện KHÔNG được xuất hiện dưới `domain/` hay `application/` (guard ở `backend/tests/test_constitution_guards.py`). *Đo*: bài mới `backend/tests/test_a_machine_reporting_its_runtimes_is_announced.py`, nghe kênh `ws:{id}` trên bus thật: một lần đồng bộ có runtime phát đúng một sự kiện; lần báo `stopping` cũng phát; máy ở workspace khác thì kênh này im.
+- [ ] T017 [P] Hai component dùng chung và hàm gọi API (research R2, R8; FR-122, FR-123a, FR-125).
+  - `frontend/src/components/agent/RuntimePicker.tsx`: nhận danh sách runtime sẵn sàng (`listWorkplaces`) và danh sách máy (`listMachines`, để hiện runtime chưa sẵn sàng cùng lý do qua `machines.notReady.*`). Mỗi dòng hiện loại CLI và tên máy. Runtime chưa sẵn sàng thì không bấm được. Luật chọn sẵn của FR-125 không nằm trong component mà là một hàm thuần `initialRuntimeChoice(ready)` ở `frontend/src/lib/runtimeChoice.ts`: đúng một runtime sẵn sàng thì trả id của nó; không có hoặc từ hai trở lên thì trả `null` (chưa chọn).
+  - `frontend/src/components/agent/SystemPromptBlock.tsx`: tách khối system prompt chỉ đọc ra khỏi `frontend/src/components/agent/InstructionsTab.tsx` rồi cho tab ấy dùng lại. Thêm dòng giải thích i18n (`agentDetail.systemPrompt.note`: chữ do Armarius viết, gửi nguyên văn cho agent, không sửa được).
+  - `placeHost(workspaceId, mariusId, body)` ở `frontend/src/lib/api.ts`, đúng contracts/user-surface.md §1. Lỗi 409 `agent_already_placed` mang `cli_kind` và `machine_name` lên cho người gọi.
+  - Chuỗi vi/en ở `frontend/src/i18n/vi.ts`, `frontend/src/i18n/en.ts`, đủ dấu.
+  - *Đo*: `frontend/src/lib/runtimeChoice.test.ts` (vitest chạy `src/**/*.test.ts` trong môi trường node, nên không có bài kiểm component): không runtime nào thì `null`; một thì id của nó; hai thì `null`. Phần hiện ra trên màn hình đo ở T027.
+
+## Phase 5 — US2: Livia chạy đúng runtime người dùng chọn (P1)
+
+**Mục tiêu**: người chủ nhà không bao giờ tự bị đặt chỗ. Người dùng chọn runtime cho nó qua một cửa chỉ dành cho người chủ nhà (FR-112, FR-127, FR-128).
+**Phép kiểm độc lập**: quickstart K3, K4, K5, K7.
+
+- [ ] T018 [US2] Cửa đặt chỗ cho người chủ nhà (contracts/user-surface.md §1, research R2).
+  - Viết lại `WorkspaceAgentService.place_host` ở `backend/armarius/application/use_cases/workspace_agent.py` thành `place_host(workspace_id, marius_id, placement_id, *, instructions=None)`:
+    - agent không giữ ghế chủ nhà → `Conflict("placement_is_fixed")`;
+    - đã có chỗ làm → `Conflict("agent_already_placed")`;
+    - chỗ làm không thuộc workspace → `NotFound("workplace_not_found")`;
+    - chỗ làm không `ready` hoặc không có `carried_by` → `Conflict("workplace_not_ready")`.
+  - Một lần commit gồm: `uow.placements.attach`, `adapter_type = place.carried_by`, `instructions` nếu có. Thua đua khi `attach` (`Conflict`) thì trả đúng `agent_already_placed`. Sau đó gọi `self._liveness.placement_changed([id])` (FR-006e). Tầng này chỉ thấy id chỗ làm (Điều III).
+  - Route `POST /workspaces/{workspace_id}/mariuses/{marius_id}/placement` ở `backend/armarius/presentation/api/workspaces.py`, qua `_require_owned_workspace`. Body `PlaceHostIn` (`workplace_id`, `instructions: str | None`, tối đa 20000 ký tự) ở `backend/armarius/presentation/schemas.py`. Trả `MariusOut`. Lỗi 409 `agent_already_placed` được presentation điền `cli_kind` và `machine_name` của chỗ đang ở.
+  - *Đo*: bài mới `backend/tests/test_the_owner_chooses_where_the_host_works.py`, mỗi hàng lỗi trong contract một bài, cộng các bài sau:
+    - đặt xong thì `runtime` có giá trị, `instructions` đã lưu, và trạng thái sang *đang kiểm* ngay;
+    - lỗi thì không thứ gì đổi, kể cả `instructions`;
+    - hai yêu cầu đồng thời thì một 200, một 409;
+    - người chủ nhà mất chỗ làm vì máy bị gỡ thì đặt lại được;
+    - agent thường mất chỗ làm vì máy bị gỡ thì nhận 409 `placement_is_fixed` (K7);
+    - workspace của người khác thì 404.
+- [ ] T019 [US2] Bỏ tự đặt chỗ (FR-112, research R3). Xoá lời gọi `container.workspace_agent.place_host(...)` trong `sync_workplaces` ở `backend/armarius/presentation/api/daemon.py`, cùng khối chú thích FR-112 đi kèm. Sửa các bài đang khẳng định tự đặt chỗ, cho chúng khẳng định điều ngược lại: máy báo runtime thì người chủ nhà **vẫn** chưa có chỗ làm, và vẫn ngoại tuyến với lý do `not_placed`. Các bài ấy ở `backend/tests/test_workspace_agent.py`, `backend/tests/test_the_first_steps_of_a_new_account.py`, `backend/tests/test_daemon_workplaces.py`, `backend/tests/test_a_new_place_is_measured_at_once.py`. Bài nào dựng một người chủ nhà *đã có chỗ làm* để thử việc khác thì chuyển sang gọi cửa của T018. Chạy toàn bộ bộ kiểm backend để bắt những bài phụ thuộc ngầm.
+- [ ] T020 [US2] Trang người chủ nhà có đường chọn runtime (FR-128). Ở `frontend/src/pages/AgentDetail.tsx`: agent là người chủ nhà (`workspace.workspaceAgentId === agent.id`) và `runtime` rỗng thì hiện một khối có `RuntimePicker` (T017) cùng nút chọn, gọi `placeHost` **không** kèm `instructions`. Khối ấy nghe `machine.workplaces_reported` qua `subscribeWorkspaceEvents` để đọc lại danh sách (K3 bước 3); nghe, không hỏi vòng. Agent thường chưa có chỗ làm thì **không** có khối này. Đổi câu `agentDetail.offlineReason.not_placed` và các khoá cùng nghĩa ở `frontend/src/i18n/vi.ts`, `frontend/src/i18n/en.ts` thành *chưa được chọn runtime*. Thêm câu cho ba mã 409 mới ở `errors.*`.
+
+## Phase 6 — US3: onboarding dạy từ thêm máy tới agent đầu tiên (P1)
+
+**Mục tiêu**: bốn bước; bước nối máy tự biết từng phần đã xong; bước cuối dựng Livia với system prompt chỉ đọc, chỉ dẫn mặc định sửa được, runtime do người dùng chọn, không skill nào hiện ra (FR-100, FR-106, FR-120–FR-127, FR-123, FR-123a).
+**Phép kiểm độc lập**: quickstart K1, K2, K6, K8.
+**Phụ thuộc**: T018 (cửa đặt chỗ), T016 (sự kiện), T017 (component).
+
+- [ ] T021 [US3] Chỉ dẫn mặc định khi tạo người chủ nhà (FR-124, FR-115, research R1). Thêm hằng `HOST_DEFAULT_INSTRUCTIONS` ở `backend/armarius/application/use_cases/workspace_agent.py`, ngay dưới `HOST_INSTRUCTIONS`, với đúng chữ ở research R1 (người chủ duyệt trong PR docs). `provide_host` truyền `instructions=HOST_DEFAULT_INSTRUCTIONS` vào `create_unplaced`. System prompt giữ nguyên. Người chủ nhà đã có từ trước thì **không** đụng. *Đo*: workspace mới có Livia với `instructions` là chữ mặc định và `system_instructions` không đổi; một Livia dựng dở (nhánh *orphan* của `provide_host`) không bị ghi đè `instructions`.
+- [ ] T022 [US3] Ẩn skill dựng sẵn ở cửa API, kèm migration dữ liệu (FR-123, contracts/user-surface.md §3–§4, data-model.md, research R7).
+  - Ở `backend/armarius/presentation/api/workspaces.py`:
+    - `list_skills` bỏ dòng `source == "builtin"`;
+    - `get_skill`, sửa skill, xoá skill: với skill dựng sẵn thì trả 404;
+    - tạo agent, sửa agent, `install-skills`: lẳng lặng bỏ id dựng sẵn khỏi `skill_ids` trước khi ghi, và không bao giờ trả chúng trong `MariusOut.skill_ids` hay `skills`.
+  - Migration mới ở `backend/armarius/infrastructure/alembic/versions/` (down_revision là head hiện tại): bỏ khỏi `mariuses.skill_ids` mọi id thuộc skill `source = 'builtin'` cùng workspace, và bỏ tên tương ứng khỏi `mariuses.skills`. `downgrade` để trống có chủ ý.
+  - `wake_engine` và `builtins_for` **không đổi**.
+  - *Đo*:
+    - bài API: không còn dòng dựng sẵn trong danh sách; GET theo id trả 404; gửi id dựng sẵn khi tạo agent thì không lỗi và không lưu;
+    - bài migration chạy trên SQLite (`backend/tests/test_migrations.py`) và trên Postgres thật (`backend/tests/test_migrations_on_postgres.py`, khi có `ARMARIUS_TEST_POSTGRES_URL`);
+    - bài sẵn có `backend/tests/test_claim_carries_skills.py` vẫn xanh: lượt chạy vẫn nhận *Talking to Armarius*.
+- [ ] T023 [P] [US3] Ẩn skill dựng sẵn ở giao diện (FR-123, SC-108).
+  - `frontend/src/pages/Skills.tsx`: bỏ tab *Tích hợp sẵn* và state `activeTab` chỉ để chọn tab ấy.
+  - `frontend/src/pages/Directory.tsx`: bỏ nhánh chip *luôn bật* (`always = skill.type === 'builtin'`).
+  - `frontend/src/lib/mappers.ts`: bỏ kiểu `'builtin'`.
+  - `frontend/src/store/appStore.ts`: bỏ `'builtin'` khỏi union.
+  - Gỡ khoá i18n không còn ai dùng (`skills.type.builtin`, `skills.emptyBuiltin*`, `directory.skillAlwaysOn`). Giữ `errors.builtin_skill_undeletable`, vì backend vẫn có thể trả mã ấy.
+- [ ] T024 [P] [US3] Trang phê duyệt thôi kết thúc onboarding (FR-106, research R6). Ở `frontend/src/pages/LinkMachine.tsx`, bỏ `updateMe({ onboarding_step: 3, onboarding_done: true })`. Khi người duyệt còn đang onboarding, trang nói: chạy `armarius-daemon start`, và cửa sổ onboarding sẽ tự sang bước dựng agent. Trang **không** được nói là đã xong. Chuỗi vi/en.
+- [ ] T025 [US3] Onboarding bốn bước (FR-100, FR-104, FR-120–FR-127; research R5, R9). Ở `frontend/src/pages/Onboarding.tsx`:
+  - `STEPS = 4`. Bỏ qua ở bước 3 thì nhảy thẳng tới xong.
+  - **Bước 3** hiện ba phần *cài*, *nối*, *chạy* với lệnh chép được:
+    - *nối* xong khi `listMachines` có máy, hoặc tab đã nghe `machine.linked`;
+    - *chạy* xong khi có máy báo ít nhất một runtime;
+    - vào bước này thì đọc ngay; nghe `machine.linked` và `machine.workplaces_reported` thì đọc lại (không hỏi vòng);
+    - *chạy* xong thì tự `updateMe({ onboarding_step: 3 })` và sang bước 4 (FR-121);
+    - bỏ effect cũ đang kết thúc onboarding khi nghe `machine.linked`.
+  - **Bước 4** hiện tên Livia (không sửa), `SystemPromptBlock` (T017), ô chỉ dẫn lấy sẵn `instructions` hiện có của Livia kèm dòng i18n *viết thứ tiếng nào cũng được*, và `RuntimePicker` (T017). Nghe `machine.workplaces_reported` để đọc lại danh sách.
+  - **Bấm xong**:
+    1. `placeHost(ws, hostId, { workplace_id, instructions })`;
+    2. `updateMe({ onboarding_step: 4, onboarding_done: true })`;
+    3. chuyển tới `wsHref(ws, '/agents/' + hostId)`.
+
+    Lỗi 409 `agent_already_placed` thì báo *Livia đã chạy trên {cli_kind} ở {machine_name}* rồi làm tiếp 2 và 3. Lỗi 409 `workplace_not_ready` thì báo lỗi và đọc lại danh sách.
+  - **Bỏ qua ở bước 4** thì chỉ làm 2, rồi về `/projects` như hôm nay.
+  - Chuỗi vi/en đủ dấu.
+  - Người đang dở ở bước 0–2 lúc triển khai thì vào đúng bước của mình trong luồng mới (K8).
+
+## Phase 7 — Hoàn thiện
+
+- [ ] T026 [P] Tài liệu người dùng.
+  - `docs/quickstart.md` mục 2–4 viết lại theo bốn bước: dạy nối máy, rồi dựng Livia và chọn runtime cho nó; bỏ ý tạo agent đầu tiên bằng tay.
+  - `docs/skills.md` mục *"Talking to Armarius"*: skill này tự gắn cho mọi agent, không hiện ở đâu, không phải chọn. Bỏ câu *"hãy gắn nó cho mọi agent"*, vì câu ấy đã sai từ 2026-09-06.
+  - Thêm một đoạn ở trang tài liệu nói về agent: Livia chưa có chỗ làm thì chọn runtime ngay trên trang của nó.
+- [ ] T027 Kiểm trên dịch vụ thật theo quickstart K1–K8, rồi chạy đủ bộ kiểm.
+  - Dựng lại container frontend và backend, log ra file.
+  - Daemon thử chỉ thấy `claude` (thư mục cấu hình riêng, `PATH` hạn chế). Máy giả lập chỉ báo runtime qua HTTP; không chạy `gemini` hay `codex`.
+  - Playwright qua `python3` của hệ thống.
+  - Đo cả SC-107 (5 giây) và SC-108 (0 chỗ hiện skill dựng sẵn).
+  - Bộ kiểm: backend chạy nền khoảng 11 phút; `ruff check`; `npm run build`; `npx eslint`; `npx vitest run`.
+  - Dọn tài khoản `verify-*@acme.dev`. Không đụng daemon và tài khoản thật của người chủ.
+  - PR backend kiểm trước phần của nó, bằng cách gọi API thật: K4, K5, K7, và K6 phần API.
+
+---
+
 ## Dependencies
 
 ```
@@ -63,3 +168,29 @@ mọi tài khoản mới, tức là nửa có giá trị ngay.
 
 **Không gộp T003 vào T002.** Tạo được người chủ nhà mà không có đường đặt chỗ thì FR-111 đúng vĩnh
 viễn: một con ngoại tuyến, có lý do đọc được, và không bao giờ hết ngoại tuyến.
+
+### Lần sửa 2026-10-12
+
+```
+T015, T016, T017  ← nền, độc lập nhau (T017 viết theo contract, không chờ backend)
+   ↓
+T018 → T019       ← cùng tệp workspace_agent.py / daemon.py, làm tuần tự
+T021              ← sau T018 (cùng workspace_agent.py)
+T022              ← độc lập với T018–T021 về logic, nhưng chạm workspaces.py như T018: làm sau T018
+   ↓
+T020              ← cần T017, T018
+T023, T024        ← [P], khác tệp
+T025              ← cần T016, T017, T018, T021
+   ↓
+T026 [P], T027    ← cuối
+```
+
+**Song song được**: T015 ∥ T016 ∥ T017; T023 ∥ T024 ∥ T026.
+
+**MVP**: Phase 4 + Phase 5 (US2). Xong hai phase ấy là không còn Livia nào bị đặt vào runtime người dùng
+không chọn, và Livia nào chưa có chỗ làm cũng chọn được runtime ngay trên trang của nó. Đó là đúng lỗi
+người chủ vấp hôm 2026-10-12. Phase 6 (US3) là phần dạy trong onboarding, xây trên chính cửa ấy.
+
+**Không gộp T019 vào T018**: bỏ tự đặt chỗ mà chưa có cửa chọn thì mọi Livia mới sẽ ngoại tuyến vĩnh viễn.
+Hai task vẫn đi chung một PR nên không bao giờ lên `main` lệch nhau.
+

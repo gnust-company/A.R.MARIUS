@@ -163,21 +163,26 @@ dựng sẵn vẫn tới mọi lượt chạy theo đường riêng của nó. D
 
 ---
 
-## R8 — Hiện system prompt mà vẫn đúng Điều VI và VII
+## R8 — Hiện system prompt và chỉ dẫn mặc định theo Điều VI và VII
 
 **Quyết định**: bước *agent đầu tiên* và trang agent hiện system prompt **nguyên văn tiếng Anh**, đặt
 trong một khung có tiêu đề và một dòng giải thích đi qua i18n. Ví dụ bản tiếng Việt: *"Phần này do
-Armarius viết, gửi nguyên văn cho agent, không sửa được."*
+Armarius viết, gửi nguyên văn cho agent, không sửa được."* Chỉ dẫn mặc định cũng là tiếng Anh, làm giá
+trị khởi đầu của ô chỉ dẫn, kèm một dòng i18n nói rằng người dùng viết thứ tiếng nào cũng được.
 
-**Lý do**:
-- Điều VI nói về **chuỗi giao diện**: nhãn, câu báo, nút. System prompt không phải chuỗi giao diện. Nó là
-  **nội dung agent nhận**, cũng như chỉ dẫn người dùng tự viết thì hiện đúng thứ tiếng họ viết. Khung và
-  dòng giải thích quanh nó thì đi qua i18n đủ dấu.
-- Điều VII cấm lưu sẵn một câu để vừa gửi agent vừa hiện lên màn hình *bằng hai thứ tiếng*. Ở đây chỉ có
-  **một** bản, hiện đúng cái agent nhận. Dịch nó ra thì mới thành bản chép thứ hai, và bản ấy lệch dần,
-  đúng điều Điều VII muốn tránh.
-- Trang agent hôm nay (`InstructionsTab.tsx`) đã hiện system prompt đúng cách này. Bước onboarding dùng
-  lại đúng khối ấy.
+**Căn cứ**: Hiến pháp **2.1.0**, *Ngoại lệ: hiện nguyên văn cái agent nhận* của Điều VII. Người chủ chốt
+ngày 2026-10-12, sau khi `/speckit-analyze` chỉ ra rằng bản trước của mục này đã **diễn giải lại** hệ quả
+của Điều VII, trong khi Hiến pháp không cho diễn giải lại (mã C1, C2). Cách sửa là sửa Hiến pháp, không
+phải viết lại lý lẽ. Cả hai chữ đều đủ ba điều kiện của ngoại lệ:
+1. System prompt chỉ để đọc. Chỉ dẫn mặc định là giá trị khởi đầu của một ô người dùng sửa được.
+2. Tiêu đề, dòng giải thích và nút đi qua i18n.
+3. Không chữ nào là câu báo, lý do hay trạng thái.
+
+Trang agent hôm nay (`InstructionsTab.tsx`) đã hiện system prompt đúng cách này. Bước onboarding dùng lại
+đúng khối ấy, và thêm dòng giải thích nếu khối ấy chưa có.
+
+**Đã bỏ**: lưu system prompt thành mã rồi dịch cho màn hình. Đó là phương án (a) lúc chốt, và người chủ
+không chọn: nó dựng bản chép thứ hai của đúng thứ người dùng muốn xem.
 
 ---
 
