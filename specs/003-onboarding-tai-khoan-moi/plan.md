@@ -85,8 +85,8 @@ kiện (SC-107). Cả hai đều là tin đẩy nên không có chu kỳ hỏi n
 | **III. Trung lập adapter** | Use case chỉ nhận **id chỗ làm** và tự hỏi chỗ làm xem có nhận việc được không, như `place_host` hôm nay. Tên sự kiện có chữ `machine` nằm ở `infrastructure/events/`. `cli_kind` và `machine_name` trong lỗi 409 do presentation tra ra | ĐẠT |
 | **IV. Đẩy, không hỏi vòng** | Bước *nối máy*, bước *agent đầu tiên* và trang người chủ nhà chỉ đọc lại khi có `machine.linked` hoặc `machine.workplaces_reported` | ĐẠT |
 | **V. Chỉ dẫn thuộc về agent** | Chỉ dẫn mặc định là `instructions` của chính agent; system prompt ở `system_instructions`. Mỗi thứ một chỗ đọc, một chỗ sửa. Không đụng vai theo dự án | ĐẠT |
-| **VI. Tiếng Việt cho người dùng** | Mọi nhãn, câu báo, bước, lý do mới đi qua i18n, đủ dấu. System prompt hiện **nguyên văn** trong khung i18n (xem dòng VII) | ĐẠT (có ghi chú) |
-| **VII. Tiếng Anh cho agent** | Chỉ dẫn mặc định và system prompt đều bằng tiếng Anh, giữ ở backend. System prompt hiện đúng **một** bản là bản agent nhận, không dịch, nên không có bản chép thứ hai ([research R8](research.md)) | ĐẠT |
+| **VI. Tiếng Việt cho người dùng** | Mọi nhãn, câu báo, bước, lý do mới đi qua i18n, đủ dấu. System prompt và chỉ dẫn mặc định hiện nguyên văn theo ngoại lệ của Điều VII; Hiến pháp 2.1.0 nói rõ chúng không phải chuỗi giao diện | ĐẠT |
+| **VII. Tiếng Anh cho agent** (2.1.0) | Chỉ dẫn mặc định và system prompt đều bằng tiếng Anh, giữ ở backend. Hiện nguyên văn theo *Ngoại lệ: hiện nguyên văn cái agent nhận*, đủ ba điều kiện ([research R8](research.md)) | ĐẠT |
 
 **Kiểm lại sau Phase 1**: vẫn đạt cả bảy. Thiết kế có thêm một chốt: cửa đặt chỗ **chỉ cho người chủ nhà**
 (research R2). Nhờ vậy FR-007 không bị nới cho agent thường mất chỗ làm khi máy bị gỡ.
@@ -178,5 +178,6 @@ có nghĩa, theo quy ước PR của dự án.
 
 ## Complexity Tracking
 
-Không có vi phạm Hiến pháp cần biện minh. Ghi chú duy nhất là cách hiện system prompt, đã giải ở research R8:
-một bản nguyên văn đặt trong khung i18n, không phải chuỗi giao diện chưa dịch.
+Không có vi phạm Hiến pháp cần biện minh. Bản đầu của plan này đã **diễn giải lại** hệ quả của Điều VII để
+hiện system prompt nguyên văn, và `/speckit-analyze` bắt được (C1, C2). Người chủ chọn sửa Hiến pháp: bản
+2.1.0 thêm một ngoại lệ hẹp cho đúng trường hợp này. Plan nay tuân theo bản ấy, không còn diễn giải.
