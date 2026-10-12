@@ -88,6 +88,8 @@ khoá lại, còn chỉ dẫn mặc định thì người dùng sửa được.
 - Q: Phần mặc định có hiện ở trang agent không? → A: **Tách làm hai.** *Skill* mặc định — những skill
   để agent làm việc được với hệ thống — thì **ẩn hết**, ở mọi nơi: chúng là thứ hệ thống tự gắn, không
   phải thứ để người dùng xem hay chọn. *System prompt* thì **phải hiện**.
+- Q: Thư viện skill của không gian làm việc có ẩn luôn các skill mặc định không? → A: **Có.** Bỏ hẳn
+  mục "Tích hợp sẵn"; thư viện chỉ còn skill do người dùng tự thêm.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -310,7 +312,8 @@ gửi cho nó có trả lời.
   - bước *agent đầu tiên*;
   - màn tạo agent;
   - trang của agent;
-  - thư viện skill của không gian làm việc.
+  - thư viện skill của không gian làm việc: thư viện chỉ còn skill do người dùng tự thêm, và KHÔNG có
+    mục riêng nào cho skill dựng sẵn.
 
   Lý do: đây là thứ hệ thống tự gắn để agent dùng được, không phải thứ để người dùng xem hay chọn. Bày
   chúng ra cạnh skill do người dùng chọn chỉ làm người ta tưởng mình phải quyết định về chúng.
