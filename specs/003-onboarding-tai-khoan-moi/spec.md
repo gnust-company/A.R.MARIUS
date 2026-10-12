@@ -197,6 +197,9 @@ gửi cho nó có trả lời.
 - **Không gian làm việc thứ hai, thứ ba.** Cũng có người chủ nhà của riêng nó. Các bước onboarding thì
   không — chúng là của tài khoản, không phải của mỗi không gian làm việc. Người chủ nhà ở đó được đặt
   chỗ theo FR-112.
+- **Tải lại trang ngay sau khi duyệt máy.** Từ lúc duyệt tới lúc daemon nhận giấy tờ mất vài giây, và
+  trong khoảng ấy workspace chưa có dòng máy nào. Tải lại đúng lúc ấy thì phần *nối* có thể hiện là chưa
+  xong. Muộn nhất là khi daemon chạy lên và báo runtime thì nó tự xong.
 - **Duyệt máy rồi nhưng chưa chạy `start`.** Bước nối máy đứng ở phần *chạy*, chỉ ra đúng lệnh còn
   thiếu, và vẫn bỏ qua được. Không có đồng hồ nào tự cho qua.
 - **Máy chạy rồi nhưng không runtime nào sẵn sàng**, chẳng hạn chưa cài agent CLI nào hoặc CLI chưa
@@ -272,8 +275,8 @@ gửi cho nó có trả lời.
   FR-007 khoá luôn lựa chọn ấy lại.
 
   Trong onboarding, người dùng chọn ở bước *agent đầu tiên* (FR-125). Ngoài onboarding — người dùng đã
-  bỏ qua bước ấy, hoặc không gian làm việc thứ hai trở đi — người dùng chọn **một lần** trên trang của
-  agent (FR-128). Hệ thống KHÔNG ĐƯỢC tự đặt người chủ nhà vào runtime nào, ở bất cứ đâu, kể cả khi
+  bỏ qua bước ấy, hoặc không gian làm việc thứ hai trở đi — người dùng chọn trên trang của agent
+  (FR-128). Hệ thống KHÔNG ĐƯỢC tự đặt người chủ nhà vào runtime nào, ở bất cứ đâu, kể cả khi
   không gian làm việc chỉ có đúng một runtime.
 
   Đặt rồi thì không đổi được (FR-007): runtime mới xuất hiện KHÔNG ĐƯỢC làm người chủ nhà chuyển đi.
@@ -283,8 +286,9 @@ gửi cho nó có trả lời.
 - **FR-114**: Cửa tạo người chủ nhà PHẢI là **một cửa riêng có tên riêng**, dùng đúng một chỗ. KHÔNG
   ĐƯỢC nới luật *"tạo agent là phải chọn runtime"* bằng cách cho tham số ấy một giá trị mặc định:
   một mặc định ở đó là mở lại đúng trạng thái FR-007f sinh ra để đóng, cho **mọi** agent.
-- **FR-115**: Chỉ dẫn của người chủ nhà PHẢI bằng **tiếng Anh** (Hiến pháp Điều VII) — nó là chữ hệ
-  thống gửi cho agent. Tên hiển thị thì là chữ cho người đọc, nên nó nằm ở tầng hiển thị.
+- **FR-115** *(sửa 2026-10-12)*: **System prompt** và **chỉ dẫn mặc định** của người chủ nhà PHẢI bằng
+  **tiếng Anh** (Hiến pháp Điều VII), vì chúng là chữ hệ thống gửi cho agent. Chữ người dùng tự viết vào
+  ô chỉ dẫn giữ nguyên thứ tiếng họ viết. Tên hiển thị là chữ cho người đọc, nên nó nằm ở tầng hiển thị.
 
 ### Nhóm C — Dạy từ thêm máy tới agent đầu tiên (thêm 2026-10-12)
 
@@ -297,11 +301,12 @@ gửi cho nó có trả lời.
   cài. Mọi thay đổi PHẢI được **đẩy** tới màn hình, KHÔNG ĐƯỢC hỏi vòng (Hiến pháp Điều IV).
 
 - **FR-121**: Khi phần *chạy* xong, onboarding PHẢI **tự sang** bước *agent đầu tiên*, không bắt người
-  dùng bấm thêm. Không gian làm việc đã có runtime sẵn sàng từ trước (chẳng hạn máy đã nối ở một lần
-  bỏ dở) thì bước *nối máy* PHẢI cho đi tiếp ngay.
+  dùng bấm thêm. Không gian làm việc đã có máy báo runtime từ trước (chẳng hạn máy đã nối ở một lần bỏ
+  dở) thì bước *nối máy* PHẢI cho đi tiếp ngay.
 
 - **FR-122**: Bước *agent đầu tiên* là nơi người dùng **dựng người chủ nhà** của không gian làm việc
-  (Livia, FR-110). Nó KHÔNG sinh thêm agent thứ hai. Bước này hiện đúng bốn thứ:
+  (Livia, FR-110). Nó KHÔNG sinh thêm agent thứ hai. Về nội dung, bước này hiện đúng bốn thứ, chưa kể
+  các nút và đường dẫn tới tài liệu:
   1. tên của agent;
   2. **system prompt** của người chủ nhà, chỉ để đọc (FR-123a);
   3. ô **chỉ dẫn**, có sẵn chỉ dẫn mặc định (FR-124);
@@ -336,8 +341,8 @@ gửi cho nó có trả lời.
   Anh (Hiến pháp Điều VII). Thứ được lưu là đúng chữ người dùng để lại trong ô lúc bấm xong. Ô ấy từ đó
   là chỉ dẫn của chính họ, sửa tiếp được ở trang của agent như mọi agent khác (FR-007i).
 
-- **FR-125**: Chọn runtime ở bước *agent đầu tiên* là **lần đặt chỗ duy nhất** của người chủ nhà
-  (FR-007). Nếu có đúng một runtime sẵn sàng thì runtime ấy được chọn sẵn, và người dùng nhìn thấy nó
+- **FR-125**: Chọn runtime ở bước *agent đầu tiên* là đặt chỗ cho người chủ nhà. Đã đặt rồi thì nó
+  **không đổi sang chỗ làm khác** (FR-007). Nếu có đúng một runtime sẵn sàng thì runtime ấy được chọn sẵn, và người dùng nhìn thấy nó
   trước khi bấm. Nếu có từ hai runtime trở lên thì KHÔNG cái nào được chọn sẵn, và nút xong PHẢI khoá
   cho tới khi người dùng chọn. Danh sách KHÔNG ĐƯỢC có runtime chưa sẵn sàng như một lựa chọn bấm
   được. Runtime chưa sẵn sàng thì hiện kèm lý do đọc được, để người dùng biết vì sao không chọn được.
@@ -373,7 +378,8 @@ gửi cho nó có trả lời.
   sau đặc tả này: **0**.
 - **SC-103**: Chế độ dựng dự án bằng hỏi–đáp dùng được ngay sau bước *agent đầu tiên*, đo bằng việc
   màn tạo dự án **không** còn tắt chế độ ấy.
-- **SC-104**: Người chủ nhà được đặt chỗ **đúng một lần**: thêm runtime thứ hai không làm nó đổi chỗ.
+- **SC-104**: Người chủ nhà đang có chỗ làm thì **không bao giờ đổi sang chỗ khác**: thêm runtime thứ hai
+  không làm nó đổi chỗ.
 - **SC-105**: Một tài khoản mới đi hết bốn bước, không bỏ bước nào, thì **100%** trường hợp đứng ở chỗ
   nhắn tin với một người chủ nhà **đang trực tuyến**, và tin nhắn đầu tiên có trả lời. Không cần mở
   trang nào khác ngoài trang phê duyệt máy do daemon tự mở.

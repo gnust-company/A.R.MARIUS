@@ -1,5 +1,24 @@
 <!--
 Sync Impact Report
+- Phiên bản: 2.0.0 → 2.1.0
+- Loại bump: MINOR — mở rộng hướng dẫn thực chất của Nguyên tắc VII bằng một ngoại lệ hẹp, và thêm
+  một câu ở Nguyên tắc VI cho hai điều khớp nhau. Không nguyên tắc nào bị bỏ hay định nghĩa lại:
+  luật *lưu mã kèm tham số* vẫn đứng nguyên cho câu báo, lý do và trạng thái.
+- Nguyên tắc sửa: **VII. Tiếng Anh cho agent** — thêm *Ngoại lệ: hiện nguyên văn cái agent nhận*.
+  **VI. Tiếng Việt cho người dùng** — thêm một câu: chữ hiện theo ngoại lệ ấy không phải chuỗi giao
+  diện.
+- Lý do: người chủ chốt ngày 2026-10-12, ở đặc tả 003 (onboarding bốn bước). System prompt của người
+  chủ nhà **phải hiện** cho người dùng, và chỉ dẫn mặc định là chữ gợi ý ban đầu trong một ô người
+  dùng sửa được. Theo mặt chữ, hệ quả của Điều VII bắt lưu cả hai thành mã rồi dịch ra cho màn hình.
+  Làm vậy là dựng bản chép thứ hai của đúng thứ người dùng muốn xem, và hai bản sớm muộn lệch nhau.
+  Trang agent đã hiện system prompt nguyên văn từ đặc tả 002, nên ngoại lệ này cũng hợp thức hoá cách
+  làm đang có.
+- Phần thêm: không có phần mới. Phần bớt: không có. TODO: không có.
+- Template phụ thuộc: không phải sửa. Các template đọc Hiến pháp lúc chạy.
+-->
+
+<!--
+Sync Impact Report
 - Phiên bản: 1.1.0 → 2.0.0
 - Loại bump: MAJOR — **định nghĩa lại** Nguyên tắc V. Điều cũ bắt ngữ cảnh agent đi theo một cái
   ghế vai trò trong dự án; điều mới đặt cách cư xử của agent lên chính agent, ở chỗ **chỉ dẫn**
@@ -99,6 +118,8 @@ agent: agent chỉ là tên, chỉ dẫn, kỹ năng và chỗ làm, nên nó r�
 ### VI. Tiếng Việt cho người dùng
 Mọi chuỗi hiển thị với người dùng PHẢI đi qua cơ chế i18n (Việt/Anh). Tiếng Việt hiển thị PHẢI đủ dấu —
 tiếng Việt không dấu là "rác", không được đưa ra giao diện.
+Chữ gửi agent được hiện nguyên văn theo ngoại lệ của Điều VII không phải chuỗi giao diện. Khung quanh
+nó thì là chuỗi giao diện.
 
 Lý do: người dùng cuối là người Việt; chất lượng ngôn ngữ là phần thấy được của chất lượng sản phẩm.
 
@@ -109,6 +130,19 @@ giữ nguyên thứ tiếng người viết, không dịch.
 
 Hệ quả: một câu vừa gửi cho agent vừa hiện lên màn hình thì KHÔNG ĐƯỢC lưu sẵn thành câu. Phải lưu **mã
 lý do kèm tham số**, rồi mỗi phía tự dựng câu: tiếng Anh cho agent, qua cơ chế i18n cho người dùng.
+
+**Ngoại lệ: hiện nguyên văn cái agent nhận** (2026-10-12). Khi mục đích là cho người dùng thấy **đúng
+chữ agent nhận**, chữ ấy ĐƯỢC hiện nguyên văn tiếng Anh, lưu đúng một bản, không dịch. Ví dụ: system
+prompt của một agent, hay chữ gợi ý ban đầu trong một ô người dùng sẽ sửa. Phải đủ ba điều kiện:
+1. Chữ ấy chỉ để đọc, hoặc là giá trị khởi đầu của một ô người dùng sửa được. Người dùng sửa xong thì nó
+   là chữ của người, và giữ nguyên thứ tiếng họ viết.
+2. Mọi thứ quanh nó — tiêu đề, dòng giải thích, nút — đi qua i18n theo Điều VI. Dòng giải thích nói rõ
+   đây là chữ gửi cho agent.
+3. Ngoại lệ KHÔNG áp dụng cho câu báo, lý do, trạng thái hay mọi câu kể lại một sự việc. Những thứ ấy vẫn
+   theo luật mã kèm tham số ở trên.
+
+Lý do của ngoại lệ: dịch ra là dựng bản chép thứ hai của chính thứ người dùng muốn xem, và hai bản sớm
+muộn lệch nhau. Người xem cần thấy cái agent thật sự đọc, không phải một bản kể lại nó.
 
 Lý do: agent không có ngôn ngữ giao diện để chọn, nên chữ gửi cho nó phải cố định một thứ tiếng; trộn hai
 thứ tiếng trong một gói tin làm mô hình yếu đọc sai. Điều này KHÔNG mâu thuẫn Điều VI — hai điều nói về
@@ -137,4 +171,4 @@ và cơ chế sống/chết (liveness) — không phụ thuộc heartbeat của 
   Nguyên tắc: **đặc tả đi trước, mã theo sau và phải chứng minh khớp đặc tả.**
 - Mọi PR PHẢI xác nhận tuân Hiến pháp; thay đổi phức tạp PHẢI giải trình lý do.
 
-**Version**: 2.0.0 | **Ratified**: 2026-07-29 | **Last Amended**: 2026-08-25
+**Version**: 2.1.0 | **Ratified**: 2026-07-29 | **Last Amended**: 2026-10-12
