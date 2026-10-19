@@ -59,8 +59,8 @@ nó là của yêu cầu 200.
 ### K5 — Runtime tắt trước khi bấm xong (edge case)
 
 Đứng ở bước *agent đầu tiên* rồi dừng daemon thử. **Mong đợi**: danh sách mất dòng claude qua
-`machine.workplaces_reported`. Gửi thẳng yêu cầu đặt chỗ với chỗ làm vừa tắt thì nhận 409
-`workplace_not_ready`, và Livia vẫn chưa có chỗ làm.
+`machine.workplaces_reported`. Gửi thẳng yêu cầu đặt chỗ với chỗ làm vừa tắt thì nhận 400
+`placement_not_ready`, và Livia vẫn chưa có chỗ làm.
 
 ### K6 — Skill dựng sẵn ẩn hết, agent vẫn nhận (FR-123, SC-108)
 

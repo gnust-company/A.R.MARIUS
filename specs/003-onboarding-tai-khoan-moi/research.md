@@ -66,7 +66,9 @@ làm việc cần nó để dựng dự án bằng hỏi–đáp. Agent không g
   do tầng presentation tra ra (Điều III), để cửa sổ tới sau nói được *Livia đã chạy trên claude ở máy X*
   (FR-127).
 - Chỗ làm không thuộc workspace thì trả 404 (Điều I). Chỗ làm chưa sẵn sàng hoặc không còn nhận việc thì
-  trả **409 `workplace_not_ready`** (FR-125, edge case *runtime tắt trước khi bấm xong*).
+  trả **400 `placement_not_ready`** (FR-125, edge case *runtime tắt trước khi bấm xong*). Cả hai
+  mã `placement_not_found` và `placement_not_ready` dùng lại đúng mã mà cửa tạo agent đã trả, nên
+  màn hình đã có câu cho chúng.
 - Xong việc thì gọi `liveness.placement_changed([id])`, cửa có sẵn từ FR-006e, để kiểm agent ngay.
 
 **Chống đua**: bảng gắn agent với chỗ làm đã ràng buộc **mỗi agent một dòng**. Yêu cầu tới sau đụng

@@ -38,10 +38,10 @@ chưa `online`, vì lần kiểm sống chạy ngay sau đó (FR-006e), và kế
 |------|----|---------|---------|
 | 404 | `workspace_not_found` | không gian làm việc không phải của người gọi hoặc không tồn tại | — |
 | 404 | `agent_not_found` | agent không thuộc không gian làm việc này | — |
-| 404 | `workplace_not_found` | chỗ làm không thuộc không gian làm việc này | — |
+| 404 | `placement_not_found` | chỗ làm không thuộc không gian làm việc này | — |
 | 409 | `placement_is_fixed` | agent không giữ ghế chủ nhà (FR-007) | — |
 | 409 | `agent_already_placed` | người chủ nhà đã có chỗ làm (FR-127) | `cli_kind`, `machine_name` của chỗ đang ở |
-| 409 | `workplace_not_ready` | chỗ làm chưa sẵn sàng, hoặc không còn nhận việc | `reason`: mã lý do như `not_ready_reason` |
+| 400 | `placement_not_ready` | chỗ làm chưa sẵn sàng, hoặc không còn nhận việc | `reason`: mã lý do như `not_ready_reason` |
 | 422 | — | thiếu `workplace_id`, `instructions` quá 20000 ký tự | — |
 
 **Bất biến**

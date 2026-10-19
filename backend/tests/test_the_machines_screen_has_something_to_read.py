@@ -91,11 +91,12 @@ async def test_a_linked_machine_shows_what_it_can_run_and_who_lives_there() -> N
     assert place["cli_version"] == "1.0.0"
     assert place["ready"] is True
     assert place["not_ready_reason"] is None
-    # Người chủ nhà của không gian làm việc cũng ở đây, và đúng ra phải thế: đây là runtime đầu
-    # tiên của nó, nên nó là chỗ người chủ nhà được đặt vào (FR-112). Hỏi theo tên và theo id
-    # chứ không theo vị trí — thứ tự trong danh sách không phải điều bài này đi kiểm.
+    # Chỉ Marin. Người chủ nhà **không** ở đây dù đây là runtime đầu tiên của không gian làm
+    # việc: từ đặc tả 003 (FR-112, sửa 2026-10-12) không gì đặt nó vào chỗ làm ngoài người chủ.
+    # Màn Máy phải nói đúng điều ấy — một cái tên ở đây là một lời nói dối về nơi nó chạy.
     names = sorted(a["name"] for a in place["agents"])
-    assert names == sorted([HOST_NAME, "Marin"]), names
+    assert names == ["Marin"], names
+    assert HOST_NAME not in names
     assert any(a["id"] == agent["id"] for a in place["agents"]), place["agents"]
 
 

@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from armarius.domain.entities.placement import (
@@ -98,7 +99,15 @@ class SqlPlacementRepository(PlacementRepository):
                 created_at=utcnow(),
             )
         )
-        await self._s.flush()
+        try:
+            await self._s.flush()
+        except IntegrityError as lost:
+            # Two callers both saw no binding and both inserted one; the key on `marius_id`
+            # let one of them through. The one refused is told what it would have been told a
+            # moment later — the agent already has its place — rather than a 500 about a key.
+            # The session is spoiled by the failed flush; the unit of work it belongs to rolls
+            # it back on the way out.
+            raise Conflict("agent_already_placed") from lost
 
     async def placed_at(self, marius_ids: Sequence[UUID]) -> Mapping[UUID, Placement]:
         """One query for the whole roster: where each agent sits, and whether it can work.

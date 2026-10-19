@@ -1,4 +1,4 @@
-"""Ba bước đầu tiên của một tài khoản, và người chủ nhà của không gian làm việc.
+"""Các bước đầu tiên của một tài khoản, và người chủ nhà của không gian làm việc.
 
 Đặc tả: `specs/003-onboarding-tai-khoan-moi/spec.md` — FR-100, FR-101, FR-104, FR-110, FR-111,
 FR-112.
@@ -15,7 +15,13 @@ from httpx import ASGITransport, AsyncClient
 from armarius.application.use_cases.workspace_agent import HOST_NAME
 from armarius.infrastructure.database.engine import init_db
 from armarius.main import app
-from tests.support.machines import auth, link_machine, link_machine_to
+from tests.support.machines import (
+    auth,
+    link_machine,
+    link_machine_to,
+    put_host_to_work,
+    the_host,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -86,7 +92,7 @@ async def test_finishing_the_first_steps_is_remembered_and_is_one_way() -> None:
         headers, _ws = await _register(c, "finish-steps@armarius.dev")
 
         done = await c.patch(
-            "/auth/me", headers=headers, json={"onboarding_step": 3, "onboarding_done": True}
+            "/auth/me", headers=headers, json={"onboarding_step": 4, "onboarding_done": True}
         )
         assert done.status_code == 200, done.text
         assert done.json()["onboarded"] is True
@@ -104,13 +110,24 @@ async def test_finishing_the_first_steps_is_remembered_and_is_one_way() -> None:
         assert (await c.get("/auth/me", headers=fresh)).json()["onboarded"] is True
 
 
-async def test_a_step_outside_the_three_is_refused() -> None:
+async def test_the_fourth_step_is_a_step_and_a_fifth_is_not() -> None:
+    """FR-100 (sửa 2026-10-12): bốn bước — về bạn, không gian làm việc, nối máy, agent đầu tiên.
+
+    Bước 4 là chỗ người đã xong đứng. Bước 5 không có, và một cửa nhận nó là một cửa để một
+    màn hình lỗi ghi một con số không bước nào hiểu.
+    """
     async with _client() as c:
         headers, _ws = await _register(c, "bad-step@armarius.dev")
 
-        assert (
-            await c.patch("/auth/me", headers=headers, json={"onboarding_step": 9})
-        ).status_code == 422
+        fourth = await c.patch("/auth/me", headers=headers, json={"onboarding_step": 4})
+        assert fourth.status_code == 200, fourth.text
+        assert fourth.json()["onboarding_step"] == 4
+        assert fourth.json()["onboarded"] is False, "đứng ở bước 4 chưa phải là đã xong"
+
+        for outside in (5, 9, -1):
+            assert (
+                await c.patch("/auth/me", headers=headers, json={"onboarding_step": outside})
+            ).status_code == 422, outside
         assert (
             await c.patch("/auth/me", headers=headers, json={"full_name": ""})
         ).status_code == 422
@@ -170,17 +187,24 @@ async def test_a_workspace_made_by_hand_gets_one_too() -> None:
         assert [m["name"] for m in directory] == [HOST_NAME], directory
 
 
-async def test_linking_the_first_machine_puts_the_host_to_work() -> None:
-    """FR-112, qua đúng luồng thật: máy xin vào, người duyệt, máy khai runtime nó chạy được."""
-    async with _client() as c:
-        machine = await link_machine(c, "host-goes-to-work@armarius.dev")
+async def test_linking_the_first_machine_leaves_the_host_for_its_owner_to_place() -> None:
+    """FR-112 (sửa 2026-10-12), qua đúng luồng thật: máy xin vào, người duyệt, máy khai runtime.
 
-        directory = (
-            await c.get(f"/v1/workspaces/{machine.workspace_id}/mariuses", headers=machine.headers)
-        ).json()
-        host = next(m for m in directory if m["role"] == "Workspace Agent")
-        # Đã có chỗ làm việc, nên không còn lý do ngoại tuyến nào của việc *chưa được đặt chỗ*.
-        assert host["offline_reason"] is None, host
+    Bản trước của bài này khẳng định điều ngược lại — máy đầu tiên khai runtime thì người chủ
+    nhà tự được đặt vào đó. Người chủ tự đi lại luồng và thấy cái giá của nó: hai runtime trên
+    một máy, hệ thống chọn gemini vì id nhỏ hơn, rồi FR-007 khoá luôn. Nay người chủ chọn.
+    """
+    async with _client() as c:
+        machine = await link_machine(c, "host-waits-for-owner@armarius.dev")
+
+        host = await the_host(c, machine.headers, machine.workspace_id)
+        assert host["offline_reason"] == "not_placed", host
+
+        chosen = await put_host_to_work(
+            c, machine.headers, machine.workspace_id, machine.workplace_id
+        )
+        assert chosen.status_code == 200, chosen.text
+        assert (await the_host(c, machine.headers, machine.workspace_id))["offline_reason"] is None
 
         # Và màn Máy kể ra nó đang ở đâu.
         machines = (
