@@ -1045,6 +1045,7 @@ export const vi = {
     workplace_reported_twice: 'Agent CLI \'{{cli_kind}}\' được báo hai lần trong cùng một lượt đồng bộ.',
     placement_not_ready: 'Runtime này chưa sẵn sàng nhận việc ({{reason}}).',
     agent_already_placed: 'Agent này đã được buộc vào một runtime rồi.',
+    placement_is_fixed: 'Chỉ người chủ nhà của không gian làm việc mới được chọn runtime sau khi tạo. Agent khác giữ runtime nó được tạo cùng.',
     daemon_link_code_unavailable: 'Lúc này chưa cấp được mã nối máy. Thử lại giúp.',
     project_closed: 'Dự án đã đóng — lịch sử chỉ đọc, không sửa được.',
     project_closed_no_wake: 'Dự án đã đóng — không đánh thức agent của nó nữa.',

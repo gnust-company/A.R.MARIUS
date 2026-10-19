@@ -35,6 +35,10 @@ from armarius.infrastructure.daemon.enrollment import MachineIdentity
 from armarius.infrastructure.daemon.housekeeping import MAX_TASKS_PER_ASK
 from armarius.infrastructure.daemon.workplaces import ReportedWorkplace
 from armarius.infrastructure.events.topic_bus import machine_topic
+from armarius.infrastructure.events.workspace_trace import (
+    ControlBusWorkspaceTrace,
+    announce_workplaces_reported,
+)
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.deps import ContainerDep
 from armarius.shared.config import settings
@@ -492,17 +496,18 @@ async def sync_workplaces(
         symlink_capable=body.symlink_capable,
         stopping=body.stopping,
     )
-    # The first time this workspace has anywhere to work, its host goes to work (FR-112).
+    # Nothing is placed here any more (spec 003 FR-112, revised 2026-10-12). This door used to
+    # put the workspace's host on the first runtime it heard of — the one with the smallest id
+    # when several arrived together — and FR-007 then held it there for good. On a machine with
+    # both claude and gemini that chose gemini, for no reason the person could see or undo. Where
+    # the host works is now the person's choice, made through its own door
+    # (`POST …/mariuses/{id}/placement`); what this door owes them is the news that there is
+    # something to choose from.
     #
-    # Triggered here, next to the only event that can make it true, while the rule itself —
-    # once, only a place that can take work, and which one when several can — lives in the use
-    # case. Only placement ids cross that line: what tool each one runs is this end's knowledge
-    # and must not become the business layer's (Constitution III).
-    #
-    # A machine on its way out reports `stopping`, and its rows come back not ready, so nothing
-    # is placed on a runtime that is closing.
-    await container.workspace_agent.place_host(
-        machine.workspace_id, [row.id for row in synced if row.ready]
+    # Announced on the stopping sync too: a picker that is open right now has to lose the
+    # runtime that just closed, not offer it until somebody reloads (FR-125).
+    await announce_workplaces_reported(
+        ControlBusWorkspaceTrace(container.control_bus), machine.workspace_id
     )
     return WorkplacesOut(
         workplaces=[

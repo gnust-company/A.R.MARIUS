@@ -132,3 +132,35 @@ async def link_machine_to(
         workplace_id=synced.json()["workplaces"][0]["id"],
         headers=person,
     )
+
+
+async def the_host(c: AsyncClient, person: dict[str, str], workspace_id: str) -> dict:
+    """The workspace's host as the directory shows it."""
+    directory = await c.get(f"/v1/workspaces/{workspace_id}/mariuses", headers=person)
+    assert directory.status_code == 200, directory.text
+    return next(m for m in directory.json() if m["role"] == "Workspace Agent")
+
+
+async def put_host_to_work(
+    c: AsyncClient,
+    person: dict[str, str],
+    workspace_id: str,
+    workplace_id: str,
+    *,
+    instructions: str | None = None,
+):
+    """Choose where the host works, the way its owner does (spec 003 FR-125, FR-128).
+
+    Linking a machine no longer places the host by itself (FR-112, revised 2026-10-12), so a
+    test that needs a host with somewhere to work has to make this choice, like a person.
+    Returns the raw response so a test about refusals can read them.
+    """
+    host = await the_host(c, person, workspace_id)
+    body: dict[str, object] = {"workplace_id": workplace_id}
+    if instructions is not None:
+        body["instructions"] = instructions
+    return await c.post(
+        f"/v1/workspaces/{workspace_id}/mariuses/{host['id']}/placement",
+        headers=person,
+        json=body,
+    )

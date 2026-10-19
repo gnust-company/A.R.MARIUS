@@ -294,6 +294,18 @@ class RegisterMariusIn(BaseModel):
     is_workspace_agent: bool = False
 
 
+class PlaceHostIn(BaseModel):
+    """Where the workspace's host should work, chosen by its owner (spec 003 FR-125, FR-128).
+
+    `workplace_id` is one of `GET …/workplaces`. `instructions` rides along so the last first
+    step saves the owner's words and the placement together (FR-126); absent leaves the
+    instructions as they are, and an empty string is a real value — *no instructions of my own*.
+    """
+
+    workplace_id: UUID
+    instructions: str | None = Field(default=None, max_length=20000)
+
+
 class UpdateMariusIn(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     # `role` is gone from here, and its absence is the point (T172, FR-007l). Vai theo dự án

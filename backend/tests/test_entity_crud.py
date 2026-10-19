@@ -255,14 +255,27 @@ async def test_delete_manual_skill():
 
 
 async def test_delete_builtin_skill_is_rejected():
+    """Two locks, one behind the other. A person cannot reach a built-in at all (spec 003
+    FR-123), so the door answers as if it were not there; and the service behind the door still
+    refuses on its own, for any caller that gets past the first."""
+    from uuid import UUID
+
+    from armarius.infrastructure.persistence.unit_of_work import make_uow
+    from armarius.shared.errors import BadRequest
+
     async with await _client() as c:
         token, ws_id = await _register(c, "skbuiltin@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
-        skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
-        builtin_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
-        r = await c.delete(f"/v1/workspaces/{ws_id}/skills/{builtin_id}", headers=h)
-    assert r.status_code == 400
-    assert "Built-in" in r.json()["detail"]
+        await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)  # seeds the built-in
+        async with make_uow() as uow:
+            builtin = await uow.skills.get_by_slug(UUID(ws_id), "armarius-http")
+        r = await c.delete(f"/v1/workspaces/{ws_id}/skills/{builtin.id}", headers=h)
+        assert r.status_code == 404
+        assert r.json()["code"] == "skill_not_found"
+
+        with pytest.raises(BadRequest) as refused:
+            await app.state.container.skills.delete_skill(builtin.id)
+    assert refused.value.code == "builtin_skill_undeletable"
 
 
 async def test_delete_skill_not_owned_is_404():

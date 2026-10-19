@@ -28,16 +28,15 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine, text
 
-from armarius.application.use_cases.skills import BUILTIN_SKILLS
 from armarius.infrastructure.persistence.unit_of_work import make_uow
 from armarius.main import app
 from tests.support.agents import invite_agent
 
 pytestmark = pytest.mark.anyio
 
-#: Tên hiển thị của kỹ năng dựng sẵn, đọc thẳng từ chỗ khai nó. Viết cứng vào đây thì bài này
-#: đỏ mỗi lần đổi tên tờ hướng dẫn — mà tên tờ hướng dẫn không phải thứ bài này nói về.
-_BUILTIN_NAME = BUILTIN_SKILLS[0]["name"]
+#: Tên kỹ năng người chủ giữ lại. Từng là kỹ năng dựng sẵn, cho tiện; từ đặc tả 003 (FR-123) kỹ
+#: năng dựng sẵn không gắn được vào danh sách của agent nữa, nên thứ được giữ là của người chủ.
+_KEEPER_NAME = "Giữ lại"
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
@@ -68,8 +67,12 @@ async def _agent_row(marius_id: str):
 async def test_deleting_a_skill_takes_it_off_every_agent_that_had_it() -> None:
     async with _client() as c:
         h, ws_id = await _register(c, "forget-agent@armarius.dev")
-        skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
-        keeper_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
+        keeper = await c.post(
+            f"/v1/workspaces/{ws_id}/skills/manual",
+            headers=h,
+            json={"name": _KEEPER_NAME, "description": "owner's own"},
+        )
+        keeper_id = keeper.json()["id"]
         made = await c.post(
             f"/v1/workspaces/{ws_id}/skills/manual",
             headers=h,
@@ -95,7 +98,7 @@ async def test_deleting_a_skill_takes_it_off_every_agent_that_had_it() -> None:
 
         after = await _agent_row(agent["id"])
     assert after.skill_ids == [keeper_id], after.skill_ids
-    assert after.skills == [_BUILTIN_NAME], after.skills
+    assert after.skills == [_KEEPER_NAME], after.skills
 
 
 # The two lists are one fact written twice, and they have to stay that way. A name left
@@ -123,8 +126,12 @@ async def test_the_names_left_behind_are_exactly_the_ids_left_behind() -> None:
 async def test_deleting_one_skill_does_not_disturb_another_agents_links() -> None:
     async with _client() as c:
         h, ws_id = await _register(c, "forget-others@armarius.dev")
-        skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
-        keeper_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
+        keeper = await c.post(
+            f"/v1/workspaces/{ws_id}/skills/manual",
+            headers=h,
+            json={"name": _KEEPER_NAME, "description": "owner's own"},
+        )
+        keeper_id = keeper.json()["id"]
         made = await c.post(
             f"/v1/workspaces/{ws_id}/skills/manual",
             headers=h,
@@ -144,7 +151,7 @@ async def test_deleting_one_skill_does_not_disturb_another_agents_links() -> Non
 
         after = await _agent_row(untouched["id"])
     assert after.skill_ids == [keeper_id]
-    assert after.skills == [_BUILTIN_NAME]
+    assert after.skills == [_KEEPER_NAME]
 
 
 # ── 2. a built-in that stops being shipped ────────────────────────────────────
@@ -159,6 +166,10 @@ async def test_a_builtin_that_stops_shipping_is_forgotten_the_same_way() -> None
 
     async with _client() as c:
         h, ws_id = await _register(c, "forget-builtin@armarius.dev")
+        # The agent first: making one runs the seeding pass too (it is how a write learns which
+        # skills are built-in, FR-123), and a retired built-in already in place would be pruned
+        # before there was any link to it to clean up.
+        agent = await invite_agent(c, ws_id, h, name="Marin")
         async with make_uow() as uow:
             retired = Skill(
                 workspace_id=uuid.UUID(ws_id),
@@ -171,9 +182,14 @@ async def test_a_builtin_that_stops_shipping_is_forgotten_the_same_way() -> None
                 created_at=utcnow(),
             )
             await uow.skills.add(retired)
+            # Linked straight in the row, the way an agent from before spec 003 holds it: a
+            # person can no longer link a built-in (FR-123), but older agents were linked by
+            # ticking a chip, and those links are what the prune has to clean up.
+            row = await uow.mariuses.get(uuid.UUID(agent["id"]))
+            row.skill_ids = [str(retired.id)]
+            row.skills = ["Armarius Onboarder"]
+            await uow.mariuses.update(row)
             await uow.commit()
-        retired_id = str(retired.id)
-        agent = await invite_agent(c, ws_id, h, name="Marin", skill_ids=[retired_id])
 
         # Reading the Shop is what triggers the seeding pass, and the prune inside it.
         await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)

@@ -59,3 +59,36 @@ async def announce_machine_linked(
         EVENT_MACHINE_LINKED,
         {"workspace_id": str(workspace_id)},
     )
+
+
+# A machine told the server which agent CLIs it can run — the sync a daemon sends when it starts,
+# and the empty one it sends when it stops. The first-steps screen waits on this to know the
+# machine is actually *running* rather than merely linked (spec 003 FR-120, FR-121), and the
+# runtime pickers re-read their lists on it, so a runtime that just closed drops out of them
+# without anybody reloading (FR-125, FR-128).
+#
+# Named here and not beside the port for the same reason as `machine.linked`: the business
+# layers have no word for a machine (Constitution III).
+EVENT_WORKPLACES_REPORTED = "machine.workplaces_reported"
+
+
+async def announce_workplaces_reported(
+    trace: WorkspaceTracePublisher | None, workspace_id: UUID
+) -> None:
+    """Announce that a machine in this workspace just reported its runtimes (no-op if unwired).
+
+    A signal, not the state: no list rides along. A list in here would be a second source for
+    what `GET …/machines` and `GET …/workplaces` already answer, and the copy in an event is
+    stale the moment the next one arrives (principle 1 of ``contracts/push-events.md``).
+
+    Sent on every sync, the stopping one included. A daemon syncs when it starts and when it
+    stops and at no other time, so there is nothing to throttle, and the stopping sync is the
+    one that tells an open picker a runtime it is offering has just gone.
+    """
+    if trace is None:
+        return
+    await trace.publish(
+        workspace_id,
+        EVENT_WORKPLACES_REPORTED,
+        {"workspace_id": str(workspace_id)},
+    )

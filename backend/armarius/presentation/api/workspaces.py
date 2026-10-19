@@ -25,6 +25,7 @@ from armarius.presentation.schemas import (
     ManualSkillIn,
     MariusCreatedOut,
     MariusOut,
+    PlaceHostIn,
     PlacementOptionOut,
     RegisterMariusIn,
     ResidentAgentOut,
@@ -37,7 +38,7 @@ from armarius.presentation.schemas import (
     WorkplaceChoiceOut,
     WorkspaceOut,
 )
-from armarius.shared.errors import CodedError, NotFound
+from armarius.shared.errors import CodedError, Conflict, NotFound
 
 router = APIRouter(prefix="/v1", tags=["workspaces"])
 
@@ -268,6 +269,37 @@ async def _as_shown(container: Container, mariuses: Sequence[Marius]) -> list[Ma
     ]
 
 
+# Built-in skills are attached by the system to every agent on every run (`builtins_for`), so
+# a person has nothing to decide about them and no screen shows them (spec 003 FR-123). These
+# two are the whole of that rule on the people's side of the API: what is listed, and what an
+# agent's own list is allowed to hold. The agent's side is untouched — a run still gets every
+# built-in, whatever an agent's list says.
+BUILTIN = "builtin"
+
+
+async def _without_builtins(
+    container: Container,
+    workspace_id: UUID,
+    skill_ids: list[str] | None,
+    names: list[str] | None,
+) -> tuple[list[str] | None, list[str] | None]:
+    """An agent's chosen skills with the built-ins taken out, ids and names alike.
+
+    Dropped rather than refused. A client from before the built-ins were hidden may still send
+    one, and it is not wrong to — only redundant: the skill reaches every run regardless. A
+    refusal would make a person pay for something they can no longer even see.
+    """
+    if not skill_ids and not names:
+        return skill_ids, names
+    builtins = await container.skills.builtins_for(workspace_id)
+    ids = {str(one.id) for one in builtins}
+    titles = {one.name for one in builtins}
+    return (
+        None if skill_ids is None else [i for i in skill_ids if i not in ids],
+        None if names is None else [n for n in names if n not in titles],
+    )
+
+
 @router.post(
     "/workspaces/{workspace_id}/mariuses",
     response_model=MariusCreatedOut,
@@ -285,6 +317,9 @@ async def create_marius(
     out to and nothing is pushed down: the machine the agent runs on comes and asks for
     work, so there is no setup step for this route to perform (FR-040a)."""
     await _require_owned_workspace(container, user, workspace_id)
+    skill_ids, skills = await _without_builtins(
+        container, workspace_id, body.skill_ids, body.skills
+    )
     marius = await container.agents.create(
         workspace_id,
         body.name,
@@ -295,8 +330,8 @@ async def create_marius(
         placement_id=body.workplace_id,
         instructions=body.instructions,
         description=body.description,
-        skills=body.skills,
-        skill_ids=body.skill_ids,
+        skills=skills,
+        skill_ids=skill_ids,
         # Renamed on the way in: the caller says *runtime*, the business layer says what it
         # is allowed to know about — the place this agent works (Điều III).
         placement_options=body.runtime_options,
@@ -369,13 +404,16 @@ async def update_marius(
     existing = await container.mariuses.get(marius_id)
     if existing is None or existing.workspace_id != workspace_id:
         raise NotFound("agent_not_found")
+    skill_ids, skills = await _without_builtins(
+        container, workspace_id, body.skill_ids, body.skills
+    )
     marius = await container.mariuses.update(
         marius_id,
         name=body.name,
         instructions=body.instructions,
         description=body.description,
-        skills=body.skills,
-        skill_ids=body.skill_ids,
+        skills=skills,
+        skill_ids=skill_ids,
         adapter_type=body.adapter_type,
         adapter_config=body.adapter_config,
         # Renamed on the way in, the same as on the create route: the caller says *runtime*,
@@ -439,6 +477,51 @@ async def designate_workspace_agent(
 
 
 @router.post(
+    "/workspaces/{workspace_id}/mariuses/{marius_id}/placement",
+    response_model=MariusOut,
+)
+async def place_host(
+    workspace_id: UUID,
+    marius_id: UUID,
+    body: PlaceHostIn,
+    container: ContainerDep,
+    user: CurrentUser,
+) -> MariusOut:
+    """Put the workspace's host on the runtime its owner chose (spec 003 FR-125–FR-128).
+
+    The host is the one agent made with nowhere to work, and nothing places it but this.
+    Any other agent is refused (`placement_is_fixed`): its runtime was chosen when it was made
+    and FR-007 keeps it there.
+
+    A host that already works somewhere is refused with `agent_already_placed`, and the
+    refusal says *where*: a second window finishing the last step a moment after the first
+    can then tell its person what was chosen, instead of only that something was (FR-127).
+    Read off the placement here, because the layer that refused is not allowed to know a place
+    is a CLI on a machine (Constitution III).
+    """
+    await _require_owned_workspace(container, user, workspace_id)
+    try:
+        marius = await container.workspace_agent.place_host(
+            workspace_id,
+            marius_id,
+            # A workplace the person picked becomes a *placement* one layer down — the same
+            # translation `create_marius` makes, for the same reason (Constitution III).
+            body.workplace_id,
+            instructions=body.instructions,
+        )
+    except Conflict as refused:
+        if refused.code != "agent_already_placed":
+            raise
+        where = (await container.daemon_workplaces.where_agents_work([marius_id])).get(marius_id)
+        if where is None:
+            raise
+        raise Conflict(
+            "agent_already_placed", cli_kind=where.cli_kind, machine_name=where.machine_name
+        ) from refused
+    return (await _as_shown(container, [marius]))[0]
+
+
+@router.post(
     "/workspaces/{workspace_id}/mariuses/{marius_id}/install-skills",
     response_model=InstallSkillsOut,
 )
@@ -462,9 +545,12 @@ async def install_skills(
     if marius is None or marius.workspace_id != workspace_id:
         raise NotFound("agent_not_found")
 
-    # Merge requested skill_ids into the existing links (de-dup, preserve order).
-    existing = list(marius.skill_ids)
-    merged = list(dict.fromkeys([*existing, *body.skill_ids]))
+    # Merge requested skill_ids into the existing links (de-dup, preserve order). Built-ins
+    # come out of both halves: they are on every run already, and an agent's own list holds
+    # only what a person chose (spec 003 FR-123).
+    requested, _ = await _without_builtins(container, workspace_id, list(body.skill_ids), None)
+    existing, _ = await _without_builtins(container, workspace_id, list(marius.skill_ids), None)
+    merged = list(dict.fromkeys([*(existing or []), *(requested or [])]))
 
     # Resolve merged → display NAMES (Marius.skills mirrors skill_ids so pills show), and the
     # REQUESTED subset → the skills to (re)push. Pushing EVERY requested skill — not only the
@@ -472,7 +558,7 @@ async def install_skills(
     # the agent; the old "newly-added only" behaviour meant a fixed skill never reached it (#74).
     resolved = list(await container.skills.resolve(merged))
     by_id = {str(sk.id): sk for sk in resolved}
-    requested_skills = [by_id[i] for i in body.skill_ids if i in by_id]
+    requested_skills = [by_id[i] for i in requested or [] if i in by_id]
     merged_names = [sk.name for sk in resolved]
     pushed_slugs = [sk.slug for sk in requested_skills]
 
@@ -573,7 +659,7 @@ async def list_skills(
 ) -> list[SkillOut]:
     await _require_owned_workspace(container, user, workspace_id)
     items = await container.skills.list_skills(workspace_id)
-    return [SkillOut.model_validate(s) for s in items]
+    return [SkillOut.model_validate(s) for s in items if s.source != BUILTIN]
 
 
 @router.get(
@@ -584,7 +670,9 @@ async def get_skill(
 ) -> SkillOut:
     await _require_owned_workspace(container, user, workspace_id)
     skill = await container.skills.get_skill(skill_id)
-    if skill is None or skill.workspace_id != workspace_id:
+    # A built-in reads as absent here like anywhere a person looks (FR-123): there is no list
+    # that names one, so there is no honest way to have arrived at its id.
+    if skill is None or skill.workspace_id != workspace_id or skill.source == BUILTIN:
         raise NotFound("skill_not_found")
     return SkillOut.model_validate(skill)
 
@@ -636,7 +724,8 @@ async def update_skill(
 ) -> SkillOut:
     await _require_owned_workspace(container, user, workspace_id)
     existing = await container.skills.get_skill(skill_id)
-    if existing is None or existing.workspace_id != workspace_id:
+    # Built-ins read as absent, as in `get_skill` (FR-123).
+    if existing is None or existing.workspace_id != workspace_id or existing.source == BUILTIN:
         raise NotFound("skill_not_found")
     skill = await container.skills.update_files(skill_id, body.files)
     return SkillOut.model_validate(skill)
@@ -651,6 +740,7 @@ async def delete_skill(
     """Delete a workspace skill (built-in skills are protected)."""
     await _require_owned_workspace(container, user, workspace_id)
     skill = await container.skills.get_skill(skill_id)
-    if skill is None or skill.workspace_id != workspace_id:
+    # Built-ins read as absent, as in `get_skill` (FR-123).
+    if skill is None or skill.workspace_id != workspace_id or skill.source == BUILTIN:
         raise NotFound("skill_not_found")
     await container.skills.delete_skill(skill_id)

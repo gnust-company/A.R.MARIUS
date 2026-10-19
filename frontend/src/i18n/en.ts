@@ -1044,6 +1044,7 @@ export const en = {
     workplace_reported_twice: 'Agent CLI \'{{cli_kind}}\' was reported twice in one sync.',
     placement_not_ready: 'That runtime is not ready for work ({{reason}}).',
     agent_already_placed: 'That agent is already attached to a runtime.',
+    placement_is_fixed: 'Only the host of a workspace can be given a runtime after it was made. Any other agent keeps the runtime it was created on.',
     daemon_link_code_unavailable: 'Could not allocate a link code just now. Please try again.',
     project_closed: 'This project is closed — its history is read-only.',
     project_closed_no_wake: 'This project is closed — its agents are not woken any more.',

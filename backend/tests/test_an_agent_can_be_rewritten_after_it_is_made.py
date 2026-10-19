@@ -22,7 +22,10 @@ from __future__ import annotations
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from armarius.application.use_cases.workspace_agent import HOST_INSTRUCTIONS
+from armarius.application.use_cases.workspace_agent import (
+    HOST_DEFAULT_INSTRUCTIONS,
+    HOST_INSTRUCTIONS,
+)
 from armarius.domain.entities.run import WakeSource
 from armarius.domain.services.wake_prompt import WakeContext, build_wake_prompt
 from armarius.infrastructure.database.engine import init_db
@@ -125,8 +128,10 @@ async def test_the_host_is_born_with_two_halves() -> None:
         headers, ws = await _patron(c, "two-halves@armarius.dev")
         host = await _host(c, ws, headers)
         assert host["system_instructions"] == HOST_INSTRUCTIONS, host["system_instructions"]
-        # Nửa của người chủ để trống — chưa ai viết gì cả.
-        assert host["instructions"] == "", host["instructions"]
+        # Nửa của người chủ bắt đầu bằng chỉ dẫn mặc định (spec 003 FR-124): cách trò chuyện,
+        # không phải việc của người chủ nhà — việc ấy nằm ở nửa kia, và không chép sang đây.
+        assert host["instructions"] == HOST_DEFAULT_INSTRUCTIONS, host["instructions"]
+        assert HOST_INSTRUCTIONS not in host["instructions"]
 
 
 async def test_an_agent_a_person_made_has_no_product_half() -> None:

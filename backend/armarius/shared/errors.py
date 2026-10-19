@@ -108,6 +108,10 @@ ENGLISH: dict[str, str] = {
     # An agent is attached to exactly one workplace for life (FR-007). Reaching this means
     # something tried to attach a second one, which is the move that requirement forbids.
     "agent_already_placed": "That agent is already attached to a workplace.",
+    # Only the workspace's host can be given a place after it was made (spec 003 FR-128). Any
+    # other agent got its place at creation and keeps it (FR-007) — including one whose machine
+    # was taken out of the workspace, which is offline rather than movable.
+    "placement_is_fixed": "Only the workspace's host can be given a runtime after it was made.",
     # One name answers for one agent inside a workspace (FR-007h). Two of them leaves
     # nobody — patron or Leader — able to say which one they meant.
     "agent_name_taken": "An agent called '{name}' is already in this workspace.",

@@ -3,7 +3,8 @@
 `ensure_workspace_agent` is lookup-only and stays that way: it answers *who holds the seat*
 and conjures nobody. What changed (FR-110) is that there is now a door that does create one —
 `provide_host` — called once when a workspace is made, and `place_host`, which puts that host
-to work the first time the workspace has a runtime (FR-112).
+to work on the runtime its owner chose (spec 003 FR-112, FR-125, FR-128 — revised 2026-10-12:
+nothing places the host by itself any more).
 
 Half of #63 is reversed by that, deliberately. #63 forbade auto-creation because an agent
 without a gateway address and a key was a shell that could neither wake nor authenticate its
@@ -22,14 +23,16 @@ from uuid import uuid4
 
 import pytest
 
+from armarius.application.use_cases.enrollment import PlacementNotReady
 from armarius.application.use_cases.workspace_agent import (
+    HOST_DEFAULT_INSTRUCTIONS,
     HOST_NAME,
     WORKSPACE_AGENT_ROLE,
     WorkspaceAgentService,
 )
 from armarius.domain.entities.marius import Marius
 from armarius.domain.entities.workspace import Workspace
-from armarius.shared.errors import Conflict
+from armarius.shared.errors import Conflict, NotFound
 from tests.support.fakes import FakeUowFactory, a_placement
 
 
@@ -147,8 +150,9 @@ async def test_a_workspace_is_given_a_host_that_is_not_placed_anywhere_yet() -> 
     # viết (FR-007m). Ý của dòng này không đổi — người chủ nhà không có chỉ dẫn thì không biết
     # mình là gì — chỉ là từ nay có hai tác giả, và nó phải đọc đúng tác giả.
     assert host.system_instructions, "người chủ nhà không có chỉ dẫn thì không biết mình là gì"
-    # Còn nửa của người chủ để trống: chưa ai viết gì, và đó là ô họ sửa được.
-    assert host.instructions == ""
+    # Còn nửa của người chủ bắt đầu bằng chỉ dẫn mặc định (FR-124): cách trò chuyện, không phải
+    # việc của người chủ nhà — và đó là ô họ sửa được.
+    assert host.instructions == HOST_DEFAULT_INSTRUCTIONS
     # Rỗng là toàn bộ hình dạng của *chưa được đặt chỗ*: thứ chở lượt chạy là câu trả lời của
     # runtime, và chưa có runtime nào để hỏi. Đoán một giá trị ở đây là tầng nghiệp vụ tự đặt
     # tên một runtime (Hiến pháp Điều III).
@@ -204,89 +208,117 @@ async def test_a_taken_name_is_stepped_around_rather_than_refused() -> None:
     assert host.role == WORKSPACE_AGENT_ROLE
 
 
-async def test_the_first_runtime_is_where_the_host_goes_to_work() -> None:
+class _Measured:
+    """Ghi lại ai được kiểm sống ngay — đúng câu FR-006e hỏi, không cần dựng cả bộ kiểm."""
+
+    def __init__(self) -> None:
+        self.asked: list = []
+
+    async def placement_changed(self, marius_ids, now=None) -> None:
+        self.asked.extend(marius_ids)
+
+
+async def test_the_runtime_its_owner_chose_is_where_the_host_goes_to_work() -> None:
+    """FR-125, FR-126: chỗ làm, thứ chở lượt chạy, và chữ của người chủ — cùng một lần."""
     factory, ws = _factory_with_workspace()
-    svc = WorkspaceAgentService(factory)
+    measured = _Measured()
+    svc = WorkspaceAgentService(factory, liveness=measured)
     host = await svc.provide_host(ws.id)
     place = a_placement(factory, ws.id, carried_by="claude_code")
 
-    placed = await svc.place_host(ws.id, [place.id])
+    placed = await svc.place_host(ws.id, host.id, place.id, instructions="Ngắn thôi.")
 
-    assert placed is not None and placed.id == host.id
+    assert placed.id == host.id
     assert factory.store.attachments[host.id] == place.id
     # Thứ chở lượt chạy của nó là câu trả lời của runtime, chép xuống nguyên văn.
     assert factory.store.mariuses[host.id].adapter_type == "claude_code"
+    assert factory.store.mariuses[host.id].instructions == "Ngắn thôi."
+    # Kiểm sống ngay, không đợi vòng kiểm định kỳ (FR-006e).
+    assert measured.asked == [host.id]
 
 
-async def test_a_second_runtime_does_not_move_a_host_that_is_already_working() -> None:
-    """Đặt một lần là một lần (FR-007). Người chủ nhà không phải ngoại lệ của luật ấy."""
+async def test_without_instructions_the_host_keeps_the_ones_it_has() -> None:
+    factory, ws = _factory_with_workspace()
+    svc = WorkspaceAgentService(factory)
+    host = await svc.provide_host(ws.id)
+    place = a_placement(factory, ws.id)
+
+    await svc.place_host(ws.id, host.id, place.id)
+
+    assert factory.store.mariuses[host.id].instructions == HOST_DEFAULT_INSTRUCTIONS
+
+
+async def test_a_host_already_working_is_not_moved() -> None:
+    """Đặt rồi thì không đổi (FR-007). Người chủ nhà không phải ngoại lệ của luật ấy."""
     factory, ws = _factory_with_workspace()
     svc = WorkspaceAgentService(factory)
     host = await svc.provide_host(ws.id)
     first = a_placement(factory, ws.id, carried_by="claude_code")
-    await svc.place_host(ws.id, [first.id])
+    await svc.place_host(ws.id, host.id, first.id)
 
     second = a_placement(factory, ws.id, carried_by="codex")
-    assert await svc.place_host(ws.id, [second.id]) is None
+    with pytest.raises(Conflict) as refused:
+        await svc.place_host(ws.id, host.id, second.id, instructions="khác")
+    assert refused.value.code == "agent_already_placed"
     assert factory.store.attachments[host.id] == first.id
     assert factory.store.mariuses[host.id].adapter_type == "claude_code"
+    assert factory.store.mariuses[host.id].instructions == HOST_DEFAULT_INSTRUCTIONS
 
 
-async def test_a_runtime_that_cannot_take_work_is_not_somewhere_to_put_the_host() -> None:
+async def test_a_runtime_that_cannot_take_work_is_refused_and_nothing_changes() -> None:
     factory, ws = _factory_with_workspace()
     svc = WorkspaceAgentService(factory)
     host = await svc.provide_host(ws.id)
     shut = a_placement(factory, ws.id, ready=False, not_ready_reason="cli_removed")
     silent = a_placement(factory, ws.id, carried_by="")
 
-    assert await svc.place_host(ws.id, [shut.id, silent.id]) is None
+    for place, reason in ((shut, "cli_removed"), (silent, "placement_carries_nothing")):
+        with pytest.raises(PlacementNotReady) as refused:
+            await svc.place_host(ws.id, host.id, place.id, instructions="x")
+        assert refused.value.code == "placement_not_ready"
+        assert refused.value.params == {"reason": reason}
     assert factory.store.attachments.get(host.id) is None
     assert factory.store.mariuses[host.id].adapter_type == ""
+    assert factory.store.mariuses[host.id].instructions == HOST_DEFAULT_INSTRUCTIONS
 
 
-async def test_several_runtimes_at_once_pick_the_same_one_every_time() -> None:
-    """Xác định được, chứ không phải *thứ tự hàng nào về trước*.
-
-    Cùng một không gian làm việc, cùng một trạng thái, hai lần đồng bộ phải chọn cùng một chỗ —
-    nếu không thì cùng một hệ thống trả lời khác nhau vì một lý do không ai đọc được.
-    """
+async def test_a_runtime_of_another_workspace_is_not_found() -> None:
     factory, ws = _factory_with_workspace()
+    other = Workspace(name="Khác", slug="khac", owner_user_id="u1")
+    factory.store.workspaces[other.id] = other
     svc = WorkspaceAgentService(factory)
     host = await svc.provide_host(ws.id)
-    places = [a_placement(factory, ws.id, carried_by=f"cli-{n}") for n in range(4)]
-    ids = [p.id for p in places]
-    expected = min(ids, key=str)
+    elsewhere = a_placement(factory, other.id)
 
-    await svc.place_host(ws.id, list(reversed(ids)))
-
-    assert factory.store.attachments[host.id] == expected
+    with pytest.raises(NotFound) as refused:
+        await svc.place_host(ws.id, host.id, elsewhere.id)
+    assert refused.value.code == "placement_not_found"
 
 
-async def test_nothing_to_do_is_not_a_failure() -> None:
-    """Đường này chạy ở **mọi** lần một máy đồng bộ, nên *không có gì để làm* là ca thường."""
+async def test_only_the_host_can_be_given_a_place_after_it_was_made() -> None:
+    """Gỡ máy thì agent thường mất chỗ làm. Cửa này không được thành đường đặt lại cho nó."""
     factory, ws = _factory_with_workspace()
     svc = WorkspaceAgentService(factory)
-
-    # Chưa có người chủ nhà.
-    place = a_placement(factory, ws.id)
-    assert await svc.place_host(ws.id, [place.id]) is None
-    # Có người chủ nhà nhưng máy không khai được runtime nào nhận việc.
     await svc.provide_host(ws.id)
-    assert await svc.place_host(ws.id, []) is None
+    plain = _add_marius(factory, ws, "Decima")
+    place = a_placement(factory, ws.id)
+
+    with pytest.raises(Conflict) as refused:
+        await svc.place_host(ws.id, plain.id, place.id)
+    assert refused.value.code == "placement_is_fixed"
+    assert factory.store.attachments.get(plain.id) is None
 
 
-async def test_two_machines_finishing_at_the_same_moment_do_not_refuse_each_other(
+async def test_losing_a_race_is_the_answer_to_arriving_late(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Đặt chỗ đụng nhau là *không có gì để làm*, không phải một lời từ chối.
-
-    Nếu để lời từ chối ấy đi tiếp, thứ daemon nhận về là **409 trên đúng lệnh nó khai runtime
-    nó chạy được** — một cái máy bị từ chối vì một chuyện không phải của nó.
+    """Hai cửa sổ cùng bấm xong (FR-127): lần ghi tới sau nhận đúng `agent_already_placed`.
 
     Cuộc đua này cái kho trong bộ nhớ **không dựng được một mình**: `placed_at` và `attach` đọc
     cùng một cái dict, nên nó không bao giờ nói *chưa đặt* rồi lại từ chối. Nên chỗ từ chối được
-    thay vào — đúng cái xảy ra khi giao dịch của máy kia chưa commit lúc máy này đi hỏi, và đã
-    commit lúc máy này đi ghi.
+    thay vào — đúng cái xảy ra khi giao dịch của cửa sổ kia chưa commit lúc cửa sổ này đi hỏi,
+    và đã commit lúc cửa sổ này đi ghi. Bài đua thật trên Postgres ở
+    `test_host_placement_races.py`.
     """
     factory, ws = _factory_with_workspace()
     svc = WorkspaceAgentService(factory)
@@ -299,9 +331,12 @@ async def test_two_machines_finishing_at_the_same_moment_do_not_refuse_each_othe
     async with factory() as uow:
         monkeypatch.setattr(type(uow.placements), "attach", already)
 
-    assert await svc.place_host(ws.id, [place.id]) is None
-    # Và không để lại nửa vời: thứ chở lượt chạy vẫn rỗng, vì hàng buộc không được ghi.
+    with pytest.raises(Conflict) as refused:
+        await svc.place_host(ws.id, host.id, place.id, instructions="x")
+    assert refused.value.code == "agent_already_placed"
+    # Và không để lại nửa vời: không thứ chở lượt chạy, không chữ mới.
     assert factory.store.mariuses[host.id].adapter_type == ""
+    assert factory.store.mariuses[host.id].instructions == HOST_DEFAULT_INSTRUCTIONS
 
 
 async def test_a_host_created_but_never_seated_is_taken_up_rather_than_duplicated() -> None:

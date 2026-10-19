@@ -27,9 +27,10 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from armarius.application.use_cases.enrollment import AgentService
+from armarius.application.use_cases.enrollment import AgentService, PlacementNotReady
 from armarius.application.use_cases.types import UowFactory
 from armarius.domain.entities.marius import Marius
+from armarius.domain.entities.placement import PLACEMENT_CARRIES_NOTHING
 from armarius.shared.clock import utcnow
 from armarius.shared.errors import Conflict, NotFound
 
@@ -53,6 +54,22 @@ HOST_INSTRUCTIONS = (
     "greet them, help them shape their first project, and answer questions about what this "
     "workspace can do. You do not carry project work yourself — other agents are hired for "
     "that, and your job is to help decide what to hire and what to ask for."
+)
+
+# What the host's *own* instructions start as — the half its owner writes (FR-124, FR-115).
+#
+# The job lives above, in the system prompt, which no door lets a person touch. This is only how
+# the conversation goes, which is exactly the part a person should be free to change: it is shown
+# in an editable box on the last first step and on the agent's page, and whatever they leave in
+# it is theirs from then on. English because it is sent to the agent, and shown as it is sent —
+# the exception Constitution VII (2.1.0) makes for showing what an agent actually receives.
+#
+# Deliberately silent about the job. Repeating it here would be two places to read one rule, and
+# the copy a person edits would be the one that drifts.
+HOST_DEFAULT_INSTRUCTIONS = (
+    "Reply in the language the owner writes to you in. Keep answers short and concrete. When "
+    "something is unclear, ask one question at a time instead of guessing. Before suggesting "
+    "which agents to hire, ask what the owner is trying to get done."
 )
 
 
@@ -164,10 +181,11 @@ class WorkspaceAgentService:
         host = await self._agents.create_unplaced(
             workspace_id,
             self._free_name(taken),
-            # The product's half, not the owner's. Their half starts empty and is theirs to
-            # write; this one no door lets them touch, so editing their host cannot delete the
-            # job that makes it one (FR-007m).
+            # The product's half, not the owner's. Their half starts as the default below and
+            # is theirs to rewrite; this one no door lets them touch, so editing their host
+            # cannot delete the job that makes it one (FR-007m, FR-124).
             system_instructions=HOST_INSTRUCTIONS,
+            instructions=HOST_DEFAULT_INSTRUCTIONS,
             owner_user_id=ws.owner_user_id,
         )
         return await self.designate(workspace_id, host.id)
@@ -192,68 +210,75 @@ class WorkspaceAgentService:
         return f"{HOST_NAME} {uuid4().hex[:6]}"
 
     async def place_host(
-        self, workspace_id: UUID, candidates: Sequence[UUID]
-    ) -> Marius | None:
-        """Put an unplaced host to work, the first time this workspace has somewhere to work.
+        self,
+        workspace_id: UUID,
+        marius_id: UUID,
+        placement_id: UUID,
+        *,
+        instructions: str | None = None,
+    ) -> Marius:
+        """Put the host to work where its owner chose (spec 003 FR-125, FR-126, FR-128).
 
-        Called when a machine reports what it can run (FR-112). Returns the host it placed, or
-        ``None`` when there was nothing to do — no host, host already placed, or nothing among
-        `candidates` able to take work. *Nothing to do* is the ordinary case and must not read
-        as a failure: this runs on every sync a machine ever sends.
+        This used to run by itself on the first sync a machine sent, and pick the placement
+        with the smallest id. Stable, and meaningless to the person it happened to: on a
+        machine with two runtimes it chose one for them, and FR-007 then held the choice for
+        good. Now nothing places the host but this call, and this call is a person choosing.
 
-        Placed **once**. A second runtime appearing later does not move it: an agent is
-        attached to one place for life, and the host is not an exception (FR-007) — which is
-        also why the port this goes through has no `move` on it.
+        **Only the host.** Taking a machine out of a workspace leaves every agent on it with
+        nowhere to work (`infrastructure/daemon/cleanup.py`), and a door that placed any such
+        agent would be a way round FR-007 for all of them — a decision the owner has kept
+        closed. The host is different in kind: it is the one agent *born* with nowhere to work
+        (FR-114), and a workspace needs it to set up a project. So an agent not holding the
+        seat is refused with `placement_is_fixed`, and a host that lost its machine may be
+        placed again, because there is nothing left to move it from.
 
-        `candidates` are placement ids and nothing more. The caller knows which machine
-        reported them and what tool each one runs; this layer must not, so it asks the
-        placement itself whether it can take work rather than reading anything off the caller
-        (Constitution III).
+        `instructions`, when given, is written in the same transaction as the placement
+        (FR-126): a host with its owner's words saved and nowhere to work is the half-finished
+        state that step exists to avoid. `None` leaves them as they are; an empty string is a
+        real answer and is saved.
 
-        Which one, when several can: the smallest id. The domain's view of a place has no age
-        — deliberately, it is one of the things infrastructure keeps to itself — so the stable
-        thing available here is the id, and a stable rule matters more than a meaningful one.
-        The alternative is *whatever order the rows arrived in*, which is the same workspace
-        answering differently on two identical syncs.
+        Only the placement id comes in, and the placement itself is asked whether it can take
+        work — the caller knows what runtime it is, this layer must not (Constitution III).
         """
-        if not candidates:
-            return None
         host = await self.ensure_workspace_agent(workspace_id)
-        if host is None:
-            return None
         async with self._uow() as uow:
-            placed = await uow.placements.placed_at([host.id])
-            if placed.get(host.id) is not None:
-                return None
-            chosen = None
-            for placement_id in sorted(set(candidates), key=str):
-                place = await uow.placements.get(workspace_id, placement_id)
-                if place is not None and place.ready and place.carried_by:
-                    chosen = place
-                    break
-            if chosen is None:
-                return None
-            try:
-                await uow.placements.attach(host.id, workspace_id, chosen.id)
-            except Conflict:
-                # Two machines finished their first sync at the same moment and both got past
-                # the check above. The answer to *somebody else placed it a millisecond ago* is
-                # the same as the answer to *it was already placed*: nothing to do. Left to
-                # travel, this would come back to a daemon as a 409 on the call where it reports
-                # what it can run — a machine refused for a reason that is not about it.
-                return None
-            host.adapter_type = chosen.carried_by
-            host.updated_at = utcnow()
-            await uow.mariuses.update(host)
+            agent = await uow.mariuses.get(marius_id)
+            if agent is None or agent.workspace_id != workspace_id:
+                raise NotFound("agent_not_found")
+            if host is None or host.id != agent.id:
+                raise Conflict("placement_is_fixed")
+            if (await uow.placements.placed_at([agent.id])).get(agent.id) is not None:
+                raise Conflict("agent_already_placed")
+
+            place = await uow.placements.get(workspace_id, placement_id)
+            if place is None:
+                raise NotFound("placement_not_found")
+            if not place.ready:
+                raise PlacementNotReady(
+                    "placement_not_ready", reason=place.not_ready_reason or "unknown"
+                )
+            if not place.carried_by:
+                raise PlacementNotReady("placement_not_ready", reason=PLACEMENT_CARRIES_NOTHING)
+
+            # Two windows finishing the last step at once both get past the check above. The
+            # second one's write is refused by the one-binding-per-agent rule and comes back
+            # as the same `agent_already_placed` — the answer to *somebody placed it a moment
+            # ago* is the answer to *it was already placed* (FR-127).
+            await uow.placements.attach(agent.id, workspace_id, place.id)
+            agent.adapter_type = place.carried_by
+            if instructions is not None:
+                agent.instructions = instructions
+            agent.updated_at = utcnow()
+            await uow.mariuses.update(agent)
             await uow.commit()
         if self._liveness is None:
-            return host
-        # The host was made at sign-up, before anywhere existed to run it, so by now its looks
-        # have been missing for as long as the person took to install a daemon — and its next
-        # one can be up to half an hour away. Measure it now (FR-006e).
-        await self._liveness.placement_changed([host.id])
+            return agent
+        # It has been missing its looks since the workspace was made, and its next one could be
+        # half an hour off. Measure it now, so the person it was placed for can talk to it
+        # (FR-006e, FR-126).
+        await self._liveness.placement_changed([agent.id])
         async with self._uow() as uow:
-            return await uow.mariuses.get(host.id) or host
+            return await uow.mariuses.get(agent.id) or agent
 
     async def designate(self, workspace_id: UUID, marius_id: UUID) -> Marius:
         """Hand the host seat to this Marius. Any sitting host is demoted to a plain

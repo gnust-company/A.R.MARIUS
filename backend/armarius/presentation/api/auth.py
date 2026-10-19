@@ -208,7 +208,9 @@ class UpdateMeIn(BaseModel):
     """
 
     full_name: str | None = Field(default=None, min_length=1, max_length=200)
-    onboarding_step: int | None = Field(default=None, ge=0, le=3)
+    # Four steps since 2026-10-12: about you, workspace, machine, first agent (FR-100). 4 is
+    # where a finished person stands; `onboarded_at` is what says they finished.
+    onboarding_step: int | None = Field(default=None, ge=0, le=4)
     # Not a step number: finishing is its own fact (see `User.onboarded`). Sending `false` does
     # not un-finish anything — there is no product reason to put somebody back through the
     # first steps, and a door that could would be a door that does it by accident.

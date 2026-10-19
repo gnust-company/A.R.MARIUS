@@ -13,9 +13,9 @@ from armarius.presentation.container import build_container
 from tests.support.agents import invite_agent
 from tests.support.runs import open_run
 
-#: Tên hiển thị của kỹ năng dựng sẵn, đọc thẳng từ chỗ khai nó. Viết cứng vào đây thì bài này
-#: đỏ mỗi lần đổi tên tờ hướng dẫn — mà tên tờ hướng dẫn không phải thứ bài này nói về.
-_BUILTIN_NAME = BUILTIN_SKILLS[0]["name"]
+#: Slug của kỹ năng dựng sẵn, đọc thẳng từ chỗ khai nó. Viết cứng vào đây thì bài này đỏ mỗi lần
+#: đổi tên tờ hướng dẫn — mà tên tờ hướng dẫn không phải thứ bài này nói về.
+_BUILTIN_SLUG = BUILTIN_SKILLS[0]["slug"]
 
 
 @pytest.fixture(autouse=True)
@@ -32,6 +32,32 @@ async def _client() -> AsyncClient:
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
+async def _own_skill(c: AsyncClient, ws_id: str, h: dict[str, str], name: str) -> dict:
+    """Một kỹ năng người chủ tự tạo.
+
+    Các bài nói về việc *gắn* kỹ năng vào agent từng mượn kỹ năng dựng sẵn cho tiện. Từ đặc tả
+    003 (FR-123) kỹ năng dựng sẵn không còn hiện ra, cũng không gắn được vào danh sách của một
+    agent — hệ thống tự đưa nó tới mọi lượt chạy — nên thứ để gắn phải là thứ người chủ làm ra.
+    """
+    made = await c.post(
+        f"/v1/workspaces/{ws_id}/skills/manual",
+        headers=h,
+        json={"name": name, "description": "owner's own"},
+    )
+    assert made.status_code == 201, made.text
+    return made.json()
+
+
+async def _stored_slugs(ws_id: str) -> set[str]:
+    """Kỹ năng thật sự nằm trong DB của workspace, kể cả loại dựng sẵn người không thấy."""
+    from uuid import UUID
+
+    from armarius.infrastructure.persistence.unit_of_work import make_uow
+
+    async with make_uow() as uow:
+        return {one.slug for one in await uow.skills.list_by_workspace(UUID(ws_id))}
+
+
 async def _register(c: AsyncClient, email: str = "p@armarius.dev") -> tuple[str, str]:
     """Register a user; return (access_token, workspace_id)."""
     r = await c.post(
@@ -45,16 +71,16 @@ async def _register(c: AsyncClient, email: str = "p@armarius.dev") -> tuple[str,
     return token, ws.json()[0]["id"]
 
 
-async def test_personal_workspace_has_builtin_skill():
+async def test_personal_workspace_is_seeded_with_the_builtin_nobody_sees():
+    """Gieo vẫn gieo — lượt chạy nào cũng cần tờ hướng dẫn — nhưng thư viện không bày nó ra
+    (FR-123)."""
     async with await _client() as c:
         token, ws_id = await _register(c, "skill1@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
         skills = await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)
     assert skills.status_code == 200
-    body = skills.json()
-    assert any(s["slug"] == "armarius-http" for s in body)
-    builtin = next(s for s in body if s["slug"] == "armarius-http")
-    assert builtin["source"] == "builtin"
+    assert not any(s["source"] == "builtin" for s in skills.json()), skills.json()
+    assert _BUILTIN_SLUG in await _stored_slugs(ws_id)
 
 
 async def test_register_without_username_derives_handle():
@@ -75,8 +101,7 @@ async def test_creating_an_agent_links_its_skills():
     async with await _client() as c:
         token, ws_id = await _register(c, "prov@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
-        skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
-        skill_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
+        skill_id = (await _own_skill(c, ws_id, h, "Tra cứu API"))["id"]
 
         data = await invite_agent(
             c,
@@ -135,8 +160,7 @@ async def test_edit_agent_updates_skills():
     async with await _client() as c:
         token, ws_id = await _register(c, "edit@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
-        skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
-        skill_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
+        skill_id = (await _own_skill(c, ws_id, h, "Rà soát mã"))["id"]
 
         created = await invite_agent(c, ws_id, h, name="Marin")
         marius_id = created["id"]
@@ -192,8 +216,8 @@ async def test_custom_skill_is_workspace_scoped():
         hb = {"Authorization": f"Bearer {token_b}"}
         b_skills = (await c.get(f"/v1/workspaces/{ws_b}/skills", headers=hb)).json()
     assert not any(s["slug"] == "secret-sauce" for s in b_skills)
-    # ...but B still has the built-in
-    assert any(s["slug"] == "armarius-http" for s in b_skills)
+    # ...but B is still seeded with the built-in, which reaches B's runs without being shown.
+    assert _BUILTIN_SLUG in await _stored_slugs(ws_b)
 
 
 async def test_an_agent_has_no_road_left_to_fetch_its_own_skills():
@@ -250,9 +274,12 @@ async def test_builtin_content_refreshes_unless_owner_edited():
             await uow.skills.update(stale)
             await uow.commit()
 
-        skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
-        refreshed = next(s for s in skills if s["slug"] == "armarius-http")
-        assert refreshed["files"]["SKILL.md"] != "old shipped copy"
+        # Reading the Shop still runs the seeding pass, even though it no longer lists the
+        # built-in (FR-123) — so the refresh is read back from storage.
+        await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)
+        async with make_uow() as uow:
+            refreshed = await uow.skills.get_by_slug(UUID(ws_id), "armarius-http")
+        assert refreshed.files["SKILL.md"] != "old shipped copy"
 
         # Now the owner edits the same skill by hand. `update_files` stamps `updated_at`,
         # and that stamp is the whole difference: a shipped copy never has one, so it is
@@ -264,9 +291,10 @@ async def test_builtin_content_refreshes_unless_owner_edited():
             await uow.skills.update(edited)
             await uow.commit()
 
-        skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
-    kept = next(s for s in skills if s["slug"] == "armarius-http")
-    assert kept["files"]["SKILL.md"] == "owner's custom copy"  # preserved
+        await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)
+        async with make_uow() as uow:
+            kept = await uow.skills.get_by_slug(UUID(ws_id), "armarius-http")
+    assert kept.files["SKILL.md"] == "owner's custom copy"  # preserved
 
 
 async def test_seed_prunes_delisted_builtin_skills():
@@ -297,9 +325,9 @@ async def test_seed_prunes_delisted_builtin_skills():
                 files={"SKILL.md": "old"}, created_at=utcnow(),
             ))
             await uow.commit()
-        # The GET triggers seed_builtins → prune.
+        # The GET triggers seed_builtins → prune, though it lists no built-in itself (FR-123).
         after = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
-    slugs = {s["slug"] for s in after}
+    slugs = await _stored_slugs(ws_id)
     assert "armarius-onboarder" not in slugs, slugs  # de-listed builtin pruned
     assert "armarius-http" in slugs  # a real builtin survives
     assert any(s["name"] == "Keeper" for s in after)  # manual skill untouched
@@ -311,11 +339,10 @@ async def test_linking_more_skills_merges_them():
     async with await _client() as c:
         token, ws_id = await _register(c, "install@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
-        skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
-        http_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
-        # A second skill to link afterwards. The owner's own rather than a second builtin:
-        # this test is about merging links, and tying it to how many skills happen to ship
-        # would make it fail the next time that list changes.
+        first = await _own_skill(c, ws_id, h, "Tra cứu API")
+        http_id = first["id"]
+        # A second skill to link afterwards, the owner's own like the first: this test is
+        # about merging links, and built-ins are no longer something a person links (FR-123).
         second = await c.post(
             f"/v1/workspaces/{ws_id}/skills/manual",
             headers=h,
@@ -344,7 +371,7 @@ async def test_linking_more_skills_merges_them():
     assert out["skill_ids"] == [http_id, second_id]
     assert out["installed"] == [second_slug]  # only the newly linked slug
     marin = next(m for m in listed if m["id"] == mid)
-    assert marin["skills"] == [_BUILTIN_NAME, "Bảng màu"], marin["skills"]
+    assert marin["skills"] == ["Tra cứu API", "Bảng màu"], marin["skills"]
 
 
 async def test_relinking_a_skill_the_agent_already_has_does_not_duplicate_it():
@@ -355,8 +382,8 @@ async def test_relinking_a_skill_the_agent_already_has_does_not_duplicate_it():
     async with await _client() as c:
         token, ws_id = await _register(c, "idem@armarius.dev")
         h = {"Authorization": f"Bearer {token}"}
-        skills = (await c.get(f"/v1/workspaces/{ws_id}/skills", headers=h)).json()
-        http_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
+        linked = await _own_skill(c, ws_id, h, "Tra cứu API")
+        http_id = linked["id"]
 
         data = await invite_agent(c, ws_id, h, name="Marin", skill_ids=[http_id])
         mid = data["id"]
@@ -370,7 +397,7 @@ async def test_relinking_a_skill_the_agent_already_has_does_not_duplicate_it():
     assert r.status_code == 200, r.text
     out = r.json()
     assert out["skill_ids"] == [http_id]  # no duplicate link
-    assert out["installed"] == ["armarius-http"]  # named again even though already linked
+    assert out["installed"] == [linked["slug"]]  # named again even though already linked
     marin = next(m for m in listed if m["id"] == mid)
     # No install state to carry any more: linking *is* the install, because the files are
     # written onto the machine with every run (FR-011b, FR-011c).
@@ -384,8 +411,7 @@ async def test_install_skills_on_other_workspace_is_404():
         token_a, ws_a = await _register(c, "owner_a@armarius.dev")
         _, ws_b = await _register(c, "owner_b@armarius.dev")
         h_a = {"Authorization": f"Bearer {token_a}"}
-        skills = (await c.get(f"/v1/workspaces/{ws_a}/skills", headers=h_a)).json()
-        http_id = next(s["id"] for s in skills if s["slug"] == "armarius-http")
+        http_id = (await _own_skill(c, ws_a, h_a, "Tra cứu API"))["id"]
 
         data = await invite_agent(c, ws_a, h_a, name="Marin")
         mid = data["id"]

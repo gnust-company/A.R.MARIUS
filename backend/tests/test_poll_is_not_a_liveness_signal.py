@@ -99,6 +99,17 @@ async def _an_agent(c: AsyncClient, person: str, workspace: str, workplace: str)
     return made.json()
 
 
+async def _shown(c: AsyncClient, person: str, workspace: str, agent_id: str) -> dict:
+    """Agent ấy như danh bạ hiện ra — chọn theo id, không theo vị trí.
+
+    Danh bạ còn có người chủ nhà. Từng có lúc nó tự được đặt lên chính máy này nên đứng đầu
+    danh sách với cùng một lý do, và bài nào đọc `[0]` cũng vô tình đúng. Từ đặc tả 003 (sửa
+    2026-10-12) không gì đặt nó ngoài người chủ, nên nó nằm đó với lý do *chưa được đặt chỗ*.
+    """
+    listed = await c.get(f"/v1/workspaces/{workspace}/mariuses", headers=_auth(person))
+    return next(one for one in listed.json() if one["id"] == agent_id)
+
+
 async def _person(c: AsyncClient, email: str) -> str:
     registered = await c.post(
         "/auth/register",
@@ -209,9 +220,7 @@ async def test_a_beating_machine_whose_cli_is_gone_still_leaves_the_agent_offlin
 
         assert await _alive(agent["id"]) is False
 
-        shown = (
-            await c.get(f"/v1/workspaces/{workspace}/mariuses", headers=_auth(person))
-        ).json()[0]
+        shown = await _shown(c, person, workspace, agent["id"])
         assert shown["offline_reason"] == "cli_removed"
 
 
@@ -242,9 +251,7 @@ async def test_a_daemon_that_says_goodbye_takes_its_agents_offline_at_once() -> 
         # Không có nhịp nào bị lỡ, không có giây nào trôi qua. Máy vừa nói xong câu cuối.
         assert await _alive(agent["id"]) is False
 
-        shown = (
-            await c.get(f"/v1/workspaces/{workspace}/mariuses", headers=_auth(person))
-        ).json()[0]
+        shown = await _shown(c, person, workspace, agent["id"])
         assert shown["offline_reason"] == "daemon_stopped", (
             "câu hiện lên phải bảo người ta bật daemon lại, không phải cài lại agent CLI"
         )
@@ -273,9 +280,7 @@ async def test_a_machine_that_stops_beating_takes_every_agent_on_it_offline() ->
 
         assert await _alive(agent["id"]) is False
 
-        shown = (
-            await c.get(f"/v1/workspaces/{workspace}/mariuses", headers=_auth(person))
-        ).json()[0]
+        shown = await _shown(c, person, workspace, agent["id"])
         # Chỗ làm vẫn ghi là sẵn sàng — nó được ghi lúc máy còn nói chuyện được, và không ai
         # về sửa lại được nữa. Lý do phải tới từ khoảng lặng, không từ hàng cũ ấy.
         assert shown["offline_reason"] == "machine_unreachable"
@@ -331,9 +336,7 @@ async def test_a_gone_cli_outranks_a_quiet_machine_when_both_are_true() -> None:
         await _stop_beating(workspace, silent_for=timedelta(minutes=5))
 
         assert await _alive(agent["id"]) is False
-        shown = (
-            await c.get(f"/v1/workspaces/{workspace}/mariuses", headers=_auth(person))
-        ).json()[0]
+        shown = await _shown(c, person, workspace, agent["id"])
         assert shown["offline_reason"] == "cli_removed"
 
 
@@ -408,7 +411,9 @@ async def test_every_agent_on_a_silent_machine_falls_together() -> None:
         listed = (
             await c.get(f"/v1/workspaces/{workspace}/mariuses", headers=_auth(person))
         ).json()
-        assert {one["offline_reason"] for one in listed} == {"machine_unreachable"}
+        assert {one["offline_reason"] for one in listed if one["id"] in made} == {
+            "machine_unreachable"
+        }
 
 
 # ── 7. chỗ làm chưa từng được khai ────────────────────────────────────────────

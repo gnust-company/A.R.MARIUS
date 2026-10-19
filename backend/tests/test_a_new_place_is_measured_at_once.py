@@ -31,7 +31,7 @@ from armarius.infrastructure.events.workspace_trace import ControlBusWorkspaceTr
 from armarius.main import app
 from armarius.shared.clock import utcnow
 from tests.support.fakes import FakeLivenessProbe, FakeUowFactory
-from tests.support.machines import auth, link_machine, link_machine_to
+from tests.support.machines import auth, link_machine, link_machine_to, put_host_to_work
 
 
 @pytest.fixture(autouse=True)
@@ -69,8 +69,12 @@ async def _set_liveness(marius_id: str, **columns) -> None:
         await session.commit()
 
 
-async def test_the_host_is_online_as_soon_as_the_first_machine_reports_a_runtime() -> None:
-    """Đúng ca người chủ gặp: người chủ nhà đã giãn tới 16 phút trước khi máy nối vào."""
+async def test_the_host_is_online_as_soon_as_its_owner_chooses_where_it_works() -> None:
+    """Đúng ca người chủ gặp: người chủ nhà đã giãn tới 16 phút trước khi máy nối vào.
+
+    Từ đặc tả 003 (FR-112, sửa 2026-10-12) việc nối máy không tự đặt người chủ nhà nữa — người
+    chủ chọn runtime cho nó. Lần chọn ấy là lần đổi chỗ làm mà FR-006e nói tới.
+    """
     async with _client() as c:
         headers, ws = await _register(c, "host-waited@armarius.dev")
         host = next(m for m in await _directory(c, headers, ws) if m["role"] == "Workspace Agent")
@@ -87,11 +91,13 @@ async def test_the_host_is_online_as_soon_as_the_first_machine_reports_a_runtime
             next_probe_at=now + timedelta(minutes=16),
         )
 
-        await link_machine_to(c, headers, ws)
+        machine = await link_machine_to(c, headers, ws)
+        chosen = await put_host_to_work(c, headers, ws, machine.workplace_id)
+        assert chosen.status_code == 200, chosen.text
 
         host = next(m for m in await _directory(c, headers, ws) if m["id"] == host["id"])
         assert host["liveness"] == "online", (
-            "máy đã nối và runtime đã ready mà người chủ nhà vẫn ngồi chờ hết quãng giãn: "
+            "người chủ đã chọn runtime mà người chủ nhà vẫn ngồi chờ hết quãng giãn: "
             f"{host}"
         )
 
