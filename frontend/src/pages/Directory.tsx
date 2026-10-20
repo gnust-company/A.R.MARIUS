@@ -6,7 +6,6 @@ import {
   Plus,
   Search,
   Check,
-  Lock,
   Star,
   Server,
   Loader2,
@@ -701,27 +700,23 @@ export default function Directory() {
                   {t('directory.skills')}
                 </label>
                 <div className="flex flex-wrap gap-1.5">
+                  {/* Only skills people added. The ones every agent carries are never offered:
+                      they ride every run whether or not anybody picks them, and the server does
+                      not send them (spec 003 FR-123). */}
                   {skills.map((skill) => {
-                    // A built-in rides every run whether or not anybody picks it, so offering it
-                    // as a choice would be offering a switch that is not wired to anything.
-                    // Shown as on and not clickable, because it IS on.
-                    const always = skill.type === 'builtin';
-                    const on = always || selectedSkillIds.includes(skill.id);
+                    const on = selectedSkillIds.includes(skill.id);
                     return (
                       <button
                         key={skill.id}
-                        onClick={() => !always && toggleSkill(skill.id)}
-                        disabled={always}
-                        title={always ? t('directory.skillAlwaysOn') : undefined}
+                        onClick={() => toggleSkill(skill.id)}
                         className={cn(
                           'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all',
                           on
                             ? 'bg-[#C25E3A] text-white'
                             : 'bg-[#E3D7BC] text-[#6B5E4E] hover:bg-[#D9CDB8]',
-                          always && 'cursor-default opacity-90'
                         )}
                       >
-                        {on && (always ? <Lock className="w-3 h-3" /> : <Check className="w-3 h-3" />)}
+                        {on && <Check className="w-3 h-3" />}
                         {skill.name}
                       </button>
                     );
