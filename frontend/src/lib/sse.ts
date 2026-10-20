@@ -185,6 +185,12 @@ export function subscribeSSE(
  *
  * The callback receives the already‑mapped `{ type, payload }` (see `workspaceEventFromVM`).
  */
+/** The machine events on the workspace channel. One half of a contract whose other half is
+ *  `EVENT_MACHINE_LINKED` and `EVENT_WORKPLACES_REPORTED` in the backend's workspace trace
+ *  (spec 003 contracts/push-events.md). Both are signals: whoever hears one reads again. */
+export const MACHINE_LINKED = 'machine.linked'
+export const WORKPLACES_REPORTED = 'machine.workplaces_reported'
+
 export function subscribeWorkspaceEvents(
   workspaceId: string,
   onEvent: (event: { type: string; payload: Record<string, unknown> }) => void,

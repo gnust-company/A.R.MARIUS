@@ -5,7 +5,6 @@ import {
   Wrench,
   Plus,
   Search,
-  Settings,
   Palette,
   Github,
   FileText,
@@ -50,7 +49,6 @@ const itemVariants = {
 function SourceBadge({ type }: { type: Skill['type'] }) {
   const { t } = useTranslation();
   const config = {
-    builtin: { label: t('skills.type.builtin'), icon: Settings, color: 'bg-[#E8E0D8] text-[#8B7A6A]' },
     github: { label: t('skills.imported'), icon: Github, color: 'bg-[#D4E8F0] text-[#2A5A6E]' },
     custom: { label: t('skills.type.manual'), icon: FileText, color: 'bg-[#EAE0CC] text-[#7A6A2A]' },
   };
@@ -81,7 +79,6 @@ export default function Skills() {
   const [deletingSkill, setDeletingSkill] = useState<{ id: string; name: string } | null>(null);
 
   // ── State ──────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'library' | 'builtin'>('library');
   const [searchQuery, setSearchQuery] = useState('');
 
   // ── Create Modal State ─────────────────────────────────────────────────────
@@ -95,13 +92,10 @@ export default function Skills() {
 
   // ── Filter Skills ──────────────────────────────────────────────────────────
   const filteredSkills = useMemo(() => {
+    // Only what people added. The skills the system gives every agent are never listed — not
+    // even on a tab of their own: they are not something to look at or decide about, and the
+    // server does not send them (spec 003 FR-123).
     let filtered = [...skills];
-
-    if (activeTab === 'builtin') {
-      filtered = filtered.filter((s) => s.type === 'builtin');
-    } else {
-      filtered = filtered.filter((s) => s.type !== 'builtin');
-    }
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -113,7 +107,7 @@ export default function Skills() {
     }
 
     return filtered;
-  }, [skills, activeTab, searchQuery]);
+  }, [skills, searchQuery]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleOpenCreate = (mode: 'manual' | 'import') => {
@@ -231,30 +225,8 @@ export default function Skills() {
         </div>
       </motion.div>
 
-      {/* Tabs */}
+      {/* Search */}
       <div className="flex items-center gap-1 mb-6 border-b border-[#E3D7BC]">
-        {(['library', 'builtin'] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={cn(
-              'px-4 py-2.5 text-[13px] font-medium transition-all relative',
-              activeTab === tab
-                ? 'text-[#C25E3A]'
-                : 'text-[#6B5E4E] hover:text-[#2A2318]'
-            )}
-          >
-            {tab === 'library' ? t('skills.tabLibrary') : t('skills.tabBuiltin')}
-            {activeTab === tab && (
-              <motion.div
-                layoutId="skills-tab"
-                className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#C25E3A]"
-                transition={{ duration: 0.2 }}
-              />
-            )}
-          </button>
-        ))}
-        {/* Search */}
         <div className="ml-auto mb-2 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A89880]" />
           <input
@@ -276,27 +248,21 @@ export default function Skills() {
       {filteredSkills.length === 0 ? (
         <EmptyState
           icon={Wrench}
-          title={activeTab === 'builtin' ? t('skills.emptyBuiltinTitle') : t('skills.emptyTitle')}
-          description={
-            activeTab === 'builtin'
-              ? t('skills.emptyBuiltinDescription')
-              : t('skills.emptyLibraryDescription')
-          }
+          title={t('skills.emptyTitle')}
+          description={t('skills.emptyLibraryDescription')}
           action={
-            activeTab !== 'builtin' && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleOpenCreate('manual')}
-                  className={cn(
-                    'inline-flex items-center gap-2 px-5 py-2.5 rounded-md text-[15px] font-medium',
-                    'bg-[#C25E3A] text-white hover:bg-[#D97B5A] transition-all'
-                  )}
-                >
-                  <Plus className="w-4 h-4" />
-                  {t('skills.createSkill')}
-                </button>
-              </div>
-            )
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleOpenCreate('manual')}
+                className={cn(
+                  'inline-flex items-center gap-2 px-5 py-2.5 rounded-md text-[15px] font-medium',
+                  'bg-[#C25E3A] text-white hover:bg-[#D97B5A] transition-all'
+                )}
+              >
+                <Plus className="w-4 h-4" />
+                {t('skills.createSkill')}
+              </button>
+            </div>
           }
         />
       ) : (
@@ -316,11 +282,7 @@ export default function Skills() {
             >
               <VellumPanel>
                 <div className="flex items-start gap-3 mb-3">
-                  {skill.type === 'builtin' ? (
-                    <Settings className="w-5 h-5 text-[#8B7A6A] flex-shrink-0 mt-0.5" />
-                  ) : (
-                    <Palette className="w-5 h-5 text-[#D4A843] flex-shrink-0 mt-0.5" />
-                  )}
+                  <Palette className="w-5 h-5 text-[#D4A843] flex-shrink-0 mt-0.5" />
                   <div className="flex-1 min-w-0">
                     <h3 className="font-['Fraunces',Georgia,serif] text-[18px] font-medium text-[#2A2318] leading-tight">
                       {skill.name}
@@ -338,16 +300,14 @@ export default function Skills() {
                     {t('skills.fileCount', { count: (skill.files || []).length })}
                   </span>
                   <div className="flex items-center gap-1">
-                    {skill.type !== 'builtin' && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setDeletingSkill({ id: skill.id, name: skill.name }); }}
-                        className="p-1.5 rounded-md text-[#A89880] hover:text-[#C0492B] hover:bg-[#F3D9D0] transition-colors opacity-0 group-hover:opacity-100"
-                        aria-label={t('skills.delete')}
-                        title={t('skills.delete')}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setDeletingSkill({ id: skill.id, name: skill.name }); }}
+                      className="p-1.5 rounded-md text-[#A89880] hover:text-[#C0492B] hover:bg-[#F3D9D0] transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label={t('skills.delete')}
+                      title={t('skills.delete')}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                     <ChevronRight className="w-4 h-4 text-[#A89880]" />
                   </div>
                 </div>

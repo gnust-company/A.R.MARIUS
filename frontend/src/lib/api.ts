@@ -669,6 +669,30 @@ export async function designateWorkspaceAgent(
   return post<MariusDTO>(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}/designate`, {})
 }
 
+export interface PlaceHostBody {
+  workplace_id: string
+  /** Saved in the same write as the placement. Left out, the host keeps what it has; an empty
+   *  string is a real value — the person cleared the box. */
+  instructions?: string
+}
+
+/**
+ * Put the workspace's host on a runtime the person chose (spec 003 FR-125, FR-128).
+ *
+ * The only agent this door takes is the host, and only while it has nowhere to work: every
+ * other agent keeps the runtime it was made on (`placement_is_fixed`). A host that already has
+ * one is refused with `agent_already_placed`, and that refusal carries `cli_kind` and
+ * `machine_name` in its params — the place it is at — so a second window can say where it went
+ * instead of only that it failed (FR-127).
+ */
+export async function placeHost(
+  workspaceId: string,
+  mariusId: string,
+  body: PlaceHostBody,
+): Promise<MariusDTO> {
+  return post<MariusDTO>(`/v1/workspaces/${workspaceId}/mariuses/${mariusId}/placement`, body)
+}
+
 export async function updateMarius(
   workspaceId: string,
   mariusId: string,

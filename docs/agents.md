@@ -33,6 +33,28 @@ Kỹ năng gắn được ngay lúc tạo hoặc thêm sau ([Kỹ năng](skills.
 
 ---
 
+## Người chủ nhà chưa có runtime
+
+Mỗi không gian làm việc có sẵn một agent tên **Livia**, gọi là **người chủ nhà**. Nó là agent duy
+nhất được sinh ra mà **chưa có runtime**: runtime của nó do bạn chọn, ở bước *agent đầu tiên* lúc mới
+đăng ký ([Quickstart](quickstart.md#4-agent-đầu-tiên-người-chủ-nhà)). Armarius không tự đặt nó vào
+runtime nào, kể cả khi chỉ có một.
+
+Livia chưa có runtime thì hiện *Mất liên lạc*, với lý do *chưa được chọn runtime*, và **trang của
+nó có sẵn chỗ chọn runtime** ngay ở tab tổng quan. Xảy ra khi bạn bỏ qua bước ấy, hoặc khi máy của nó
+bị gỡ khỏi không gian làm việc. Danh sách ở đó giống hệt ở bước *agent đầu tiên*: runtime đang sẵn
+sàng thì chọn được, runtime chưa sẵn sàng thì hiện kèm lý do. Một máy vừa chạy daemon lên thì danh
+sách tự cập nhật, không cần tải lại trang. Chọn xong thì chỗ ấy biến mất.
+
+Chỉ người chủ nhà mới có chỗ này. Một agent khác mất máy thì vẫn ở lại với runtime cũ: agent làm
+việc ở đúng một chỗ, suốt đời.
+
+Người chủ nhà còn có một **system prompt**: phần chữ Armarius viết, làm nên một người chủ nhà. Tab
+*Chỉ dẫn* hiện nó nguyên văn bằng tiếng Anh, chỉ để đọc, ngay trên ô chỉ dẫn của bạn. Bạn sửa hay xoá
+trắng ô chỉ dẫn cũng không làm Livia mất việc của nó.
+
+---
+
 ## Trạng thái của một agent
 
 Agent chỉ có **một** trạng thái, và nó trả lời đúng một câu: *bây giờ có gọi được nó không?*
