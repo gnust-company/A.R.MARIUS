@@ -40,6 +40,7 @@ import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
 import { onWorkspaceEvent } from '@/hooks/use-workspace-events';
 import InstructionsTab from '@/components/agent/InstructionsTab';
+import HostRuntimeChooser from '@/components/agent/HostRuntimeChooser';
 import SkillsTab, { type SkillRow } from '@/components/agent/SkillsTab';
 import SettingsTab from '@/components/agent/SettingsTab';
 import AgentChatPanel from '@/components/agent/AgentChatPanel';
@@ -248,6 +249,7 @@ export default function AgentDetail() {
   const rel = useRelativeTime();
   const { workspaceId, id } = useParams();
   const mariuses = useAppStore((s) => s.mariuses);
+  const workspaces = useAppStore((s) => s.workspaces);
   const allSkills = useAppStore((s) => s.skills);
   const installAgentSkills = useAppStore((s) => s.installAgentSkills);
   const updateMarius = useAppStore((s) => s.updateMarius);
@@ -328,6 +330,12 @@ export default function AgentDetail() {
   const displayName = agent?.displayName || agent?.name || t('agentDetail.agentFallback');
   const AdapterIcon = ADAPTER_ICON[agent?.adapterType || ''] || Globe;
   const linkedSkillNames = agent?.skills || [];
+  // The host with nowhere to work is the one agent that may be given a runtime after it was
+  // made (spec 003 FR-128). Read off the workspace's seat, not off a flag on the agent row:
+  // the seat is the server's answer to *who is the host*.
+  const isHost =
+    agent != null && workspaces.find((w) => w.id === workspaceId)?.workspaceAgentId === agent.id;
+  const needsRuntime = isHost && !agent?.runtime;
 
   // The picker offers EVERY workspace skill — a linked one can be re-selected to re-push an
   // updated copy of its files (#74/#105), not only newly-linked skills.
@@ -587,6 +595,15 @@ export default function AgentDetail() {
       {tab === 'overview' && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
           <div className="space-y-6">
+            {needsRuntime && agent && workspaceId && (
+              <VellumPanel className="rounded-lg border-[#C25E3A]/40">
+                <HostRuntimeChooser
+                  workspaceId={workspaceId}
+                  hostId={agent.id}
+                  hostName={displayName}
+                />
+              </VellumPanel>
+            )}
             <VellumPanel className="rounded-lg border-[#E3D7BC]">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A89880] mb-4">
                 {t('agentDetail.overview')}

@@ -322,7 +322,8 @@ export function skillToVM(dto: SkillDTO): Skill {
     name: dto.name,
     description: dto.description ?? undefined,
     workspaceId: dto.workspace_id ?? undefined,
-    type: dto.source === 'builtin' ? 'builtin' : dto.source === 'imported' ? 'github' : 'custom',
+    // The server never sends a built-in (spec 003 FR-123), so there is no kind for one here.
+    type: dto.source === 'imported' ? 'github' : 'custom',
     files: Object.entries(dto.files).map(([name, content]) => ({
       id: `${dto.id}-${name}`,
       name,

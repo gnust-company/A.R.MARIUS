@@ -31,17 +31,25 @@ demo@acme.dev / demo1234
 
 API ở `http://localhost:8080` — `/docs` là bản mô tả cửa, `/healthz` để kiểm tra nó còn sống.
 
-## 2. Tạo một không gian làm việc
+## 2. Bốn bước đầu
 
-Đăng nhập lần đầu sẽ rơi vào **Xưởng** — danh sách không gian làm việc. Tạo một cái.
+Đăng nhập lần đầu, Armarius dẫn bạn qua **bốn bước**, mỗi bước một màn: *về bạn*, *không gian làm
+việc*, *nối máy*, *agent đầu tiên*. Bỏ dở giữa chừng thì lần sau vào lại đúng bước đang dở, kể cả
+khi mở ở máy khác. Đi xong rồi thì không gặp lại nữa.
 
-Không gian làm việc (**workspace**) là ranh giới cô lập: agent, kỹ năng, dự án, máy đều thuộc
-đúng một không gian và không nhìn thấy nhau qua ranh giới ấy.
+Hai bước đầu hỏi tên hiển thị của bạn và tên cho **không gian làm việc** (**workspace**) đã được tạo
+sẵn lúc đăng ký. Không gian làm việc là ranh giới cô lập: agent, kỹ năng, dự án, máy đều thuộc đúng
+một không gian và không nhìn thấy nhau qua ranh giới ấy.
+
+Hai bước sau là mục 3 và mục 4 dưới đây. Màn hình đưa sẵn từng lệnh để chép, nên bạn chỉ cần đọc
+tiếp ở đây khi muốn biết lệnh ấy làm gì.
 
 ## 3. Nối máy của bạn vào
 
-**Đây là bước không bỏ qua được**, và nó phải làm trước bước tạo agent — một agent bắt buộc
-phải có **runtime** ngay lúc sinh ra, chứ không phải gán sau.
+Agent chạy trên máy của bạn, không phải máy của Armarius, nên phải có một máy được nối vào trước khi
+có agent nào chạy được. Bước *nối máy* có ba phần — **cài**, **nối**, **chạy** — và tự đánh dấu xong
+từng phần khi hệ thống thấy nó xong, không cần tải lại trang. Phần *chạy* xong thì màn hình tự sang
+bước *agent đầu tiên*.
 
 **Linux / macOS** — một dòng:
 
@@ -78,6 +86,10 @@ armarius-daemon login -server http://localhost:3000
 Nó **tự mở trang phê duyệt** ra, với mã đã nằm sẵn trên địa chỉ — bạn chỉ cần nhìn tên máy, chọn
 không gian làm việc rồi bấm **Đồng ý**. Không phải chép mã đi đâu cả.
 
+Trang phê duyệt mở trong **một cửa sổ khác**. Duyệt xong thì cửa sổ onboarding tự đánh dấu xong phần
+*nối* và chỉ sang phần *chạy*. Duyệt máy **chưa** phải là xong: lúc ấy máy mới có giấy tờ, chưa có
+runtime nào.
+
 > Còn bước bấm đồng ý thì **không** bỏ, và đó là chủ ý: một mã lộ ra — trong log, trong ảnh chụp
 > màn hình, trong một tin nhắn — mà tự vào được thì là một máy lạ vào thẳng không gian làm việc
 > của bạn. Trang ấy hiện tên máy đang hỏi để bạn nhận ra nó, và chỉ có thế.
@@ -96,8 +108,9 @@ armarius-daemon start
 thành runtime**. Nối mà không chạy `start` thì màn Máy hiện máy của bạn mà không có runtime nào,
 và không agent nào tạo được.
 
-Nó sẽ đọc lên những agent CLI nó tìm thấy trên máy này. Quay lại màn **Máy** — mỗi CLI tìm
-được hiện thành một **runtime**, và cái nào ghi *Sẵn sàng* là cái nhận việc được.
+Nó sẽ đọc lên những agent CLI nó tìm thấy trên máy này, và báo chúng lên thành **runtime**. Cửa
+sổ onboarding nghe thấy và tự sang bước *agent đầu tiên*. Ngoài onboarding, mỗi runtime hiện ở màn
+**Máy**, và cái nào ghi *Sẵn sàng* là cái nhận việc được.
 
 `start` **chạy nền liên tục** — Ctrl-C là tắt, và tắt thì các runtime chuyển sang *Daemon trên máy
 này đã tắt*. Muốn nó tự bật khi mở máy thì xem mục *Running it as a service* trong
@@ -106,19 +119,38 @@ này đã tắt*. Muốn nó tự bật khi mở máy thì xem mục *Running it
 > Một runtime ghi *Không nhận việc được* thì trên màn hình có luôn câu nói vì sao và phải làm gì.
 > Chi tiết ở [Máy và daemon](machines-and-daemon.md).
 
-## 4. Tạo agent đầu tiên
+## 4. Agent đầu tiên: người chủ nhà
 
-**Danh bạ → Tạo agent.** Ba thứ phải điền:
+Mỗi không gian làm việc có sẵn một agent tên **Livia**, gọi là **người chủ nhà**. Nó giúp bạn dựng
+dự án và chọn agent để thuê. Bước *agent đầu tiên* không tạo agent mới, mà dựng Livia lên. Bước này
+hiện bốn thứ:
 
-- **Tên** — độc nhất trong không gian này.
-- **Runtime** — chọn trong danh sách runtime *đang sẵn sàng*. Chọn một lần, không đổi được
-  về sau: agent làm việc ở đúng một chỗ.
-- **Chỉ dẫn** — cách nó cư xử và bối cảnh nó cần. Đây là **thứ duy nhất** quyết định tính
-  cách của agent; dự án chỉ đưa việc, không đưa thêm một nhân cách thứ hai.
+- **Tên** của nó.
+- **System prompt** — phần chữ Armarius viết, làm nên một người chủ nhà. Nó hiện nguyên văn bằng
+  tiếng Anh, vì đó đúng là thứ agent nhận. Bạn đọc được, nhưng không sửa và không xoá được.
+- **Chỉ dẫn** — có sẵn một chỉ dẫn mặc định, bạn sửa thoải mái, xoá trắng cũng được. Viết thứ tiếng
+  nào cũng được. Chữ trong ô lúc bạn bấm xong là chữ được lưu, và về sau sửa tiếp ở trang của agent.
+  Đây là **thứ duy nhất** của bạn quyết định tính cách của agent: dự án chỉ đưa việc, không đưa thêm
+  một nhân cách thứ hai.
+- **Runtime** — danh sách runtime đang sẵn sàng, mỗi dòng có loại agent CLI và tên máy. Có đúng một
+  runtime thì nó được chọn sẵn. Có từ hai trở lên thì bạn phải chọn, Armarius không chọn hộ. Runtime
+  chưa sẵn sàng vẫn hiện, kèm lý do, nhưng không chọn được.
 
-Kỹ năng thì gắn được ngay lúc này hoặc thêm sau ([Kỹ năng](skills.md)).
+Bấm xong thì Livia được đặt vào runtime ấy, Armarius kiểm ngay xem nó sống chưa, và đưa bạn tới trang
+của nó, nơi có khung nhắn tin với nó.
 
-Cần **ít nhất hai** agent để mở được dự án: một ngồi ghế Trưởng dự án, một làm việc.
+> **Runtime chọn một lần là xong.** Agent làm việc ở đúng một chỗ, suốt đời. Runtime ấy tắt thì
+> agent ngoại tuyến, Armarius không tự chuyển nó sang máy khác.
+
+Bước này không có danh sách kỹ năng nào. Mọi agent đều tự mang sẵn những kỹ năng để làm việc được với
+Armarius, và chúng không hiện ở đâu cả ([Kỹ năng](skills.md)).
+
+**Bỏ qua bước này** — hoặc bỏ qua cả bước nối máy — cũng được. Livia ở lại với lý do *chưa được chọn
+runtime*, và trang của nó có sẵn chỗ chọn runtime cho nó, bất cứ lúc nào
+([Agent](agents.md#người-chủ-nhà-chưa-có-runtime)).
+
+Cần **ít nhất hai** agent để mở được dự án: một ngồi ghế Trưởng dự án, một làm việc. Agent thứ hai
+trở đi thì tạo ở **Danh bạ → Tạo agent**: tên, runtime, chỉ dẫn, và kỹ năng nếu muốn.
 
 ## 5. Mở dự án
 

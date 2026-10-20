@@ -41,14 +41,16 @@ nói *khi nào thì mở ra*, đừng viết như một cái tên.
 
 ```mermaid
 flowchart LR
-    B["Có sẵn<br/>(builtin)"] --> S["Kỹ năng trong<br/>không gian làm việc"]
-    M["Tự soạn<br/>(manual)"] --> S
+    B["Có sẵn<br/>(builtin)"] -->|"tự gắn cho mọi"| A["Agent"]
+    M["Tự soạn<br/>(manual)"] --> S["Thư viện kỹ năng<br/>của không gian làm việc"]
     I["Nhập từ GitHub<br/>(imported)"] --> S
-    S -->|"gắn cho"| A["Agent"]
+    S -->|"bạn gắn cho"| A
 ```
 
-**Có sẵn** — gieo vào mọi không gian làm việc lúc nó được tạo, và **không xoá được**. Hiện có
-đúng một cái, nói ở mục dưới.
+**Có sẵn** — gieo vào mọi không gian làm việc lúc nó được tạo, **tự gắn cho mọi agent**, và
+**không hiện ở đâu cả**: không ở thư viện kỹ năng, không ở màn tạo agent, không ở trang của agent.
+Nó là thứ Armarius gắn để agent làm việc được với hệ thống, không phải thứ để bạn chọn, nên bạn
+không phải quyết định gì về nó. Hiện có đúng một cái, nói ở mục dưới.
 
 **Tự soạn** — **Kỹ năng → Kỹ năng mới**. Bạn được một `SKILL.md` mẫu, sửa ngay trên giao diện,
 và thêm được file phụ.
@@ -71,10 +73,11 @@ Cần phân biệt hai thứ hay bị lẫn:
 | | Đến từ đâu | Có phải chọn không |
 | --- | --- | --- |
 | **Bộ công cụ gọi ngược** (lệnh `armarius`) | daemon bơm vào **mỗi lượt chạy**, mang giấy tờ riêng của lượt ấy | Không. Luôn có, không tắt được, không cài gì |
-| **Tờ hướng dẫn** dùng bộ công cụ ấy | là một kỹ năng, gắn cho agent | Có — và **hãy gắn nó cho mọi agent** |
+| **Tờ hướng dẫn** dùng bộ công cụ ấy | là một kỹ năng, Armarius tự gắn cho **mọi** agent | Không. Tự gắn vào mọi lượt chạy, không hiện ở đâu, không tháo được |
 
-Nói cách khác: agent nào cũng **có** mấy cái công cụ đó, nhưng agent không được gắn tờ hướng
-dẫn thì phải tự mò ra cách dùng. Gắn nó vào.
+Nói cách khác: agent nào cũng có cả bộ công cụ lẫn tờ hướng dẫn dùng nó, và bạn không phải làm gì
+cho điều đó. Thư viện kỹ năng của bạn và danh sách kỹ năng trên mỗi agent chỉ có những kỹ năng
+**bạn** thêm vào.
 
 ---
 

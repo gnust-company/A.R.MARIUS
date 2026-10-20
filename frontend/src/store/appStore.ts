@@ -432,8 +432,8 @@ export interface Skill {
   description?: string
   mariusId?: string
   workspaceId?: string
-  type?: 'builtin' | 'github' | 'custom'
-  /** Present for GitHub-imported skills; absent for manual/built-in ones. */
+  type?: 'github' | 'custom'
+  /** Present for GitHub-imported skills; absent for manual ones. */
   sourceUrl?: string
   /** Never absent — `skillToVM` always builds it, empty at worst. */
   files: SkillFile[]
@@ -551,6 +551,15 @@ interface AppStoreState {
   ) => Promise<{ installedSlugs: string[] }>
   /** Hand the Workspace Agent seat to this Marius (real endpoint in API mode, #32). */
   designateWorkspaceAgent: (mariusId: string) => Promise<void>
+  /** Put the workspace's host on the runtime the person chose (spec 003 FR-125, FR-128).
+   *  Refusals are left to the caller, which words them; the host row is replaced only on
+   *  success, from the server's answer. */
+  placeHost: (
+    workspaceId: string,
+    mariusId: string,
+    workplaceId: string,
+    instructions?: string,
+  ) => Promise<Marius>
   /** Internal: stamp WA flags + the workspace pointer after a designation (#32). */
   applyDesignation: (workspaceId: string, mariusId: string) => void
   setCurrentUser: (user: User | null) => void
@@ -738,6 +747,22 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
         w.id === workspaceId ? { ...w, workspaceAgentId: mariusId } : w,
       ),
     })
+  },
+
+  placeHost: async (workspaceId, mariusId, workplaceId, instructions) => {
+    const dto = await api.placeHost(workspaceId, mariusId, {
+      workplace_id: workplaceId,
+      ...(instructions !== undefined ? { instructions } : {}),
+    })
+    // The seat is read off the workspace, not off the agent row, so it is carried over rather
+    // than re-derived: this call never moves it.
+    const placed: Marius = { ...mariusToVM(dto), isWorkspaceAgent: true }
+    set({
+      mariuses: get().mariuses.some((m) => m.id === mariusId)
+        ? get().mariuses.map((m) => (m.id === mariusId ? { ...m, ...placed } : m))
+        : [...get().mariuses, placed],
+    })
+    return placed
   },
 
   designateWorkspaceAgent: async (mariusId: string) => {

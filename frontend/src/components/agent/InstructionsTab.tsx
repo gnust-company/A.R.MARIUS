@@ -13,9 +13,10 @@
 
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Loader2, Save } from 'lucide-react'
+import { Loader2, Save } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import SystemPromptBlock from './SystemPromptBlock'
 
 export default function InstructionsTab({
   instructions,
@@ -32,7 +33,6 @@ export default function InstructionsTab({
   const [draft, setDraft] = useState(instructions)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [systemOpen, setSystemOpen] = useState(false)
 
   // Compared against the incoming value, not against a remembered copy of it. There is no
   // effect and no ref here on purpose: an effect that writes the box when the prop changes is a
@@ -56,35 +56,7 @@ export default function InstructionsTab({
 
   return (
     <div className="space-y-6">
-      {hasSystem && (
-        <div className="rounded-lg border border-[#E3D7BC] bg-[#EDE4CE] p-4">
-          <button
-            type="button"
-            onClick={() => setSystemOpen((open) => !open)}
-            aria-expanded={systemOpen}
-            className="flex w-full items-start gap-2 text-left"
-          >
-            {systemOpen ? (
-              <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-[#6B5E4E]" aria-hidden />
-            ) : (
-              <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-[#6B5E4E]" aria-hidden />
-            )}
-            <span className="min-w-0">
-              <span className="block text-[13px] font-medium text-[#2A2318]">
-                {t('agentDetail.instructions.systemLabel')}
-              </span>
-              <span className="mt-0.5 block text-[12px] text-[#6B5E4E]">
-                {t('agentDetail.instructions.systemHint')}
-              </span>
-            </span>
-          </button>
-          {systemOpen && (
-            <pre className="mt-3 whitespace-pre-wrap break-words rounded-md border border-[#E3D7BC] bg-vellum p-3 font-mono text-[12px] leading-relaxed text-[#2A2318]">
-              {systemInstructions}
-            </pre>
-          )}
-        </div>
-      )}
+      {hasSystem && <SystemPromptBlock text={systemInstructions} />}
 
       <div>
         <label

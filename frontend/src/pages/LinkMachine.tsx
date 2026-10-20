@@ -23,7 +23,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Check, Laptop, ShieldQuestion, TriangleAlert } from 'lucide-react'
 
-import { approveMachineLink, getMachineLink, updateMe, type PendingMachineLinkDTO } from '@/lib/api'
+import { approveMachineLink, getMachineLink, type PendingMachineLinkDTO } from '@/lib/api'
 import { errorText } from '@/lib/errors'
 import { useAppStore } from '@/store/appStore'
 import VellumPanel from '@/components/VellumPanel'
@@ -67,7 +67,6 @@ export default function LinkMachine() {
   const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId)
   const hydrateWorkspaces = useAppStore((s) => s.hydrateWorkspaces)
   const currentUser = useAppStore((s) => s.currentUser)
-  const setCurrentUser = useAppStore((s) => s.setCurrentUser)
 
   const [code, setCode] = useState('')
   const [pending, setPending] = useState<PendingMachineLinkDTO | null>(null)
@@ -81,11 +80,10 @@ export default function LinkMachine() {
   // reading it off their own terminal a moment ago; a person who followed a link has no such
   // evidence and needs telling so.
   const [fromLink, setFromLink] = useState(false)
-  // Whether approving here is what finished this account's first steps. Kept as its own flag
-  // rather than read back off the user: by the time the panel renders, the user has been
-  // updated, so asking *are they onboarded* would answer yes for everybody and the notice
-  // would show to people who never had first steps open.
-  const [closedFirstSteps, setClosedFirstSteps] = useState(false)
+  // Whether whoever approved here is still part way through their first steps. Caught at the
+  // moment of approving rather than read off the user while rendering, so the notice speaks to
+  // the person it was true for when they pressed the button.
+  const [inFirstSteps, setInFirstSteps] = useState(false)
 
   useEffect(() => {
     void hydrateWorkspaces().catch(() => {})
@@ -120,7 +118,7 @@ export default function LinkMachine() {
     setError(null)
     setCode('')
     setFromLink(false)
-    setClosedFirstSteps(false)
+    setInFirstSteps(false)
     // The workspace goes too. Before the lookup and the choosing were split apart, every
     // successful lookup reset it; leaving it behind here means asking about a second machine
     // and being handed the workspace picked for the first one, already selected, which is a
@@ -170,28 +168,12 @@ export default function LinkMachine() {
     try {
       await approveMachineLink(pending.code, workspaceId)
       setApproved(true)
-      // Step three of the first steps asks for one thing: connect a machine. Doing it *is*
-      // finishing the step, so a second button somewhere else confirming what already
-      // happened is a step that never ends. Whoever is standing on that step — this window or
-      // another one — is told by the server's `machine.linked` announcement (FR-106).
-      //
-      // Failing here must not undo an approval that already succeeded: the machine is in, and
-      // the first steps are recoverable from anywhere. So it is caught and dropped.
-      if (currentUser?.onboarded === false) {
-        try {
-          const saved = await updateMe({ onboarding_step: 3, onboarding_done: true })
-          setCurrentUser({
-            id: saved.id,
-            name: saved.full_name,
-            email: saved.email,
-            onboardingStep: saved.onboarding_step ?? 3,
-            onboarded: saved.onboarded ?? true,
-          })
-          setClosedFirstSteps(true)
-        } catch {
-          // Nothing to say here — the machine is linked either way.
-        }
-      }
+      // Approving no longer finishes the first steps (spec 003 FR-106). It used to, and that
+      // dropped people into a workspace where every agent was offline: an approved machine has
+      // its papers and no runtime yet — that comes with `armarius-daemon start`. So nothing is
+      // written here. The window standing on the connect step hears `machine.linked` from the
+      // server, marks this part done, and moves on by itself once the daemon reports in.
+      setInFirstSteps(currentUser?.onboarded === false)
     } catch (err) {
       setError(errorText(err, t))
     }
@@ -242,7 +224,7 @@ export default function LinkMachine() {
               <p className="font-body text-body-sm text-ink-light">
                 {t('linkMachine.doneStart')}
               </p>
-              {closedFirstSteps && (
+              {inFirstSteps && (
                 <p className="font-body text-body-sm text-ink-muted">
                   {t('linkMachine.doneFirstSteps')}
                 </p>
