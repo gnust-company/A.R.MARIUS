@@ -84,10 +84,13 @@ class SqlPlacementRepository(PlacementRepository):
     async def attach(
         self, marius_id: UUID, workspace_id: UUID, placement_id: UUID
     ) -> None:
-        # Read-then-write, and it is safe here for a reason worth stating: the agent this
-        # row is for was created moments ago in this same transaction, so no second caller
-        # has its id yet. The primary key on `marius_id` is the real guarantee — this check
-        # exists to turn what would be a 500 into the refusal it actually is.
+        # Read-then-write. The check is not the guarantee — the primary key on `marius_id` is.
+        # What the check buys is the plain case: an agent that already has its place is told
+        # so before anything is written. Two callers can both get past it, and do: since spec
+        # 003 this is reached not only by `AgentService.create`, for an agent made moments ago
+        # in the same transaction, but by `WorkspaceAgentService.place_host`, for a host that
+        # has existed since its workspace did and that two windows may be placing at once. The
+        # loser of that race is caught at the flush below and given the same refusal.
         existing = await self._s.get(AgentWorkplaceBindingModel, marius_id)
         if existing is not None:
             raise Conflict("agent_already_placed")

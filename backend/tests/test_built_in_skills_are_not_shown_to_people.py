@@ -153,3 +153,48 @@ async def test_installing_skills_leaves_built_ins_out_including_one_already_on_t
         shown = next(a for a in directory.json() if a["id"] == agent)
         assert shown["skill_ids"] == [own]
         assert shown["skills"] == ["Viết báo cáo"]
+
+
+async def test_a_skill_of_their_own_named_like_a_built_in_keeps_its_name() -> None:
+    """Bắt ở review #289: lọc tên bằng cách so chuỗi thì skill riêng trùng tên skill dựng sẵn
+    giữ được id mà mất tên — hai danh sách không còn nói cùng một điều. Tên phải được dựng lại
+    từ những id còn giữ, như `_forget_everywhere` vẫn làm."""
+    async with _client() as c:
+        m = await link_machine(c, "same-name-as-builtin@armarius.dev")
+        builtin = next(iter(await _builtin_ids(m.workspace_id)))
+        same = await c.post(
+            f"/v1/workspaces/{m.workspace_id}/skills/manual",
+            headers=m.headers,
+            json={"name": "Talking to Armarius", "description": "của riêng người chủ"},
+        )
+        assert same.status_code == 201, same.text
+        own = same.json()["id"]
+
+        created = await c.post(
+            f"/v1/workspaces/{m.workspace_id}/mariuses",
+            headers=m.headers,
+            json={
+                "name": "Aurel",
+                "workplace_id": m.workplace_id,
+                "skill_ids": [builtin, own],
+                "skills": ["Talking to Armarius", "Talking to Armarius"],
+            },
+        )
+        assert created.status_code == 201, created.text
+        assert created.json()["skill_ids"] == [own]
+        assert created.json()["skills"] == ["Talking to Armarius"]
+
+        # Không có id dựng sẵn nào để bỏ thì không gì bị đụng tới, kể cả cái tên trùng ấy.
+        untouched = await c.post(
+            f"/v1/workspaces/{m.workspace_id}/mariuses",
+            headers=m.headers,
+            json={
+                "name": "Tullia",
+                "workplace_id": m.workplace_id,
+                "skill_ids": [own],
+                "skills": ["Talking to Armarius"],
+            },
+        )
+        assert untouched.status_code == 201, untouched.text
+        assert untouched.json()["skill_ids"] == [own]
+        assert untouched.json()["skills"] == ["Talking to Armarius"]

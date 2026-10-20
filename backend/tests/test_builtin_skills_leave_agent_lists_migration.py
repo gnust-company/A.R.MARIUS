@@ -44,11 +44,13 @@ def _workspace(con: sqlite3.Connection, ws: str, slug: str) -> None:
     )
 
 
-def _skill(con: sqlite3.Connection, skill: str, ws: str, name: str, source: str) -> None:
+def _skill(
+    con: sqlite3.Connection, skill: str, ws: str, name: str, source: str, slug: str = ""
+) -> None:
     con.execute(
         "INSERT INTO skills (id, workspace_id, slug, name, description, source, source_url, "
         "files) VALUES (?,?,?,?,?,?,?,?)",
-        (skill, ws, name.lower().replace(" ", "-"), name, "", source, "", "{}"),
+        (skill, ws, slug or name.lower().replace(" ", "-"), name, "", source, "", "{}"),
     )
 
 
@@ -86,7 +88,7 @@ def test_built_ins_leave_every_list_in_both_ways_sqlite_keeps_an_id(tmp_path: Pa
     assert first.returncode == 0, first.stderr or first.stdout
 
     orm_ws, hand_ws = uuid.uuid4(), uuid.uuid4()
-    orm_builtin, orm_own = uuid.uuid4(), uuid.uuid4()
+    orm_builtin, orm_own, orm_twin = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     hand_builtin, hand_own = uuid.uuid4(), uuid.uuid4()
     con = sqlite3.connect(db_file)
     # ── ghi kiểu ORM: cột UUID 32 hex, danh sách JSON có gạch nối
@@ -96,6 +98,12 @@ def test_built_ins_leave_every_list_in_both_ways_sqlite_keeps_an_id(tmp_path: Pa
     _agent(con, uuid.uuid4().hex, orm_ws.hex, "Cassia", [str(orm_builtin), str(orm_own)],
            ["Talking to Armarius", "Viết báo cáo"])
     _agent(con, uuid.uuid4().hex, orm_ws.hex, "Nona", [str(orm_own)], ["Viết báo cáo"])
+    # Bắt ở review #289: một skill riêng mang đúng tên của skill dựng sẵn. Lọc tên bằng cách
+    # so chuỗi thì nó mất tên mà giữ id; tên phải được dựng lại từ những id còn giữ.
+    _skill(con, orm_twin.hex, orm_ws.hex, "Talking to Armarius", "manual", slug="cua-rieng")
+    _agent(con, uuid.uuid4().hex, orm_ws.hex, "Aurel", [str(orm_builtin), str(orm_twin)],
+           ["Talking to Armarius", "Talking to Armarius"])
+    _agent(con, uuid.uuid4().hex, orm_ws.hex, "Tullia", [str(orm_twin)], ["Talking to Armarius"])
     # ── ghi tay: có gạch nối ở mọi chỗ
     _workspace(con, str(hand_ws), "tay")
     _skill(con, str(hand_builtin), str(hand_ws), "Talking to Armarius", "builtin")
@@ -114,6 +122,10 @@ def test_built_ins_leave_every_list_in_both_ways_sqlite_keeps_an_id(tmp_path: Pa
         "id 32 hex trên bảng skills phải khớp với id có gạch nối trong danh sách của agent"
     )
     assert lists["Nona"] == ([str(orm_own)], ["Viết báo cáo"])
+    assert lists["Aurel"] == ([str(orm_twin)], ["Talking to Armarius"]), (
+        "skill riêng trùng tên skill dựng sẵn phải giữ cả id lẫn tên"
+    )
+    assert lists["Tullia"] == ([str(orm_twin)], ["Talking to Armarius"])
     assert lists["Decima"] == ([], [])
     assert lists["Morta"] == ([str(hand_own)], ["Dịch thuật"])
 
