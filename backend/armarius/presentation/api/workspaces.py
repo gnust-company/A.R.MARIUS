@@ -283,21 +283,28 @@ async def _without_builtins(
     skill_ids: list[str] | None,
     names: list[str] | None,
 ) -> tuple[list[str] | None, list[str] | None]:
-    """An agent's chosen skills with the built-ins taken out, ids and names alike.
+    """An agent's chosen skills with the built-ins taken out.
 
     Dropped rather than refused. A client from before the built-ins were hidden may still send
     one, and it is not wrong to — only redundant: the skill reaches every run regardless. A
     refusal would make a person pay for something they can no longer even see.
+
+    Only ids decide what goes. When one does, the names are **rebuilt from the ids that are
+    left**, the way `SkillService._forget_everywhere` rebuilds them after a deletion, rather
+    than filtered by matching titles: a person's own skill may carry the very name a built-in
+    has, and filtering by name would strip its name while keeping its id — two lists that no
+    longer agree about what the agent has. When no id goes, both lists stay as they were sent.
     """
-    if not skill_ids and not names:
+    if not skill_ids:
         return skill_ids, names
-    builtins = await container.skills.builtins_for(workspace_id)
-    ids = {str(one.id) for one in builtins}
-    titles = {one.name for one in builtins}
-    return (
-        None if skill_ids is None else [i for i in skill_ids if i not in ids],
-        None if names is None else [n for n in names if n not in titles],
-    )
+    builtins = {str(one.id) for one in await container.skills.builtins_for(workspace_id)}
+    kept = [i for i in skill_ids if i not in builtins]
+    if len(kept) == len(skill_ids):
+        return skill_ids, names
+    if names is None:
+        return kept, None
+    shown = {str(one.id): one.name for one in await container.skills.resolve(kept)}
+    return kept, [shown[i] for i in kept if i in shown]
 
 
 @router.post(
