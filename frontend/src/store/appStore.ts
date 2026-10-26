@@ -132,8 +132,13 @@ export interface WorkplaceChoice {
 export interface PlacementOption {
   key: string
   values: string[]
-  /** `tool_declared` is a closed list; anything else is a suggestion the person may go past. */
+  /** `tool_declared` and `known_names` are closed lists; anything else is a suggestion the person
+   *  may go past. */
   source: string
+  /** Readable names for values, as the tool gave them (`Opus 5.5`). */
+  labels?: Record<string, string>
+  /** Picking a value narrows another setting, by that setting's key, to these values. */
+  narrows?: Record<string, Record<string, string[]>>
 }
 
 export interface Marius {
@@ -558,7 +563,7 @@ interface AppStoreState {
     workspaceId: string,
     mariusId: string,
     workplaceId: string,
-    instructions?: string,
+    alongside?: { instructions?: string; name?: string },
   ) => Promise<Marius>
   /** Internal: stamp WA flags + the workspace pointer after a designation (#32). */
   applyDesignation: (workspaceId: string, mariusId: string) => void
@@ -676,6 +681,8 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
         key: o.key,
         values: o.values ?? [],
         source: o.source,
+        labels: o.labels ?? {},
+        narrows: o.narrows ?? {},
       })),
     }))
   },
@@ -749,10 +756,11 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     })
   },
 
-  placeHost: async (workspaceId, mariusId, workplaceId, instructions) => {
+  placeHost: async (workspaceId, mariusId, workplaceId, alongside) => {
     const dto = await api.placeHost(workspaceId, mariusId, {
       workplace_id: workplaceId,
-      ...(instructions !== undefined ? { instructions } : {}),
+      ...(alongside?.instructions !== undefined ? { instructions: alongside.instructions } : {}),
+      ...(alongside?.name !== undefined ? { name: alongside.name } : {}),
     })
     // The seat is read off the workspace, not off the agent row, so it is carried over rather
     // than re-derived: this call never moves it.
@@ -987,7 +995,13 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     const workspaceId = m?.workspaceId || get().activeWorkspaceId
     if (!workspaceId) return []
     const rows = await api.listAgentOptions(workspaceId, mariusId)
-    return rows.map((o) => ({ key: o.key, values: o.values ?? [], source: o.source }))
+    return rows.map((o) => ({
+      key: o.key,
+      values: o.values ?? [],
+      source: o.source,
+      labels: o.labels ?? {},
+      narrows: o.narrows ?? {},
+    }))
   },
 
   updateMarius: async (

@@ -16,7 +16,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { motion } from 'framer-motion'
 import { ArrowRight, Bot, Check, Copy, Laptop, Loader2, User as UserIcon } from 'lucide-react'
 
@@ -121,6 +121,7 @@ function Part({
 export default function Onboarding() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const location = useLocation()
   const currentUser = useAppStore((s) => s.currentUser)
   const setCurrentUser = useAppStore((s) => s.setCurrentUser)
   const workspaces = useAppStore((s) => s.workspaces)
@@ -152,7 +153,11 @@ export default function Onboarding() {
   // ── Connecting a machine ──────────────────────────────────────────────────────────────
   const offer = useRuntimeOffer(workspaceId)
   const reloadOffer = offer.reload
-  const [heardLinked, setHeardLinked] = useState(false)
+  // Heard on the channel, or carried here by the approval page itself when the person came back
+  // from it: either way a machine was approved, whether or not its row exists yet.
+  const [heardLinked, setHeardLinked] = useState(
+    () => (location.state as { machineApproved?: boolean } | null)?.machineApproved === true,
+  )
   const progress = connectProgress(offer.machines, heardLinked)
   // The step moves on by itself once a machine has reported its runtimes (FR-121) — derived,
   // not set, so arriving here with a machine that already did lands on the next step at once.
@@ -161,7 +166,12 @@ export default function Onboarding() {
   // ── The first agent ───────────────────────────────────────────────────────────────────
   const host = mariuses.find((m) => m.id === workspace?.workspaceAgentId)
   const hostName = host?.displayName || host?.name || ''
-  // Same rule as the name box above: the host's instructions until somebody types.
+  // Same rule as the name box above, for the host's name and its instructions: what it has
+  // until somebody types. Its name is the owner's to change here too (FR-122, revised
+  // 2026-10-26) — the agent page already let them, so locking it on this step only sent them
+  // the long way round.
+  const [typedHostName, setTypedHostName] = useState<string | null>(null)
+  const hostNameDraft = typedHostName ?? hostName
   const [typedInstructions, setTypedInstructions] = useState<string | null>(null)
   const instructions = typedInstructions ?? host?.instructions ?? ''
   const [picked, setPicked] = useState<string | null>(null)
@@ -272,13 +282,16 @@ export default function Onboarding() {
   // `agent_already_placed`, which carries where the host went, and goes on as done.
   async function finishWithHost(e: FormEvent) {
     e.preventDefault()
-    if (!workspaceId || !host || !chosen) return
+    if (!workspaceId || !host || !chosen || !hostNameDraft.trim()) return
     setError(null)
     setBusy(true)
     let elsewhere: { cli: string; machine: string } | null = null
     if (!placedHere) {
       try {
-        await placeHost(workspaceId, host.id, chosen, instructions)
+        await placeHost(workspaceId, host.id, chosen, {
+          instructions,
+          name: hostNameDraft.trim(),
+        })
         setPlacedHere(true)
       } catch (err) {
         if (err instanceof ApiError && err.code === 'agent_already_placed') {
@@ -531,8 +544,19 @@ export default function Onboarding() {
               ) : (
                 <>
                   <div>
-                    <p className="font-body text-body-sm text-ink-light mb-1">{t('firstSteps.agentNameLabel')}</p>
-                    <p className="font-body text-body-md text-ink">{hostName}</p>
+                    <label
+                      className="block font-body text-body-sm text-ink-light mb-1"
+                      htmlFor="ob-host-name"
+                    >
+                      {t('firstSteps.agentNameLabel')}
+                    </label>
+                    <input
+                      id="ob-host-name"
+                      value={hostNameDraft}
+                      onChange={(e) => setTypedHostName(e.target.value)}
+                      maxLength={200}
+                      className={inputCls}
+                    />
                   </div>
 
                   {(host.systemInstructions ?? '').trim() && (
@@ -572,8 +596,12 @@ export default function Onboarding() {
 
                   {errorLine}
 
-                  <button type="submit" disabled={busy || !chosen} className={buttonCls}>
-                    {t('firstSteps.agentFinish', { name: hostName })}
+                  <button
+                    type="submit"
+                    disabled={busy || !chosen || !hostNameDraft.trim()}
+                    className={buttonCls}
+                  >
+                    {t('firstSteps.agentFinish', { name: hostNameDraft.trim() || hostName })}
                   </button>
                   <div className="flex justify-end">
                     <a

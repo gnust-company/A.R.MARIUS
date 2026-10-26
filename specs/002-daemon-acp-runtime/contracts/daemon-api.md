@@ -125,6 +125,26 @@ server **không giữ bảng nào theo tên CLI** (Điều III), nó chỉ nhậ
 | `tool_declared` | tool in ra **cả bộ** | danh sách đóng; giá trị ngoài nó bị **từ chối** (422 `placement_option_value_unsupported`) |
 | `tool_examples` | tool kể **vài cái làm ví dụ** | gợi ý cạnh ô nhập; **không** chặn giá trị lạ |
 | `known_names` | daemon mang sẵn cho tool không chịu liệt kê | như `tool_declared`; **chỉ được nằm ở daemon** |
+| `tool_listed` | *(thêm 2026-10-26)* tool **liệt kê** thứ nó bày cho tài khoản này, nhưng vẫn nhận giá trị khác | ô chọn có danh sách đủ, vẫn cho gõ; **không** chặn giá trị lạ |
+
+**`labels` và `narrows` — thêm 2026-10-26**, cả hai tuỳ có, cả hai chỉ nói về giá trị nằm trong `values`:
+
+```json
+{ "key": "model", "source": "tool_listed",
+  "values": ["claude-opus-5-5", "claude-haiku-4-5-20251001"],
+  "labels": { "claude-opus-5-5": "Opus 5.5", "claude-haiku-4-5-20251001": "Haiku 4.5" },
+  "narrows": { "claude-opus-5-5": { "thinking_level": ["low","medium","high","xhigh","max"] },
+               "claude-haiku-4-5-20251001": { "thinking_level": [] } } }
+```
+
+- `labels`: tên đọc được cho một giá trị, do tool đặt. Không có thì màn hình hiện chính giá trị.
+- `narrows`: chọn giá trị này thì lựa chọn mang khoá kia chỉ còn nhận chừng ấy giá trị; danh sách rỗng
+  nghĩa là không nhận giá trị nào, chỉ để trống được. Viết bằng **khoá của lựa chọn**, không bằng tên
+  tool, nên server đo được mà không biết khoá nào là model (Điều III). Server bỏ mọi mục trỏ tới giá trị
+  hay khoá không có thật.
+
+Claude Code: daemon hỏi danh sách qua kênh điều khiển `stream-json` (yêu cầu `list_models`). Hỏi không
+được thì quay về ba cái tên ví dụ trong `--help`, nguồn `tool_examples`, như trước.
 
 Khoá `key` là **tên chung của server** (`model`, `thinking_level`, `service_tier`…), không phải cờ dòng
 lệnh — chỉ daemon biết cái nào thành `--effort`. Bộ khoá **khác nhau theo tool**, nên đây là một danh sách

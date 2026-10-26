@@ -5,16 +5,16 @@
 // One component because there are two screens: choosing settings for a new agent, and
 // changing them on one that exists. Two copies of this would be two renderings of the same
 // data, and the one that drifts is the one nobody is looking at.
+//
+// Since 2026-10-26 a setting can narrow another — each Claude Code model says which thinking
+// levels it takes — and the narrowing is applied here as the person picks, through the pure
+// rules in `lib/runtimeOptions.ts`: a level the new model does not take goes back to blank
+// rather than waiting to be refused.
 import { useTranslation } from 'react-i18next';
 import type { PlacementOption } from '@/store/appStore';
-import { cn } from '@/lib/utils';
-
-const FIELD = cn(
-  'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
-  'placeholder:text-[#A89880]',
-  'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
-  'transition-all'
-);
+import { choose, isClosed, labelOf, offeredValues } from '@/lib/runtimeOptions';
+import Dropdown from '@/components/Dropdown';
+import SuggestBox from '@/components/SuggestBox';
 
 export default function RuntimeOptionFields({
   options,
@@ -24,55 +24,69 @@ export default function RuntimeOptionFields({
 }: {
   options: PlacementOption[];
   chosen: Record<string, string>;
+  /** Called once per setting that changes — a pick can blank another one it rules out. */
   onChange: (key: string, value: string) => void;
-  /** Keeps the `<datalist>` ids apart when two of these are mounted at once. */
+  /** Keeps the field ids apart when two of these are mounted at once. */
   idPrefix?: string;
 }) {
   const { t } = useTranslation();
+
+  function pick(key: string, value: string) {
+    for (const [changed, next] of Object.entries(choose(options, chosen, key, value))) {
+      onChange(changed, next);
+    }
+  }
+
   return (
     <>
-      {options.map((option) => (
-        <div key={option.key}>
-          <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
-            {t(`directory.option.${option.key}`, { defaultValue: option.key })}
-          </label>
-          {option.source === 'tool_examples' ? (
-            // The tool named a few by way of example and did not claim they are all, so this
-            // is a box with suggestions beside it. Offering them as the only three would
-            // refuse a real model the day a fourth ships.
-            <>
-              <input
-                type="text"
-                list={`${idPrefix}-${option.key}`}
+      {options.map((option) => {
+        const id = `${idPrefix}-${option.key}`;
+        const label = t(`directory.option.${option.key}`, { defaultValue: option.key });
+        const values = offeredValues(options, chosen, option);
+        // Narrowed to nothing: the other setting rules every value out, and blank — the tool's
+        // own default — is the only thing left. Said, rather than shown as an empty list.
+        const nothingLeft = values.length === 0;
+        return (
+          <div key={option.key}>
+            <label htmlFor={id} className="block text-[13px] font-medium text-[#2A2318] mb-1">
+              {label}
+            </label>
+            {isClosed(option) || nothingLeft ? (
+              <Dropdown
+                id={id}
                 value={chosen[option.key] ?? ''}
-                onChange={(e) => onChange(option.key, e.target.value)}
-                placeholder={t('directory.optionDefault')}
-                className={FIELD}
+                onChange={(value) => pick(option.key, value)}
+                disabled={nothingLeft}
+                // Blank stays a real choice: FR-007k says an unset setting means the tool's
+                // own default, so the person must be able to get back to it.
+                items={[
+                  { value: '', label: t('directory.optionDefault') },
+                  ...values.map((value) => ({ value, label: labelOf(option, value) })),
+                ]}
               />
-              <datalist id={`${idPrefix}-${option.key}`}>
-                {option.values.map((value) => (
-                  <option key={value} value={value} />
-                ))}
-              </datalist>
-            </>
-          ) : (
-            <select
-              value={chosen[option.key] ?? ''}
-              onChange={(e) => onChange(option.key, e.target.value)}
-              className={FIELD}
-            >
-              {/* Blank stays a real choice: FR-007k says an unset setting means the tool's
-                  own default, so the person must be able to get back to it. */}
-              <option value="">{t('directory.optionDefault')}</option>
-              {option.values.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-      ))}
+            ) : (
+              // A list the tool did not claim is everything — examples from its help, or the
+              // models it lists for this account while still running others — so this is a
+              // box with the whole list a click away, and room to type something else.
+              <SuggestBox
+                id={id}
+                value={chosen[option.key] ?? ''}
+                onChange={(value) => pick(option.key, value)}
+                blankLabel={t('directory.optionDefault')}
+                suggestions={values.map((value) => ({
+                  value,
+                  label: option.labels?.[value],
+                }))}
+              />
+            )}
+            {nothingLeft && (
+              <p className="mt-1 text-[11px] text-[#6B5E4E]">
+                {t('directory.optionRuledOut')}
+              </p>
+            )}
+          </div>
+        );
+      })}
       {/* Said once for the group, not once per field. Where the list comes from is one fact
           about all of them, and repeating it under each turns the shorter answer — what the
           field actually is — into the thing the eye skips. */}

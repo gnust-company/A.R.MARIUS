@@ -65,6 +65,13 @@ type Choice struct {
 	// Source says how those values were arrived at. A screen that shows a complete set the
 	// same way it shows three examples is telling the person something untrue.
 	Source string `json:"source"`
+	// Labels are readable names for values, as the tool gave them (`Opus 5.5`). Only for the
+	// screen; the value is what is stored and handed back.
+	Labels map[string]string `json:"labels,omitempty"`
+	// Narrows says, per value, what another choice is left with when this value is picked —
+	// keyed by that choice's Key. An empty list is an answer: blank only. The rule is written in
+	// keys, so the server can hold a person to it without knowing which key is a model.
+	Narrows map[string]map[string][]string `json:"narrows,omitempty"`
 }
 
 // The settings a person picks per agent (FR-007k).
@@ -84,6 +91,9 @@ const (
 	// list this may be trusted for is the machine's, not the server's — the server never gets
 	// to decide what a CLI can do from its name (FR-017, Điều III).
 	SourceKnownNames = "known_names"
+	// SourceToolListed: the tool listed what it offers this account when asked, and still takes
+	// values it did not list. Shown whole; nothing is refused for being outside it.
+	SourceToolListed = "tool_listed"
 )
 
 // Unanswered is one capability nobody could ask about, and why.
@@ -169,6 +179,10 @@ type selfDescription struct {
 	// offers is what a person may pick per agent, and how to read the accepted values out of
 	// the same self-description (FR-007k).
 	offers []choiceQuestion
+	// catalog, when set, asks the tool for the full list behind one of those choices. What it
+	// answers replaces what `--help` gave for that choice; when it cannot answer, `--help`
+	// stands (FR-007k, revised 2026-10-26).
+	catalog *catalogQuestion
 }
 
 // readAs says how the values for one choice are read out of a tool's own account of itself.
@@ -235,6 +249,10 @@ var selfDescriptions = map[Kind]selfDescription{
 			{key: ChoiceThinkingLevel, how: wholeSet, after: "--effort"},
 			{key: ChoiceModel, how: examples, after: "--model"},
 		},
+		// The three aliases above are what `--help` gives. Asked over its control protocol,
+		// the same binary lists every model the account may pick and the levels each takes —
+		// see catalog.go.
+		catalog: &claudeCatalog,
 	},
 	// Read off the options the `gemini 0.56.0` bundle declares for its main command, which is
 	// what its `--help` prints: `-r, --resume` and `--output-format ... [choices: "text",
@@ -329,14 +347,10 @@ func probeSelfDescription(ctx context.Context, found Found, opts Options) (Capab
 		return unanswered(ReasonNoProbe), nil
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, opts.Timeout)
-	defer cancel()
-
-	out, err := opts.Run(ctx, found.Path, question.args...)
+	described, err := describe(ctx, found, opts, question)
 	if err != nil {
 		return Capabilities{}, err
 	}
-	described := string(out)
 
 	answered := map[capability]bool{}
 	for _, want := range everyCapability {
@@ -347,12 +361,31 @@ func probeSelfDescription(ctx context.Context, found Found, opts Options) (Capab
 			}
 		}
 	}
+	choices := offered(described, question.offers)
+	if question.catalog != nil {
+		// Its own time budget, not what is left of the one `--help` used.
+		if catalog, listed := askCatalog(ctx, found, opts, *question.catalog); listed {
+			choices = withCatalog(choices, catalog)
+		}
+	}
 	return Capabilities{
 		Resumable:         answered[capResumable],
 		ExposesToolArgs:   answered[capExposesToolArgs],
 		ExposesToolResult: answered[capExposesToolResult],
-		Choices:           offered(described, question.offers),
+		Choices:           choices,
 	}, nil
+}
+
+// describe runs the tool's own account of itself, bounded by the probe's timeout.
+func describe(ctx context.Context, found Found, opts Options, question selfDescription) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, opts.Timeout)
+	defer cancel()
+
+	out, err := opts.Run(ctx, found.Path, question.args...)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }
 
 // bracketedAfter is the first bracketed group following a flag in a tool's self-description.

@@ -148,6 +148,7 @@ async def put_host_to_work(
     workplace_id: str,
     *,
     instructions: str | None = None,
+    name: str | None = None,
 ):
     """Choose where the host works, the way its owner does (spec 003 FR-125, FR-128).
 
@@ -159,6 +160,8 @@ async def put_host_to_work(
     body: dict[str, object] = {"workplace_id": workplace_id}
     if instructions is not None:
         body["instructions"] = instructions
+    if name is not None:
+        body["name"] = name
     return await c.post(
         f"/v1/workspaces/{workspace_id}/mariuses/{host['id']}/placement",
         headers=person,
