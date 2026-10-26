@@ -28,6 +28,7 @@ Dùng ở bước *agent đầu tiên* (FR-125, FR-126) và ở trang của ngư
 |--------|----------|-------|
 | `workplace_id` | có | một chỗ làm lấy từ `GET …/workplaces` |
 | `instructions` | không | có thì lưu **cùng lần** với việc đặt chỗ, chuỗi rỗng là giá trị thật (chỉ dẫn rỗng); vắng thì giữ nguyên chỉ dẫn hiện có |
+| `name` | không | *(thêm 2026-10-26)* tên mới của người chủ nhà, bỏ khoảng trắng hai đầu, 1–200 ký tự; lưu **cùng lần** với việc đặt chỗ; vắng thì giữ nguyên tên |
 
 **200** — trả `MariusOut` như `GET …/mariuses`. `runtime` lúc này đã có giá trị. `status` có thể vẫn
 chưa `online`, vì lần kiểm sống chạy ngay sau đó (FR-006e), và kết quả tới bằng sự kiện `marius.online`.
@@ -41,6 +42,7 @@ chưa `online`, vì lần kiểm sống chạy ngay sau đó (FR-006e), và kế
 | 404 | `placement_not_found` | chỗ làm không thuộc không gian làm việc này | — |
 | 409 | `placement_is_fixed` | agent không giữ ghế chủ nhà (FR-007) | — |
 | 409 | `agent_already_placed` | người chủ nhà đã có chỗ làm (FR-127) | `cli_kind`, `machine_name` của chỗ đang ở |
+| 409 | `agent_name_taken` | *(thêm 2026-10-26)* `name` trùng một agent khác trong không gian làm việc | `name` |
 | 400 | `placement_not_ready` | chỗ làm chưa sẵn sàng, hoặc không còn nhận việc | `reason`: mã lý do như `not_ready_reason` |
 | 422 | — | thiếu `workplace_id`, `instructions` quá 20000 ký tự | — |
 

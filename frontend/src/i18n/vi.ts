@@ -68,6 +68,10 @@ export const vi = {
     agentAlreadyPlaced: '{{name}} đã chạy trên {{cli}} ở máy {{machine}}. Có lẽ bạn đã chọn ở một cửa sổ khác.',
     agentGoToHost: 'Mở trang của {{name}}',
   },
+  choice: {
+    searchOrType: 'Tìm, hoặc gõ một tên khác…',
+    useTyped: 'Dùng “{{value}}”',
+  },
   linkMachine: {
     title: 'Nối máy vào không gian làm việc',
     lead: 'Chạy `armarius-daemon login` trên máy của bạn — nó tự mở trang này ra. Nếu máy ấy không mở được browser, nhập mã nó in ra vào đây.',
@@ -91,7 +95,9 @@ export const vi = {
     doneFirstSteps: 'Lệnh ấy chạy lên rồi thì cửa sổ onboarding của bạn tự sang bước dựng agent đầu tiên. Cửa sổ này đóng được.',
     doneAgain: 'Nối thêm một máy nữa',
     doneLeave: 'Sang danh sách máy',
+    doneBackToFirstSteps: 'Quay lại các bước đầu',
     back: 'Quay lại',
+    backToFirstSteps: 'Quay lại các bước đầu',
   },
   nav: {
     projects: 'Dự án',
@@ -377,6 +383,7 @@ export const vi = {
       service_tier: 'Hạng dịch vụ',
     },
     optionDefault: 'Mặc định của chính tool',
+    optionRuledOut: 'Lựa chọn ở trên không nhận giá trị nào cho ô này, nên ô để mặc định.',
     optionHint: 'Runtime khai ra danh sách này, do chính tool ở đó tự trả lời. Bỏ trống thì dùng mặc định của tool.',
     optionAppliesNextRun: 'Có hiệu lực từ lượt chạy sau của agent này. Lượt đang chạy dở vẫn giữ nguyên thứ nó mang đi lúc bắt đầu.',
     workplaceNone: 'Chưa có runtime nào sẵn sàng.',

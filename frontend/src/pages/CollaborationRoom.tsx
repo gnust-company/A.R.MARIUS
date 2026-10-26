@@ -46,6 +46,7 @@ import { cn, wsHref } from '@/lib/utils';
 import { blockedReasonKey, needsReason, type TaskPhase } from '@/lib/taskRules';
 import { errorText } from '@/lib/errors';
 import { WAITING_FOR_A_MACHINE, waitKind, waitText } from '@/lib/drive';
+import Dropdown from '@/components/Dropdown';
 
 /** Bốn trường người chủ sửa được trên màn, ở dạng chuỗi mà ô nhập dùng. */
 interface TaskEditDraft {
@@ -704,19 +705,17 @@ export default function CollaborationRoom() {
                       <span className="block font-body text-body-xs text-ink-muted mb-1">
                         {t('collaborationRoom.context.edit.priority')}
                       </span>
-                      <select
+                      <Dropdown
+                        size="xs"
                         value={editDraft.priority}
-                        onChange={(e) =>
-                          setEditDraft({ ...editDraft, priority: e.target.value as Priority })
+                        onChange={(value) =>
+                          setEditDraft({ ...editDraft, priority: value as Priority })
                         }
-                        className="w-full px-2 py-1.5 bg-vellum border border-vellum-dark rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none cursor-pointer"
-                      >
-                        {PRIORITY_OPTIONS.map((p) => (
-                          <option key={p} value={p}>
-                            {t(`tasks.priority.${p}`)}
-                          </option>
-                        ))}
-                      </select>
+                        items={PRIORITY_OPTIONS.map((p) => ({
+                          value: p,
+                          label: t(`tasks.priority.${p}`),
+                        }))}
+                      />
                     </label>
                     <label className="flex-1">
                       <span className="block font-body text-body-xs text-ink-muted mb-1">
@@ -799,12 +798,11 @@ export default function CollaborationRoom() {
                   <span className="font-body text-body-xs">{waitText(waiting, t)}</span>
                 </div>
               )}
-              <select
+              <Dropdown
+                size="sm"
                 value={statusValue}
-                onChange={(e) => handleStatusChange(e.target.value)}
-                className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-md font-body text-body-sm text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors appearance-none cursor-pointer"
-              >
-                {STATUS_OPTIONS.map((s) => {
+                onChange={handleStatusChange}
+                items={STATUS_OPTIONS.map((s) => {
                   const why =
                     s === task.status
                       ? null
@@ -813,14 +811,14 @@ export default function CollaborationRoom() {
                           stalled: !!task.stalled,
                           depsSatisfied: !blockedByUnfinished,
                         });
-                  return (
-                    <option key={s} value={s} disabled={!!why}>
-                      {t('tasks.status.' + s)}
-                      {why ? ` — ${t(why)}` : ''}
-                    </option>
-                  );
+                  return {
+                    value: s,
+                    label: t('tasks.status.' + s),
+                    disabled: !!why,
+                    hint: why ? t(why) : undefined,
+                  };
                 })}
-              </select>
+              />
             </div>
 
             {/* Assignee (single owner per task) */}
@@ -1039,21 +1037,20 @@ export default function CollaborationRoom() {
                   </p>
                 )}
                 {candidateBlockers.length > 0 && (
-                  <select
+                  <Dropdown
+                    size="xs"
+                    className="border-dashed"
                     value={depPicker}
-                    onChange={(e) => {
-                      setDepPicker(e.target.value);
-                      if (e.target.value) handleAddDependency(e.target.value);
+                    onChange={(value) => {
+                      setDepPicker(value);
+                      if (value) handleAddDependency(value);
                     }}
-                    className="w-full px-2.5 py-1.5 rounded-md border border-dashed border-vellum-dark bg-vellum font-body text-body-xs text-ink-muted focus:border-terracotta focus:outline-none"
-                  >
-                    <option value="">{t('collaborationRoom.context.addDependency')}</option>
-                    {candidateBlockers.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.identifier ? `${c.identifier} — ${c.title}` : c.title}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder={t('collaborationRoom.context.addDependency')}
+                    items={candidateBlockers.map((c) => ({
+                      value: c.id,
+                      label: c.identifier ? `${c.identifier} — ${c.title}` : c.title,
+                    }))}
+                  />
                 )}
                 {depError && (
                   <p className="font-body text-body-xs text-error">{depError}</p>

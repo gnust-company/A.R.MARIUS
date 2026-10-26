@@ -162,6 +162,14 @@ case "$1" in
     echo "  --model <model>  Provide an alias for the latest model (e.g. 'fable', 'opus', or 'sonnet')"
     exit 0 ;;
 esac
+# Asked for its model catalog at startup (FR-007k, revised 2026-10-26), it answers the way a
+# Claude Code too old to know the request does: at once, and without starting a turn.
+read -r first
+case "$first" in
+  *list_models*)
+    echo '{"type":"control_response","response":{"subtype":"error","request_id":"armarius-list-models","error":"Unsupported control request subtype: list_models"}}'
+    exit 0 ;;
+esac
 while read -r _; do :; done
 : > %q
 %q %.3f

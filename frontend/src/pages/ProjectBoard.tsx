@@ -28,6 +28,7 @@ import { subscribeProjectEvents } from '@/lib/sse';
 import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
 import Modal from '@/components/Modal';
+import Dropdown from '@/components/Dropdown';
 import LeaderChatWidget from '@/components/LeaderChatWidget';
 import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
@@ -313,43 +314,43 @@ function AddTaskFormModal({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>{t('board.taskStatusLabel')}</label>
-            <select
+            <Dropdown
+              size="sm"
               value={form.status}
-              onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-              className={inputCls}
-            >
-              {CREATABLE_PHASES.map((phase) => (
-                <option key={phase} value={phase}>{t('tasks.status.' + phase)}</option>
-              ))}
-            </select>
+              onChange={(value) => setForm((f) => ({ ...f, status: value }))}
+              items={CREATABLE_PHASES.map((phase) => ({
+                value: phase,
+                label: t('tasks.status.' + phase),
+              }))}
+            />
           </div>
           <div>
             <label className={labelCls}>{t('board.taskPriorityLabel')}</label>
-            <select
+            <Dropdown
+              size="sm"
               value={form.priority}
-              onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
-              className={inputCls}
-            >
-              <option value="critical">{t('board.priorityCritical')}</option>
-              <option value="high">{t('board.priorityHigh')}</option>
-              <option value="medium">{t('board.priorityMedium')}</option>
-              <option value="low">{t('board.priorityLow')}</option>
-            </select>
+              onChange={(value) => setForm((f) => ({ ...f, priority: value }))}
+              items={[
+                { value: 'critical', label: t('board.priorityCritical') },
+                { value: 'high', label: t('board.priorityHigh') },
+                { value: 'medium', label: t('board.priorityMedium') },
+                { value: 'low', label: t('board.priorityLow') },
+              ]}
+            />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>{t('board.taskAssigneeLabel')}</label>
-            <select
+            <Dropdown
+              size="sm"
               value={form.assigneeId}
-              onChange={(e) => setForm((f) => ({ ...f, assigneeId: e.target.value }))}
-              className={inputCls}
-            >
-              <option value="">{t('board.taskAssigneeNone')}</option>
-              {agents.map((a) => (
-                <option key={a.marius_id} value={a.marius_id}>{a.name}</option>
-              ))}
-            </select>
+              onChange={(value) => setForm((f) => ({ ...f, assigneeId: value }))}
+              items={[
+                { value: '', label: t('board.taskAssigneeNone') },
+                ...agents.map((a) => ({ value: a.marius_id, label: a.name })),
+              ]}
+            />
           </div>
           <div>
             <label className={labelCls}>{t('board.taskDueDateLabel')}</label>

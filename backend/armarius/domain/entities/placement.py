@@ -17,7 +17,8 @@ VII, FR-084a).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from enum import StrEnum
 from uuid import UUID
 
@@ -59,9 +60,13 @@ class OptionSource(StrEnum):
     #: The set was supplied by whatever runs the place rather than stated by it. Treated as
     #: complete: something did assert these are the values.
     CARRIED = "known_names"
+    #: The place listed what it offers right now, and takes other values too — a tool that
+    #: names the models this account may pick and still runs a full model name it did not
+    #: list. Worth showing whole, never worth refusing a value over.
+    LISTED = "tool_listed"
 
     def is_complete(self) -> bool:
-        return self is not OptionSource.EXAMPLES
+        return self in (OptionSource.COMPLETE, OptionSource.CARRIED)
 
 
 @dataclass(frozen=True)
@@ -77,6 +82,12 @@ class PlacementOption:
     key: str
     values: tuple[str, ...] = ()
     source: OptionSource = OptionSource.EXAMPLES
+    # A readable name for a value, as the place gave it. Only for the screen.
+    labels: Mapping[str, str] = field(default_factory=dict)
+    # Picking a value here narrows another setting to the values listed — keyed by that
+    # setting's own key, so the rule reads the same whatever the settings mean. An empty list
+    # is a real answer: with this value picked, the other setting takes nothing but blank.
+    narrows: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -103,7 +114,9 @@ class Placement:
     # behind it defaults to, which is exactly what FR-007k says an unset choice does.
     options: tuple[PlacementOption, ...] = ()
 
-    def refuse_unchosen(self, chosen: dict[str, str]) -> None:
+    def refuse_unchosen(
+        self, chosen: dict[str, str], *, alongside: Mapping[str, str] | None = None
+    ) -> None:
         """Refuse settings this place never offered, or values it does not take.
 
         **Checked here rather than at the screen**, because the screen is one of two callers
@@ -112,8 +125,14 @@ class Placement:
 
         A blank value is not a choice and is never refused: FR-007k says leaving a setting
         empty means the tool's own default, so an empty string has to survive the trip.
+
+        `alongside` is what the agent is already set to. It is never measured itself — a value
+        stored months ago was accepted when it was chosen — but it is the company a value being
+        chosen now has to keep: a level sent on its own is measured against the model already
+        saved, because that model is what it will run with (FR-007k, revised 2026-10-26).
         """
         offered = {option.key: option for option in self.options}
+        settled = {**(alongside or {}), **chosen}
         for key, value in chosen.items():
             option = offered.get(key)
             if option is None:
@@ -124,3 +143,24 @@ class Placement:
                 raise OptionNotOffered(
                     "placement_option_value_unsupported", option=key, value=value
                 )
+            allowed = self._allowed_beside(key, settled)
+            if allowed is not None and value not in allowed:
+                raise OptionNotOffered(
+                    "placement_option_value_unsupported", option=key, value=value
+                )
+
+    def _allowed_beside(self, key: str, settled: Mapping[str, str]) -> set[str] | None:
+        """What `key` may take given every other setting's value, or None when nothing
+        narrows it. Two settings narrowing the same one leave what both allow."""
+        allowed: set[str] | None = None
+        for other in self.options:
+            if other.key == key:
+                continue
+            picked = settled.get(other.key)
+            if not picked:
+                continue
+            narrowed = other.narrows.get(picked, {}).get(key)
+            if narrowed is None:
+                continue
+            allowed = set(narrowed) if allowed is None else allowed & set(narrowed)
+        return allowed

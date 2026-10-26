@@ -23,6 +23,7 @@ import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import RuntimeOptionFields from '@/components/RuntimeOptionFields';
+import Dropdown from '@/components/Dropdown';
 import PageTitle from '@/components/PageTitle';
 import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
@@ -456,20 +457,20 @@ export default function Directory() {
       >
         {/* Status Filter */}
         <div className="flex items-center gap-2">
-          <select
+          <Dropdown
+            size="sm"
+            className="w-auto min-w-44"
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className={cn(
-              'px-3 py-2 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[13px] text-[#2A2318]',
-              'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15'
-            )}
-          >
-            <option value="all">{t('directory.filter.all')} ({mariuses.length})</option>
-            <option value="online">{t('directory.status.online')} ({mariuses.filter((m) => m.status === 'online').length})</option>
-            <option value="working">{t('directory.status.working')} ({mariuses.filter((m) => m.status === 'working').length})</option>
-            <option value="idle">{t('directory.status.idle')} ({mariuses.filter((m) => m.status === 'idle').length})</option>
-            <option value="offline">{t('directory.status.offline')} ({mariuses.filter((m) => m.status === 'offline').length})</option>
-          </select>
+            onChange={setStatusFilter}
+            ariaLabel={t('directory.filter.all')}
+            items={[
+              { value: 'all', label: `${t('directory.filter.all')} (${mariuses.length})` },
+              ...(['online', 'working', 'idle', 'offline'] as const).map((status) => ({
+                value: status,
+                label: `${t('directory.status.' + status)} (${mariuses.filter((m) => m.status === status).length})`,
+              })),
+            ]}
+          />
         </div>
 
         {/* Search */}
@@ -582,32 +583,25 @@ export default function Directory() {
                     </p>
                   </div>
                 ) : (
-                  <select
+                  <Dropdown
                     value={workplaceId}
-                    onChange={(e) => {
-                      setWorkplaceId(e.target.value);
+                    onChange={(value) => {
+                      setWorkplaceId(value);
                       // The settings belong to the **workplace**, not to the agent: two
                       // workplaces offer different ones, and a value carried over from the
                       // last pick would be a setting the new one never offered — refused by
                       // the server at the far end of a form the person thought was filled in.
                       setRuntimeOptions({});
                     }}
-                    className={cn(
-                      'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
-                      'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
-                      'transition-all'
-                    )}
-                  >
-                    <option value="">{t('directory.workplacePlaceholder')}</option>
-                    {workplaces.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {t('directory.workplaceOption', {
-                          cliKind: w.cliKind,
-                          machineName: w.machineName,
-                        })}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder={t('directory.workplacePlaceholder')}
+                    items={workplaces.map((w) => ({
+                      value: w.id,
+                      label: t('directory.workplaceOption', {
+                        cliKind: w.cliKind,
+                        machineName: w.machineName,
+                      }),
+                    }))}
+                  />
                 )}
                 <p className="mt-1 text-[11px] text-[#A89880]">{t('directory.workplaceHint')}</p>
               </div>

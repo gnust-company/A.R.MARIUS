@@ -31,6 +31,7 @@ import { useTranslation } from 'react-i18next';
 
 import PageTitle from '@/components/PageTitle';
 import VellumPanel from '@/components/VellumPanel';
+import Dropdown from '@/components/Dropdown';
 import {
   answerInboxItem,
   getInbox,
@@ -255,21 +256,16 @@ function EscalationActions({
           {agents !== null && agents.length === 0 ? (
             <p className="text-xs text-[#6B5E4E]">{t('inbox.escalation.noAgents')}</p>
           ) : (
-            <select
-              className={fieldClasses}
+            <Dropdown
+              size="xs"
+              testId="escalation-agent-select"
               value={agentId}
-              data-testid="escalation-agent-select"
-              onChange={(e) => setAgentId(e.target.value)}
-            >
-              <option value="">
-                {agents === null ? t('common.loading') : t('inbox.escalation.pickAgent')}
-              </option>
-              {(agents ?? []).map((a) => (
-                <option key={a.marius_id} value={a.marius_id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
+              onChange={setAgentId}
+              placeholder={
+                agents === null ? t('common.loading') : t('inbox.escalation.pickAgent')
+              }
+              items={(agents ?? []).map((a) => ({ value: a.marius_id, label: a.name }))}
+            />
           )}
         </>
       )}

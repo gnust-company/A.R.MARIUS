@@ -29,7 +29,7 @@ from uuid import UUID, uuid4
 
 from armarius.application.use_cases.enrollment import AgentService, PlacementNotReady
 from armarius.application.use_cases.types import UowFactory
-from armarius.domain.entities.marius import Marius
+from armarius.domain.entities.marius import Marius, NameTaken
 from armarius.domain.entities.placement import PLACEMENT_CARRIES_NOTHING
 from armarius.shared.clock import utcnow
 from armarius.shared.errors import Conflict, NotFound
@@ -216,6 +216,7 @@ class WorkspaceAgentService:
         placement_id: UUID,
         *,
         instructions: str | None = None,
+        name: str | None = None,
     ) -> Marius:
         """Put the host to work where its owner chose (spec 003 FR-125, FR-126, FR-128).
 
@@ -236,6 +237,11 @@ class WorkspaceAgentService:
         (FR-126): a host with its owner's words saved and nowhere to work is the half-finished
         state that step exists to avoid. `None` leaves them as they are; an empty string is a
         real answer and is saved.
+
+        `name` is the same kind of thing (FR-122, revised 2026-10-26): the last first step shows
+        the host's name in a box its owner may change, and a new name with nowhere to work is
+        the same half-finished state. One that another agent here already answers to is refused
+        before anything is written, so nothing of the step is kept.
 
         Only the placement id comes in, and the placement itself is asked whether it can take
         work — the caller knows what runtime it is, this layer must not (Constitution III).
@@ -259,6 +265,13 @@ class WorkspaceAgentService:
                 )
             if not place.carried_by:
                 raise PlacementNotReady("placement_not_ready", reason=PLACEMENT_CARRIES_NOTHING)
+            if name is not None and name.strip().lower() != agent.name.strip().lower():
+                others = await uow.mariuses.list_by_workspace(workspace_id)
+                if any(
+                    one.id != agent.id and one.name.strip().lower() == name.strip().lower()
+                    for one in others
+                ):
+                    raise NameTaken("agent_name_taken", name=name)
 
             # Two windows finishing the last step at once both get past the check above. The
             # second one's write is refused by the one-binding-per-agent rule and comes back
@@ -268,6 +281,8 @@ class WorkspaceAgentService:
             agent.adapter_type = place.carried_by
             if instructions is not None:
                 agent.instructions = instructions
+            if name is not None:
+                agent.name = name
             agent.updated_at = utcnow()
             await uow.mariuses.update(agent)
             await uow.commit()

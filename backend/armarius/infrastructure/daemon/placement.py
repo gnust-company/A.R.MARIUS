@@ -213,13 +213,17 @@ def options_of(row: WorkplaceModel) -> tuple[PlacementOption, ...]:
     if not isinstance(offered, list):
         return ()
 
+    entries = [
+        one
+        for one in offered
+        if isinstance(one, dict) and isinstance(one.get("key"), str) and one.get("key")
+    ]
+    # Read first, so a narrowing can be checked against settings that really are offered.
+    keys = {one["key"] for one in entries}
+
     options: list[PlacementOption] = []
-    for one in offered:
-        if not isinstance(one, dict):
-            continue
-        key = one.get("key")
-        if not isinstance(key, str) or not key:
-            continue
+    for one in entries:
+        key = one["key"]
         raw = one.get("values")
         values = tuple(v for v in raw if isinstance(v, str) and v) if isinstance(raw, list) else ()
         try:
@@ -233,5 +237,49 @@ def options_of(row: WorkplaceModel) -> tuple[PlacementOption, ...]:
         if not values:
             # A setting with nothing to pick from is not a setting anybody can pick.
             continue
-        options.append(PlacementOption(key=key, values=values, source=source))
+        options.append(
+            PlacementOption(
+                key=key,
+                values=values,
+                source=source,
+                labels=_labels_of(one.get("labels"), values),
+                narrows=_narrows_of(one.get("narrows"), values, keys - {key}),
+            )
+        )
     return tuple(options)
+
+
+def _labels_of(raw: object, values: tuple[str, ...]) -> dict[str, str]:
+    """Readable names for values this setting actually lists; anything else is dropped."""
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        value: label.strip()
+        for value, label in raw.items()
+        if value in values and isinstance(label, str) and label.strip()
+    }
+
+
+def _narrows_of(
+    raw: object, values: tuple[str, ...], other_keys: set[str]
+) -> dict[str, dict[str, tuple[str, ...]]]:
+    """Which values of other settings each listed value leaves open (FR-007k, revised
+    2026-10-26). Kept only where every part is real: a value this setting lists, a setting the
+    place offers, and a list of strings. A half-read rule is worse than none — it would refuse
+    a choice for a reason nobody stated."""
+    if not isinstance(raw, dict):
+        return {}
+    narrows: dict[str, dict[str, tuple[str, ...]]] = {}
+    for value, rule in raw.items():
+        if value not in values or not isinstance(rule, dict):
+            continue
+        kept = {
+            other: tuple(v for v in allowed if isinstance(v, str) and v)
+            for other, allowed in rule.items()
+            if other in other_keys
+            and isinstance(allowed, list)
+            and all(isinstance(v, str) for v in allowed)
+        }
+        if kept:
+            narrows[value] = kept
+    return narrows

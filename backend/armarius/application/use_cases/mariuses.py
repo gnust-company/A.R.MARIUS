@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from uuid import UUID
 
 from armarius.application.use_cases.types import UowFactory
-from armarius.domain.entities.marius import Marius
+from armarius.domain.entities.marius import Marius, NameTaken
 from armarius.domain.entities.placement import (
     NOT_PLACED,
     PLACEMENT_NOT_READY,
@@ -70,6 +70,15 @@ class MariusService:
             marius = await uow.mariuses.get(marius_id)
             if marius is None:
                 raise NotFound("agent_not_found")
+            if name is not None and name.strip().lower() != marius.name.strip().lower():
+                # Looked at first, like the create door does, so the common case reads well;
+                # the database is still what decides when two renames race.
+                others = await uow.mariuses.list_by_workspace(marius.workspace_id)
+                if any(
+                    one.id != marius.id and one.name.strip().lower() == name.strip().lower()
+                    for one in others
+                ):
+                    raise NameTaken("agent_name_taken", name=name)
             if name is not None:
                 marius.name = name
             if instructions is not None:
@@ -122,7 +131,7 @@ class MariusService:
             # at all (FR-007f); being unable to change what it would have run with is the
             # smaller half of that, and it is not worth a second thing for a reader to learn.
             raise OptionNotOffered("placement_option_unknown", option=next(iter(chosen)))
-        place.refuse_unchosen(chosen)
+        place.refuse_unchosen(chosen, alongside=marius.placement_options)
         return {**marius.placement_options, **chosen}
 
     async def _place_of(

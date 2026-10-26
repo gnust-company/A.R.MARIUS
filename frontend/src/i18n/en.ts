@@ -68,6 +68,10 @@ export const en = {
     agentAlreadyPlaced: '{{name}} already runs on {{cli}} on {{machine}}. You probably chose it in another window.',
     agentGoToHost: 'Go to {{name}}',
   },
+  choice: {
+    searchOrType: 'Search, or type another name…',
+    useTyped: 'Use “{{value}}”',
+  },
   linkMachine: {
     title: 'Link a machine to a workspace',
     lead: 'Run `armarius-daemon login` on your machine — it opens this page for you. If that machine cannot open a browser, type the code it prints here.',
@@ -91,7 +95,9 @@ export const en = {
     doneFirstSteps: 'Once that is running, the window with your first steps moves on by itself to setting up your first agent. You can close this one.',
     doneAgain: 'Link another machine',
     doneLeave: 'Go to the machine list',
+    doneBackToFirstSteps: 'Back to your first steps',
     back: 'Back',
+    backToFirstSteps: 'Back to your first steps',
   },
   nav: {
     projects: 'Projects',
@@ -378,6 +384,7 @@ export const en = {
       service_tier: 'Service tier',
     },
     optionDefault: "The tool's own default",
+    optionRuledOut: 'What is picked above takes no value here, so this stays on the default.',
     optionHint: 'Offered by the runtime, as its tool answered for itself. Leave it alone to use whatever that tool defaults to.',
     optionAppliesNextRun: 'Applies from this agent’s next run. One already under way keeps what it started with.',
     workplaceNone: 'No runtime is ready yet.',

@@ -841,6 +841,13 @@ class SqlAutoApprovalRepository(AutoApprovalRepository):
         return mappers.auto_approval_to_entity(m)
 
 
+def _breaks_the_name_rule(exc: IntegrityError) -> bool:
+    """Whether a refused write broke *one name per agent in a workspace*, read off the driver's
+    own words: Postgres names the constraint, SQLite names the columns."""
+    said = str(exc.orig)
+    return "uq_mariuses_workspace_name" in said or "mariuses.name" in said
+
+
 class SqlMariusRepository(MariusRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
@@ -928,7 +935,17 @@ class SqlMariusRepository(MariusRepository):
         m.offline_since = marius.offline_since
         m.turn_started_at = marius.turn_started_at
         m.updated_at = marius.updated_at
-        await self._s.flush()
+        try:
+            await self._s.flush()
+        except IntegrityError as exc:
+            # The same refusal `add` gives, for the same reason: a rename racing another rename
+            # (or a create) both saw the name free, and the database is what decides (FR-007h).
+            # Coming back as a 500 told the person nothing they could act on. Only that one
+            # rule, though — every write to an agent goes through here, and any other broken
+            # rule is a bug that has to surface as one.
+            if not _breaks_the_name_rule(exc):
+                raise
+            raise NameTaken("agent_name_taken", name=marius.name) from exc
         return marius
 
     async def remove(self, marius_id: UUID) -> None:

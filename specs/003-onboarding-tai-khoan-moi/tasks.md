@@ -160,6 +160,45 @@ liệu** (T017, T020, T023–T027). Mỗi PR đều kiểm trên dịch vụ th�
   - PR backend kiểm trước phần của nó, bằng cách gọi API thật: K4, K5, K7, và K6 phần API.
   **Xong.** Trên dịch vụ thật, 59/59 đạt (Playwright; daemon thử chỉ thấy `claude`; máy giả lập báo `gemini` qua HTTP): K1, K2, K3, K5 phần màn hình, K6, K7, K8, và một lượt tiếng Anh. SC-107: phần *nối* hiện xong 0,11 giây sau khi bấm duyệt, sang bước 4 sau 0,26 giây kể từ lệnh `start`, runtime vừa tắt rời danh sách sau 0,10 giây. SC-108 = 0. Tin nhắn đầu tiên cho Livia có trả lời. Lượt đầu có 2 bài đỏ, cả hai do script: một bài đọc chữ khi danh sách còn đang tải; một bài đợi mạng *yên* trong khi trang luôn giữ luồng SSE. Sửa script rồi chạy lại cả lượt. Bộ kiểm: backend 1327 đạt, 22 bỏ qua (chỉ chạy trên Postgres); `ruff check` sạch; `npm run build` đạt; `npx eslint` chỉ còn 1 cảnh báo có từ trước ở `RunTrace.tsx`; `npx vitest run` 24/24. Đã dọn tài khoản thử; daemon và tài khoản thật của người chủ không bị đụng.
 
+## Phase 8 — Sửa sau lần thử đầu (2026-10-26)
+
+**Nguồn**: người chủ dựng lại từ cơ sở dữ liệu trắng, đi hết các bước và báo bốn chỗ vướng (spec.md,
+phiên 2026-10-26). Một PR cho cả bốn.
+
+- [x] T028 [P] Trang phê duyệt dẫn về các bước đầu khi người duyệt còn dở onboarding (FR-106 sửa 2026-10-26). Ở `frontend/src/pages/LinkMachine.tsx`: khi `currentUser.onboarded === false`, nút chính sau khi duyệt là *Quay lại các bước đầu* (về `/onboarding`), nút *Nối thêm một máy nữa* lùi xuống thành lối phụ, và nút *Quay lại* ở cuối trang cũng về `/onboarding`. Người đã xong onboarding thì giữ nguyên như hôm nay. Chuỗi vi/en. *Đo*: K1 bấm lối ra của cửa sổ phê duyệt thì tới đúng bước nối máy, phần *nối* đã xong.
+  **Xong.** Lúc kiểm lộ thêm một kẽ: bấm lối ra ngay sau khi duyệt thì daemon có thể chưa kịp nhận giấy tờ, nên chưa có dòng máy nào và phần *nối* hiện là chưa xong. Trang phê duyệt nay mang theo tin *vừa duyệt một máy* khi dẫn về, như cửa sổ onboarding vẫn nghe được qua kênh. *Đo trên dịch vụ thật*: sau khi duyệt chỉ còn lối *Quay lại các bước đầu*; bấm vào là về bước 3 và phần *nối* xong ngay.
+- [x] T029 Cửa đặt chỗ nhận thêm tên, và đổi tên trùng thành 409 thay vì 500 (FR-122, FR-126 sửa 2026-10-26).
+  - `PlaceHostIn.name: str | None` ở `backend/armarius/presentation/schemas.py` (bỏ khoảng trắng hai đầu, 1–200 ký tự).
+  - `WorkspaceAgentService.place_host(..., name=None)` ở `backend/armarius/application/use_cases/workspace_agent.py`: tên trùng một agent **khác** trong không gian làm việc (không phân biệt hoa thường) → `NameTaken("agent_name_taken")`, trước mọi lần ghi; lưu tên cùng lần commit với chỗ làm và chỉ dẫn.
+  - Lỗ cũ lộ ra khi tra: `PATCH …/mariuses/{id}` đổi sang một tên đã có thì **500**, vì `update` của repository không dịch `IntegrityError` như `add` làm. Dịch nó thành `NameTaken`, và cho `MariusService.update` nhìn trước như cửa tạo.
+  - Sửa `contracts/user-surface.md` §1.
+  - *Đo*: đặt chỗ kèm tên mới → 200, tên mới; tên trùng → 409 `agent_name_taken`, không thứ gì đổi (kể cả chỗ làm); gửi đúng tên hiện tại → 200; PATCH đổi tên trùng → 409.
+  **Xong.** Dịch lời từ chối của cơ sở dữ liệu chỉ cho đúng luật một tên một agent; mọi lần ghi agent đều đi qua cửa sửa, nên lỗi khác vẫn nổi lên. 6 bài mới, gồm một bài đi thẳng xuống repository để đo đường hai lần đổi tên chạy đua.
+- [x] T030 [P] Bước 4 cho sửa tên người chủ nhà (FR-122). Ở `frontend/src/pages/Onboarding.tsx`: ô tên lấy sẵn tên hiện tại, sửa được; tên trống thì nút xong khoá; bấm xong gửi tên cùng runtime và chỉ dẫn qua `placeHost`. Lỗi `agent_name_taken` hiện câu i18n có sẵn, không gì bị đặt chỗ. `appStore.placeHost` nhận thêm tên.
+  **Xong.** *Đo trên dịch vụ thật*: ô tên có sẵn *Livia*; gõ tên một agent đã có thì báo đúng câu, ở lại bước 4, Livia không được đặt chỗ; đổi sang *Aurelia* thì tên lưu cùng runtime.
+- [x] T031 Daemon hỏi Claude Code danh sách model (FR-007k của đặc tả 002, sửa 2026-10-26). Ở `daemon/internal/discovery/capabilities.go`:
+  - sau khi đọc `--help`, mở `claude --print --verbose --input-format stream-json --output-format stream-json --strict-mcp-config` qua đường `Handshake` sẵn có, gửi một `control_request` `list_models`, đóng stdin, đọc `control_response` khớp `request_id`;
+  - thành công thì lựa chọn `model` thành: giá trị là tên model đã phân giải (`resolvedModel`, khử trùng), nguồn `tool_listed`, kèm `labels` (tên đọc được) và `narrows` (`{"thinking_level": [...]}` theo `supportedEffortLevels`, rỗng khi model không nhận mức nào). Dòng `default` không thành lựa chọn; dòng `disabled` bị bỏ;
+  - thất bại thì giữ y như hôm nay: ba cái tên ví dụ, nguồn `tool_examples`;
+  - `Choice` thêm `Labels` và `Narrows`, đều `omitempty`. Sửa `specs/002-daemon-acp-runtime/contracts/daemon-api.md`;
+  - *Đo*: bài Go với `Handshake` giả: đúng argv, đúng yêu cầu; trả lời thành công thì ra danh sách, nhãn, thu hẹp; CLI cũ trả `Unsupported control request subtype` thì về ví dụ; không có trả lời, JSON hỏng, danh sách rỗng cũng về ví dụ.
+  **Xong.** Tách ra `daemon/internal/discovery/catalog.go`. Bài khởi động daemon (`cmd/armarius-daemon/start_test.go`) dùng một `claude` giả coi mọi lần gọi là một lượt chạy, nên lời hỏi mới làm nó tưởng có việc; nay `claude` giả trả lời như một bản cũ không biết yêu cầu này. *Đo trên dịch vụ thật* (`claude` 2.1.301): 12 model, có tên đọc được, mức suy nghĩ theo từng model.
+- [x] T032 Server chuyển tiếp nhãn và luật thu hẹp, và từ chối mức model không nhận (FR-007k sửa 2026-10-26).
+  - `OptionSource.LISTED = "tool_listed"` (không đóng) ở `backend/armarius/domain/entities/placement.py`; `PlacementOption` thêm `labels` và `narrows`, vẫn không biết khoá nào là model.
+  - `options_of` ở `backend/armarius/infrastructure/daemon/placement.py` đọc `labels`, `narrows` một cách phòng thủ: chỉ giữ nhãn và luật cho giá trị có trong danh sách, chỉ giữ luật trỏ tới khoá có thật.
+  - `Placement.refuse_unchosen(chosen, alongside=...)`: một giá trị gửi lần này nằm ngoài danh sách mà lựa chọn khác (sau khi trộn) cho phép → 422 `placement_option_value_unsupported`. Giá trị đã lưu không bị đo lại.
+  - `PlacementOptionOut` thêm `labels`, `narrows`.
+  - *Đo*: bài đơn vị cho `refuse_unchosen` và `options_of` (dữ liệu hỏng bị bỏ); bài HTTP: tạo agent với model không nhận mức đã chọn → 422; đổi riêng mức theo model đã lưu → đo theo model ấy; đổi riêng model không làm mức đã lưu bị từ chối.
+  **Xong.** 8 bài mới. Thử phá 8 chỗ trong server và daemon thì cả 8 đều đỏ; chỗ lọt lần đầu (bỏ bước khử trùng ở daemon) do dữ liệu mẫu thiếu ca hai dòng cùng một model, đã thêm.
+- [x] T033 Ô chọn chung theo giao diện dự án (FR-129) và ô model đọc được (FR-007k).
+  - `frontend/src/components/Dropdown.tsx` trên Radix Select (đã có trong dự án): màu, viền, cỡ chữ theo dự án; giá trị rỗng là một lựa chọn thật (Radix không cho mục rỗng, nên đổi qua một khoá riêng); mục bị khoá kèm lý do.
+  - `frontend/src/components/SuggestBox.tsx` trên Popover + cmdk cho danh sách mở: mở ra là thấy **đủ** danh sách, gõ để lọc, gõ tên khác thì có mục *dùng tên này*, có mục *mặc định của CLI*.
+  - Thay mọi `<select>` và `<datalist>`: `CreateProject.tsx`, `CollaborationRoom.tsx` (3), `Directory.tsx` (2), `ProjectBoard.tsx` (3), `LinkMachine.tsx`, `Inbox.tsx`, `RuntimeOptionFields.tsx`.
+  - `RuntimeOptionFields`: hiện nhãn cạnh giá trị; danh sách mức suy nghĩ thu hẹp theo model đang chọn; đổi model mà mức đang chọn không còn hợp thì mức về mặc định; model không nhận mức nào thì ô mức khoá kèm câu giải thích. Luật này là hàm thuần ở `frontend/src/lib/runtimeOptions.ts`, có bài vitest.
+  **Xong.** Không còn `<select>` hay `<datalist>` nào trong mã giao diện. 10 bài vitest mới cho luật thu hẹp. *Đo trên dịch vụ thật*: mở ô model thấy đủ 13 dòng (kể cả *mặc định*); chọn *Sonnet 5.5* rồi mở lại vẫn đủ 13 dòng; đổi sang *Opus 4.6* thì mức `xhigh` về mặc định và không còn trong danh sách; *Haiku 4.5* thì ô mức khoá kèm câu giải thích; gõ được tên model ngoài danh sách.
+- [x] T034 Kiểm trên dịch vụ thật rồi chạy đủ bộ kiểm. Dựng daemon thử từ mã nguồn (chỉ thấy `claude`) để ô model hiện danh sách thật; Playwright cho cả bốn conflict; backend, ruff, `go test ./...`, build, eslint, vitest.
+  **Xong.** 27/27 trên dịch vụ thật. Backend 1341 đạt, 22 bỏ qua (chỉ chạy trên Postgres); ruff sạch; `go vet` và `go test ./...` đạt; build đạt; eslint chỉ còn 1 cảnh báo có từ trước ở `RunTrace.tsx`; vitest 34/34. Lượt đầu dừng ở C3 vì script đợi chữ của ô runtime, trong khi không gian thử chỉ có một runtime nên ô đã chọn sẵn; sửa script rồi chạy lại cả lượt. Đã dọn tài khoản thử; tài khoản ông đang test giữ nguyên.
+
 ---
 
 ## Dependencies

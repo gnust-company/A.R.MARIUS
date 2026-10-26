@@ -27,6 +27,7 @@ import { approveMachineLink, getMachineLink, type PendingMachineLinkDTO } from '
 import { errorText } from '@/lib/errors'
 import { useAppStore } from '@/store/appStore'
 import VellumPanel from '@/components/VellumPanel'
+import Dropdown from '@/components/Dropdown'
 import { cn, wsHref } from '@/lib/utils'
 
 /** The alphabet the server draws codes from: no 0/O and no 1/I, because a person copies
@@ -80,10 +81,10 @@ export default function LinkMachine() {
   // reading it off their own terminal a moment ago; a person who followed a link has no such
   // evidence and needs telling so.
   const [fromLink, setFromLink] = useState(false)
-  // Whether whoever approved here is still part way through their first steps. Caught at the
-  // moment of approving rather than read off the user while rendering, so the notice speaks to
-  // the person it was true for when they pressed the button.
-  const [inFirstSteps, setInFirstSteps] = useState(false)
+  // Whoever is here is still part way through their first steps. Approving no longer finishes
+  // them (spec 003 FR-106), so this is the same before and after the button, and every way off
+  // this page leads back to them rather than into a workspace they have not finished setting up.
+  const inFirstSteps = currentUser?.onboarded === false
 
   useEffect(() => {
     void hydrateWorkspaces().catch(() => {})
@@ -109,7 +110,11 @@ export default function LinkMachine() {
   const workspaceId =
     chosenWorkspaceId || (pending ? (activeWorkspaceId ?? workspaces[0]?.id ?? '') : '')
 
-  const leaveTo = activeWorkspaceId ? wsHref(activeWorkspaceId, '/machines') : '/workspaces'
+  const leaveTo = inFirstSteps
+    ? '/onboarding'
+    : activeWorkspaceId
+      ? wsHref(activeWorkspaceId, '/machines')
+      : '/workspaces'
   const doneTo = workspaceId ? wsHref(workspaceId, '/machines') : leaveTo
 
   const restart = useCallback(() => {
@@ -118,7 +123,6 @@ export default function LinkMachine() {
     setError(null)
     setCode('')
     setFromLink(false)
-    setInFirstSteps(false)
     // The workspace goes too. Before the lookup and the choosing were split apart, every
     // successful lookup reset it; leaving it behind here means asking about a second machine
     // and being handed the workspace picked for the first one, already selected, which is a
@@ -173,7 +177,6 @@ export default function LinkMachine() {
       // its papers and no runtime yet — that comes with `armarius-daemon start`. So nothing is
       // written here. The window standing on the connect step hears `machine.linked` from the
       // server, marks this part done, and moves on by itself once the daemon reports in.
-      setInFirstSteps(currentUser?.onboarded === false)
     } catch (err) {
       setError(errorText(err, t))
     }
@@ -229,18 +232,43 @@ export default function LinkMachine() {
                   {t('linkMachine.doneFirstSteps')}
                 </p>
               )}
-              <div className="flex flex-col gap-2 pt-2">
-                <button type="button" onClick={restart} className={buttonCls}>
-                  {t('linkMachine.doneAgain')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate(doneTo)}
-                  className="font-body text-body-sm text-ink-muted hover:text-ink transition-colors"
-                >
-                  {t('linkMachine.doneLeave')}
-                </button>
-              </div>
+              {inFirstSteps ? (
+                // Mid first steps, the way on is back to them: the step that was waiting for this
+                // machine is the next thing to do, and the workspace behind it is not ready yet.
+                // Caught by the owner on 2026-10-26 — the machine list here led straight in.
+                <div className="flex flex-col gap-2 pt-2">
+                  <button
+                    type="button"
+                    // Carries what this page knows and the next one cannot yet read: a machine
+                    // was approved a moment ago. Its row appears only once the daemon collects
+                    // its papers, and the step must not show linking as undone until then.
+                    onClick={() => navigate('/onboarding', { state: { machineApproved: true } })}
+                    className={buttonCls}
+                  >
+                    {t('linkMachine.doneBackToFirstSteps')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={restart}
+                    className="font-body text-body-sm text-ink-muted hover:text-ink transition-colors"
+                  >
+                    {t('linkMachine.doneAgain')}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2 pt-2">
+                  <button type="button" onClick={restart} className={buttonCls}>
+                    {t('linkMachine.doneAgain')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate(doneTo)}
+                    className="font-body text-body-sm text-ink-muted hover:text-ink transition-colors"
+                  >
+                    {t('linkMachine.doneLeave')}
+                  </button>
+                </div>
+              )}
             </div>
           ) : pending ? (
             <div className="space-y-5">
@@ -290,18 +318,13 @@ export default function LinkMachine() {
                   <label className={labelCls} htmlFor="link-workspace">
                     {t('linkMachine.workspaceLabel')}
                   </label>
-                  <select
+                  <Dropdown
                     id="link-workspace"
+                    size="sm"
                     value={workspaceId}
-                    onChange={(e) => setChosenWorkspaceId(e.target.value)}
-                    className={inputCls}
-                  >
-                    {workspaces.map((ws) => (
-                      <option key={ws.id} value={ws.id}>
-                        {ws.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setChosenWorkspaceId}
+                    items={workspaces.map((ws) => ({ value: ws.id, label: ws.name }))}
+                  />
                 </div>
               )}
 
@@ -378,7 +401,7 @@ export default function LinkMachine() {
           onClick={() => navigate(leaveTo)}
           className="mt-6 w-full text-center font-body text-body-sm text-ink-muted hover:text-ink transition-colors"
         >
-          {t('linkMachine.back')}
+          {inFirstSteps ? t('linkMachine.backToFirstSteps') : t('linkMachine.back')}
         </button>
       </motion.div>
     </div>

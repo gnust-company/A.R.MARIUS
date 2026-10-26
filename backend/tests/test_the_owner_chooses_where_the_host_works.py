@@ -316,3 +316,124 @@ async def test_an_agent_of_another_workspace_is_not_found_here() -> None:
         )
         assert refused.status_code == 404, refused.text
         assert refused.json()["code"] == "agent_not_found"
+
+
+# ── FR-122, FR-126 (sửa 2026-10-26): tên người chủ nhà sửa được ở bước cuối ───────────
+
+
+async def test_the_host_takes_the_name_its_owner_gave_it_with_its_runtime() -> None:
+    """Người chủ hỏi ngày 2026-10-26: vì sao agent đầu tiên không đổi tên được. Không có lý do —
+    tên được lưu cùng lần với chỗ làm và chỉ dẫn, như mọi thứ khác ở bước ấy."""
+    async with _client() as c:
+        machine = await link_machine(c, "renames-host@armarius.dev")
+
+        placed = await put_host_to_work(
+            c,
+            machine.headers,
+            machine.workspace_id,
+            machine.workplace_id,
+            instructions="Trả lời ngắn.",
+            name="  Aurelia  ",
+        )
+        assert placed.status_code == 200, placed.text
+        assert placed.json()["name"] == "Aurelia"
+        assert placed.json()["instructions"] == "Trả lời ngắn."
+        assert placed.json()["runtime"] is not None
+
+
+async def test_keeping_the_name_it_already_has_is_not_a_clash_with_itself() -> None:
+    async with _client() as c:
+        machine = await link_machine(c, "keeps-own-name@armarius.dev")
+        host = await the_host(c, machine.headers, machine.workspace_id)
+
+        placed = await put_host_to_work(
+            c, machine.headers, machine.workspace_id, machine.workplace_id, name=host["name"]
+        )
+        assert placed.status_code == 200, placed.text
+        assert placed.json()["name"] == host["name"]
+
+
+async def test_a_name_another_agent_answers_to_is_refused_and_nothing_is_placed() -> None:
+    """Cùng một lần ghi (FR-126): tên bị từ chối thì chỗ làm và chỉ dẫn cũng không được lưu."""
+    async with _client() as c:
+        machine = await link_machine(c, "host-name-taken@armarius.dev")
+        made = await c.post(
+            f"/v1/workspaces/{machine.workspace_id}/mariuses",
+            headers=machine.headers,
+            json={"name": "Decima", "workplace_id": machine.workplace_id},
+        )
+        assert made.status_code == 201, made.text
+
+        refused = await put_host_to_work(
+            c,
+            machine.headers,
+            machine.workspace_id,
+            machine.workplace_id,
+            instructions="Không được lưu.",
+            name="decima",
+        )
+        assert refused.status_code == 409, refused.text
+        assert refused.json()["code"] == "agent_name_taken"
+
+        host = await the_host(c, machine.headers, machine.workspace_id)
+        assert await _bound_to(host["id"]) is None
+        assert host["name"] != "decima"
+        assert host["instructions"] == HOST_DEFAULT_INSTRUCTIONS
+
+
+async def test_a_blank_name_is_refused_before_anything_is_read() -> None:
+    async with _client() as c:
+        machine = await link_machine(c, "host-name-blank@armarius.dev")
+
+        refused = await put_host_to_work(
+            c, machine.headers, machine.workspace_id, machine.workplace_id, name="   "
+        )
+        assert refused.status_code == 422, refused.text
+
+
+async def test_renaming_any_agent_to_a_name_already_taken_is_a_conflict_not_a_crash() -> None:
+    """Lỗ cũ lộ ra lúc sửa: đổi tên ở trang agent sang một tên đã có trả 500, vì cửa sửa không
+    dịch lời từ chối của cơ sở dữ liệu như cửa tạo vẫn dịch."""
+    async with _client() as c:
+        machine = await link_machine(c, "rename-clash@armarius.dev")
+        made = await c.post(
+            f"/v1/workspaces/{machine.workspace_id}/mariuses",
+            headers=machine.headers,
+            json={"name": "Nona", "workplace_id": machine.workplace_id},
+        )
+        assert made.status_code == 201, made.text
+        host = await the_host(c, machine.headers, machine.workspace_id)
+
+        refused = await c.patch(
+            f"/v1/workspaces/{machine.workspace_id}/mariuses/{host['id']}",
+            headers=machine.headers,
+            json={"name": "NONA"},
+        )
+        assert refused.status_code == 409, refused.text
+        assert refused.json()["code"] == "agent_name_taken"
+        again = await the_host(c, machine.headers, machine.workspace_id)
+        assert again["name"] == host["name"]
+
+
+async def test_a_rename_that_loses_a_race_is_still_a_conflict() -> None:
+    """Hai lần đổi tên cùng thấy tên còn trống thì chỉ cơ sở dữ liệu quyết. Đi thẳng xuống
+    repository, bỏ qua bước nhìn trước, để đo đúng đường dịch lời từ chối ấy."""
+    from armarius.domain.entities.marius import NameTaken
+    from armarius.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+
+    async with _client() as c:
+        machine = await link_machine(c, "rename-race@armarius.dev")
+        made = await c.post(
+            f"/v1/workspaces/{machine.workspace_id}/mariuses",
+            headers=machine.headers,
+            json={"name": "Morta", "workplace_id": machine.workplace_id},
+        )
+        assert made.status_code == 201, made.text
+        host = await the_host(c, machine.headers, machine.workspace_id)
+
+    async with SqlAlchemyUnitOfWork() as uow:
+        agent = await uow.mariuses.get(UUID(host["id"]))
+        assert agent is not None
+        agent.name = "Morta"
+        with pytest.raises(NameTaken):
+            await uow.mariuses.update(agent)

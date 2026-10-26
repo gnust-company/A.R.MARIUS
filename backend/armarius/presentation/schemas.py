@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from armarius.application.use_cases.plans import MajorChangeArea
 from armarius.domain.services.project_key import PROJECT_KEY_RE
@@ -304,6 +304,19 @@ class PlaceHostIn(BaseModel):
 
     workplace_id: UUID
     instructions: str | None = Field(default=None, max_length=20000)
+    # The host's name, as its owner left it in the box (spec 003 FR-122, revised 2026-10-26).
+    # Saved in the same write as the placement; absent keeps the name it has.
+    name: str | None = Field(default=None, max_length=200)
+
+    @field_validator("name")
+    @classmethod
+    def _name_is_something(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("name must not be blank")
+        return trimmed
 
 
 class UpdateMariusIn(BaseModel):
@@ -481,6 +494,10 @@ class PlacementOptionOut(_Out):
     key: str
     values: list[str] = Field(default_factory=list)
     source: str
+    # A readable name for a value, as the tool gave it (FR-007k, revised 2026-10-26).
+    labels: dict[str, str] = Field(default_factory=dict)
+    # Picking a value narrows another setting, by that setting's key, to these values.
+    narrows: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
 
 
 class WorkplaceChoiceOut(_Out):

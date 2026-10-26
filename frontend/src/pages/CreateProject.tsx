@@ -10,6 +10,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '@/store/appStore';
 import PageTitle from '@/components/PageTitle';
+import Dropdown from '@/components/Dropdown';
 import OnboardingChat from '@/components/OnboardingChat';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -543,10 +544,9 @@ export default function CreateProject() {
 
         {/* Agent selector dropdown */}
         <div className="mb-3">
-          <select
+          <Dropdown
             value={formData.assignLeaderLater ? 'later' : formData.leaderId || ''}
-            onChange={(e) => {
-              const val = e.target.value;
+            onChange={(val) => {
               if (val === 'later') {
                 setFormData((p) => ({ ...p, leaderId: null, assignLeaderLater: true }));
               } else {
@@ -559,19 +559,18 @@ export default function CreateProject() {
               }
               if (errors.roster) setErrors((p) => ({ ...p, roster: undefined }));
             }}
-            className="w-full bg-vellum border border-[#E3D7BC] rounded-md px-4 py-2.5 font-body text-body-md text-ink focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)] transition-colors"
-          >
-            <option value="">{t('createProject.roster.selectAgent')}</option>
-            {mariuses.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {/* Name and liveness, and nothing in between. There used to be a role in
-                    brackets here; the field it read is empty by design, so every agent in
-                    this list was offered as "Name () — online". */}
-                {agent.displayName || agent.name} — {agent.status}
-              </option>
-            ))}
-            <option value="later">{t('createProject.roster.assignLater')}</option>
-          </select>
+            placeholder={t('createProject.roster.selectAgent')}
+            items={[
+              // Name and liveness, and nothing in between. There used to be a role in brackets
+              // here; the field it read is empty by design, so every agent in this list was
+              // offered as "Name () — online".
+              ...mariuses.map((agent) => ({
+                value: agent.id,
+                label: `${agent.displayName || agent.name} — ${agent.status}`,
+              })),
+              { value: 'later', label: t('createProject.roster.assignLater') },
+            ]}
+          />
           {mariuses.length === 0 && (
             <p className="mt-1 font-body text-body-sm text-ink-muted">
               {t('createProject.roster.noApprovedAgents')}
