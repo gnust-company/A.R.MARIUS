@@ -16,6 +16,7 @@ import { motion } from 'framer-motion';
 import {
   BookOpen,
   Bot,
+  CloudOff,
   Cpu,
   ExternalLink,
   Laptop,
@@ -211,6 +212,23 @@ function Machine({
             </div>
           </div>
         </div>
+
+        {/* Why this machine's daemon is not keeping itself current (FR-008n, revised
+            2026-10-28). It used to say so only in its own log, which is where the owner's
+            machine said it for weeks while nobody looked. A code from the daemon, worded here. */}
+        {machine.update_problem && (
+          <div
+            className="mt-3 flex items-start gap-2 rounded-md border border-[#E8C9A8] bg-[#FBEBD9] px-3 py-2 text-[12px] text-[#7A4A1E]"
+            role="status"
+          >
+            <CloudOff className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden />
+            <span>
+              {t(`machines.updateProblem.${machine.update_problem}`, {
+                defaultValue: t('machines.updateProblem.unknown'),
+              })}
+            </span>
+          </div>
+        )}
 
         {/* The ceiling (FR-008). Beside the machine rather than inside a settings page: it is
             a fact about this machine, and the person setting it is looking at the machine. */}

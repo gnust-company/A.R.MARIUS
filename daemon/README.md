@@ -44,9 +44,12 @@ The installer is a convenience, not a requirement. Download the archive for your
 
 ```sh
 tar -xzf armarius-daemon_<version>_<os>_<arch>.tar.gz
-sudo install -m 0755 armarius-daemon armarius /usr/local/bin/
+install -m 0755 armarius-daemon armarius ~/.local/bin/
 armarius-daemon version
 ```
+
+Into your own `~/.local/bin`, not `/usr/local/bin` with `sudo`: the daemon updates itself by
+replacing its own file, and it runs as you, so it has to live somewhere you can write (FR-008n).
 
 On Windows, unpack the `.zip` and put both `.exe` files in a directory on your `PATH` — for example
 `%LOCALAPPDATA%\Programs\Armarius`.
@@ -57,7 +60,7 @@ Gatekeeper blocks it. Open **System Settings → Privacy & Security** and allow 
 the quarantine flag yourself:
 
 ```sh
-xattr -d com.apple.quarantine /usr/local/bin/armarius-daemon /usr/local/bin/armarius
+xattr -d com.apple.quarantine ~/.local/bin/armarius-daemon ~/.local/bin/armarius
 ```
 
 ### Windows: Developer Mode is required
@@ -147,7 +150,7 @@ After=network-online.target
 [Service]
 # -foreground: in the background, the process systemd watches would exit at once, and systemd
 # would clean up the daemon it left behind along with it.
-ExecStart=/usr/local/bin/armarius-daemon start -foreground
+ExecStart=%h/.local/bin/armarius-daemon start -foreground
 # systemd does not read your shell's PATH. Without this the daemon finds no agent CLI installed
 # under your home directory (~/.local/bin, nvm, …): paste the output of `echo $PATH`.
 Environment=PATH=/home/you/.local/bin:/usr/local/bin:/usr/bin:/bin
@@ -179,8 +182,13 @@ running, and asks for no new work while it checks.
   downloaded, checksum-verified the way the installer verifies it, both programs are put in place
   as one, and the daemon restarts into it. A build from source is never replaced.
 - Every **10 minutes** it asks the `armarius-daemon` on disk for its version. Re-run the installer,
-  or replace the file yourself, and the daemon restarts into it — no stop and start needed. This is
-  the road when the daemon cannot write to its own install directory (installed with `sudo`).
+  or replace the file yourself, and the daemon restarts into it — no stop and start needed.
+
+When it cannot keep itself current — its install directory is not writable (an older install, made
+with `sudo` into `/usr/local/bin`), the releases page cannot be reached, or a download would not go in
+— it says so on every heartbeat, and the Machines screen shows it on that machine's card with what to
+do. Re-running the installer once moves an older install into `~/.local/bin`, removes the old copy,
+and restarts the daemon from the new place.
 
 On Linux and macOS the restart keeps the process id, so a service manager sees nothing change.
 Turn either road off in the config file: `"auto_update": false`, `"auto_reload": false`; the check
@@ -219,6 +227,7 @@ Durations are written the way you say them: `"5s"`, `"10m"`, `"24h"`.
 | `auto_update` | `true` | whether the daemon fetches newer releases by itself and restarts into them when idle |
 | `auto_update_interval` | `"6h"` | how often it looks for a newer release |
 | `auto_reload` | `true` | whether it restarts into the `armarius-daemon` on disk once that reports a different version |
+| `auto_update_releases` | GitHub | the releases page to update from, for a machine that takes releases from an internal mirror |
 
 Point `start` at a different file with `-config`, which is how one machine runs two daemons
 against two servers. Each keeps its state file, its log and its stop request beside its own config

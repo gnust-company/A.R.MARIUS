@@ -191,6 +191,23 @@ Mỗi 15 giây.
 `free_slots` là **số chỗ trống hiện tại, mang tính tham khảo**. Server giữ trần và lấy số nhỏ hơn giữa hai
 giá trị (FR-008d).
 
+**`update_problem` — thêm 2026-10-28** (FR-008n sửa 2026-10-28), tuỳ có:
+
+```json
+→ { "free_slots": 3, "running": [], "update_problem": "install_dir_not_writable" }
+```
+
+Vì sao daemon không tự cập nhật được, dạng **mã** (Hiến pháp VII): `install_dir_not_writable` (thư mục
+chứa daemon không ghi được — thường do cài bằng `sudo`), `release_unreachable` (không hỏi được nơi phát
+hành), `install_failed` (tải được bản mới mà cài không xong). Vắng nghĩa là không có gì hỏng, và server
+**xoá** mã đã giữ. Server giữ mã ở `machines.update_problem` và trả nó trong `GET …/machines` dưới tên
+`update_problem`; màn Máy dựng câu. Một chuỗi không có dạng mã (`^[a-z][a-z0-9_]*$`, tối đa 64 ký tự) bị
+từ chối 422.
+
+**`daemon_version` — thêm 2026-10-28**, tuỳ có: bản daemon đang chạy. Daemon tự thay chính nó, nên số
+khai lúc nối máy cũ đi ngay lần cập nhật đầu; server ghi đè `machines.daemon_version` mỗi khi nhịp có
+trường này, và để nguyên khi vắng (daemon cũ).
+
 > **Heartbeat KHÔNG phải bằng chứng agent chạy được.** Nó chứng minh liên lạc tới máy. Chỗ làm có sẵn sàng
 > hay không là chuyện khác, và `PUT /daemon/workplaces` mới trả lời (FR-055b).
 

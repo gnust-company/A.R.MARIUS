@@ -108,6 +108,11 @@ một lần.
   được danh sách đủ không? → A: **Lấy được, và lấy.** Claude Code trả lời câu hỏi *liệt kê model* qua
   kênh điều khiển của nó, đúng danh sách mà màn `/model` của nó hiện, kèm mức suy nghĩ từng model nhận
   (FR-007k của đặc tả 002, sửa 2026-10-26).
+- Q *(2026-10-28)*: Daemon trên máy người chủ không tự cập nhật — ba lần hỏi bản mới đều hỏng ở bước tra tên
+  miền, và kể cả hỏi được nó cũng không ghi đè được chính nó vì lệnh cài dùng `sudo` đặt nó vào chỗ của
+  root. Các phần mềm khác tự cập nhật được, sao cái này bắt người dùng tự chạy? → A: **Sửa cho tự cập nhật
+  được, như các phần mềm khác.** Lệnh cài đặt daemon vào thư mục của người dùng; không tự cập nhật được thì
+  màn Máy nói ra (FR-008n của đặc tả 002, sửa 2026-10-28).
 
 ## User Scenarios & Testing *(mandatory)*
 

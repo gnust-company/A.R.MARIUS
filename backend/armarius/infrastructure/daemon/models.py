@@ -58,6 +58,10 @@ class MachineModel(Base):
     # Server-side ceiling on concurrent runs. The daemon reports its free slots as advice;
     # the server takes the smaller of the two.
     max_concurrent: Mapped[int] = mapped_column(Integer, default=1)
+    # Why this machine's daemon is not keeping itself current, as the code it sent on its last
+    # beat (FR-008n, revised 2026-10-28). Null is the ordinary case: nothing wrong, or a daemon
+    # too old to say.
+    update_problem: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

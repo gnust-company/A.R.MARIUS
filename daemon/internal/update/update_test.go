@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -266,6 +267,9 @@ type aLoop struct {
 	busied     int
 	said       []string
 	ticks      int
+	// unwritable is what the install directory answers when asked whether it can be written.
+	unwritable error
+	reported   []string
 }
 
 func (l *aLoop) options(version string) Options {
@@ -311,6 +315,12 @@ func (l *aLoop) options(version string) Options {
 				return version, nil
 			}
 			return l.onDisk, nil
+		},
+		Writable: func(string) error { return l.unwritable },
+		Report: func(problem string) {
+			l.mu.Lock()
+			l.reported = append(l.reported, problem)
+			l.mu.Unlock()
 		},
 		Tick: func(time.Duration) <-chan time.Time {
 			l.mu.Lock()
@@ -424,5 +434,102 @@ func TestBothRoadsOffMeansTheLoopEndsAtOnce(t *testing.T) {
 	l.run(t, opts)
 	if len(l.installed) != 0 || l.restarts != 0 {
 		t.Fatal("cả hai đường tắt mà vẫn làm gì đó")
+	}
+}
+
+// ── FR-008n, sửa 2026-10-28: không tự cập nhật được thì phải nói ra ─────────────────────────
+//
+// Máy của người chủ cài bằng sudo vào /usr/local/bin: daemon không ghi đè được chính nó, và mọi
+// lần hỏng chỉ nằm trong log. Mỗi lần kéo bản mới giờ báo một mã, và màn Máy dựng câu từ mã ấy.
+
+func (l *aLoop) lastReport(t *testing.T) string {
+	t.Helper()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.reported) == 0 {
+		t.Fatal("vòng kéo bản mới không báo gì cả")
+	}
+	return l.reported[len(l.reported)-1]
+}
+
+func TestAnInstallDirectoryItCannotWriteIsSaidAtOnceAndNothingIsFetched(t *testing.T) {
+	l := &aLoop{idle: true, latest: "v0.2.0", unwritable: errors.New("permission denied")}
+	l.run(t, l.options("0.1.0"))
+
+	if got := l.lastReport(t); got != ProblemInstallDirNotWritable {
+		t.Fatalf("báo %q, mong %q", got, ProblemInstallDirNotWritable)
+	}
+	if l.reported[0] != ProblemInstallDirNotWritable {
+		t.Fatalf("phải báo ngay lúc chạy lên, không đợi tới nhịp đầu: %v", l.reported)
+	}
+	if len(l.installed) != 0 || l.restarts != 0 {
+		t.Fatalf("thư mục không ghi được mà vẫn tải %v", l.installed)
+	}
+}
+
+func TestAReleasePageItCannotReachIsSaid(t *testing.T) {
+	l := &aLoop{idle: true}
+	l.run(t, l.options("0.1.0"))
+	if got := l.lastReport(t); got != ProblemReleaseUnreachable {
+		t.Fatalf("báo %q, mong %q", got, ProblemReleaseUnreachable)
+	}
+}
+
+func TestAnInstallThatFailsIsSaid(t *testing.T) {
+	l := &aLoop{idle: true, latest: "v0.2.0", installErr: errors.New("checksum mismatch")}
+	l.run(t, l.options("0.1.0"))
+	if got := l.lastReport(t); got != ProblemInstallFailed {
+		t.Fatalf("báo %q, mong %q", got, ProblemInstallFailed)
+	}
+}
+
+func TestAHealthyLookClearsWhateverWasSaidBefore(t *testing.T) {
+	l := &aLoop{idle: true, latest: "v0.1.0"}
+	l.run(t, l.options("0.1.0"))
+	if got := l.lastReport(t); got != "" {
+		t.Fatalf("không có gì hỏng mà vẫn báo %q", got)
+	}
+}
+
+func TestABuildFromSourceReportsNothingAboutUpdating(t *testing.T) {
+	l := &aLoop{idle: true, latest: "v9.9.9", unwritable: errors.New("permission denied")}
+	l.run(t, l.options("dev"))
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, one := range l.reported {
+		if one != "" {
+			t.Fatalf("bản dựng từ nguồn không tự cập nhật, nên không có gì để than: %v", l.reported)
+		}
+	}
+}
+
+func TestWhetherADirectoryCanBeWrittenIsAskedOfTheDirectoryItself(t *testing.T) {
+	dir := t.TempDir()
+	if err := canWrite(dir); err != nil {
+		t.Fatalf("thư mục tạm của chính bài kiểm phải ghi được: %v", err)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 0 {
+		t.Fatalf("hỏi xong phải dọn file thử: %v", entries)
+	}
+	if runtime.GOOS != "windows" && os.Geteuid() != 0 {
+		if err := os.Chmod(dir, 0o555); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+		if canWrite(dir) == nil {
+			t.Fatal("thư mục chỉ đọc mà lại bảo ghi được")
+		}
+	}
+}
+
+func TestTheProblemIsSaidBeforeTheFirstLookIsDue(t *testing.T) {
+	// Lần hỏi đầu nằm ở phút thứ hai; màn Máy không được đợi tới lúc ấy mới biết.
+	l := &aLoop{idle: true, latest: "v0.2.0", unwritable: errors.New("permission denied")}
+	opts := l.options("0.1.0")
+	opts.Tick = func(time.Duration) <-chan time.Time { return nil }
+	l.run(t, opts)
+	if len(l.reported) != 1 || l.reported[0] != ProblemInstallDirNotWritable {
+		t.Fatalf("chưa tới nhịp nào mà báo %v, mong đúng một lần %q", l.reported, ProblemInstallDirNotWritable)
 	}
 }
