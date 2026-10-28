@@ -535,7 +535,12 @@ export interface WorkplaceChoiceDTO {
 export interface PlacementOptionDTO {
   key: string
   values: string[]
-  source: 'tool_declared' | 'tool_examples' | 'known_names' | string
+  source: 'tool_declared' | 'tool_examples' | 'known_names' | 'tool_listed' | string
+  /** Readable names for values, as the tool gave them (FR-007k, revised 2026-10-26). */
+  labels?: Record<string, string>
+  /** Picking a value narrows another setting, by that setting's key, to these values. An empty
+   *  list means only blank. */
+  narrows?: Record<string, Record<string, string[]>>
 }
 
 export async function listWorkplaces(workspaceId: string): Promise<WorkplaceChoiceDTO[]> {
@@ -569,6 +574,8 @@ export interface MachineDTO {
   reachable: boolean
   /** How many runs this machine may hold at once (FR-008). The patron's number, not the machine's. */
   max_concurrent: number
+  /** Why its daemon is not keeping itself current, as a code (FR-008n, revised 2026-10-28). */
+  update_problem?: string | null
   workplaces: MachineWorkplaceDTO[]
 }
 
@@ -674,6 +681,10 @@ export interface PlaceHostBody {
   /** Saved in the same write as the placement. Left out, the host keeps what it has; an empty
    *  string is a real value — the person cleared the box. */
   instructions?: string
+  /** The host's new name, saved in the same write (spec 003 FR-122, revised 2026-10-26). A
+   *  name another agent here answers to is refused with `agent_name_taken`, and nothing of the
+   *  step is kept. */
+  name?: string
 }
 
 /**

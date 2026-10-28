@@ -603,6 +603,23 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
     cái picker: nó chỉ bày chỗ còn nhận việc, và không bao giờ nói agent đang ngồi ở chỗ nào. Dựng màn hình
     sửa trên nó thì một agent bị gỡ mất CLI sẽ đọc thành *không có gì để chọn* — trong khi thứ tool ấy nhận
     vẫn biết rõ, và sẽ có nghĩa trở lại ngay khi CLI được cài lại.
+  - **Sửa 2026-10-26 sau khi người chủ thử (đặc tả 003, phiên 2026-10-26).** Câu *"không lệnh nào liệt
+    kê"* ở trên đúng với dòng lệnh, nhưng không đúng với Claude Code: kênh điều khiển `stream-json` của nó
+    trả lời một yêu cầu *liệt kê model* bằng đúng danh sách màn `/model` của nó hiện, tính theo bản CLI
+    đã cài và tài khoản đang đăng nhập. Hỏi như thế không gửi tin nhắn nào, nên không gọi model và không
+    tốn tiền. Multica hỏi đúng chỗ này. Từ nay:
+    - **Daemon PHẢI hỏi danh sách ấy khi tool có nó**, và chỉ quay về mấy cái tên ví dụ trong `--help`
+      khi hỏi không được (CLI quá cũ, lỗi, hết giờ). Danh sách hỏi được có nguồn riêng, `tool_listed`:
+      tool liệt kê thứ nó bày cho tài khoản này, nhưng vẫn nhận tên model khác, nên giá trị ngoài danh
+      sách **không** bị từ chối.
+    - **Mỗi giá trị PHẢI mang tên đọc được** do tool đặt (*Opus 5.5*), cạnh giá trị thật được lưu và
+      chuyển cho `--model` — tên model đã phân giải (`claude-opus-5-5`), như Multica lưu. Dòng
+      *mặc định* của tool không phải một lựa chọn riêng: bỏ trống đã mang nghĩa ấy.
+    - **Mức suy nghĩ PHẢI đi theo model đang chọn.** Mỗi model nói nó nhận những mức nào; có model không
+      nhận mức nào. Một lựa chọn PHẢI thu hẹp được danh sách của lựa chọn khác, và luật ấy viết bằng
+      **khoá của lựa chọn**, không bằng tên tool (Điều III). Server từ chối một mức model đang chọn không
+      nhận, đo theo đúng luật *chỉ đo thứ lần này được chọn* ở trên: mức được gửi lần này đo theo model
+      sau khi trộn; còn một mức đã lưu thì không bị lôi ra đo lại.
 - **FR-007l**: **Bỏ role theo dự án.** Cách cư xử của agent đến từ instructions ở FR-007i, không từ một ghế
   role trong dự án. Thêm agent vào dự án là thêm thẳng agent, không qua role. **Giữ nguyên Trưởng dự án** —
   đó là vị trí điều phối của từng dự án, không phải một ghế trong bộ role đã bỏ (Hiến pháp 2.0.0 — Điều V).
@@ -935,6 +952,23 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
     đĩa) trong file cấu hình. Bật mặc định vì bản phát hành daemon và server Armarius ra từ **cùng một repo và
     cùng một người vận hành**. Rủi ro đã biết: server chưa được triển khai lên bản mới mà daemon đã lên thì hai
     bên có thể không nói chuyện được với nhau — khi ấy tắt `auto_update` trên máy.
+  - **Sửa 2026-10-28 (người chủ, đặc tả 003 phiên 2026-10-26, conflict 5).** Bản trên coi máy cài bằng `sudo`
+    vào `/usr/local/bin` là ca của *người vận hành tự chạy lại lệnh cài*. Nhưng đó lại chính là cách cài mặc
+    định, nên ai cài theo hướng dẫn cũng không bao giờ được tự cập nhật: daemon chạy bằng tài khoản thường và
+    không ghi đè được chính nó. Claude Code tự cập nhật được vì nó cài vào thư mục của tài khoản người dùng.
+    Từ nay:
+    - **Lệnh cài PHẢI đặt daemon vào thư mục của tài khoản đang cài** (`$HOME/.local/bin`), không cần `sudo`,
+      để đường *kéo bản mới* chạy được mà không ai phải làm gì. Người tự chọn chỗ khác bằng `ARMARIUS_BIN_DIR`
+      thì vẫn được; chỗ ấy cần `sudo` thì lệnh cài PHẢI nói rằng daemon sẽ không tự cập nhật được ở đó.
+    - **Máy đã cài vào chỗ cũ** chỉ cần chạy lại lệnh cài đúng một lần. Lệnh cài PHẢI dọn bản cũ còn nằm trên
+      `PATH`, vì bản cũ đứng trước trên `PATH` sẽ che bản mới. Dọn không được thì nói đúng lệnh cần chạy. Daemon
+      đang chạy từ chỗ cũ thì nói lệnh khởi động lại.
+    - **Không tự cập nhật được thì PHẢI hiện trên màn Máy**, không chỉ nằm trong log. Daemon gửi một **mã** theo
+      nhịp tim (Hiến pháp VII): thư mục cài không ghi được, không tới được nơi phát hành, hoặc tải được mà cài
+      không xong. Màn hình dựng câu từ mã ấy và nói việc cần làm. Lần thử sau thành công thì mã biến mất.
+    - Nơi phát hành **đổi được trong file cấu hình** (`auto_update_releases`) và ở lệnh cài
+      (`ARMARIUS_RELEASES`), cho máy dùng bản sao nội bộ, và để kiểm cả vòng tự cập nhật mà không phải phát
+      hành thật.
 
 ### Nhóm B — Giao việc và nói chuyện với agent
 

@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Response
 
 from armarius.domain.entities.marius import Marius
+from armarius.domain.entities.placement import PlacementOption
 from armarius.infrastructure.daemon.workplaces import LinkedMachine
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.container import Container
@@ -155,6 +156,7 @@ def _machine_out(machine: LinkedMachine) -> MachineOut:
         last_heartbeat_at=machine.last_heartbeat_at,
         reachable=machine.reachable,
         max_concurrent=machine.max_concurrent,
+        update_problem=machine.update_problem,
         workplaces=[
             MachineWorkplaceOut(
                 id=place.id,
@@ -229,15 +231,24 @@ async def list_workplaces(
             id=one.id,
             cli_kind=one.cli_kind,
             machine_name=one.machine_name,
-            options=[
-                PlacementOptionOut(
-                    key=option.key, values=list(option.values), source=str(option.source.value)
-                )
-                for option in one.options
-            ],
+            options=[_option_out(option) for option in one.options],
         )
         for one in offered
     ]
+
+
+def _option_out(option: PlacementOption) -> PlacementOptionOut:
+    """One offered setting, shaped for the screen. One assembly for both doors that list them."""
+    return PlacementOptionOut(
+        key=option.key,
+        values=list(option.values),
+        source=str(option.source.value),
+        labels=dict(option.labels),
+        narrows={
+            value: {other: list(allowed) for other, allowed in rule.items()}
+            for value, rule in option.narrows.items()
+        },
+    )
 
 
 async def _as_shown(container: Container, mariuses: Sequence[Marius]) -> list[MariusOut]:
@@ -457,10 +468,7 @@ async def list_agent_options(
     if existing is None or existing.workspace_id != workspace_id:
         raise NotFound("agent_not_found")
     return [
-        PlacementOptionOut(
-            key=option.key, values=list(option.values), source=str(option.source.value)
-        )
-        for option in await container.mariuses.options_offered(marius_id)
+        _option_out(option) for option in await container.mariuses.options_offered(marius_id)
     ]
 
 
@@ -515,6 +523,7 @@ async def place_host(
             # translation `create_marius` makes, for the same reason (Constitution III).
             body.workplace_id,
             instructions=body.instructions,
+            name=body.name,
         )
     except Conflict as refused:
         if refused.code != "agent_already_placed":

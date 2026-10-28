@@ -125,6 +125,26 @@ server **không giữ bảng nào theo tên CLI** (Điều III), nó chỉ nhậ
 | `tool_declared` | tool in ra **cả bộ** | danh sách đóng; giá trị ngoài nó bị **từ chối** (422 `placement_option_value_unsupported`) |
 | `tool_examples` | tool kể **vài cái làm ví dụ** | gợi ý cạnh ô nhập; **không** chặn giá trị lạ |
 | `known_names` | daemon mang sẵn cho tool không chịu liệt kê | như `tool_declared`; **chỉ được nằm ở daemon** |
+| `tool_listed` | *(thêm 2026-10-26)* tool **liệt kê** thứ nó bày cho tài khoản này, nhưng vẫn nhận giá trị khác | ô chọn có danh sách đủ, vẫn cho gõ; **không** chặn giá trị lạ |
+
+**`labels` và `narrows` — thêm 2026-10-26**, cả hai tuỳ có, cả hai chỉ nói về giá trị nằm trong `values`:
+
+```json
+{ "key": "model", "source": "tool_listed",
+  "values": ["claude-opus-5-5", "claude-haiku-4-5-20251001"],
+  "labels": { "claude-opus-5-5": "Opus 5.5", "claude-haiku-4-5-20251001": "Haiku 4.5" },
+  "narrows": { "claude-opus-5-5": { "thinking_level": ["low","medium","high","xhigh","max"] },
+               "claude-haiku-4-5-20251001": { "thinking_level": [] } } }
+```
+
+- `labels`: tên đọc được cho một giá trị, do tool đặt. Không có thì màn hình hiện chính giá trị.
+- `narrows`: chọn giá trị này thì lựa chọn mang khoá kia chỉ còn nhận chừng ấy giá trị; danh sách rỗng
+  nghĩa là không nhận giá trị nào, chỉ để trống được. Viết bằng **khoá của lựa chọn**, không bằng tên
+  tool, nên server đo được mà không biết khoá nào là model (Điều III). Server bỏ mọi mục trỏ tới giá trị
+  hay khoá không có thật.
+
+Claude Code: daemon hỏi danh sách qua kênh điều khiển `stream-json` (yêu cầu `list_models`). Hỏi không
+được thì quay về ba cái tên ví dụ trong `--help`, nguồn `tool_examples`, như trước.
 
 Khoá `key` là **tên chung của server** (`model`, `thinking_level`, `service_tier`…), không phải cờ dòng
 lệnh — chỉ daemon biết cái nào thành `--effort`. Bộ khoá **khác nhau theo tool**, nên đây là một danh sách
@@ -170,6 +190,23 @@ Mỗi 15 giây.
 
 `free_slots` là **số chỗ trống hiện tại, mang tính tham khảo**. Server giữ trần và lấy số nhỏ hơn giữa hai
 giá trị (FR-008d).
+
+**`update_problem` — thêm 2026-10-28** (FR-008n sửa 2026-10-28), tuỳ có:
+
+```json
+→ { "free_slots": 3, "running": [], "update_problem": "install_dir_not_writable" }
+```
+
+Vì sao daemon không tự cập nhật được, dạng **mã** (Hiến pháp VII): `install_dir_not_writable` (thư mục
+chứa daemon không ghi được — thường do cài bằng `sudo`), `release_unreachable` (không hỏi được nơi phát
+hành), `install_failed` (tải được bản mới mà cài không xong). Vắng nghĩa là không có gì hỏng, và server
+**xoá** mã đã giữ. Server giữ mã ở `machines.update_problem` và trả nó trong `GET …/machines` dưới tên
+`update_problem`; màn Máy dựng câu. Một chuỗi không có dạng mã (`^[a-z][a-z0-9_]*$`, tối đa 64 ký tự) bị
+từ chối 422.
+
+**`daemon_version` — thêm 2026-10-28**, tuỳ có: bản daemon đang chạy. Daemon tự thay chính nó, nên số
+khai lúc nối máy cũ đi ngay lần cập nhật đầu; server ghi đè `machines.daemon_version` mỗi khi nhịp có
+trường này, và để nguyên khi vắng (daemon cũ).
 
 > **Heartbeat KHÔNG phải bằng chứng agent chạy được.** Nó chứng minh liên lạc tới máy. Chỗ làm có sẵn sàng
 > hay không là chuyện khác, và `PUT /daemon/workplaces` mới trả lời (FR-055b).

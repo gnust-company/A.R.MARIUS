@@ -81,6 +81,14 @@ type WorkplacesResponse struct {
 type BeatRequest struct {
 	FreeSlots int      `json:"free_slots"`
 	Running   []string `json:"running"`
+	// UpdateProblem is why this daemon is not keeping itself current, as a code (FR-008n,
+	// revised 2026-10-28). Left out when nothing is wrong, which is also what tells the server
+	// to forget one it was told before.
+	UpdateProblem string `json:"update_problem,omitempty"`
+	// DaemonVersion is the release this process is. Said on every beat because the daemon
+	// replaces itself: the version reported when the machine was linked goes stale with the
+	// first update, and a Machines screen showing it would hide that the update happened.
+	DaemonVersion string `json:"daemon_version,omitempty"`
 }
 
 // BeatResponse is what the server answers.

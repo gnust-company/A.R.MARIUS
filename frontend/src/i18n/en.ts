@@ -68,6 +68,10 @@ export const en = {
     agentAlreadyPlaced: '{{name}} already runs on {{cli}} on {{machine}}. You probably chose it in another window.',
     agentGoToHost: 'Go to {{name}}',
   },
+  choice: {
+    searchOrType: 'Search, or type another name…',
+    useTyped: 'Use “{{value}}”',
+  },
   linkMachine: {
     title: 'Link a machine to a workspace',
     lead: 'Run `armarius-daemon login` on your machine — it opens this page for you. If that machine cannot open a browser, type the code it prints here.',
@@ -91,7 +95,9 @@ export const en = {
     doneFirstSteps: 'Once that is running, the window with your first steps moves on by itself to setting up your first agent. You can close this one.',
     doneAgain: 'Link another machine',
     doneLeave: 'Go to the machine list',
+    doneBackToFirstSteps: 'Back to your first steps',
     back: 'Back',
+    backToFirstSteps: 'Back to your first steps',
   },
   nav: {
     projects: 'Projects',
@@ -141,6 +147,12 @@ export const en = {
     noAgentsHere: 'No agent runs on this runtime yet.',
     ceilingLabel: 'Runs at once',
     ceilingHint: 'Takes effect the next time this machine asks for work.',
+    updateProblem: {
+      install_dir_not_writable: 'The daemon on this machine cannot update itself: it sits in a folder it cannot write to, usually because it was installed with sudo. Run the installer once more: it now installs into your own home folder and restarts the daemon from there.',
+      release_unreachable: 'The daemon on this machine cannot ask for a newer release: it cannot reach the releases page on GitHub. Check the network or DNS on this machine; it tries again by itself.',
+      install_failed: 'The daemon found a newer release but could not put it in place, so it is still on the old one. Details in ~/.armarius/daemon.log; it tries again by itself.',
+      unknown: 'The daemon on this machine is not keeping itself up to date. Details in ~/.armarius/daemon.log.',
+    },
     notReady: {
       cli_removed: 'This agent CLI was uninstalled from the machine. Reinstall it and the runtime comes back — the agents stay where they were.',
       daemon_stopped: 'The daemon on this machine was stopped. Start it again and this runtime comes back — nothing was uninstalled.',
@@ -378,6 +390,7 @@ export const en = {
       service_tier: 'Service tier',
     },
     optionDefault: "The tool's own default",
+    optionRuledOut: 'What is picked above takes no value here, so this stays on the default.',
     optionHint: 'Offered by the runtime, as its tool answered for itself. Leave it alone to use whatever that tool defaults to.',
     optionAppliesNextRun: 'Applies from this agent’s next run. One already under way keeps what it started with.',
     workplaceNone: 'No runtime is ready yet.',

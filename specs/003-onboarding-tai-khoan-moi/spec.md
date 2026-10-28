@@ -91,6 +91,29 @@ khoá lại, còn chỉ dẫn mặc định thì người dùng sửa được.
 - Q: Thư viện skill của không gian làm việc có ẩn luôn các skill mặc định không? → A: **Có.** Bỏ hẳn
   mục "Tích hợp sẵn"; thư viện chỉ còn skill do người dùng tự thêm.
 
+### Session 2026-10-26 — sau lần người chủ thử đầu tiên
+
+Người chủ dựng lại từ một cơ sở dữ liệu trắng, đi hết các bước, và báo bốn chỗ vướng. Cả bốn sửa trong
+một lần.
+
+- Q: Duyệt máy lần đầu xong, nút *sang danh sách máy* đưa vào thẳng trong không gian làm việc trong khi
+  onboarding còn dở — có đúng không? → A: **Không.** Đang dở onboarding thì mọi lối ra của trang phê
+  duyệt dẫn về các bước đầu (FR-106).
+- Q: Vì sao agent đầu tiên không đổi tên được? → A: **Không có lý do.** Đặc tả chỉ nói bước ấy *hiện*
+  tên; chữ *không sửa* do bản tasks tự thêm. Tên sửa được, lưu cùng lần với runtime và chỉ dẫn
+  (FR-122, FR-126).
+- Q: Các ô chọn đang dùng ô mặc định của trình duyệt, nhìn không hợp dự án. → A: **Thay hết** bằng một
+  ô chọn chung theo giao diện dự án (FR-129).
+- Q: Danh sách model của Claude Code chỉ có ba cái, chọn một cái rồi phải xoá mới chọn lại được; có lấy
+  được danh sách đủ không? → A: **Lấy được, và lấy.** Claude Code trả lời câu hỏi *liệt kê model* qua
+  kênh điều khiển của nó, đúng danh sách mà màn `/model` của nó hiện, kèm mức suy nghĩ từng model nhận
+  (FR-007k của đặc tả 002, sửa 2026-10-26).
+- Q *(2026-10-28)*: Daemon trên máy người chủ không tự cập nhật — ba lần hỏi bản mới đều hỏng ở bước tra tên
+  miền, và kể cả hỏi được nó cũng không ghi đè được chính nó vì lệnh cài dùng `sudo` đặt nó vào chỗ của
+  root. Các phần mềm khác tự cập nhật được, sao cái này bắt người dùng tự chạy? → A: **Sửa cho tự cập nhật
+  được, như các phần mềm khác.** Lệnh cài đặt daemon vào thư mục của người dùng; không tự cập nhật được thì
+  màn Máy nói ra (FR-008n của đặc tả 002, sửa 2026-10-28).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Đăng ký xong thì biết mình đang ở đâu (Priority: P1)
@@ -251,6 +274,11 @@ gửi cho nó có trả lời.
   pháp Điều IV) — tin ấy được **đẩy sang**. Cửa sổ vừa duyệt PHẢI nói tiếp lệnh `start` và nói rằng
   cửa sổ onboarding đang đợi ở bước sau. Nó KHÔNG ĐƯỢC nói là onboarding đã xong.
 
+  *(Sửa 2026-10-26.)* Khi người duyệt còn dở onboarding, **mọi lối ra** của trang phê duyệt PHẢI dẫn về
+  các bước đầu, đúng bước đang dở, và KHÔNG ĐƯỢC dẫn vào trong không gian làm việc. Bản trước chỉ đổi
+  chữ, còn hai nút *sang danh sách máy* và *quay lại* vẫn đưa thẳng vào trong. Người dùng thế là đứng
+  trong một không gian làm việc với onboarding còn dở, và cửa sổ onboarding nằm khuất phía sau.
+
   Hai cửa sổ ở **hai browser khác nhau** thì có thể không đẩy sang được, và đó là giới hạn chấp nhận
   được: cửa sổ đang đợi vẫn còn nút đi tiếp của chính nó, và tải lại trang là đủ để nó biết mình đang
   ở đâu.
@@ -307,7 +335,8 @@ gửi cho nó có trả lời.
 - **FR-122**: Bước *agent đầu tiên* là nơi người dùng **dựng người chủ nhà** của không gian làm việc
   (Livia, FR-110). Nó KHÔNG sinh thêm agent thứ hai. Về nội dung, bước này hiện đúng bốn thứ, chưa kể
   các nút và đường dẫn tới tài liệu:
-  1. tên của agent;
+  1. tên của agent, có sẵn tên hiện tại của người chủ nhà và **sửa được** *(sửa 2026-10-26)*. Tên
+     trùng với một agent khác trong không gian làm việc thì bị từ chối như ở mọi chỗ đổi tên agent;
   2. **system prompt** của người chủ nhà, chỉ để đọc (FR-123a);
   3. ô **chỉ dẫn**, có sẵn chỉ dẫn mặc định (FR-124);
   4. danh sách **runtime đang sẵn sàng** của không gian làm việc này, mỗi dòng kèm tên máy và loại
@@ -348,8 +377,8 @@ gửi cho nó có trả lời.
   được. Runtime chưa sẵn sàng thì hiện kèm lý do đọc được, để người dùng biết vì sao không chọn được.
 
 - **FR-126**: Bấm xong bước *agent đầu tiên* PHẢI:
-  1. buộc người chủ nhà vào runtime đã chọn và lưu chỉ dẫn, **cùng một lần**: không có trạng thái
-     lưng chừng kiểu chỉ dẫn đã lưu mà chưa có runtime;
+  1. buộc người chủ nhà vào runtime đã chọn, lưu chỉ dẫn và tên, **cùng một lần**: không có trạng
+     thái lưng chừng kiểu chỉ dẫn đã lưu mà chưa có runtime, hay tên đã đổi mà chưa có runtime;
   2. kiểm người chủ nhà sống hay chết **ngay** (FR-006e của đặc tả 002);
   3. kết thúc onboarding và đưa người dùng tới **chỗ nhắn tin với người chủ nhà** (FR-007p của đặc tả
      002). Người chủ nhà chưa kịp trực tuyến thì chỗ ấy nói vì sao, không im lặng.
@@ -365,6 +394,14 @@ gửi cho nó có trả lời.
   Đây không phải đổi chỗ làm: lúc ấy người chủ nhà không có chỗ làm nào. Hoặc nó chưa từng có, vì nó là
   agent duy nhất được sinh ra mà chưa có chỗ làm (FR-114). Hoặc máy của nó vừa bị gỡ khỏi không gian
   làm việc, và chỗ làm cũ đã không còn.
+
+### Nhóm D — Sửa sau lần thử đầu (thêm 2026-10-26)
+
+- **FR-129**: Mọi ô chọn trong sản phẩm — chọn một trong nhiều, kể cả ô có gợi ý cho gõ thêm — PHẢI
+  dùng **một ô chọn chung theo giao diện của dự án**, không dùng ô mặc định của trình duyệt. Danh sách
+  mở ra PHẢI hiện **đủ** các lựa chọn, kể cả khi ô đã có một giá trị. Ô có gợi ý thì chọn lại một gợi ý
+  khác KHÔNG ĐƯỢC đòi người dùng xoá chữ đang có trước: ô gợi ý mặc định của trình duyệt lọc danh sách
+  theo chính chữ đang nằm trong ô, nên chọn *sonnet* rồi thì chỉ còn *sonnet* để chọn.
 
 ## Success Criteria *(mandatory)*
 

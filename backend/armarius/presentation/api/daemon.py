@@ -180,6 +180,15 @@ class WorkplacesOut(BaseModel):
 class HeartbeatIn(BaseModel):
     free_slots: int = Field(default=0, ge=0, le=10_000)
     running: list[UUID] = Field(default_factory=list, max_length=10_000)
+    # Why this daemon is not keeping itself current (FR-008n, revised 2026-10-28). A code, never
+    # a sentence: the Machines screen words it in the reader's language (Constitution VII).
+    update_problem: str | None = Field(
+        default=None, max_length=64, pattern=r"^[a-z][a-z0-9_]*$"
+    )
+    # The release this daemon is now. It replaces itself (FR-008n), so the version it reported
+    # when the machine was linked goes stale with its first update. Absent from older daemons,
+    # and then what is stored is left alone.
+    daemon_version: str | None = Field(default=None, max_length=40)
 
 
 class HeartbeatOut(BaseModel):
@@ -533,7 +542,11 @@ async def heartbeat(
     which is what keeps two nudges arriving at once from producing two runs.
     """
     beat = await container.daemon_workplaces.heartbeat(
-        machine, free_slots=body.free_slots, running=body.running
+        machine,
+        free_slots=body.free_slots,
+        running=body.running,
+        update_problem=body.update_problem,
+        daemon_version=body.daemon_version,
     )
     return HeartbeatOut(pending_work=beat.pending_work, cancel=list(beat.cancel))
 

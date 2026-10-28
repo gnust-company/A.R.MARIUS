@@ -110,6 +110,11 @@ type Config struct {
 	// where the daemon cannot write to its own install directory and the operator re-ran the
 	// installer instead.
 	AutoReload bool `json:"auto_reload"`
+
+	// AutoUpdateReleases is where newer releases are looked for: a releases page shaped like
+	// GitHub's (`<base>/latest`, `<base>/download/<tag>/<file>`). Empty is the project's own page.
+	// Set for a machine that takes releases from an internal mirror (FR-008n, revised 2026-10-28).
+	AutoUpdateReleases string `json:"auto_update_releases,omitempty"`
 }
 
 // Defaults are the values a machine runs with when its config file says nothing. Every one of

@@ -161,6 +161,8 @@ class LinkedMachine:
     # only enforced in the claim, because a number a person cannot see is a number they
     # cannot be expected to have chosen — and FR-008 says they choose it.
     max_concurrent: int = 1
+    # Why its daemon is not keeping itself current, as a code (FR-008n, revised 2026-10-28).
+    update_problem: str | None = None
 
 
 class DaemonWorkplaceService:
@@ -311,6 +313,8 @@ class DaemonWorkplaceService:
         *,
         free_slots: int,
         running: Sequence[UUID],
+        update_problem: str | None = None,
+        daemon_version: str | None = None,
     ) -> Heartbeat:
         """Record that this machine is still there, and answer what it should do next (FR-004).
 
@@ -328,7 +332,13 @@ class DaemonWorkplaceService:
                         MachineModel.id == machine.machine_id,
                         MachineModel.workspace_id == machine.workspace_id,
                     )
-                    .values(last_heartbeat_at=now)
+                    # Written on every beat, absent included: a daemon that stopped sending a
+                    # problem is a daemon that no longer has one (FR-008n, revised 2026-10-28).
+                    .values(
+                        last_heartbeat_at=now,
+                        update_problem=update_problem or None,
+                        **({"daemon_version": daemon_version} if daemon_version else {}),
+                    )
                 )
 
                 mine = {row.id for row in await self._workplaces_of(session, machine)}
@@ -512,6 +522,7 @@ class DaemonWorkplaceService:
                 # on any machine that is not on UTC — wrong, and wrong quietly.
                 last_heartbeat_at=as_utc(machine.last_heartbeat_at),
                 max_concurrent=machine.max_concurrent,
+                update_problem=machine.update_problem,
                 reachable=(
                     machine.last_heartbeat_at is not None
                     and as_utc(machine.last_heartbeat_at) > cutoff
