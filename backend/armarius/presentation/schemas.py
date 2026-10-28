@@ -468,6 +468,9 @@ class MachineOut(_Out):
     # The ceiling FR-008 says the patron sets. On the read model as well as behind the door
     # that changes it, because the screen has to show what it is before offering to change it.
     max_concurrent: int = 1
+    # Why its daemon is not keeping itself current, as a code the screen words (FR-008n,
+    # revised 2026-10-28). Null when nothing is wrong.
+    update_problem: str | None = None
     workplaces: list[MachineWorkplaceOut] = Field(default_factory=list)
 
 

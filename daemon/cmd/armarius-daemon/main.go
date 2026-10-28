@@ -528,6 +528,10 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 	// Keeping this daemon on the newest release (FR-008n). Resolved now, while the file this
 	// process was started from is still the one on disk.
 	var restartRequested atomic.Bool
+	// What stops this daemon keeping itself current, said on every beat so the Machines screen
+	// knows it (FR-008n, revised 2026-10-28). Written by the update loop, read by the beat.
+	var updateProblem atomic.Value
+	updateProblem.Store("")
 	program, programErr := os.Executable()
 	if programErr != nil {
 		emit(out, "Auto-update is off: this program cannot find its own file (%v).\n", programErr)
@@ -538,6 +542,8 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 			Pull:         settings.AutoUpdate,
 			PullInterval: settings.AutoUpdateInterval.Duration(),
 			Reload:       settings.AutoReload,
+			Releases:     update.Releases{Base: settings.AutoUpdateReleases},
+			Report:       func(problem string) { updateProblem.Store(problem) },
 			Idle:         func() bool { return gate.PauseIfIdle(held.Count) },
 			Busy:         gate.Resume,
 			Restart: func() {
@@ -575,9 +581,12 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 			}
 		},
 		Send: func(ctx context.Context, beat supervisor.Beat) (supervisor.Reply, error) {
+			problem, _ := updateProblem.Load().(string)
 			answered, err := session.Beat(ctx, client.BeatRequest{
-				FreeSlots: beat.FreeSlots,
-				Running:   beat.Running,
+				FreeSlots:     beat.FreeSlots,
+				Running:       beat.Running,
+				UpdateProblem: problem,
+				DaemonVersion: version,
 			})
 			if err != nil {
 				state.LastBeatError = err.Error()

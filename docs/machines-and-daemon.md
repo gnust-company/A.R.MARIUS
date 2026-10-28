@@ -45,11 +45,18 @@ curl -fsSL https://raw.githubusercontent.com/gnust-company/A.R.MARIUS/main/scrip
 ```
 
 Nó dò hệ điều hành và kiến trúc, tải đúng archive, **kiểm chữ ký** trước khi cài, đặt cả hai
-chương trình vào `/usr/local/bin` (không ghi được thì `$HOME/.local/bin`, kèm dòng `PATH` viết hộ),
-rồi in ra việc kế tiếp. Chạy lại là nâng cấp; đang mới nhất thì nó nói vậy rồi dừng.
+chương trình vào `$HOME/.local/bin` — thư mục của chính bạn, **không cần `sudo`**, kèm dòng `PATH`
+viết hộ khi cần — rồi in ra việc kế tiếp. Chạy lại là nâng cấp; đang mới nhất thì nó nói vậy rồi dừng.
 
-Ba biến môi trường nếu bạn cần: `ARMARIUS_BIN_DIR` (cài vào đâu), `ARMARIUS_VERSION` (một bản cụ
-thể thay vì bản mới nhất), `ARMARIUS_NO_PATH_EDIT` (in dòng `PATH` ra thay vì tự ghi vào cấu hình
+Cài vào thư mục của bạn là để daemon **tự cập nhật được**: nó chạy bằng tài khoản của bạn và tự thay
+file của chính nó (xem *Tự cập nhật* bên dưới). Máy từng cài bằng bản cũ của lệnh cài — vào
+`/usr/local/bin`, bằng `sudo` — thì chạy lại lệnh cài **một lần**: nó cài vào thư mục của bạn, gỡ bản
+cũ khỏi `PATH` (hỏi mật khẩu `sudo` cho việc gỡ ấy), và khởi động lại daemon đang chạy từ chỗ mới.
+
+Bốn biến môi trường nếu bạn cần: `ARMARIUS_BIN_DIR` (cài vào đâu — chọn một chỗ chỉ root ghi được
+thì daemon không tự cập nhật được ở đó), `ARMARIUS_VERSION` (một bản cụ thể thay vì bản mới nhất),
+`ARMARIUS_RELEASES` (lấy bản phát hành từ một bản sao nội bộ), `ARMARIUS_NO_PATH_EDIT` (in dòng `PATH`
+ra thay vì tự ghi vào cấu hình
 shell). Xem hết bằng `--help`.
 
 **Windows** — chưa có installer. Tải `.zip` ở
@@ -77,7 +84,7 @@ Installer là tiện lợi, không phải điều kiện. Tải archive rồi:
 
 ```sh
 tar -xzf armarius-daemon_<phiên-bản>_<os>_<arch>.tar.gz
-sudo install -m 0755 armarius-daemon armarius /usr/local/bin/
+install -m 0755 armarius-daemon armarius ~/.local/bin/
 armarius-daemon version
 ```
 
@@ -86,7 +93,7 @@ armarius-daemon version
 Gatekeeper chặn. Vào **System Settings → Privacy & Security** cho phép, hoặc tự xoá cờ cách ly:
 
 ```sh
-xattr -d com.apple.quarantine /usr/local/bin/armarius-daemon /usr/local/bin/armarius
+xattr -d com.apple.quarantine ~/.local/bin/armarius-daemon ~/.local/bin/armarius
 ```
 
 ### Windows: phải bật Developer Mode
@@ -215,7 +222,7 @@ After=network-online.target
 
 [Service]
 # Đường dẫn theo `command -v armarius-daemon` trên máy bạn.
-ExecStart=/usr/local/bin/armarius-daemon start -foreground
+ExecStart=%h/.local/bin/armarius-daemon start -foreground
 # systemd không đọc PATH của shell: dán vào đây kết quả `echo $PATH`, không thì daemon không
 # thấy các agent CLI cài trong thư mục nhà (~/.local/bin, nvm…).
 Environment=PATH=/home/ban/.local/bin:/usr/local/bin:/usr/bin:/bin
@@ -247,14 +254,24 @@ Daemon tự giữ mình ở bản mới nhất, theo hai đường:
   bằng tay — thì nó tự khởi động lại vào bản ấy, không cần `stop` rồi `start`.
 
 Nó chỉ khởi động lại lúc **không có lượt chạy nào**; đang bận thì đợi nhịp sau, không cắt ngang gì.
-Daemon không có quyền ghi vào thư mục cài (cài bằng `sudo` vào `/usr/local/bin`) thì đường thứ nhất
-ghi lỗi vào log và thử lại sau — nâng cấp khi ấy là chạy lại lệnh cài, đường thứ hai lo phần còn lại.
+
+**Không tự cập nhật được thì màn Máy nói ra**, ngay trên thẻ của máy ấy, kèm việc cần làm:
+
+- *thư mục chứa daemon không ghi được* — thường do cài bằng `sudo` vào `/usr/local/bin`. Chạy lại lệnh
+  cài một lần như nói ở trên.
+- *không tới được trang phát hành* — mạng hoặc DNS của máy không cho daemon tới GitHub. Nó tự thử lại.
+- *tải được mà cài không xong* — chi tiết trong `~/.armarius/daemon.log`. Nó tự thử lại.
+
+Lần thử sau thành công thì dòng cảnh báo tự biến mất.
 
 Tắt trong `~/.armarius/daemon.json`, cạnh những gì `login` đã ghi:
 
 ```json
 { "auto_update": false, "auto_reload": false }
 ```
+
+Lấy bản phát hành từ một bản sao nội bộ thay vì GitHub: `"auto_update_releases": "https://…/releases"`
+— một trang có cùng hình dạng (`<địa chỉ>/latest`, `<địa chỉ>/download/<tag>/<file>`).
 
 Tắt `auto_update` khi server Armarius của bạn chưa lên bản mới mà bạn không muốn daemon đi trước nó.
 

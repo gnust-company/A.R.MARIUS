@@ -574,6 +574,8 @@ export interface MachineDTO {
   reachable: boolean
   /** How many runs this machine may hold at once (FR-008). The patron's number, not the machine's. */
   max_concurrent: number
+  /** Why its daemon is not keeping itself current, as a code (FR-008n, revised 2026-10-28). */
+  update_problem?: string | null
   workplaces: MachineWorkplaceDTO[]
 }
 

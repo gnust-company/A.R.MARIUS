@@ -8,15 +8,22 @@
 # Armarius back. They ship in one archive and are installed together — see install_binaries.
 #
 # Shape inherited from Multica's own installer (FR-039b): latest tag read from the redirect on
-# /releases/latest rather than the API, so there is no token and no rate limit; /usr/local/bin
-# first, sudo only if it is not writable, and $HOME/.local/bin as the last resort with the PATH
-# line written for you. One thing is ours: the download is checksum-verified before anything is
-# installed. Piping a script from the network into a shell already asks for trust; spending the
-# one request it takes to check what came down the wire is the least this can do.
+# /releases/latest rather than the API, so there is no token and no rate limit, and the PATH line
+# written for you when it is needed. One thing is ours: the download is checksum-verified before
+# anything is installed. Piping a script from the network into a shell already asks for trust;
+# spending the one request it takes to check what came down the wire is the least this can do.
+#
+# Where it goes changed on 2026-10-28 (FR-008n): **$HOME/.local/bin, no sudo**. The daemon keeps
+# itself up to date by replacing its own file, and it runs as you — so it has to live somewhere you
+# can write. This used to put it in /usr/local/bin with sudo, which is root's, and on every machine
+# installed that way the daemon could never update itself. Claude Code installs into your home for
+# the same reason. Running this again on such a machine moves it, removes the old copy, and
+# restarts the daemon from the new place.
 set -euo pipefail
 
 REPO="gnust-company/A.R.MARIUS"
-RELEASES="https://github.com/${REPO}/releases"
+RELEASES="${ARMARIUS_RELEASES:-https://github.com/${REPO}/releases}"
+RELEASES="${RELEASES%/}"
 DAEMON="armarius-daemon"
 CALLBACK="armarius"
 GUIDE="https://github.com/${REPO}/blob/main/docs/machines-and-daemon.md"
@@ -123,13 +130,12 @@ add_to_path() {
 
 # Answers where to put them, and whether sudo is needed to do it.
 #
-# Falling back to $HOME/.local/bin is for the **default** only. Somebody who sets ARMARIUS_BIN_DIR
-# has said where they want this, and quietly installing somewhere else — then naming that
-# somewhere else in a line they may not read — is how a person ends up running last month's build
-# out of a directory they had forgotten about.
+# Your own $HOME/.local/bin unless you name somewhere else, because the daemon replaces its own
+# file to update itself and runs as you (FR-008n). Somebody who sets ARMARIUS_BIN_DIR to a folder
+# only root can write still gets it there, with sudo — and is told in so many words that the
+# daemon will not be able to update itself in it.
 choose_bin_dir() {
-  local wanted="${ARMARIUS_BIN_DIR:-/usr/local/bin}"
-  local named="${ARMARIUS_BIN_DIR:+yes}"
+  local wanted="${ARMARIUS_BIN_DIR:-$HOME/.local/bin}"
 
   [ -d "$wanted" ] || mkdir -p "$wanted" 2>/dev/null || true
 
@@ -137,17 +143,78 @@ choose_bin_dir() {
     BIN_DIR="$wanted"; SUDO=""
     return
   fi
-  if have sudo; then
-    BIN_DIR="$wanted"; SUDO="sudo"
-    info "$wanted needs root; you may be asked for your password."
-    return
+  [ -n "${ARMARIUS_BIN_DIR:-}" ] || fail "Could not create or write ${wanted}."
+  have sudo || fail "ARMARIUS_BIN_DIR is ${wanted}, which cannot be written to, and there is no sudo here."
+
+  BIN_DIR="$wanted"; SUDO="sudo"
+  info "$wanted needs root; you may be asked for your password."
+  warn "The daemon cannot update itself in ${wanted}: it runs as you, and that folder is root's. Leave ARMARIUS_BIN_DIR unset to install into your own home folder instead."
+}
+
+# Removes copies an earlier install left on PATH — in /usr/local/bin, usually, from before this
+# installed into your home. A copy found earlier on PATH is the one every `armarius-daemon` you type
+# runs, so leaving it would hide the one just installed.
+#
+# Only folders on PATH are looked at: a copy nothing can find is in nobody's way, and a folder this
+# script was not told about is not its business. Only a folder holding the daemon itself counts, so
+# an unrelated program that happens to be called `armarius` is never touched.
+remove_leftovers() {
+  local dir seen=":$BIN_DIR:" IFS=':'
+  for dir in $PATH; do
+    [ -n "$dir" ] || continue
+    case "$seen" in *":$dir:"*) continue ;; esac
+    seen="$seen$dir:"
+    [ -f "$dir/$DAEMON" ] || continue
+
+    local old=("$dir/$DAEMON")
+    [ -f "$dir/$CALLBACK" ] && old+=("$dir/$CALLBACK")
+    if [ -w "$dir" ] && rm -f "${old[@]}"; then
+      ok "Removed the old copy in ${dir}."
+      continue
+    fi
+    if have sudo; then
+      info "Removing the old copy in ${dir}, which needs root; you may be asked for your password."
+      if sudo rm -f "${old[@]}"; then
+        ok "Removed the old copy in ${dir}."
+        continue
+      fi
+    fi
+    warn "An older ${DAEMON} is still in ${dir} and is found before this one. Remove it with: sudo rm -f $(printf '%s ' "${old[@]}")"
+  done
+}
+
+# Puts a running daemon onto the program just installed, if it runs from somewhere else.
+#
+# A daemon running from this same folder needs nothing: it notices its file changed and restarts
+# into it by itself once it is idle (FR-008n). One running from the folder an older install used
+# does not — its own file may be gone — so it is stopped, which lets the runs it holds finish, and
+# started again from here. A daemon under a systemd unit is left to systemd, with what to change.
+restart_if_elsewhere() {
+  local status pid exe
+  status=$("$BIN_DIR/$DAEMON" status -json 2>/dev/null) || return 0
+  printf '%s' "$status" | grep -q '"daemon_running": *true' || return 0
+  pid=$(printf '%s' "$status" | sed -n 's/.*"daemon_pid": *\([0-9][0-9]*\).*/\1/p' | head -1)
+  [ -n "$pid" ] || return 0
+
+  if [ -e "/proc/$pid/exe" ]; then
+    exe=$(readlink "/proc/$pid/exe" 2>/dev/null || true)
+  else
+    exe=$(ps -o comm= -p "$pid" 2>/dev/null || true)
   fi
-  if [ -n "$named" ]; then
-    fail "ARMARIUS_BIN_DIR is ${wanted}, which cannot be written to, and there is no sudo here."
+  exe="${exe% (deleted)}"
+  [ "$exe" = "$BIN_DIR/$DAEMON" ] && return 0
+
+  if have systemctl && systemctl --user is-active --quiet armarius-daemon 2>/dev/null; then
+    warn "The daemon runs as the systemd user service armarius-daemon, from ${exe:-another place}. Point its ExecStart at ${BIN_DIR}/${DAEMON}, then run: systemctl --user daemon-reload && systemctl --user restart armarius-daemon"
+    return 0
   fi
 
-  BIN_DIR="$HOME/.local/bin"; SUDO=""
-  mkdir -p "$BIN_DIR" || fail "Could not create ${BIN_DIR}."
+  info "Restarting the daemon (process ${pid}) so it runs from ${BIN_DIR}. It finishes the runs it holds first."
+  if "$BIN_DIR/$DAEMON" stop && "$BIN_DIR/$DAEMON" start; then
+    ok "The daemon now runs ${BIN_DIR}/${DAEMON}."
+  else
+    warn "Could not restart the daemon. Do it with: ${DAEMON} stop && ${DAEMON} start"
+  fi
 }
 
 # ── Download, check, install ─────────────────────────────────────────────────────────────────
@@ -238,8 +305,12 @@ Usage: install.sh
 Installs or upgrades the Armarius daemon and the callback program it ships with.
 
 Environment variables:
-  ARMARIUS_BIN_DIR       Where to install (default: /usr/local/bin, then $HOME/.local/bin)
+  ARMARIUS_BIN_DIR       Where to install (default: $HOME/.local/bin). A folder only root can
+                         write is installed into with sudo, but the daemon cannot update
+                         itself there.
   ARMARIUS_VERSION       A specific tag to install, e.g. v0.1.0 (default: the latest release)
+  ARMARIUS_RELEASES      The releases page to install from (default: this project's on GitHub),
+                         for a machine that takes releases from an internal mirror
   ARMARIUS_NO_PATH_EDIT  Set to any value to print the PATH line instead of writing it into
                          your shell configuration
 
@@ -270,9 +341,12 @@ USAGE
   choose_bin_dir
 
   # Already here, whole, and already current? Say so and stop, rather than reinstalling the same
-  # bytes.
+  # bytes — but still clear an older copy off PATH and move a daemon still running from one: a
+  # machine half way through moving from /usr/local/bin is exactly the one that runs this twice.
   if already_current "$tag"; then
     ok "${DAEMON} ${tag#v} is already the latest, in ${BIN_DIR}."
+    remove_leftovers
+    restart_if_elsewhere
     exit 0
   fi
   if [ -x "$BIN_DIR/$DAEMON" ]; then
@@ -291,6 +365,9 @@ USAGE
     fail "${DAEMON} was installed but will not run. Try ${BIN_DIR}/${DAEMON} version to see why."
   fi
   ok "$("$BIN_DIR/$DAEMON" version)"
+
+  remove_leftovers
+  restart_if_elsewhere
 
   printf '\n'
   info "Next: connect this machine"

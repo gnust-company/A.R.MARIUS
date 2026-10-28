@@ -156,6 +156,7 @@ def _machine_out(machine: LinkedMachine) -> MachineOut:
         last_heartbeat_at=machine.last_heartbeat_at,
         reachable=machine.reachable,
         max_concurrent=machine.max_concurrent,
+        update_problem=machine.update_problem,
         workplaces=[
             MachineWorkplaceOut(
                 id=place.id,

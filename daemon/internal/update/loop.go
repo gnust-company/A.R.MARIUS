@@ -3,10 +3,24 @@ package update
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"time"
+)
+
+// Why a release build is not keeping itself current (FR-008n, revised 2026-10-28). Codes, never
+// sentences: they ride the heartbeat to the server, and the Machines screen words them in the
+// reader's language (Constitution VII).
+const (
+	// ProblemInstallDirNotWritable: this program sits in a directory it cannot write — the usual
+	// cause is an install made with sudo into /usr/local/bin — so it can never replace itself.
+	ProblemInstallDirNotWritable = "install_dir_not_writable"
+	// ProblemReleaseUnreachable: the releases page could not be asked.
+	ProblemReleaseUnreachable = "release_unreachable"
+	// ProblemInstallFailed: a newer release was found and could not be put in place.
+	ProblemInstallFailed = "install_failed"
 )
 
 // The rhythms of the two roads (FR-008n).
@@ -55,12 +69,18 @@ type Options struct {
 	Restart func()
 	// Say writes one line to the daemon's log.
 	Say func(format string, args ...any)
+	// Report is told, after every look for a newer release, what stops this daemon keeping itself
+	// current — one of the Problem codes — or "" when nothing does. The log alone was where the
+	// owner's machine said it for weeks, and nobody reads a log they do not know to open.
+	Report func(problem string)
 
 	// Seams for tests. Nil takes the real thing.
 	Latest  func(ctx context.Context) (string, error)
 	Install func(ctx context.Context, tag string) error
 	OnDisk  func(ctx context.Context) (string, error)
 	Tick    func(d time.Duration) <-chan time.Time
+	// Writable answers whether a directory can be written by this process. Nil takes canWrite.
+	Writable func(dir string) error
 }
 
 func (o Options) withDefaults() Options {
@@ -75,6 +95,12 @@ func (o Options) withDefaults() Options {
 	}
 	if o.Say == nil {
 		o.Say = func(string, ...any) {}
+	}
+	if o.Report == nil {
+		o.Report = func(string) {}
+	}
+	if o.Writable == nil {
+		o.Writable = canWrite
 	}
 	if o.Idle == nil {
 		o.Idle = func() bool { return false }
@@ -120,6 +146,11 @@ func Run(ctx context.Context, opts Options) {
 	if !pull && !opts.Reload {
 		return
 	}
+	// Said at once rather than at the first look two minutes from now: the Machines screen is
+	// where a person checks, and it should already know.
+	if pull {
+		opts.writableOrSay()
+	}
 
 	nextPull, nextReload := opts.Tick(opts.InitialDelay), opts.Tick(opts.InitialDelay)
 	if !pull {
@@ -150,27 +181,64 @@ func Run(ctx context.Context, opts Options) {
 // into it. It answers whether it restarted. Nothing here ever stops the daemon: a look that fails
 // today is looked again at the next tick.
 func (o Options) tryPull(ctx context.Context) bool {
+	// Asked first and every time: a directory this program cannot write makes everything after
+	// it a download that can only fail, and the answer can change under it — the operator moves
+	// the install, or fixes the permissions.
+	if !o.writableOrSay() {
+		return false
+	}
 	latest, err := o.Latest(ctx)
 	if err != nil {
+		o.Report(ProblemReleaseUnreachable)
 		o.Say("Auto-update: %v. Trying again in %s.", err, o.PullInterval)
 		return false
 	}
 	if !Newer(latest, o.Version) {
+		o.Report("")
 		return false
 	}
 	if !o.Idle() {
+		o.Report("")
 		o.Say("Auto-update: %s is out; waiting until no run is going to take it.", latest)
 		return false
 	}
 	o.Say("Auto-update: installing %s over %s.", latest, o.Version)
 	if err := o.Install(ctx, latest); err != nil {
 		o.Busy()
+		o.Report(ProblemInstallFailed)
 		o.Say("Auto-update: %v. Trying again in %s.", err, o.PullInterval)
 		return false
 	}
+	o.Report("")
 	o.Say("Auto-update: %s is in place; restarting into it.", latest)
 	o.Restart()
 	return true
+}
+
+// writableOrSay reports, and logs once per look, a directory this program cannot replace itself
+// in. True means the look may go on.
+func (o Options) writableOrSay() bool {
+	dir := filepath.Dir(o.Executable)
+	if err := o.Writable(dir); err != nil {
+		o.Report(ProblemInstallDirNotWritable)
+		o.Say("Auto-update: %s cannot be written by this user (%v), so this daemon cannot update itself. "+
+			"Run the installer again: it now installs into your own home directory.", dir, err)
+		return false
+	}
+	return true
+}
+
+// canWrite asks the directory itself, by making and removing a file in it. Permission bits alone
+// do not answer it: a read-only mount, an ACL, or a different owner all say no in their own way,
+// and only trying hears every one of them.
+func canWrite(dir string) error {
+	probe, err := os.CreateTemp(dir, ".armarius-write-check-*")
+	if err != nil {
+		return err
+	}
+	name := probe.Name()
+	_ = probe.Close()
+	return os.Remove(name)
 }
 
 // tryReload restarts into the program on disk once that is no longer this version — the road an
