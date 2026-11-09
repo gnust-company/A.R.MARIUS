@@ -12,7 +12,7 @@ const twMerge = extendTailwindMerge({
           text: [
             "display-xl", "display-lg", "display-md", "display-sm",
             "body-lg", "body-md", "body-sm", "body-xs",
-            "mono-md", "mono-sm",
+            "mono-md", "mono-sm", "eyebrow",
           ],
         },
       ],

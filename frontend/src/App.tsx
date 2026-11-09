@@ -9,6 +9,7 @@ import LinkMachine from './pages/LinkMachine'
 import Onboarding from './pages/Onboarding'
 import Projects from './pages/Projects'
 import Home from './pages/Home'
+import Observatory from './pages/Observatory'
 import CreateProject from './pages/CreateProject'
 import ProjectBoard from './pages/ProjectBoard'
 import ProjectPlan from '@/pages/ProjectPlan';
@@ -70,7 +71,7 @@ export default function App() {
   const booted = useBootSession()
 
   if (!booted) {
-    return <div className="min-h-[100dvh] bg-[#1a1410]" />
+    return <div className="min-h-[100dvh] bg-canvas" />
   }
 
   return (
@@ -102,6 +103,7 @@ export default function App() {
         <Route path="/w/:workspaceId" element={<Layout />}>
           <Route index element={<Navigate to="home" replace />} />
           <Route path="home" element={<Home />} />
+          <Route path="observatory" element={<Observatory />} />
           <Route path="projects" element={<Projects />} />
           <Route path="projects/new" element={<CreateProject />} />
           <Route path="projects/:id" element={<ProjectBoard />} />

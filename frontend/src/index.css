@@ -2,67 +2,92 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face { font-family: "Be Vietnam Pro"; src: url("/fonts/be-vietnam-pro-400.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Be Vietnam Pro"; src: url("/fonts/be-vietnam-pro-500.ttf") format("truetype"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Be Vietnam Pro"; src: url("/fonts/be-vietnam-pro-600.ttf") format("truetype"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Be Vietnam Pro"; src: url("/fonts/be-vietnam-pro-700.ttf") format("truetype"); font-weight: 700; font-display: swap; }
+@font-face { font-family: "Lora"; src: url("/fonts/lora-400.ttf") format("truetype"); font-weight: 400 500; font-display: swap; }
+@font-face { font-family: "Lora"; src: url("/fonts/lora-600.ttf") format("truetype"); font-weight: 600 700; font-display: swap; }
+
 @layer base {
+  /* Theme tokens (DESIGN §3.3, §4). Each holds an OKLCH triplet "L C H" so Tailwind can wrap
+     it as oklch(var(--x) / alpha). Light is the default; [data-theme="dark"] overrides.
+     The theme is set on <html> before first paint by the inline script in index.html. */
   :root {
-    /* shadcn tokens mapped onto the "Xưởng sáng" palette (HSL of the hexes in tailwind.config.js) */
-    --background: 40 52% 90%;
-    --foreground: 35 24% 11%;
-    --card: 43 100% 98%;
-    --card-foreground: 35 24% 11%;
-    --popover: 43 100% 98%;
-    --popover-foreground: 35 24% 11%;
-    --primary: 35 24% 11%;
-    --primary-foreground: 43 100% 98%;
-    --secondary: 41 46% 93%;
-    --secondary-foreground: 35 24% 11%;
-    --muted: 41 46% 93%;
-    --muted-foreground: 34 18% 38%;
-    --accent: 41 46% 93%;
-    --accent-foreground: 35 24% 11%;
-    --destructive: 3 72% 37%;
-    --destructive-foreground: 43 100% 98%;
-    --border: 40 41% 82%;
-    --input: 40 33% 74%;
-    --ring: 42 62% 55%;
-    --radius: 0.625rem;
-    --sidebar-background: 35 26% 11%;
-    --sidebar-foreground: 41 52% 87%;
-    --sidebar-primary: 42 62% 55%;
-    --sidebar-primary-foreground: 35 26% 11%;
-    --sidebar-accent: 33 24% 19%;
-    --sidebar-accent-foreground: 41 100% 95%;
-    --sidebar-border: 33 24% 19%;
-    --sidebar-ring: 42 62% 55%;
+    color-scheme: light;
+    --canvas: 0.982 0.007 85;
+    --canvas-deep: 0.955 0.012 85;
+    --surface: 0.998 0.003 85;
+    --surface-raised: 1 0 0;
+    --surface-hover: 0.962 0.014 85;
+    --ink: 0.27 0.035 245;
+    --ink-strong: 0.20 0.04 245;
+    --muted: 0.40 0.03 245;
+    --faint: 0.48 0.025 245;
+    --line: 0.79 0.025 245;
+    --line-soft: 0.875 0.018 245;
+    --sapphire: 0.59 0.135 263;
+    --sapphire-strong: 0.50 0.15 263;
+    --sapphire-ink: 0.995 0.003 85;
+    --sapphire-soft: 0.935 0.035 263;
+    --gold: 0.57 0.13 80;
+    --gold-soft: 0.95 0.035 85;
+    --amber: 0.75 0.125 82;
+    --success: 0.46 0.12 160;
+    --success-soft: 0.95 0.03 160;
+    --warning: 0.53 0.14 60;
+    --danger: 0.50 0.16 25;
+    --danger-soft: 0.955 0.025 25;
+    --sidebar: 0.998 0.003 85;
+    --sidebar-ink: 0.24 0.035 245;
+    --sidebar-nav-ink: 0.43 0.03 245;
+    --sidebar-line: 0.86 0.018 245;
+    --sidebar-hover: 0.955 0.025 263;
+    --sidebar-active: 0.925 0.045 263;
+    --sidebar-subtle: 0.935 0.035 263;
+    --field-bg: 1 0 0;
+    --field-line: 0.64 0.04 245;
+    --grid-line: oklch(0.30 0.04 245 / 0.035);
+    --shadow: 0 18px 45px oklch(0.30 0.035 245 / 0.09);
+    --radius: 0.75rem;
   }
 
-  .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --canvas: 0.19 0.025 245;
+    --canvas-deep: 0.155 0.025 245;
+    --surface: 0.225 0.027 245;
+    --surface-raised: 0.255 0.028 245;
+    --surface-hover: 0.285 0.032 245;
+    --ink: 0.93 0.015 90;
+    --ink-strong: 0.975 0.012 90;
+    --muted: 0.72 0.025 245;
+    --faint: 0.62 0.025 245;
+    --line: 0.38 0.032 245;
+    --line-soft: 0.30 0.025 245;
+    --sapphire: 0.79 0.085 270;
+    --sapphire-strong: 0.73 0.12 263;
+    --sapphire-ink: 0.22 0.055 263;
+    --sapphire-soft: 0.31 0.055 263;
+    --gold: 0.79 0.13 84;
+    --gold-soft: 0.32 0.055 82;
+    --amber: 0.75 0.125 82;
+    --success: 0.75 0.12 160;
+    --success-soft: 0.30 0.05 160;
+    --warning: 0.78 0.13 60;
+    --danger: 0.72 0.14 25;
+    --danger-soft: 0.30 0.06 25;
+    --sidebar: 0.17 0.032 210;
+    --sidebar-ink: 0.90 0.018 100;
+    --sidebar-nav-ink: 0.78 0.018 100;
+    --sidebar-line: 0.29 0.03 210;
+    --sidebar-hover: 0.22 0.03 210;
+    --sidebar-active: 0.26 0.03 210;
+    --sidebar-subtle: 0.24 0.035 210;
+    --field-bg: 0.19 0.025 245;
+    --field-line: 0.43 0.038 245;
+    --grid-line: oklch(0.5 0.04 245 / 0.055);
+    --shadow: 0 18px 50px oklch(0.08 0.02 245 / 0.25);
   }
 }
 
@@ -70,20 +95,125 @@
   * {
     @apply border-border;
   }
+  html {
+    background: oklch(var(--canvas));
+  }
   body {
-    @apply bg-vellum text-ink;
-    font-family: 'Inter', system-ui, sans-serif;
+    @apply bg-canvas text-ink font-body;
+    font-synthesis: weight;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* The faint drafting grid behind every page, fading out downwards (DESIGN §3.3). */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image: linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 28px 28px;
+    mask-image: linear-gradient(to bottom, black, transparent 70%);
+  }
+  h1, h2, h3 {
+    @apply text-ink-strong;
+  }
+  ::selection {
+    background: oklch(var(--sapphire-soft));
+    color: oklch(var(--ink-strong));
+  }
+  /* Focus is gold on both themes so it never blends with the sapphire controls (DESIGN §9). */
+  :focus-visible {
+    outline: 2px solid oklch(var(--gold));
+    outline-offset: 3px;
+  }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: oklch(var(--line)); border: 2px solid transparent; border-radius: 10px; background-clip: padding-box; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  input:-webkit-autofill,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill {
+    -webkit-text-fill-color: oklch(var(--ink));
+    box-shadow: 0 0 0 1000px oklch(var(--field-bg)) inset;
   }
 }
 
 @layer components {
+  /* Keyboard key, as in "⌘K". */
+  .kbd {
+    @apply inline-flex items-center gap-0.5 px-1.5 py-px rounded-[4px] border border-line-strong bg-surface font-mono text-[10px] text-ink-muted;
+  }
+  /* Mono, wide-tracked label above a title (DESIGN §3.2). */
+  .eyebrow {
+    @apply font-mono text-eyebrow uppercase text-ink-muted;
+  }
+  /* ─── Shared pieces of the Đài quan sát design. Pages compose these instead of re-deriving
+     colours, so both themes stay in step. ─── */
+
+  /* A quiet card: hairline border, medium radius. */
+  .surface {
+    @apply bg-surface border border-line rounded-lg;
+  }
+
+  /* Buttons. One primary (sapphire) per area; secondary is outlined; danger is tinted. */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 min-h-[44px] px-[17px] rounded-md border border-transparent
+      text-[13px] font-semibold whitespace-nowrap transition-[color,background-color,border-color,transform]
+      active:scale-[0.975] disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100;
+  }
+  .btn-sm {
+    @apply min-h-[36px] px-3 text-[12px];
+  }
+  .btn-primary {
+    @apply bg-sapphire-strong text-sapphire-ink hover:enabled:bg-sapphire hover:enabled:-translate-y-px;
+  }
+  .btn-secondary {
+    @apply border-line-strong bg-surface text-ink hover:enabled:border-sapphire hover:enabled:bg-surface-hover;
+  }
+  .btn-danger {
+    @apply border-danger/45 bg-danger/[0.08] text-danger hover:enabled:bg-danger/[0.14];
+  }
+  .btn-ghost {
+    @apply text-ink-light hover:enabled:bg-surface-hover hover:enabled:text-ink-strong;
+  }
+  /* Inline action that reads as a link. */
+  .btn-text {
+    @apply inline-flex items-center gap-1.5 min-h-[44px] text-[13px] font-semibold text-sapphire-strong hover:text-gold transition-colors;
+  }
+
+  /* Form fields. */
+  .field {
+    @apply w-full min-h-[44px] px-3 rounded-md border border-field-line bg-field text-body-md text-ink
+      placeholder:text-ink-muted outline-none transition-colors focus:border-sapphire focus-visible:outline-none
+      focus-visible:ring-2 focus-visible:ring-gold/60;
+  }
+
+  /* Status: a dot, and a pill that carries the dot plus a word (never colour alone, DESIGN §9). */
+  .status-dot {
+    @apply inline-block shrink-0 w-[7px] h-[7px] rounded-full bg-ink-faint;
+  }
+  .status-pill {
+    @apply inline-flex items-center gap-1.5 min-h-[25px] px-2 py-0.5 rounded-full border border-line-strong
+      text-[11px] text-ink-light whitespace-nowrap;
+  }
+
+  /* Mono tags (skills, runtimes). */
+  .chip {
+    @apply inline-flex items-center px-[7px] py-1 rounded-[4px] border border-line font-mono text-[10px] text-ink-light;
+  }
+
+  /* Task / project code: sapphire mono. */
+  .task-code {
+    @apply font-mono text-[11px] tracking-[0.06em] text-sapphire-strong;
+  }
+
   /* ─── Gilt hover effect (card hover) ─── */
   .gilt {
     transition: box-shadow 0.2s ease, border-color 0.2s ease;
   }
   .gilt:hover {
-    box-shadow: 0 2px 10px rgba(36, 30, 22, 0.06);
-    border-color: #D3C4A6;
+    border-color: oklch(var(--sapphire) / 0.55);
   }
 
   /* Large gilt hover */
@@ -91,8 +221,8 @@
     transition: box-shadow 0.2s ease, border-color 0.2s ease;
   }
   .gilt-lg:hover {
-    box-shadow: 0 4px 16px rgba(36, 30, 22, 0.07);
-    border-color: #D3C4A6;
+    box-shadow: var(--shadow);
+    border-color: oklch(var(--sapphire) / 0.55);
   }
 
   /* ─── Deckle edge effect ─── */
@@ -105,7 +235,7 @@
     inset: -1px;
     border-radius: inherit;
     padding: 1px;
-    background: linear-gradient(135deg, #E4D8C0 0%, transparent 40%, transparent 60%, #E4D8C0 100%);
+    background: linear-gradient(135deg, oklch(var(--line-soft)) 0%, transparent 40%, transparent 60%, oklch(var(--line-soft)) 100%);
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
@@ -123,17 +253,15 @@
   }
   .dropcap::first-letter {
     font-size: 1.6em;
-    color: #D4A843;
-    text-shadow: 1px 1px 0 rgba(194, 94, 58, 0.3);
+    color: oklch(var(--gold));
   }
 
   /* ─── Inline illuminated initial (PageTitle) — gilt first letter, no duplication ─── */
   .title-initial {
-    color: #D4A843;
+    color: oklch(var(--gold));
     font-size: 1.35em;
     line-height: 0.75;
     margin-right: 0.01em;
-    text-shadow: 1px 1px 0 rgba(194, 94, 58, 0.22);
   }
 }
 

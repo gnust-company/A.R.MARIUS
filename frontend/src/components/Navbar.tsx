@@ -2,62 +2,28 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Home,
-  LayoutDashboard,
-  Users,
-  Laptop,
-  Wrench,
-  Inbox,
-  Settings,
-  Palette,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
+  ChevronsUpDown,
   Check,
+  LayoutGrid,
+  Sparkles,
+  CheckCircle2,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useAppStore, type AgentStatus } from '@/store/appStore';
+import { useAppStore } from '@/store/appStore';
 import { useViewport } from '@/hooks/use-viewport';
 import { cn, wsHref } from '@/lib/utils';
+import { Brand } from './Brand';
+import { NAV_GROUPS, activeNavPath, initials, type CounterName } from '@/lib/nav';
 
-// `external: true` = a top-level route (no workspace prefix), e.g. the launcher.
-// `counter` names a store field whose number rides beside the label. It replaced a `badge: true`
-// that painted the dot beside the inbox unconditionally — lit on an empty inbox, lit on a full
-// one. A count is the only honest form of that mark, and a constant cannot be one.
-/** Store fields a nav row may show a number from. One today; add a name, not a branch. */
-type CounterName = 'inboxPending';
-
-interface NavItem {
-  path: string;
-  labelKey: string;
-  icon: LucideIcon;
-  /** A top-level route with no workspace prefix, e.g. the launcher. */
-  external?: boolean;
-  /** Which store count rides beside this label. */
-  counter?: CounterName;
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { path: '/home', labelKey: 'nav.home', icon: Home },
-  { path: '/inbox', labelKey: 'nav.inbox', icon: Inbox, counter: 'inboxPending' },
-  { path: '/projects', labelKey: 'nav.projects', icon: LayoutDashboard },
-  { path: '/agents', labelKey: 'nav.directory', icon: Users },
-  { path: '/machines', labelKey: 'nav.machines', icon: Laptop },
-  { path: '/skills', labelKey: 'nav.skills', icon: Wrench },
-];
-
-const BOTTOM_ITEMS: NavItem[] = [
-  { path: '/account', labelKey: 'nav.account', icon: Settings },
-  { path: '/workspaces', labelKey: 'nav.atelier', icon: Palette, external: true },
-];
-
-/** Workspace switcher — a droplist below the brand that swaps the active workspace. */
-function WorkspaceSwitcher() {
+/** The workspace this sidebar belongs to; opening it switches to another one. */
+function WorkspaceIdentity({ collapsed }: { collapsed: boolean }) {
   const { t } = useTranslation();
   const workspaces = useAppStore((s) => s.workspaces);
   const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId);
   const setActiveWorkspace = useAppStore((s) => s.setActiveWorkspace);
+  const sseConnected = useAppStore((s) => s.sseConnected);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -71,27 +37,35 @@ function WorkspaceSwitcher() {
   }, []);
 
   const active = workspaces.find((w) => w.id === activeWorkspaceId);
+  const name = active?.name || t('nav.selectWorkspace');
 
   return (
-    <div ref={ref} className="relative px-3 pt-3">
-      <p className="font-body text-body-xs text-ash px-1 mb-1.5">{t('nav.workspace')}</p>
+    <div ref={ref} className="relative">
       <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label={collapsed ? name : undefined}
+        title={collapsed ? name : undefined}
         className={cn(
-          'w-full min-h-[44px] flex items-center justify-between gap-2 px-3 rounded-md',
-          'bg-[#2E261C] border transition-colors',
-          open ? 'border-gold-muted' : 'border-[#43382A] hover:border-gold-muted/60'
+          'w-full flex items-center gap-2.5 py-3 border-y border-sidebar-border text-left transition-colors hover:bg-sidebar-hover',
+          collapsed ? 'justify-center px-0' : 'px-2.5'
         )}
       >
-        <span className="flex items-center gap-2 min-w-0">
-          <span className="w-2 h-2 rounded-full bg-[#4FA673] shrink-0" />
-          <span className="font-body text-body-md font-medium text-[#EDE3CE] truncate">
-            {active?.name || t('nav.selectWorkspace')}
-          </span>
+        <span className="grid place-items-center shrink-0 w-[34px] h-[34px] rounded-full border border-sidebar-border font-display text-[12px] text-gold">
+          {initials(active?.name)}
         </span>
-        <ChevronDown
-          className={cn('w-4 h-4 text-ash transition-transform duration-200', open && 'rotate-180')}
-        />
+        {!collapsed && (
+          <>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-semibold text-sidebar-foreground">{name}</span>
+              <span className="block truncate text-[11px] text-sidebar-nav">
+                {sseConnected ? t('nav.workspaceLive') : t('nav.workspaceReconnecting')}
+              </span>
+            </span>
+            <ChevronsUpDown className="w-4 h-4 shrink-0 text-sidebar-nav" />
+          </>
+        )}
       </button>
 
       <AnimatePresence>
@@ -101,82 +75,48 @@ function WorkspaceSwitcher() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.15 }}
-            className="absolute left-3 right-3 top-full mt-1 z-50 rounded-md border border-line bg-paper shadow-lg overflow-hidden"
+            className={cn(
+              'absolute top-full mt-1 z-50 rounded-lg border border-line-strong bg-popover text-ink shadow-soft overflow-hidden',
+              collapsed ? 'left-0 w-60' : 'left-0 right-0'
+            )}
           >
+            <p className="px-3 pt-2.5 pb-1 font-mono text-eyebrow uppercase text-ink-muted">{t('nav.workspace')}</p>
             {workspaces.map((w) => {
               const isActive = w.id === activeWorkspaceId;
               return (
                 <button
                   key={w.id}
+                  type="button"
                   onClick={() => {
-                    // Switching workspace changes the URL; the Layout effect then loads
-                    // the new workspace's slice (agents/projects/skills).
+                    // Switching changes the URL; the Layout effect then loads that workspace's slice.
                     setActiveWorkspace(w.id);
                     navigate(wsHref(w.id, '/home'));
                     setOpen(false);
                   }}
                   className={cn(
-                    'w-full flex items-center gap-2 px-2.5 py-2 text-left font-body text-body-md transition-colors',
-                    isActive ? 'bg-inset text-ink font-medium' : 'text-ink hover:bg-inset'
+                    'w-full flex items-center gap-2.5 px-3 min-h-[40px] text-left text-body-sm transition-colors',
+                    isActive ? 'bg-surface-hover font-medium' : 'hover:bg-surface-hover'
                   )}
                 >
-                  <span
-                    className={cn(
-                      'w-2 h-2 rounded-full shrink-0',
-                      isActive ? 'bg-verdigris' : 'bg-ink-muted/50'
-                    )}
-                  />
+                  <span className="grid place-items-center w-6 h-6 rounded-full border border-line font-display text-[10px] text-gold shrink-0">
+                    {initials(w.name)}
+                  </span>
                   <span className="truncate">{w.name}</span>
-                  {isActive && <Check className="w-3.5 h-3.5 ml-auto text-ink shrink-0" />}
+                  {isActive && <Check className="w-3.5 h-3.5 ml-auto shrink-0" />}
                 </button>
               );
             })}
+            <Link
+              to="/workspaces"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5 px-3 min-h-[40px] border-t border-line text-body-sm text-sapphire-strong hover:bg-surface-hover"
+            >
+              <LayoutGrid className="w-4 h-4" />
+              {t('nav.allWorkspaces')}
+            </Link>
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
-  );
-}
-
-/** Ring colour per liveness — the same lapis/verdigris the rest of the screen uses. */
-const PRESENCE_RING: Record<AgentStatus, string> = {
-  working: 'ring-lapis',
-  online: 'ring-verdigris',
-  idle: 'ring-verdigris',
-  offline: 'ring-transparent',
-};
-
-/** Who is around right now: one initial per agent of this workspace, ringed by liveness. */
-function PresentAgents() {
-  const { t } = useTranslation();
-  const { workspaceId } = useParams();
-  const allMariuses = useAppStore((s) => s.mariuses);
-  const mariuses = allMariuses.filter((m) => m.workspaceId === workspaceId);
-  if (mariuses.length === 0) return null;
-
-  return (
-    <div className="px-5 pb-4">
-      <p className="font-body text-body-xs text-ash mb-2.5">{t('nav.present')}</p>
-      <div className="flex flex-wrap gap-2.5">
-        {mariuses.slice(0, 10).map((m) => (
-          <Link
-            key={m.id}
-            to={wsHref(workspaceId, `/agents/${m.id}`)}
-            title={`${m.displayName || m.name} · ${t(`directory.status.${m.status}`, { defaultValue: m.status })}`}
-            aria-label={`${m.displayName || m.name} · ${t(`directory.status.${m.status}`, { defaultValue: m.status })}`}
-            className={cn(
-              'w-8 h-8 rounded-full flex items-center justify-center font-body text-body-xs font-semibold',
-              'ring-2 ring-offset-2 ring-offset-ink-frame',
-              m.status === 'offline'
-                ? 'bg-[#2E261C] text-ash border border-dashed border-[#5C4F3E]'
-                : 'bg-ink-frame-raised text-[#FFF8E8]',
-              PRESENCE_RING[m.status]
-            )}
-          >
-            {(m.displayName || m.name).charAt(0).toUpperCase()}
-          </Link>
-        ))}
-      </div>
     </div>
   );
 }
@@ -189,6 +129,8 @@ export default function Navbar() {
   const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
   const drawerOpen = useAppStore((s) => s.navDrawerOpen);
   const setDrawerOpen = useAppStore((s) => s.setNavDrawerOpen);
+  const sseConnected = useAppStore((s) => s.sseConnected);
+  const currentUser = useAppStore((s) => s.currentUser);
   const viewport = useViewport();
   // Desktop keeps the person's own choice. Below it the rail stays narrow so pages keep their
   // width, and opening it lays the full sidebar over the page instead of pushing it aside.
@@ -199,181 +141,164 @@ export default function Navbar() {
   useEffect(() => {
     setDrawerOpen(false);
   }, [location.pathname, setDrawerOpen]);
-  // The numbers a nav row may carry, looked up by the `counter` name on the row. One entry today;
-  // a map rather than a single value so the next row that needs a count adds a key, not a branch.
+
   const counters: Record<CounterName, number> = {
     inboxPending: useAppStore((s) => s.inboxPending),
   };
 
-  // Compare against the workspace-relative sub-path (strip the /w/:workspaceId prefix).
   const base = workspaceId ? `/w/${workspaceId}` : '';
-  const sub = location.pathname.startsWith(base)
-    ? location.pathname.slice(base.length) || '/'
-    : location.pathname;
-
-  const linkTo = (item: { path: string; external?: boolean }) =>
-    item.external ? item.path : wsHref(workspaceId, item.path);
-
-  const isActive = (item: { path: string; external?: boolean }) => {
-    if (item.external) return location.pathname.startsWith(item.path);
-    if (item.path === '/home') return sub === '/' || sub.startsWith('/home');
-    // A task belongs to a project, so the task page keeps "Projects" lit.
-    if (item.path === '/projects') return sub.startsWith('/projects') || sub.startsWith('/tasks');
-    return sub.startsWith(item.path);
-  };
+  const sub = location.pathname.startsWith(base) ? location.pathname.slice(base.length) || '/' : location.pathname;
+  const current = activeNavPath(sub);
+  const accountActive = sub.startsWith('/account');
 
   // A phone has no rail: the sidebar exists only while the drawer is open.
   const hidden = viewport === 'phone' && !drawerOpen;
 
   return (
     <>
-    {overlay && drawerOpen && (
-      <div
-        className="fixed inset-0 z-[99] bg-ink-frame/40"
-        onClick={() => setDrawerOpen(false)}
-        aria-hidden="true"
-      />
-    )}
-    <nav
-      aria-label={t('nav.workspace')}
-      className={cn(
-        'fixed left-0 top-0 h-[100dvh] bg-ink-frame text-[#EDE3CE] z-sidebar flex flex-col',
-        'transition-[width,transform] duration-300',
-        collapsed ? 'w-[68px]' : 'w-[240px]',
-        hidden && '-translate-x-full',
-        overlay && drawerOpen && 'shadow-2xl'
-      )}
-    >
-      {/* ── Brand row — fixed h-14 so its bottom border aligns with the TopBar ── */}
-      <div
+      <AnimatePresence>
+        {overlay && drawerOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[99] bg-ink-strong/30 backdrop-blur-[2px]"
+            onClick={() => setDrawerOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+      </AnimatePresence>
+      <nav
+        aria-label={t('nav.main')}
         className={cn(
-          'h-14 flex items-center shrink-0 border-b border-ink-frame-raised',
-          collapsed ? 'justify-center px-2' : 'px-4'
+          'fixed left-0 top-0 h-[100dvh] z-sidebar flex flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border',
+          'transition-[width,transform] duration-300',
+          collapsed ? 'w-[68px] px-2.5' : 'w-[240px] px-4',
+          'pt-5 pb-4',
+          hidden && '-translate-x-full',
+          overlay && drawerOpen && 'shadow-2xl'
         )}
       >
-        <Link to="/workspaces" className="flex items-center gap-[1px] no-underline">
-          {/* Gilt initial "A" doubles as the mark; the wordmark continues with "rmarius" */}
-          <span
-            style={{
-              fontFamily: "'Cinzel Decorative', 'Cinzel', serif",
-              fontSize: collapsed ? '26px' : '30px',
-              color: '#D4A843',
-              fontWeight: 700,
-              lineHeight: 1,
-            }}
-          >
-            A
-          </span>
-          {!collapsed && (
-            <span className="font-display text-[24px] font-semibold text-[#F5ECD8] tracking-tight leading-none">
-              rmarius
-            </span>
-          )}
+        <Link
+          to={wsHref(workspaceId, '/home')}
+          className={cn('flex items-center min-h-[48px] shrink-0', collapsed ? 'justify-center' : 'px-1.5')}
+          aria-label="Armarius"
+        >
+          <Brand compact={collapsed} />
         </Link>
-      </div>
 
-      {/* ── Floating collapse toggle (straddles the right border). A phone opens the drawer
-          from the top bar instead; here it would poke out over the page's left edge. ── */}
-      {viewport !== 'phone' && (
-      <button
-        onClick={() => (overlay ? setDrawerOpen(!drawerOpen) : setSidebarCollapsed(!collapsed))}
-        className={cn(
-          'absolute top-4 -right-3 z-[60] w-6 h-6 rounded-full',
-          'flex items-center justify-center',
-          'bg-ink-frame border border-[#43382A] text-ash',
-          'hover:text-gold hover:border-gold-muted',
-          'shadow-sm transition-colors'
+        {/* Collapse toggle straddling the right border. A phone opens the drawer from the bottom
+            bar instead; here it would poke out over the page's left edge. */}
+        {viewport !== 'phone' && (
+          <button
+            type="button"
+            onClick={() => (overlay ? setDrawerOpen(!drawerOpen) : setSidebarCollapsed(!collapsed))}
+            className="absolute top-7 -right-3 z-[60] w-6 h-6 rounded-full grid place-items-center bg-surface border border-line-strong text-ink-muted hover:text-ink-strong shadow-sm transition-colors"
+            aria-label={collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')}
+          >
+            {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+          </button>
         )}
-        aria-label={collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')}
-      >
-        {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
-      </button>
-      )}
 
-      {/* ── Workspace switcher (hidden when collapsed) ── */}
-      {!collapsed && <WorkspaceSwitcher />}
+        <div className="mt-5 mb-6">
+          <WorkspaceIdentity collapsed={collapsed} />
+        </div>
 
-      {/* ── Main Nav ── */}
-      <div className="flex-1 flex flex-col gap-1 px-2 mt-3 overflow-y-auto">
-        {NAV_ITEMS.map((item, i) => {
-          const active = isActive(item);
-          const waiting = item.counter ? counters[item.counter] : 0;
-          return (
-            <motion.div
-              key={item.path}
-              initial={false}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.06, duration: 0.35 }}
-            >
-              <Link
-                to={linkTo(item)}
-                className={cn(
-                  'flex items-center gap-3 px-3 min-h-[44px] rounded-md font-body text-body-md transition-colors relative',
-                  active
-                    ? 'bg-ink-frame-raised text-[#FFF8E8]'
-                    : 'text-[#C9BCA3] hover:bg-ink-frame-raised/60 hover:text-[#FFF8E8]',
-                  collapsed && 'justify-center px-2'
-                )}
-                title={collapsed ? t(item.labelKey) : undefined}
-              >
-                <item.icon
-                  className={cn('w-[18px] h-[18px] flex-shrink-0', active ? 'text-gold' : 'text-[#C9BCA3]')}
-                />
-                {!collapsed && (
-                  <span className="truncate">
-                    {t(item.labelKey)}
-                    {waiting > 0 && (
-                      <span className="ml-2 inline-flex items-center justify-center min-w-[20px] h-[18px] px-1.5 rounded-full text-[11px] font-semibold leading-none text-ink-frame bg-gold align-middle">
-                        {waiting > 99 ? '99+' : waiting}
-                      </span>
+        <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col gap-6">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.labelKey} className="flex flex-col gap-[3px]">
+              {collapsed ? (
+                <span className="mx-auto mb-1 w-5 border-t border-sidebar-border" aria-hidden="true" />
+              ) : (
+                <span className="px-3 pb-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-sidebar-nav opacity-80">
+                  {t(group.labelKey)}
+                </span>
+              )}
+              {group.items.map((item) => {
+                const active = current === item.path;
+                const waiting = item.counter ? counters[item.counter] : 0;
+                const label = t(item.labelKey);
+                return (
+                  <Link
+                    key={item.path}
+                    to={wsHref(workspaceId, item.path)}
+                    aria-current={active ? 'page' : undefined}
+                    title={collapsed ? label : undefined}
+                    aria-label={collapsed ? (waiting > 0 ? `${label} · ${waiting}` : label) : undefined}
+                    className={cn(
+                      'relative flex items-center gap-3 min-h-[44px] rounded-md text-[14px] transition-colors',
+                      collapsed ? 'justify-center px-0' : 'px-3',
+                      active
+                        ? 'bg-sidebar-active text-sidebar-foreground'
+                        : 'text-sidebar-nav hover:bg-sidebar-hover hover:text-sidebar-foreground'
                     )}
-                  </span>
-                )}
-                {/* Collapsed to icons there is no room for a number, so the mark degrades to a
-                    dot — still driven by the same count, so it is still telling the truth. */}
-                {collapsed && waiting > 0 && (
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-gold" />
-                )}
-              </Link>
-            </motion.div>
-          );
-        })}
-      </div>
+                  >
+                    {active && (
+                      <motion.i
+                        layoutId="nav-active-mark"
+                        className="absolute left-0 w-[2px] h-[18px] rounded-sm bg-gold"
+                        transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                      />
+                    )}
+                    <item.icon className="w-5 h-5 shrink-0" strokeWidth={active ? 2 : 1.6} />
+                    {!collapsed && <span className="flex-1 truncate">{label}</span>}
+                    {!collapsed && waiting > 0 && (
+                      <b className="grid place-items-center min-w-[21px] h-[21px] px-1.5 rounded-full bg-amber text-[11px] font-semibold text-[oklch(0.22_0.04_70)]">
+                        {waiting > 99 ? '99+' : waiting}
+                      </b>
+                    )}
+                    {/* Collapsed there is no room for a number, so the mark degrades to a dot —
+                        still driven by the same count, so it still tells the truth. */}
+                    {collapsed && waiting > 0 && (
+                      <span className="absolute top-1.5 right-2 w-2 h-2 rounded-full bg-amber" />
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
+        </div>
 
-      {!collapsed && <PresentAgents />}
-
-      {/* ── Bottom Nav ── */}
-      <div className="flex flex-col gap-1 px-2 pb-2 border-t border-ink-frame-raised pt-2">
-        {BOTTOM_ITEMS.map((item, i) => {
-          const active = isActive(item);
-          return (
-            <motion.div
-              key={item.path}
-              initial={false}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: (NAV_ITEMS.length + i) * 0.06, duration: 0.35 }}
-            >
-              <Link
-                to={linkTo(item)}
-                className={cn(
-                  'flex items-center gap-3 px-3 min-h-[44px] rounded-md font-body text-body-md transition-colors',
-                  active
-                    ? 'bg-ink-frame-raised text-[#FFF8E8]'
-                    : 'text-[#C9BCA3] hover:bg-ink-frame-raised/60 hover:text-[#FFF8E8]',
-                  collapsed && 'justify-center px-2'
-                )}
-                title={collapsed ? t(item.labelKey) : undefined}
-              >
-                <item.icon
-                  className={cn('w-[18px] h-[18px] flex-shrink-0', active ? 'text-gold' : 'text-[#C9BCA3]')}
-                />
-                {!collapsed && <span>{t(item.labelKey)}</span>}
-              </Link>
-            </motion.div>
-          );
-        })}
-      </div>
-    </nav>
+        <div className="mt-4 shrink-0 flex flex-col gap-2.5">
+          {!collapsed && (
+            <div className="flex gap-2.5 px-2.5 py-3.5 rounded-lg border border-sidebar-border bg-sidebar-subtle">
+              <Sparkles className="w-4 h-4 mt-0.5 shrink-0 text-gold" />
+              <div className="min-w-0 text-[11px] leading-snug">
+                <strong className="block font-semibold">
+                  {sseConnected ? t('nav.listening') : t('nav.reconnecting')}
+                </strong>
+                <span className="block text-sidebar-nav">
+                  {sseConnected ? t('nav.listeningDetail') : t('nav.reconnectingDetail')}
+                </span>
+              </div>
+            </div>
+          )}
+          <Link
+            to={wsHref(workspaceId, '/account')}
+            aria-current={accountActive ? 'page' : undefined}
+            title={collapsed ? t('nav.account') : undefined}
+            aria-label={collapsed ? t('nav.account') : undefined}
+            className={cn(
+              'flex items-center gap-2.5 rounded-lg transition-colors',
+              collapsed ? 'justify-center p-1.5' : 'p-2.5',
+              accountActive ? 'bg-sidebar-active' : 'hover:bg-sidebar-hover'
+            )}
+          >
+            <span className="grid place-items-center shrink-0 w-[34px] h-[34px] rounded-full bg-sidebar-subtle font-display text-[15px] text-gold">
+              {(currentUser?.name || 'P').charAt(0).toUpperCase()}
+            </span>
+            {!collapsed && (
+              <>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12px] font-semibold">{currentUser?.name || 'Patron'}</span>
+                  <span className="block truncate text-[10px] text-sidebar-nav">{t('nav.patronRole')}</span>
+                </span>
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-success" />
+              </>
+            )}
+          </Link>
+        </div>
+      </nav>
     </>
   );
 }
