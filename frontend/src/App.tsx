@@ -1,15 +1,13 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { Routes, Route, Navigate, Outlet } from 'react-router'
 import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
-import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Workspaces from './pages/Workspaces'
 import LinkMachine from './pages/LinkMachine'
 import Onboarding from './pages/Onboarding'
 import Projects from './pages/Projects'
 import Home from './pages/Home'
-import Observatory from './pages/Observatory'
 import CreateProject from './pages/CreateProject'
 import ProjectBoard from './pages/ProjectBoard'
 import ProjectPlan from '@/pages/ProjectPlan';
@@ -24,6 +22,11 @@ import Account from './pages/Account'
 import CollaborationRoom from './pages/CollaborationRoom'
 import RunTrace from './pages/RunTrace'
 import { useAppStore } from './store/appStore'
+
+// The two three.js pages load on demand, so three.js ships in their own chunks and no other
+// screen pays for it.
+const Landing = lazy(() => import('./pages/Landing'))
+const Observatory = lazy(() => import('./pages/Observatory'))
 
 /** Boot: rehydrate the session from the stored JWT before rendering routes, so the auth
  * guard doesn't bounce a logged-in user on a hard refresh. Also rehydrates the workspace
@@ -78,7 +81,14 @@ export default function App() {
     <ErrorBoundary>
     <Routes>
       {/* Landing page — cinematic scroll storytelling (default) */}
-      <Route path="/" element={<Landing />} />
+      <Route
+        path="/"
+        element={
+          <Suspense fallback={<div className="min-h-[100dvh] bg-canvas-deep" />}>
+            <Landing />
+          </Suspense>
+        }
+      />
 
       {/* Login / register */}
       <Route path="/login" element={<Login />} />
@@ -103,7 +113,14 @@ export default function App() {
         <Route path="/w/:workspaceId" element={<Layout />}>
           <Route index element={<Navigate to="home" replace />} />
           <Route path="home" element={<Home />} />
-          <Route path="observatory" element={<Observatory />} />
+          <Route
+            path="observatory"
+            element={
+              <Suspense fallback={<div className="h-[600px] rounded-xl border border-line bg-canvas-deep md:h-[680px]" />}>
+                <Observatory />
+              </Suspense>
+            }
+          />
           <Route path="projects" element={<Projects />} />
           <Route path="projects/new" element={<CreateProject />} />
           <Route path="projects/:id" element={<ProjectBoard />} />
