@@ -14,6 +14,7 @@ import { Link, useParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import {
+  AlertTriangle,
   BookOpen,
   Bot,
   CloudOff,
@@ -34,27 +35,11 @@ import {
   type MachineDTO,
   type MachineWorkplaceDTO,
 } from '@/lib/api';
-import EmptyState from '@/components/EmptyState';
 import PageTitle from '@/components/PageTitle';
-import VellumPanel from '@/components/VellumPanel';
+import StatusChip from '@/components/StatusChip';
 import { DOCS } from '@/lib/docs';
 import { cn } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { staggerChildren: 0.06, delayChildren: 0.1 } },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 16, filter: 'blur(2px)' },
-  visible: {
-    opacity: 1,
-    y: 0,
-    filter: 'blur(0px)',
-    transition: { duration: 0.4, ease: [0, 0, 0.2, 1] as [number, number, number, number] },
-  },
-};
 
 function relative(iso: string | null, language: string): string {
   if (!iso) return '—';
@@ -65,6 +50,20 @@ function relative(iso: string | null, language: string): string {
   if (abs < 3600) return rtf.format(Math.round(diff / 60), 'minute');
   if (abs < 86400) return rtf.format(Math.round(diff / 3600), 'hour');
   return rtf.format(Math.round(diff / 86400), 'day');
+}
+
+/** Put the `commands` a sentence names in code type, so `armarius-daemon start` reads as
+ *  something to type rather than as prose. The words themselves come from i18n untouched. */
+function withCode(text: string) {
+  return text.split('`').map((part, i) =>
+    i % 2 === 1 ? (
+      <code key={i} className="rounded bg-inset border border-line px-1.5 py-px font-mono text-mono-sm text-ink">
+        {part}
+      </code>
+    ) : (
+      part
+    )
+  );
 }
 
 // ─── One agent CLI on one machine ────────────────────────────────────────────
@@ -81,43 +80,37 @@ function Workplace({ place }: { place: MachineWorkplaceDTO }) {
     : null;
 
   return (
-    <div
-      className={cn(
-        'rounded-lg border px-3 py-2.5',
-        place.ready ? 'border-[#E3D7BC] bg-[#FBF6EA]' : 'border-[#E8C4B4] bg-[#FBEEE8]'
-      )}
-    >
-      <div className="flex items-center gap-2 flex-wrap">
-        <Terminal className="w-3.5 h-3.5 text-[#8B7A6A]" />
-        <span className="text-[13px] font-medium text-[#2A2318]">{place.cli_kind}</span>
+    <div className="min-w-0 rounded-lg border border-line bg-inset px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        <Terminal className="h-4 w-4 shrink-0 text-ink-muted" aria-hidden />
+        <span className="font-mono text-mono-md text-ink">{place.cli_kind}</span>
         {place.cli_version && (
-          <span className="text-[11px] font-mono text-[#A89880]">{place.cli_version}</span>
+          <span className="font-mono text-mono-sm text-ink-muted">{place.cli_version}</span>
         )}
-        <span
-          className={cn(
-            'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium',
-            place.ready ? 'bg-[#D8EADD] text-[#2A6E3A]' : 'bg-[#F3D9D0] text-[#8A3B22]'
+        <span className="ml-auto">
+          {place.ready ? (
+            <StatusChip status="online" label={t('machines.ready')} />
+          ) : (
+            <StatusChip status="blocked" label={t('machines.notReadyChip')} />
           )}
-        >
-          {place.ready ? t('machines.ready') : t('machines.notReadyChip')}
         </span>
       </div>
 
-      {why && <p className="mt-1 text-[12px] text-[#8A3B22]">{why}</p>}
+      {why && <p className="mt-2 font-body text-body-sm text-vermilion-ink">{why}</p>}
 
-      <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-        <Bot className="w-3.5 h-3.5 text-[#A89880]" />
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <Bot className="h-4 w-4 shrink-0 text-ink-muted" aria-hidden />
         {place.agents.length > 0 ? (
           place.agents.map((agent) => (
             <span
               key={agent.id}
-              className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#E3D7BC] text-[#6B5E4E]"
+              className="inline-flex max-w-full items-center truncate rounded-full border border-line bg-paper px-2.5 py-0.5 font-body text-body-sm font-medium text-ink"
             >
               {agent.name}
             </span>
           ))
         ) : (
-          <span className="text-[12px] text-[#A89880]">{t('machines.noAgentsHere')}</span>
+          <span className="min-w-0 flex-1 font-body text-body-sm text-ink-muted">{t('machines.noAgentsHere')}</span>
         )}
       </div>
     </div>
@@ -182,59 +175,88 @@ function Machine({
   }
 
   return (
-    <motion.div variants={itemVariants}>
-      <VellumPanel className="p-4">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2 min-w-0">
-            <Laptop className="w-4 h-4 text-[#8B7A6A] flex-shrink-0" />
-            <h2 className="text-[15px] font-medium text-[#2A2318] truncate">
+    <motion.article
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
+      className="rounded-xl border border-line bg-paper px-4 py-4 sm:px-5 sm:py-5"
+    >
+      <div className="flex gap-3.5">
+        <span
+          className={cn(
+            'flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
+            machine.reachable ? 'bg-verdigris-bg text-verdigris-ink' : 'bg-ash-bg text-ink-light'
+          )}
+          aria-hidden
+        >
+          {machine.reachable ? <Laptop className="h-[18px] w-[18px]" /> : <WifiOff className="h-[18px] w-[18px]" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <h2 className="min-w-0 truncate font-display text-[20px] font-medium text-ink">
               {machine.display_name || t('machines.unnamed')}
             </h2>
-            <span
-              className={cn(
-                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
-                machine.reachable
-                  ? 'bg-[#D8EADD] text-[#2A6E3A]'
-                  : 'bg-[#E8E0D8] text-[#8B7A6A]'
-              )}
-            >
-              {!machine.reachable && <WifiOff className="w-3 h-3" />}
-              {machine.reachable ? t('machines.online') : t('machines.offline')}
-            </span>
+            <StatusChip
+              status={machine.reachable ? 'online' : 'offline'}
+              label={machine.reachable ? t('machines.online') : t('machines.offline')}
+            />
           </div>
-          <div className="text-[11px] text-[#A89880] text-right">
-            <div>
-              {machine.platform || '—'} · {t('machines.daemonVersion')}{' '}
-              {machine.daemon_version || '—'}
-            </div>
-            <div>
-              {t('machines.lastBeat')} {relative(machine.last_heartbeat_at, i18n.language)}
-            </div>
-          </div>
+          <p className="mt-0.5 font-body text-body-sm text-ink-muted">
+            <span className="font-mono text-mono-sm">{machine.platform || '—'}</span>
+            {' · '}
+            {t('machines.daemonVersion')}{' '}
+            <span className="font-mono text-mono-sm">{machine.daemon_version || '—'}</span>
+            {' · '}
+            {t('machines.lastBeat')} {relative(machine.last_heartbeat_at, i18n.language)}
+          </p>
         </div>
+      </div>
 
-        {/* Why this machine's daemon is not keeping itself current (FR-008n, revised
-            2026-10-28). It used to say so only in its own log, which is where the owner's
-            machine said it for weeks while nobody looked. A code from the daemon, worded here. */}
-        {machine.update_problem && (
-          <div
-            className="mt-3 flex items-start gap-2 rounded-md border border-[#E8C9A8] bg-[#FBEBD9] px-3 py-2 text-[12px] text-[#7A4A1E]"
-            role="status"
-          >
-            <CloudOff className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden />
-            <span>
-              {t(`machines.updateProblem.${machine.update_problem}`, {
-                defaultValue: t('machines.updateProblem.unknown'),
-              })}
-            </span>
+      {/* Why this machine's daemon is not keeping itself current (FR-008n, revised
+          2026-10-28). It used to say so only in its own log, which is where the owner's
+          machine said it for weeks while nobody looked. A code from the daemon, worded here. */}
+      {machine.update_problem && (
+        <div
+          className="mt-4 flex items-start gap-2.5 rounded-lg border border-[#EBCF8A] bg-gold-bg px-4 py-3 font-body text-body-sm text-gold-ink"
+          role="status"
+        >
+          <CloudOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span className="min-w-0">
+            {t(`machines.updateProblem.${machine.update_problem}`, {
+              defaultValue: t('machines.updateProblem.unknown'),
+            })}
+          </span>
+        </div>
+      )}
+
+      <div className="mt-4">
+        {machine.workplaces.length > 0 ? (
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {machine.workplaces.map((place) => (
+              <Workplace key={place.id} place={place} />
+            ))}
           </div>
+        ) : (
+          // Two ways to have no workplaces, and they need different things done about them.
+          // A machine that has never sent a beat was linked and then never started — the
+          // discovery that registers workplaces happens in `start`, not in `login`. A machine
+          // that *is* beating and still reports nothing has been asked and genuinely found no
+          // agent CLI installed. Saying only "this machine has reported no agent CLI" is true of
+          // both and useful for neither (FR-008h).
+          <p className="rounded-lg border border-dashed border-line-strong px-4 py-3 font-body text-body-md text-ink-light">
+            {withCode(
+              machine.last_heartbeat_at === null ? t('machines.neverStarted') : t('machines.noCliFound')
+            )}
+          </p>
         )}
+      </div>
 
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-line pt-4">
         {/* The ceiling (FR-008). Beside the machine rather than inside a settings page: it is
             a fact about this machine, and the person setting it is looking at the machine. */}
-        <div className="mt-3 flex items-center gap-2 flex-wrap">
-          <Cpu className="w-3.5 h-3.5 text-[#8B7A6A]" />
-          <label className="text-[12px] text-[#6B5E4E]" htmlFor={`ceiling-${machine.id}`}>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+          <Cpu className="h-4 w-4 shrink-0 text-ink-muted" aria-hidden />
+          <label className="font-body text-body-sm font-medium text-ink-light" htmlFor={`ceiling-${machine.id}`}>
             {t('machines.ceilingLabel')}
           </label>
           <input
@@ -249,78 +271,60 @@ function Machine({
             onKeyDown={(e) => {
               if (e.key === 'Enter') e.currentTarget.blur();
             }}
-            className="w-16 rounded-md border border-[#E3D7BC] bg-[#FBF6EA] px-2 py-1 text-[13px] text-[#2A2318] disabled:opacity-60"
+            className="min-h-[44px] w-20 rounded-md border border-line bg-inset px-3 font-body text-body-md text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 disabled:opacity-60"
           />
-          {saving && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#A89880]" />}
-          <span className="text-[11px] text-[#A89880]">{t('machines.ceilingHint')}</span>
+          {saving && <Loader2 className="h-4 w-4 animate-spin text-ink-muted" aria-hidden />}
+          <span className="basis-full font-body text-body-sm text-ink-muted sm:basis-auto">{t('machines.ceilingHint')}</span>
         </div>
-        {ceilingError && (
-          <p className="mt-1 text-[12px] text-[#8A3B22]" role="alert">
-            {ceilingError}
-          </p>
-        )}
 
         {/* Removing a machine is the only way to take its token back, and there is no undo:
             the daemon has to link again. So it asks, and the question names the machine. */}
-        <div className="mt-3 border-t border-[#EDE4CE] pt-3">
-          {confirming ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[12px] text-[#8A3B22]">
-                {t('machines.removeConfirm', { name: machine.display_name || machine.id })}
-              </span>
-              <button
-                type="button"
-                onClick={remove}
-                disabled={removing}
-                className="inline-flex items-center gap-1 rounded-md bg-[#B84A32] px-2.5 py-1 text-[12px] font-medium text-white transition-colors hover:bg-[#C9573D] disabled:opacity-50"
-              >
-                {removing && <Loader2 className="h-3 w-3 animate-spin" />}
-                {t('machines.removeYes')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirming(false)}
-                disabled={removing}
-                className="rounded-md px-2.5 py-1 text-[12px] text-[#6B5E4E] transition-colors hover:text-[#2A2318]"
-              >
-                {t('machines.removeNo')}
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirming(true)}
-              className="inline-flex items-center gap-1 text-[12px] text-[#A89880] transition-colors hover:text-[#B84A32]"
-            >
-              <Trash2 className="h-3.5 w-3.5" aria-hidden /> {t('machines.remove')}
-            </button>
-          )}
-          {removeError && (
-            <p className="mt-1 text-[12px] text-[#8A3B22]" role="alert">
-              {removeError}
-            </p>
-          )}
-        </div>
+        {!confirming && (
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md border border-[#EDB8B0] bg-paper px-4 font-body text-body-md font-medium text-vermilion-ink transition-colors hover:bg-vermilion-bg"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden /> {t('machines.remove')}
+          </button>
+        )}
+      </div>
+      {ceilingError && (
+        <p className="mt-2 font-body text-body-sm text-vermilion-ink" role="alert">
+          {ceilingError}
+        </p>
+      )}
 
-        <div className="mt-3 space-y-2">
-          {machine.workplaces.length > 0 ? (
-            machine.workplaces.map((place) => <Workplace key={place.id} place={place} />)
-          ) : (
-            // Two ways to have no workplaces, and they need different things done about them.
-            // A machine that has never sent a beat was linked and then never started — the
-            // discovery that registers workplaces happens in `start`, not in `login`. A machine
-            // that *is* beating and still reports nothing has been asked and genuinely found no
-            // agent CLI installed. Saying only "this machine has reported no agent CLI" is true of
-            // both and useful for neither (FR-008h).
-            <p className="text-[12px] text-[#A89880]">
-              {machine.last_heartbeat_at === null
-                ? t('machines.neverStarted')
-                : t('machines.noCliFound')}
-            </p>
-          )}
+      {confirming && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[#EDB8B0] bg-vermilion-bg px-4 py-3">
+          <span className="min-w-0 flex-[1_1_260px] font-body text-body-md text-vermilion-ink">
+            {t('machines.removeConfirm', { name: machine.display_name || machine.id })}
+          </span>
+          <button
+            type="button"
+            onClick={() => setConfirming(false)}
+            disabled={removing}
+            className="inline-flex min-h-[44px] items-center rounded-md border border-line-strong bg-paper px-4 font-body text-body-md font-medium text-ink transition-colors hover:bg-inset disabled:opacity-50"
+          >
+            {t('machines.removeNo')}
+          </button>
+          <button
+            type="button"
+            onClick={remove}
+            disabled={removing}
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md bg-vermilion-ink px-4 font-body text-body-md font-medium text-paper transition-colors hover:bg-vermilion-ink/90 disabled:opacity-50"
+          >
+            {removing && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+            {t('machines.removeYes')}
+          </button>
         </div>
-      </VellumPanel>
-    </motion.div>
+      )}
+      {removeError && (
+        <p className="mt-2 font-body text-body-sm text-vermilion-ink" role="alert">
+          {removeError}
+        </p>
+      )}
+    </motion.article>
   );
 }
 
@@ -356,87 +360,67 @@ export default function Machines() {
   };
 
   return (
-    // No padding and no centring of its own. `Layout` already wraps every page in `p-6`, so the
-    // `max-w-4xl mx-auto px-6 py-8` that used to sit here paid the margin twice and pushed this
-    // one screen's title into a narrow column while every other title sat at the top left.
-    <div className="min-h-[100dvh]">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+    <div className="mx-auto w-full max-w-[1240px] flex flex-col gap-6 pb-10">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <PageTitle title={t('machines.title')} subtitle={t('machines.subtitle')} />
-        <div className="flex items-center gap-2">
-          <Link
-            to="/link"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium text-white bg-[#C25E3A] hover:bg-[#A94E2E] transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            {t('machines.linkMachine')}
-          </Link>
-          <a
-            href={DOCS.machines}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium text-[#6B5E4E] border border-[#E3D7BC] hover:bg-[#F3ECDA] transition-colors"
-          >
-            <BookOpen className="w-3.5 h-3.5" />
-            {t('machines.guide')}
-            <ExternalLink className="w-3 h-3 opacity-60" />
-          </a>
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={reload}
             disabled={reloading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium text-[#6B5E4E] border border-[#E3D7BC] hover:bg-[#F3ECDA] transition-colors disabled:opacity-50"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-md px-3 font-body text-body-md font-medium text-ink-light transition-colors hover:bg-inset hover:text-ink disabled:opacity-50"
           >
-            <RefreshCw className={cn('w-3.5 h-3.5', reloading && 'animate-spin')} />
+            <RefreshCw className={cn('h-4 w-4', reloading && 'animate-spin')} aria-hidden />
             {t('machines.refresh')}
           </button>
+          <a href={DOCS.machines} target="_blank" rel="noreferrer" className="inline-flex min-h-[44px] items-center gap-2 rounded-md border border-line-strong bg-paper px-4 font-body text-body-md font-medium text-ink transition-colors hover:bg-inset">
+            <BookOpen className="h-4 w-4" aria-hidden />
+            {t('machines.guide')}
+            <ExternalLink className="h-3.5 w-3.5 text-ink-muted" aria-hidden />
+          </a>
+          <Link to="/link" className="inline-flex min-h-[44px] items-center gap-2 rounded-md bg-ink px-[18px] font-body text-body-md font-medium text-paper transition-colors hover:bg-ink/85">
+            <Plus className="h-4 w-4" aria-hidden />
+            {t('machines.linkMachine')}
+          </Link>
         </div>
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-[#E8C4B4] bg-[#FBEEE8] px-4 py-3 text-[13px] text-[#8A3B22]">
-          {error}
+        <div
+          className="flex items-start gap-2 rounded-lg border border-[#EDB8B0] bg-vermilion-bg px-4 py-3 font-body text-body-md text-vermilion-ink"
+          role="alert"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span className="min-w-0">{error}</span>
         </div>
       )}
 
       {machines === null ? (
-        <div className="flex items-center gap-2 py-12 justify-center text-[13px] text-[#A89880]">
-          <Loader2 className="w-4 h-4 animate-spin" /> {t('machines.loading')}
+        <div className="flex items-center justify-center gap-2 py-12 font-body text-body-md text-ink-muted">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> {t('machines.loading')}
         </div>
       ) : machines.length === 0 ? (
-        <EmptyState
-          icon={Cpu}
-          title={t('machines.empty.title')}
-          description={t('machines.empty.description')}
-          // Two ways out, because the old screen offered none: it named a command and left the
-          // reader to work out what a daemon is and where to get one (FR-008h).
-          action={
-            <div className="flex flex-col sm:flex-row items-center gap-2">
-              <Link
-                to="/link"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium text-white bg-[#C25E3A] hover:bg-[#A94E2E] transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                {t('machines.linkMachine')}
-              </Link>
-              <a
-                href={DOCS.machines}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium text-[#6B5E4E] border border-[#E3D7BC] hover:bg-[#F3ECDA] transition-colors"
-              >
-                <BookOpen className="w-4 h-4" />
-                {t('machines.empty.readGuide')}
-                <ExternalLink className="w-3.5 h-3.5 opacity-60" />
-              </a>
-            </div>
-          }
-        />
+        <section className="flex flex-col items-center rounded-xl border border-line bg-paper px-5 py-12 text-center sm:px-8">
+          <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-inset text-ink-muted">
+            <Cpu className="h-6 w-6" strokeWidth={1.5} aria-hidden />
+          </span>
+          <h2 className="font-display text-[22px] font-medium text-ink">{t('machines.empty.title')}</h2>
+          <p className="mt-2 max-w-xl font-body text-body-md text-ink-light">{t('machines.empty.description')}</p>
+          {/* Two ways out, because the old screen offered none: it named a command and left the
+              reader to work out what a daemon is and where to get one (FR-008h). */}
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+            <Link to="/link" className="inline-flex min-h-[44px] items-center gap-2 rounded-md bg-ink px-[18px] font-body text-body-md font-medium text-paper transition-colors hover:bg-ink/85">
+              <Plus className="h-4 w-4" aria-hidden />
+              {t('machines.linkMachine')}
+            </Link>
+            <a href={DOCS.machines} target="_blank" rel="noreferrer" className="inline-flex min-h-[44px] items-center gap-2 rounded-md border border-line-strong bg-paper px-4 font-body text-body-md font-medium text-ink transition-colors hover:bg-inset">
+              <BookOpen className="h-4 w-4" aria-hidden />
+              {t('machines.empty.readGuide')}
+              <ExternalLink className="h-3.5 w-3.5 text-ink-muted" aria-hidden />
+            </a>
+          </div>
+        </section>
       ) : (
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-          className="space-y-4"
-        >
+        <div className="flex flex-col gap-4">
           {machines.map((machine) => (
             <Machine
               key={machine.id}
@@ -451,7 +435,7 @@ export default function Machines() {
               }
             />
           ))}
-        </motion.div>
+        </div>
       )}
     </div>
   );

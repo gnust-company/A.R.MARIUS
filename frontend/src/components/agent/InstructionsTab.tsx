@@ -61,13 +61,13 @@ export default function InstructionsTab({
       <div>
         <label
           htmlFor="agent-instructions"
-          className="block text-[13px] font-medium text-[#2A2318]"
+          className="block font-display text-[20px] font-medium leading-tight text-ink"
         >
           {hasSystem
             ? t('agentDetail.instructions.ownLabelWithSystem')
             : t('agentDetail.instructions.ownLabel')}
         </label>
-        <p className="mt-0.5 mb-2 text-[12px] text-[#6B5E4E]">
+        <p className="mt-1 mb-3 font-body text-body-md text-ink-light">
           {t('agentDetail.instructions.ownHint')}
         </p>
         <textarea
@@ -78,31 +78,31 @@ export default function InstructionsTab({
           rows={14}
           placeholder={t('agentDetail.instructions.placeholder')}
           className={cn(
-            'w-full rounded-md border border-[#E3D7BC] bg-vellum px-3 py-2',
-            'font-mono text-[12px] leading-relaxed text-[#2A2318] placeholder:text-[#A89880]',
-            'focus:border-[#C25E3A] focus:outline-none focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)]',
-            !canEdit && 'opacity-70',
+            'w-full rounded-md border border-line bg-inset px-3.5 py-3',
+            'font-mono text-[13px] leading-relaxed text-ink placeholder:text-ink-muted',
+            'focus:border-terracotta focus:bg-paper focus:outline-none focus:ring-[3px] focus:ring-terracotta/15',
+            !canEdit && 'cursor-default',
           )}
         />
-        <div className="mt-2 flex items-center gap-3">
+        <div className="mt-3 flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={save}
             disabled={!canEdit || !dirty || saving}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors',
-              'bg-[#C25E3A] text-white hover:bg-[#D4744C] disabled:opacity-50',
+              'inline-flex min-h-[44px] items-center gap-2 rounded-md px-4 font-body text-body-md font-medium transition-colors',
+              'bg-ink text-paper hover:bg-ink/85 disabled:cursor-not-allowed disabled:opacity-50',
             )}
           >
             {saving ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
             ) : (
-              <Save className="h-3.5 w-3.5" aria-hidden />
+              <Save className="h-4 w-4" aria-hidden />
             )}
             {t('agentDetail.instructions.save')}
           </button>
           {saved && (
-            <span className="text-[12px] text-[#2A6E3A]">
+            <span className="font-body text-body-sm text-verdigris-ink" role="status">
               {t('agentDetail.instructions.savedNextRun')}
             </span>
           )}

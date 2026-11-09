@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   CheckCheck,
   CheckCircle2,
+  ChevronRight,
   ExternalLink,
   FileQuestion,
   GitBranch,
@@ -27,10 +28,11 @@ import {
   UserPlus,
   XCircle,
 } from 'lucide-react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
 import PageTitle from '@/components/PageTitle';
-import VellumPanel from '@/components/VellumPanel';
+import StatusChip from '@/components/StatusChip';
 import Dropdown from '@/components/Dropdown';
 import {
   answerInboxItem,
@@ -40,20 +42,38 @@ import {
   type InboxItemDTO,
   type ProjectAgentDTO,
 } from '@/lib/api';
-import { wsHref } from '@/lib/utils';
+import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
 import { stallText } from '@/lib/stall';
 import { useAppStore } from '@/store/appStore';
 
 /** Máy chủ đặt mục theo loại; mỗi loại có biểu tượng và nhãn riêng. */
 const KIND_ICONS: Record<string, React.ReactNode> = {
-  output_acceptance: <CheckCircle2 size={14} />,
-  plan_approval: <ScrollText size={14} />,
-  major_change_approval: <GitBranch size={14} />,
-  phase_decision: <GitBranch size={14} />,
-  escalation: <AlertTriangle size={14} />,
-  question: <FileQuestion size={14} />,
+  output_acceptance: <CheckCircle2 className="w-[18px] h-[18px]" />,
+  plan_approval: <ScrollText className="w-[18px] h-[18px]" />,
+  major_change_approval: <GitBranch className="w-[18px] h-[18px]" />,
+  phase_decision: <GitBranch className="w-[18px] h-[18px]" />,
+  escalation: <AlertTriangle className="w-[18px] h-[18px]" />,
+  question: <FileQuestion className="w-[18px] h-[18px]" />,
 };
+
+/** The tint behind a letter's icon. Gold is "waiting on you"; an escalation is something
+ *  already stuck, so it reads as vermilion; a letter that is no longer waiting goes quiet. */
+function kindTint(item: InboxItemDTO): string {
+  if (item.status !== 'pending') return 'bg-ash-bg text-ink-light';
+  if (item.kind === 'escalation') return 'bg-vermilion-bg text-vermilion-ink';
+  return 'bg-gold-bg text-gold-ink';
+}
+
+function relativeTime(iso: string | null | undefined, t: TFunction): string {
+  if (!iso) return '';
+  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (minutes < 1) return t('common.justNow');
+  if (minutes < 60) return t('common.minutesAgo', { count: minutes });
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t('common.hoursAgo', { count: hours });
+  return t('common.daysAgo', { count: Math.floor(hours / 24) });
+}
 
 /** The record of what the system already tried, on an escalation (FR-061).
  *
@@ -74,37 +94,47 @@ function AttemptDossier({ item }: { item: InboxItemDTO }) {
   const question = typeof d.question === 'string' ? d.question : undefined;
 
   if (!cause && !attempts && !leaderAsked && !question) return null;
+  const tried = Boolean(cause || attempts || leaderAsked);
 
+  // The question is what the patron is being asked to decide, so it is always in view; the
+  // history behind it folds away, one tap to open, so a long inbox still scans as decisions.
   return (
-    <div className="mt-2 rounded-md bg-[#F6EFE1] px-3 py-2">
-      <p className="text-[10px] uppercase tracking-wide text-[#8B6A28] mb-1">
-        {t('inbox.dossier.title')}
-      </p>
-      <ul className="space-y-0.5 text-xs text-[#6B5E4E]">
-        {cause && (
-          <li>
-            <span className="text-[#8B6A28]">{t('inbox.dossier.cause')}:</span>{' '}
-            {stallText(cause, t) ?? t('board.stalled')}
-          </li>
-        )}
-        {attempts > 0 && <li>{t('inbox.dossier.attempts', { count: attempts })}</li>}
-        {leaderAsked && <li>{t('inbox.dossier.leaderAsked')}</li>}
-      </ul>
+    <div className="mt-3 rounded-lg border border-line bg-inset">
       {question && (
-        <p className="mt-1.5 text-xs font-medium text-[#2A2318]">
-          <span className="text-[#8B6A28]">{t('inbox.dossier.question')}:</span> {question}
+        <p className={cn('px-4 pt-3 font-body text-body-md text-ink', tried ? 'pb-1' : 'pb-3')}>
+          <span className="font-medium text-gold-ink">{t('inbox.dossier.question')}:</span> {question}
         </p>
+      )}
+      {tried && (
+        <details className="group">
+          <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 px-4 font-body text-body-sm font-medium text-ink-light hover:text-ink [&::-webkit-details-marker]:hidden">
+            <ChevronRight className="h-4 w-4 shrink-0 transition-transform group-open:rotate-90" aria-hidden />
+            {t('inbox.dossier.title')}
+          </summary>
+          <ul className="space-y-1 px-4 pb-3 pl-10 font-body text-body-sm text-ink-light list-disc marker:text-ink-muted">
+            {cause && (
+              <li>
+                <span className="font-medium text-ink">{t('inbox.dossier.cause')}:</span>{' '}
+                {stallText(cause, t) ?? t('board.stalled')}
+              </li>
+            )}
+            {attempts > 0 && <li>{t('inbox.dossier.attempts', { count: attempts })}</li>}
+            {leaderAsked && <li>{t('inbox.dossier.leaderAsked')}</li>}
+          </ul>
+        </details>
       )}
     </div>
   );
 }
 
-const actionButton =
-  'flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-[#6B5E4E] bg-[#EDE4CE] hover:bg-[#E3D7BC] rounded-md transition-colors disabled:opacity-50 cursor-pointer';
-const primaryButton =
-  'flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-[#D4A843] hover:bg-[#E8C96A] rounded-md transition-colors disabled:opacity-50 cursor-pointer';
+const buttonBase =
+  'inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3.5 sm:px-4 rounded-md font-body text-body-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer';
+const actionButton = cn(buttonBase, 'bg-paper border border-line-strong text-ink hover:bg-inset');
+const primaryButton = cn(buttonBase, 'bg-ink text-paper hover:bg-ink/85');
+const destructiveButton = cn(buttonBase, 'bg-paper border border-[#EDB8B0] text-vermilion-ink hover:bg-vermilion-bg');
 const fieldClasses =
-  'w-full rounded-md border border-[#E3D7BC] bg-white px-2.5 py-1.5 text-xs text-[#2A2318] focus:border-[#D4A843] focus:outline-none';
+  'w-full rounded-md border border-line bg-inset px-3 py-2.5 font-body text-body-md text-ink placeholder:text-ink-muted focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors';
+const fieldLabel = 'block font-body text-body-sm font-medium text-ink-light';
 
 /** Answering an *escalation* in place, where it is asked (FR-061a).
  *
@@ -200,14 +230,14 @@ function EscalationActions({
 
   if (mode === null) {
     return (
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#E3D7BC] pt-3">
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
           className={actionButton}
           disabled={busy || frozen}
           data-testid="escalation-reassign"
           onClick={() => setMode('assign')}
         >
-          <UserPlus size={12} /> {t('inbox.escalation.reassign')}
+          <UserPlus className="w-4 h-4" aria-hidden /> {t('inbox.escalation.reassign')}
         </button>
         <button
           className={actionButton}
@@ -215,15 +245,15 @@ function EscalationActions({
           data-testid="escalation-next-action"
           onClick={() => setMode('next')}
         >
-          <PencilLine size={12} /> {t('inbox.escalation.changeNext')}
+          <PencilLine className="w-4 h-4" aria-hidden /> {t('inbox.escalation.changeNext')}
         </button>
         <button
-          className={actionButton}
+          className={destructiveButton}
           disabled={busy || frozen}
           data-testid="escalation-cancel-task"
           onClick={() => setMode('cancel')}
         >
-          <XCircle size={12} /> {t('inbox.escalation.cancelTask')}
+          <XCircle className="w-4 h-4" aria-hidden /> {t('inbox.escalation.cancelTask')}
         </button>
         {/* Not disabled when frozen, unlike the three above it: this one writes nothing
             into the project, only into the patron's own inbox. Freezing it too is what
@@ -235,10 +265,10 @@ function EscalationActions({
           data-testid="escalation-handled"
           onClick={() => void run('handled')}
         >
-          <CheckCheck size={12} /> {t('inbox.escalation.handled')}
+          <CheckCheck className="w-4 h-4" aria-hidden /> {t('inbox.escalation.handled')}
         </button>
         {frozen && (
-          <span className="text-xs text-[#8B6A28]" data-testid="escalation-frozen-note">
+          <span className="basis-full font-body text-body-sm text-gold-ink" data-testid="escalation-frozen-note">
             {t('inbox.closedProjectHint')}
           </span>
         )}
@@ -247,17 +277,17 @@ function EscalationActions({
   }
 
   return (
-    <div className="mt-3 space-y-2 border-t border-[#E3D7BC] pt-3">
+    <div className="mt-4 space-y-2 rounded-lg border border-line bg-inset p-4">
       {mode === 'assign' && (
         <>
-          <label className="block text-[10px] uppercase tracking-wide text-[#8B6A28]">
+          <label className={fieldLabel}>
             {t('inbox.escalation.pickAgent')}
           </label>
           {agents !== null && agents.length === 0 ? (
-            <p className="text-xs text-[#6B5E4E]">{t('inbox.escalation.noAgents')}</p>
+            <p className="font-body text-body-sm text-ink-light">{t('inbox.escalation.noAgents')}</p>
           ) : (
             <Dropdown
-              size="xs"
+              className="min-h-[44px] bg-paper sm:max-w-sm"
               testId="escalation-agent-select"
               value={agentId}
               onChange={setAgentId}
@@ -270,7 +300,7 @@ function EscalationActions({
         </>
       )}
 
-      <label className="block text-[10px] uppercase tracking-wide text-[#8B6A28]">
+      <label className={cn(fieldLabel, 'pt-1')}>
         {mode === 'assign'
           ? t('inbox.escalation.transferReason')
           : mode === 'next'
@@ -278,8 +308,8 @@ function EscalationActions({
             : t('inbox.escalation.cancelReason')}
       </label>
       <textarea
-        className={fieldClasses}
-        rows={2}
+        className={cn(fieldClasses, 'bg-paper resize-y')}
+        rows={3}
         value={text}
         // The server caps this at 2000 characters. Stopping it here means the writer
         // finds out while typing, rather than after a long paragraph and a bare 422.
@@ -295,9 +325,9 @@ function EscalationActions({
         onChange={(e) => setText(e.target.value)}
       />
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 pt-1">
         <button
-          className={primaryButton}
+          className={mode === 'cancel' ? cn(buttonBase, 'bg-vermilion-ink text-paper hover:bg-vermilion-ink/90') : primaryButton}
           data-testid="escalation-confirm"
           // All three paths want words, and not to be awkward: the new owner reads the
           // transfer reason, a cancelled task has to say why (FR-030), and an empty next
@@ -320,25 +350,12 @@ function EscalationActions({
 }
 
 const tabClasses = (active: boolean) =>
-  `px-4 py-2 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
+  cn(
+    '-mb-px min-h-[44px] px-4 font-body text-body-md font-medium border-b-2 transition-colors cursor-pointer',
     active
-      ? 'border-[#C25E3A] text-[#C25E3A]'
-      : 'border-transparent text-[#6B5E4E] hover:text-[#2A2318]'
-  }`;
-
-const quillIn = {
-  hidden: { opacity: 0, y: 16, filter: 'blur(2px)' },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    filter: 'blur(0px)',
-    transition: {
-      delay: i * 0.06,
-      duration: 0.4,
-      ease: [0, 0, 0.2, 1] as [number, number, number, number],
-    },
-  }),
-};
+      ? 'border-terracotta text-terracotta'
+      : 'border-transparent text-ink-light hover:text-ink hover:border-line-strong'
+  );
 
 export default function Inbox() {
   const { projects } = useAppStore();
@@ -443,157 +460,201 @@ export default function Inbox() {
   const pendingCount = tab === 'pending' ? items.length : 0;
 
   return (
-    <div>
-      <motion.div
-        initial={{ opacity: 0, y: -8 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center gap-3 mb-6"
-      >
-        <div className="flex-1">
-          <PageTitle title={t('nav.inbox')} subtitle={t('inbox.subtitle')} />
-        </div>
+    <div className="mx-auto w-full max-w-[1240px] flex flex-col gap-6 pb-10">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <PageTitle title={t('nav.inbox')} subtitle={t('inbox.subtitle')} />
         {pendingCount > 0 && (
-          <span className="px-2.5 py-1 text-xs font-medium bg-[#C25E3A] text-white rounded-full">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-bg px-3 py-1 font-body text-body-sm font-medium text-gold-ink">
+            <span className="h-1.5 w-1.5 rounded-full bg-gold" aria-hidden />
             {t('inbox.pendingCount', { count: pendingCount })}
           </span>
         )}
-      </motion.div>
+      </div>
 
-      <div className="flex gap-1 border-b border-[#E3D7BC] mb-6">
-        <button className={tabClasses(tab === 'pending')} onClick={() => switchTab('pending')}>
+      <div className="flex gap-1 border-b border-line" role="tablist">
+        <button
+          role="tab"
+          aria-selected={tab === 'pending'}
+          className={tabClasses(tab === 'pending')}
+          onClick={() => switchTab('pending')}
+        >
           {t('inbox.waiting')}
         </button>
-        <button className={tabClasses(tab === 'resolved')} onClick={() => switchTab('resolved')}>
+        <button
+          role="tab"
+          aria-selected={tab === 'resolved'}
+          className={tabClasses(tab === 'resolved')}
+          onClick={() => switchTab('resolved')}
+        >
           {t('inbox.handled')}
         </button>
       </div>
 
       {error && (
-        <p className="mb-4 text-sm text-[#C25E3A]" role="alert">
-          {error}
-        </p>
+        <div
+          className="flex items-start gap-2 rounded-lg border border-[#EDB8B0] bg-vermilion-bg px-4 py-3 font-body text-body-md text-vermilion-ink"
+          role="alert"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span className="min-w-0">{error}</span>
+        </div>
       )}
 
       {loading ? (
-        <p className="text-sm text-[#6B5E4E]">{t('common.loading')}</p>
+        <p className="font-body text-body-md text-ink-muted">{t('common.loading')}</p>
       ) : items.length === 0 ? (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="flex flex-col items-center justify-center py-20 text-center"
-        >
-          <div className="text-[#A89880] mb-3">
-            <InboxIcon size={48} strokeWidth={1} />
-          </div>
-          <h3 className="text-lg font-medium text-[#2A2318] font-[Fraunces]">
-            {t('inbox.allCaughtUp')}
-          </h3>
-          <p className="text-sm text-[#6B5E4E] mt-1">{t('inbox.nothingWaiting')}</p>
-        </motion.div>
+        <div className="flex flex-col items-center justify-center rounded-xl border border-line bg-paper px-6 py-16 text-center">
+          <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-inset text-ink-muted">
+            <InboxIcon className="h-6 w-6" strokeWidth={1.5} aria-hidden />
+          </span>
+          <h3 className="font-display text-[22px] font-medium text-ink">{t('inbox.allCaughtUp')}</h3>
+          <p className="mt-1 max-w-md font-body text-body-md text-ink-light">{t('inbox.nothingWaiting')}</p>
+        </div>
       ) : (
         <AnimatePresence mode="wait">
           <motion.div
             key={tab}
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.25 }}
-            className="space-y-6"
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="flex flex-col gap-7"
           >
             {Object.entries(grouped).map(([name, rows]) => (
-              <div key={name}>
-                <h3 className="text-sm font-medium text-[#6B5E4E] mb-3 font-[Fraunces]">{name}</h3>
-                <div className="space-y-3">
-                  {rows.map((item, i) => (
-                    <motion.div
-                      key={item.id}
-                      custom={i}
-                      variants={quillIn}
-                      initial="hidden"
-                      animate="visible"
-                    >
-                      <VellumPanel className="border-l-4 border-l-[#D4A843]">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="inline-flex items-center gap-1 text-xs text-[#8B6A28]">
-                                {KIND_ICONS[item.kind] ?? <FileQuestion size={14} />}
-                                {t(`inbox.kind.${item.kind}`, {
-                                  defaultValue: item.kind,
-                                })}
-                              </span>
-                              {item.reminder_tier > 0 && (
-                                <span className="px-1.5 py-0.5 text-[10px] rounded bg-[#F3E2D6] text-[#C25E3A]">
-                                  {t('inbox.reminderTier', { tier: item.reminder_tier })}
-                                </span>
+              <section key={name} className="flex flex-col gap-3">
+                <h2 className="font-display text-[20px] font-medium text-ink">
+                  {name}
+                  <span className="ml-2 font-body text-body-md font-normal text-ink-muted">{rows.length}</span>
+                </h2>
+                <div className="divide-y divide-line rounded-xl border border-line bg-paper">
+                  {rows.map((item) => {
+                    const frozen = isFrozen(item.project_id);
+                    const age = relativeTime(item.created_at, t);
+                    return (
+                      // A grid rather than nested flex rows: the icon keeps its column, the
+                      // actions sit to the right from lg, and on a phone the actions and the
+                      // escalation well take the card's full width instead of the narrow
+                      // column beside the icon.
+                      <article
+                        key={item.id}
+                        className="grid grid-cols-[auto_minmax(0,1fr)] lg:grid-cols-[auto_minmax(0,1fr)_auto] gap-x-3 sm:gap-x-4 gap-y-3 px-4 py-4 sm:px-5"
+                      >
+                        <span
+                          className={cn(
+                            'flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full',
+                            kindTint(item)
+                          )}
+                          aria-hidden
+                        >
+                          {KIND_ICONS[item.kind] ?? <FileQuestion className="w-[18px] h-[18px]" />}
+                        </span>
+
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={cn(
+                                'font-body text-body-sm font-medium',
+                                item.status !== 'pending'
+                                  ? 'text-ink-light'
+                                  : item.kind === 'escalation'
+                                    ? 'text-vermilion-ink'
+                                    : 'text-gold-ink'
                               )}
-                              {(item.status === 'void' || isFrozen(item.project_id)) && (
-                                <span
-                                  className="px-1.5 py-0.5 text-[10px] rounded bg-[#E3D7BC] text-[#6B5E4E]"
-                                  data-testid="inbox-closed-badge"
-                                >
-                                  {t('inbox.closedProject')}
-                                </span>
-                              )}
-                            </div>
-                            <h4 className="font-medium text-[#2A2318] text-sm">{item.title}</h4>
-                            {item.body && (
-                              <p className="text-xs text-[#6B5E4E] mt-1 whitespace-pre-line">
-                                {item.body}
-                              </p>
+                            >
+                              {t(`inbox.kind.${item.kind}`, { defaultValue: item.kind })}
+                            </span>
+                            {/* How many times it has been chased only matters while it still waits. */}
+                            {item.status === 'pending' && item.reminder_tier > 0 && (
+                              <StatusChip
+                                status="checking"
+                                showDot={false}
+                                label={t('inbox.reminderTier', { tier: item.reminder_tier })}
+                              />
                             )}
-                            {/* The record of what was already tried (FR-061). Without it an
-                                escalation asks the patron to go and reconstruct the history
-                                before they can answer — and that is the difference between
-                                a decision made today and one made next week. */}
-                            {item.kind === 'escalation' && <AttemptDossier item={item} />}
+                            {item.status === 'resolved' && (
+                              <StatusChip status="done" label={t('inbox.handled')} />
+                            )}
+                            {(item.status === 'void' || frozen) && (
+                              <span
+                                className="inline-flex items-center rounded-full bg-ash-bg px-2 py-0.5 font-body text-body-xs font-medium text-ink-light"
+                                data-testid="inbox-closed-badge"
+                              >
+                                {t('inbox.closedProject')}
+                              </span>
+                            )}
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
+                          <h3 className="mt-1 font-body text-[15px] font-medium leading-snug text-ink break-words">
+                            {item.title}
+                          </h3>
+                          {item.body && (
+                            <p className="mt-1 font-body text-body-md text-ink-light whitespace-pre-line break-words">
+                              {item.body}
+                            </p>
+                          )}
+                          <p className="mt-1.5 font-body text-body-sm text-ink-muted">
+                            {[name, age].filter(Boolean).join(' · ')}
+                          </p>
+                        </div>
+
+                        {(item.task_id || (tab === 'pending' && item.kind === 'output_acceptance')) && (
+                          <div className="col-span-2 sm:col-span-1 sm:col-start-2 lg:col-start-3 lg:row-start-1 flex flex-wrap items-center gap-2 lg:justify-end lg:self-start">
                             {item.task_id && (
                               <button
-                                onClick={() =>
-                                  navigate(wsHref(workspaceId, `/tasks/${item.task_id}`))
+                                onClick={() => navigate(wsHref(workspaceId, `/tasks/${item.task_id}`))}
+                                className={
+                                  tab === 'pending' && item.kind === 'output_acceptance'
+                                    ? cn(buttonBase, 'text-ink-light hover:text-ink hover:bg-inset')
+                                    : actionButton
                                 }
-                                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-[#6B5E4E] bg-[#EDE4CE] hover:bg-[#E3D7BC] rounded-md transition-colors"
                               >
-                                <ExternalLink size={12} /> {t('inbox.open')}
+                                <ExternalLink className="w-4 h-4" aria-hidden /> {t('inbox.open')}
                               </button>
                             )}
                             {tab === 'pending' && item.kind === 'output_acceptance' && (
                               <>
                                 <button
-                                  disabled={busyId === item.id || isFrozen(item.project_id)}
+                                  disabled={busyId === item.id || frozen}
                                   onClick={() => void sign(item, false)}
-                                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-[#6B5E4E] bg-[#EDE4CE] hover:bg-[#E3D7BC] rounded-md transition-colors disabled:opacity-50"
+                                  className={actionButton}
                                 >
-                                  <ThumbsDown size={12} /> {t('inbox.sendBack')}
+                                  <ThumbsDown className="w-4 h-4" aria-hidden /> {t('inbox.sendBack')}
                                 </button>
                                 <button
-                                  disabled={busyId === item.id || isFrozen(item.project_id)}
+                                  disabled={busyId === item.id || frozen}
                                   onClick={() => void sign(item, true)}
-                                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-[#D4A843] hover:bg-[#E8C96A] rounded-md transition-colors disabled:opacity-50"
+                                  className={primaryButton}
                                 >
-                                  <CheckCircle2 size={12} /> {t('inbox.accept')}
+                                  <CheckCircle2 className="w-4 h-4" aria-hidden /> {t('inbox.accept')}
                                 </button>
                               </>
                             )}
                           </div>
-                        </div>
-                        {tab === 'pending' && item.kind === 'escalation' && item.task_id && (
-                          <EscalationActions
-                            item={item}
-                            busy={busyId === item.id}
-                            frozen={isFrozen(item.project_id)}
-                            setBusy={setBusyId}
-                            onError={setError}
-                            onDone={reload}
-                          />
                         )}
-                      </VellumPanel>
-                    </motion.div>
-                  ))}
+
+                        {/* The record of what was already tried (FR-061). Without it an
+                            escalation asks the patron to go and reconstruct the history
+                            before they can answer — and that is the difference between
+                            a decision made today and one made next week. */}
+                        {item.kind === 'escalation' && (
+                          <div className="col-span-2 sm:col-span-1 sm:col-start-2 lg:col-span-2 lg:col-start-2 -mt-3 min-w-0">
+                            <AttemptDossier item={item} />
+                            {tab === 'pending' && item.task_id && (
+                              <EscalationActions
+                                item={item}
+                                busy={busyId === item.id}
+                                frozen={frozen}
+                                setBusy={setBusyId}
+                                onError={setError}
+                                onDone={reload}
+                              />
+                            )}
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
                 </div>
-              </div>
+              </section>
             ))}
           </motion.div>
         </AnimatePresence>

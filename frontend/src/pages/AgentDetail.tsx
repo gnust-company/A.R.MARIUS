@@ -1,18 +1,18 @@
 // Single-agent detail view (#72) — the one screen where an agent is managed (FR-007m, FR-007o).
-// Opened by clicking an agent card in the Directory. Overview answers *what is this agent and
-// where does it work*, with a direct chat beside it (FR-007p); Activity is the system↔agent run
-// log: every Run dispatched to this agent, each expandable to its durable trace. A live run
-// advances in place off the workspace event channel — no timer (T167, FR-080). Removing the
-// agent lives here too, behind the header's menu, rather than on every card of the list.
+// Opened by clicking an agent card in the Directory. The header says who the agent is and
+// where it works; the tabs below hold what can be read or changed about it; a direct chat with
+// it (FR-007p) sits in a column beside the tabs from xl up, and behind the header's button on
+// narrower screens. Activity is the system↔agent run log: every Run dispatched to this agent,
+// each expandable to its durable trace. A live run advances in place off the workspace event
+// channel — no timer (T167, FR-080). Removing the agent lives here too, behind the header's
+// menu, rather than on every card of the list.
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { motion } from 'framer-motion';
 import {
   ChevronLeft,
   ChevronDown,
   ChevronUp,
-  Bot,
   Star,
   Activity,
   Loader2,
@@ -20,6 +20,7 @@ import {
   Code,
   Terminal,
   Settings,
+  Server,
   Clock,
   Wrench,
   MessageSquare,
@@ -35,34 +36,36 @@ import { useAppStore } from '@/store/appStore';
 import type { AgentStatus, PlacementOption } from '@/store/appStore';
 import { listMariusRuns, listRunEvents, type RunDTO, type RunEventDTO } from '@/lib/api';
 import Modal from '@/components/Modal';
-import VellumPanel from '@/components/VellumPanel';
+import StatusChip from '@/components/StatusChip';
 import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
 import { onWorkspaceEvent } from '@/hooks/use-workspace-events';
+import { useViewport } from '@/hooks/use-viewport';
 import InstructionsTab from '@/components/agent/InstructionsTab';
 import HostRuntimeChooser from '@/components/agent/HostRuntimeChooser';
 import SkillsTab, { type SkillRow } from '@/components/agent/SkillsTab';
 import SettingsTab from '@/components/agent/SettingsTab';
-import AgentChatPanel from '@/components/agent/AgentChatPanel';
+import AgentChatPanel, { AGENT_CHAT_INPUT_ID } from '@/components/agent/AgentChatPanel';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
-// ─── Status palette (mirrors Directory's Scriptorium tones) ───────────────────
+// ─── Liveness ring (the same ring the Directory cards, the sidebar and Home use) ──────────────
 
-const STATUS_COLORS: Record<AgentStatus, { color: string; label: string }> = {
-  online: { color: '#4A9E6B', label: 'online' },
-  working: { color: '#D4A843', label: 'working' },
-  idle: { color: '#A89880', label: 'idle' },
-  offline: { color: '#8B7A6A', label: 'offline' },
+const AVATAR_TONE: Record<AgentStatus, string> = {
+  working: 'bg-lapis-bg text-lapis-ink ring-2 ring-offset-[3px] ring-offset-vellum ring-lapis',
+  online: 'bg-verdigris-bg text-verdigris-ink ring-2 ring-offset-[3px] ring-offset-vellum ring-verdigris',
+  idle: 'bg-verdigris-bg text-verdigris-ink ring-2 ring-offset-[3px] ring-offset-vellum ring-verdigris',
+  offline: 'bg-paper text-ink-muted border-2 border-dashed border-ash',
 };
 
-// Run lifecycle → chip tone. Terminal-good greens, in-flight golds, failures terracotta.
-const RUN_STATUS_COLORS: Record<string, { bg: string; text: string }> = {
-  queued: { bg: 'bg-[#EDE4CE]', text: 'text-[#6B5E4E]' },
-  running: { bg: 'bg-[#F5E8CC]', text: 'text-[#8B6A28]' },
-  completed: { bg: 'bg-[#D8EADD]', text: 'text-[#2A6E3A]' },
-  failed: { bg: 'bg-[#F3D9D0]', text: 'text-[#8A3B22]' },
-  timed_out: { bg: 'bg-[#F3D9D0]', text: 'text-[#8A3B22]' },
-  stopped: { bg: 'bg-[#E8E0D8]', text: 'text-[#8B7A6A]' },
+// Run lifecycle → the StatusChip tone that means the same thing: in flight is lapis, finished
+// well is verdigris, failed is vermilion, and a run that never started or was stopped rests ash.
+const RUN_CHIP_STATUS: Record<string, string> = {
+  queued: 'todo',
+  running: 'in_progress',
+  completed: 'done',
+  failed: 'blocked',
+  timed_out: 'blocked',
+  stopped: 'cancelled',
 };
 
 const ADAPTER_ICON: Record<string, typeof Globe> = {
@@ -70,6 +73,13 @@ const ADAPTER_ICON: Record<string, typeof Globe> = {
   claude_local: Code,
   echo: Terminal,
 };
+
+// Shared button looks, so the header, the cards and the dialog speak with one voice.
+const PRIMARY_BTN =
+  'inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-md bg-ink font-body text-body-md font-medium text-paper hover:bg-ink/85 transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+const SECONDARY_BTN =
+  'inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 rounded-md border border-line-strong bg-paper font-body text-body-md font-medium text-ink hover:bg-inset transition-colors';
+const CARD = 'rounded-xl border border-line bg-paper';
 
 // ─── Time helpers ─────────────────────────────────────────────────────────────
 
@@ -97,13 +107,17 @@ function formatAbsolute(iso?: string | null): string {
 
 // ─── Field row (label · value) ────────────────────────────────────────────────
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, wide = false }: { label: string; children: React.ReactNode; wide?: boolean }) {
   return (
-    <div>
-      <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#A89880]">{label}</p>
-      <div className="mt-0.5 text-[13px] text-[#2A2318] break-words">{children}</div>
+    <div className={cn('min-w-0', wide && 'col-span-full')}>
+      <dt className="font-body text-body-sm font-medium text-ink-light">{label}</dt>
+      <dd className="mt-1 font-body text-body-md text-ink break-words">{children}</dd>
     </div>
   );
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h2 className="font-display text-[20px] font-medium leading-tight text-ink">{children}</h2>;
 }
 
 // ─── Run event row (the durable per-run trace) ────────────────────────────────
@@ -131,26 +145,26 @@ function RunEventList({ runId }: { runId: string }) {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 px-3 py-3 text-[12px] text-[#A89880]">
+      <div className="flex items-center gap-2 px-4 py-3 font-body text-body-sm text-ink-muted">
         <Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('agentDetail.loadingTrace')}
       </div>
     );
   }
   if (!events || events.length === 0) {
-    return <div className="px-3 py-3 text-[12px] text-[#A89880]">{t('agentDetail.noTrace')}</div>;
+    return <div className="px-4 py-3 font-body text-body-sm text-ink-muted">{t('agentDetail.noTrace')}</div>;
   }
   return (
-    <div className="space-y-1.5 px-1 py-2">
+    <div className="space-y-1.5 px-3 py-3">
       {events.map((ev) => {
         const isTool = ev.type.includes('tool');
         const Icon = isTool ? Wrench : MessageSquare;
         const text = eventText(ev);
         return (
-          <div key={ev.seq} className="flex gap-2 px-2 py-1.5 rounded bg-[#F7F0E0] border border-[#EDE4CE]">
-            <Icon className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-[#A89880]" />
+          <div key={ev.seq} className="flex gap-2.5 px-3 py-2 rounded-lg bg-paper border border-line">
+            <Icon className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-ink-muted" aria-hidden />
             <div className="min-w-0">
-              <span className="text-[11px] font-mono text-[#8B7A6A]">{ev.type}</span>
-              {text && <p className="text-[12px] text-[#2A2318] break-words whitespace-pre-wrap">{text}</p>}
+              <span className="font-mono text-mono-sm text-ink-muted">{ev.type}</span>
+              {text && <p className="font-body text-body-sm text-ink break-words whitespace-pre-wrap">{text}</p>}
             </div>
           </div>
         );
@@ -166,7 +180,6 @@ function RunRow({ run }: { run: RunDTO }) {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const rel = useRelativeTime();
   const [open, setOpen] = useState(false);
-  const tone = RUN_STATUS_COLORS[run.status] || RUN_STATUS_COLORS.stopped;
   const wakeLabel = t(`agentDetail.wakeSource.${run.wake_source}`, { defaultValue: run.wake_source });
   const statusLabel = t(`agentDetail.runStatus.${run.status}`, { defaultValue: run.status });
   // Every cause, worded here rather than on the server: the same wake also went to an
@@ -180,39 +193,42 @@ function RunRow({ run }: { run: RunDTO }) {
     : run.trigger_detail;
 
   return (
-    <div className="rounded-lg border border-[#E3D7BC] bg-[#FBF6EA] overflow-hidden">
+    <div className={cn(CARD, 'overflow-hidden')}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-[#F3ECDA] transition-colors"
+        aria-expanded={open}
+        className="w-full flex items-start gap-3 px-4 sm:px-5 py-3.5 text-left hover:bg-inset transition-colors"
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[13px] font-medium text-[#2A2318]">{wakeLabel}</span>
-            <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium', tone.bg, tone.text)}>
-              {statusLabel}
-            </span>
+            <span className="font-body text-[15px] font-medium text-ink">{wakeLabel}</span>
+            <StatusChip status={RUN_CHIP_STATUS[run.status] ?? 'cancelled'} label={statusLabel} />
           </div>
           {wakeReason && (
-            <p className="mt-1 text-[12px] text-[#6B5E4E] break-words line-clamp-2">{wakeReason}</p>
+            <p className="mt-1 font-body text-body-sm text-ink-light break-words line-clamp-2">{wakeReason}</p>
           )}
           {run.error && (
-            <p className="mt-1 flex items-start gap-1 text-[12px] text-[#8A3B22]">
-              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> {run.error}
+            <p className="mt-1 flex items-start gap-1.5 font-body text-body-sm text-vermilion-ink break-words">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" aria-hidden /> {run.error}
             </p>
           )}
           {run.next_action && (
-            <p className="mt-1 text-[12px] text-[#6B5E4E] break-words">
-              <span className="text-[#A89880]">{t('agentDetail.nextAction')}: </span>{run.next_action}
+            <p className="mt-1 font-body text-body-sm text-ink-light break-words">
+              <span className="text-ink-muted">{t('agentDetail.nextAction')}: </span>{run.next_action}
             </p>
           )}
-          <p className="mt-1 text-[11px] text-[#A89880]" title={formatAbsolute(run.created_at)}>
+          <p className="mt-1 font-body text-body-sm text-ink-muted" title={formatAbsolute(run.created_at)}>
             {rel(run.created_at)}
           </p>
         </div>
-        {open ? <ChevronUp className="w-4 h-4 text-[#A89880] mt-1" /> : <ChevronDown className="w-4 h-4 text-[#A89880] mt-1" />}
+        {open ? (
+          <ChevronUp className="w-4 h-4 text-ink-muted mt-1 flex-shrink-0" aria-hidden />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-ink-muted mt-1 flex-shrink-0" aria-hidden />
+        )}
       </button>
       {open && (
-        <div className="border-t border-[#E3D7BC] bg-[#F7F0E0]/60">
+        <div className="border-t border-line bg-inset">
           <RunEventList runId={run.id} />
           {/* The panel above is a preview. The whole log — every event, filterable, with the
               long fields openable — is its own page, because answering *what did it do and
@@ -220,9 +236,9 @@ function RunRow({ run }: { run: RunDTO }) {
           <div className="px-4 pb-3">
             <Link
               to={wsHref(workspaceId, `runs/${run.id}`)}
-              className="inline-flex items-center gap-1 text-[12px] text-[#C25E3A] hover:underline"
+              className="inline-flex items-center gap-1.5 min-h-[44px] font-body text-body-sm font-medium text-terracotta hover:text-terracotta-dark"
             >
-              <ExternalLink className="w-3 h-3" /> {t('runTrace.openFullLog')}
+              <ExternalLink className="w-3.5 h-3.5" aria-hidden /> {t('runTrace.openFullLog')}
             </Link>
           </div>
         </div>
@@ -258,6 +274,9 @@ export default function AgentDetail() {
   const agent = mariuses.find((m) => m.id === id);
 
   const [tab, setTab] = useState<Tab>('overview');
+  // From xl the chat is a column beside the tabs; below it, a panel opened from the header.
+  const wide = useViewport() === 'desktop';
+  const [chatOpen, setChatOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   // What the place this agent works at lets a person pick (FR-007k), read for the Settings tab.
@@ -326,7 +345,6 @@ export default function AgentDetail() {
   }, [workspaceId, id, loadRuns]);
 
   const status: AgentStatus = agent?.status || 'offline';
-  const statusColor = STATUS_COLORS[status] || STATUS_COLORS.offline;
   const displayName = agent?.displayName || agent?.name || t('agentDetail.agentFallback');
   const AdapterIcon = ADAPTER_ICON[agent?.adapterType || ''] || Globe;
   const linkedSkillNames = agent?.skills || [];
@@ -440,292 +458,350 @@ export default function AgentDetail() {
     setInstalling(false);
   };
 
-  return (
-    <div className="min-h-[100dvh]">
-      {/* Back link */}
-      <button
-        onClick={() => navigate(wsHref(workspaceId, '/agents'))}
-        className="inline-flex items-center gap-1.5 mb-5 text-[13px] font-medium text-[#6B5E4E] hover:text-[#C25E3A] transition-colors"
-      >
-        <ChevronLeft className="w-4 h-4" /> {t('agentDetail.backToAgents')}
-      </button>
+  // The chat column's toggle. Below xl there is no room for a column beside the tabs, so the
+  // chat waits behind the header's button; from xl it is always beside the tabs and the same
+  // button only puts the cursor in its box.
+  const talk = () => {
+    if (wide) {
+      document.getElementById(AGENT_CHAT_INPUT_ID)?.focus();
+      return;
+    }
+    setChatOpen((was) => !was);
+  };
 
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="flex items-start gap-4 mb-8"
-      >
-        <div
-          className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 border-2 flex items-center justify-center"
-          style={{ borderColor: statusColor.color }}
-        >
-          {agent?.avatar ? (
-            <img src={agent.avatar} alt={displayName} className="w-full h-full object-cover" />
-          ) : (
-            <Bot className="w-7 h-7 text-ink-muted" />
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="font-['Fraunces',Georgia,serif] text-[32px] font-semibold text-[#2A2318] leading-tight">
-              {displayName}
-            </h1>
-            {agent?.isWorkspaceAgent === true && (
-              <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#D4A843] text-[#2A2318]">
-                <Star className="w-3 h-3" /> WA
-              </span>
-            )}
-          </div>
-          <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-            <span
-              className="inline-flex items-center gap-1.5 text-[12px] font-medium"
-              style={{ color: statusColor.color }}
+  return (
+    <div className="mx-auto w-full max-w-[1240px] pb-10">
+
+      {/* Header and tabs on the left, the chat beside them from xl — beside the header too, so
+          the chat starts at the top of the page and its composer fits on screen. Below xl the
+          chat is one column with everything else and comes first when opened, so the button
+          that opened it is right above it. One AgentChatPanel either way — two would hold two
+          streams open. */}
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
+        <div className="min-w-0 xl:col-start-1 xl:row-start-1">
+          <button
+            onClick={() => navigate(wsHref(workspaceId, '/agents'))}
+            className="-ml-2 mb-3 inline-flex items-center gap-1.5 min-h-[44px] px-2 rounded-md font-body text-body-sm font-medium text-ink-light hover:text-ink hover:bg-inset transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" aria-hidden /> {t('agentDetail.backToAgents')}
+          </button>
+
+          {/* Header: who this is, whether it is alive, where it works — and the two things a
+              person does from here, talking to it and (behind the menu) removing it. */}
+          <header className="mb-6 flex flex-wrap items-start gap-x-5 gap-y-4">
+            <div
+              className={cn(
+                'w-16 h-16 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-body text-[24px] font-semibold',
+                AVATAR_TONE[status] ?? AVATAR_TONE.offline,
+              )}
             >
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColor.color }} />
-              {t('directory.status.' + status)}
-            </span>
-          </div>
-        </div>
-        {agent && (
-          <div className="relative flex-shrink-0">
-            <button
-              type="button"
-              onClick={() => setMenuOpen((open) => !open)}
-              className="p-1.5 rounded-md text-[#6B5E4E] hover:text-[#2A2318] hover:bg-[#EDE4CE] transition-colors"
-              aria-label={t('agentDetail.moreActions')}
-              aria-expanded={menuOpen}
-            >
-              <MoreHorizontal className="w-5 h-5" />
-            </button>
-            {menuOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-                <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-[#E3D7BC] bg-[#F7F0E0] py-1 shadow-lg">
+              {agent?.avatar ? (
+                <img src={agent.avatar} alt={displayName} className="w-full h-full object-cover" />
+              ) : (
+                displayName.charAt(0).toUpperCase()
+              )}
+            </div>
+            <div className="flex-[1_1_240px] min-w-0">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <h1 className="min-w-0 break-words font-display text-[30px] font-medium leading-[1.1] tracking-tight text-ink">
+                  {displayName}
+                </h1>
+                <StatusChip status={status} label={t('directory.status.' + status)} size="md" />
+                {agent?.isWorkspaceAgent === true && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-body text-body-sm font-medium bg-gold-bg text-gold-ink">
+                    <Star className="w-3.5 h-3.5" aria-hidden /> {t('directory.workspaceAgent')}
+                  </span>
+                )}
+              </div>
+              {agent?.role && (
+                <p className="mt-1.5 font-body text-body-md text-ink-light break-words">{agent.role}</p>
+              )}
+              {/* Mono only for the CLI and machine names themselves; "none chosen" is a sentence. */}
+              <p className="mt-1.5 flex items-center gap-1.5 text-ink-light min-w-0">
+                <Server className="w-3.5 h-3.5 flex-shrink-0" aria-hidden />
+                <span className={cn('truncate', agent?.runtime ? 'font-mono text-mono-sm' : 'font-body text-body-sm')}>
+                  {agent?.runtime
+                    ? t('agentDetail.runtimeLine', {
+                        cli: agent.runtime.cli_kind,
+                        machine: agent.runtime.machine_name,
+                      })
+                    : t('agentDetail.runtimeNone')}
+                </span>
+              </p>
+            </div>
+            {agent && workspaceId && (
+              <div className="flex items-center gap-2">
+                {!wide && (
+                <button
+                  type="button"
+                  onClick={talk}
+                  data-chat-toggle
+                  aria-controls="agent-chat"
+                  aria-expanded={chatOpen}
+                  className={PRIMARY_BTN}
+                >
+                  <MessageSquare className="w-4 h-4" aria-hidden />
+                  {chatOpen
+                    ? t('agentDetail.hideChat')
+                    : t('agentChat.title', { name: displayName })}
+                </button>
+                )}
+                <div className="relative">
                   <button
                     type="button"
-                    onClick={() => { setMenuOpen(false); setConfirmDelete(true); }}
-                    className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-[13px] text-[#8A3B22] hover:bg-[#F3D9D0] transition-colors"
+                    onClick={() => setMenuOpen((open) => !open)}
+                    className="w-11 h-11 inline-flex items-center justify-center rounded-md border border-line-strong bg-paper text-ink-light hover:text-ink hover:bg-inset transition-colors"
+                    aria-label={t('agentDetail.moreActions')}
+                    aria-expanded={menuOpen}
                   >
-                    <Trash2 className="w-3.5 h-3.5" /> {t('agentDetail.deleteAgent')}
+                    <MoreHorizontal className="w-5 h-5" aria-hidden />
                   </button>
+                  {menuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                      <div className="absolute right-0 top-full z-20 mt-1.5 w-52 rounded-lg border border-line bg-paper py-1 shadow-gilt">
+                        <button
+                          type="button"
+                          onClick={() => { setMenuOpen(false); setConfirmDelete(true); }}
+                          className="flex w-full items-center gap-2 min-h-[44px] px-3.5 text-left font-body text-body-md text-vermilion-ink hover:bg-vermilion-bg transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" aria-hidden /> {t('agentDetail.deleteAgent')}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
-              </>
+              </div>
             )}
-          </div>
-        )}
-      </motion.div>
+          </header>
 
-      {/* The screen is a set of sections rather than one page, inherited from Multica's agent
-          view: what an agent *is* (its text, its skills, its settings) is a different question
-          from what it has been *doing*, and one scroll holding both meant the editable half had
-          nowhere to live. Their shape is Overview · Work · Capabilities · Settings; ours is the
-          same idea with the tabs we have things to put in. */}
-      <div className="mb-6 flex flex-wrap gap-1 border-b border-[#E3D7BC]">
-        {TABS.map((id) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            aria-current={tab === id ? 'page' : undefined}
+          {/* The screen is a set of sections rather than one page, inherited from Multica's
+              agent view: what an agent *is* (its text, its skills, its settings) is a different
+              question from what it has been *doing*, and one scroll holding both meant the
+              editable half had nowhere to live. Their shape is Overview · Work · Capabilities ·
+              Settings; ours is the same idea with the tabs we have things to put in. */}
+          <div className="no-scrollbar -mx-4 mb-5 flex overflow-x-auto border-b border-line px-4 sm:mx-0 sm:px-0">
+            {TABS.map((id) => (
+              <button
+                key={id}
+                type="button"
+                data-tab={id}
+                onClick={() => setTab(id)}
+                aria-current={tab === id ? 'page' : undefined}
+                className={cn(
+                  '-mb-px shrink-0 whitespace-nowrap border-b-2 min-h-[44px] px-3.5 font-body text-body-md font-medium transition-colors',
+                  tab === id
+                    ? 'border-terracotta text-ink'
+                    : 'border-transparent text-ink-light hover:text-ink',
+                )}
+              >
+                {t('agentDetail.tab.' + id)}
+              </button>
+            ))}
+          </div>
+
+          {/* One place for what went wrong, above whichever tab is open — a save refused on
+              the Settings tab used to be written into a box that only the Activity tab showed. */}
+          {error && (
+            <div className="mb-4 flex items-start gap-2 px-4 py-3 rounded-lg border border-[#EDB8B0] bg-vermilion-bg font-body text-body-sm text-vermilion-ink">
+              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden /> <span className="min-w-0 break-words">{error}</span>
+            </div>
+          )}
+
+          {tab === 'instructions' && agent && (
+            <section className={cn(CARD, 'max-w-3xl p-5 sm:p-6')}>
+              <InstructionsTab
+                key={agent.id}
+                instructions={agent.instructions ?? ''}
+                systemInstructions={agent.systemInstructions ?? ''}
+                canEdit
+                onSave={saveInstructions}
+              />
+            </section>
+          )}
+
+          {tab === 'skills' && agent && (
+            <section className={cn(CARD, 'max-w-3xl p-5 sm:p-6')}>
+              <SkillsTab
+                carried={carriedSkills}
+                canEdit
+                onRemove={removeSkill}
+                onAdd={() => setLinkSkillsOpen(true)}
+              />
+            </section>
+          )}
+
+          {tab === 'settings' && agent && (
+            <section className={cn(CARD, 'max-w-3xl p-5 sm:p-6')}>
+              <SettingsTab
+                key={agent.id}
+                name={agent.displayName || agent.name}
+                description={agent.description ?? ''}
+                runtimeOptions={agent.runtimeOptions ?? {}}
+                runtime={agent.runtime}
+                options={options}
+                optionsLoading={optionsLoading}
+                canEdit
+                onSave={saveProfile}
+                onSaveRuntimeOptions={saveRuntimeOptions}
+              />
+            </section>
+          )}
+
+          {/* Overview: what this agent is and where it works. The run log is its own tab and
+              is not repeated here — showing it in both places was the same panel twice. The
+              details are one card — liveness and last-seen with them. As a second card they
+              made two boxes of very different heights side by side. A host still choosing a
+              runtime gets its chooser above it. */}
+          {tab === 'overview' && (
+            <div className="flex flex-wrap items-start gap-5">
+              {needsRuntime && agent && workspaceId && (
+                <section className={cn(CARD, 'basis-full p-5 sm:p-6')}>
+                  <HostRuntimeChooser
+                    workspaceId={workspaceId}
+                    hostId={agent.id}
+                    hostName={displayName}
+                  />
+                </section>
+              )}
+
+              <section className={cn(CARD, 'basis-full min-w-0 p-5 sm:p-6')}>
+                <SectionTitle>{t('agentDetail.details')}</SectionTitle>
+                <dl className="mt-4 grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-3 gap-x-8 gap-y-5">
+                  <Field label={t('agentDetail.field.runtime')}>
+                    <span className="flex items-start gap-1.5 min-w-0">
+                      <AdapterIcon className="w-3.5 h-3.5 mt-[5px] flex-shrink-0 text-ink-light" aria-hidden />
+                      <span className={cn('break-words', agent?.runtime && 'font-mono text-mono-sm')}>
+                        {agent?.runtime
+                          ? t('agentDetail.runtimeLine', {
+                              cli: agent.runtime.cli_kind,
+                              machine: agent.runtime.machine_name,
+                            })
+                          : t('agentDetail.runtimeNone')}
+                      </span>
+                    </span>
+                  </Field>
+                  <Field label={t('agentDetail.field.model')}>
+                    {agent?.runtimeOptions?.model ? (
+                      <span className="font-mono text-mono-sm">{agent.runtimeOptions.model}</span>
+                    ) : (
+                      t('agentDetail.modelDefault')
+                    )}
+                  </Field>
+                  <Field label={t('agentDetail.field.liveness')}>
+                    <StatusChip status={status} label={t('directory.status.' + status)} />
+                  </Field>
+                  <Field label={t('agentDetail.field.lastSeen')}>
+                    <span title={formatAbsolute(agent?.lastSeen)}>
+                      {agent?.lastSeen ? rel(agent.lastSeen) : t('agentDetail.never')}
+                    </span>
+                  </Field>
+                  <Field label={t('agentDetail.field.workspaceAgent')}>
+                    {agent?.isWorkspaceAgent ? t('common.yes') : t('common.no')}
+                  </Field>
+                  {agent?.offlineReason && (
+                    <div className="col-span-full rounded-lg bg-gold-bg px-3.5 py-3">
+                      <dt className="sr-only">{t('agentDetail.offlineReason.label')}</dt>
+                      <dd className="flex items-start gap-1.5 font-body text-body-md text-gold-ink">
+                        <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden />
+                        <span className="min-w-0">
+                          {t('agentDetail.offlineReason.' + agent.offlineReason, {
+                            defaultValue: t('agentDetail.offlineReason.unknown'),
+                          })}
+                        </span>
+                      </dd>
+                    </div>
+                  )}
+                  <Field label={t('agentDetail.field.id')} wide>
+                    <span className="font-mono text-mono-sm break-all text-ink-light">{id}</span>
+                  </Field>
+                </dl>
+
+                <div className="mt-5 pt-5 border-t border-line">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="font-body text-body-sm font-medium text-ink-light">
+                      {t('agentDetail.field.skills')}
+                    </h3>
+                    <button onClick={openLinkSkills} className={cn(SECONDARY_BTN, 'px-3 text-body-sm')}>
+                      <Plus className="w-4 h-4" aria-hidden /> {t('agentDetail.linkSkills.add')}
+                    </button>
+                  </div>
+                  {linkedSkillNames.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {linkedSkillNames.map((s) => (
+                        <span
+                          key={s}
+                          className="inline-flex items-center px-2.5 py-0.5 rounded-full font-body text-body-sm font-medium bg-ash-bg text-ink-light"
+                        >
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="font-body text-body-md text-ink-muted">{t('agentDetail.noSkills')}</p>
+                  )}
+                </div>
+              </section>
+
+            </div>
+          )}
+
+          {/* ── Activity (system↔agent run log) ── */}
+          {tab === 'activity' && (
+            <section>
+              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-ink-muted" aria-hidden />
+                  <SectionTitle>{t('agentDetail.activity')}</SectionTitle>
+                </div>
+                {runs !== null && (
+                  <span className="font-body text-body-sm text-ink-muted">
+                    {t('agentDetail.runCount', { count: runs.length })}
+                  </span>
+                )}
+              </div>
+
+              {runs === null ? (
+                <div className={cn(CARD, 'flex items-center justify-center gap-2 py-16 font-body text-body-md text-ink-muted')}>
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> {t('agentDetail.loadingActivity')}
+                </div>
+              ) : runs.length === 0 ? (
+                <div className={cn(CARD, 'flex flex-col items-center justify-center gap-2 px-6 py-14 text-center')}>
+                  <div className="mb-1 w-12 h-12 rounded-full bg-inset flex items-center justify-center">
+                    <Clock className="w-6 h-6 text-ink-muted" aria-hidden />
+                  </div>
+                  <p className="font-body text-[15px] font-medium text-ink">{t('agentDetail.noActivityTitle')}</p>
+                  <p className="font-body text-body-md text-ink-light max-w-sm">{t('agentDetail.noActivityHint')}</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {runs.map((run) => (
+                    <RunRow key={run.id} run={run} />
+                  ))}
+                </div>
+              )}
+
+              {runs !== null && runs.length > 0 && (
+                <p className="mt-4 flex items-center gap-1.5 font-body text-body-sm text-ink-muted">
+                  <CheckCircle2 className="w-3.5 h-3.5" aria-hidden /> {t('agentDetail.liveHint')}
+                </p>
+              )}
+            </section>
+          )}
+        </div>
+
+        {/* The direct line to this agent (FR-007p). Sticky beside the tabs from xl, so it
+            stays in reach while the person scrolls a long run log or edits instructions. */}
+        {agent && workspaceId && (
+          <aside
+            id="agent-chat"
+            aria-label={t('agentChat.title', { name: displayName })}
             className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-[13px] font-medium transition-colors',
-              tab === id
-                ? 'border-[#C25E3A] text-[#2A2318]'
-                : 'border-transparent text-[#6B5E4E] hover:text-[#2A2318]',
+              'min-w-0 order-first xl:order-none xl:col-start-2 xl:row-start-1 xl:sticky xl:top-[72px]',
+              !wide && !chatOpen && 'hidden',
             )}
           >
-            {t('agentDetail.tab.' + id)}
-          </button>
-        ))}
-      </div>
-
-      {/* One place for what went wrong, above whichever tab is open — a save refused on the
-          Settings tab used to be written into a box that only the Activity tab showed. */}
-      {error && (
-        <div className="mb-4 flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#F3D9D0] text-[12px] text-[#8A3B22] border border-[#E3C0B2]">
-          <AlertTriangle className="w-3.5 h-3.5" /> {error}
-        </div>
-      )}
-
-      {tab === 'instructions' && agent && (
-        <VellumPanel className="rounded-lg border-[#E3D7BC]">
-          <InstructionsTab
-            key={agent.id}
-            instructions={agent.instructions ?? ''}
-            systemInstructions={agent.systemInstructions ?? ''}
-            canEdit
-            onSave={saveInstructions}
-          />
-        </VellumPanel>
-      )}
-
-      {tab === 'skills' && agent && (
-        <VellumPanel className="rounded-lg border-[#E3D7BC]">
-          <SkillsTab
-            carried={carriedSkills}
-            canEdit
-            onRemove={removeSkill}
-            onAdd={() => setLinkSkillsOpen(true)}
-          />
-        </VellumPanel>
-      )}
-
-      {tab === 'settings' && agent && (
-        <VellumPanel className="rounded-lg border-[#E3D7BC]">
-          <SettingsTab
-            key={agent.id}
-            name={agent.displayName || agent.name}
-            description={agent.description ?? ''}
-            runtimeOptions={agent.runtimeOptions ?? {}}
-            runtime={agent.runtime}
-            options={options}
-            optionsLoading={optionsLoading}
-            canEdit
-            onSave={saveProfile}
-            onSaveRuntimeOptions={saveRuntimeOptions}
-          />
-        </VellumPanel>
-      )}
-
-      {/* Overview: what this agent is and where it works, beside a direct line to it
-          (FR-007p). The run log is its own tab and is not repeated here — showing it in both
-          places was the same panel twice. */}
-      {tab === 'overview' && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
-          <div className="space-y-6">
-            {needsRuntime && agent && workspaceId && (
-              <VellumPanel className="rounded-lg border-[#C25E3A]/40">
-                <HostRuntimeChooser
-                  workspaceId={workspaceId}
-                  hostId={agent.id}
-                  hostName={displayName}
-                />
-              </VellumPanel>
-            )}
-            <VellumPanel className="rounded-lg border-[#E3D7BC]">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A89880] mb-4">
-                {t('agentDetail.overview')}
-              </p>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label={t('agentDetail.field.runtime')}>
-                  <span className="inline-flex items-center gap-1.5">
-                    <AdapterIcon className="w-3.5 h-3.5 text-[#6B5E4E]" />
-                    <span className="font-mono text-[12px]">
-                      {agent?.runtime
-                        ? t('agentDetail.runtimeLine', {
-                            cli: agent.runtime.cli_kind,
-                            machine: agent.runtime.machine_name,
-                          })
-                        : t('agentDetail.runtimeNone')}
-                    </span>
-                  </span>
-                </Field>
-                <Field label={t('agentDetail.field.model')}>
-                  <span className="font-mono text-[12px]">
-                    {agent?.runtimeOptions?.model || t('agentDetail.modelDefault')}
-                  </span>
-                </Field>
-                <Field label={t('agentDetail.field.workspaceAgent')}>
-                  {agent?.isWorkspaceAgent ? t('common.yes') : t('common.no')}
-                </Field>
-                <div className="col-span-2">
-                  <Field label={t('agentDetail.field.id')}>
-                    <span className="font-mono text-[12px] break-all text-[#6B5E4E]">{id}</span>
-                  </Field>
-                </div>
-              </div>
-              <div className="mt-4 pt-4 border-t border-[#E3D7BC]">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#A89880]">
-                    {t('agentDetail.field.skills')}
-                  </p>
-                  <button
-                    onClick={openLinkSkills}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium text-[#C25E3A] hover:bg-[#F3D9D0] transition-colors"
-                    aria-label={t('agentDetail.linkSkills.add')}
-                    title={t('agentDetail.linkSkills.add')}
-                  >
-                    <Plus className="w-3.5 h-3.5" /> {t('agentDetail.linkSkills.add')}
-                  </button>
-                </div>
-                {linkedSkillNames.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {linkedSkillNames.map((s) => (
-                      <span
-                        key={s}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#E3D7BC] text-[#6B5E4E]"
-                      >
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-[12px] text-[#A89880]">{t('agentDetail.noSkills')}</p>
-                )}
-              </div>
-            </VellumPanel>
-
-            <VellumPanel className="rounded-lg border-[#E3D7BC]">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A89880]">
-                  {t('agentDetail.health')}
-                </p>
-                <span
-                  className="inline-flex items-center gap-1.5 text-[12px] font-medium"
-                  style={{ color: statusColor.color }}
-                >
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColor.color }} />
-                  {t('directory.status.' + status)}
-                </span>
-              </div>
-              <div className="space-y-3 text-[13px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-[#6B5E4E]">{t('agentDetail.field.liveness')}</span>
-                  <span className="text-[#2A2318] font-medium">{t('directory.status.' + status)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[#6B5E4E]">{t('agentDetail.field.lastSeen')}</span>
-                  <span className="text-[#2A2318]" title={formatAbsolute(agent?.lastSeen)}>
-                    {agent?.lastSeen ? rel(agent.lastSeen) : t('agentDetail.never')}
-                  </span>
-                </div>
-                {/* Why, not just whether (FR-006c). Every way an agent can be unreachable —
-                    never placed, its CLI uninstalled, its machine switched off — reaches the
-                    business layers as the one word "offline"; this is the only place the
-                    difference is allowed to show, because this is the only place it helps.
-                    The server sends a code and the sentence is built here, so the same state
-                    reads in whichever language the person set (Hiến pháp VI + VII). An
-                    unrecognised code still gets a sentence rather than a raw key: a screen
-                    that leaks `agentDetail.offlineReason.x` is a screen that told them
-                    nothing.
-
-                    The row is labelled for the *place*, not for the verdict, and that is not
-                    cosmetic. Liveness is decided on a clock and this is decided on the state
-                    of a place, so there is a real window — the workplace shut a moment ago,
-                    the three-probe decay has not run yet — where the agent still reads
-                    online. Labelling this "why offline" would have printed a contradiction
-                    on screen during exactly the window when the person could still act on
-                    it. Named for the place, the same sentence is a warning before the fall
-                    and the explanation after it. */}
-                {agent?.offlineReason && (
-                  <div className="flex items-start justify-between gap-4 pt-3 border-t border-[#E3D7BC]">
-                    <span className="text-[#6B5E4E] shrink-0">
-                      {t('agentDetail.offlineReason.label')}
-                    </span>
-                    <span className="text-[#8A3B22] text-right">
-                      {t('agentDetail.offlineReason.' + agent.offlineReason, {
-                        defaultValue: t('agentDetail.offlineReason.unknown'),
-                      })}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </VellumPanel>
-          </div>
-          <VellumPanel className="rounded-lg border-[#E3D7BC]">
-            {agent && workspaceId && (
+            <div className="h-[min(560px,78dvh)] xl:h-[min(880px,calc(100dvh-7rem))]">
               <AgentChatPanel
                 key={agent.id}
                 workspaceId={workspaceId}
@@ -733,55 +809,10 @@ export default function AgentDetail() {
                 agentName={displayName}
                 online={status !== 'offline'}
               />
-            )}
-          </VellumPanel>
-        </div>
-      )}
-
-      {/* ── Activity (system↔agent run log) ── */}
-      {tab === 'activity' && (
-        <VellumPanel className="rounded-lg border-[#E3D7BC] flex flex-col">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4 text-[#C25E3A]" />
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A89880]">
-                {t('agentDetail.activity')}
-              </p>
             </div>
-            {runs !== null && (
-              <span className="text-[11px] text-[#A89880]">
-                {t('agentDetail.runCount', { count: runs.length })}
-              </span>
-            )}
-          </div>
-
-          {runs === null ? (
-            <div className="flex items-center justify-center gap-2 py-16 text-[13px] text-[#A89880]">
-              <Loader2 className="w-4 h-4 animate-spin" /> {t('agentDetail.loadingActivity')}
-            </div>
-          ) : runs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-              <div className="w-12 h-12 rounded-full bg-[#EDE4CE] flex items-center justify-center">
-                <Clock className="w-6 h-6 text-[#A89880]" />
-              </div>
-              <p className="text-[13px] font-medium text-[#2A2318]">{t('agentDetail.noActivityTitle')}</p>
-              <p className="text-[12px] text-[#A89880] max-w-xs">{t('agentDetail.noActivityHint')}</p>
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {runs.map((run) => (
-                <RunRow key={run.id} run={run} />
-              ))}
-            </div>
-          )}
-
-          {runs !== null && runs.length > 0 && (
-            <p className="mt-4 flex items-center gap-1.5 text-[11px] text-[#A89880]">
-              <CheckCircle2 className="w-3 h-3" /> {t('agentDetail.liveHint')}
-            </p>
-          )}
-        </VellumPanel>
-      )}
+          </aside>
+        )}
+      </div>
 
       {/* Post-invite skill install (#74) — link more skills + push a one-time install prompt. */}
       <Modal
@@ -790,23 +821,15 @@ export default function AgentDetail() {
         title={t('agentDetail.linkSkills.title', { name: displayName })}
         footer={
           <>
-            <button
-              onClick={() => setLinkSkillsOpen(false)}
-              className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC] transition-colors"
-            >
+            <button onClick={() => setLinkSkillsOpen(false)} className={SECONDARY_BTN}>
               {t('common.cancel')}
             </button>
             <button
               onClick={handleInstallSkills}
               disabled={selectedNewIds.length === 0 || installing}
-              className={cn(
-                'inline-flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-all',
-                selectedNewIds.length > 0 && !installing
-                  ? 'bg-[#C25E3A] text-white hover:bg-[#D97B5A]'
-                  : 'bg-[#E3D7BC] text-[#A89880] cursor-not-allowed',
-              )}
+              className={PRIMARY_BTN}
             >
-              {installing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {installing && <Loader2 className="w-4 h-4 animate-spin" aria-hidden />}
               {linkFailed
                 ? t('agentDetail.linkSkills.retry')
                 : installing
@@ -816,11 +839,11 @@ export default function AgentDetail() {
           </>
         }
       >
-        <p className="text-[12px] text-[#6B5E4E] mb-3">{t('agentDetail.linkSkills.hint')}</p>
+        <p className="font-body text-body-md text-ink-light mb-4">{t('agentDetail.linkSkills.hint')}</p>
         {allSkills.length === 0 ? (
-          <p className="text-[12px] text-[#A89880]">{t('agentDetail.linkSkills.noneAvailable')}</p>
+          <p className="font-body text-body-md text-ink-muted">{t('agentDetail.linkSkills.noneAvailable')}</p>
         ) : (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {allSkills.map((skill) => {
               const linked = linkedNameSet.has(skill.name);
               const selected = selectedNewIds.includes(skill.id);
@@ -828,18 +851,19 @@ export default function AgentDetail() {
                 <button
                   key={skill.id}
                   onClick={() => toggleNewSkill(skill.id)}
+                  aria-pressed={selected}
                   title={linked ? t('agentDetail.linkSkills.reinstallHint') : undefined}
                   className={cn(
-                    'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all',
+                    'inline-flex max-w-full items-center gap-1.5 min-h-[40px] px-3.5 py-1.5 rounded-[20px] border text-left break-all font-body text-body-sm font-medium transition-colors',
                     selected
-                      ? 'bg-[#C25E3A] text-white'
-                      : 'bg-[#E3D7BC] text-[#6B5E4E] hover:bg-[#D9CDB8]',
+                      ? 'bg-ink text-paper border-ink'
+                      : 'bg-paper text-ink border-line-strong hover:bg-inset',
                   )}
                 >
-                  {selected && <Check className="w-3 h-3" />}
+                  {selected && <Check className="w-3.5 h-3.5" aria-hidden />}
                   {skill.name}
                   {linked && !selected && (
-                    <span className="text-[9px] uppercase tracking-wide text-[#A89880]">
+                    <span className="font-body text-body-xs text-ink-muted">
                       {t('agentDetail.linkSkills.linkedTag')}
                     </span>
                   )}
@@ -849,13 +873,13 @@ export default function AgentDetail() {
           </div>
         )}
         {linked && (
-          <p className="mt-4 flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#D8EADD] text-[12px] text-[#2A6E3A]">
-            <CheckCircle2 className="w-3.5 h-3.5" /> {t('agentDetail.linkSkills.sent')}
+          <p className="mt-4 flex items-center gap-2 px-3.5 py-2.5 rounded-lg bg-verdigris-bg font-body text-body-sm text-verdigris-ink">
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0" aria-hidden /> {t('agentDetail.linkSkills.sent')}
           </p>
         )}
         {linkFailed && (
-          <p className="mt-4 flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#F3D9D0] text-[12px] text-[#8A3B22] border border-[#E3C0B2]">
-            <AlertTriangle className="w-3.5 h-3.5" /> {t('agentDetail.linkSkills.sendFailed')}
+          <p className="mt-4 flex items-center gap-2 px-3.5 py-2.5 rounded-lg border border-[#EDB8B0] bg-vermilion-bg font-body text-body-sm text-vermilion-ink">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" aria-hidden /> {t('agentDetail.linkSkills.sendFailed')}
           </p>
         )}
       </Modal>

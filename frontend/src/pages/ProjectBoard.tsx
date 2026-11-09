@@ -35,42 +35,26 @@ import { errorText } from '@/lib/errors';
 import { stallText } from '@/lib/stall';
 import { WAITING_FOR_A_MACHINE, waitKind, waitText } from '@/lib/drive';
 
-// The board's columns. *Bị chặn* earns one: a blocked task used to fall off the board
-// entirely, which is the exact failure spec 001 is built to prevent — a task nobody can
-// see is a task the system has dropped. Labels come from the shared status strings, so the
-// headers speak the reader's language (Hiến pháp VI) instead of hardcoded English.
-const KANBAN_COLUMNS: { status: TaskStatus; bg: string; headerBg: string; borderColor: string }[] = [
-  { status: 'backlog', bg: 'bg-[#EDE4CE]', headerBg: 'bg-[#EDE4CE]', borderColor: 'border-[#E3D7BC]' },
-  { status: 'todo', bg: 'bg-[#E8DED0]', headerBg: 'bg-[#E8DED0]', borderColor: 'border-[#D9CDB8]' },
-  { status: 'in_progress', bg: 'bg-[#D4E8F0]', headerBg: 'bg-[#D4E8F0]', borderColor: 'border-[#A8D0E0]' },
-  { status: 'blocked', bg: 'bg-[#F5DDD6]', headerBg: 'bg-[#F5DDD6]', borderColor: 'border-[#E8B8A8]' },
-  { status: 'in_review', bg: 'bg-[#F5E8CC]', headerBg: 'bg-[#F5E8CC]', borderColor: 'border-[#E8D5A0]' },
-  { status: 'done', bg: 'bg-[#D8EADD]', headerBg: 'bg-[#D8EADD]', borderColor: 'border-[#A8D8B8]' },
+// The board's lanes. Eight statuses read as four stages of work — getting ready, being
+// worked, waiting for signatures, finished — and each card still names its own status, so
+// nothing is folded away. *Bị chặn* stays visible on purpose: a blocked task used to fall
+// off the board entirely, which is the exact failure spec 001 is built to prevent. It sits
+// in the "being worked" lane with a vermilion tag rather than in a column of its own.
+type LaneKey = 'prep' | 'doing' | 'review' | 'done';
+const LANES: { key: LaneKey; statuses: TaskStatus[]; dot: string; createAs?: TaskStatus }[] = [
+  { key: 'prep', statuses: ['draft', 'backlog', 'todo'], dot: 'border-[1.5px] border-ash', createAs: 'todo' },
+  { key: 'doing', statuses: ['in_progress', 'blocked'], dot: 'bg-lapis' },
+  { key: 'review', statuses: ['in_review'], dot: 'bg-gold' },
+  { key: 'done', statuses: ['done'], dot: 'bg-verdigris' },
 ];
 
 type BoardPriority = 'P0' | 'P1' | 'P2' | 'P3'
 
-const PRIORITY_BORDER: Record<BoardPriority, string> = {
-  P0: 'border-l-[#C25E3A]',
-  P1: 'border-l-[#D4A843]',
-  P2: 'border-l-[#A89880]',
-  P3: 'border-l-[#C8BCA8]',
-};
-
-const STATUS_BORDER: Record<string, string> = {
-  backlog: 'border-b-[#E3D7BC]',
-  todo: 'border-b-[#D9CDB8]',
-  in_progress: 'border-b-[#A8D0E0]',
-  blocked: 'border-b-[#E8B8A8]',
-  in_review: 'border-b-[#E8D5A0]',
-  done: 'border-b-[#A8D8B8]',
-};
-
 const PRIORITY_BADGE: Record<BoardPriority, { bg: string; text: string }> = {
-  P0: { bg: 'bg-[#F5DDD6]', text: 'text-[#B84A32]' },
-  P1: { bg: 'bg-[#F5E8CC]', text: 'text-[#8B6A28]' },
-  P2: { bg: 'bg-[#E8E0D8]', text: 'text-[#8B7A6A]' },
-  P3: { bg: 'bg-[#EFEAE2]', text: 'text-[#9C8E7E]' },
+  P0: { bg: 'bg-vermilion-bg', text: 'text-vermilion-ink' },
+  P1: { bg: 'bg-gold-bg', text: 'text-gold-ink' },
+  P2: { bg: 'bg-ash-bg', text: 'text-ink-light' },
+  P3: { bg: 'bg-ash-bg', text: 'text-ink-muted' },
 };
 
 // ─── Task Card ───────────────────────────────────────────────────────────────
@@ -113,29 +97,33 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
       transition={{ duration: 0.2 }}
       onClick={onClick}
       className={cn(
-        'bg-vellum rounded-sm p-4 cursor-pointer border-l-[3px] border-b-2',
-        'hover:-translate-y-0.5 hover:shadow-gilt transition-all duration-200',
-        'group',
-        PRIORITY_BORDER[priorityKey],
-        STATUS_BORDER[task.status]
+        'relative bg-paper border rounded-[10px] p-3.5 cursor-pointer group',
+        'hover:border-line-strong hover:shadow-gilt-lg transition-[border-color,box-shadow] duration-200',
+        task.status === 'in_review' ? 'border-[#EBCF8A]' : 'border-line',
+        task.status === 'done' && 'bg-inset'
       )}
     >
-      {/* Top row: ID + Priority */}
-      <div className="flex items-center justify-between mb-1.5">
+      {/* Top row: ID + the task's own status (a lane holds more than one) */}
+      <div className="flex items-center justify-between gap-2 mb-2">
         <span className="font-mono text-mono-sm text-ink-muted">{task.identifier}</span>
-        <span
-          className={cn(
-            'text-body-xs font-medium px-1.5 py-0.5 rounded-sm',
-            PRIORITY_BADGE[priorityKey].bg,
-            PRIORITY_BADGE[priorityKey].text
+        <span className="flex items-center gap-1.5">
+          {(priorityKey === 'P0' || priorityKey === 'P1') && (
+            <span
+              className={cn(
+                'text-body-xs font-medium px-1.5 py-0.5 rounded-full',
+                PRIORITY_BADGE[priorityKey].bg,
+                PRIORITY_BADGE[priorityKey].text
+              )}
+            >
+              {t(`tasks.priority.${priorityKey}`)}
+            </span>
           )}
-        >
-          {t(`tasks.priority.${priorityKey}`)}
+          <StatusChip status={task.status} label={t(`tasks.status.${task.status}`)} />
         </span>
       </div>
 
       {/* Title */}
-      <h4 className="font-body text-body-md font-medium text-ink mb-3 leading-snug">
+      <h4 className={cn('font-body text-[15px] font-medium mb-2.5 leading-snug', task.status === 'done' ? 'text-ink-light' : 'text-ink')}>
         {task.title}
       </h4>
 
@@ -173,15 +161,15 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
           dropped the task, and no door into *done* will open until it clears (FR-058).
           Below it, the reason whoever blocked or cancelled the task had to write (FR-030). */}
       {task.stalled && (
-        <div className="flex items-start gap-1.5 mb-2 px-2 py-1.5 rounded-sm bg-[#F5DDD6]">
-          <AlertTriangle className="w-3.5 h-3.5 text-[#B84A32] flex-shrink-0 mt-0.5" />
-          <span className="font-body text-body-xs text-[#B84A32]">
+        <div className="flex items-start gap-1.5 mb-2">
+          <AlertTriangle className="w-3.5 h-3.5 text-vermilion-ink flex-shrink-0 mt-0.5" />
+          <span className="font-body text-body-sm text-vermilion-ink leading-snug">
             {stallText(task.stalledReasonCode, t) || t('board.stalled')}
           </span>
         </div>
       )}
       {!task.stalled && task.statusReason && (task.status === 'blocked' || task.status === 'cancelled') && (
-        <p className="mb-2 font-body text-body-xs text-ink-muted italic line-clamp-2">
+        <p className={cn('mb-2 font-body text-body-sm leading-snug line-clamp-2', task.status === 'blocked' ? 'text-vermilion-ink' : 'text-ink-muted')}>
           {task.statusReason}
         </p>
       )}
@@ -201,19 +189,27 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
 
       {/* Assignee avatar (single owner per task) */}
       {assigneeAgent && (
-        <div className="flex items-center -space-x-2">
+        <div className="flex items-center gap-2 font-body text-body-sm text-ink-light">
           <div
-            className="w-6 h-6 rounded-full border-2 border-vellum bg-vellum-dark overflow-hidden"
+            className={cn(
+              'w-6 h-6 rounded-full overflow-hidden shrink-0',
+              assigneeAgent.status === 'working'
+                ? 'bg-lapis-bg'
+                : assigneeAgent.status === 'offline'
+                  ? 'bg-vellum border-[1.5px] border-dashed border-ash'
+                  : 'bg-verdigris-bg'
+            )}
             title={assigneeAgent.displayName || assigneeAgent.name}
           >
             {assigneeAgent.avatar ? (
               <img src={assigneeAgent.avatar} alt={assigneeAgent.displayName || assigneeAgent.name} className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-body-xs text-ink-muted">
+              <div className="w-full h-full flex items-center justify-center text-[11px] font-semibold text-ink-light">
                 {(assigneeAgent.displayName || assigneeAgent.name).charAt(0)}
               </div>
             )}
           </div>
+          <span className="truncate">{assigneeAgent.displayName || assigneeAgent.name}</span>
         </div>
       )}
 
@@ -278,7 +274,7 @@ function AddTaskFormModal({
   };
 
   const inputCls = cn(
-    'w-full px-3 py-2 rounded-md bg-vellum border border-vellum-dark',
+    'w-full px-3 py-2 rounded-md bg-inset border border-line',
     'font-body text-body-md text-ink placeholder:text-ink-muted',
     'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15 transition-all',
   );
@@ -377,7 +373,7 @@ function AddTaskFormModal({
       <div className="flex justify-end gap-3 mt-5 -mb-1">
         <button
           onClick={onClose}
-          className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-vellum-deep text-ink border border-vellum-dark hover:bg-vellum-dark transition-colors"
+          className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-paper text-ink border border-line-strong hover:bg-inset transition-colors"
         >
           {t('common.cancel')}
         </button>
@@ -387,8 +383,8 @@ function AddTaskFormModal({
           className={cn(
             'flex items-center gap-1.5 px-4 py-2 rounded-md font-body text-body-md font-medium transition-colors',
             form.title.trim() && !busy
-              ? 'bg-terracotta text-white hover:bg-terracotta-light'
-              : 'bg-vellum-dark text-ink-muted cursor-not-allowed',
+              ? 'bg-ink text-paper hover:bg-ink/85'
+              : 'bg-line text-ink-muted cursor-not-allowed',
           )}
         >
           <Plus className="w-4 h-4" />
@@ -414,6 +410,9 @@ export default function ProjectBoard() {
   // column's "+" (status=that column). They used to open two different modals (title-only vs
   // full) and the column "+" silently dropped into backlog; now they're in sync (#82).
   const [addTask, setAddTask] = useState<{ open: boolean; status: TaskStatus }>({ open: false, status: 'backlog' });
+  // The setup banner's close button used to be wired to nothing. Hidden for this visit only:
+  // the next visit shows it again while the project is still being staffed.
+  const [setupBannerHidden, setSetupBannerHidden] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -503,13 +502,14 @@ export default function ProjectBoard() {
     [tasks, projectId]
   );
 
-  const tasksByColumn = useMemo(() => {
-    const map: Record<string, Task[]> = {};
-    KANBAN_COLUMNS.forEach((col) => {
-      map[col.status] = projectTasks.filter((t) => t.status === col.status);
+  const tasksByLane = useMemo(() => {
+    const map = {} as Record<LaneKey, Task[]>;
+    LANES.forEach((lane) => {
+      map[lane.key] = projectTasks.filter((t) => lane.statuses.includes(t.status));
     });
     return map;
   }, [projectTasks]);
+  const cancelledCount = projectTasks.filter((t) => t.status === 'cancelled').length;
 
   if (!project) {
     return (
@@ -536,15 +536,15 @@ export default function ProjectBoard() {
         animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
         transition={{ duration: 0.4, ease: [0, 0, 0.2, 1] as [number, number, number, number] }}
       >
-        <VellumPanel className="mb-4">
+        <VellumPanel hover={false} className="mb-5">
           {/* Top row: name + status */}
           <div className="flex items-start justify-between mb-3">
-            <h1 className="font-display text-display-lg text-ink">{project.name}</h1>
+            <h1 className="font-display text-[30px] font-medium leading-tight text-ink">{project.name}</h1>
             <div className="flex items-center gap-3">
               <StatusChip status={project.status ?? 'setup'} label={t(`projects.status.${project.status}`)} />
               <button
                 onClick={() => setConfirmDelete(true)}
-                className="p-1.5 rounded-md text-ink-muted hover:text-[#B84A32] hover:bg-[#F5DDD6] transition-colors"
+                className="p-1.5 rounded-md text-ink-muted hover:text-vermilion-ink hover:bg-vermilion-bg transition-colors"
                 title={t('board.deleteProject')}
                 aria-label={t('board.deleteProject')}
               >
@@ -613,7 +613,7 @@ export default function ProjectBoard() {
               Chỉ hiện khi dự án đã thật sự chạy: trước giai đoạn *đang chạy* chưa có
               bảng việc nào để rà, nên một ô trống ở đó chỉ gây hoang mang. */}
           {acceptsTasks && cadence !== null && (
-            <div className="mt-3 pt-3 border-t border-vellum-dark">
+            <div className="mt-3 pt-3 border-t border-line">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-body text-body-sm">
                 <span className="flex items-center gap-1.5 text-ink">
                   <Radar className="w-4 h-4" />
@@ -649,7 +649,7 @@ export default function ProjectBoard() {
                 <ul className="mt-2 space-y-1">
                   {cadence.snags.map((snag) => (
                     <li key={`${snag.kind}-${snag.task_id}`} className="flex items-start gap-2">
-                      <span className="mt-0.5 shrink-0 rounded px-1.5 py-0.5 bg-[#F5DDD6] text-[#B84A32] font-body text-body-xs">
+                      <span className="mt-0.5 shrink-0 rounded px-1.5 py-0.5 bg-vermilion-bg text-vermilion-ink font-body text-body-xs">
                         {t(`board.cadence.kind.${snag.kind}`)}
                       </span>
                       <span className="font-body text-body-sm text-ink-light">
@@ -679,7 +679,7 @@ export default function ProjectBoard() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.1, duration: 0.3 }}
-        className="flex items-center gap-1 mb-4 border-b border-vellum-dark"
+        className="flex items-center gap-1 mb-4 border-b border-line"
       >
         <TabLink>{t('board.title')}</TabLink>
         <TabLink to={wsHref(workspaceId, `/projects/${projectId}/roster`)}>{t('board.roster')}</TabLink>
@@ -716,15 +716,15 @@ export default function ProjectBoard() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3 }}
-            className="mb-4 bg-warning-bg border-l-4 border-warning rounded-md px-4 py-3 flex items-start gap-3"
+            className="mb-5 bg-gold-bg border border-[#EBCF8A] rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2"
           >
-            <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
+            <AlertTriangle className="w-5 h-5 text-gold-ink flex-shrink-0" />
+            <div className="flex-[1_1_240px] min-w-0">
               <p className="font-body text-body-md text-ink">{t('board.planningBanner')}</p>
             </div>
             <Link
               to={wsHref(workspaceId, `/projects/${projectId}/plan`)}
-              className="flex items-center gap-1 font-body text-body-sm font-medium text-warning hover:text-terracotta transition-colors whitespace-nowrap"
+              className="flex items-center gap-1 min-h-[36px] font-body text-body-sm font-medium text-gold-ink hover:text-ink transition-colors whitespace-nowrap"
             >
               {t('board.goToPlan')}
               <ArrowRight className="w-4 h-4" />
@@ -734,27 +734,27 @@ export default function ProjectBoard() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {isSetup && (
+        {isSetup && !setupBannerHidden && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3 }}
-            className="mb-4 bg-warning-bg border-l-4 border-warning rounded-md px-4 py-3 flex items-start gap-3"
+            className="mb-5 bg-gold-bg border border-[#EBCF8A] rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2"
           >
-            <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
+            <AlertTriangle className="w-5 h-5 text-gold-ink flex-shrink-0" />
+            <div className="flex-[1_1_240px] min-w-0">
               <p className="font-body text-body-md text-ink">{t('board.setupBanner')}</p>
             </div>
             <Link
               to={wsHref(workspaceId, `/projects/${projectId}/roster`)}
-              className="flex items-center gap-1 font-body text-body-sm font-medium text-warning hover:text-terracotta transition-colors whitespace-nowrap"
+              className="flex items-center gap-1 min-h-[36px] font-body text-body-sm font-medium text-gold-ink hover:text-ink transition-colors whitespace-nowrap"
             >
               {t('board.goToRoster')}
               <ArrowRight className="w-4 h-4" />
             </Link>
             <button
-              onClick={() => {}}
+              onClick={() => setSetupBannerHidden(true)}
               className="p-0.5 rounded text-ink-muted hover:text-ink transition-colors"
               aria-label={t('common.dismiss')}
             >
@@ -767,97 +767,73 @@ export default function ProjectBoard() {
       {/* ─── Board (kanban) + Leader chat dock (VS Code-style right panel) ──── */}
       <div className="flex flex-1 min-h-0">
         <div className="flex-1 min-w-0 min-h-0 flex">
-        <div className="flex gap-4 overflow-x-auto pb-4 flex-1 min-h-0">
-        {KANBAN_COLUMNS.map((col, colIndex) => {
-          const canCreateHere = CREATABLE_PHASES.includes(col.status as TaskPhase);
-          const colLabel = t('tasks.status.' + col.status);
-          const colTasks = tasksByColumn[col.status] || [];
+        {/* One row of four lanes at every width — a board read as a 2×2 grid puts "done" under
+            "getting ready". Below ~850px of room it scrolls sideways, lane by lane. */}
+        <div className="grid grid-flow-col auto-cols-[minmax(200px,1fr)] gap-4 xl:gap-5 items-start pb-24 flex-1 min-h-0 overflow-x-auto snap-x snap-mandatory sm:snap-none -mx-4 px-4 sm:mx-0 sm:px-0">
+        {LANES.map((lane, laneIndex) => {
+          const laneLabel = t(`board.lanes.${lane.key}`);
+          const laneTasks = tasksByLane[lane.key] || [];
+          // What the lane holds, status by status — the four lanes fold eight statuses, so
+          // the header says which ones are inside.
+          const parts = lane.statuses
+            .map((st) => ({ st, n: laneTasks.filter((tk) => tk.status === st).length }))
+            .filter((p) => p.n > 0)
+            .map((p) => `${t('tasks.status.' + p.st)} ${p.n}`);
+          if (lane.key === 'done' && cancelledCount > 0) parts.push(`${t('tasks.status.cancelled')} ${cancelledCount}`);
           return (
-            <motion.div
-              key={col.status}
-              initial={{ opacity: 0, y: 30 }}
+            <motion.section
+              key={lane.key}
+              aria-label={laneLabel}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{
-                delay: 0.08 * colIndex,
-                duration: 0.4,
+                delay: 0.06 * laneIndex,
+                duration: 0.35,
                 ease: [0, 0, 0.2, 1] as [number, number, number, number],
               }}
-              className="flex-shrink-0 w-[300px] flex flex-col max-h-full"
+              className="min-w-0 flex flex-col gap-2.5 snap-start"
             >
-              {/* Column header */}
-              <div
-                className={cn(
-                  'flex items-center justify-between px-3 py-2.5 rounded-t-md border-b-2',
-                  col.headerBg,
-                  col.borderColor
-                )}
-              >
+              {/* Lane header */}
+              <div className="flex flex-col gap-0.5 px-0.5 pb-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="font-body text-body-sm font-semibold uppercase tracking-[0.05em] text-ink-light">
-                    {colLabel}
-                  </span>
-                  <span className="font-mono text-mono-sm text-ink-muted">
-                    ({colTasks.length})
-                  </span>
+                  <span className={cn('w-2.5 h-2.5 rounded-[3px] box-border', lane.dot)} />
+                  <h2 className="font-display text-[18px] font-medium text-ink">{laneLabel}</h2>
+                  <span className="font-body text-body-sm text-ink-muted">{laneTasks.length}</span>
                 </div>
-                {acceptsTasks && canCreateHere && (
-                  <button
-                    onClick={() => setAddTask({ open: true, status: col.status })}
-                    className="p-1 rounded text-ink-muted hover:text-terracotta transition-colors"
-                    aria-label={`${t('board.addTask')} — ${colLabel}`}
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                )}
+                <p className="font-body text-body-sm text-ink-muted min-h-[20px]">{parts.join(' · ')}</p>
               </div>
 
-              {/* Column body */}
-              <div className="flex-1 rounded-b-md p-3 flex flex-col gap-2 overflow-y-auto relative">
-                {/* Column tint — contained to this column by `relative` above. Previously
-                    this `absolute inset-0` had no positioned parent, so it escaped and
-                    stacked a faint colored wash over the whole board ("mờ mờ"). */}
-                <div className={cn('absolute inset-0 rounded-b-md opacity-[0.08] pointer-events-none', col.bg)} />
+              <AnimatePresence mode="popLayout">
+                {laneTasks.map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    onClick={() => navigate(wsHref(workspaceId, `/tasks/${task.id}`))}
+                  />
+                ))}
+              </AnimatePresence>
 
-                <AnimatePresence mode="popLayout">
-                  {colTasks.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      onClick={() => navigate(wsHref(workspaceId, `/tasks/${task.id}`))}
-                    />
-                  ))}
-                </AnimatePresence>
+              {/* Empty state. A lane you cannot create into says so instead of inviting a
+                  drop that would skip every gate. */}
+              {laneTasks.length === 0 && !(acceptsTasks && lane.createAs) && (
+                <div className="flex items-center justify-center py-7 border border-dashed border-line-strong rounded-[10px] text-ink-muted">
+                  <span className="font-body text-body-sm px-3 text-center">{t('board.reachedByWorking')}</span>
+                </div>
+              )}
 
-                {/* Empty state. A column you cannot create into says so instead of
-                    inviting a drop that would skip every gate. */}
-                {colTasks.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-8 border-2 border-dashed border-vellum-dark rounded-md text-ink-muted">
-                    <span className="font-body text-body-sm px-3 text-center">
-                      {canCreateHere ? t('board.dropHere') : t('board.reachedByWorking')}
-                    </span>
-                  </div>
-                )}
-
-                {/* Add button at bottom — only where a new task may legally start.
-                    A task cannot be born *in review* or *done*: those are reached by doing
-                    the work, and offering the button here was a lane straight past every
-                    gate (spec 001 FR-024). */}
-                {acceptsTasks && canCreateHere && (
-                  <button
-                    onClick={() => setAddTask({ open: true, status: col.status })}
-                    className="flex items-center justify-center gap-1 py-2 rounded-md text-ink-muted hover:text-terracotta hover:bg-vellum-deep/50 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="font-body text-body-xs font-medium">{t('board.addTask')}</span>
-                  </button>
-                )}
-                {acceptsTasks && !canCreateHere && colTasks.length > 0 && (
-                  <p className="py-2 text-center font-body text-body-xs text-ink-muted">
-                    {t('board.reachedByWorking')}
-                  </p>
-                )}
-              </div>
-            </motion.div>
+              {/* Add button — only in the lane where a new task may legally start. A task
+                  cannot be born *in review* or *done*: those are reached by doing the work
+                  (spec 001 FR-024). */}
+              {acceptsTasks && lane.createAs && CREATABLE_PHASES.includes(lane.createAs as TaskPhase) && (
+                <button
+                  onClick={() => setAddTask({ open: true, status: lane.createAs as TaskStatus })}
+                  className="flex items-center justify-center gap-1.5 min-h-[44px] rounded-[10px] border border-dashed border-line-strong text-ink-light hover:text-ink hover:bg-paper transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="font-body text-body-md font-medium">{t('board.addTask')}</span>
+                </button>
+              )}
+            </motion.section>
           );
         })}
         </div>
@@ -884,14 +860,14 @@ export default function ProjectBoard() {
             <button
               onClick={() => setConfirmDelete(false)}
               disabled={deleting}
-              className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-vellum-deep text-ink border border-vellum-dark hover:bg-vellum-dark transition-colors disabled:opacity-50"
+              className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-paper text-ink border border-line-strong hover:bg-inset transition-colors disabled:opacity-50"
             >
               {t('common.cancel')}
             </button>
             <button
               onClick={handleDeleteProject}
               disabled={deleting}
-              className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-[#B84A32] text-white hover:bg-[#C25E3A] transition-colors disabled:opacity-50"
+              className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-vermilion-ink text-white hover:bg-ink transition-colors disabled:opacity-50"
             >
               {deleting ? t('board.deleting') : t('common.delete')}
             </button>
@@ -944,7 +920,7 @@ function TabLink({
         to={to}
         className={cn(
           'flex items-center px-4 py-2.5 font-body text-body-md font-medium text-ink-light hover:text-ink transition-colors',
-          'border-b-2 border-transparent hover:border-vellum-dark'
+          'border-b-2 border-transparent hover:border-line-strong'
         )}
       >
         {children}

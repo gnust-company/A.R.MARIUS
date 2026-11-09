@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
+  Home,
   LayoutDashboard,
   Users,
   Laptop,
@@ -16,7 +17,8 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useAppStore } from '@/store/appStore';
+import { useAppStore, type AgentStatus } from '@/store/appStore';
+import { useViewport } from '@/hooks/use-viewport';
 import { cn, wsHref } from '@/lib/utils';
 
 // `external: true` = a top-level route (no workspace prefix), e.g. the launcher.
@@ -37,11 +39,12 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  { path: '/home', labelKey: 'nav.home', icon: Home },
+  { path: '/inbox', labelKey: 'nav.inbox', icon: Inbox, counter: 'inboxPending' },
   { path: '/projects', labelKey: 'nav.projects', icon: LayoutDashboard },
   { path: '/agents', labelKey: 'nav.directory', icon: Users },
   { path: '/machines', labelKey: 'nav.machines', icon: Laptop },
   { path: '/skills', labelKey: 'nav.skills', icon: Wrench },
-  { path: '/inbox', labelKey: 'nav.inbox', icon: Inbox, counter: 'inboxPending' },
 ];
 
 const BOTTOM_ITEMS: NavItem[] = [
@@ -71,25 +74,23 @@ function WorkspaceSwitcher() {
 
   return (
     <div ref={ref} className="relative px-3 pt-3">
-      <p className="font-body text-body-xs text-ink-muted px-1 mb-1.5 uppercase tracking-[0.08em]">
-        {t('nav.workspace')}
-      </p>
+      <p className="font-body text-body-xs text-ash px-1 mb-1.5">{t('nav.workspace')}</p>
       <button
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-md',
-          'bg-vellum-deep border border-vellum-dark transition-colors',
-          open ? 'border-gold-muted' : 'hover:border-gold-muted/60'
+          'w-full min-h-[44px] flex items-center justify-between gap-2 px-3 rounded-md',
+          'bg-[#2E261C] border transition-colors',
+          open ? 'border-gold-muted' : 'border-[#43382A] hover:border-gold-muted/60'
         )}
       >
         <span className="flex items-center gap-2 min-w-0">
-          <span className="w-2 h-2 rounded-full bg-terracotta shrink-0" />
-          <span className="font-display text-body-md font-semibold text-ink truncate">
+          <span className="w-2 h-2 rounded-full bg-[#4FA673] shrink-0" />
+          <span className="font-body text-body-md font-medium text-[#EDE3CE] truncate">
             {active?.name || t('nav.selectWorkspace')}
           </span>
         </span>
         <ChevronDown
-          className={cn('w-4 h-4 text-ink-muted transition-transform duration-200', open && 'rotate-180')}
+          className={cn('w-4 h-4 text-ash transition-transform duration-200', open && 'rotate-180')}
         />
       </button>
 
@@ -100,7 +101,7 @@ function WorkspaceSwitcher() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.15 }}
-            className="absolute left-3 right-3 top-full mt-1 z-50 rounded-md border border-vellum-dark bg-vellum shadow-lg overflow-hidden"
+            className="absolute left-3 right-3 top-full mt-1 z-50 rounded-md border border-line bg-paper shadow-lg overflow-hidden"
           >
             {workspaces.map((w) => {
               const isActive = w.id === activeWorkspaceId;
@@ -111,22 +112,22 @@ function WorkspaceSwitcher() {
                     // Switching workspace changes the URL; the Layout effect then loads
                     // the new workspace's slice (agents/projects/skills).
                     setActiveWorkspace(w.id);
-                    navigate(wsHref(w.id, '/projects'));
+                    navigate(wsHref(w.id, '/home'));
                     setOpen(false);
                   }}
                   className={cn(
                     'w-full flex items-center gap-2 px-2.5 py-2 text-left font-body text-body-md transition-colors',
-                    isActive ? 'bg-vellum-deep text-terracotta font-medium' : 'text-ink hover:bg-vellum-deep'
+                    isActive ? 'bg-inset text-ink font-medium' : 'text-ink hover:bg-inset'
                   )}
                 >
                   <span
                     className={cn(
                       'w-2 h-2 rounded-full shrink-0',
-                      isActive ? 'bg-terracotta' : 'bg-ink-muted/50'
+                      isActive ? 'bg-verdigris' : 'bg-ink-muted/50'
                     )}
                   />
                   <span className="truncate">{w.name}</span>
-                  {isActive && <Check className="w-3.5 h-3.5 ml-auto text-terracotta shrink-0" />}
+                  {isActive && <Check className="w-3.5 h-3.5 ml-auto text-ink shrink-0" />}
                 </button>
               );
             })}
@@ -137,12 +138,67 @@ function WorkspaceSwitcher() {
   );
 }
 
+/** Ring colour per liveness — the same lapis/verdigris the rest of the screen uses. */
+const PRESENCE_RING: Record<AgentStatus, string> = {
+  working: 'ring-lapis',
+  online: 'ring-verdigris',
+  idle: 'ring-verdigris',
+  offline: 'ring-transparent',
+};
+
+/** Who is around right now: one initial per agent of this workspace, ringed by liveness. */
+function PresentAgents() {
+  const { t } = useTranslation();
+  const { workspaceId } = useParams();
+  const allMariuses = useAppStore((s) => s.mariuses);
+  const mariuses = allMariuses.filter((m) => m.workspaceId === workspaceId);
+  if (mariuses.length === 0) return null;
+
+  return (
+    <div className="px-5 pb-4">
+      <p className="font-body text-body-xs text-ash mb-2.5">{t('nav.present')}</p>
+      <div className="flex flex-wrap gap-2.5">
+        {mariuses.slice(0, 10).map((m) => (
+          <Link
+            key={m.id}
+            to={wsHref(workspaceId, `/agents/${m.id}`)}
+            title={`${m.displayName || m.name} · ${t(`directory.status.${m.status}`, { defaultValue: m.status })}`}
+            aria-label={`${m.displayName || m.name} · ${t(`directory.status.${m.status}`, { defaultValue: m.status })}`}
+            className={cn(
+              'w-8 h-8 rounded-full flex items-center justify-center font-body text-body-xs font-semibold',
+              'ring-2 ring-offset-2 ring-offset-ink-frame',
+              m.status === 'offline'
+                ? 'bg-[#2E261C] text-ash border border-dashed border-[#5C4F3E]'
+                : 'bg-ink-frame-raised text-[#FFF8E8]',
+              PRESENCE_RING[m.status]
+            )}
+          >
+            {(m.displayName || m.name).charAt(0).toUpperCase()}
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Navbar() {
   const { t } = useTranslation();
   const location = useLocation();
   const { workspaceId } = useParams();
-  const collapsed = useAppStore((s) => s.sidebarCollapsed);
+  const userCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
+  const drawerOpen = useAppStore((s) => s.navDrawerOpen);
+  const setDrawerOpen = useAppStore((s) => s.setNavDrawerOpen);
+  const viewport = useViewport();
+  // Desktop keeps the person's own choice. Below it the rail stays narrow so pages keep their
+  // width, and opening it lays the full sidebar over the page instead of pushing it aside.
+  const overlay = viewport !== 'desktop';
+  const collapsed = overlay ? !drawerOpen : userCollapsed;
+
+  // Following a link closes the drawer; on a phone it would otherwise cover the page it opened.
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [location.pathname, setDrawerOpen]);
   // The numbers a nav row may carry, looked up by the `counter` name on the row. One entry today;
   // a map rather than a single value so the next row that needs a count adds a key, not a branch.
   const counters: Record<CounterName, number> = {
@@ -160,25 +216,38 @@ export default function Navbar() {
 
   const isActive = (item: { path: string; external?: boolean }) => {
     if (item.external) return location.pathname.startsWith(item.path);
-    if (item.path === '/projects') return sub === '/' || sub.startsWith('/projects');
+    if (item.path === '/home') return sub === '/' || sub.startsWith('/home');
+    // A task belongs to a project, so the task page keeps "Projects" lit.
+    if (item.path === '/projects') return sub.startsWith('/projects') || sub.startsWith('/tasks');
     return sub.startsWith(item.path);
   };
 
+  // A phone has no rail: the sidebar exists only while the drawer is open.
+  const hidden = viewport === 'phone' && !drawerOpen;
+
   return (
-    <motion.nav
+    <>
+    {overlay && drawerOpen && (
+      <div
+        className="fixed inset-0 z-[99] bg-ink-frame/40"
+        onClick={() => setDrawerOpen(false)}
+        aria-hidden="true"
+      />
+    )}
+    <nav
+      aria-label={t('nav.workspace')}
       className={cn(
-        'fixed left-0 top-0 h-screen bg-vellum border-r border-vellum-dark z-sidebar flex flex-col',
-        'transition-all duration-300',
-        collapsed ? 'w-[68px]' : 'w-[240px]'
+        'fixed left-0 top-0 h-[100dvh] bg-ink-frame text-[#EDE3CE] z-sidebar flex flex-col',
+        'transition-[width,transform] duration-300',
+        collapsed ? 'w-[68px]' : 'w-[240px]',
+        hidden && '-translate-x-full',
+        overlay && drawerOpen && 'shadow-2xl'
       )}
-      initial={{ x: -240 }}
-      animate={{ x: 0 }}
-      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
     >
       {/* ── Brand row — fixed h-14 so its bottom border aligns with the TopBar ── */}
       <div
         className={cn(
-          'h-14 flex items-center shrink-0 border-b border-vellum-dark',
+          'h-14 flex items-center shrink-0 border-b border-ink-frame-raised',
           collapsed ? 'justify-center px-2' : 'px-4'
         )}
       >
@@ -196,27 +265,30 @@ export default function Navbar() {
             A
           </span>
           {!collapsed && (
-            <span className="font-display text-[24px] font-bold text-ink tracking-tight leading-none">
+            <span className="font-display text-[24px] font-semibold text-[#F5ECD8] tracking-tight leading-none">
               rmarius
             </span>
           )}
         </Link>
       </div>
 
-      {/* ── Floating collapse toggle (straddles the right border) ── */}
+      {/* ── Floating collapse toggle (straddles the right border). A phone opens the drawer
+          from the top bar instead; here it would poke out over the page's left edge. ── */}
+      {viewport !== 'phone' && (
       <button
-        onClick={() => setSidebarCollapsed(!collapsed)}
+        onClick={() => (overlay ? setDrawerOpen(!drawerOpen) : setSidebarCollapsed(!collapsed))}
         className={cn(
           'absolute top-4 -right-3 z-[60] w-6 h-6 rounded-full',
           'flex items-center justify-center',
-          'bg-vellum border border-vellum-dark text-ink-muted',
-          'hover:text-terracotta hover:border-gold-muted hover:bg-vellum-deep',
+          'bg-ink-frame border border-[#43382A] text-ash',
+          'hover:text-gold hover:border-gold-muted',
           'shadow-sm transition-colors'
         )}
         aria-label={collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')}
       >
         {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
       </button>
+      )}
 
       {/* ── Workspace switcher (hidden when collapsed) ── */}
       {!collapsed && <WorkspaceSwitcher />}
@@ -229,29 +301,29 @@ export default function Navbar() {
           return (
             <motion.div
               key={item.path}
-              initial={{ opacity: 0, x: -20 }}
+              initial={false}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.06, duration: 0.35 }}
             >
               <Link
                 to={linkTo(item)}
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-md font-body text-body-md font-medium transition-colors relative',
+                  'flex items-center gap-3 px-3 min-h-[44px] rounded-md font-body text-body-md transition-colors relative',
                   active
-                    ? 'bg-vellum-deep text-terracotta border-l-[3px] border-terracotta'
-                    : 'text-ink-light hover:bg-vellum-deep hover:text-ink border-l-[3px] border-transparent',
+                    ? 'bg-ink-frame-raised text-[#FFF8E8]'
+                    : 'text-[#C9BCA3] hover:bg-ink-frame-raised/60 hover:text-[#FFF8E8]',
                   collapsed && 'justify-center px-2'
                 )}
                 title={collapsed ? t(item.labelKey) : undefined}
               >
                 <item.icon
-                  className={cn('w-[18px] h-[18px] flex-shrink-0', active ? 'text-terracotta' : 'text-ink-light')}
+                  className={cn('w-[18px] h-[18px] flex-shrink-0', active ? 'text-gold' : 'text-[#C9BCA3]')}
                 />
                 {!collapsed && (
                   <span className="truncate">
                     {t(item.labelKey)}
                     {waiting > 0 && (
-                      <span className="ml-2 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-semibold leading-none text-white bg-terracotta align-middle">
+                      <span className="ml-2 inline-flex items-center justify-center min-w-[20px] h-[18px] px-1.5 rounded-full text-[11px] font-semibold leading-none text-ink-frame bg-gold align-middle">
                         {waiting > 99 ? '99+' : waiting}
                       </span>
                     )}
@@ -260,7 +332,7 @@ export default function Navbar() {
                 {/* Collapsed to icons there is no room for a number, so the mark degrades to a
                     dot — still driven by the same count, so it is still telling the truth. */}
                 {collapsed && waiting > 0 && (
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-terracotta" />
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-gold" />
                 )}
               </Link>
             </motion.div>
@@ -268,30 +340,32 @@ export default function Navbar() {
         })}
       </div>
 
+      {!collapsed && <PresentAgents />}
+
       {/* ── Bottom Nav ── */}
-      <div className="flex flex-col gap-1 px-2 pb-2 border-t border-vellum-dark pt-2">
+      <div className="flex flex-col gap-1 px-2 pb-2 border-t border-ink-frame-raised pt-2">
         {BOTTOM_ITEMS.map((item, i) => {
           const active = isActive(item);
           return (
             <motion.div
               key={item.path}
-              initial={{ opacity: 0, x: -20 }}
+              initial={false}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: (NAV_ITEMS.length + i) * 0.06, duration: 0.35 }}
             >
               <Link
                 to={linkTo(item)}
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-md font-body text-body-md font-medium transition-colors',
+                  'flex items-center gap-3 px-3 min-h-[44px] rounded-md font-body text-body-md transition-colors',
                   active
-                    ? 'bg-vellum-deep text-terracotta border-l-[3px] border-terracotta'
-                    : 'text-ink-light hover:bg-vellum-deep hover:text-ink border-l-[3px] border-transparent',
+                    ? 'bg-ink-frame-raised text-[#FFF8E8]'
+                    : 'text-[#C9BCA3] hover:bg-ink-frame-raised/60 hover:text-[#FFF8E8]',
                   collapsed && 'justify-center px-2'
                 )}
                 title={collapsed ? t(item.labelKey) : undefined}
               >
                 <item.icon
-                  className={cn('w-[18px] h-[18px] flex-shrink-0', active ? 'text-terracotta' : 'text-ink-light')}
+                  className={cn('w-[18px] h-[18px] flex-shrink-0', active ? 'text-gold' : 'text-[#C9BCA3]')}
                 />
                 {!collapsed && <span>{t(item.labelKey)}</span>}
               </Link>
@@ -299,6 +373,7 @@ export default function Navbar() {
           );
         })}
       </div>
-    </motion.nav>
+    </nav>
+    </>
   );
 }

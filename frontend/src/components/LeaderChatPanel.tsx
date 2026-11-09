@@ -25,7 +25,7 @@ import {
   type AppendMessage,
 } from '@assistant-ui/react';
 import { AgentBubble, PatronBubble, SystemNotice } from '@/components/chat/ChatBubbles';
-import VellumPanel from '@/components/VellumPanel';
+import StatusChip from '@/components/StatusChip';
 import { cn } from '@/lib/utils';
 import * as api from '@/lib/api';
 import { subscribeLeaderChat } from '@/lib/sse';
@@ -260,93 +260,85 @@ export default function LeaderChatPanel({
   }, [t]);
 
   return (
-    <VellumPanel className="flex flex-col h-full">
+    <div className="flex h-full min-h-0 flex-col bg-paper">
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 border-b border-vellum-dark pb-3 mb-3 px-1">
-        <div className="flex items-center gap-2 min-w-0">
-          <div
+      <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-5">
+        <div className="flex min-w-0 items-center gap-3">
+          {/* Ringed by liveness, the same ring every agent wears elsewhere. */}
+          <span
             className={cn(
-              'w-8 h-8 rounded-full flex items-center justify-center border-2 bg-vellum-deep text-terracotta flex-shrink-0',
-              leaderOnline ? 'border-gold' : 'border-vellum-dark',
+              'flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full',
+              leaderOnline
+                ? 'bg-verdigris-bg text-verdigris-ink ring-2 ring-verdigris ring-offset-2 ring-offset-paper'
+                : 'border-2 border-dashed border-ash bg-inset text-ink-muted',
             )}
           >
-            <Bot className="w-4 h-4" />
-          </div>
+            <Bot className="h-5 w-5" aria-hidden />
+          </span>
           <div className="min-w-0">
-            <p className="font-display text-body-md text-ink truncate">
+            <h2 className="truncate font-display text-[19px] font-medium leading-tight text-ink">
               {chat?.leader_name || t('leaderChat.leader')}
-            </p>
-            <p
-              className={cn(
-                'text-body-xs flex items-center gap-1',
-                leaderOnline ? 'text-success' : 'text-ink-muted',
+            </h2>
+            <div className="mt-1">
+              {!loading && (
+                <StatusChip
+                  status={leaderOnline ? 'online' : 'offline'}
+                  label={leaderOnline ? t('leaderChat.online') : t('leaderChat.offline')}
+                />
               )}
-            >
-              {leaderOnline ? (
-                <>
-                  <span className="w-1.5 h-1.5 rounded-full bg-success inline-block" />
-                  {t('leaderChat.online')}
-                </>
-              ) : (
-                <>
-                  <WifiOff className="w-3 h-3" />
-                  {t('leaderChat.offline')}
-                </>
-              )}
-            </p>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <button
-            onClick={onClose}
-            className="p-1 rounded-md text-ink-muted hover:text-ink hover:bg-vellum-dark transition-colors"
-            aria-label={t('common.closeDialog')}
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+        <button
+          onClick={onClose}
+          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-md text-ink-light transition-colors hover:bg-inset hover:text-ink"
+          aria-label={t('common.closeDialog')}
+        >
+          <X className="h-5 w-5" aria-hidden />
+        </button>
       </div>
 
       {/* Drafts the Leader proposed outside the approved plan — each one is a scope
-          widening the patron has to decide on (spec 001 FR-027). */}
+          widening the patron has to decide on (spec 001 FR-027). Gold: waiting on the patron. */}
       <AnimatePresence>
         {proposed.length > 0 && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="mb-3 flex-shrink-0 px-1"
+            transition={{ duration: 0.2 }}
+            className="flex-shrink-0 overflow-hidden"
           >
-            <div className="bg-vellum-deep border border-vellum-dark border-l-4 border-l-gold rounded-md px-3 py-2">
-              <p className="font-body text-body-xs text-ink-light mb-1.5">
+            <div className="mx-4 mt-3 max-h-[40dvh] overflow-y-auto rounded-lg bg-gold-bg px-3.5 py-3 sm:mx-5">
+              <p className="mb-2 font-body text-body-sm font-medium text-gold-ink">
                 {t('leaderChat.proposedTitle', { count: proposed.length })}
               </p>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 {proposed.map((task) => (
                   <div
                     key={task.id}
-                    className="flex items-start justify-between gap-2 bg-vellum rounded-md px-2 py-1.5"
+                    className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-lg border border-line bg-paper px-3.5 py-2.5"
                   >
-                    <div className="min-w-0">
-                      <p className="font-body text-body-sm text-ink truncate">{task.title}</p>
+                    <div className="min-w-0 flex-[1_1_220px]">
+                      <p className="line-clamp-2 break-words font-body text-[15px] font-medium text-ink">{task.title}</p>
                       {task.description && (
-                        <p className="text-body-xs text-ink-muted line-clamp-2">
+                        <p className="line-clamp-2 font-body text-body-sm text-ink-light">
                           {task.description}
                         </p>
                       )}
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={() => decide(task.id, true)}
-                        className="flex items-center gap-0.5 px-1.5 py-1 rounded-md text-body-xs font-medium bg-success/15 text-success hover:bg-success/25 transition-colors"
-                      >
-                        <Check className="w-3 h-3" /> {t('leaderChat.approve')}
-                      </button>
+                    <div className="flex shrink-0 items-center gap-2">
                       <button
                         onClick={() => decide(task.id, false)}
-                        className="flex items-center gap-0.5 px-1.5 py-1 rounded-md text-body-xs font-medium bg-vellum-dark text-ink-light hover:text-ink transition-colors"
+                        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md border border-line-strong bg-paper px-3.5 font-body text-body-sm font-medium text-ink transition-colors hover:bg-inset"
                       >
-                        <X className="w-3 h-3" /> {t('leaderChat.reject')}
+                        <X className="h-4 w-4" aria-hidden /> {t('leaderChat.reject')}
+                      </button>
+                      <button
+                        onClick={() => decide(task.id, true)}
+                        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md bg-ink px-3.5 font-body text-body-sm font-medium text-paper transition-colors hover:bg-ink/85"
+                      >
+                        <Check className="h-4 w-4" aria-hidden /> {t('leaderChat.approve')}
                       </button>
                     </div>
                   </div>
@@ -359,26 +351,28 @@ export default function LeaderChatPanel({
 
       {/* Offline banner */}
       {!loading && !leaderOnline && (
-        <div className="mb-3 mx-1 bg-warning-bg border-l-4 border-warning rounded-md px-3 py-2 flex items-center gap-2 flex-shrink-0">
-          <WifiOff className="w-4 h-4 text-warning flex-shrink-0" />
-          <p className="font-body text-body-xs text-ink">{t('leaderChat.offlineBanner')}</p>
+        <div className="mx-4 mt-3 flex flex-shrink-0 items-start gap-2 rounded-lg bg-gold-bg px-3.5 py-2.5 sm:mx-5">
+          <WifiOff className="mt-0.5 h-4 w-4 flex-shrink-0 text-gold-ink" aria-hidden />
+          <p className="font-body text-body-sm text-ink">{t('leaderChat.offlineBanner')}</p>
         </div>
       )}
 
       {/* Conversation (assistant-ui thread; fills remaining height, scrolls internally). */}
-      <div className="flex-1 min-h-0 px-1">
+      <div className="min-h-0 flex-1 px-4 pt-3 sm:px-5">
         {loading ? (
           <div className="flex items-center justify-center py-10 text-ink-muted">
-            <Loader2 className="w-5 h-5 animate-spin" />
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
           </div>
         ) : (
           <AssistantRuntimeProvider runtime={runtime}>
-            <ThreadPrimitive.Root className="flex flex-col h-full min-h-0">
-              <ThreadPrimitive.Viewport className="flex-1 min-h-0 overflow-y-auto space-y-2.5 pr-1">
+            <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
+              <ThreadPrimitive.Viewport className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pb-3 pr-1">
                 <ThreadPrimitive.Empty>
-                  <div className="flex flex-col items-center justify-center py-10 text-center text-ink-muted">
-                    <Bot className="w-8 h-8 mb-2 opacity-50" />
-                    <p className="font-body text-body-sm">{t('leaderChat.empty')}</p>
+                  <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
+                    <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-inset text-ink-muted">
+                      <Bot className="h-6 w-6" aria-hidden />
+                    </span>
+                    <p className="font-body text-body-md text-ink-light">{t('leaderChat.empty')}</p>
                   </div>
                 </ThreadPrimitive.Empty>
                 <ThreadPrimitive.Messages>
@@ -393,8 +387,8 @@ export default function LeaderChatPanel({
                   }
                 </ThreadPrimitive.Messages>
                 {state === 'thinking' && !hasStreamingPartial && (
-                  <div className="flex items-center gap-2 text-ink-muted text-body-sm px-1">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('leaderChat.thinking')}
+                  <div className="flex items-center gap-2 px-1 font-body text-body-sm text-ink-muted">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> {t('leaderChat.thinking')}
                   </div>
                 )}
               </ThreadPrimitive.Viewport>
@@ -404,13 +398,14 @@ export default function LeaderChatPanel({
       </div>
 
       {error && (
-        <div className="mt-2 mx-1 text-body-xs text-terracotta flex items-center gap-1.5 flex-shrink-0">
-          <X className="w-3 h-3" /> {error}
+        <div role="alert" className="mx-4 mb-2 flex flex-shrink-0 items-start gap-1.5 font-body text-body-sm text-vermilion-ink sm:mx-5">
+          <X className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden /> <span className="min-w-0 break-words">{error}</span>
         </div>
       )}
 
-      {/* Input (hand-rolled — carries turn-taking + the offline lock). */}
-      <div className="mt-2 mx-1 flex items-end gap-2 border-t border-vellum-dark pt-3 flex-shrink-0">
+      {/* Input (hand-rolled — carries turn-taking + the offline lock). The bottom padding
+          clears the phone's home indicator when the panel is full-screen. */}
+      <div className="flex flex-shrink-0 items-end gap-2 border-t border-line bg-inset px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-4">
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -422,6 +417,7 @@ export default function LeaderChatPanel({
           }}
           disabled={locked}
           rows={2}
+          aria-label={t('leaderChat.inputPlaceholder')}
           placeholder={
             !leaderOnline
               ? t('leaderChat.inputDisabled')
@@ -429,20 +425,21 @@ export default function LeaderChatPanel({
                 ? t('leaderChat.inputThinking')
                 : t('leaderChat.inputPlaceholder')
           }
-          className="flex-1 bg-vellum border border-vellum-dark rounded-md px-2.5 py-1.5 font-body text-body-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-terracotta resize-none disabled:opacity-60 disabled:cursor-not-allowed"
+          className="min-h-[44px] min-w-0 flex-1 resize-none rounded-md border border-line bg-paper px-3 py-2 font-body text-body-md text-ink placeholder:text-ink-muted focus:border-terracotta focus:outline-none focus:ring-[3px] focus:ring-terracotta/15 disabled:cursor-not-allowed disabled:bg-inset"
         />
         <button
           onClick={onSubmit}
           disabled={locked || !input.trim()}
-          className="flex items-center justify-center w-9 h-9 rounded-md bg-terracotta text-white hover:bg-terracotta-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+          aria-label={t('agentChat.send')}
+          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-md bg-ink text-paper transition-colors hover:bg-ink/85 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {state === 'thinking' ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
           ) : (
-            <Send className="w-4 h-4" />
+            <Send className="h-4 w-4" aria-hidden />
           )}
         </button>
       </div>
-    </VellumPanel>
+    </div>
   );
 }

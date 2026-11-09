@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { motion } from 'framer-motion';
 import {
@@ -9,7 +9,6 @@ import {
   Star,
   Server,
   Loader2,
-  Bot,
   Clock,
   WifiOff,
   Activity,
@@ -56,46 +55,26 @@ const STATUS_CONFIG: Record<
   AgentStatus,
   { color: string; pulse: boolean; label: string; icon: typeof Zap }
 > = {
-  online: { color: '#4A9E6B', pulse: true, label: 'Online', icon: Zap },
-  working: { color: '#D4A843', pulse: true, label: 'Working', icon: Activity },
-  idle: { color: '#A89880', pulse: false, label: 'Idle', icon: Clock },
-  offline: { color: '#8B7A6A', pulse: false, label: 'Offline', icon: WifiOff },
+  online: { color: '#3E8F5F', pulse: true, label: 'Online', icon: Zap },
+  working: { color: '#3A6EA8', pulse: true, label: 'Working', icon: Activity },
+  idle: { color: '#A89A80', pulse: false, label: 'Idle', icon: Clock },
+  offline: { color: '#736450', pulse: false, label: 'Offline', icon: WifiOff },
 };
 
 // There is no adapter picker any more. It offered three choices of which only one was ever
 // registered, and the real answer — which tool runs this agent — follows from the workplace
 // the person picks, which is a thing they can actually see and reason about (FR-007g).
 
-// ─── Component: Status Dot ───────────────────────────────────────────────────
-
-function StatusDot({ status, size = 8 }: { status: AgentStatus; size?: number }) {
-  const config = STATUS_CONFIG[status] || STATUS_CONFIG.offline;
-  return (
-    <span
-      className={cn(
-        'rounded-full flex-shrink-0',
-        config.pulse && 'animate-pulse-dot'
-      )}
-      style={{
-        width: size,
-        height: size,
-        backgroundColor: config.color,
-        boxShadow: config.pulse ? `0 0 6px ${config.color}80` : 'none',
-      }}
-    />
-  );
-}
-
 // ─── Component: Agent Card ───────────────────────────────────────────────────
 
-function AgentCard({
-  agent,
-  onDesignate,
-}: {
-  agent: Marius;
-  onDesignate: (id: string) => void;
-}) {
+/** Which of an agent's tasks says most about what it is doing — running beats waiting. */
+const HOLDING_ORDER = ['in_progress', 'in_review', 'blocked', 'todo'];
+
+function AgentCard({ agent }: { agent: Marius }) {
   const { t } = useTranslation();
+  const tasks = useAppStore((s) => s.tasks);
+  const own = tasks.filter((tk) => tk.assigneeId === agent.id);
+  const holding = HOLDING_ORDER.map((st) => own.find((tk) => tk.status === st)).find(Boolean);
   const navigate = useNavigate();
   const { workspaceId } = useParams();
   const config = STATUS_CONFIG[agent.status] || STATUS_CONFIG.offline;
@@ -112,7 +91,7 @@ function AgentCard({
   return (
     <motion.div variants={cardVariants} layout>
       <VellumPanel
-        className="relative h-full cursor-pointer"
+        className="relative h-full cursor-pointer flex flex-col gap-4"
         onClick={openDetail}
         role="button"
         tabIndex={0}
@@ -121,15 +100,17 @@ function AgentCard({
         }}
       >
         {/* Top row: status dot + avatar + name + WA badge + menu */}
-        <div className="flex items-start gap-3">
-          <div className="flex items-center gap-2 flex-shrink-0 mt-1">
-            <StatusDot status={agent.status} />
-          </div>
-
-          {/* Avatar */}
+        <div className="flex items-center gap-3.5">
+          {/* Avatar, ringed by liveness — the same ring the sidebar and Home use */}
           <div
-            className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border-2 flex items-center justify-center"
-            style={{ borderColor: config.color }}
+            className={cn(
+              'w-[52px] h-[52px] rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-body text-[19px] font-semibold',
+              agent.status === 'offline'
+                ? 'bg-vellum text-ink-muted border-2 border-dashed border-ash'
+                : 'ring-2 ring-offset-[3px] ring-offset-paper',
+              agent.status === 'working' && 'bg-lapis-bg text-lapis-ink ring-lapis',
+              (agent.status === 'online' || agent.status === 'idle') && 'bg-verdigris-bg text-verdigris-ink ring-verdigris'
+            )}
           >
             {agent.avatar ? (
               <img
@@ -138,7 +119,7 @@ function AgentCard({
                 className="w-full h-full object-cover"
               />
             ) : (
-              <Bot className="w-5 h-5 text-ink-muted" />
+              displayName.charAt(0).toUpperCase()
             )}
           </div>
 
@@ -146,13 +127,13 @@ function AgentCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3
-                className="font-['Fraunces',Georgia,serif] text-[22px] font-medium text-[#2A2318] leading-tight"
+                className="font-['Fraunces',Georgia,serif] text-[22px] font-medium text-ink leading-tight"
               >
                 {displayName}
               </h3>
               {agent.isWorkspaceAgent === true && (
                 <span
-                  className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#D4A843] text-[#2A2318]"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-gold-bg text-gold-ink"
                 >
                   <Star className="w-3 h-3" /> {t('directory.workspaceAgent')}
                 </span>
@@ -171,9 +152,42 @@ function AgentCard({
 
         </div>
 
+        {/* What it is holding right now — the question a person opens this page to answer. */}
+        <div
+          className={cn(
+            'rounded-lg px-3.5 py-3',
+            holding?.status === 'blocked' ? 'bg-vermilion-bg' : 'bg-inset'
+          )}
+        >
+          {holding ? (
+            <>
+              <div
+                className={cn(
+                  'font-body text-body-xs font-medium mb-1',
+                  holding.status === 'blocked'
+                    ? 'text-vermilion-ink'
+                    : holding.status === 'in_review'
+                      ? 'text-gold-ink'
+                      : 'text-ink-muted'
+                )}
+              >
+                {t(`tasks.status.${holding.status}`)}
+              </div>
+              <div className="font-body text-body-md text-ink truncate">
+                {holding.identifier && (
+                  <span className="font-mono text-mono-sm text-ink-muted mr-1.5">{holding.identifier}</span>
+                )}
+                {holding.title}
+              </div>
+            </>
+          ) : (
+            <div className="font-body text-body-md text-ink-light">{t('home.agentNoTask')}</div>
+          )}
+        </div>
+
         {/* Where it works — the CLI and the machine, which is what tells two agents apart at a
             glance (FR-007o). The status is already said once, beside the name. */}
-        <div className="mt-3 flex items-center gap-1.5 text-[12px] font-mono text-[#6B5E4E]">
+        <div className="flex items-center gap-1.5 text-[12px] font-mono text-ink-light">
           <Server className="w-3.5 h-3.5 flex-shrink-0" aria-hidden />
           <span className="truncate">
             {agent.runtime
@@ -187,35 +201,22 @@ function AgentCard({
 
         {/* Skills */}
         {agentSkills.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             {agentSkills.slice(0, 3).map((skill) => (
               <span
                 key={skill}
-                className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#E3D7BC] text-[#6B5E4E]"
+                className="px-2.5 py-0.5 rounded-full text-[12px] font-medium bg-ash-bg text-ink-light"
               >
                 {skill}
               </span>
             ))}
             {agentSkills.length > 3 && (
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-medium text-[#A89880]">
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-medium text-ink-muted">
                 {t('directory.moreSkills', { count: agentSkills.length - 3 })}
               </span>
             )}
           </div>
         )}
-
-        {/* Contextual Actions */}
-        <div className="mt-4 flex items-center gap-2">
-          {agent.status === 'online' && agent.isWorkspaceAgent !== true && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onDesignate(agent.id); }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium border border-[#D4A843] text-[#D4A843] hover:bg-[#D4A843] hover:text-[#2A2318] transition-all"
-            >
-              <Star className="w-3.5 h-3.5" />
-              {t('directory.actions.designate')}
-            </button>
-          )}
-        </div>
 
       </VellumPanel>
     </motion.div>
@@ -247,6 +248,21 @@ export default function Directory() {
       mariuses.find((m) => m.workspaceId === activeWorkspaceId && m.isWorkspaceAgent === true),
     [mariuses, activeWorkspaceId]
   );
+
+  // Cards say what each agent is holding, and tasks are loaded per project.
+  const allProjects = useAppStore((s) => s.projects);
+  const hydrateProject = useAppStore((s) => s.hydrateProject);
+  const projectKey = allProjects
+    .filter((p) => p.workspaceId === activeWorkspaceId)
+    .map((p) => p.id)
+    .join(',');
+  useEffect(() => {
+    projectKey.split(',').filter(Boolean).forEach((id) => void hydrateProject(id).catch(() => {}));
+  }, [projectKey, hydrateProject]);
+
+  // Who may become the host: an agent that answers, which an offline one cannot.
+  const hostCandidates = useMemo(() => mariuses.filter((m) => m.status !== 'offline'), [mariuses]);
+  const [hostPick, setHostPick] = useState('');
 
   // ── Designate state ────────────────────────────────────────────────────────
   // Renaming, the runtime settings and removal moved to the agent's own page (FR-007o).
@@ -421,7 +437,7 @@ export default function Directory() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-[100dvh]">
+    <div className="mx-auto w-full max-w-[1240px] pb-10">
       {/* Page Header */}
       <motion.div
         initial={{ opacity: 0, y: 24, filter: 'blur(2px)' }}
@@ -439,7 +455,7 @@ export default function Directory() {
           transition={{ delay: 0.2, duration: 0.3 }}
           className={cn(
             'inline-flex items-center gap-2 px-5 py-2.5 rounded-md text-[15px] font-medium',
-            'bg-[#C25E3A] text-white hover:bg-[#D97B5A] transition-all',
+            'bg-ink text-white hover:bg-ink/85 transition-all',
             'hover:-translate-y-0.5 hover:shadow-md'
           )}
         >
@@ -448,43 +464,86 @@ export default function Directory() {
         </motion.button>
       </motion.div>
 
+      {/* No host yet: one place to pick one, instead of a button on every card */}
+      {!currentHost && mariuses.length > 0 && (
+        <section className="mb-6 flex flex-wrap items-center gap-4 rounded-xl border border-[#EBCF8A] bg-[#FBF3DF] px-5 py-4">
+          <span className="w-12 h-12 shrink-0 rounded-full border-[1.5px] border-dashed border-gold flex items-center justify-center text-gold-ink">
+            <Star className="w-5 h-5" />
+          </span>
+          <div className="flex-[1_1_320px] min-w-0">
+            <h2 className="font-display text-[19px] font-medium text-ink">{t('directory.hostBanner.title')}</h2>
+            <p className="mt-0.5 font-body text-body-md text-ink-light">
+              {hostCandidates.length > 0 ? t('directory.hostBanner.body') : t('directory.hostBanner.noneOnline')}
+            </p>
+          </div>
+          {hostCandidates.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <label htmlFor="host-pick" className="sr-only">{t('directory.hostBanner.pick')}</label>
+              <select
+                id="host-pick"
+                value={hostPick}
+                onChange={(e) => setHostPick(e.target.value)}
+                className="min-h-[44px] px-3 rounded-md border border-line-strong bg-paper font-body text-body-md text-ink"
+              >
+                <option value="">{t('directory.hostBanner.pick')}</option>
+                {hostCandidates.map((m) => (
+                  <option key={m.id} value={m.id}>{m.displayName || m.name}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => hostPick && handleDesignate(hostPick)}
+                disabled={!hostPick}
+                className="min-h-[44px] px-4 rounded-md bg-ink font-body text-body-md font-medium text-paper hover:bg-ink/85 disabled:opacity-50 transition-colors"
+              >
+                {t('directory.actions.designate')}
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
       {/* Filter Bar */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.2, duration: 0.3 }}
-        className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-6"
+        className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-6 flex-wrap"
       >
         {/* Status Filter */}
-        <div className="flex items-center gap-2">
-          <Dropdown
-            size="sm"
-            className="w-auto min-w-44"
-            value={statusFilter}
-            onChange={setStatusFilter}
-            ariaLabel={t('directory.filter.all')}
-            items={[
-              { value: 'all', label: `${t('directory.filter.all')} (${mariuses.length})` },
-              ...(['online', 'working', 'idle', 'offline'] as const).map((status) => ({
-                value: status,
-                label: `${t('directory.status.' + status)} (${mariuses.filter((m) => m.status === status).length})`,
-              })),
-            ]}
-          />
+        <div role="group" aria-label={t('directory.filter.all')} className="flex flex-wrap items-center gap-1.5">
+          {(['all', 'working', 'online', 'idle', 'offline'] as const).map((key) => {
+            const count = key === 'all' ? mariuses.length : mariuses.filter((m) => m.status === key).length;
+            if (key !== 'all' && count === 0) return null;
+            const active = statusFilter === key;
+            return (
+              <button
+                key={key}
+                onClick={() => setStatusFilter(key)}
+                aria-pressed={active}
+                className={cn(
+                  'min-h-[36px] px-3 rounded-full border font-body text-body-sm font-medium transition-colors',
+                  active ? 'bg-ink text-paper border-ink' : 'bg-paper text-ink border-line-strong hover:bg-inset'
+                )}
+              >
+                {key === 'all' ? t('directory.filter.all') : t(`directory.status.${key}`)} {count}
+              </button>
+            );
+          })}
         </div>
+        <div className="flex-1" />
 
         {/* Search */}
-        <div className="relative flex-1 w-full sm:max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A89880]" />
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-muted" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('directory.searchPlaceholder')}
             className={cn(
-              'w-full pl-9 pr-4 py-2 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
-              'placeholder:text-[#A89880]',
-              'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+              'w-full pl-9 pr-4 py-2 rounded-md bg-inset border border-line text-[15px] text-ink',
+              'placeholder:text-ink-muted',
+              'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15',
               'transition-all'
             )}
           />
@@ -507,7 +566,7 @@ export default function Directory() {
                 onClick={handleOpenInvite}
                 className={cn(
                   'inline-flex items-center gap-2 px-5 py-2.5 rounded-md text-[15px] font-medium',
-                  'bg-[#C25E3A] text-white hover:bg-[#D97B5A] transition-all'
+                  'bg-ink text-white hover:bg-ink/85 transition-all'
                 )}
               >
                 <Plus className="w-4 h-4" />
@@ -518,17 +577,13 @@ export default function Directory() {
         />
       ) : (
         <motion.div
-          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
+          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-stretch"
           variants={containerVariants}
           initial="hidden"
           animate="visible"
         >
           {filteredAgents.map((agent) => (
-            <AgentCard
-              key={agent.id}
-              agent={agent}
-              onDesignate={handleDesignate}
-            />
+            <AgentCard key={agent.id} agent={agent} />
           ))}
         </motion.div>
       )}
@@ -538,7 +593,7 @@ export default function Directory() {
         isOpen={inviteModalOpen}
         onClose={handleCloseInvite}
         title={
-          <span className="font-['Fraunces',Georgia,serif] text-[28px] font-semibold text-[#2A2318]">
+          <span className="font-['Fraunces',Georgia,serif] text-[28px] font-semibold text-ink">
             <span className="title-initial">{t('directory.inviteAgent').charAt(0)}</span>
             {t('directory.inviteAgent').slice(1)}
           </span>
@@ -548,8 +603,8 @@ export default function Directory() {
         <div className="space-y-5">
               {/* Agent Name */}
               <div>
-                <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
-                  {t('directory.agentName')} <span className="text-[#C25E3A]">*</span>
+                <label className="block text-[13px] font-medium text-ink mb-1">
+                  {t('directory.agentName')} <span className="text-terracotta">*</span>
                 </label>
                 <input
                   type="text"
@@ -557,9 +612,9 @@ export default function Directory() {
                   onChange={(e) => setAgentName(e.target.value)}
                   placeholder={t('directory.agentNamePlaceholder')}
                   className={cn(
-                    'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
-                    'placeholder:text-[#A89880]',
-                    'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+                    'w-full px-4 py-2.5 rounded-md bg-inset border border-line text-[15px] text-ink',
+                    'placeholder:text-ink-muted',
+                    'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15',
                     'transition-all'
                   )}
                 />
@@ -568,17 +623,17 @@ export default function Directory() {
               {/* Where this agent will work (FR-007f). Required: the attachment is made once
                   here and never again, so there is no "decide later". */}
               <div>
-                <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
-                  {t('directory.workplace')} <span className="text-[#C25E3A]">*</span>
+                <label className="block text-[13px] font-medium text-ink mb-1">
+                  {t('directory.workplace')} <span className="text-terracotta">*</span>
                 </label>
                 {workplacesLoading ? (
-                  <p className="text-[13px] text-[#A89880]">{t('directory.workplaceLoading')}</p>
+                  <p className="text-[13px] text-ink-muted">{t('directory.workplaceLoading')}</p>
                 ) : workplaces.length === 0 ? (
                   // Not an error state — nothing is broken, there is simply nowhere to put an
                   // agent yet. Say what to do about it rather than leaving an empty box.
-                  <div className="rounded-md border border-[#E3D7BC] bg-[#F7F0E0] p-3">
-                    <p className="text-[13px] text-[#2A2318]">{t('directory.workplaceNone')}</p>
-                    <p className="mt-1 text-[11px] text-[#A89880]">
+                  <div className="rounded-md border border-line bg-inset p-3">
+                    <p className="text-[13px] text-ink">{t('directory.workplaceNone')}</p>
+                    <p className="mt-1 text-[11px] text-ink-muted">
                       {t('directory.workplaceNoneHint')}
                     </p>
                   </div>
@@ -603,7 +658,7 @@ export default function Directory() {
                     }))}
                   />
                 )}
-                <p className="mt-1 text-[11px] text-[#A89880]">{t('directory.workplaceHint')}</p>
+                <p className="mt-1 text-[11px] text-ink-muted">{t('directory.workplaceHint')}</p>
               </div>
 
               {/* What this workplace's tool takes, as the tool itself answered it (FR-007k,
@@ -620,7 +675,7 @@ export default function Directory() {
               {/* What the agent is told to be (FR-007i). This is the whole of how it
                   behaves: there is no per-project role adding to it later. */}
               <div>
-                <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
+                <label className="block text-[13px] font-medium text-ink mb-1">
                   {t('directory.instructions')}
                 </label>
                 <textarea
@@ -629,18 +684,18 @@ export default function Directory() {
                   rows={5}
                   placeholder={t('directory.instructionsPlaceholder')}
                   className={cn(
-                    'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
-                    'placeholder:text-[#A89880] resize-y',
-                    'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+                    'w-full px-4 py-2.5 rounded-md bg-inset border border-line text-[15px] text-ink',
+                    'placeholder:text-ink-muted resize-y',
+                    'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15',
                     'transition-all'
                   )}
                 />
-                <p className="mt-1 text-[11px] text-[#A89880]">{t('directory.instructionsHint')}</p>
+                <p className="mt-1 text-[11px] text-ink-muted">{t('directory.instructionsHint')}</p>
               </div>
 
               {/* What the team calls it. Never sent to the agent (FR-007j). */}
               <div>
-                <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
+                <label className="block text-[13px] font-medium text-ink mb-1">
                   {t('directory.agentDescription')}
                 </label>
                 <input
@@ -649,13 +704,13 @@ export default function Directory() {
                   onChange={(e) => setAgentDescription(e.target.value)}
                   placeholder={t('directory.agentDescriptionPlaceholder')}
                   className={cn(
-                    'w-full px-4 py-2.5 rounded-md bg-[#F7F0E0] border border-[#E3D7BC] text-[15px] text-[#2A2318]',
-                    'placeholder:text-[#A89880]',
-                    'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15',
+                    'w-full px-4 py-2.5 rounded-md bg-inset border border-line text-[15px] text-ink',
+                    'placeholder:text-ink-muted',
+                    'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15',
                     'transition-all'
                   )}
                 />
-                <p className="mt-1 text-[11px] text-[#A89880]">
+                <p className="mt-1 text-[11px] text-ink-muted">
                   {t('directory.agentDescriptionHint')}
                 </p>
               </div>
@@ -667,20 +722,20 @@ export default function Directory() {
                     type="checkbox"
                     checked={makeWorkspaceAgent}
                     onChange={(e) => setMakeWorkspaceAgent(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 accent-[#C25E3A]"
+                    className="mt-0.5 w-4 h-4 accent-terracotta"
                   />
                   <span>
-                    <span className="flex items-center gap-1.5 text-[13px] font-medium text-[#2A2318]">
-                      <Star className="w-3.5 h-3.5 text-[#D4A843]" />
+                    <span className="flex items-center gap-1.5 text-[13px] font-medium text-ink">
+                      <Star className="w-3.5 h-3.5 text-gold" />
                       {t('directory.setAsWorkspaceAgent')}
                     </span>
-                    <span className="block text-[11px] text-[#A89880]">
+                    <span className="block text-[11px] text-ink-muted">
                       {t('directory.setAsWorkspaceAgentHint')}
                     </span>
                   </span>
                 </label>
                 {makeWorkspaceAgent && currentHost && (
-                  <p className="mt-2 px-3 py-2 rounded-md bg-[#F5E8CC] text-[12px] text-[#8B6A28]">
+                  <p className="mt-2 px-3 py-2 rounded-md bg-gold-bg text-[12px] text-gold-ink">
                     {t('directory.replaceHostWarning', {
                       name: currentHost.displayName || currentHost.name,
                     })}
@@ -690,7 +745,7 @@ export default function Directory() {
 
               {/* Skills */}
               <div>
-                <label className="block text-[13px] font-medium text-[#2A2318] mb-1">
+                <label className="block text-[13px] font-medium text-ink mb-1">
                   {t('directory.skills')}
                 </label>
                 <div className="flex flex-wrap gap-1.5">
@@ -706,8 +761,8 @@ export default function Directory() {
                         className={cn(
                           'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all',
                           on
-                            ? 'bg-[#C25E3A] text-white'
-                            : 'bg-[#E3D7BC] text-[#6B5E4E] hover:bg-[#D9CDB8]',
+                            ? 'bg-ink text-white'
+                            : 'bg-line text-ink-light hover:bg-line-strong',
                         )}
                       >
                         {on && <Check className="w-3 h-3" />}
@@ -723,7 +778,7 @@ export default function Directory() {
                   and submitting it. Swallowing it would leave the person clicking a button
                   that does nothing and says nothing. */}
               {inviteError && (
-                <p className="flex items-start gap-1.5 px-3 py-2 rounded-md bg-[#F3D9D0] text-[12px] text-[#8A3B22] border border-[#E3C0B2]">
+                <p className="flex items-start gap-1.5 px-3 py-2 rounded-md bg-vermilion-bg text-[12px] text-terracotta-dark border border-[#E3C0B2]">
                   <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> {inviteError}
                 </p>
               )}
@@ -732,7 +787,7 @@ export default function Directory() {
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   onClick={handleCloseInvite}
-                  className="px-4 py-2 rounded-md text-[13px] font-medium bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC] transition-colors"
+                  className="px-4 py-2 rounded-md text-[13px] font-medium bg-paper text-ink border border-line hover:bg-line transition-colors"
                 >
                   {t('common.cancel')}
                 </button>
@@ -744,8 +799,8 @@ export default function Directory() {
                   className={cn(
                     'inline-flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-all',
                     agentName.trim() && workplaceId && !sending
-                      ? 'bg-[#C25E3A] text-white hover:bg-[#D97B5A]'
-                      : 'bg-[#E3D7BC] text-[#A89880] cursor-not-allowed'
+                      ? 'bg-ink text-white hover:bg-ink/85'
+                      : 'bg-line text-ink-muted cursor-not-allowed'
                   )}
                 >
                   {sending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}

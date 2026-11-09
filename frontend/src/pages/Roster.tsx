@@ -1,49 +1,31 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Check,
   Bot,
+  Crown,
   Lock,
-  AlertTriangle,
+  Hourglass,
   Zap,
   Plus,
   ChevronLeft,
   UserMinus,
 } from 'lucide-react';
 import { useAppStore, type ProjectSeat, type Marius } from '@/store/appStore';
-import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
 import Modal from '@/components/Modal';
 import PageTitle from '@/components/PageTitle';
 import { cn, wsHref } from '@/lib/utils';
 import { agentsOf } from '@/lib/workspaceScope';
 
-// ─── Status Dot ──────────────────────────────────────────────────────────────
-
-function StatusDot({ status }: { status: string }) {
-  return (
-    <span
-      className={cn(
-        'w-2 h-2 rounded-full flex-shrink-0',
-        status === 'online' && 'bg-status-online',
-        status === 'working' && 'bg-status-working',
-        status === 'idle' && 'bg-status-idle',
-        status === 'offline' && 'bg-status-offline',
-        status === 'hung' && 'bg-status-hung',
-        status === 'checking' && 'bg-status-checking',
-      )}
-    />
-  );
-}
-
 // ─── Agent Avatar ────────────────────────────────────────────────────────────
 
-function AgentAvatar({ agent, size = 32 }: { agent: Marius; size?: number }) {
+function AgentAvatar({ agent, size = 40 }: { agent: Marius; size?: number }) {
   return (
     <div
-      className="rounded-full bg-vellum-dark overflow-hidden border border-vellum-dark flex-shrink-0"
+      className="rounded-full bg-inset overflow-hidden border border-line flex-shrink-0"
       style={{ width: size, height: size }}
       title={agent.displayName || agent.name}
     >
@@ -58,45 +40,10 @@ function AgentAvatar({ agent, size = 32 }: { agent: Marius; size?: number }) {
   );
 }
 
-// ─── Confetti Particles ──────────────────────────────────────────────────────
-
-function ConfettiBurst() {
-  // Scattered once, in a lazy state initialiser rather than during render: the
-  // burst must look the same for as long as it is on screen, and drawing random
-  // numbers while rendering means a re-render reshuffles them mid-animation.
-  const [particles] = useState(() =>
-    Array.from({ length: 30 }, (_, i) => ({
-      id: i,
-      x: (Math.random() - 0.5) * 300,
-      y: -(Math.random() * 200 + 50),
-      rotation: Math.random() * 720 - 360,
-      scale: 0.5 + Math.random() * 0.5,
-      color: ['#C25E3A', '#D4A843', '#4A9E6B', '#E8C96A', '#D97B5A', '#A8D8B8'][
-        Math.floor(Math.random() * 6)
-      ],
-    }))
-  );
-
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {particles.map((p) => (
-        <motion.div
-          key={p.id}
-          className="absolute left-1/2 bottom-0 w-2 h-2 rounded-sm"
-          style={{ backgroundColor: p.color }}
-          initial={{ x: 0, y: 0, rotate: 0, opacity: 1, scale: 1 }}
-          animate={{
-            x: p.x,
-            y: p.y,
-            rotate: p.rotation,
-            opacity: 0,
-            scale: p.scale,
-          }}
-          transition={{ duration: 1.2, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] }}
-        />
-      ))}
-    </div>
-  );
+/** An agent's liveness as the shared chip, in the reader's language. */
+function AgentStatus({ status }: { status: string }) {
+  const { t } = useTranslation();
+  return <StatusChip status={status} label={t(`directory.status.${status}`, { defaultValue: status })} />;
 }
 
 // ─── Add Agent Modal ─────────────────────────────────────────────────────────
@@ -148,17 +95,12 @@ function AddAgentModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={
-        <span className="font-display text-ink">
-          <span className="title-initial">{title.charAt(0)}</span>
-          {title.slice(1)}
-        </span>
-      }
+      title={<span className="font-display text-[22px] font-medium text-ink">{title}</span>}
       footer={
-        <>
+        <div className="flex flex-wrap justify-end gap-2 w-full">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-vellum-deep text-ink border border-vellum-dark hover:bg-vellum-dark transition-colors"
+            className="min-h-[44px] px-4 rounded-md font-body text-body-md font-medium bg-paper text-ink border border-line-strong hover:bg-inset transition-colors"
           >
             {t('common.cancel')}
           </button>
@@ -166,55 +108,52 @@ function AddAgentModal({
             onClick={handleAdd}
             disabled={!selectedAgentId}
             className={cn(
-              'px-4 py-2 rounded-md font-body text-body-md font-medium transition-colors',
+              'min-h-[44px] px-[18px] rounded-md font-body text-body-md font-medium transition-colors',
               selectedAgentId
-                ? 'bg-terracotta text-white hover:bg-terracotta-light'
-                : 'bg-vellum-dark text-ink-muted cursor-not-allowed'
+                ? 'bg-ink text-paper hover:bg-ink/85'
+                : 'bg-line text-ink-muted cursor-not-allowed'
             )}
           >
             {asLeader ? t('roster.seatLeader') : t('roster.addAgent')}
           </button>
-        </>
+        </div>
       }
     >
-      <div className="space-y-2">
-        <p className="font-body text-body-sm font-medium text-ink">{t('roster.selectAgent')}</p>
+      <div className="flex flex-col gap-2">
+        <p className="font-body text-body-sm font-medium text-ink-light">{t('roster.selectAgent')}</p>
         {availableAgents.length === 0 ? (
-          <p className="font-body text-body-sm text-ink-muted italic">
+          <p className="font-body text-body-md text-ink-muted bg-inset border border-line rounded-lg px-4 py-3">
             {t('roster.noAgentsLeft')}
           </p>
         ) : (
-          availableAgents.map((agent) => (
-            <button
-              key={agent.id}
-              onClick={() => setSelectedAgentId(agent.id)}
-              className={cn(
-                'w-full flex items-center gap-3 p-3 rounded-md border transition-all text-left',
-                selectedAgentId === agent.id
-                  ? 'border-terracotta bg-vellum shadow-sm'
-                  : 'border-vellum-dark hover:border-vellum-dark hover:bg-vellum-deep'
-              )}
-            >
-              <AgentAvatar agent={agent} size={36} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-body text-body-md font-medium text-ink">
+          availableAgents.map((agent) => {
+            const selected = selectedAgentId === agent.id;
+            return (
+              <button
+                key={agent.id}
+                onClick={() => setSelectedAgentId(agent.id)}
+                aria-pressed={selected}
+                className={cn(
+                  'w-full min-h-[56px] flex items-center gap-3 p-3 rounded-lg border transition-colors text-left',
+                  selected
+                    ? 'border-ink ring-1 ring-ink bg-paper'
+                    : 'border-line bg-paper hover:border-line-strong hover:bg-inset'
+                )}
+              >
+                <AgentAvatar agent={agent} size={36} />
+                <div className="flex-1 min-w-0">
+                  <div className="font-body text-body-md font-medium text-ink truncate">
                     {agent.displayName || agent.name}
-                  </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                    <AgentStatus status={agent.status} />
+                    <span className="font-mono text-mono-sm text-ink-muted">{agent.adapterType || '—'}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <StatusDot status={agent.status} />
-                  <span className="font-body text-body-xs text-ink-muted capitalize">
-                    {agent.status}
-                  </span>
-                  <span className="font-mono text-mono-sm text-ink-muted">{agent.adapterType || '—'}</span>
-                </div>
-              </div>
-              {selectedAgentId === agent.id && (
-                <Check className="w-4 h-4 text-terracotta" />
-              )}
-            </button>
-          ))
+                {selected && <Check className="w-4 h-4 text-ink shrink-0" />}
+              </button>
+            );
+          })
         )}
       </div>
     </Modal>
@@ -225,7 +164,6 @@ function AddAgentModal({
 
 export default function Roster() {
   const { id: projectId, workspaceId } = useParams<{ id: string; workspaceId: string }>();
-  const navigate = useNavigate();
   const { t } = useTranslation();
   const projects = useAppStore((s) => s.projects);
   const mariuses = useAppStore((s) => s.mariuses);
@@ -250,7 +188,7 @@ export default function Roster() {
   if (!project) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
-        <h2 className="font-display text-display-md text-ink mb-2">{t('common.loading')}</h2>
+        <h2 className="font-display text-[22px] font-medium text-ink-light">{t('common.loading')}</h2>
       </div>
     );
   }
@@ -263,7 +201,7 @@ export default function Roster() {
   if (!project.seats) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
-        <h2 className="font-display text-display-md text-ink mb-2">{t('common.loading')}</h2>
+        <h2 className="font-display text-[22px] font-medium text-ink-light">{t('common.loading')}</h2>
       </div>
     );
   }
@@ -271,6 +209,9 @@ export default function Roster() {
   // ─── Roster data calculations ───
   const leaderSeat = project.seats.find((s) => s.role === 'leader');
   const memberSeats = project.seats.filter((s) => s.role !== 'leader' && s.mariusId);
+  // Worker places the project asked for that nobody sits in yet. Drawn as open cards so the
+  // team grid shows the project's real size, not just who has turned up.
+  const openSeats = project.seats.filter((s) => s.role !== 'leader' && !s.mariusId);
 
   const seatsTotal = project.seats.length;
   const seatsGranted = project.seats.filter((s) => s.mariusId).length;
@@ -294,180 +235,147 @@ export default function Roster() {
   const progressPercent = seatsTotal > 0 ? (seatsGranted / seatsTotal) * 100 : 0;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mx-auto w-full max-w-[1240px] flex flex-col gap-7 pb-10">
       {/* ─── Page Header ────────────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 24, filter: 'blur(2px)' }}
-        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-        transition={{ duration: 0.4, ease: [0, 0, 0.2, 1] as [number, number, number, number] }}
-        className="flex items-end justify-between"
-      >
-        <div className="flex flex-col gap-3">
-          <button
-            onClick={() => navigate(wsHref(workspaceId, `/projects/${projectId}`))}
-            className="inline-flex items-center gap-1 self-start px-2.5 py-1.5 rounded-md bg-vellum-deep border border-vellum-dark font-body text-body-sm text-ink hover:bg-vellum-dark transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            {t('roster.backToBoard')}
-          </button>
-          <PageTitle title={t('roster.title')} />
+      <div className="flex flex-col gap-3">
+        <Link
+          to={wsHref(workspaceId, `/projects/${projectId}`)}
+          className="inline-flex items-center gap-1 self-start min-h-[44px] -ml-2 px-2 rounded-md font-body text-body-md text-ink-light hover:text-ink hover:bg-inset transition-colors"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          {t('roster.backToBoard')}
+        </Link>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <PageTitle title={t('roster.title')} subtitle={project.name} />
+          <StatusChip status={project.status} size="md" label={t(`projects.status.${project.status}`)} />
         </div>
-        <StatusChip status={project.status} label={t(`projects.status.${project.status}`)} />
-      </motion.div>
+      </div>
 
       {/* ─── Progress Summary ───────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1, duration: 0.4 }}
-      >
-        <VellumPanel>
-          <div className="flex items-center justify-between mb-2">
-            <p className="font-body text-body-sm text-ink-light">
-              {t('roster.progressSummary', { granted: seatsGranted, total: seatsTotal })}
-              <span className="text-ink-muted mx-2">&middot;</span>
-              <span className={cn('font-mono text-mono-sm', seatsOnline === seatsTotal ? 'text-success' : 'text-warning')}>
-                {seatsOnline}/{seatsTotal} online
-              </span>
-              <span className="text-ink-muted mx-2">&middot;</span>
-              <span
-                className={cn(
-                  'font-body text-body-sm font-medium',
-                  isActive ? 'text-success' : 'text-warning'
-                )}
-              >
-                {t(`projects.status.${project.status}`)}
-              </span>
-            </p>
-            <span className="font-mono text-mono-md text-ink">{Math.round(progressPercent)}%</span>
-          </div>
+      <div className="bg-paper border border-line rounded-xl px-5 py-4 flex flex-col gap-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-body text-body-md text-ink">
+            <span>{t('roster.progressSummary', { granted: seatsGranted, total: seatsTotal })}</span>
+            <span className="text-ink-muted" aria-hidden>&middot;</span>
+            <span className={cn(seatsOnline === seatsTotal && seatsTotal > 0 ? 'text-verdigris-ink' : 'text-ink-light')}>
+              {t('roster.onlineSummary', { online: seatsOnline, total: seatsTotal })}
+            </span>
+          </p>
+          <span className="font-display text-[22px] font-medium text-ink">{Math.round(progressPercent)}%</span>
+        </div>
 
-          {/* Progress bar */}
-          <div className="w-full h-2 bg-vellum-dark rounded-full overflow-hidden">
-            <motion.div
-              className={cn(
-                'h-full rounded-full',
-                isActive ? 'bg-success' : 'bg-terracotta'
-              )}
-              initial={{ width: 0 }}
-              animate={{ width: `${progressPercent}%` }}
-              transition={{ duration: 0.8, ease: [0, 0, 0.2, 1] as [number, number, number, number] }}
-            />
-          </div>
-        </VellumPanel>
-      </motion.div>
+        {/* Progress bar — verdigris is "filled", the inset track is what is still open */}
+        <div className="w-full h-2 bg-inset rounded-full overflow-hidden">
+          <motion.div
+            className={cn('h-full rounded-full', isActive || isFullyGranted ? 'bg-verdigris' : 'bg-lapis')}
+            initial={false}
+            animate={{ width: `${progressPercent}%` }}
+            transition={{ duration: 0.25, ease: [0, 0, 0.2, 1] as [number, number, number, number] }}
+          />
+        </div>
+      </div>
 
       {/* ─── Project Leader Section ─────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15, duration: 0.4 }}
-      >
-        <h2 className="font-display text-display-sm text-gold mb-3 flex items-center gap-2">
-          <span className="w-10 h-0.5 bg-gold rounded-full" />
-          {t('roster.projectLeader')}
-        </h2>
+      <section className="flex flex-col gap-3">
+        <h2 className="font-display text-[22px] font-medium text-ink">{t('roster.projectLeader')}</h2>
 
-        {leaderSeat && (
-          <VellumPanel>
+        {leaderSeat ? (
+          <div className="max-w-[560px]">
             {leaderSeat.mariusId ? (
-              <GrantedSeatCard seat={leaderSeat} showBadge />
+              <GrantedSeatCard seat={leaderSeat} isLeader />
             ) : (
-              <EmptySeatCard label={t('roster.emptyLeaderSeat')} onAdd={() => setAdding('leader')} />
+              <EmptySeatCard
+                label={t('roster.emptyLeaderSeat')}
+                actionLabel={t('roster.seatLeader')}
+                onAdd={() => setAdding('leader')}
+              />
             )}
-          </VellumPanel>
+          </div>
+        ) : (
+          // A roster with no leader role at all — nothing to seat into, so no button; just say
+          // so instead of leaving a heading over nothing.
+          <p className="max-w-[560px] bg-paper border border-line rounded-xl px-5 py-4 font-body text-body-md text-ink-muted">
+            {t('roster.emptyLeaderSeat')}
+          </p>
         )}
-      </motion.div>
+      </section>
 
       {/* ─── The team ───────────────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2, duration: 0.4 }}
-      >
-        <div className="flex items-baseline justify-between mb-3">
-          <h2 className="font-display text-display-sm text-gold flex items-center gap-2">
-            <span className="w-10 h-0.5 bg-gold rounded-full" />
+      <section className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-[22px] font-medium text-ink">
             {t('roster.team')}
+            <span className="ml-2 font-body text-body-md font-normal text-ink-muted">
+              {memberSeats.length}/{memberSeats.length + openSeats.length}
+            </span>
           </h2>
           <button
             onClick={() => setAdding('member')}
-            className={cn(
-              'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md font-body text-body-sm font-medium',
-              'bg-vellum-deep text-terracotta border border-terracotta',
-              'hover:bg-terracotta hover:text-white transition-colors'
-            )}
+            className="inline-flex items-center gap-1.5 min-h-[44px] px-4 rounded-md bg-paper border border-line-strong font-body text-body-md font-medium text-ink hover:bg-inset transition-colors"
           >
             <Plus className="w-4 h-4" />
             {t('roster.addAgent')}
           </button>
         </div>
 
-        <VellumPanel>
-          {/* One flat list. There is nothing to group by: an agent is on the project as
-              itself, and what it does is written on the agent (FR-007l). */}
-          {memberSeats.length === 0 ? (
-            <p className="font-body text-body-sm text-ink-muted italic py-2">
-              {t('roster.noTeamYet')}
-            </p>
-          ) : (
-            <div className="space-y-2">
-              <AnimatePresence initial={false}>
-                {memberSeats.map((seat, seatIndex) => (
-                  <motion.div
-                    key={seat.mariusId}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ delay: 0.05 * seatIndex }}
-                  >
-                    <GrantedSeatCard
-                      seat={seat}
-                      onRemove={
-                        teamIsStillOpen
-                          ? () => removeProjectMember(project.id, seat.mariusId!)
-                          : undefined
-                      }
-                    />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
-          )}
-        </VellumPanel>
-      </motion.div>
-
-      {/* ─── Activation Banner ──────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4, duration: 0.4 }}
-        className="relative overflow-hidden rounded-lg mt-4"
-      >
-        {isActive ? (
-          <div className="relative bg-success-bg border border-success/20 px-6 py-4 flex items-center gap-3 overflow-hidden">
-            <ConfettiBurst />
-            <Zap className="w-5 h-5 text-success flex-shrink-0 relative z-10" />
-            <p className="font-body text-body-md text-success font-medium relative z-10">
-              {t('roster.projectActive')}
-            </p>
-          </div>
-        ) : isFullyGranted ? (
-          <div className="bg-warning-bg border border-warning/20 px-6 py-4 flex items-center gap-3 rounded-lg">
-            <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0" />
-            <p className="font-body text-body-md text-warning font-medium">
-              {t('roster.waitingOnline')}
-            </p>
-          </div>
+        {/* One flat grid. There is nothing to group by: an agent is on the project as
+            itself, and what it does is written on the agent (FR-007l). */}
+        {memberSeats.length === 0 && openSeats.length === 0 ? (
+          <p className="bg-paper border border-line rounded-xl px-5 py-5 font-body text-body-md text-ink-muted">
+            {t('roster.noTeamYet')}
+          </p>
         ) : (
-          <div className="bg-error-bg border border-error/20 px-6 py-4 flex items-center gap-3 rounded-lg">
-            <Lock className="w-5 h-5 text-error flex-shrink-0" />
-            <p className="font-body text-body-md text-error font-medium">
-              {t('roster.allGranted')}
-            </p>
+          <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))]">
+            <AnimatePresence initial={false}>
+              {memberSeats.map((seat) => (
+                <motion.div
+                  key={seat.mariusId}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="min-w-0"
+                >
+                  <GrantedSeatCard
+                    seat={seat}
+                    onRemove={
+                      teamIsStillOpen
+                        ? () => removeProjectMember(project.id, seat.mariusId!)
+                        : undefined
+                    }
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            {openSeats.map((seat) => (
+              <EmptySeatCard
+                key={seat.id}
+                label={t('roster.openSeat')}
+                actionLabel={t('roster.addAgent')}
+                onAdd={() => setAdding('member')}
+              />
+            ))}
           </div>
         )}
-      </motion.div>
+      </section>
+
+      {/* ─── Activation Banner ──────────────────────────────────────── */}
+      {isActive ? (
+        <div className="flex items-center gap-3 rounded-xl bg-verdigris-bg border border-verdigris/30 px-5 py-4">
+          <Zap className="w-5 h-5 text-verdigris-ink flex-shrink-0" />
+          <p className="font-body text-body-md text-verdigris-ink font-medium">{t('roster.projectActive')}</p>
+        </div>
+      ) : isFullyGranted ? (
+        <div className="flex items-center gap-3 rounded-xl bg-ash-bg border border-line px-5 py-4">
+          <Hourglass className="w-5 h-5 text-ink-light flex-shrink-0" />
+          <p className="font-body text-body-md text-ink-light font-medium">{t('roster.waitingOnline')}</p>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 rounded-xl bg-gold-bg border border-gold/40 px-5 py-4">
+          <Lock className="w-5 h-5 text-gold-ink flex-shrink-0" />
+          <p className="font-body text-body-md text-gold-ink font-medium">{t('roster.allGranted')}</p>
+        </div>
+      )}
 
       {/* ─── Add Agent Modal ────────────────────────────────────────── */}
       <AddAgentModal
@@ -486,11 +394,11 @@ export default function Roster() {
 // empty card needs a number to refer to.
 function GrantedSeatCard({
   seat,
-  showBadge = false,
+  isLeader = false,
   onRemove,
 }: {
   seat: ProjectSeat;
-  showBadge?: boolean;
+  isLeader?: boolean;
   onRemove?: () => void;
 }) {
   const { t } = useTranslation();
@@ -500,36 +408,27 @@ function GrantedSeatCard({
   if (!agent) return null;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.3, ease: [0.34, 1.56, 0.64, 1] as [number, number, number, number] }}
-      className="flex items-center gap-3 p-3 bg-vellum rounded-md border border-vellum-dark"
-    >
-      <AgentAvatar agent={agent} size={36} />
+    <div className="h-full flex items-start gap-3 bg-paper border border-line rounded-xl p-4">
+      <AgentAvatar agent={agent} />
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-body text-body-md font-medium text-ink">
+      <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+          <span className="font-body text-[15px] font-medium text-ink truncate">
             {agent.displayName || agent.name}
           </span>
-          <span className="font-body text-body-xs text-ink-light">{agent.role}</span>
+          {isLeader && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-inset border border-line font-body text-body-xs font-medium text-ink-light">
+              <Crown className="w-3 h-3" />
+              {t('roster.roleBadgeLeader')}
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-2 mt-0.5">
-          <StatusDot status={agent.status} />
-          <span className="font-body text-body-xs text-ink-muted capitalize">
-            {agent.status}
-          </span>
+        {agent.role && <span className="font-body text-body-sm text-ink-light truncate">{agent.role}</span>}
+        <div className="flex flex-wrap items-center gap-2">
+          <AgentStatus status={agent.status} />
           <span className="font-mono text-mono-sm text-ink-muted">{agent.adapterType || '—'}</span>
         </div>
       </div>
-
-      {showBadge && (
-        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-success-bg text-success font-body text-body-xs font-medium">
-          <Check className="w-3 h-3" />
-          {t('roster.granted')}
-        </span>
-      )}
 
       {/* Only while the project is still being set up. Past that the team is settled, and
           the way somebody leaves a running project is not a button on this list. */}
@@ -537,37 +436,38 @@ function GrantedSeatCard({
         <button
           onClick={onRemove}
           title={t('roster.removeAgent')}
-          className="p-1.5 rounded-md text-ink-muted hover:text-error hover:bg-error-bg transition-colors"
+          aria-label={t('roster.removeAgent')}
+          className="w-10 h-10 -mr-1 -mt-1 shrink-0 rounded-md flex items-center justify-center text-ink-muted hover:text-vermilion-ink hover:bg-vermilion-bg transition-colors"
         >
           <UserMinus className="w-4 h-4" />
         </button>
       )}
-    </motion.div>
+    </div>
   );
 }
 
 // ─── Empty Seat Card ─────────────────────────────────────────────────────────
 
-function EmptySeatCard({ label, onAdd }: { label: string; onAdd: () => void }) {
-  const { t } = useTranslation();
-
+function EmptySeatCard({
+  label,
+  actionLabel,
+  onAdd,
+}: {
+  label: string;
+  actionLabel: string;
+  onAdd: () => void;
+}) {
   return (
-    <div className="flex items-center gap-3 p-3 border-2 border-dashed border-vellum-dark rounded-md">
-      <div className="w-9 h-9 rounded-full bg-vellum-deep border border-vellum-dark flex items-center justify-center">
-        <Plus className="w-4 h-4 text-ink-muted" />
-      </div>
-      <div className="flex-1">
-        <span className="font-body text-body-sm text-ink-muted">{label}</span>
-      </div>
+    <div className="h-full min-w-0 flex flex-wrap items-center gap-3 p-4 border-[1.5px] border-dashed border-line-strong rounded-xl">
+      <span className="w-10 h-10 shrink-0 rounded-full border-[1.5px] border-dashed border-ash flex items-center justify-center text-ink-muted">
+        <Plus className="w-4 h-4" />
+      </span>
+      <span className="flex-[1_1_96px] min-w-0 font-body text-body-md text-ink-light">{label}</span>
       <button
         onClick={onAdd}
-        className={cn(
-          'px-3 py-1.5 rounded-md font-body text-body-sm font-medium',
-          'bg-vellum-deep text-terracotta border border-terracotta',
-          'hover:bg-terracotta hover:text-white transition-colors'
-        )}
+        className="min-h-[44px] px-4 rounded-md bg-paper border border-line-strong font-body text-body-md font-medium text-ink hover:bg-inset transition-colors"
       >
-        {t('roster.seatLeader')}
+        {actionLabel}
       </button>
     </div>
   );

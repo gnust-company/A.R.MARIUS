@@ -66,10 +66,13 @@ export default function SettingsTab({
   const optionsDirty = Object.keys(touched).length > 0
 
   const fieldCls = cn(
-    'w-full rounded-md border border-[#E3D7BC] bg-vellum px-3 py-2',
-    'text-[13px] text-[#2A2318] placeholder:text-[#A89880]',
-    'focus:border-[#C25E3A] focus:outline-none focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)]',
+    'w-full min-h-[44px] rounded-md border border-line bg-inset px-3.5 py-2.5',
+    'font-body text-body-md text-ink placeholder:text-ink-muted',
+    'focus:border-terracotta focus:bg-paper focus:outline-none focus:ring-[3px] focus:ring-terracotta/15',
   )
+  const labelCls = 'mb-1.5 block font-body text-body-sm font-medium text-ink'
+  const saveCls =
+    'inline-flex min-h-[44px] items-center gap-2 rounded-md bg-ink px-4 font-body text-body-md font-medium text-paper transition-colors hover:bg-ink/85 disabled:cursor-not-allowed disabled:opacity-50'
 
   async function save() {
     setSaving(true)
@@ -98,77 +101,83 @@ export default function SettingsTab({
   }
 
   return (
-    <div className="space-y-5">
-      <div>
-        <label htmlFor="agent-name" className="block text-[13px] font-medium text-[#2A2318] mb-1">
-          {t('agentDetail.settingsTab.nameLabel')}
-        </label>
-        <input
-          id="agent-name"
-          value={draftName}
-          onChange={(e) => setDraftName(e.target.value)}
-          readOnly={!canEdit}
-          className={fieldCls}
-        />
-      </div>
+    <div className="space-y-8">
+      <div className="space-y-5">
+        <h2 className="font-display text-[20px] font-medium leading-tight text-ink">
+          {t('agentDetail.tab.settings')}
+        </h2>
+        <div>
+          <label htmlFor="agent-name" className={labelCls}>
+            {t('agentDetail.settingsTab.nameLabel')}
+          </label>
+          <input
+            id="agent-name"
+            value={draftName}
+            onChange={(e) => setDraftName(e.target.value)}
+            readOnly={!canEdit}
+            className={fieldCls}
+          />
+        </div>
 
-      <div>
-        <label
-          htmlFor="agent-description"
-          className="block text-[13px] font-medium text-[#2A2318] mb-1"
-        >
-          {t('agentDetail.settingsTab.descriptionLabel')}
-        </label>
-        <p className="mb-1.5 text-[12px] text-[#6B5E4E]">
-          {t('agentDetail.settingsTab.descriptionHint')}
-        </p>
-        <textarea
-          id="agent-description"
-          value={draftDescription}
-          onChange={(e) => setDraftDescription(e.target.value)}
-          readOnly={!canEdit}
-          rows={3}
-          placeholder={t('agentDetail.settingsTab.descriptionPlaceholder')}
-          className={fieldCls}
-        />
-      </div>
+        <div>
+          <label htmlFor="agent-description" className={cn(labelCls, 'mb-0.5')}>
+            {t('agentDetail.settingsTab.descriptionLabel')}
+          </label>
+          <p className="mb-2 font-body text-body-sm text-ink-muted">
+            {t('agentDetail.settingsTab.descriptionHint')}
+          </p>
+          <textarea
+            id="agent-description"
+            value={draftDescription}
+            onChange={(e) => setDraftDescription(e.target.value)}
+            readOnly={!canEdit}
+            rows={3}
+            placeholder={t('agentDetail.settingsTab.descriptionPlaceholder')}
+            className={fieldCls}
+          />
+        </div>
 
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={save}
-          disabled={!canEdit || !dirty || !trimmed || saving}
-          className="inline-flex items-center gap-1.5 rounded-md bg-[#C25E3A] px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-[#D4744C] disabled:opacity-50"
-        >
-          {saving ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-          ) : (
-            <Save className="h-3.5 w-3.5" aria-hidden />
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={save}
+            disabled={!canEdit || !dirty || !trimmed || saving}
+            className={saveCls}
+          >
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <Save className="h-4 w-4" aria-hidden />
+            )}
+            {t('agentDetail.settingsTab.save')}
+          </button>
+          {saved && (
+            <span className="font-body text-body-sm text-verdigris-ink" role="status">
+              {t('agentDetail.settingsTab.saved')}
+            </span>
           )}
-          {t('agentDetail.settingsTab.save')}
-        </button>
-        {saved && (
-          <span className="text-[12px] text-[#2A6E3A]">{t('agentDetail.settingsTab.saved')}</span>
-        )}
+        </div>
       </div>
 
       {/* How this agent runs: where, and on which settings. The settings are the place's
           answer (FR-007k) — a place that offers nothing draws nothing, and the agent runs on its
           tool's own defaults. */}
-      <div className="border-t border-[#E3D7BC] pt-4 space-y-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A89880]">
-          {t('agentDetail.settingsTab.runtimeHeading')}
-        </p>
-        <p className="text-[13px] text-[#2A2318]">
-          {runtime
-            ? t('agentDetail.settingsTab.runsOn', {
-                cli: runtime.cli_kind,
-                machine: runtime.machine_name,
-              })
-            : t('agentDetail.settingsTab.runsNowhere')}
-        </p>
+      <div className="space-y-4 border-t border-line pt-6">
+        <div>
+          <h2 className="font-display text-[20px] font-medium leading-tight text-ink">
+            {t('agentDetail.settingsTab.runtimeHeading')}
+          </h2>
+          <p className="mt-1 font-body text-body-md text-ink-light">
+            {runtime
+              ? t('agentDetail.settingsTab.runsOn', {
+                  cli: runtime.cli_kind,
+                  machine: runtime.machine_name,
+                })
+              : t('agentDetail.settingsTab.runsNowhere')}
+          </p>
+        </div>
         {optionsLoading ? (
-          <p className="text-[13px] text-[#A89880]">{t('directory.workplaceLoading')}</p>
+          <p className="font-body text-body-md text-ink-muted">{t('directory.workplaceLoading')}</p>
         ) : options.length > 0 ? (
           <>
             <RuntimeOptionFields
@@ -177,40 +186,40 @@ export default function SettingsTab({
               onChange={(key, value) => setDraftOptions((was) => ({ ...was, [key]: value }))}
               idPrefix="settings-option"
             />
-            <p className="text-[11px] text-[#A89880]">{t('directory.optionAppliesNextRun')}</p>
-            <div className="flex items-center gap-3">
+            <p className="font-body text-body-sm text-ink-muted">{t('directory.optionAppliesNextRun')}</p>
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={saveOptions}
                 disabled={!canEdit || !optionsDirty || savingOptions}
-                className="inline-flex items-center gap-1.5 rounded-md bg-[#C25E3A] px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-[#D4744C] disabled:opacity-50"
+                className={saveCls}
               >
                 {savingOptions ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                 ) : (
-                  <Save className="h-3.5 w-3.5" aria-hidden />
+                  <Save className="h-4 w-4" aria-hidden />
                 )}
                 {t('agentDetail.settingsTab.saveRuntime')}
               </button>
               {savedOptions && (
-                <span className="text-[12px] text-[#2A6E3A]">
+                <span className="font-body text-body-sm text-verdigris-ink" role="status">
                   {t('agentDetail.settingsTab.saved')}
                 </span>
               )}
             </div>
           </>
         ) : settings.length === 0 ? (
-          <p className="text-[13px] text-[#A89880]">
+          <p className="font-body text-body-md text-ink-muted">
             {t('agentDetail.settingsTab.runtimeDefaults')}
           </p>
         ) : (
-          <dl className="space-y-1.5">
+          <dl className="divide-y divide-line rounded-lg border border-line bg-inset">
             {settings.map(([key, value]) => (
-              <div key={key} className="flex items-baseline gap-3">
-                <dt className="min-w-[8rem] text-[12px] text-[#6B5E4E]">
+              <div key={key} className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 px-4 py-2.5">
+                <dt className="min-w-[8rem] font-body text-body-sm text-ink-light">
                   {t(`directory.option.${key}`, { defaultValue: key })}
                 </dt>
-                <dd className="font-mono text-[12px] text-[#2A2318]">{value || '—'}</dd>
+                <dd className="min-w-0 break-words font-mono text-mono-sm text-ink">{value || '—'}</dd>
               </div>
             ))}
           </dl>

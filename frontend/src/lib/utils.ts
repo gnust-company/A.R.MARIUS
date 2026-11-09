@@ -1,5 +1,24 @@
 import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { extendTailwindMerge } from "tailwind-merge"
+
+// tailwind-merge only knows Tailwind's own font sizes. Ours (`text-body-xs`, `text-display-md`,
+// …) looked like text colours to it, so any `cn()` that also set a colour silently dropped the
+// size — every status chip rendered at its parent's size. Declaring them as sizes fixes that.
+const twMerge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      "font-size": [
+        {
+          text: [
+            "display-xl", "display-lg", "display-md", "display-sm",
+            "body-lg", "body-md", "body-sm", "body-xs",
+            "mono-md", "mono-sm",
+          ],
+        },
+      ],
+    },
+  },
+})
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
