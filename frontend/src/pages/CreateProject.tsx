@@ -1,15 +1,16 @@
 import { useState, useMemo, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router';
-import { wsHref, suggestProjectKey } from '@/lib/utils';
+import { Link, useNavigate, useParams } from 'react-router';
+import { cn, wsHref, suggestProjectKey } from '@/lib/utils';
 import { ApiError } from '@/lib/api';
 import { agentsOf } from '@/lib/workspaceScope';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  AlertTriangle, CheckCircle2, Loader2, ArrowLeft, ArrowRight, X,
+  AlertTriangle, Check, CheckCircle2, Loader2, ArrowLeft, ArrowRight, X,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useAppStore } from '@/store/appStore';
+import { useAppStore, type Marius } from '@/store/appStore';
 import PageTitle from '@/components/PageTitle';
+import StatusChip from '@/components/StatusChip';
 import Dropdown from '@/components/Dropdown';
 import OnboardingChat from '@/components/OnboardingChat';
 
@@ -71,12 +72,12 @@ const stepVariants = {
   center: {
     x: 0,
     opacity: 1,
-    transition: { duration: 0.3, ease: [0, 0, 0.2, 1] as [number, number, number, number] },
+    transition: { duration: 0.2, ease: [0, 0, 0.2, 1] as [number, number, number, number] },
   },
   exit: (direction: number) => ({
     x: direction > 0 ? -20 : 20,
     opacity: 0,
-    transition: { duration: 0.2, ease: [0.4, 0, 1, 1] as [number, number, number, number] },
+    transition: { duration: 0.15, ease: [0.4, 0, 1, 1] as [number, number, number, number] },
   }),
 };
 
@@ -100,6 +101,30 @@ const initialFormData: FormData = {
 /** JIRA-style project KEY: 2–10 uppercase chars, starts with a letter. Mirrors backend. */
 const PROJECT_KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/;
 
+// ─── Shared field styles ─────────────────────────────────────────────────────
+
+/** Every text box on this form: an inset well, 44px tall, terracotta focus ring. */
+const FIELD =
+  'w-full min-h-[44px] bg-inset border rounded-md px-3.5 py-2.5 font-body text-body-md text-ink placeholder:text-ink-muted focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15 transition-colors';
+const fieldBorder = (hasError: boolean) => (hasError ? 'border-vermilion' : 'border-line');
+const LABEL = 'block font-body text-body-sm font-medium text-ink mb-1.5';
+const ERROR = 'mt-1.5 font-body text-body-sm text-vermilion-ink';
+const SECTION_TITLE = 'font-display text-[20px] font-medium text-ink';
+
+/** A small initial disc for an agent — the same shape the front page uses. */
+function AgentInitial({ agent, size = 'md' }: { agent: Marius; size?: 'sm' | 'md' }) {
+  return (
+    <span
+      className={cn(
+        'shrink-0 rounded-full bg-inset border border-line flex items-center justify-center font-body font-semibold text-ink-light',
+        size === 'md' ? 'w-10 h-10 text-[15px]' : 'w-8 h-8 text-[13px]'
+      )}
+    >
+      {(agent.displayName || agent.name || '?').charAt(0).toUpperCase()}
+    </span>
+  );
+}
+
 /** The three-step rail above the wizard. A module-level component, not one declared
  *  inside the page: a component created during render is a *different* component on
  *  every render, so React unmounts and remounts it — the rail's motion restarts from
@@ -114,68 +139,47 @@ function StepIndicator({ step }: { step: number }) {
   ];
 
   return (
-    <div className="flex items-center justify-center gap-0 mb-8">
+    <ol className="flex items-center gap-2 sm:gap-3" aria-label={t('createProject.stepIndicator', { current: step, total: 3 })}>
       {steps.map((s, i) => {
         const stepNum = i + 1;
         const isCompleted = step > stepNum;
         const isCurrent = step === stepNum;
-        
-        return (
-          <div key={s.key} className="flex items-center">
-            <div className="flex flex-col items-center gap-1.5">
-              {/* Circle */}
-              <motion.div
-                className={`w-4 h-4 rounded-full flex items-center justify-center border-2 ${
-                  isCompleted
-                    ? 'bg-[#C25E3A] border-[#C25E3A]'
-                    : isCurrent
-                    ? 'bg-[#C25E3A] border-[#C25E3A] ring-2 ring-white ring-offset-1 ring-offset-[#C25E3A]'
-                    : 'bg-transparent border-[#A89880]'
-                }`}
-                animate={{
-                  scale: isCurrent ? [0.8, 1] : 1,
-                }}
-                transition={{ duration: 0.3, ease: [0.34, 1.56, 0.64, 1] as [number, number, number, number] }}
-              >
-                {isCompleted && (
-                  <CheckCircle2 className="w-3 h-3 text-white" />
-                )}
-                {isCurrent && (
-                  <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                )}
-              </motion.div>
-              {/* Label */}
-              <span
-                className={`font-body text-body-xs ${
-                  isCompleted
-                    ? 'text-[#C25E3A] font-medium'
-                    : isCurrent
-                    ? 'text-ink font-semibold'
-                    : 'text-ink-muted'
-                }`}
-              >
-                {s.label}
-              </span>
-            </div>
 
+        return (
+          <li
+            key={s.key}
+            aria-current={isCurrent ? 'step' : undefined}
+            className={cn('flex items-center gap-2 sm:gap-3 min-w-0', i < steps.length - 1 && 'flex-1')}
+          >
+            <span
+              className={cn(
+                'w-7 h-7 shrink-0 rounded-full flex items-center justify-center font-body text-body-sm font-semibold border transition-colors',
+                isCompleted && 'bg-verdigris-bg border-verdigris text-verdigris-ink',
+                isCurrent && 'bg-ink border-ink text-paper',
+                !isCompleted && !isCurrent && 'bg-paper border-line-strong text-ink-muted'
+              )}
+            >
+              {isCompleted ? <Check className="w-3.5 h-3.5" /> : stepNum}
+            </span>
+            <span
+              className={cn(
+                'font-body text-body-sm whitespace-nowrap',
+                isCurrent ? 'text-ink font-medium' : isCompleted ? 'text-ink-light' : 'text-ink-muted'
+              )}
+            >
+              {s.label}
+            </span>
             {/* Connecting line */}
             {i < steps.length - 1 && (
-              <div className="w-16 h-0.5 mx-2 -mt-4 relative">
-                <div className="absolute inset-0 bg-[#E3D7BC]" />
-                <motion.div
-                  className="absolute inset-0 bg-[#C25E3A] origin-left"
-                  initial={{ scaleX: 0 }}
-                  animate={{ scaleX: isCompleted ? 1 : 0 }}
-                  transition={{ duration: 0.3 }}
-                />
-              </div>
+              <span className={cn('h-px flex-1 min-w-3', isCompleted ? 'bg-verdigris' : 'bg-line-strong')} />
             )}
-          </div>
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }
+
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -367,17 +371,16 @@ export default function CreateProject() {
   // ─── Render Step 1: Project Info ───────────────────────────────────────────
 
   const renderStep1 = () => (
-    <div className="space-y-5">
-      <h2 className="font-display text-display-sm text-ink mb-4">
-        {t('createProject.step1Title')}
-      </h2>
+    <div className="flex flex-col gap-5">
+      <h2 className={SECTION_TITLE}>{t('createProject.step1Title')}</h2>
 
       {/* Name */}
       <div>
-        <label className="block font-body text-body-sm font-medium text-ink mb-1">
-          {t('createProject.fields.name')} <span className="text-[#C25E3A]">*</span>
+        <label htmlFor="cp-name" className={LABEL}>
+          {t('createProject.fields.name')} <span className="text-terracotta">*</span>
         </label>
         <input
+          id="cp-name"
           type="text"
           value={formData.name}
           onChange={(e) => {
@@ -391,21 +394,18 @@ export default function CreateProject() {
             if (errors.name) setErrors((p) => ({ ...p, name: undefined }));
           }}
           placeholder={t('createProject.fields.namePlaceholder')}
-          className={`w-full bg-vellum border rounded-md px-4 py-2.5 font-body text-body-md text-ink placeholder:text-ink-muted focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)] transition-colors ${
-            errors.name ? 'border-[#B84A32]' : 'border-[#E3D7BC]'
-          }`}
+          className={cn(FIELD, fieldBorder(!!errors.name))}
         />
-        {errors.name && (
-          <p className="mt-1 font-body text-body-sm text-[#B84A32]">{errors.name}</p>
-        )}
+        {errors.name && <p className={ERROR}>{errors.name}</p>}
       </div>
 
       {/* Project KEY — JIRA-style prefix of task identifiers "{KEY}-{n}" */}
       <div>
-        <label className="block font-body text-body-sm font-medium text-ink mb-1">
+        <label htmlFor="cp-key" className={LABEL}>
           {t('createProject.fields.key')}
         </label>
         <input
+          id="cp-key"
           type="text"
           value={formData.key}
           onChange={(e) => {
@@ -416,24 +416,23 @@ export default function CreateProject() {
           }}
           placeholder={t('createProject.fields.keyPlaceholder')}
           maxLength={10}
-          className={`w-40 bg-vellum border rounded-md px-4 py-2.5 font-mono text-body-md text-ink uppercase tracking-wide placeholder:font-body placeholder:normal-case placeholder:tracking-normal placeholder:text-ink-muted focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)] transition-colors ${
-            errors.key ? 'border-[#B84A32]' : 'border-[#E3D7BC]'
-          }`}
+          className={cn(
+            FIELD,
+            fieldBorder(!!errors.key),
+            '!w-44 font-mono uppercase tracking-wide placeholder:font-body placeholder:normal-case placeholder:tracking-normal'
+          )}
         />
-        <p className="mt-1 font-body text-body-xs text-ink-muted">
-          {t('createProject.fields.keyHint')}
-        </p>
-        {errors.key && (
-          <p className="mt-1 font-body text-body-sm text-[#B84A32]">{errors.key}</p>
-        )}
+        <p className="mt-1.5 font-body text-body-sm text-ink-muted">{t('createProject.fields.keyHint')}</p>
+        {errors.key && <p className={ERROR}>{errors.key}</p>}
       </div>
 
       {/* Objective */}
       <div>
-        <label className="block font-body text-body-sm font-medium text-ink mb-1">
-          {t('createProject.fields.objective')} <span className="text-[#C25E3A]">*</span>
+        <label htmlFor="cp-objective" className={LABEL}>
+          {t('createProject.fields.objective')} <span className="text-terracotta">*</span>
         </label>
         <textarea
+          id="cp-objective"
           value={formData.objective}
           onChange={(e) => {
             setFormData((p) => ({ ...p, objective: e.target.value }));
@@ -441,53 +440,52 @@ export default function CreateProject() {
           }}
           placeholder={t('createProject.fields.objectivePlaceholder')}
           rows={3}
-          className={`w-full bg-vellum border rounded-md px-4 py-2.5 font-body text-body-md text-ink placeholder:text-ink-muted focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)] transition-colors resize-none ${
-            errors.objective ? 'border-[#B84A32]' : 'border-[#E3D7BC]'
-          }`}
+          className={cn(FIELD, fieldBorder(!!errors.objective), 'resize-none')}
         />
-        {errors.objective && (
-          <p className="mt-1 font-body text-body-sm text-[#B84A32]">{errors.objective}</p>
-        )}
+        {errors.objective && <p className={ERROR}>{errors.objective}</p>}
       </div>
 
-      {/* Target Date */}
-      <div>
-        <label className="block font-body text-body-sm font-medium text-ink mb-1">
-          {t('createProject.fields.targetDate')}
-        </label>
-        <input
-          type="date"
-          value={formData.targetDate}
-          onChange={(e) => setFormData((p) => ({ ...p, targetDate: e.target.value }))}
-          className="w-full bg-vellum border border-[#E3D7BC] rounded-md px-4 py-2.5 font-body text-body-md text-ink focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)] transition-colors"
-        />
-      </div>
-
-      {/* GitHub URL */}
-      <div>
-        <label className="block font-body text-body-sm font-medium text-ink mb-1">
-          {t('createProject.fields.githubUrl')}
-        </label>
-        <input
-          type="text"
-          value={formData.githubUrl}
-          onChange={(e) => setFormData((p) => ({ ...p, githubUrl: e.target.value }))}
-          placeholder={t('createProject.fields.githubUrlPlaceholder')}
-          className="w-full bg-vellum border border-[#E3D7BC] rounded-md px-4 py-2.5 font-body text-body-md text-ink placeholder:text-ink-muted focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)] transition-colors"
-        />
+      {/* Target date and repository sit side by side once there is room for both */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <div className="min-w-0">
+          <label htmlFor="cp-target-date" className={LABEL}>
+            {t('createProject.fields.targetDate')}
+          </label>
+          <input
+            id="cp-target-date"
+            type="date"
+            value={formData.targetDate}
+            onChange={(e) => setFormData((p) => ({ ...p, targetDate: e.target.value }))}
+            className={cn(FIELD, fieldBorder(false))}
+          />
+        </div>
+        <div className="min-w-0">
+          <label htmlFor="cp-github" className={LABEL}>
+            {t('createProject.fields.githubUrl')}
+          </label>
+          <input
+            id="cp-github"
+            type="text"
+            value={formData.githubUrl}
+            onChange={(e) => setFormData((p) => ({ ...p, githubUrl: e.target.value }))}
+            placeholder={t('createProject.fields.githubUrlPlaceholder')}
+            className={cn(FIELD, fieldBorder(false))}
+          />
+        </div>
       </div>
 
       {/* Context */}
       <div>
-        <label className="block font-body text-body-sm font-medium text-ink mb-1">
+        <label htmlFor="cp-context" className={LABEL}>
           {t('createProject.fields.context')}
         </label>
         <textarea
+          id="cp-context"
           value={formData.context}
           onChange={(e) => setFormData((p) => ({ ...p, context: e.target.value }))}
           placeholder={t('createProject.fields.contextPlaceholder')}
           rows={4}
-          className="w-full bg-vellum border border-[#E3D7BC] rounded-md px-4 py-2.5 font-body text-body-md text-ink placeholder:text-ink-muted focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)] transition-colors resize-none"
+          className={cn(FIELD, fieldBorder(false), 'resize-none')}
         />
       </div>
     </div>
@@ -496,54 +494,46 @@ export default function CreateProject() {
   // ─── Render Step 2: Roster Builder ─────────────────────────────────────────
 
   const renderStep2 = () => (
-    <div className="space-y-6">
-      <h2 className="font-display text-display-sm text-ink mb-2">
-        {t('createProject.step2Title')}
-      </h2>
+    <div className="flex flex-col gap-7">
+      <h2 className={SECTION_TITLE}>{t('createProject.step2Title')}</h2>
 
-      {/* HARD Rule Banner */}
+      {/* HARD Rule Banner — gold while something is still missing, verdigris once it is not */}
       {!bannerDismissed && (
-        <motion.div
-          className={`relative p-4 rounded-md border-l-4 ${
-            isRosterValid
-              ? 'bg-[#D8EADD] border-[#4A9E6B]'
-              : 'bg-[#F5E8CC] border-[#C4903A]'
-          }`}
-          animate={{ backgroundColor: isRosterValid ? '#D8EADD' : '#F5E8CC' }}
-          transition={{ duration: 0.4 }}
+        <div
+          className={cn(
+            'flex items-start gap-3 rounded-lg border pl-4 pr-1 py-1 transition-colors',
+            isRosterValid ? 'bg-verdigris-bg border-verdigris/30' : 'bg-gold-bg border-gold/40'
+          )}
         >
+          {isRosterValid ? (
+            <CheckCircle2 className="w-[18px] h-[18px] text-verdigris-ink mt-3 shrink-0" />
+          ) : (
+            <AlertTriangle className="w-[18px] h-[18px] text-gold-ink mt-3 shrink-0" />
+          )}
+          <p className="flex-1 py-2.5 font-body text-body-md text-ink">
+            {isRosterValid
+              ? t('createProject.roster.rosterValid')
+              : t('createProject.roster.hardRuleBanner')}
+          </p>
           <button
             onClick={() => setBannerDismissed(true)}
-            className="absolute top-2 right-2 p-0.5 text-ink-muted hover:text-ink transition-colors"
+            aria-label={t('common.dismiss')}
+            className="w-10 h-10 shrink-0 rounded-md flex items-center justify-center text-ink-light hover:text-ink hover:bg-paper/70 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
-          <div className="flex items-start gap-2">
-            {isRosterValid ? (
-              <CheckCircle2 className="w-4 h-4 text-[#4A9E6B] mt-0.5 flex-shrink-0" />
-            ) : (
-              <AlertTriangle className="w-4 h-4 text-[#C4903A] mt-0.5 flex-shrink-0" />
-            )}
-            <p className="font-body text-body-sm text-ink">
-              {isRosterValid
-                ? t('createProject.roster.rosterValid')
-                : t('createProject.roster.hardRuleBanner')}
-            </p>
-          </div>
-        </motion.div>
+        </div>
       )}
 
       {/* ─── Project Leader Section ─── */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-display text-display-sm text-ink">
-            {t('createProject.roster.projectLeader')}
-            <span className="text-[#C25E3A] ml-1">*</span>
-          </h3>
-        </div>
+      <section className="flex flex-col gap-3">
+        <h3 className={SECTION_TITLE}>
+          {t('createProject.roster.projectLeader')}
+          <span className="text-terracotta ml-1">*</span>
+        </h3>
 
         {/* Agent selector dropdown */}
-        <div className="mb-3">
+        <div>
           <Dropdown
             value={formData.assignLeaderLater ? 'later' : formData.leaderId || ''}
             onChange={(val) => {
@@ -566,85 +556,72 @@ export default function CreateProject() {
               // offered as "Name () — online".
               ...mariuses.map((agent) => ({
                 value: agent.id,
-                label: `${agent.displayName || agent.name} — ${agent.status}`,
+                label: `${agent.displayName || agent.name} — ${t(`directory.status.${agent.status}`, { defaultValue: agent.status })}`,
               })),
               { value: 'later', label: t('createProject.roster.assignLater') },
             ]}
           />
           {mariuses.length === 0 && (
-            <p className="mt-1 font-body text-body-sm text-ink-muted">
+            <p className="mt-1.5 font-body text-body-sm text-ink-muted">
               {t('createProject.roster.noApprovedAgents')}
             </p>
           )}
-        </div>
-
-        {/* Leader role description — reaches the Leader's prompt (#93) */}
-        <div className="mb-3">
-          <label className="block font-body text-body-xs font-medium text-ink-light mb-1">
-            {t('createProject.roster.leaderDescription')}
-          </label>
-          <textarea
-            value={formData.leaderDescription}
-            onChange={(e) => setFormData((p) => ({ ...p, leaderDescription: e.target.value }))}
-            placeholder={t('createProject.roster.leaderDescriptionPlaceholder')}
-            rows={2}
-            className="w-full bg-vellum border border-[#E3D7BC] rounded-md px-3 py-2 font-body text-body-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)] transition-colors resize-none"
-          />
+          {errors.roster && <p className={ERROR}>{errors.roster}</p>}
         </div>
 
         {/* Selected leader card */}
-        {!formData.assignLeaderLater && formData.leaderId && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-[#EDE4CE] border border-[#E3D7BC] rounded-md p-4"
-          >
-            {(() => {
-              const agent = mariuses.find((a) => a.id === formData.leaderId);
-              if (!agent) return null;
-              return (
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#C25E3A] flex items-center justify-center text-white font-display text-sm">
-                    {(agent.displayName || agent.name || '?').charAt(0)}
-                  </div>
-                  <div>
-                    <p className="font-body font-medium text-body-md text-ink">{agent.displayName || agent.name}</p>
-                    <p className="font-body text-body-sm text-ink-light">{agent.adapterType}</p>
-                  </div>
-                  <button
-                    onClick={() => setFormData((p) => ({ ...p, leaderId: null }))}
-                    className="ml-auto p-1 text-ink-muted hover:text-[#B84A32] transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              );
-            })()}
-          </motion.div>
-        )}
+        {!formData.assignLeaderLater && formData.leaderId && (() => {
+          const agent = mariuses.find((a) => a.id === formData.leaderId);
+          if (!agent) return null;
+          return (
+            <div className="flex items-center gap-3 bg-inset border border-line rounded-lg pl-3 pr-1 py-1">
+              <AgentInitial agent={agent} />
+              <div className="flex-1 min-w-0 py-2">
+                <p className="font-body font-medium text-body-md text-ink truncate">{agent.displayName || agent.name}</p>
+                <p className="font-mono text-mono-sm text-ink-muted truncate">{agent.adapterType}</p>
+              </div>
+              <StatusChip status={agent.status} label={t(`directory.status.${agent.status}`, { defaultValue: agent.status })} />
+              <button
+                onClick={() => setFormData((p) => ({ ...p, leaderId: null }))}
+                aria-label={t('createProject.roster.clearLeader')}
+                className="w-10 h-10 shrink-0 rounded-md flex items-center justify-center text-ink-light hover:text-vermilion-ink hover:bg-paper transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          );
+        })()}
 
         {formData.assignLeaderLater && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-[#E8E0D8] border border-[#E3D7BC] rounded-md p-3"
-          >
-            <p className="font-body text-body-sm text-ink-light">
-              {t('createProject.roster.assignLater')}
-            </p>
-          </motion.div>
+          <p className="bg-ash-bg border border-line rounded-lg px-4 py-3 font-body text-body-md text-ink-light">
+            {t('createProject.roster.assignLater')}
+          </p>
         )}
-      </div>
+
+        {/* Leader role description — reaches the Leader's prompt (#93) */}
+        <div>
+          <label htmlFor="cp-leader-description" className={LABEL}>
+            {t('createProject.roster.leaderDescription')} <span className="text-terracotta">*</span>
+          </label>
+          <textarea
+            id="cp-leader-description"
+            value={formData.leaderDescription}
+            onChange={(e) => setFormData((p) => ({ ...p, leaderDescription: e.target.value }))}
+            placeholder={t('createProject.roster.leaderDescriptionPlaceholder')}
+            rows={3}
+            className={cn(FIELD, fieldBorder(!!errors.leaderDescription), 'resize-none')}
+          />
+          {errors.leaderDescription && <p className={ERROR}>{errors.leaderDescription}</p>}
+        </div>
+      </section>
 
       {/* ─── How many workers ─── */}
-      <div>
-        <h3 className="font-display text-display-sm text-ink mb-1">
+      <section className="flex flex-col gap-1.5">
+        <label htmlFor="cp-worker-count" className={SECTION_TITLE}>
           {t('createProject.roster.workerCount')}
-          <span className="text-[#C25E3A] ml-1">*</span>
-        </h3>
-        <p className="mb-3 font-body text-body-sm text-ink-light">
-          {t('createProject.roster.workerCountHint')}
-        </p>
+          <span className="text-terracotta ml-1">*</span>
+        </label>
+        <p className="font-body text-body-md text-ink-light">{t('createProject.roster.workerCountHint')}</p>
         <input
           id="cp-worker-count"
           type="number"
@@ -657,66 +634,65 @@ export default function CreateProject() {
             setFormData((prev) => ({ ...prev, workerCount: typed }));
             if (errors.workerCount) setErrors((prev) => ({ ...prev, workerCount: undefined }));
           }}
-          className="w-24 bg-vellum border border-[#E3D7BC] rounded-md px-3 py-2 font-mono text-body-md text-ink focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[rgba(194,94,58,0.15)] transition-colors"
+          className={cn(FIELD, fieldBorder(!!errors.workerCount), '!w-28 mt-1.5 font-mono')}
         />
-        {errors.workerCount && (
-          <p className="mt-1 font-body text-body-sm text-[#B84A32]">{errors.workerCount}</p>
-        )}
-      </div>
+        {errors.workerCount && <p className={ERROR}>{errors.workerCount}</p>}
+      </section>
 
       {/* ─── The team ─── */}
-      <div>
-        <div className="flex items-baseline justify-between mb-1">
-          <h3 className="font-display text-display-sm text-ink">
-            {t('createProject.roster.team')}
-          </h3>
-          <span className="font-mono text-mono-sm text-ink-muted">
+      <section className="flex flex-col gap-1.5">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <h3 className={SECTION_TITLE}>{t('createProject.roster.team')}</h3>
+          <span className="font-body text-body-sm text-ink-muted">
             {t('createProject.roster.teamPicked', { count: formData.memberIds.length })}
           </span>
         </div>
-        <p className="mb-3 font-body text-body-sm text-ink-light">
-          {t('createProject.roster.teamHint')}
-        </p>
+        <p className="font-body text-body-md text-ink-light">{t('createProject.roster.teamHint')}</p>
 
         {teamCandidates.length === 0 ? (
-          <p className="text-center font-body text-body-sm text-ink-muted py-6">
+          <p className="mt-1.5 bg-inset border border-dashed border-line-strong rounded-lg px-4 py-5 text-center font-body text-body-md text-ink-muted">
             {t('createProject.roster.noAgentsYet')}
           </p>
         ) : (
-          <div className="space-y-2">
+          <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-2">
             {teamCandidates.map((agent) => {
               const picked = formData.memberIds.includes(agent.id);
               return (
                 <button
                   key={agent.id}
                   onClick={() => toggleMember(agent.id)}
-                  className={`w-full flex items-center gap-3 p-3 rounded-md border text-left transition-colors ${
+                  aria-pressed={picked}
+                  className={cn(
+                    'min-w-0 min-h-[64px] flex items-center gap-3 p-3 rounded-lg border text-left transition-colors',
                     picked
-                      ? 'bg-[#EDE4CE] border-[#C25E3A]'
-                      : 'bg-vellum border-[#E3D7BC] hover:border-[#D4A843]'
-                  }`}
+                      ? 'bg-paper border-ink ring-1 ring-ink'
+                      : 'bg-paper border-line hover:border-line-strong hover:bg-inset'
+                  )}
                 >
-                  <div className="w-8 h-8 rounded-full bg-[#C25E3A] flex items-center justify-center text-white font-display text-xs flex-shrink-0">
-                    {(agent.displayName || agent.name || '?').charAt(0)}
-                  </div>
+                  <AgentInitial agent={agent} size="sm" />
                   <div className="flex-1 min-w-0">
                     <p className="font-body font-medium text-body-md text-ink truncate">
                       {agent.displayName || agent.name}
                     </p>
-                    <p className="font-body text-body-xs text-ink-light truncate">
+                    <p className="font-body text-body-sm text-ink-muted truncate">
                       {agent.description || t('createProject.roster.agentNoDescription')}
                     </p>
                   </div>
-                  <span className="font-mono text-mono-sm text-ink-muted flex-shrink-0">
-                    {agent.status}
+                  <StatusChip status={agent.status} label={t(`directory.status.${agent.status}`, { defaultValue: agent.status })} />
+                  <span
+                    className={cn(
+                      'w-5 h-5 shrink-0 rounded-[5px] border flex items-center justify-center transition-colors',
+                      picked ? 'bg-ink border-ink text-paper' : 'bg-paper border-line-strong'
+                    )}
+                  >
+                    {picked && <Check className="w-3.5 h-3.5" />}
                   </span>
-                  {picked && <CheckCircle2 className="w-4 h-4 text-[#C25E3A] flex-shrink-0" />}
                 </button>
               );
             })}
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 
@@ -735,57 +711,51 @@ export default function CreateProject() {
       .filter((a): a is NonNullable<typeof a> => Boolean(a));
 
     return (
-      <div className="space-y-6">
-        <h2 className="font-display text-display-sm text-ink mb-2">
-          {t('createProject.step3Title')}
-        </h2>
+      <div className="flex flex-col gap-6">
+        <h2 className={SECTION_TITLE}>{t('createProject.step3Title')}</h2>
 
         {/* Project Summary Card */}
-        <div className="bg-[#EDE4CE] border border-[#E3D7BC] rounded-md p-6">
-          <div className="flex items-baseline gap-3 mb-2">
-            <h3 className="font-display text-display-md text-ink">{formData.name}</h3>
+        <div className="bg-inset border border-line rounded-lg p-5">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-2">
+            <h3 className="font-display text-[22px] font-medium text-ink break-words min-w-0">{formData.name}</h3>
             {formData.key && (
-              <span className="font-mono text-mono-md text-terracotta">{formData.key}</span>
+              <span className="font-mono text-mono-sm text-ink-muted bg-paper border border-line rounded px-1.5 py-0.5">
+                {formData.key}
+              </span>
             )}
           </div>
-          <p className="font-body text-body-md text-ink-light mb-4">{formData.objective}</p>
+          <p className="font-body text-body-md text-ink-light mb-4 whitespace-pre-wrap break-words">{formData.objective}</p>
 
-          <div className="space-y-1 font-body text-body-sm text-ink-light">
-            {formData.targetDate && (
-              <p>{t('createProject.review.targetDate', { date: formData.targetDate })}</p>
-            )}
-            {!formData.targetDate && (
-              <p>{t('createProject.review.noTargetDate')}</p>
-            )}
-            {formData.githubUrl && (
-              <p className="font-mono">{t('createProject.review.githubUrl', { url: formData.githubUrl })}</p>
-            )}
-            {!formData.githubUrl && (
-              <p>{t('createProject.review.noGithubUrl')}</p>
-            )}
+          <dl className="flex flex-col gap-1 font-body text-body-sm text-ink-light">
+            <dd>
+              {formData.targetDate
+                ? t('createProject.review.targetDate', { date: formData.targetDate })
+                : t('createProject.review.noTargetDate')}
+            </dd>
+            <dd className={cn(formData.githubUrl && 'font-mono text-mono-sm break-all')}>
+              {formData.githubUrl
+                ? t('createProject.review.githubUrl', { url: formData.githubUrl })
+                : t('createProject.review.noGithubUrl')}
+            </dd>
             {formData.context && (
-              <p className="mt-2 text-ink-light">{formData.context}</p>
+              <dd className="mt-2 whitespace-pre-wrap break-words">{formData.context}</dd>
             )}
-          </div>
+          </dl>
         </div>
 
         {/* Roster Summary */}
-        <div>
-          <h3 className="font-display text-display-sm text-ink mb-3">
-            {t('createProject.review.rosterSummary')}
-          </h3>
+        <section className="flex flex-col gap-3">
+          <h3 className={SECTION_TITLE}>{t('createProject.review.rosterSummary')}</h3>
 
           {/* Leader */}
-          <div className="bg-[#EDE4CE] border border-[#E3D7BC] rounded-md p-4 mb-3">
-            <p className="font-body text-body-sm font-medium text-ink mb-1">
+          <div className="bg-inset border border-line rounded-lg p-4">
+            <p className="font-body text-body-sm font-medium text-ink-light mb-2">
               {t('createProject.roster.projectLeader')}
             </p>
             {selectedLeader ? (
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-[#C25E3A] flex items-center justify-center text-white font-display text-xs">
-                  {(selectedLeader.displayName || selectedLeader.name || '?').charAt(0)}
-                </div>
-                <p className="font-body text-body-md text-ink">
+                <AgentInitial agent={selectedLeader} size="sm" />
+                <p className="font-body text-body-md text-ink min-w-0 truncate">
                   {t('createProject.review.leaderAssigned', { name: selectedLeader.displayName || selectedLeader.name })}
                 </p>
               </div>
@@ -800,26 +770,26 @@ export default function CreateProject() {
               created here, and a project of three empty places is a normal thing to review
               (FR-007n). It used to be hidden unless somebody was seated, which is exactly the
               case a person needs to see before pressing create. */}
-          <div className="bg-[#EDE4CE] border border-[#E3D7BC] rounded-md p-4">
-            <p className="font-body text-body-sm font-medium text-ink mb-2">
+          <div className="bg-inset border border-line rounded-lg p-4">
+            <p className="font-body text-body-sm font-medium text-ink-light mb-1">
               {t('createProject.roster.team')}
             </p>
-            <p className="font-body text-body-sm text-ink-light mb-2">
+            <p className="font-body text-body-md text-ink mb-2">
               {t('createProject.review.workerPlaces', {
                 places: workerPlaces,
                 seated: pickedMembers.length,
               })}
             </p>
             {pickedMembers.length > 0 && (
-              <ul className="space-y-2">
+              <ul className="flex flex-col gap-2.5 mt-3">
                 {pickedMembers.map((agent) => (
-                  <li key={agent.id} className="flex items-start gap-2">
-                    <span className="text-[#C25E3A] mt-1">&bull;</span>
-                    <div>
-                      <p className="font-body text-body-md text-ink">
+                  <li key={agent.id} className="flex items-center gap-3 min-w-0">
+                    <AgentInitial agent={agent} size="sm" />
+                    <div className="min-w-0">
+                      <p className="font-body text-body-md text-ink truncate">
                         {agent.displayName || agent.name}
                       </p>
-                      <p className="font-body text-body-xs text-ink-muted mt-0.5">
+                      <p className="font-body text-body-sm text-ink-muted truncate">
                         {agent.description || t('createProject.roster.agentNoDescription')}
                       </p>
                     </div>
@@ -827,34 +797,38 @@ export default function CreateProject() {
                 ))}
               </ul>
             )}
-            <div className="border-t border-[#E3D7BC] mt-3 pt-2">
-              <p className="font-body text-body-sm font-medium text-ink">
+            <div className="border-t border-line mt-3 pt-3">
+              <p className="font-body text-body-md font-medium text-ink">
                 {t('createProject.review.totalSeats', { count: totalSeats })}
               </p>
             </div>
           </div>
-        </div>
+        </section>
       </div>
     );
   };
 
   // ─── Main Render ───────────────────────────────────────────────────────────
 
+  const createDisabled = isSubmitting || !isRosterValid;
+
   return (
-    <div className="max-w-[720px] mx-auto">
+    <div className="mx-auto w-full max-w-3xl flex flex-col gap-6 pb-10">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div>
-          <p className="font-body text-body-sm text-ink-light mb-1">
-            {t('projects.title')} / {t('createProject.breadcrumb')}
-          </p>
-          <PageTitle title={t('createProject.title')} />
-        </div>
+      <div>
+        <nav className="font-body text-body-sm text-ink-muted mb-2 flex flex-wrap items-center gap-1.5">
+          <Link to={wsHref(workspaceId, '/projects')} className="text-terracotta hover:text-terracotta-dark">
+            {t('projects.title')}
+          </Link>
+          <span aria-hidden>/</span>
+          <span className="text-ink-light">{t('createProject.breadcrumb')}</span>
+        </nav>
+        <PageTitle title={t('createProject.title')} />
       </div>
 
       {/* Mode toggle — manual wizard vs. agent-assisted chat (Sprint 7) */}
-      <div className="flex flex-col items-center gap-3 mb-6">
-        <div className="flex items-center gap-1.5 bg-[#EDE4CE] border border-[#E3D7BC] rounded-lg p-1.5 w-fit mx-auto">
+      <div className="flex flex-col gap-3">
+        <div role="group" className="grid grid-cols-2 gap-1 bg-inset border border-line rounded-lg p-1 sm:w-fit">
           {(['manual', 'agent'] as const).map((m) => {
             const active = mode === m;
             const disabled = m === 'agent' && !hasWorkspaceAgent;
@@ -863,17 +837,21 @@ export default function CreateProject() {
                 key={m}
                 onClick={() => !disabled && setMode(m)}
                 disabled={disabled}
-                className={`px-4 py-1.5 rounded-md font-body text-body-sm transition-colors ${
+                aria-pressed={active}
+                className={cn(
+                  'min-h-[44px] px-4 py-2 rounded-md text-left sm:min-w-[200px] transition-colors',
                   active
-                    ? 'bg-[#C25E3A] text-white'
+                    ? 'bg-paper border border-line-strong shadow-xs'
                     : disabled
-                      ? 'text-ink-muted cursor-not-allowed opacity-60'
-                      : 'text-ink hover:bg-[#E3D7BC]'
-                }`}
+                      ? 'border border-transparent cursor-not-allowed'
+                      : 'border border-transparent hover:bg-paper/70'
+                )}
                 title={disabled ? t('createProject.mode.agentDisabled') : undefined}
               >
-                {t(`createProject.mode.${m}`)}
-                <span className={`block font-body text-body-xs ${active ? 'text-white/80' : 'text-ink-muted'}`}>
+                <span className={cn('block font-body text-body-md font-medium', disabled ? 'text-ink-muted' : 'text-ink')}>
+                  {t(`createProject.mode.${m}`)}
+                </span>
+                <span className="block font-body text-body-sm text-ink-muted">
                   {t(`createProject.mode.${m}Desc`)}
                 </span>
               </button>
@@ -883,102 +861,96 @@ export default function CreateProject() {
 
         {/* Warning message when agent mode is not available */}
         {mode === 'agent' && !hasWorkspaceAgent && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-[#F5E8CC] border border-[#C4903A] rounded-md px-4 py-2 max-w-[600px]"
-          >
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-[#C4903A] mt-0.5 flex-shrink-0" />
-              <div className="font-body text-body-sm text-ink">
-                <p className="font-medium">{t('createProject.mode.agentUnavailable')}</p>
-                <p className="text-ink-light mt-1">{t('createProject.mode.setupWorkspaceAgent')}</p>
-              </div>
+          <div className="flex items-start gap-3 bg-gold-bg border border-gold/40 rounded-lg px-4 py-3">
+            <AlertTriangle className="w-[18px] h-[18px] text-gold-ink mt-0.5 shrink-0" />
+            <div className="font-body text-body-md text-ink">
+              <p className="font-medium">{t('createProject.mode.agentUnavailable')}</p>
+              <p className="text-ink-light mt-1">{t('createProject.mode.setupWorkspaceAgent')}</p>
             </div>
-          </motion.div>
+          </div>
         )}
       </div>
 
       {mode === 'agent' ? (
         <OnboardingChat onCreated={(pid) => navigate(wsHref(workspaceId, `/projects/${pid}`))} />
       ) : (
-      <>
-      <p className="text-center font-body text-body-sm text-ink-muted mb-4">
-        {t('createProject.stepIndicator', { current: step, total: 3 })}
-      </p>
+      <div className="bg-paper border border-line rounded-xl">
+        {/* Step Indicator */}
+        <div className="px-5 sm:px-7 pt-5 pb-4 border-b border-line flex flex-col gap-2">
+          <p className="font-body text-body-sm text-ink-muted">
+            {t('createProject.stepIndicator', { current: step, total: 3 })}
+          </p>
+          <StepIndicator step={step} />
+        </div>
 
-      {/* Step Indicator */}
-      <StepIndicator step={step} />
+        {/* Step Content */}
+        <div className="px-5 sm:px-7 py-6 min-h-[400px] overflow-hidden">
+          <AnimatePresence mode="wait" custom={direction}>
+            <motion.div
+              key={step}
+              custom={direction}
+              variants={stepVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+            >
+              {step === 1 && renderStep1()}
+              {step === 2 && renderStep2()}
+              {step === 3 && renderStep3()}
+            </motion.div>
+          </AnimatePresence>
+        </div>
 
-      {/* Step Content */}
-      <div className="min-h-[400px]">
-        <AnimatePresence mode="wait" custom={direction}>
-          <motion.div
-            key={step}
-            custom={direction}
-            variants={stepVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-          >
-            {step === 1 && renderStep1()}
-            {step === 2 && renderStep2()}
-            {step === 3 && renderStep3()}
-          </motion.div>
-        </AnimatePresence>
+        {/* Footer buttons — wrap on phones, primary stays on the right */}
+        <div className="flex flex-wrap items-center justify-between gap-2 px-5 sm:px-7 py-4 border-t border-line bg-inset rounded-b-xl">
+          {step > 1 ? (
+            <button
+              onClick={goBack}
+              className="inline-flex items-center gap-2 min-h-[44px] px-4 rounded-md bg-paper border border-line-strong font-body text-body-md font-medium text-ink hover:bg-inset transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              {t('createProject.buttons.back')}
+            </button>
+          ) : (
+            <button
+              onClick={() => navigate(wsHref(workspaceId, '/projects'))}
+              className="inline-flex items-center gap-2 min-h-[44px] px-4 rounded-md font-body text-body-md font-medium text-ink-light hover:text-ink hover:bg-paper transition-colors"
+            >
+              {t('createProject.buttons.cancel')}
+            </button>
+          )}
+
+          {step < 3 ? (
+            <button
+              onClick={goNext}
+              className="ml-auto inline-flex items-center gap-2 min-h-[44px] px-[18px] rounded-md bg-ink font-body text-body-md font-medium text-paper hover:bg-ink/85 transition-colors"
+            >
+              {step === 1 ? t('createProject.buttons.nextRoster') : t('createProject.buttons.nextReview')}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={createDisabled}
+              className={cn(
+                'ml-auto inline-flex items-center gap-2 min-h-[44px] px-[18px] rounded-md font-body text-body-md font-medium transition-colors',
+                createDisabled
+                  ? 'bg-line text-ink-muted cursor-not-allowed'
+                  : 'bg-ink text-paper hover:bg-ink/85'
+              )}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {t('createProject.buttons.creating')}
+                </>
+              ) : (
+                t('createProject.buttons.createProject')
+              )}
+            </button>
+          )}
+        </div>
       </div>
-
-      {/* Footer buttons */}
-      <div className="flex items-center justify-between mt-8 pt-6 border-t border-[#E3D7BC]">
-        {step > 1 ? (
-          <button
-            onClick={goBack}
-            className="inline-flex items-center gap-2 bg-[#EDE4CE] hover:bg-[#E3D7BC] border border-[#E3D7BC] text-ink font-body font-medium text-body-md px-4 py-2.5 rounded-md transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            {t('createProject.buttons.back')}
-          </button>
-        ) : (
-          <button
-            onClick={() => navigate('/')}
-            className="inline-flex items-center gap-2 bg-[#EDE4CE] hover:bg-[#E3D7BC] border border-[#E3D7BC] text-ink font-body font-medium text-body-md px-4 py-2.5 rounded-md transition-colors"
-          >
-            {t('createProject.buttons.cancel')}
-          </button>
-        )}
-
-        {step < 3 ? (
-          <button
-            onClick={goNext}
-            className="inline-flex items-center gap-2 bg-[#C25E3A] hover:bg-[#D97B5A] text-white font-body font-medium text-body-md px-4 py-2.5 rounded-md transition-colors"
-          >
-            {step === 1 ? t('createProject.buttons.nextRoster') : t('createProject.buttons.nextReview')}
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        ) : (
-          <button
-            onClick={handleSubmit}
-            disabled={isSubmitting || !isRosterValid}
-            className={`inline-flex items-center gap-2 font-body font-medium text-body-md px-6 py-2.5 rounded-md transition-colors ${
-              isSubmitting || !isRosterValid
-                ? 'bg-[#A89880] text-white cursor-not-allowed'
-                : 'bg-[#D4A843] hover:bg-[#E8C96A] text-ink'
-            }`}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                {t('createProject.buttons.creating')}
-              </>
-            ) : (
-              <>
-                {t('createProject.buttons.createProject')}
-              </>
-            )}
-          </button>
-        )}
-      </div>
-      </>
       )}
     </div>
   );

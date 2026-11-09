@@ -4,34 +4,35 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
+    /* shadcn tokens mapped onto the "Xưởng sáng" palette (HSL of the hexes in tailwind.config.js) */
+    --background: 40 52% 90%;
+    --foreground: 35 24% 11%;
+    --card: 43 100% 98%;
+    --card-foreground: 35 24% 11%;
+    --popover: 43 100% 98%;
+    --popover-foreground: 35 24% 11%;
+    --primary: 35 24% 11%;
+    --primary-foreground: 43 100% 98%;
+    --secondary: 41 46% 93%;
+    --secondary-foreground: 35 24% 11%;
+    --muted: 41 46% 93%;
+    --muted-foreground: 34 18% 38%;
+    --accent: 41 46% 93%;
+    --accent-foreground: 35 24% 11%;
+    --destructive: 3 72% 37%;
+    --destructive-foreground: 43 100% 98%;
+    --border: 40 41% 82%;
+    --input: 40 33% 74%;
+    --ring: 42 62% 55%;
     --radius: 0.625rem;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 35 26% 11%;
+    --sidebar-foreground: 41 52% 87%;
+    --sidebar-primary: 42 62% 55%;
+    --sidebar-primary-foreground: 35 26% 11%;
+    --sidebar-accent: 33 24% 19%;
+    --sidebar-accent-foreground: 41 100% 95%;
+    --sidebar-border: 33 24% 19%;
+    --sidebar-ring: 42 62% 55%;
   }
 
   .dark {
@@ -78,22 +79,20 @@
 @layer components {
   /* ─── Gilt hover effect (card hover) ─── */
   .gilt {
-    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
   }
   .gilt:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(42, 35, 24, 0.08);
-    border-color: #C4A55A;
+    box-shadow: 0 2px 10px rgba(36, 30, 22, 0.06);
+    border-color: #D3C4A6;
   }
 
   /* Large gilt hover */
   .gilt-lg {
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
   }
   .gilt-lg:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 10px 28px rgba(42, 35, 24, 0.09);
-    border-color: #C4A55A;
+    box-shadow: 0 4px 16px rgba(36, 30, 22, 0.07);
+    border-color: #D3C4A6;
   }
 
   /* ─── Deckle edge effect ─── */
@@ -106,7 +105,7 @@
     inset: -1px;
     border-radius: inherit;
     padding: 1px;
-    background: linear-gradient(135deg, #E3D7BC 0%, transparent 40%, transparent 60%, #E3D7BC 100%);
+    background: linear-gradient(135deg, #E4D8C0 0%, transparent 40%, transparent 60%, #E4D8C0 100%);
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
@@ -135,5 +134,15 @@
     line-height: 0.75;
     margin-right: 0.01em;
     text-shadow: 1px 1px 0 rgba(194, 94, 58, 0.22);
+  }
+}
+
+@layer utilities {
+  /* A strip that scrolls sideways on narrow screens (tabs) without drawing a scrollbar. */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }

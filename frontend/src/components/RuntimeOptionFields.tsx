@@ -48,7 +48,7 @@ export default function RuntimeOptionFields({
         const nothingLeft = values.length === 0;
         return (
           <div key={option.key}>
-            <label htmlFor={id} className="block text-[13px] font-medium text-[#2A2318] mb-1">
+            <label htmlFor={id} className="block font-body text-body-sm font-medium text-ink-light mb-1.5">
               {label}
             </label>
             {isClosed(option) || nothingLeft ? (
@@ -80,7 +80,7 @@ export default function RuntimeOptionFields({
               />
             )}
             {nothingLeft && (
-              <p className="mt-1 text-[11px] text-[#6B5E4E]">
+              <p className="mt-1 font-body text-body-sm text-ink-light">
                 {t('directory.optionRuledOut')}
               </p>
             )}
@@ -91,7 +91,7 @@ export default function RuntimeOptionFields({
           about all of them, and repeating it under each turns the shorter answer — what the
           field actually is — into the thing the eye skips. */}
       {options.length > 0 && (
-        <p className="text-[11px] text-[#A89880]">{t('directory.optionHint')}</p>
+        <p className="font-body text-body-sm text-ink-muted">{t('directory.optionHint')}</p>
       )}
     </>
   );

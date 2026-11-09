@@ -21,12 +21,12 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Check, Laptop, ShieldQuestion, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, Check, Laptop, Link2, Loader2, ShieldQuestion, TriangleAlert } from 'lucide-react'
 
 import { approveMachineLink, getMachineLink, type PendingMachineLinkDTO } from '@/lib/api'
 import { errorText } from '@/lib/errors'
 import { useAppStore } from '@/store/appStore'
-import VellumPanel from '@/components/VellumPanel'
+import EntryFrame, { WithCommands } from '@/components/EntryFrame'
 import Dropdown from '@/components/Dropdown'
 import { cn, wsHref } from '@/lib/utils'
 
@@ -184,48 +184,64 @@ export default function LinkMachine() {
   }
 
   const inputCls = cn(
-    'w-full px-3 py-2 rounded-md bg-vellum border border-vellum-dark',
+    'w-full min-h-[44px] px-3 py-2 rounded-md bg-inset border border-line-strong',
     'font-body text-body-md text-ink placeholder:text-ink-muted',
-    'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15 transition-all',
+    'focus:outline-none focus:bg-paper focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15 transition-colors',
   )
-  const labelCls = 'block font-body text-body-sm text-ink-light mb-1'
+  const labelCls = 'block font-body text-body-sm font-medium text-ink-light mb-1.5'
   const buttonCls = cn(
-    'w-full px-4 py-2 rounded-md font-body text-body-md transition-colors',
-    'bg-terracotta text-white hover:bg-terracotta-light disabled:opacity-50',
+    'w-full min-h-[44px] px-4 rounded-md font-body text-body-md font-medium transition-colors',
+    'bg-ink text-paper hover:bg-ink/85',
+    'disabled:bg-line disabled:text-ink-muted disabled:cursor-not-allowed',
+  )
+  const ghostCls = cn(
+    'w-full min-h-[44px] px-4 rounded-md flex items-center justify-center gap-1.5',
+    'font-body text-body-md text-ink-light hover:text-ink hover:bg-inset transition-colors',
+  )
+  const errorLine = (text: string) => (
+    <p
+      className="flex items-start gap-2 rounded-md border border-[#EDB8B0] bg-vermilion-bg px-3 py-2 font-body text-body-sm text-vermilion-ink"
+      role="alert"
+    >
+      <TriangleAlert className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
+      <span className="min-w-0">{text}</span>
+    </p>
   )
 
   return (
-    <div className="min-h-[100dvh] bg-vellum flex flex-col items-center justify-center px-6 py-12">
-      <div
-        className="fixed inset-0 pointer-events-none opacity-30"
-        style={{ backgroundImage: 'url(/vellum-texture.jpg)', backgroundSize: '200px' }}
-      />
-
+    <EntryFrame>
       <motion.div
-        className="w-full max-w-md relative z-10"
-        initial={{ opacity: 0, y: 12 }}
+        className="w-full max-w-[520px]"
+        initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
+        transition={{ duration: 0.2 }}
       >
-        <h1 className="font-display text-display-md text-ink text-center mb-2">
-          {t('linkMachine.title')}
-        </h1>
-        <p className="font-body text-body-sm text-ink-light text-center mb-8">
-          {t('linkMachine.lead')}
-        </p>
+        <div className="text-center mb-6">
+          <span className="mx-auto mb-3 w-12 h-12 rounded-full bg-paper border border-line flex items-center justify-center">
+            <Link2 className="w-5 h-5 text-ink-light" aria-hidden />
+          </span>
+          <h1 className="font-display font-medium text-[28px] leading-tight text-ink">
+            {t('linkMachine.title')}
+          </h1>
+          <p className="mt-2 font-body text-body-md text-ink-light">
+            <WithCommands text={t('linkMachine.lead')} />
+          </p>
+        </div>
 
-        <VellumPanel hover={false}>
+        <div className="bg-paper border border-line rounded-xl shadow-gilt px-5 py-6 sm:p-8">
           {approved ? (
-            <div className="text-center space-y-4">
-              <Check className="w-10 h-10 mx-auto text-terracotta" aria-hidden />
-              <h2 className="font-display text-display-sm text-ink">
+            <div className="text-center space-y-3">
+              <span className="mx-auto w-12 h-12 rounded-full bg-verdigris-bg flex items-center justify-center">
+                <Check className="w-6 h-6 text-verdigris-ink" aria-hidden />
+              </span>
+              <h2 className="font-display font-medium text-[22px] text-ink">
                 {t('linkMachine.doneTitle')}
               </h2>
-              <p className="font-body text-body-sm text-ink-light">
+              <p className="font-body text-body-md text-ink-light">
                 {t('linkMachine.doneBody')}
               </p>
-              <p className="font-body text-body-sm text-ink-light">
-                {t('linkMachine.doneStart')}
+              <p className="font-body text-body-md text-ink-light">
+                <WithCommands text={t('linkMachine.doneStart')} />
               </p>
               {inFirstSteps && (
                 <p className="font-body text-body-sm text-ink-muted">
@@ -236,7 +252,7 @@ export default function LinkMachine() {
                 // Mid first steps, the way on is back to them: the step that was waiting for this
                 // machine is the next thing to do, and the workspace behind it is not ready yet.
                 // Caught by the owner on 2026-10-26 — the machine list here led straight in.
-                <div className="flex flex-col gap-2 pt-2">
+                <div className="flex flex-col gap-1 pt-3">
                   <button
                     type="button"
                     // Carries what this page knows and the next one cannot yet read: a machine
@@ -247,24 +263,16 @@ export default function LinkMachine() {
                   >
                     {t('linkMachine.doneBackToFirstSteps')}
                   </button>
-                  <button
-                    type="button"
-                    onClick={restart}
-                    className="font-body text-body-sm text-ink-muted hover:text-ink transition-colors"
-                  >
+                  <button type="button" onClick={restart} className={ghostCls}>
                     {t('linkMachine.doneAgain')}
                   </button>
                 </div>
               ) : (
-                <div className="flex flex-col gap-2 pt-2">
+                <div className="flex flex-col gap-1 pt-3">
                   <button type="button" onClick={restart} className={buttonCls}>
                     {t('linkMachine.doneAgain')}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => navigate(doneTo)}
-                    className="font-body text-body-sm text-ink-muted hover:text-ink transition-colors"
-                  >
+                  <button type="button" onClick={() => navigate(doneTo)} className={ghostCls}>
                     {t('linkMachine.doneLeave')}
                   </button>
                 </div>
@@ -272,18 +280,20 @@ export default function LinkMachine() {
             </div>
           ) : pending ? (
             <div className="space-y-5">
-              <div className="flex items-start gap-3">
-                <Laptop className="w-5 h-5 mt-0.5 text-ink-light shrink-0" aria-hidden />
-                <div className="min-w-0">
-                  <h2 className="font-display text-display-sm text-ink">
-                    {t('linkMachine.machineHeading')}
-                  </h2>
-                  <p className="font-body text-body-md text-ink break-words">
-                    {pending.hostname || t('linkMachine.hostnameUnknown')}
-                  </p>
-                  <p className="font-body text-body-sm text-ink-muted">
-                    {pending.platform} · {pending.daemon_version}
-                  </p>
+              <div>
+                <p className={labelCls}>{t('linkMachine.machineHeading')}</p>
+                <div className="flex items-center gap-3 rounded-lg bg-inset border border-line p-4">
+                  <span className="w-10 h-10 shrink-0 rounded-full bg-paper border border-line flex items-center justify-center">
+                    <Laptop className="w-5 h-5 text-ink-light" aria-hidden />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-body text-[15px] font-medium text-ink break-words">
+                      {pending.hostname || t('linkMachine.hostnameUnknown')}
+                    </p>
+                    <p className="font-mono text-mono-sm text-ink-muted break-words">
+                      {pending.platform} · {pending.daemon_version}
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -297,22 +307,16 @@ export default function LinkMachine() {
                   link has nothing but the link, and a link is the one thing another person
                   can send them. */}
               {fromLink && (
-                <p className="font-body text-body-sm text-terracotta flex items-start gap-2">
+                <p className="flex items-start gap-2 rounded-md bg-gold-bg px-3 py-2 font-body text-body-sm text-gold-ink">
                   <ShieldQuestion className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
-                  <span>{t('linkMachine.fromLinkNotice')}</span>
-                </p>
-              )}
-
-              {remaining !== null && (
-                <p className="font-body text-body-sm text-ink-muted">
-                  {t('linkMachine.expiresIn', { count: remaining })}
+                  <span className="min-w-0">
+                    <WithCommands text={t('linkMachine.fromLinkNotice')} />
+                  </span>
                 </p>
               )}
 
               {workspaces.length === 0 ? (
-                <p className="font-body text-body-sm text-terracotta" role="alert">
-                  {t('linkMachine.noWorkspace')}
-                </p>
+                errorLine(t('linkMachine.noWorkspace'))
               ) : (
                 <div>
                   <label className={labelCls} htmlFor="link-workspace">
@@ -328,41 +332,41 @@ export default function LinkMachine() {
                 </div>
               )}
 
-              {error && (
-                <p className="font-body text-body-sm text-terracotta" role="alert">
-                  {error}
-                </p>
-              )}
+              {error && errorLine(error)}
 
               {/* One line, right where the yes is given (FR-013b): a run on this machine is
                   granted whatever it asks for, because nobody is there to be asked. */}
               <p
-                className="font-body text-body-sm text-ink flex items-start gap-2"
+                className="flex items-start gap-2 rounded-md bg-gold-bg px-3 py-2 font-body text-body-sm text-gold-ink"
                 data-testid="link-unattended-warning"
               >
-                <TriangleAlert className="w-4 h-4 mt-0.5 shrink-0 text-terracotta" aria-hidden />
-                <span>{t('linkMachine.unattendedWarning')}</span>
+                <TriangleAlert className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
+                <span className="min-w-0">{t('linkMachine.unattendedWarning')}</span>
               </p>
 
-              <button
-                type="button"
-                onClick={approve}
-                disabled={busy || !workspaceId}
-                className={buttonCls}
-              >
-                {t('linkMachine.approveButton')}
-              </button>
-              <button
-                type="button"
-                onClick={restart}
-                className="w-full font-body text-body-sm text-ink-muted hover:text-ink transition-colors flex items-center justify-center gap-1"
-              >
-                <ArrowLeft className="w-4 h-4" aria-hidden />
-                {t('linkMachine.otherCode')}
-              </button>
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={approve}
+                  disabled={busy || !workspaceId}
+                  className={buttonCls}
+                >
+                  {t('linkMachine.approveButton')}
+                </button>
+                {remaining !== null && (
+                  <p className="pt-1 text-center font-body text-body-sm text-ink-muted">
+                    {t('linkMachine.expiresIn', { count: remaining })}
+                  </p>
+                )}
+                <button type="button" onClick={restart} className={ghostCls}>
+                  <ArrowLeft className="w-4 h-4" aria-hidden />
+                  {t('linkMachine.otherCode')}
+                </button>
+              </div>
             </div>
           ) : busy && fromLink ? (
-            <p className="font-body text-body-sm text-ink-light text-center py-4">
+            <p className="flex items-center justify-center gap-2 font-body text-body-md text-ink-light py-6" role="status">
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
               {t('linkMachine.checking')}
             </p>
           ) : (
@@ -379,31 +383,32 @@ export default function LinkMachine() {
                   autoFocus
                   autoComplete="off"
                   spellCheck={false}
-                  className={cn(inputCls, 'text-center tracking-[0.3em] uppercase')}
+                  className={cn(
+                    inputCls,
+                    'min-h-[52px] text-center font-mono text-[20px] tracking-[0.3em] uppercase',
+                    'placeholder:font-body placeholder:text-body-md placeholder:tracking-normal placeholder:normal-case',
+                  )}
                 />
               </div>
 
-              {error && (
-                <p className="font-body text-body-sm text-terracotta" role="alert">
-                  {error}
-                </p>
-              )}
+              {error && errorLine(error)}
 
               <button type="submit" disabled={busy || !isComplete(code)} className={buttonCls}>
                 {t('linkMachine.lookupButton')}
               </button>
             </form>
           )}
-        </VellumPanel>
+        </div>
 
         <button
           type="button"
           onClick={() => navigate(leaveTo)}
-          className="mt-6 w-full text-center font-body text-body-sm text-ink-muted hover:text-ink transition-colors"
+          className={cn(ghostCls, 'mt-4')}
         >
+          <ArrowLeft className="w-4 h-4" aria-hidden />
           {inFirstSteps ? t('linkMachine.backToFirstSteps') : t('linkMachine.back')}
         </button>
       </motion.div>
-    </div>
+    </EntryFrame>
   )
 }

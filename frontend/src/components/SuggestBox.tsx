@@ -57,7 +57,7 @@ export default function SuggestBox({
       <>
         <span className="min-w-0 flex-1">
           <span className="block truncate">{label}</span>
-          {raw && <span className="block truncate font-mono text-[11px] text-[#6B5E4E]">{raw}</span>}
+          {raw && <span className="block truncate font-mono text-[11px] text-ink-light">{raw}</span>}
         </span>
         {on && <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />}
       </>
@@ -65,8 +65,8 @@ export default function SuggestBox({
   }
 
   const itemCls = cn(
-    'flex cursor-pointer select-none items-start gap-2 rounded-sm px-2.5 py-1.5 text-[13px] text-[#2A2318] outline-none',
-    'data-[selected=true]:bg-[#EDE4CE]',
+    'flex cursor-pointer select-none items-start gap-2 rounded-sm px-2.5 py-1.5 text-[13px] text-ink outline-none',
+    'data-[selected=true]:bg-paper',
   )
 
   return (
@@ -85,32 +85,32 @@ export default function SuggestBox({
           aria-label={ariaLabel}
           aria-haspopup="listbox"
           className={cn(
-            'flex w-full items-center justify-between gap-2 rounded-md border border-[#E3D7BC] bg-[#F7F0E0] px-4 py-2.5 text-left text-[15px] text-[#2A2318]',
-            'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15 transition-all',
+            'flex w-full items-center justify-between gap-2 rounded-md border border-line bg-inset px-4 py-2.5 text-left text-[15px] text-ink',
+            'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15 transition-all',
             'disabled:cursor-not-allowed disabled:opacity-60',
           )}
         >
-          <span className={cn('min-w-0 flex-1 truncate', !value && 'text-[#A89880]')}>
+          <span className={cn('min-w-0 flex-1 truncate', !value && 'text-ink-muted')}>
             {value ? (current?.label ?? value) : blankLabel}
             {value && current?.label && current.label !== value && (
-              <span className="ml-2 font-mono text-[12px] text-[#6B5E4E]">{value}</span>
+              <span className="ml-2 font-mono text-[12px] text-ink-light">{value}</span>
             )}
           </span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-[#A89880]" aria-hidden />
+          <ChevronDown className="h-4 w-4 shrink-0 text-ink-muted" aria-hidden />
         </button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
           sideOffset={4}
           align="start"
-          className="z-tooltip w-[var(--radix-popover-trigger-width)] rounded-md border border-[#E3D7BC] bg-[#F7F0E0] shadow-lg"
+          className="z-tooltip w-[var(--radix-popover-trigger-width)] rounded-md border border-line bg-inset shadow-lg"
         >
           <Command loop>
             <Command.Input
               value={search}
               onValueChange={setSearch}
               placeholder={t('choice.searchOrType')}
-              className="w-full border-b border-[#E3D7BC] bg-transparent px-3 py-2 text-[13px] text-[#2A2318] placeholder:text-[#A89880] focus:outline-none"
+              className="w-full border-b border-line bg-transparent px-3 py-2 text-[13px] text-ink placeholder:text-ink-muted focus:outline-none"
             />
             <Command.List className="max-h-72 overflow-y-auto p-1">
               {!typed && (

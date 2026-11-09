@@ -517,6 +517,8 @@ interface AppStoreState {
   activeOnboarding: OnboardingSessionVM | null
   sseConnected: boolean
   sidebarCollapsed: boolean
+  /** The navigation drawer below desktop width (phone drawer, tablet overlay). */
+  navDrawerOpen: boolean
   /** How many inbox letters are waiting on the patron right now (FR-061).
    *
    *  Lives in the store rather than on the Inbox page because the sidebar needs it too, and the
@@ -570,6 +572,7 @@ interface AppStoreState {
   setCurrentUser: (user: User | null) => void
   logout: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
+  setNavDrawerOpen: (open: boolean) => void
   setSseConnected: (connected: boolean) => void
   setInboxPending: (count: number) => void
   updateTask: (taskId: string, updater: TaskUpdate) => Promise<void>
@@ -668,6 +671,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   activeOnboarding: null,
   sseConnected: false,
   sidebarCollapsed: false,
+  navDrawerOpen: false,
   inboxPending: 0,
 
   listWorkplaces: async () => {
@@ -785,6 +789,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   setCurrentUser: (user) => set({ currentUser: user }),
 
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+  setNavDrawerOpen: (open) => set({ navDrawerOpen: open }),
 
   setSseConnected: (connected) => set({ sseConnected: connected }),
 

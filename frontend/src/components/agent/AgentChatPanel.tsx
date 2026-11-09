@@ -1,4 +1,4 @@
-// The patron's direct conversation with one agent (FR-007p), on the agent's own Overview.
+// The patron's direct conversation with one agent (FR-007p), on the agent's own page.
 //
 // Built the way the project chat with its Leader is built — assistant-ui renders the thread,
 // the composer is hand-rolled because it carries the domain rules (one turn at a time, no
@@ -18,6 +18,11 @@ import * as api from '@/lib/api';
 import { subscribeAgentChat } from '@/lib/sse';
 import { errorText } from '@/lib/errors';
 import { AgentBubble, PatronBubble } from '@/components/chat/ChatBubbles';
+import StatusChip from '@/components/StatusChip';
+
+/** The composer's id, so the page's "Talk to …" button can put the cursor in it when the chat
+ *  is already on screen beside the tabs. */
+export const AGENT_CHAT_INPUT_ID = 'agent-chat-input';
 
 interface ChatMessage {
   role: 'patron' | 'agent';
@@ -154,55 +159,49 @@ export default function AgentChatPanel({
   };
 
   return (
-    <div className="flex h-[560px] flex-col">
-      <div className="mb-3 flex items-center justify-between gap-2 border-b border-[#E3D7BC] pb-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A89880]">
+    // Fills whatever height the page gives it: a column beside the tabs on wide screens, a
+    // bounded panel under the header on narrow ones. The thread scrolls inside; the page does not.
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-paper">
+      <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-5">
+        <h2 className="min-w-0 truncate font-display text-[18px] font-medium text-ink">
           {t('agentChat.title', { name: agentName })}
-        </p>
-        <span
-          className={
-            online
-              ? 'inline-flex items-center gap-1 text-[11px] text-[#2A6E3A]'
-              : 'inline-flex items-center gap-1 text-[11px] text-[#8B7A6A]'
-          }
-        >
-          {online ? (
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#4A9E6B]" />
-          ) : (
-            <WifiOff className="h-3 w-3" />
-          )}
-          {online ? t('agentChat.online') : t('agentChat.offline')}
-        </span>
+        </h2>
+        <StatusChip
+          status={online ? 'online' : 'offline'}
+          label={online ? t('agentChat.online') : t('agentChat.offline')}
+        />
       </div>
 
       {!loading && !online && (
-        <div className="mb-3 flex items-center gap-2 rounded-md border-l-4 border-[#D4A843] bg-[#F5E8CC] px-3 py-2">
-          <WifiOff className="h-4 w-4 flex-shrink-0 text-[#8B6A28]" />
-          <p className="text-[12px] text-[#2A2318]">{t('agentChat.offlineBanner')}</p>
+        <div className="mx-4 mt-3 flex items-start gap-2 rounded-lg bg-gold-bg px-3 py-2.5 sm:mx-5">
+          <WifiOff className="mt-0.5 h-4 w-4 flex-shrink-0 text-gold-ink" aria-hidden />
+          <p className="font-body text-body-sm text-ink">{t('agentChat.offlineBanner')}</p>
         </div>
       )}
 
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 px-4 pt-3 sm:px-5">
         {loading ? (
-          <div className="flex items-center justify-center py-10 text-[#A89880]">
-            <Loader2 className="h-5 w-5 animate-spin" />
+          <div className="flex items-center justify-center py-10 text-ink-muted">
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
           </div>
         ) : (
           <AssistantRuntimeProvider runtime={runtime}>
             <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
-              <ThreadPrimitive.Viewport className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">
+              <ThreadPrimitive.Viewport className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pb-3 pr-1">
                 <ThreadPrimitive.Empty>
-                  <div className="flex flex-col items-center justify-center py-10 text-center text-[#A89880]">
-                    <Bot className="mb-2 h-8 w-8 opacity-50" />
-                    <p className="text-[13px]">{t('agentChat.empty', { name: agentName })}</p>
+                  <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
+                    <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-inset text-ink-muted">
+                      <Bot className="h-6 w-6" aria-hidden />
+                    </span>
+                    <p className="font-body text-body-md text-ink-light">{t('agentChat.empty', { name: agentName })}</p>
                   </div>
                 </ThreadPrimitive.Empty>
                 <ThreadPrimitive.Messages>
                   {({ message }) => (message.role === 'user' ? <PatronBubble /> : <AgentBubble />)}
                 </ThreadPrimitive.Messages>
                 {state === 'thinking' && !hasStreamingPartial && (
-                  <div className="flex items-center gap-2 px-1 text-[13px] text-[#A89880]">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('agentChat.thinking', { name: agentName })}
+                  <div className="flex items-center gap-2 px-1 font-body text-body-sm text-ink-muted">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> {t('agentChat.thinking', { name: agentName })}
                   </div>
                 )}
               </ThreadPrimitive.Viewport>
@@ -212,13 +211,14 @@ export default function AgentChatPanel({
       </div>
 
       {error && (
-        <div className="mt-2 flex items-center gap-1.5 text-[12px] text-[#C25E3A]">
-          <X className="h-3 w-3" /> {error}
+        <div role="alert" className="mx-4 mb-2 flex items-start gap-1.5 font-body text-body-sm text-vermilion-ink sm:mx-5">
+          <X className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden /> <span className="min-w-0 break-words">{error}</span>
         </div>
       )}
 
-      <div className="mt-2 flex items-end gap-2 border-t border-[#E3D7BC] pt-3">
+      <div className="flex items-end gap-2 border-t border-line bg-inset px-3 py-3 sm:px-4">
         <textarea
+          id={AGENT_CHAT_INPUT_ID}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
@@ -241,16 +241,16 @@ export default function AgentChatPanel({
                   ? t('agentChat.inputThinking')
                   : t('agentChat.inputPlaceholder', { name: agentName })
           }
-          className="flex-1 resize-none rounded-md border border-[#E3D7BC] bg-[#FBF7EE] px-2.5 py-1.5 text-[13px] text-[#2A2318] placeholder:text-[#A89880] focus:border-[#C25E3A] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-[44px] min-w-0 flex-1 resize-none rounded-md border border-line bg-paper px-3 py-2 font-body text-body-md text-ink placeholder:text-ink-muted focus:border-terracotta focus:outline-none focus:ring-[3px] focus:ring-terracotta/15 disabled:cursor-not-allowed disabled:bg-inset"
         />
         <button
           type="button"
           onClick={onSubmit}
           disabled={locked || !input.trim()}
           aria-label={t('agentChat.send')}
-          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-[#C25E3A] text-white transition-colors hover:bg-[#D97B5A] disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-md bg-ink text-paper transition-colors hover:bg-ink/85 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {state === 'thinking' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          {state === 'thinking' ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />}
         </button>
       </div>
     </div>

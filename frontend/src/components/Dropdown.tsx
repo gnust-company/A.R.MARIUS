@@ -73,9 +73,9 @@ export default function Dropdown({
         aria-label={ariaLabel}
         data-testid={testId}
         className={cn(
-          'flex w-full items-center justify-between gap-2 rounded-md border border-[#E3D7BC] bg-[#F7F0E0] text-left text-[#2A2318]',
-          'focus:outline-none focus:border-[#C25E3A] focus:ring-[3px] focus:ring-[#C25E3A]/15 transition-all',
-          'data-[placeholder]:text-[#A89880] disabled:cursor-not-allowed disabled:opacity-60',
+          'flex w-full items-center justify-between gap-2 rounded-md border border-line bg-inset text-left text-ink',
+          'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15 transition-all',
+          'data-[placeholder]:text-ink-muted disabled:cursor-not-allowed disabled:opacity-60',
           SIZES[size],
           className,
         )}
@@ -84,7 +84,7 @@ export default function Dropdown({
           <Select.Value placeholder={placeholder} />
         </span>
         <Select.Icon asChild>
-          <ChevronDown className="h-4 w-4 shrink-0 text-[#A89880]" aria-hidden />
+          <ChevronDown className="h-4 w-4 shrink-0 text-ink-muted" aria-hidden />
         </Select.Icon>
       </Select.Trigger>
       <Select.Portal>
@@ -93,7 +93,7 @@ export default function Dropdown({
           sideOffset={4}
           className={cn(
             'z-tooltip min-w-[var(--radix-select-trigger-width)] max-h-[min(var(--radix-select-content-available-height),20rem)]',
-            'overflow-hidden rounded-md border border-[#E3D7BC] bg-[#F7F0E0] shadow-lg',
+            'overflow-hidden rounded-md border border-line bg-inset shadow-lg',
           )}
         >
           <Select.Viewport className="p-1">
@@ -104,15 +104,15 @@ export default function Dropdown({
                 disabled={item.disabled}
                 textValue={item.text ?? (typeof item.label === 'string' ? item.label : undefined)}
                 className={cn(
-                  'relative flex cursor-pointer select-none items-start gap-2 rounded-sm py-1.5 pl-2.5 pr-8 text-[13px] text-[#2A2318] outline-none',
-                  'data-[highlighted]:bg-[#EDE4CE] data-[state=checked]:text-[#C25E3A]',
+                  'relative flex cursor-pointer select-none items-start gap-2 rounded-sm py-1.5 pl-2.5 pr-8 text-[13px] text-ink outline-none',
+                  'data-[highlighted]:bg-paper data-[state=checked]:text-terracotta',
                   'data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
                 )}
               >
                 <span className="min-w-0">
                   <Select.ItemText>{item.label}</Select.ItemText>
                   {item.hint && (
-                    <span className="block text-[11px] text-[#6B5E4E]">{item.hint}</span>
+                    <span className="block text-[11px] text-ink-light">{item.hint}</span>
                   )}
                 </span>
                 <Select.ItemIndicator className="absolute right-2 top-2">

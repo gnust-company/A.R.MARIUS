@@ -51,7 +51,7 @@ export function ErrorFallback({ message, onReload }: { message: string; onReload
   const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
-      <AlertTriangle className="w-12 h-12 text-[#B84A32] mb-4" />
+      <AlertTriangle className="w-12 h-12 text-vermilion-ink mb-4" />
       <h2 className="font-display text-display-md text-ink mb-2">
         {t('common.somethingWentWrong')}
       </h2>
@@ -65,7 +65,7 @@ export function ErrorFallback({ message, onReload }: { message: string; onReload
       )}
       <button
         onClick={onReload}
-        className="inline-flex items-center gap-2 bg-[#C25E3A] hover:bg-[#D97B5A] text-white font-body font-medium text-body-md px-4 py-2.5 rounded-md transition-colors"
+        className="inline-flex items-center gap-2 bg-ink hover:bg-ink/85 text-white font-body font-medium text-body-md px-4 py-2.5 rounded-md transition-colors"
       >
         <RotateCcw className="w-4 h-4" />
         {t('common.reload')}

@@ -75,7 +75,7 @@ export default function ConfirmDialog({
               'inline-flex items-center gap-2 px-4 py-2 rounded-md font-body text-body-md font-medium transition-colors disabled:opacity-50',
               danger
                 ? 'bg-[#C0492B] text-white hover:bg-[#D2664A]'
-                : 'bg-terracotta text-white hover:bg-terracotta-light'
+                : 'bg-ink text-paper hover:bg-ink/85'
             )}
           >
             {busy && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -87,7 +87,7 @@ export default function ConfirmDialog({
       <div className="space-y-3">
         <p className="font-body text-body-md text-ink-light break-words">{message}</p>
         {error && (
-          <div className="flex items-start gap-2 text-[13px] text-[#8A3B22] bg-[#F3D9D0] border border-[#E3C0B2] rounded-md px-3 py-2">
+          <div className="flex items-start gap-2 text-[13px] text-terracotta-dark bg-vermilion-bg border border-[#E3C0B2] rounded-md px-3 py-2">
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>

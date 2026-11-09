@@ -44,30 +44,32 @@ export default function SkillsTab({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <p className="text-[12px] text-[#6B5E4E]">{t('agentDetail.skillsTab.hint')}</p>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-[1_1_260px]">
+          <h2 className="font-display text-[20px] font-medium leading-tight text-ink">
+            {t('agentDetail.tab.skills')}
+          </h2>
+          <p className="mt-1 font-body text-body-md text-ink-light">{t('agentDetail.skillsTab.hint')}</p>
+        </div>
         <button
           type="button"
           onClick={onAdd}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[#E3D7BC] px-2.5 py-1.5 text-[12px] font-medium text-[#6B5E4E] transition-colors hover:bg-[#D9CDB8]"
+          className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-md border border-line-strong bg-paper px-4 font-body text-body-md font-medium text-ink transition-colors hover:bg-inset"
         >
-          <Plus className="h-3.5 w-3.5" aria-hidden /> {t('agentDetail.linkSkills.add')}
+          <Plus className="h-4 w-4" aria-hidden /> {t('agentDetail.linkSkills.add')}
         </button>
       </div>
 
       {carried.length === 0 ? (
-        <p className="py-6 text-center text-[13px] text-[#A89880]">
+        <p className="rounded-lg border border-dashed border-line-strong px-4 py-8 text-center font-body text-body-md text-ink-muted">
           {t('agentDetail.skillsTab.none')}
         </p>
       ) : (
-        <ul className="space-y-2">
+        <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line">
           {carried.map((skill) => (
-            <li
-              key={skill.id}
-              className="flex items-center gap-3 rounded-md border border-[#E3D7BC] bg-vellum px-3 py-2"
-            >
-              <span className="min-w-0 flex-1 truncate text-[13px] text-[#2A2318]">
+            <li key={skill.id} className="flex items-center gap-3 bg-paper py-1.5 pl-4 pr-1.5">
+              <span className="min-w-0 flex-1 truncate font-body text-body-md text-ink">
                 {skill.name}
               </span>
               <button
@@ -77,14 +79,14 @@ export default function SkillsTab({
                 aria-label={t('agentDetail.skillsTab.removeAria', { name: skill.name })}
                 title={t('agentDetail.skillsTab.removeAria', { name: skill.name })}
                 className={cn(
-                  'shrink-0 rounded-md p-1.5 text-[#A89880] transition-colors',
-                  'hover:bg-[#F3E4E0] hover:text-[#B84A32] disabled:opacity-40',
+                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-ink-light transition-colors',
+                  'hover:bg-vermilion-bg hover:text-vermilion-ink disabled:cursor-not-allowed disabled:opacity-40',
                 )}
               >
                 {removing === skill.id ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                 ) : (
-                  <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                  <Trash2 className="h-4 w-4" aria-hidden />
                 )}
               </button>
             </li>

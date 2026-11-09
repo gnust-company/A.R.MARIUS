@@ -10,33 +10,13 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
-import VellumPanel from '@/components/VellumPanel';
+import EntryFrame from '@/components/EntryFrame';
+import PageTitle from '@/components/PageTitle';
 import Modal from '@/components/Modal';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { cn, wsHref } from '@/lib/utils';
 import { agentsOf } from '@/lib/workspaceScope';
 import { useTranslation } from 'react-i18next';
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.12,
-      delayChildren: 0.4,
-    },
-  },
-};
-
-const cardVariants = {
-  hidden: { opacity: 0, y: 24, filter: 'blur(2px)' },
-  visible: {
-    opacity: 1,
-    y: 0,
-    filter: 'blur(0px)',
-    transition: { duration: 0.5, ease: [0, 0, 0.2, 1] as [number, number, number, number] },
-  },
-};
 
 export default function Workspaces() {
   const navigate = useNavigate();
@@ -79,7 +59,7 @@ export default function Workspaces() {
   const handleEnter = async (wsId: string) => {
     setActiveWorkspace(wsId);
     await hydrateWorkspace(wsId);
-    navigate(wsHref(wsId, '/projects'));
+    navigate(wsHref(wsId, '/home'));
   };
 
   const handleCreate = async () => {
@@ -96,156 +76,140 @@ export default function Workspaces() {
     setIsModalOpen(false);
     setActiveWorkspace(created.id);
     await hydrateWorkspace(created.id);
-    navigate(wsHref(created.id, '/projects'));
+    navigate(wsHref(created.id, '/home'));
   };
 
+  const inputCls = cn(
+    'w-full min-h-[44px] px-3 py-2.5 rounded-md bg-inset border border-line-strong',
+    'font-body text-body-md text-ink placeholder:text-ink-muted',
+    'focus:outline-none focus:bg-paper focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15',
+    'transition-colors'
+  );
+  const labelCls = 'block font-body text-body-sm font-medium text-ink-light mb-1.5';
+  const secondaryCls =
+    'min-h-[44px] px-4 rounded-md font-body text-body-md font-medium bg-paper text-ink border border-line-strong hover:bg-inset transition-colors';
+  const primaryCls = (enabled: boolean) =>
+    cn(
+      'min-h-[44px] px-4 rounded-md font-body text-body-md font-medium transition-colors',
+      enabled ? 'bg-ink text-paper hover:bg-ink/85' : 'bg-line text-ink-muted cursor-not-allowed'
+    );
+
   return (
-    <div className="min-h-[100dvh] bg-vellum flex flex-col items-center justify-center px-6 py-12">
-      {/* Background texture overlay */}
-      <div
-        className="fixed inset-0 pointer-events-none opacity-30"
-        style={{ backgroundImage: 'url(/vellum-texture.jpg)', backgroundSize: '200px' }}
-      />
-
-      {/* Header */}
+    <EntryFrame>
       <motion.div
-        className="text-center mb-12 relative z-10"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.3 }}
+        className="w-full max-w-[1040px]"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
       >
-        {/* Brand */}
-        <motion.div
-          className="flex items-baseline justify-center mb-3"
-          initial={{ rotateY: 180, opacity: 0 }}
-          animate={{ rotateY: 0, opacity: 1 }}
-          transition={{ duration: 0.6, ease: 'easeOut' }}
-          style={{ perspective: 400 }}
-        >
-          {/* Illuminated initial "A" + "rmarius" → reads "Armarius" with a single, gilt A */}
-          <span style={{ fontFamily: "'Cinzel Decorative', 'Cinzel', serif", fontSize: '52px', color: '#D4A843', fontWeight: 700, lineHeight: 1 }}>A</span>
-          <h1 className="font-display text-display-xl text-ink tracking-tight">
-            rmarius
-          </h1>
-        </motion.div>
+        <div className="mb-7">
+          <PageTitle title={t('workspaces.title')} subtitle={t('workspaces.lead')} />
+        </div>
 
-        {/* Tagline */}
-        <motion.p
-          className="font-body text-body-lg text-ink-light italic"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.3 }}
-        >
-          &ldquo;{t('app.tagline')}&rdquo;
-        </motion.p>
-      </motion.div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {workspaces.map((ws) => {
+            const wsProjects = projects.filter((p) => p.workspaceId === ws.id);
+            const wsAgents = agentsOf(mariuses, ws.id);
+            const onlyOne = workspaces.length <= 1;
 
-      {/* Workspace Cards */}
-      <motion.div
-        className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl w-full relative z-10 mb-6"
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-      >
-        {workspaces.map((ws) => {
-          const wsProjects = projects.filter((p) => p.workspaceId === ws.id);
-          const wsAgents = agentsOf(mariuses, ws.id);
-
-          return (
-            <motion.div
-              key={ws.id}
-              variants={cardVariants}
-              whileHover={{ y: -4, transition: { duration: 0.3 } }}
-            >
-              <VellumPanel
+            return (
+              <div
+                key={ws.id}
                 className={cn(
-                  'cursor-pointer h-full flex flex-col relative group',
-                  'hover:border-gold-muted hover:shadow-gilt-lg'
+                  'group relative flex flex-col min-w-0 cursor-pointer',
+                  'bg-paper border border-line rounded-xl p-5',
+                  'hover:border-line-strong hover:shadow-gilt-lg transition-[border-color,box-shadow]'
                 )}
-                hover={false}
                 onClick={() => handleEnter(ws.id)}
               >
-                {/* Card actions — rename / delete (don't trigger card navigation) */}
-                <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); openEdit(ws); }}
-                    className="p-1.5 rounded-md text-ink-muted hover:text-ink hover:bg-vellum-dark transition-colors"
-                    aria-label={t('workspaces.edit')}
-                    title={t('workspaces.edit')}
+                <div className="flex items-start gap-3 min-w-0">
+                  {/* The workspace's initial, set like a small seal — enough to tell two cards
+                      apart at a glance without inventing an icon per workspace. */}
+                  <span
+                    className="w-11 h-11 shrink-0 rounded-lg bg-inset border border-line flex items-center justify-center font-display text-[22px] font-medium text-ink"
+                    aria-hidden
                   >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setDeletingWs(ws); }}
-                    disabled={workspaces.length <= 1}
-                    className="p-1.5 rounded-md text-ink-muted hover:text-[#C0492B] hover:bg-[#F3D9D0] transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-ink-muted"
-                    aria-label={t('workspaces.delete')}
-                    title={workspaces.length <= 1 ? t('workspaces.onlyWorkspaceHint') : t('workspaces.delete')}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                    {ws.name.charAt(0).toUpperCase()}
+                  </span>
+                  <div className="flex-1 min-w-0 pt-0.5">
+                    <h2 className="font-display font-medium text-[20px] leading-snug text-ink truncate" title={ws.name}>
+                      {ws.name}
+                    </h2>
+                    {ws.description && (
+                      <p className="mt-0.5 font-body text-body-sm text-ink-light line-clamp-2">
+                        {ws.description}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
-                {/* Workspace name */}
-                <h2 className="font-display text-display-md text-ink mb-1 pr-16">
-                  {ws.name}
-                </h2>
-
-                {/* Description */}
-                <p className="font-body text-body-md text-ink-light mb-4">
-                  {ws.description}
-                </p>
-
-                {/* Divider */}
-                <div className="border-t border-vellum-dark my-4" />
-
-                {/* Stats */}
-                <div className="flex items-center gap-4 font-body text-body-sm text-ink-light mb-6">
+                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 font-body text-body-sm text-ink-light">
                   <span className="flex items-center gap-1.5">
-                    <FolderOpen className="w-4 h-4" />
+                    <FolderOpen className="w-4 h-4 text-ink-muted" aria-hidden />
                     {t('workspaces.projectsCount', { count: wsProjects.length })}
                   </span>
-                  <span className="text-ink-muted">&middot;</span>
                   <span className="flex items-center gap-1.5">
-                    <Bot className="w-4 h-4" />
+                    <Bot className="w-4 h-4 text-ink-muted" aria-hidden />
                     {t('workspaces.agentsCount', { count: wsAgents.length })}
                   </span>
                 </div>
 
-                {/* Enter button */}
-                <div className="mt-auto flex justify-end">
-                  <button
-                    className="group flex items-center gap-1 font-body text-body-md font-medium text-terracotta hover:text-terracotta-light transition-colors"
-                  >
-                    {t('workspaces.enterButton')}
-                    <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />
-                  </button>
+                <div className="mt-auto pt-4">
+                  <div className="-mx-2 pt-2 border-t border-line flex items-center justify-between gap-2">
+                    {/* Rename / delete stay visible: on a touch screen there is no hover to
+                        reveal them. Clicks stop here so they don't also open the workspace. */}
+                    <div className="flex items-center">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openEdit(ws); }}
+                        className="w-10 h-10 rounded-md flex items-center justify-center text-ink-muted hover:text-ink hover:bg-inset transition-colors"
+                        aria-label={t('workspaces.edit')}
+                        title={t('workspaces.edit')}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDeletingWs(ws); }}
+                        disabled={onlyOne}
+                        className={cn(
+                          'w-10 h-10 rounded-md flex items-center justify-center transition-colors',
+                          onlyOne
+                            ? 'text-line-strong cursor-not-allowed'
+                            : 'text-ink-muted hover:text-vermilion-ink hover:bg-vermilion-bg'
+                        )}
+                        aria-label={t('workspaces.delete')}
+                        title={onlyOne ? t('workspaces.onlyWorkspaceHint') : t('workspaces.delete')}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <button
+                      className="inline-flex items-center gap-1 min-h-[44px] px-2 font-body text-body-md font-medium text-terracotta hover:text-terracotta-dark transition-colors"
+                    >
+                      {t('workspaces.enterButton')}
+                      <ArrowRight className="w-4 h-4 transition-transform duration-150 group-hover:translate-x-0.5" aria-hidden />
+                    </button>
+                  </div>
                 </div>
-              </VellumPanel>
-            </motion.div>
-          );
-        })}
-      </motion.div>
+              </div>
+            );
+          })}
 
-      {/* Create Workspace Card */}
-      <motion.div
-        className="max-w-md w-full relative z-10"
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.7 }}
-      >
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className={cn(
-            'w-full flex items-center justify-center gap-3 py-8 px-6',
-            'border-2 border-dashed border-vellum-dark rounded-xl',
-            'text-ink-muted hover:text-terracotta hover:border-terracotta hover:border-solid',
-            'transition-all duration-200 cursor-pointer bg-transparent'
-          )}
-        >
-          <Plus className="w-10 h-10" strokeWidth={1.5} />
-          <span className="font-body text-body-lg font-medium">{t('workspaces.createTitle')}</span>
-        </button>
+          {/* A new workspace sits in the grid as one more tile, so it is found where the
+              workspaces are rather than below the fold on a long list. */}
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className={cn(
+              'min-h-[148px] flex flex-col items-center justify-center gap-2 px-5 py-6',
+              'border border-dashed border-line-strong rounded-xl',
+              'text-ink-light hover:text-ink hover:bg-paper transition-colors'
+            )}
+          >
+            <span className="w-10 h-10 rounded-full border border-line-strong bg-paper flex items-center justify-center">
+              <Plus className="w-5 h-5" aria-hidden />
+            </span>
+            <span className="font-body text-body-md font-medium">{t('workspaces.createTitle')}</span>
+          </button>
+        </div>
       </motion.div>
 
       {/* Create Workspace Modal */}
@@ -256,9 +220,7 @@ export default function Workspaces() {
           setNewWsName('');
           setNewWsDesc('');
         }}
-        title={
-          <span className="dropcap">{t('workspaces.createTitle')}</span>
-        }
+        title={t('workspaces.createTitle')}
         footer={
           <>
             <button
@@ -267,19 +229,14 @@ export default function Workspaces() {
                 setNewWsName('');
                 setNewWsDesc('');
               }}
-              className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-vellum-deep text-ink border border-vellum-dark hover:bg-vellum-dark transition-colors"
+              className={secondaryCls}
             >
               {t('workspaces.cancelButton')}
             </button>
             <button
               onClick={handleCreate}
               disabled={!newWsName.trim()}
-              className={cn(
-                'px-4 py-2 rounded-md font-body text-body-md font-medium transition-colors',
-                newWsName.trim()
-                  ? 'bg-terracotta text-white hover:bg-terracotta-light'
-                  : 'bg-vellum-dark text-ink-muted cursor-not-allowed'
-              )}
+              className={primaryCls(!!newWsName.trim())}
             >
               {t('workspaces.createButton')}
             </button>
@@ -288,38 +245,30 @@ export default function Workspaces() {
       >
         <div className="space-y-4">
           <div>
-            <label className="block font-body text-body-sm font-medium text-ink mb-1">
-              {t('workspaces.nameLabel')} <span className="text-terracotta">*</span>
+            <label htmlFor="ws-new-name" className={labelCls}>
+              {t('workspaces.nameLabel')} <span className="text-ink-muted" aria-hidden>*</span>
             </label>
             <input
+              id="ws-new-name"
               type="text"
               value={newWsName}
               onChange={(e) => setNewWsName(e.target.value)}
               placeholder={t('workspaces.namePlaceholder')}
-              className={cn(
-                'w-full px-4 py-2.5 rounded-md bg-vellum border border-vellum-dark',
-                'font-body text-body-md text-ink placeholder:text-ink-muted',
-                'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15',
-                'transition-all'
-              )}
+              className={inputCls}
               autoFocus
             />
           </div>
           <div>
-            <label className="block font-body text-body-sm font-medium text-ink mb-1">
+            <label htmlFor="ws-new-desc" className={labelCls}>
               {t('workspaces.descriptionLabel')}
             </label>
             <textarea
+              id="ws-new-desc"
               value={newWsDesc}
               onChange={(e) => setNewWsDesc(e.target.value)}
               placeholder={t('workspaces.descriptionPlaceholder')}
               rows={3}
-              className={cn(
-                'w-full px-4 py-2.5 rounded-md bg-vellum border border-vellum-dark',
-                'font-body text-body-md text-ink placeholder:text-ink-muted',
-                'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15',
-                'transition-all resize-none'
-              )}
+              className={cn(inputCls, 'resize-none')}
             />
           </div>
         </div>
@@ -329,24 +278,16 @@ export default function Workspaces() {
       <Modal
         isOpen={editingWs !== null}
         onClose={() => setEditingWs(null)}
-        title={<span className="dropcap">{t('workspaces.editTitle')}</span>}
+        title={t('workspaces.editTitle')}
         footer={
           <>
-            <button
-              onClick={() => setEditingWs(null)}
-              className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-vellum-deep text-ink border border-vellum-dark hover:bg-vellum-dark transition-colors"
-            >
+            <button onClick={() => setEditingWs(null)} className={secondaryCls}>
               {t('workspaces.cancelButton')}
             </button>
             <button
               onClick={handleRename}
               disabled={!editName.trim()}
-              className={cn(
-                'px-4 py-2 rounded-md font-body text-body-md font-medium transition-colors',
-                editName.trim()
-                  ? 'bg-terracotta text-white hover:bg-terracotta-light'
-                  : 'bg-vellum-dark text-ink-muted cursor-not-allowed'
-              )}
+              className={primaryCls(!!editName.trim())}
             >
               {t('workspaces.saveButton')}
             </button>
@@ -354,20 +295,16 @@ export default function Workspaces() {
         }
       >
         <div>
-          <label className="block font-body text-body-sm font-medium text-ink mb-1">
-            {t('workspaces.nameLabel')} <span className="text-terracotta">*</span>
+          <label htmlFor="ws-edit-name" className={labelCls}>
+            {t('workspaces.nameLabel')} <span className="text-ink-muted" aria-hidden>*</span>
           </label>
           <input
+            id="ws-edit-name"
             type="text"
             value={editName}
             onChange={(e) => setEditName(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); }}
-            className={cn(
-              'w-full px-4 py-2.5 rounded-md bg-vellum border border-vellum-dark',
-              'font-body text-body-md text-ink placeholder:text-ink-muted',
-              'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15',
-              'transition-all'
-            )}
+            className={inputCls}
             autoFocus
           />
         </div>
@@ -382,6 +319,6 @@ export default function Workspaces() {
         message={t('workspaces.deleteConfirm', { name: deletingWs?.name ?? '' })}
         confirmLabel={t('workspaces.delete')}
       />
-    </div>
+    </EntryFrame>
   );
 }

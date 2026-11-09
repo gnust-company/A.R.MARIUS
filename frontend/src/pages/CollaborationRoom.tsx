@@ -61,19 +61,30 @@ const PRIORITY_OPTIONS: readonly Priority[] = ['P0', 'P1', 'P2', 'P3'];
 
 // ─── Trace Event Type Colors ─────────────────────────────────────────────────
 
+// Same meanings as the run trace page: lapis = a tool call in flight, verdigris = words and
+// a clean finish, vermilion = failure, ash = bookkeeping.
 const TRACE_TYPE_COLORS: Record<string, { border: string; bg: string; label: string }> = {
-  'run.delta': { border: 'border-l-gold', bg: 'bg-gold/10', label: 'text-gold' },
-  'run.tool': { border: 'border-l-terracotta', bg: 'bg-terracotta/10', label: 'text-terracotta' },
-  'run.usage': { border: 'border-l-status-online', bg: 'bg-status-online/10', label: 'text-status-online' },
-  'run.complete': { border: 'border-l-success', bg: 'bg-success/10', label: 'text-success' },
-  'run.error': { border: 'border-l-error', bg: 'bg-error/10', label: 'text-error' },
-  'agent.comment': { border: 'border-l-vellum-dark', bg: 'bg-vellum-dark/10', label: 'text-ink-light' },
-  'agent.status': { border: 'border-l-ink-muted', bg: 'bg-ink-muted/10', label: 'text-ink-muted' },
+  'run.delta': { border: 'bg-verdigris', bg: 'bg-verdigris-bg', label: 'text-verdigris-ink' },
+  'run.tool': { border: 'bg-lapis', bg: 'bg-lapis-bg', label: 'text-lapis-ink' },
+  'run.usage': { border: 'bg-ash', bg: 'bg-ash-bg', label: 'text-ink-light' },
+  'run.complete': { border: 'bg-verdigris', bg: 'bg-verdigris-bg', label: 'text-verdigris-ink' },
+  'run.error': { border: 'bg-vermilion', bg: 'bg-vermilion-bg', label: 'text-vermilion-ink' },
+  'agent.comment': { border: 'bg-ash', bg: 'bg-ash-bg', label: 'text-ink-light' },
+  'agent.status': { border: 'bg-ash', bg: 'bg-ash-bg', label: 'text-ink-muted' },
 };
 
 const STATUS_OPTIONS = ['draft', 'backlog', 'todo', 'in_progress', 'blocked', 'in_review', 'done', 'cancelled'] as const;
 
 // ─── Helper: format timestamp ────────────────────────────────────────────────
+
+/** Scroll the nearest scrollable ancestor of `end` to its bottom, leaving the window alone. */
+function scrollPaneToEnd(end: HTMLElement | null) {
+  let pane = end?.parentElement ?? null;
+  while (pane && pane.scrollHeight <= pane.clientHeight) pane = pane.parentElement;
+  if (pane && pane !== document.documentElement && pane !== document.body) {
+    pane.scrollTo({ top: pane.scrollHeight, behavior: 'smooth' });
+  }
+}
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
@@ -110,13 +121,13 @@ function TraceEventCard({ event }: { event: TraceEvent }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
       className={cn(
-        'border-l-[3px] rounded-sm bg-vellum-deep px-3 py-2 cursor-pointer hover:bg-vellum/50 transition-colors',
-        colors.border
+        'rounded-lg border border-line bg-inset px-3 py-2 cursor-pointer hover:border-line-strong transition-colors'
       )}
       onClick={() => setIsExpanded(!isExpanded)}
     >
       <div className="flex items-center justify-between mb-1">
-        <span className={cn('font-mono text-mono-sm font-medium', colors.label)}>
+        <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-mono-sm font-medium', colors.bg, colors.label)}>
+          <span className={cn('w-1.5 h-1.5 rounded-full', colors.border)} />
           {event.type}
         </span>
         <span className="font-mono text-mono-sm text-ink-muted">
@@ -215,7 +226,7 @@ function CommentBubble({
     return parts.map((part, i) => {
       if (part.startsWith('@')) {
         return (
-          <span key={i} className="bg-gold/20 px-1 rounded-sm font-medium">
+          <span key={i} className="text-terracotta bg-terracotta/10 px-1 rounded-sm font-medium">
             {part}
           </span>
         );
@@ -227,9 +238,9 @@ function CommentBubble({
   if (isSystem) {
     return (
       <div className="flex items-center justify-center gap-3 my-3">
-        <span className="w-10 h-px bg-vellum-dark" />
+        <span className="w-10 h-px bg-line" />
         <span className="font-body text-body-xs text-ink-muted italic">{content}</span>
-        <span className="w-10 h-px bg-vellum-dark" />
+        <span className="w-10 h-px bg-line" />
       </div>
     );
   }
@@ -239,25 +250,30 @@ function CommentBubble({
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className={cn('flex gap-3 mb-4', isPatron && 'flex-row-reverse')}
+      className={cn('flex gap-3 mb-5', isPatron && 'flex-row-reverse')}
     >
       {/* Avatar */}
       <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
         <div
           className={cn(
-            'rounded-full overflow-hidden border flex items-center justify-center',
-            isPatron ? 'border-terracotta' : 'border-gold-muted'
+            'w-9 h-9 rounded-full overflow-hidden flex items-center justify-center font-body text-body-sm font-semibold',
+            isPatron
+              ? 'bg-paper border-[1.5px] border-gold text-gold-ink'
+              : agent?.status === 'working'
+                ? 'bg-lapis-bg text-lapis-ink'
+                : agent
+                  ? 'bg-verdigris-bg text-verdigris-ink'
+                  : 'bg-ash-bg text-ink-light'
           )}
-          style={{ width: 28, height: 28 }}
         >
           {agent?.avatar ? (
             <img src={agent.avatar} alt={authorName} className="w-full h-full object-cover" />
+          ) : isPatron ? (
+            <User className="w-4 h-4" />
+          ) : agent ? (
+            (agent.displayName || agent.name).charAt(0).toUpperCase()
           ) : (
-            isPatron ? (
-              <User className="w-3.5 h-3.5 text-terracotta" />
-            ) : (
-              <Bot className="w-3.5 h-3.5 text-gold" />
-            )
+            <Bot className="w-4 h-4" />
           )}
         </div>
       </div>
@@ -265,22 +281,20 @@ function CommentBubble({
       {/* Bubble */}
       <div className={cn('max-w-[85%]', isPatron && 'text-right')}>
         {/* Name label */}
-        <div className={cn('flex items-center gap-1.5 mb-0.5', isPatron && 'justify-end')}>
-          <span className="font-body text-body-xs text-ink-light">{authorName}</span>
+        <div className={cn('flex items-baseline gap-2 mb-1', isPatron && 'justify-end')}>
+          <span className="font-body text-body-sm font-semibold text-ink">{authorName}</span>
           {!isPatron && (
-            <span className="font-body text-body-xs text-ink-muted bg-vellum-deep px-1.5 py-0.5 rounded-sm">
-              {authorRole}
-            </span>
+            <span className="font-body text-body-xs text-ink-muted">{authorRole}</span>
           )}
           <span className="font-mono text-mono-sm text-ink-muted">{formatTime(timestamp)}</span>
         </div>
 
         <div
           className={cn(
-            'inline-block px-4 py-2.5 rounded-lg font-body text-body-md text-left',
+            'inline-block px-4 py-2.5 rounded-xl font-body text-[15px] leading-relaxed text-left',
             isPatron
-              ? 'bg-terracotta text-white rounded-tr-sm'
-              : 'bg-vellum-deep border border-vellum-dark rounded-tl-sm text-ink'
+              ? 'bg-ink text-paper rounded-tr-sm'
+              : 'bg-inset border border-line rounded-tl-sm text-ink'
           )}
         >
           {renderContent(content)}
@@ -354,6 +368,8 @@ export default function CollaborationRoom() {
   // Which ordinary wait this task is in, if any (FR-008b).
   const waiting = task ? waitKind(task) : undefined;
   const [isTraceActive, setIsTraceActive] = useState(true);
+  // null = the reader has not chosen; the drawer then opens only when there is a trace.
+  const [traceChoice, setTraceOpen] = useState<boolean | null>(null);
   const [showAddArtifactModal, setShowAddArtifactModal] = useState(false);
   const [fetchingArtifact, setFetchingArtifact] = useState<string | null>(null);
   const [artifactError, setArtifactError] = useState<string | null>(null);
@@ -409,13 +425,15 @@ export default function CollaborationRoom() {
   const criteriaTotal = task?.checklist?.length ?? 0;
   const criteriaEditable = ['draft', 'backlog', 'todo'].includes(task?.status ?? '');
 
-  // Auto-scroll
+  // Auto-scroll to the newest message/event — inside its own pane only. `scrollIntoView`
+  // also scrolled the window, so on a stacked (narrow) layout opening a task jumped the page
+  // down past the task's own header to the end of the thread.
   useEffect(() => {
-    threadEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    scrollPaneToEnd(threadEndRef.current);
   }, [task?.comments?.length]);
 
   useEffect(() => {
-    traceEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    scrollPaneToEnd(traceEndRef.current);
   }, [task?.trace?.length]);
 
   // The handlers below are deliberately plain functions. With the React Compiler on, it
@@ -624,7 +642,7 @@ export default function CollaborationRoom() {
           <h2 className="font-display text-display-md text-ink">{t('collaborationRoom.taskNotFound')}</h2>
           <button
             onClick={() => navigate(-1)}
-            className="mt-4 px-4 py-2 rounded-md bg-terracotta text-white font-body text-body-md hover:bg-terracotta-light transition-colors"
+            className="mt-4 px-4 py-2 rounded-md bg-ink text-paper font-body text-body-md hover:bg-ink/85 transition-colors"
           >
             {t('collaborationRoom.goBack')}
           </button>
@@ -633,32 +651,35 @@ export default function CollaborationRoom() {
     );
   }
 
+  const traceOpen = traceChoice ?? (task.trace?.length ?? 0) > 0;
+
   return (
-    <div className="flex flex-col h-[calc(100dvh-140px)] -m-6">
+    <div className="flex flex-col xl:h-[calc(100dvh-56px)] -mx-4 -my-6 sm:-mx-6 sm:-my-7 xl:-mx-9">
       {/* ─── Collapsed Header ─── */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="flex-shrink-0 flex items-center justify-between px-6 py-3 border-b border-vellum-dark bg-vellum/80 backdrop-blur-sm"
+        className="flex-shrink-0 flex items-center justify-between gap-3 px-4 sm:px-6 xl:px-9 py-3 border-b border-line bg-vellum"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={() => navigate(wsHref(workspaceId, `/projects/${task.projectId}`))}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-vellum-deep border border-vellum-dark font-body text-body-sm text-ink hover:bg-vellum-dark transition-colors"
+            className="inline-flex items-center gap-1 min-h-[40px] px-3 rounded-md bg-paper border border-line-strong font-body text-body-sm font-medium text-ink hover:bg-inset transition-colors whitespace-nowrap"
+            aria-label={t('collaborationRoom.backToBoard')}
           >
             <ChevronLeft className="w-4 h-4" />
-            {t('collaborationRoom.backToBoard')}
+            <span className="hidden sm:inline">{t('collaborationRoom.backToBoard')}</span>
           </button>
-          <span className="font-mono text-mono-md text-terracotta">{task.identifier}</span>
-          <span className="text-ink-muted">&middot;</span>
-          <span className="font-body text-body-sm text-ink-light truncate max-w-[200px]">
+          <span className="font-mono text-mono-md text-terracotta whitespace-nowrap">{task.identifier}</span>
+          <span className="hidden sm:inline text-ink-muted">&middot;</span>
+          <span className="hidden sm:inline font-body text-body-sm text-ink-light truncate max-w-[240px]">
             {projects.find((p) => p.id === task.projectId)?.name}
           </span>
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-success-bg border border-success/20 font-body text-body-xs text-success animate-pulse-dot">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-verdigris-bg font-body text-body-xs font-medium text-verdigris-ink whitespace-nowrap">
             <span className="w-1.5 h-1.5 rounded-full bg-success" />
             {t('collaborationRoom.live')}
           </span>
@@ -666,15 +687,15 @@ export default function CollaborationRoom() {
       </motion.div>
 
       {/* ─── Three-Pane Layout ─── */}
-      <div className="flex flex-1 min-h-0 px-6 py-4 gap-4">
+      <div className="flex flex-col xl:flex-row flex-1 min-h-0 px-4 sm:px-6 xl:px-9 py-5 gap-5">
         {/* ─── Left Pane: Context (30%) ─── */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }}
-          className="flex-[30] flex flex-col min-h-0 bg-vellum-deep border border-vellum-dark rounded-md overflow-hidden"
+          className="order-1 xl:order-2 xl:w-[360px] xl:shrink-0 flex flex-col min-h-0 bg-paper border border-line rounded-xl overflow-hidden"
         >
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
+          <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
             {/* Task Header — cùng chỗ đọc và chỗ sửa (FR-070, FR-070a). */}
             <div>
               <div className="flex items-center gap-2 mb-2">
@@ -691,14 +712,14 @@ export default function CollaborationRoom() {
                     value={editDraft.title}
                     onChange={(e) => setEditDraft({ ...editDraft, title: e.target.value })}
                     placeholder={t('collaborationRoom.context.edit.titlePlaceholder')}
-                    className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors"
+                    className="w-full px-3 py-2 bg-inset border border-line rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors"
                   />
                   <textarea
                     value={editDraft.description}
                     onChange={(e) => setEditDraft({ ...editDraft, description: e.target.value })}
                     rows={4}
                     placeholder={t('collaborationRoom.context.edit.descriptionPlaceholder')}
-                    className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors resize-none"
+                    className="w-full px-3 py-2 bg-inset border border-line rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors resize-none"
                   />
                   <div className="flex gap-2">
                     <label className="flex-1">
@@ -725,7 +746,7 @@ export default function CollaborationRoom() {
                         type="date"
                         value={editDraft.dueDate}
                         onChange={(e) => setEditDraft({ ...editDraft, dueDate: e.target.value })}
-                        className="w-full px-2 py-1.5 bg-vellum border border-vellum-dark rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none"
+                        className="w-full px-2 py-1.5 bg-inset border border-line rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none"
                       />
                     </label>
                   </div>
@@ -748,7 +769,7 @@ export default function CollaborationRoom() {
                     <button
                       disabled={saving}
                       onClick={() => { setEditDraft(null); setEditError(null); }}
-                      className="px-3 py-1.5 rounded-md border border-vellum-dark text-ink-light font-body text-body-xs hover:text-ink transition-colors disabled:opacity-50"
+                      className="px-3 py-1.5 rounded-md border border-line text-ink-light font-body text-body-xs hover:text-ink transition-colors disabled:opacity-50"
                     >
                       {t('common.cancel')}
                     </button>
@@ -782,7 +803,7 @@ export default function CollaborationRoom() {
 
             {/* Status */}
             <div>
-              <label className="block font-body text-body-xs font-semibold text-ink-light uppercase tracking-wider mb-1.5">
+              <label className="block font-body text-body-sm font-medium text-ink-light mb-1.5">
                 {t('collaborationRoom.statusLabel')}
               </label>
               {/* The wait the status alone cannot say. *Todo* covers both "nobody has come
@@ -823,7 +844,7 @@ export default function CollaborationRoom() {
 
             {/* Assignee (single owner per task) */}
             <div>
-              <label className="block font-body text-body-xs font-semibold text-ink-light uppercase tracking-wider mb-2">
+              <label className="block font-body text-body-sm font-medium text-ink-light mb-2">
                 {t('collaborationRoom.context.assigned')}
               </label>
               <div className="space-y-2">
@@ -833,7 +854,7 @@ export default function CollaborationRoom() {
                 {assignedAgents.map((p) => (
                   <div
                     key={p.id}
-                    className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-md bg-vellum border border-vellum-dark"
+                    className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-md bg-inset border border-line"
                   >
                     <div className="relative">
                       {p.avatar ? (
@@ -843,12 +864,12 @@ export default function CollaborationRoom() {
                           className="w-6 h-6 rounded-full object-cover"
                         />
                       ) : (
-                        <div className="w-6 h-6 rounded-full bg-vellum-dark flex items-center justify-center font-body text-body-xs text-ink-muted">
+                        <div className="w-6 h-6 rounded-full bg-line flex items-center justify-center font-body text-body-xs text-ink-muted">
                           {(p.displayName || p.name).charAt(0).toUpperCase()}
                         </div>
                       )}
                       <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-vellum"
-                        style={{ backgroundColor: p.status === 'online' || p.status === 'working' ? '#4A9E6B' : '#8B7A6A' }}
+                        style={{ backgroundColor: p.status === 'online' || p.status === 'working' ? '#3E8F5F' : '#736450' }}
                       />
                     </div>
                     <span className="font-body text-body-sm text-ink">{p.displayName || p.name}</span>
@@ -863,7 +884,7 @@ export default function CollaborationRoom() {
                 that the server refuses an edit, because moving the bar mid-work is a
                 scope change the patron has to decide on. */}
             <div>
-              <label className="block font-body text-body-xs font-semibold text-ink-light uppercase tracking-wider mb-2">
+              <label className="block font-body text-body-sm font-medium text-ink-light mb-2">
                 {t('collaborationRoom.context.criteria')}
               </label>
 
@@ -874,7 +895,7 @@ export default function CollaborationRoom() {
                     onChange={(e) => setCriteriaDraft(e.target.value)}
                     rows={5}
                     placeholder={t('collaborationRoom.context.criteriaPlaceholder')}
-                    className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors resize-none"
+                    className="w-full px-3 py-2 bg-inset border border-line rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors resize-none"
                   />
                   <p className="font-body text-body-xs text-ink-muted">
                     {t('collaborationRoom.context.criteriaHint')}
@@ -891,7 +912,7 @@ export default function CollaborationRoom() {
                     </button>
                     <button
                       onClick={() => { setCriteriaDraft(null); setCriteriaError(null); }}
-                      className="px-3 py-1.5 rounded-md border border-vellum-dark text-ink-light font-body text-body-xs hover:text-ink transition-colors"
+                      className="px-3 py-1.5 rounded-md border border-line text-ink-light font-body text-body-xs hover:text-ink transition-colors"
                     >
                       {t('common.cancel')}
                     </button>
@@ -901,7 +922,7 @@ export default function CollaborationRoom() {
                 <>
                   {criteriaTotal > 0 && (
                     <div className="flex items-center gap-2 mb-2">
-                      <div className="flex-1 h-1.5 bg-vellum-dark rounded-full overflow-hidden">
+                      <div className="flex-1 h-1.5 bg-line rounded-full overflow-hidden">
                         <motion.div
                           className="h-full bg-success rounded-full"
                           initial={{ width: 0 }}
@@ -957,7 +978,7 @@ export default function CollaborationRoom() {
                 ký muộn hơn thì việc đã đóng. */}
             {statusValue === 'in_review' && (
               <div>
-                <label className="block font-body text-body-xs font-semibold text-ink-light uppercase tracking-wider mb-2">
+                <label className="block font-body text-body-sm font-medium text-ink-light mb-2">
                   {t('collaborationRoom.acceptance.title')}
                 </label>
                 <p className="font-body text-body-xs text-ink-muted mb-2">
@@ -991,7 +1012,7 @@ export default function CollaborationRoom() {
                   <button
                     disabled={!leaderSigned || signing}
                     onClick={() => void handleSign(false)}
-                    className="px-3 py-1.5 rounded-md bg-vellum-dark text-ink font-body text-body-xs disabled:opacity-50"
+                    className="px-3 py-1.5 rounded-md bg-line text-ink font-body text-body-xs disabled:opacity-50"
                   >
                     {t('collaborationRoom.acceptance.sendBack')}
                   </button>
@@ -1001,14 +1022,14 @@ export default function CollaborationRoom() {
 
             {/* Dependencies (blocked_by, #91) */}
             <div>
-              <label className="block font-body text-body-xs font-semibold text-ink-light uppercase tracking-wider mb-2">
+              <label className="block font-body text-body-sm font-medium text-ink-light mb-2">
                 {t('collaborationRoom.context.dependencies')}
               </label>
               <div className="space-y-1.5">
                 {dependencyTasks.map((dep) => (
                   <div
                     key={dep.id}
-                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-vellum border border-vellum-dark group"
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-inset border border-line group"
                   >
                     <button
                       onClick={() => navigate(wsHref(workspaceId, `/tasks/${dep.id}`))}
@@ -1060,7 +1081,7 @@ export default function CollaborationRoom() {
 
             {/* Artifacts */}
             <div>
-              <label className="block font-body text-body-xs font-semibold text-ink-light uppercase tracking-wider mb-2">
+              <label className="block font-body text-body-sm font-medium text-ink-light mb-2">
                 {t('collaborationRoom.context.artifacts')}
               </label>
               <div className="space-y-1.5">
@@ -1076,7 +1097,7 @@ export default function CollaborationRoom() {
                       href={artifact.url || '#'}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-vellum border border-vellum-dark hover:border-terracotta hover:text-terracotta transition-colors group"
+                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-inset border border-line hover:border-terracotta hover:text-terracotta transition-colors group"
                     >
                       <ExternalLink className="w-3.5 h-3.5 text-ink-muted group-hover:text-terracotta" />
                       <span className="font-body text-body-sm text-ink group-hover:text-terracotta truncate">
@@ -1089,7 +1110,7 @@ export default function CollaborationRoom() {
                       type="button"
                       onClick={() => void saveArtifact(artifact)}
                       disabled={fetchingArtifact === artifact.id}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-vellum border border-vellum-dark hover:border-terracotta hover:text-terracotta transition-colors group disabled:opacity-60"
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-inset border border-line hover:border-terracotta hover:text-terracotta transition-colors group disabled:opacity-60"
                     >
                       <Paperclip className="w-3.5 h-3.5 text-ink-muted group-hover:text-terracotta" />
                       <span className="font-body text-body-sm text-ink group-hover:text-terracotta truncate">
@@ -1105,7 +1126,7 @@ export default function CollaborationRoom() {
                 )}
                 <button
                   onClick={() => setShowAddArtifactModal(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-vellum-dark hover:border-terracotta hover:bg-terracotta/5 font-body text-body-xs text-ink-muted hover:text-terracotta transition-colors"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-line hover:border-terracotta hover:bg-terracotta/5 font-body text-body-xs text-ink-muted hover:text-terracotta transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   {t('collaborationRoom.context.addArtifact')}
@@ -1116,10 +1137,10 @@ export default function CollaborationRoom() {
             {/* DONE Gate */}
             <div
               className={cn(
-                'rounded-md border-l-4 px-3 py-3',
+                'rounded-lg border px-3 py-3',
                 hasArtifacts
-                  ? 'bg-success-bg border-l-success'
-                  : 'bg-error-bg border-l-error'
+                  ? 'bg-success-bg border-[#B9DCC3]'
+                  : 'bg-error-bg border-[#EDB8B0]'
               )}
             >
               <div className="flex items-start gap-2">
@@ -1150,12 +1171,12 @@ export default function CollaborationRoom() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.15 }}
-          className="flex-[40] flex flex-col min-h-0 bg-vellum border border-vellum-dark rounded-md overflow-hidden"
+          className="order-2 xl:order-1 flex-1 min-w-0 min-h-[520px] xl:min-h-0 flex flex-col bg-paper border border-line rounded-xl overflow-hidden"
         >
           {/* Thread Header */}
-          <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-vellum-dark">
+          <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-line">
             <div>
-              <h2 className="font-display text-display-sm text-ink">{t('collaborationRoom.threadTitle')}</h2>
+              <h2 className="font-display text-[22px] font-medium text-ink">{t('collaborationRoom.threadTitle')}</h2>
               <span className="font-body text-body-xs text-ink-muted">
                 {t('collaborationRoom.participants', { count: assignedAgents.length + 1 })}
               </span>
@@ -1184,7 +1205,7 @@ export default function CollaborationRoom() {
                     </button>
                     <button
                       onClick={handleRequestChanges}
-                      className="px-4 py-1.5 rounded-md border border-vellum-dark bg-vellum-deep font-body text-body-sm text-ink hover:bg-vellum-dark transition-colors"
+                      className="px-4 py-1.5 rounded-md border border-line bg-paper font-body text-body-sm text-ink hover:bg-line transition-colors"
                     >
                       {t('collaborationRoom.approval.requestChanges')}
                     </button>
@@ -1195,7 +1216,7 @@ export default function CollaborationRoom() {
           </AnimatePresence>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-4">
+          <div className="flex-1 overflow-y-auto px-5 py-5">
             {(task.comments?.length ?? 0) === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <MessageSquare className="w-10 h-10 text-ink-muted mb-3" strokeWidth={1.5} />
@@ -1206,7 +1227,15 @@ export default function CollaborationRoom() {
               (task.comments ?? []).map((comment) => (
                 <CommentBubble
                   key={comment.id}
-                  authorName={comment.authorName ?? t('collaborationRoom.patron')}
+                  // An agent's comment arrives without a name of its own; falling straight
+                  // back to "Patron" put the patron's name on every agent's words.
+                  authorName={
+                    comment.authorName ??
+                    (() => {
+                      const author = mariuses.find((m) => m.id === comment.authorId);
+                      return author ? author.displayName || author.name : t('collaborationRoom.patron');
+                    })()
+                  }
                   authorId={comment.authorId}
                   authorRole={
                     mariuses.find((m) => m.id === comment.authorId)?.role || t('collaborationRoom.patron')
@@ -1220,7 +1249,7 @@ export default function CollaborationRoom() {
           </div>
 
           {/* Comment Composer */}
-          <div className="flex-shrink-0 border-t border-vellum-dark bg-vellum-deep px-4 py-3">
+          <div className="flex-shrink-0 border-t border-line bg-inset px-5 py-3.5">
             <div className="flex items-end gap-2">
               <textarea
                 value={commentInput}
@@ -1233,17 +1262,17 @@ export default function CollaborationRoom() {
                 }}
                 placeholder={t('collaborationRoom.composer.placeholder')}
                 rows={1}
-                className="flex-1 resize-none px-4 py-2.5 bg-vellum border border-vellum-dark rounded-lg font-body text-body-md text-ink placeholder:text-ink-muted focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors max-h-[120px]"
+                className="flex-1 resize-none px-4 py-2.5 bg-paper border border-line-strong rounded-lg font-body text-body-md text-ink placeholder:text-ink-muted focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors max-h-[120px]"
               />
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={handleSendComment}
                 disabled={!commentInput.trim()}
                 className={cn(
-                  'w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-colors',
+                  'w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 transition-colors',
                   commentInput.trim()
-                    ? 'bg-terracotta text-white hover:bg-terracotta-light'
-                    : 'bg-vellum-dark text-ink-muted cursor-not-allowed'
+                    ? 'bg-ink text-paper hover:bg-ink/85'
+                    : 'bg-line text-ink-muted cursor-not-allowed'
                 )}
               >
                 <Send className="w-4 h-4" />
@@ -1253,21 +1282,43 @@ export default function CollaborationRoom() {
         </motion.div>
 
         {/* ─── Right Pane: Live Trace (30%) ─── */}
+        {/* A drawer: it takes a third of the screen only while there is a trace to read. */}
+        {!traceOpen ? (
+          <button
+            onClick={() => setTraceOpen(true)}
+            className="order-3 xl:w-12 shrink-0 flex xl:flex-col items-center justify-center gap-2 min-h-[44px] px-3 xl:py-4 rounded-xl border border-line bg-inset text-ink-light hover:text-ink hover:bg-paper transition-colors"
+            aria-label={t('collaborationRoom.liveTrace')}
+            title={t('collaborationRoom.liveTrace')}
+          >
+            <Activity className="w-4 h-4" />
+            <span className="font-body text-body-sm font-medium xl:[writing-mode:vertical-rl]">{t('collaborationRoom.liveTrace')}</span>
+            {(task.trace?.length ?? 0) > 0 && (
+              <span className="font-mono text-mono-sm text-ink-muted">{task.trace?.length}</span>
+            )}
+          </button>
+        ) : (
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-          className="flex-[30] flex flex-col min-h-0 bg-vellum-deep border border-vellum-dark rounded-md overflow-hidden"
+          transition={{ duration: 0.25 }}
+          className="order-3 xl:w-[340px] xl:shrink-0 flex flex-col min-h-[320px] xl:min-h-0 bg-paper border border-[#B9CCE4] rounded-xl overflow-hidden"
         >
           {/* Trace Header */}
-          <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-vellum-dark">
+          <div className="flex-shrink-0 flex items-center justify-between gap-2 px-4 py-3 border-b border-lapis-bg">
             <div className="flex items-center gap-2">
-              <h2 className="font-display text-display-sm text-ink">{t('collaborationRoom.liveTrace')}</h2>
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-success-bg border border-success/20 font-body text-body-xs text-success">
-                <span className="w-1.5 h-1.5 rounded-full bg-success" />
+              <h2 className="font-body text-[15px] font-semibold text-ink">{t('collaborationRoom.liveTrace')}</h2>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-lapis-bg font-body text-body-xs font-medium text-lapis-ink">
+                <span className="w-1.5 h-1.5 rounded-full bg-lapis" />
                 {isTraceActive ? t('collaborationRoom.traceRunning') : t('collaborationRoom.traceIdle')}
               </span>
             </div>
+            <button
+              onClick={() => setTraceOpen(false)}
+              className="p-2 rounded-md text-ink-muted hover:text-ink hover:bg-inset transition-colors"
+              aria-label={t('common.close')}
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
 
           {/* Trace Stream */}
@@ -1291,27 +1342,27 @@ export default function CollaborationRoom() {
           </div>
 
           {/* Wake Controls */}
-          <div className="flex-shrink-0 border-t border-vellum-dark px-4 py-3">
+          <div className="flex-shrink-0 border-t border-line px-4 py-3">
             <div className="flex items-center justify-between">
               <span className="font-body text-body-xs text-ink-muted">{t('collaborationRoom.wakeControls.pause')}</span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setIsTraceActive(!isTraceActive)}
-                  className="p-1.5 rounded-md bg-vellum-dark hover:bg-vellum text-ink transition-colors"
+                  className="p-1.5 rounded-md bg-line hover:bg-vellum text-ink transition-colors"
                   title={isTraceActive ? t('collaborationRoom.wakeControls.pause') : t('collaborationRoom.wakeControls.resume')}
                 >
                   {isTraceActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
                 </button>
                 <button
                   onClick={() => setIsTraceActive(false)}
-                  className="p-1.5 rounded-md bg-vellum-dark hover:bg-error/10 hover:text-error text-ink transition-colors"
+                  className="p-1.5 rounded-md bg-line hover:bg-error/10 hover:text-error text-ink transition-colors"
                   title={t('collaborationRoom.wakeControls.stop')}
                 >
                   <Square className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={() => setIsTraceActive(true)}
-                  className="p-1.5 rounded-md bg-vellum-dark hover:bg-vellum text-ink transition-colors"
+                  className="p-1.5 rounded-md bg-line hover:bg-vellum text-ink transition-colors"
                   title={t('collaborationRoom.wakeControls.resume')}
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
@@ -1320,6 +1371,7 @@ export default function CollaborationRoom() {
             </div>
           </div>
         </motion.div>
+        )}
       </div>
 
       {/* ─── Add Artifact Modal ─── */}
@@ -1338,7 +1390,7 @@ export default function CollaborationRoom() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -8, scale: 0.98 }}
               transition={{ duration: 0.25 }}
-              className="relative bg-vellum-deep rounded-xl w-full max-w-md shadow-gilt-lg border border-vellum-dark p-6"
+              className="relative bg-paper rounded-xl w-full max-w-md shadow-gilt-lg border border-line p-6"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start justify-between mb-4">
@@ -1347,7 +1399,7 @@ export default function CollaborationRoom() {
                 </h3>
                 <button
                   onClick={() => setShowAddArtifactModal(false)}
-                  className="p-1 rounded-md text-ink-muted hover:text-ink hover:bg-vellum-dark transition-colors"
+                  className="p-1 rounded-md text-ink-muted hover:text-ink hover:bg-line transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1362,8 +1414,8 @@ export default function CollaborationRoom() {
                     className={cn(
                       'flex-1 px-3 py-2 rounded-md font-body text-body-sm font-medium transition-colors capitalize',
                       artifactForm.type === type
-                        ? 'bg-terracotta text-white'
-                        : 'bg-vellum text-ink border border-vellum-dark hover:bg-vellum-dark'
+                        ? 'bg-ink text-paper'
+                        : 'bg-vellum text-ink border border-line hover:bg-line'
                     )}
                   >
                     {type === 'file' ? t('collaborationRoom.uploadFile') : t('collaborationRoom.addLink')}
@@ -1381,7 +1433,7 @@ export default function CollaborationRoom() {
                     value={artifactForm.name}
                     onChange={(e) => setArtifactForm((prev) => ({ ...prev, name: e.target.value }))}
                     placeholder={artifactForm.type === 'file' ? t('collaborationRoom.artifactNamePlaceholderFile') : t('collaborationRoom.artifactNamePlaceholderLink')}
-                    className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-md font-body text-body-md text-ink placeholder:text-ink-muted focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors"
+                    className="w-full px-3 py-2 bg-inset border border-line rounded-md font-body text-body-md text-ink placeholder:text-ink-muted focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors"
                   />
                 </div>
 
@@ -1394,7 +1446,7 @@ export default function CollaborationRoom() {
                     value={artifactForm.url}
                     onChange={(e) => setArtifactForm((prev) => ({ ...prev, url: e.target.value }))}
                     placeholder={artifactForm.type === 'file' ? 'armarius/...' : 'https://...'}
-                    className="w-full px-3 py-2 bg-vellum border border-vellum-dark rounded-md font-body text-body-md text-ink placeholder:text-ink-muted focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors"
+                    className="w-full px-3 py-2 bg-inset border border-line rounded-md font-body text-body-md text-ink placeholder:text-ink-muted focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors"
                   />
                 </div>
 
@@ -1404,8 +1456,8 @@ export default function CollaborationRoom() {
                   className={cn(
                     'w-full px-4 py-2.5 rounded-md font-body text-body-md font-medium transition-colors',
                     artifactForm.name.trim()
-                      ? 'bg-terracotta text-white hover:bg-terracotta-light'
-                      : 'bg-vellum-dark text-ink-muted cursor-not-allowed'
+                      ? 'bg-ink text-paper hover:bg-ink/85'
+                      : 'bg-line text-ink-muted cursor-not-allowed'
                   )}
                 >
                   {t('collaborationRoom.context.addArtifact')}

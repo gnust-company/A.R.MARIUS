@@ -8,6 +8,7 @@ import Workspaces from './pages/Workspaces'
 import LinkMachine from './pages/LinkMachine'
 import Onboarding from './pages/Onboarding'
 import Projects from './pages/Projects'
+import Home from './pages/Home'
 import CreateProject from './pages/CreateProject'
 import ProjectBoard from './pages/ProjectBoard'
 import ProjectPlan from '@/pages/ProjectPlan';
@@ -99,7 +100,8 @@ export default function App() {
         {/* All in-workspace pages carry the workspace id on the URL (/w/:workspaceId/…)
             so a hard refresh restores the right workspace + its skills. */}
         <Route path="/w/:workspaceId" element={<Layout />}>
-          <Route index element={<Navigate to="projects" replace />} />
+          <Route index element={<Navigate to="home" replace />} />
+          <Route path="home" element={<Home />} />
           <Route path="projects" element={<Projects />} />
           <Route path="projects/new" element={<CreateProject />} />
           <Route path="projects/:id" element={<ProjectBoard />} />

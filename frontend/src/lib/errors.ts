@@ -37,6 +37,13 @@ export async function throwApiError(res: Response): Promise<never> {
   try {
     const data = await res.json()
     if (data?.detail) detail = typeof data.detail === 'string' ? data.detail : detail
+    // FastAPI's own validation refusal carries no code, only a list of field errors; without
+    // this the screen showed the bare status line ("422 Unprocessable Entity").
+    if (Array.isArray(data?.detail) && data.detail.length > 0) {
+      const loc = data.detail[0]?.loc
+      code = 'invalid_input'
+      params = { field: Array.isArray(loc) ? String(loc[loc.length - 1]) : '' }
+    }
     if (typeof data?.code === 'string') code = data.code
     if (data?.params && typeof data.params === 'object') params = data.params as Record<string, string>
   } catch {

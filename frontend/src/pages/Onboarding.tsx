@@ -18,7 +18,19 @@ import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router'
 import { motion } from 'framer-motion'
-import { ArrowRight, Bot, Check, Copy, Laptop, Loader2, User as UserIcon } from 'lucide-react'
+import {
+  AlertCircle,
+  ArrowLeft,
+  ArrowUpRight,
+  Bot,
+  Building2,
+  Check,
+  Copy,
+  Laptop,
+  Loader2,
+  RotateCw,
+  User as UserIcon,
+} from 'lucide-react'
 
 import { updateMe, updateWorkspace } from '@/lib/api'
 import { MACHINE_LINKED, WORKPLACES_REPORTED, subscribeWorkspaceEvents } from '@/lib/sse'
@@ -30,7 +42,7 @@ import { currentRuntimeChoice } from '@/lib/runtimeChoice'
 import { copyToClipboard, cn, wsHref } from '@/lib/utils'
 import { useRuntimeOffer } from '@/hooks/use-runtime-offer'
 import { useAppStore } from '@/store/appStore'
-import VellumPanel from '@/components/VellumPanel'
+import EntryFrame from '@/components/EntryFrame'
 import RuntimePicker from '@/components/agent/RuntimePicker'
 import SystemPromptBlock from '@/components/agent/SystemPromptBlock'
 
@@ -59,13 +71,17 @@ function Command({ text }: { text: string }) {
   }
 
   return (
-    <div className="flex items-start gap-2 rounded-md bg-vellum border border-vellum-dark p-3">
-      <code className="flex-1 min-w-0 font-mono text-[12px] text-ink break-all">{text}</code>
+    <div className="flex items-center gap-2 rounded-lg bg-inset border border-line pl-3 pr-1 py-1">
+      <code className="flex-1 min-w-0 py-1.5 font-mono text-mono-sm text-ink break-all">{text}</code>
       <button
         type="button"
         onClick={take}
-        className="shrink-0 p-1.5 rounded-md text-ink-muted hover:text-ink hover:bg-vellum-dark transition-colors"
+        className={cn(
+          'shrink-0 w-10 h-10 rounded-md flex items-center justify-center transition-colors',
+          copied ? 'text-verdigris-ink' : 'text-ink-muted hover:text-ink hover:bg-paper',
+        )}
         aria-label={t('firstSteps.copy')}
+        title={t('firstSteps.copy')}
       >
         {copied ? <Check className="w-4 h-4" aria-hidden /> : <Copy className="w-4 h-4" aria-hidden />}
       </button>
@@ -75,7 +91,7 @@ function Command({ text }: { text: string }) {
 
 /** One part of connecting a machine: a number until the system knows it is done, then a tick.
  *  The part being waited on stands out; the ones after it are there to read ahead, not yet to
- *  do. */
+ *  do — their marker and title go quiet, the commands stay readable. */
 function Part({
   n,
   title,
@@ -91,30 +107,98 @@ function Part({
 }) {
   const { t } = useTranslation()
   return (
-    <section className={cn('flex gap-3', !done && !current && 'opacity-60')}>
+    <section className="flex gap-3">
       <span
         className={cn(
-          'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border font-body text-body-sm',
+          'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border font-body text-body-sm font-medium',
           done
-            ? 'border-terracotta bg-terracotta text-white'
+            ? 'border-verdigris bg-verdigris text-paper'
             : current
-              ? 'border-terracotta text-terracotta'
-              : 'border-vellum-dark text-ink-muted',
+              ? 'border-ink bg-ink text-paper'
+              : 'border-line-strong bg-paper text-ink-muted',
         )}
         aria-hidden
       >
-        {done ? <Check className="h-3.5 w-3.5" /> : n}
+        {done ? <Check className="h-4 w-4" /> : n}
       </span>
-      <div className="min-w-0 flex-1 space-y-2">
-        <h2 className="font-body text-body-md text-ink">
+      <div className="min-w-0 flex-1 space-y-2 pt-0.5">
+        <h2
+          className={cn(
+            'flex flex-wrap items-center gap-x-2 gap-y-1 font-body text-[15px] font-medium',
+            done || current ? 'text-ink' : 'text-ink-light',
+          )}
+        >
           {title}
           {done && (
-            <span className="ml-2 font-body text-body-sm text-ink-muted">{t('firstSteps.partDone')}</span>
+            <span className="inline-flex items-center rounded-full bg-verdigris-bg px-2 py-0.5 font-body text-body-sm font-medium text-verdigris-ink">
+              {t('firstSteps.partDone')}
+            </span>
           )}
         </h2>
         {children}
       </div>
     </section>
+  )
+}
+
+/** The four steps as a row of numbered marks with their names, so a person can see how far
+ *  they have come and what is left. On a phone the names would not fit four abreast, so only
+ *  the current one is spelled out, under the row. */
+function StepTrail({ current, labels }: { current: number; labels: string[] }) {
+  const { t } = useTranslation()
+  return (
+    <nav aria-label={t('firstSteps.stepsLabel')} className="w-full">
+      <ol className="flex items-start">
+        {labels.map((label, i) => {
+          const done = i < current
+          const here = i === current
+          return (
+            <li
+              key={label}
+              className="relative flex-1 flex flex-col items-center gap-2 min-w-0"
+              aria-current={here ? 'step' : undefined}
+            >
+              {/* The rule leading into this step from the one before it, drawn behind the mark. */}
+              {i > 0 && (
+                <span
+                  className={cn(
+                    'absolute top-4 right-1/2 w-full h-0.5 -translate-y-1/2',
+                    i <= current ? 'bg-ink' : 'bg-line-strong',
+                  )}
+                  aria-hidden
+                />
+              )}
+              <span
+                className={cn(
+                  'relative z-[1] flex h-8 w-8 items-center justify-center rounded-full border font-body text-body-sm font-medium',
+                  done
+                    ? 'border-ink bg-ink text-paper'
+                    : here
+                      ? 'border-ink bg-paper text-ink ring-4 ring-ink/10'
+                      : 'border-line-strong bg-vellum text-ink-muted',
+                )}
+              >
+                {done ? <Check className="h-4 w-4" aria-hidden /> : i + 1}
+              </span>
+              <span
+                className={cn(
+                  'hidden sm:block px-1 text-center font-body text-body-sm leading-snug',
+                  here ? 'text-ink font-medium' : done ? 'text-ink-light' : 'text-ink-muted',
+                )}
+              >
+                {label}
+              </span>
+              <span className="sr-only sm:hidden">{label}</span>
+            </li>
+          )
+        })}
+      </ol>
+      <p className="sm:hidden mt-3 text-center font-body text-body-sm text-ink-light">
+        {t('firstSteps.stepOf', { current: current + 1, total: labels.length })}
+        {' · '}
+        <span className="font-medium text-ink">{labels[current]}</span>
+      </p>
+    </nav>
   )
 }
 
@@ -231,7 +315,7 @@ export default function Onboarding() {
     setBusy(true)
     try {
       await markDone()
-      navigate(workspaceId ? wsHref(workspaceId, '/projects') : '/workspaces')
+      navigate(workspaceId ? wsHref(workspaceId, '/home') : '/workspaces')
     } catch (err) {
       setError(errorText(err, t))
       setBusy(false)
@@ -335,55 +419,77 @@ export default function Onboarding() {
   }
 
   const inputCls = cn(
-    'w-full px-3 py-2 rounded-md bg-vellum border border-vellum-dark',
+    'w-full min-h-[44px] px-3 py-2 rounded-md bg-inset border border-line-strong',
     'font-body text-body-md text-ink placeholder:text-ink-muted',
-    'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15 transition-all',
+    'focus:outline-none focus:bg-paper focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15 transition-colors',
   )
+  const labelCls = 'block font-body text-body-sm font-medium text-ink-light mb-1.5'
   const buttonCls = cn(
-    'w-full px-4 py-2 rounded-md font-body text-body-md transition-colors',
-    'bg-terracotta text-white hover:bg-terracotta-light disabled:opacity-50',
+    'min-h-[44px] px-5 rounded-md font-body text-body-md font-medium transition-colors',
+    'bg-ink text-paper hover:bg-ink/85',
+    'disabled:bg-line disabled:text-ink-muted disabled:cursor-not-allowed',
   )
-  const quietCls = 'font-body text-body-sm text-ink-muted hover:text-ink transition-colors'
+  const ghostCls = cn(
+    'min-h-[44px] px-3 rounded-md inline-flex items-center justify-center gap-1.5',
+    'font-body text-body-md text-ink-light hover:text-ink hover:bg-inset transition-colors',
+    'disabled:cursor-not-allowed',
+  )
+  const linkCls =
+    'min-h-[44px] inline-flex items-center gap-1 font-body text-body-md font-medium text-terracotta hover:text-terracotta-dark transition-colors'
+  // Back on the left, the way on at the right; on a phone the way on comes first, full width.
+  const footerCls = 'flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2 pt-2'
   const errorLine = error && (
-    <p className="font-body text-body-sm text-terracotta" role="alert">
-      {error}
+    <p
+      className="flex items-start gap-2 rounded-md border border-[#EDB8B0] bg-vermilion-bg px-3 py-2 font-body text-body-sm text-vermilion-ink"
+      role="alert"
+    >
+      <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
+      <span className="min-w-0">{error}</span>
     </p>
+  )
+  const heading = (icon: ReactNode, title: string, lead: string) => (
+    <div className="flex items-start gap-4">
+      <span className="hidden sm:flex w-11 h-11 shrink-0 rounded-full bg-inset border border-line items-center justify-center text-ink-light">
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <h1 className="font-display font-medium text-[24px] leading-tight text-ink">{title}</h1>
+        <p className="mt-1.5 font-body text-body-md text-ink-light">{lead}</p>
+      </div>
+    </div>
   )
 
   return (
-    <div className="min-h-[100dvh] bg-vellum flex flex-col items-center justify-center px-6 py-12">
-      <div
-        className="fixed inset-0 pointer-events-none opacity-30"
-        style={{ backgroundImage: 'url(/vellum-texture.jpg)', backgroundSize: '200px' }}
-      />
-
+    <EntryFrame>
       <motion.div
-        className="w-full max-w-xl relative z-10"
-        initial={{ opacity: 0, y: 12 }}
+        className="w-full max-w-[680px]"
+        initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
+        transition={{ duration: 0.2 }}
       >
-        <p className="font-body text-body-sm text-ink-muted text-center mb-2">
-          {t('firstSteps.stepOf', { current: shownStep + 1, total: STEPS })}
-        </p>
+        <div className="mb-6 sm:mb-8">
+          <StepTrail
+            current={shownStep}
+            labels={[
+              t('firstSteps.stepAboutYou'),
+              t('firstSteps.stepWorkspace'),
+              t('firstSteps.stepMachine'),
+              t('firstSteps.stepAgent'),
+            ]}
+          />
+        </div>
 
-        <VellumPanel hover={false}>
+        <div className="bg-paper border border-line rounded-xl shadow-gilt px-5 py-6 sm:p-8">
           {shownStep === 0 && (
-            <form onSubmit={saveName} className="space-y-5">
-              <div className="flex items-start gap-3">
-                <UserIcon className="w-5 h-5 mt-0.5 text-ink-light shrink-0" aria-hidden />
-                <div className="min-w-0">
-                  <h1 className="font-display text-display-sm text-ink">
-                    {t('firstSteps.aboutYouTitle')}
-                  </h1>
-                  <p className="font-body text-body-sm text-ink-light">
-                    {t('firstSteps.aboutYouLead')}
-                  </p>
-                </div>
-              </div>
+            <form onSubmit={saveName} className="space-y-6">
+              {heading(
+                <UserIcon className="w-5 h-5" aria-hidden />,
+                t('firstSteps.aboutYouTitle'),
+                t('firstSteps.aboutYouLead'),
+              )}
 
               <div>
-                <label className="block font-body text-body-sm text-ink-light mb-1" htmlFor="ob-name">
+                <label className={labelCls} htmlFor="ob-name">
                   {t('firstSteps.nameLabel')}
                 </label>
                 <input
@@ -398,25 +504,24 @@ export default function Onboarding() {
 
               {errorLine}
 
-              <button type="submit" disabled={busy || !name.trim()} className={buttonCls}>
-                {t('firstSteps.next')}
-              </button>
+              <div className={cn(footerCls, 'sm:justify-end')}>
+                <button type="submit" disabled={busy || !name.trim()} className={buttonCls}>
+                  {t('firstSteps.next')}
+                </button>
+              </div>
             </form>
           )}
 
           {shownStep === 1 && (
-            <form onSubmit={saveWorkspace} className="space-y-5">
-              <div>
-                <h1 className="font-display text-display-sm text-ink">
-                  {t('firstSteps.workspaceTitle')}
-                </h1>
-                <p className="font-body text-body-sm text-ink-light">
-                  {t('firstSteps.workspaceLead')}
-                </p>
-              </div>
+            <form onSubmit={saveWorkspace} className="space-y-6">
+              {heading(
+                <Building2 className="w-5 h-5" aria-hidden />,
+                t('firstSteps.workspaceTitle'),
+                t('firstSteps.workspaceLead'),
+              )}
 
               <div>
-                <label className="block font-body text-body-sm text-ink-light mb-1" htmlFor="ob-workspace">
+                <label className={labelCls} htmlFor="ob-workspace">
                   {t('firstSteps.workspaceLabel')}
                 </label>
                 <input
@@ -431,38 +536,35 @@ export default function Onboarding() {
 
               {errorLine}
 
-              <button type="submit" disabled={busy || !workspaceName.trim()} className={buttonCls}>
-                {t('firstSteps.next')}
-              </button>
-              <button type="button" onClick={() => setStep(0)} className={cn('w-full', quietCls)}>
-                {t('firstSteps.back')}
-              </button>
+              <div className={footerCls}>
+                <button type="button" onClick={() => setStep(0)} className={ghostCls}>
+                  <ArrowLeft className="w-4 h-4" aria-hidden />
+                  {t('firstSteps.back')}
+                </button>
+                <button type="submit" disabled={busy || !workspaceName.trim()} className={buttonCls}>
+                  {t('firstSteps.next')}
+                </button>
+              </div>
             </form>
           )}
 
           {shownStep === CONNECT && (
-            <div className="space-y-5">
-              <div className="flex items-start gap-3">
-                <Laptop className="w-5 h-5 mt-0.5 text-ink-light shrink-0" aria-hidden />
-                <div className="min-w-0">
-                  <h1 className="font-display text-display-sm text-ink">
-                    {t('firstSteps.connectTitle')}
-                  </h1>
-                  <p className="font-body text-body-sm text-ink-light">
-                    {t('firstSteps.connectLead')}
-                  </p>
-                </div>
-              </div>
+            <div className="space-y-6">
+              {heading(
+                <Laptop className="w-5 h-5" aria-hidden />,
+                t('firstSteps.connectTitle'),
+                t('firstSteps.connectLead'),
+              )}
 
               {/* Installing has no mark of its own: the system cannot see it, and a linked
                   machine is proof enough that it happened (FR-120). */}
               <Part n={1} title={t('firstSteps.partInstall')} done={progress.linked} current={!progress.linked}>
-                <p className="font-body text-body-sm text-ink-light">{t('firstSteps.installStep')}</p>
+                <p className="font-body text-body-md text-ink-light">{t('firstSteps.installStep')}</p>
                 <Command text={INSTALL} />
               </Part>
 
               <Part n={2} title={t('firstSteps.partLink')} done={progress.linked} current={!progress.linked}>
-                <p className="font-body text-body-sm text-ink-light">{t('firstSteps.loginStep')}</p>
+                <p className="font-body text-body-md text-ink-light">{t('firstSteps.loginStep')}</p>
                 {/* The address this page is being read at, exactly as it is. It used to rewrite
                     the port to `:8080`, which is true of one developer's compose file and of
                     nowhere else: a deployment on a real address serves the API from the same
@@ -472,20 +574,26 @@ export default function Onboarding() {
                 <Command text={`armarius-daemon login -server ${window.location.origin}`} />
                 <p className="font-body text-body-sm text-ink-muted">{t('firstSteps.loginStepHint')}</p>
                 {!progress.linked && (
-                  <p className="flex items-center gap-1.5 font-body text-body-sm text-ink-light" role="status">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  <p
+                    className="flex items-center gap-2 rounded-md bg-gold-bg px-3 py-2 font-body text-body-sm text-gold-ink"
+                    role="status"
+                  >
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
                     {t('firstSteps.waitingLink')}
                   </p>
                 )}
               </Part>
 
               <Part n={3} title={t('firstSteps.partStart')} done={progress.running} current={progress.linked && !progress.running}>
-                <p className="font-body text-body-sm text-ink-light">{t('firstSteps.startStep')}</p>
+                <p className="font-body text-body-md text-ink-light">{t('firstSteps.startStep')}</p>
                 <Command text="armarius-daemon start" />
                 <p className="font-body text-body-sm text-ink-muted">{t('firstSteps.startStepHint')}</p>
                 {progress.linked && !progress.running && (
-                  <p className="flex items-center gap-1.5 font-body text-body-sm text-ink-light" role="status">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  <p
+                    className="flex items-center gap-2 rounded-md bg-lapis-bg px-3 py-2 font-body text-body-sm text-lapis-ink"
+                    role="status"
+                  >
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
                     {t('firstSteps.waitingStart')}
                   </p>
                 )}
@@ -493,61 +601,61 @@ export default function Onboarding() {
 
               {errorLine}
 
-              <div className="flex items-center justify-between gap-3">
-                <button type="button" onClick={() => setStep(1)} className={quietCls}>
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-line pt-4">
+                <button type="button" onClick={() => setStep(1)} className={cn(ghostCls, '-ml-3')}>
+                  <ArrowLeft className="w-4 h-4" aria-hidden />
                   {t('firstSteps.back')}
                 </button>
-                {/* A read on demand, for the one case the push cannot reach: the channel
-                    dropped while the person was in the terminal. Not a loop. */}
-                <button type="button" onClick={reloadOffer} className={quietCls}>
-                  {t('firstSteps.checkAgain')}
-                </button>
-                <a
-                  href={DOCS.machines}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={cn(quietCls, 'flex items-center gap-1')}
-                >
-                  {t('firstSteps.readGuide')}
-                  <ArrowRight className="w-3.5 h-3.5" aria-hidden />
-                </a>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  {/* A read on demand, for the one case the push cannot reach: the channel
+                      dropped while the person was in the terminal. Not a loop. */}
+                  <button type="button" onClick={reloadOffer} className={ghostCls}>
+                    <RotateCw className="w-4 h-4" aria-hidden />
+                    {t('firstSteps.checkAgain')}
+                  </button>
+                  <a href={DOCS.machines} target="_blank" rel="noreferrer" className={linkCls}>
+                    {t('firstSteps.readGuide')}
+                    <ArrowUpRight className="w-4 h-4" aria-hidden />
+                  </a>
+                </div>
               </div>
             </div>
           )}
 
           {shownStep === FIRST_AGENT && (
-            <form onSubmit={finishWithHost} className="space-y-5">
-              <div className="flex items-start gap-3">
-                <Bot className="w-5 h-5 mt-0.5 text-ink-light shrink-0" aria-hidden />
-                <div className="min-w-0">
-                  <h1 className="font-display text-display-sm text-ink">{t('firstSteps.agentTitle')}</h1>
-                  <p className="font-body text-body-sm text-ink-light">{t('firstSteps.agentLead')}</p>
-                </div>
-              </div>
+            <form onSubmit={finishWithHost} className="space-y-6">
+              {heading(
+                <Bot className="w-5 h-5" aria-hidden />,
+                t('firstSteps.agentTitle'),
+                t('firstSteps.agentLead'),
+              )}
 
               {!host ? (
-                <p className="font-body text-body-sm text-ink-light">{t('firstSteps.agentNoHost')}</p>
+                <p className="font-body text-body-md text-ink-light">{t('firstSteps.agentNoHost')}</p>
               ) : placedAt ? (
                 <div className="space-y-4">
-                  <p className="font-body text-body-sm text-ink" role="status">
-                    {t('firstSteps.agentAlreadyPlaced', {
-                      name: hostName,
-                      cli: placedAt.cli,
-                      machine: placedAt.machine,
-                    })}
+                  <p
+                    className="flex items-start gap-2 rounded-md bg-verdigris-bg px-3 py-2 font-body text-body-md text-verdigris-ink"
+                    role="status"
+                  >
+                    <Check className="w-4 h-4 mt-1 shrink-0" aria-hidden />
+                    <span className="min-w-0">
+                      {t('firstSteps.agentAlreadyPlaced', {
+                        name: hostName,
+                        cli: placedAt.cli,
+                        machine: placedAt.machine,
+                      })}
+                    </span>
                   </p>
                   {errorLine}
-                  <button type="button" onClick={goToHost} disabled={busy} className={buttonCls}>
+                  <button type="button" onClick={goToHost} disabled={busy} className={cn(buttonCls, 'w-full')}>
                     {t('firstSteps.agentGoToHost', { name: hostName })}
                   </button>
                 </div>
               ) : (
                 <>
                   <div>
-                    <label
-                      className="block font-body text-body-sm text-ink-light mb-1"
-                      htmlFor="ob-host-name"
-                    >
+                    <label className={labelCls} htmlFor="ob-host-name">
                       {t('firstSteps.agentNameLabel')}
                     </label>
                     <input
@@ -564,10 +672,7 @@ export default function Onboarding() {
                   )}
 
                   <div>
-                    <label
-                      className="block font-body text-body-sm text-ink-light mb-1"
-                      htmlFor="ob-instructions"
-                    >
+                    <label className={labelCls} htmlFor="ob-instructions">
                       {t('firstSteps.agentInstructionsLabel')}
                     </label>
                     <p className="mb-2 font-body text-body-sm text-ink-muted">
@@ -578,12 +683,12 @@ export default function Onboarding() {
                       value={instructions}
                       onChange={(e) => setTypedInstructions(e.target.value)}
                       rows={6}
-                      className={cn(inputCls, 'font-mono text-[12px] leading-relaxed')}
+                      className={cn(inputCls, 'py-2.5 font-mono text-mono-sm leading-relaxed')}
                     />
                   </div>
 
                   <div>
-                    <p className="font-body text-body-sm text-ink-light mb-2">{t('firstSteps.agentRuntimeLabel')}</p>
+                    <p className={labelCls}>{t('firstSteps.agentRuntimeLabel')}</p>
                     <RuntimePicker
                       ready={offer.ready}
                       machines={offer.machines}
@@ -596,50 +701,45 @@ export default function Onboarding() {
 
                   {errorLine}
 
-                  <button
-                    type="submit"
-                    disabled={busy || !chosen || !hostNameDraft.trim()}
-                    className={buttonCls}
-                  >
-                    {t('firstSteps.agentFinish', { name: hostNameDraft.trim() || hostName })}
-                  </button>
-                  <div className="flex justify-end">
-                    <a
-                      href={DOCS.agents}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={cn(quietCls, 'flex items-center gap-1')}
-                    >
+                  <div className={cn(footerCls, 'border-t border-line pt-4')}>
+                    <a href={DOCS.agents} target="_blank" rel="noreferrer" className={cn(linkCls, 'justify-center')}>
                       {t('firstSteps.readGuide')}
-                      <ArrowRight className="w-3.5 h-3.5" aria-hidden />
+                      <ArrowUpRight className="w-4 h-4" aria-hidden />
                     </a>
+                    <button
+                      type="submit"
+                      disabled={busy || !chosen || !hostNameDraft.trim()}
+                      className={buttonCls}
+                    >
+                      {t('firstSteps.agentFinish', { name: hostNameDraft.trim() || hostName })}
+                    </button>
                   </div>
                 </>
               )}
             </form>
           )}
-        </VellumPanel>
+        </div>
 
         {/* Only on the last two steps. The two before them ask things the system would otherwise
             answer on somebody's behalf, which is the reason they exist; skipping them would put
             the silence back. A machine and a runtime are different — they happen elsewhere, and
             the Machines page and the host's own page say how whenever they come back (FR-128). */}
         {shownStep === CONNECT && (
-          <button type="button" onClick={skip} disabled={busy} className="mt-6 w-full text-center">
-            <span className={quietCls}>{t('firstSteps.skip')}</span>
+          <button type="button" onClick={skip} disabled={busy} className={cn(ghostCls, 'mt-4 w-full')}>
+            {t('firstSteps.skip')}
           </button>
         )}
         {shownStep === FIRST_AGENT && host && !placedAt && (
-          <button type="button" onClick={skip} disabled={busy} className="mt-6 w-full text-center">
-            <span className={quietCls}>{t('firstSteps.agentSkip', { name: hostName })}</span>
+          <button type="button" onClick={skip} disabled={busy} className={cn(ghostCls, 'mt-4 w-full')}>
+            {t('firstSteps.agentSkip', { name: hostName })}
           </button>
         )}
         {shownStep === FIRST_AGENT && !host && (
-          <button type="button" onClick={skip} disabled={busy} className="mt-6 w-full text-center">
-            <span className={quietCls}>{t('firstSteps.skip')}</span>
+          <button type="button" onClick={skip} disabled={busy} className={cn(ghostCls, 'mt-4 w-full')}>
+            {t('firstSteps.skip')}
           </button>
         )}
       </motion.div>
-    </div>
+    </EntryFrame>
   )
 }

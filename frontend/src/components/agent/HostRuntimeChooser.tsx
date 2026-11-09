@@ -11,7 +11,7 @@
 
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Server } from 'lucide-react'
 
 import { ApiError, errorText } from '@/lib/errors'
 import { currentRuntimeChoice } from '@/lib/runtimeChoice'
@@ -73,13 +73,19 @@ export default function HostRuntimeChooser({
 
   return (
     <div className="space-y-4">
-      <div>
-        <p className="text-[13px] font-medium text-[#2A2318]">
-          {t('agentDetail.chooseRuntime.title', { name: hostName })}
-        </p>
-        <p className="mt-0.5 text-[12px] text-[#6B5E4E]">
-          {t('agentDetail.chooseRuntime.lead', { name: hostName })}
-        </p>
+      <div className="flex items-start gap-3">
+        {/* Gold: the host cannot work until somebody picks — it is waiting on the patron. */}
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold-bg text-gold-ink">
+          <Server className="h-[18px] w-[18px]" aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <h2 className="font-display text-[20px] font-medium leading-tight text-ink">
+            {t('agentDetail.chooseRuntime.title', { name: hostName })}
+          </h2>
+          <p className="mt-1 font-body text-body-md text-ink-light">
+            {t('agentDetail.chooseRuntime.lead', { name: hostName })}
+          </p>
+        </div>
       </div>
       <RuntimePicker
         ready={offer.ready}
@@ -90,7 +96,7 @@ export default function HostRuntimeChooser({
         disabled={busy}
       />
       {error && (
-        <p className="text-[12px] text-[#8A3B22]" role="alert">
+        <p className="font-body text-body-sm text-vermilion-ink" role="alert">
           {error}
         </p>
       )}
@@ -99,11 +105,11 @@ export default function HostRuntimeChooser({
         onClick={choose}
         disabled={busy || !chosen}
         className={cn(
-          'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors',
-          'bg-[#C25E3A] text-white hover:bg-[#D4744C] disabled:opacity-50',
+          'inline-flex min-h-[44px] items-center gap-2 rounded-md px-4 font-body text-body-md font-medium transition-colors',
+          'bg-ink text-paper hover:bg-ink/85 disabled:cursor-not-allowed disabled:opacity-50',
         )}
       >
-        {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
+        {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
         {t('agentDetail.chooseRuntime.button')}
       </button>
     </div>

@@ -10,7 +10,6 @@ import {
   Trash2,
   Save,
   RotateCcw,
-  Wrench,
   ArrowLeft,
   X,
   Check,
@@ -18,8 +17,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
 import type { SkillFile } from '@/store/appStore';
-import VellumPanel from '@/components/VellumPanel';
-import EmptyState from '@/components/EmptyState';
+import StatusChip from '@/components/StatusChip';
 import { cn, wsHref } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 
@@ -124,7 +122,10 @@ function FileTreeNode({
   onToggle: (path: string) => void;
 }) {
   const isSelected = node.path === selectedPath;
-  const paddingLeft = 12 + depth * 20;
+  const paddingLeft = 12 + depth * 18;
+  // Rows are 44px where fingers do the pointing and tighten up on a desktop-width screen.
+  const row =
+    'w-full flex items-center gap-2 min-h-[44px] xl:min-h-[36px] pr-2 rounded-md text-left transition-colors';
 
   if (node.type === 'folder') {
     return (
@@ -136,25 +137,23 @@ function FileTreeNode({
             onToggle(node.path);
             onSelect(node);
           }}
-          className={cn(
-            'w-full flex items-center gap-1.5 py-1.5 pr-2 text-left transition-colors hover:bg-[#EDE4CE]',
-            isSelected && 'bg-[#EDE4CE] border-l-[3px] border-[#D4A843]'
-          )}
-          style={{ paddingLeft: isSelected ? paddingLeft - 3 : paddingLeft }}
+          className={cn(row, isSelected ? 'bg-vellum' : 'hover:bg-inset')}
+          style={{ paddingLeft }}
+          aria-expanded={node.expanded}
         >
           <motion.span
             animate={{ rotate: node.expanded ? 90 : 0 }}
             transition={{ duration: 0.2 }}
             className="flex-shrink-0"
           >
-            <ChevronRight className="w-3 h-3 text-[#A89880]" />
+            <ChevronRight className="w-3.5 h-3.5 text-ink-muted" />
           </motion.span>
           {node.expanded ? (
-            <FolderOpen className="w-4 h-4 text-[#D4A843] flex-shrink-0" />
+            <FolderOpen className="w-4 h-4 text-ink-muted flex-shrink-0" />
           ) : (
-            <Folder className="w-4 h-4 text-[#D4A843] flex-shrink-0" />
+            <Folder className="w-4 h-4 text-ink-muted flex-shrink-0" />
           )}
-          <span className="font-mono text-[13px] text-[#2A2318] truncate">{node.name}</span>
+          <span className={cn('font-mono text-mono-md text-ink truncate', isSelected && 'font-medium')}>{node.name}</span>
         </button>
         <AnimatePresence initial={false}>
           {node.expanded && node.children && (
@@ -185,24 +184,17 @@ function FileTreeNode({
   return (
     <button
       onClick={() => onSelect(node)}
-      className={cn(
-        'w-full flex items-center gap-2 py-1.5 pr-2 text-left transition-colors',
-        isSelected
-          ? 'bg-[#EDE4CE] border-l-[3px] border-[#C25E3A]'
-          : 'hover:bg-[#EDE4CE] border-l-[3px] border-transparent'
-      )}
-      style={{ paddingLeft: paddingLeft + 3 }}
+      className={cn(row, isSelected ? 'bg-vellum' : 'hover:bg-inset')}
+      style={{ paddingLeft: paddingLeft + 22 }}
+      aria-current={isSelected ? 'true' : undefined}
     >
       <FileText
-        className={cn(
-          'w-3.5 h-3.5 flex-shrink-0',
-          isSelected ? 'text-[#C25E3A]' : 'text-[#A89880]'
-        )}
+        className={cn('w-4 h-4 flex-shrink-0', isSelected ? 'text-ink' : 'text-ink-muted')}
       />
       <span
         className={cn(
-          'font-mono text-[13px] truncate',
-          isSelected ? 'text-[#C25E3A] font-medium' : 'text-[#2A2318]'
+          'font-mono text-mono-md truncate',
+          isSelected ? 'text-ink font-medium' : 'text-ink-light'
         )}
       >
         {node.name}
@@ -372,138 +364,113 @@ export default function SkillEditor() {
   // ── Loading / Not Found ────────────────────────────────────────────────────
   if (!skill) {
     return (
-      <div className="min-h-[100dvh] flex items-center justify-center">
-        <EmptyState
-          icon={ScrollText}
-          title={t('skills.editor.notFound')}
-          description={t('skills.editor.notFoundDesc')}
-          action={
-            <button
-              onClick={() => navigate(wsHref(workspaceId, '/skills'))}
-              className={cn(
-                'inline-flex items-center gap-2 px-5 py-2.5 rounded-md text-[15px] font-medium',
-                'bg-[#C25E3A] text-white hover:bg-[#D97B5A] transition-all'
-              )}
-            >
-              <ArrowLeft className="w-4 h-4" />
-              {t('skills.editor.backToSkills')}
-            </button>
-          }
-        />
+      <div className="mx-auto w-full max-w-[1240px] pb-10">
+        <section className="flex flex-col items-center rounded-xl border border-line bg-paper px-5 py-12 text-center sm:px-8">
+          <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-inset text-ink-muted">
+            <ScrollText className="h-6 w-6" strokeWidth={1.5} aria-hidden />
+          </span>
+          <h1 className="font-display text-[22px] font-medium text-ink">{t('skills.editor.notFound')}</h1>
+          <p className="mt-2 max-w-md font-body text-body-md text-ink-light">{t('skills.editor.notFoundDesc')}</p>
+          <button
+            onClick={() => navigate(wsHref(workspaceId, '/skills'))}
+            className="mt-6 inline-flex min-h-[44px] items-center gap-2 rounded-md bg-ink px-[18px] font-body text-body-md font-medium text-paper transition-colors hover:bg-ink/85"
+          >
+            <ArrowLeft className="w-4 h-4" aria-hidden />
+            {t('skills.editor.backToSkills')}
+          </button>
+        </section>
       </div>
     );
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
+  const iconButton =
+    'w-10 h-10 inline-flex items-center justify-center rounded-md text-ink-light hover:text-ink hover:bg-paper transition-colors';
+
   return (
-    <div className="min-h-[100dvh] flex flex-col">
+    <div className="mx-auto w-full max-w-[1240px] flex flex-col gap-5 pb-10">
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="flex items-center justify-between mb-4 flex-shrink-0"
-      >
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 flex-[1_1_320px] items-start gap-2">
           <button
             onClick={() => navigate(wsHref(workspaceId, '/skills'))}
-            className="p-2 rounded-md text-[#6B5E4E] hover:text-[#2A2318] hover:bg-[#EDE4CE] transition-colors"
+            className="w-11 h-11 shrink-0 -ml-2 inline-flex items-center justify-center rounded-md text-ink-light hover:text-ink hover:bg-inset transition-colors"
+            aria-label={t('skills.editor.backToSkills')}
+            title={t('skills.editor.backToSkills')}
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div>
-            <div className="flex items-center gap-2">
-              <Wrench className="w-5 h-5 text-[#D4A843]" />
-              <h1 className="font-['Fraunces',Georgia,serif] text-[28px] font-semibold text-[#2A2318] leading-tight">
-                {skill.name}
-              </h1>
-            </div>
+          <div className="min-w-0 pt-0.5">
+            <h1 className="font-display text-[30px] font-medium leading-[1.1] tracking-tight text-ink break-words">
+              {skill.name}
+            </h1>
             {skill.description && (
-              <p className="text-[13px] text-[#6B5E4E] mt-0.5">{skill.description}</p>
+              <p className="mt-1.5 font-body text-body-md text-ink-light break-words">{skill.description}</p>
             )}
           </div>
         </div>
 
         {/* Editor actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {hasChanges && (
-            <motion.span
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="text-[11px] text-[#C25E3A] font-medium mr-2"
-            >
-              {t('skills.editor.unsaved')}
-            </motion.span>
+            <StatusChip status="in_review" label={t('skills.editor.unsaved')} size="md" />
           )}
-          <button
-            onClick={handleSave}
-            disabled={!hasChanges}
-            className={cn(
-              'inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-[13px] font-medium transition-all',
-              hasChanges
-                ? 'bg-[#C25E3A] text-white hover:bg-[#D97B5A]'
-                : 'bg-[#E3D7BC] text-[#A89880] cursor-not-allowed'
-            )}
-          >
-            <Save className="w-3.5 h-3.5" />
-            {t('common.save')}
-          </button>
           <button
             onClick={handleDiscard}
             disabled={!hasChanges}
-            className={cn(
-              'inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-[13px] font-medium transition-all',
-              hasChanges
-                ? 'bg-[#EDE4CE] text-[#2A2318] border border-[#E3D7BC] hover:bg-[#E3D7BC]'
-                : 'bg-[#E3D7BC] text-[#A89880] cursor-not-allowed'
-            )}
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-md border border-line-strong bg-paper px-4 font-body text-body-md font-medium text-ink transition-colors hover:bg-inset disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-paper"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
+            <RotateCcw className="w-4 h-4" aria-hidden />
             {t('skills.editor.discard')}
           </button>
+          <button
+            onClick={handleSave}
+            disabled={!hasChanges}
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-md bg-ink px-[18px] font-body text-body-md font-medium text-paper transition-colors hover:bg-ink/85 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-ink"
+          >
+            <Save className="w-4 h-4" aria-hidden />
+            {t('common.save')}
+          </button>
         </div>
-      </motion.div>
+      </div>
 
-      {/* Two-pane layout */}
-      <div className="flex flex-1 gap-4 min-h-0">
+      {/* Tree beside the editor only from xl; below that the tree sits on top, capped in
+          height, so the editor keeps the full content width on tablets and phones. */}
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-stretch xl:min-h-[600px]">
         {/* Left: File Tree */}
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.3, delay: 0.1 }}
-          className="w-72 flex-shrink-0 flex flex-col"
-        >
-          <VellumPanel className="flex-1 flex flex-col p-0 overflow-hidden" hover={false}>
+        <div className="flex min-w-0 flex-col xl:w-72 xl:shrink-0">
+          <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-line bg-paper">
             {/* Tree actions bar */}
-            <div className="flex items-center gap-1 p-2 border-b border-[#E3D7BC]">
+            <div className="flex items-center gap-1 border-b border-line bg-inset px-1.5 py-1">
               <button
                 onClick={() => { setShowAddMenu(true); setNewItemType('file'); }}
-                className="p-1.5 rounded-md text-[#6B5E4E] hover:text-[#2A2318] hover:bg-[#EDE4CE] transition-colors"
+                className={iconButton}
                 title={t('skills.editor.addFile')}
+                aria-label={t('skills.editor.addFile')}
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus className="w-4 h-4" />
               </button>
               <button
                 onClick={() => { setShowAddMenu(true); setNewItemType('folder'); }}
-                className="p-1.5 rounded-md text-[#6B5E4E] hover:text-[#2A2318] hover:bg-[#EDE4CE] transition-colors"
+                className={iconButton}
                 title={t('skills.editor.addFolder')}
+                aria-label={t('skills.editor.addFolder')}
               >
-                <FolderOpen className="w-3.5 h-3.5" />
+                <FolderOpen className="w-4 h-4" />
               </button>
-              <div className="w-px h-4 bg-[#E3D7BC] mx-1" />
+              <div className="w-px h-5 bg-line mx-1" />
               <button
                 onClick={handleDeleteFile}
                 disabled={!selectedPath}
                 className={cn(
-                  'p-1.5 rounded-md transition-colors',
-                  selectedPath
-                    ? 'text-[#6B5E4E] hover:text-[#8B3A28] hover:bg-[#F5DDD6]'
-                    : 'text-[#A89880] cursor-not-allowed'
+                  iconButton,
+                  'hover:text-vermilion-ink hover:bg-vermilion-bg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-ink-light'
                 )}
                 title={t('common.delete')}
+                aria-label={t('common.delete')}
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <Trash2 className="w-4 h-4" />
               </button>
             </div>
 
@@ -515,15 +482,15 @@ export default function SkillEditor() {
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="overflow-hidden border-b border-[#E3D7BC]"
+                  className="overflow-hidden border-b border-line"
                 >
                   <div className="p-2 space-y-1.5">
-                    <div className="px-0.5 font-mono text-[10px] text-[#A89880] truncate">
+                    <div className="px-0.5 font-mono text-mono-sm text-ink-muted truncate">
                       {t('skills.editor.creatingIn', {
                         path: targetDir || t('skills.editor.rootLevel'),
                       })}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
                     <input
                       type="text"
                       value={newItemName}
@@ -534,22 +501,24 @@ export default function SkillEditor() {
                       }}
                       placeholder={newItemType === 'file' ? t('skills.editor.filePlaceholder') : t('skills.editor.folderPlaceholder')}
                       className={cn(
-                        'flex-1 px-2 py-1 rounded text-[12px] font-mono bg-[#F7F0E0] border border-[#E3D7BC]',
-                        'focus:outline-none focus:border-[#C25E3A]'
+                        'min-w-0 flex-1 min-h-[40px] px-2.5 rounded-md font-mono text-mono-md text-ink bg-inset border border-line',
+                        'placeholder:text-ink-muted focus:outline-none focus:border-terracotta focus:ring-2 focus:ring-terracotta/15'
                       )}
                       autoFocus
                     />
                     <button
                       onClick={handleAddItem}
-                      className="p-1 rounded text-[#4A9E6B] hover:bg-[#D8EADD] transition-colors"
+                      className="w-10 h-10 shrink-0 inline-flex items-center justify-center rounded-md text-verdigris-ink hover:bg-verdigris-bg transition-colors"
+                      aria-label={newItemType === 'file' ? t('skills.editor.addFile') : t('skills.editor.addFolder')}
                     >
-                      <Check className="w-3.5 h-3.5" />
+                      <Check className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => { setShowAddMenu(false); setNewItemType(null); }}
-                      className="p-1 rounded text-[#8B7A6A] hover:bg-[#E8E0D8] transition-colors"
+                      className="w-10 h-10 shrink-0 inline-flex items-center justify-center rounded-md text-ink-muted hover:text-ink hover:bg-inset transition-colors"
+                      aria-label={t('common.cancel')}
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <X className="w-4 h-4" />
                     </button>
                     </div>
                   </div>
@@ -558,7 +527,7 @@ export default function SkillEditor() {
             </AnimatePresence>
 
             {/* Tree */}
-            <div className="flex-1 overflow-y-auto py-1">
+            <div className="max-h-[280px] flex-1 overflow-y-auto p-1.5 xl:max-h-none">
               {displayTree.map((node) => (
                 <FileTreeNode
                   key={node.path}
@@ -570,59 +539,53 @@ export default function SkillEditor() {
                 />
               ))}
               {displayTree.length === 0 && (
-                <div className="text-center py-8 text-[12px] text-[#A89880]">
+                <div className="py-8 text-center font-body text-body-sm text-ink-muted">
                   {t('skills.editor.noFiles')}
                 </div>
               )}
             </div>
-          </VellumPanel>
-        </motion.div>
+          </div>
+        </div>
 
         {/* Right: Code Editor */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3, delay: 0.2 }}
-          className="flex-1 flex flex-col min-w-0"
-        >
+        <div className="flex min-w-0 flex-1 flex-col">
           {selectedFile ? (
-            <VellumPanel className="flex-1 flex flex-col p-0 overflow-hidden" hover={false}>
+            <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-line bg-paper">
               {/* Editor header */}
-              <div className="flex items-center justify-between px-4 py-2 border-b border-[#E3D7BC] bg-[#F7F0E0]">
-                <div className="flex items-center gap-2 text-[12px] font-mono text-[#6B5E4E]">
-                  <FileText className="w-3.5 h-3.5 text-[#A89880]" />
+              <div className="flex min-h-[44px] items-center justify-between gap-3 border-b border-line bg-inset px-4 py-2">
+                <div className="flex min-w-0 items-center gap-2 font-mono text-mono-md text-ink-light">
+                  <FileText className="w-4 h-4 shrink-0 text-ink-muted" aria-hidden />
                   <span className="truncate">{selectedFile.path}</span>
                 </div>
-                <span className="text-[11px] font-mono text-[#A89880] px-2 py-0.5 rounded bg-[#EDE4CE]">
+                <span className="shrink-0 rounded-full border border-line bg-paper px-2 py-0.5 font-mono text-mono-sm text-ink-muted">
                   {selectedFile.language || getLanguage(selectedFile.path)}
                 </span>
               </div>
 
               {/* Editor textarea */}
-              <div className="flex-1 relative">
-                <textarea
-                  value={selectedFile.content ?? ''}
-                  onChange={(e) => handleContentChange(e.target.value)}
-                  spellCheck={false}
-                  className={cn(
-                    'w-full h-full p-4 resize-none outline-none',
-                    'font-mono text-[14px] leading-[1.6] text-[#2A2318]',
-                    'bg-[#F7F0E0]',
-                    'selection:bg-[#C25E3A]/20'
-                  )}
-                />
-              </div>
-            </VellumPanel>
-          ) : (
-            <VellumPanel className="flex-1 flex items-center justify-center" hover={false}>
-              <EmptyState
-                icon={ScrollText}
-                title={t('skills.editor.selectFile')}
-                description={t('skills.editor.selectFileDesc')}
+              <textarea
+                value={selectedFile.content ?? ''}
+                onChange={(e) => handleContentChange(e.target.value)}
+                spellCheck={false}
+                aria-label={selectedFile.path}
+                className={cn(
+                  'block w-full flex-1 min-h-[420px] p-4 resize-y xl:resize-none outline-none',
+                  'font-mono text-[14px] leading-[1.6] text-ink',
+                  'bg-paper focus-visible:bg-paper',
+                  'selection:bg-terracotta/20'
+                )}
               />
-            </VellumPanel>
+            </div>
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-line bg-paper px-6 py-16 text-center">
+              <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-inset text-ink-muted">
+                <ScrollText className="h-6 w-6" strokeWidth={1.5} aria-hidden />
+              </span>
+              <h2 className="font-display text-[22px] font-medium text-ink">{t('skills.editor.selectFile')}</h2>
+              <p className="mt-2 max-w-sm font-body text-body-md text-ink-light">{t('skills.editor.selectFileDesc')}</p>
+            </div>
           )}
-        </motion.div>
+        </div>
       </div>
     </div>
   );

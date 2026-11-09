@@ -16,7 +16,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ChevronLeft, Loader2, Radio } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, Circle, Loader2, MessageSquare, Radio, Wrench } from 'lucide-react';
 
 import { getRun, readRunEventInFull, type RunEventDTO } from '@/lib/api';
 import { useRunTrace } from '@/hooks/use-run-trace';
@@ -29,13 +29,23 @@ function segment(code: string): string {
   return /^[a-z0-9_]+$/.test(code) ? code : 'unknown';
 }
 
-const KIND_COLORS: Record<string, string> = {
-  'run.prompt': 'border-l-ink-muted',
-  'assistant.message': 'border-l-gold',
-  'assistant.thinking': 'border-l-vellum-dark',
-  'tool.started': 'border-l-terracotta',
-  'tool.completed': 'border-l-terracotta',
-  'run.error': 'border-l-error',
+// One meaning per colour, as everywhere else: lapis is a tool at work, verdigris is the agent
+// saying something, vermilion is something broken, ash is the bookkeeping in between. Read off
+// the type name so a type this screen has not met yet still lands somewhere sensible.
+type Tone = 'lapis' | 'verdigris' | 'vermilion' | 'ash';
+
+function toneOf(event: RunEventDTO): Tone {
+  if (/error|fail/.test(event.type) || typeof event.payload?.code === 'string') return 'vermilion';
+  if (event.type.startsWith('tool.')) return 'lapis';
+  if (event.type === 'assistant.message' || /completed|done|success/.test(event.type)) return 'verdigris';
+  return 'ash';
+}
+
+const TONE: Record<Tone, { chip: string; icon: typeof Circle }> = {
+  lapis: { chip: 'bg-lapis-bg text-lapis-ink', icon: Wrench },
+  verdigris: { chip: 'bg-verdigris-bg text-verdigris-ink', icon: MessageSquare },
+  vermilion: { chip: 'bg-vermilion-bg text-vermilion-ink', icon: AlertTriangle },
+  ash: { chip: 'bg-ash-bg text-ink-light', icon: Circle },
 };
 
 /** Only scalars, and never the underscored facts about the record — those are drawn as their
@@ -96,82 +106,88 @@ function EventRow({ runId, event }: { runId: string; event: RunEventDTO }) {
   }
 
   const name = typeof event.payload?.name === 'string' ? event.payload.name : undefined;
+  const tone = TONE[toneOf(event)];
+  const Icon = tone.icon;
 
   return (
     <div
       data-testid="run-trace-event"
       data-seq={event.seq}
       data-type={event.type}
-      className={cn(
-        'border-l-[3px] rounded-sm bg-vellum-deep px-3 py-2 mb-1.5',
-        KIND_COLORS[event.type] ?? 'border-l-vellum-dark',
-      )}
+      className="flex gap-3 rounded-lg bg-paper border border-line px-3.5 py-3 mb-2"
     >
-      <div className="flex items-center justify-between mb-1 gap-2">
-        <span className="font-mono text-mono-sm font-medium text-ink-light">
-          <span className="text-ink-muted mr-1.5">#{event.seq}</span>
-          {event.type}
-        </span>
-        <span className="font-mono text-mono-sm text-ink-muted">{formatTime(event.created_at)}</span>
-      </div>
+      <span className={cn('hidden sm:flex w-7 h-7 shrink-0 rounded-full items-center justify-center', tone.chip)}>
+        <Icon className="w-3.5 h-3.5" />
+      </span>
 
-      {name && (
-        <div className="font-mono text-mono-sm rounded-sm px-2 py-0.5 mb-1 inline-block bg-terracotta/10 text-terracotta">
-          {name}
-        </div>
-      )}
-
-      {text && (
-        <div className="font-body text-body-xs text-ink-light leading-relaxed whitespace-pre-wrap break-words">
-          {whole ?? text}
-        </div>
-      )}
-
-      {args && (
-        <pre className="mt-1.5 p-2 bg-vellum rounded-sm font-mono text-mono-sm text-ink-light overflow-x-auto">
-          {whole && event.full_field === 'args' ? whole : JSON.stringify(args, null, 2)}
-        </pre>
-      )}
-
-      {/* Why part of this row is missing, rather than a gap that reads as an agent doing
-          nothing (FR-047). Two reasons, told apart on purpose. */}
-      {event.omission_reason && (
-        <div className="font-mono text-mono-sm text-ink-muted mt-1">
-          {t(`collaborationRoom.trace.omission.${segment(event.omission_reason)}`, {
-            defaultValue: t('collaborationRoom.trace.omission.unknown'),
-          })}
-          {typeof event.original_byte_size === 'number' && (
-            <span className="ml-1">
-              {t('collaborationRoom.trace.omission.size', { bytes: event.original_byte_size })}
+      <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-1.5">
+          <span className="flex flex-wrap items-center gap-1.5 min-w-0">
+            <span className="font-mono text-mono-sm text-ink-muted">#{event.seq}</span>
+            <span className={cn('font-mono text-mono-sm font-medium rounded-full px-2 py-0.5', tone.chip)}>
+              {event.type}
             </span>
-          )}
+            {name && (
+              <span className="font-mono text-mono-sm rounded-md px-2 py-0.5 bg-inset border border-line text-ink break-all">
+                {name}
+              </span>
+            )}
+          </span>
+          <span className="font-mono text-mono-sm text-ink-muted">{formatTime(event.created_at)}</span>
         </div>
-      )}
 
-      {event.redacted && (
-        <div className="font-mono text-mono-sm text-ink-muted mt-1">
-          {t('collaborationRoom.trace.redacted')}
-        </div>
-      )}
+        {text && (
+          <div className="font-body text-body-md text-ink leading-relaxed whitespace-pre-wrap break-words">
+            {whole ?? text}
+          </div>
+        )}
 
-      {/* A *fourth* state, and deliberately not one of the two above: nothing is missing here,
-          it is simply not in this response yet (FR-049). Saying it the same way would tell the
-          reader not to go and ask for a thing they can have. */}
-      {event.full_field && (
-        <button
-          data-testid={whole === null ? 'run-trace-open-full' : 'run-trace-close-full'}
-          onClick={whole === null ? openTheWholeOfIt : () => setWhole(null)}
-          disabled={opening}
-          className="mt-1.5 inline-flex items-center gap-1.5 font-mono text-mono-sm text-terracotta hover:underline disabled:opacity-60"
-        >
-          {opening && <Loader2 className="w-3 h-3 animate-spin" />}
-          {whole === null
-            ? t('runTrace.openTheWhole', { bytes: event.full_byte_size ?? 0 })
-            : t('runTrace.foldItBack')}
-        </button>
-      )}
+        {args && (
+          <pre className="mt-2 p-2.5 bg-inset border border-line rounded-md font-mono text-mono-sm text-ink-light overflow-x-auto">
+            {whole && event.full_field === 'args' ? whole : JSON.stringify(args, null, 2)}
+          </pre>
+        )}
 
-      {failed && <div className="font-mono text-mono-sm text-error mt-1">{failed}</div>}
+        {/* Why part of this row is missing, rather than a gap that reads as an agent doing
+            nothing (FR-047). Two reasons, told apart on purpose. */}
+        {event.omission_reason && (
+          <div className="font-body text-body-sm text-ink-muted mt-1.5">
+            {t(`collaborationRoom.trace.omission.${segment(event.omission_reason)}`, {
+              defaultValue: t('collaborationRoom.trace.omission.unknown'),
+            })}
+            {typeof event.original_byte_size === 'number' && (
+              <span className="ml-1">
+                {t('collaborationRoom.trace.omission.size', { bytes: event.original_byte_size })}
+              </span>
+            )}
+          </div>
+        )}
+
+        {event.redacted && (
+          <div className="font-body text-body-sm text-ink-muted mt-1.5">
+            {t('collaborationRoom.trace.redacted')}
+          </div>
+        )}
+
+        {/* A *fourth* state, and deliberately not one of the two above: nothing is missing here,
+            it is simply not in this response yet (FR-049). Saying it the same way would tell the
+            reader not to go and ask for a thing they can have. */}
+        {event.full_field && (
+          <button
+            data-testid={whole === null ? 'run-trace-open-full' : 'run-trace-close-full'}
+            onClick={whole === null ? openTheWholeOfIt : () => setWhole(null)}
+            disabled={opening}
+            className="mt-1.5 inline-flex items-center gap-1.5 min-h-[36px] font-body text-body-sm font-medium text-terracotta hover:text-terracotta-dark disabled:cursor-wait"
+          >
+            {opening && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {whole === null
+              ? t('runTrace.openTheWhole', { bytes: event.full_byte_size ?? 0 })
+              : t('runTrace.foldItBack')}
+          </button>
+        )}
+
+        {failed && <div className="font-body text-body-sm text-vermilion-ink mt-1">{failed}</div>}
+      </div>
     </div>
   );
 }
@@ -212,7 +228,7 @@ function VirtualLog({ runId, events }: { runId: string; events: RunEventDTO[] })
     <div
       ref={scroller}
       data-testid="run-trace-scroller"
-      className="flex-1 overflow-y-auto px-4 py-3"
+      className="flex-1 overflow-y-auto rounded-xl bg-inset border border-line p-2.5 sm:p-3"
       style={fits ? { height: fits, flex: 'none' } : undefined}
     >
       <div style={{ height: rows.getTotalSize(), position: 'relative' }}>
@@ -273,50 +289,57 @@ export default function RunTrace() {
     );
   }
 
+  // How many rows each type has, so a filter says what it will leave before it is pressed.
+  const perKind = useMemo(() => {
+    const counted: Record<string, number> = {};
+    for (const e of events) counted[e.type] = (counted[e.type] ?? 0) + 1;
+    return counted;
+  }, [events]);
+
+  const PILL = 'min-h-[36px] px-3 rounded-full border font-mono text-mono-sm font-medium transition-colors';
+  const pillTone = (active: boolean) =>
+    active ? 'bg-ink text-paper border-ink' : 'bg-paper text-ink border-line-strong hover:bg-inset';
+
   return (
-    <div className="h-full flex flex-col bg-vellum">
-      <div className="flex-shrink-0 border-b border-vellum-dark px-4 py-3">
-        <div className="flex items-center gap-2">
+    <div className="h-full mx-auto w-full max-w-[1240px] flex flex-col gap-4">
+      <div className="flex-shrink-0 flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <Link
             to={wsHref(workspaceId, 'agents')}
-            className="p-1 rounded-md hover:bg-vellum-dark text-ink-muted"
+            className="w-10 h-10 -ml-2 shrink-0 rounded-md flex items-center justify-center text-ink-light hover:text-ink hover:bg-inset transition-colors"
             aria-label={t('common.back')}
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-5 h-5" />
           </Link>
-          <h1 className="font-display text-body-sm text-ink">{t('runTrace.title')}</h1>
-          <span data-testid="run-trace-count" className="font-mono text-mono-sm text-ink-muted">
+          <h1 className="font-display text-[30px] font-medium leading-[1.1] tracking-tight text-ink">{t('runTrace.title')}</h1>
+          <span data-testid="run-trace-count" className="font-body text-body-sm text-ink-muted">
             {t('runTrace.count', { count: events.length })}
           </span>
           {live && (
-            <span className="ml-auto inline-flex items-center gap-1 font-mono text-mono-sm text-status-online">
-              <Radio className="w-3 h-3" /> {t('runTrace.live')}
+            <span className="ml-auto inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 bg-lapis-bg font-body text-body-sm font-medium text-lapis-ink">
+              <Radio className="w-3.5 h-3.5" /> {t('runTrace.live')}
             </span>
           )}
         </div>
 
         {kinds.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5" data-testid="run-trace-filters">
+          <div className="flex flex-wrap gap-1.5" data-testid="run-trace-filters">
             <button
               onClick={() => setOnly([])}
-              className={cn(
-                'rounded-full px-2.5 py-0.5 font-mono text-mono-sm transition-colors',
-                only.length === 0 ? 'bg-terracotta text-white' : 'bg-vellum-dark text-ink-light',
-              )}
+              aria-pressed={only.length === 0}
+              className={cn(PILL, 'font-body text-body-sm', pillTone(only.length === 0))}
             >
-              {t('runTrace.everything')}
+              {t('runTrace.everything')} {events.length}
             </button>
             {kinds.map((kind) => (
               <button
                 key={kind}
                 data-testid={`run-trace-filter-${kind}`}
                 onClick={() => toggle(kind)}
-                className={cn(
-                  'rounded-full px-2.5 py-0.5 font-mono text-mono-sm transition-colors',
-                  only.includes(kind) ? 'bg-terracotta text-white' : 'bg-vellum-dark text-ink-light',
-                )}
+                aria-pressed={only.includes(kind)}
+                className={cn(PILL, pillTone(only.includes(kind)))}
               >
-                {kind}
+                {kind} {perKind[kind] ?? 0}
               </button>
             ))}
           </div>
@@ -324,11 +347,14 @@ export default function RunTrace() {
       </div>
 
       {loading && events.length === 0 ? (
-        <p className="px-4 py-3 font-body text-body-xs text-ink-muted">{t('runTrace.loading')}</p>
+        <p className="bg-paper border border-line rounded-xl px-5 py-5 font-body text-body-md text-ink-muted">{t('runTrace.loading')}</p>
       ) : error ? (
-        <p className="px-4 py-3 font-body text-body-xs text-error">{error}</p>
+        <p className="flex items-start gap-2 bg-vermilion-bg border border-vermilion/30 rounded-xl px-5 py-4 font-body text-body-md text-vermilion-ink">
+          <AlertTriangle className="w-[18px] h-[18px] mt-0.5 shrink-0" />
+          {error}
+        </p>
       ) : shown.length === 0 ? (
-        <p className="px-4 py-3 font-body text-body-xs text-ink-muted">
+        <p className="bg-paper border border-line rounded-xl px-5 py-5 font-body text-body-md text-ink-muted">
           {events.length > 0
             ? t('runTrace.nothing')
             : outcome

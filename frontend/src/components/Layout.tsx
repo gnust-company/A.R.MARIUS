@@ -6,12 +6,14 @@ import { useAppStore } from '@/store/appStore';
 import { useInboxCount } from '@/hooks/use-inbox-count';
 import { useWorkspaceEvents } from '@/hooks/use-workspace-events';
 import { cn } from '@/lib/utils';
+import { useViewport } from '@/hooks/use-viewport';
 
 export default function Layout() {
   // The URL is the source of truth for which workspace is open. Everything below the
   // Layout lives under /w/:workspaceId, so `workspaceId` is always present here.
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const collapsed = useAppStore((s) => s.sidebarCollapsed);
+  const viewport = useViewport();
   const workspaces = useAppStore((s) => s.workspaces);
   const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId);
   const setActiveWorkspace = useAppStore((s) => s.setActiveWorkspace);
@@ -44,15 +46,17 @@ export default function Layout() {
     <div className="min-h-[100dvh]">
       <Navbar />
 
-      {/* Main content area — margin tracks sidebar collapse state (68px / 240px) */}
+      {/* Main content area — margin tracks the rail: none on a phone (drawer), the icon rail
+          below desktop, and the person's own collapse choice on desktop (68px / 240px). */}
       <div
         className={cn(
           'transition-[margin] duration-300',
-          collapsed ? 'md:ml-[68px]' : 'md:ml-[240px]'
+          viewport === 'tablet' && 'ml-[68px]',
+          viewport === 'desktop' && (collapsed ? 'ml-[68px]' : 'ml-[240px]')
         )}
       >
         <TopBar />
-        <main className="p-6">
+        <main className="px-4 py-6 sm:px-6 sm:py-7 xl:px-9">
           <Outlet />
         </main>
       </div>

@@ -15,6 +15,7 @@ import { Check, Laptop } from 'lucide-react'
 import type { MachineDTO, WorkplaceChoiceDTO } from '@/lib/api'
 import { unavailableRuntimes } from '@/lib/runtimeChoice'
 import { cn } from '@/lib/utils'
+import { WithCommands } from '@/components/EntryFrame';
 
 export default function RuntimePicker({
   ready,
@@ -35,15 +36,17 @@ export default function RuntimePicker({
   const unavailable = unavailableRuntimes(machines, ready)
 
   if (loading && ready.length === 0 && unavailable.length === 0) {
-    return <p className="text-[13px] text-[#A89880]">{t('runtimePicker.loading')}</p>
+    return <p className="font-body text-body-md text-ink-muted">{t('runtimePicker.loading')}</p>
   }
 
   return (
     <div className="space-y-2">
       {ready.length === 0 && (
-        <div className="rounded-md border border-dashed border-[#E3D7BC] px-3 py-2.5">
-          <p className="text-[13px] text-[#2A2318]">{t('runtimePicker.noneReady')}</p>
-          <p className="mt-0.5 text-[12px] text-[#6B5E4E]">{t('runtimePicker.noneReadyHint')}</p>
+        <div className="rounded-lg border border-dashed border-line-strong px-4 py-3">
+          <p className="font-body text-body-md text-ink">{t('runtimePicker.noneReady')}</p>
+          <p className="mt-0.5 font-body text-body-sm text-ink-light">
+            <WithCommands text={t('runtimePicker.noneReadyHint')} />
+          </p>
         </div>
       )}
 
@@ -60,27 +63,27 @@ export default function RuntimePicker({
                 disabled={disabled}
                 onClick={() => onChoose(one.id)}
                 className={cn(
-                  'flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left transition-colors',
+                  'flex min-h-[44px] w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors',
                   on
-                    ? 'border-[#C25E3A] bg-[#F3D9D0]/40'
-                    : 'border-[#E3D7BC] bg-vellum hover:border-[#C25E3A]/60',
-                  disabled && 'opacity-60',
+                    ? 'border-ink bg-paper ring-1 ring-ink'
+                    : 'border-line bg-paper hover:border-line-strong hover:bg-inset',
+                  disabled && 'cursor-not-allowed opacity-60',
                 )}
               >
                 <span
                   className={cn(
-                    'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border',
-                    on ? 'border-[#C25E3A] bg-[#C25E3A] text-white' : 'border-[#A89880]',
+                    'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2',
+                    on ? 'border-ink bg-ink text-paper' : 'border-line-strong bg-paper',
                   )}
                   aria-hidden
                 >
-                  {on && <Check className="h-3 w-3" />}
+                  {on && <Check className="h-3 w-3" strokeWidth={3} />}
                 </span>
                 <span className="min-w-0">
-                  <span className="block font-mono text-[13px] text-[#2A2318]">{one.cli_kind}</span>
-                  <span className="flex items-center gap-1 text-[12px] text-[#6B5E4E]">
-                    <Laptop className="h-3 w-3" aria-hidden />
-                    {t('runtimePicker.onMachine', { machine: one.machine_name })}
+                  <span className="block truncate font-mono text-[13px] text-ink">{one.cli_kind}</span>
+                  <span className="flex min-w-0 items-center gap-1.5 font-body text-body-sm text-ink-light">
+                    <Laptop className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    <span className="truncate">{t('runtimePicker.onMachine', { machine: one.machine_name })}</span>
                   </span>
                 </span>
               </button>
@@ -89,20 +92,22 @@ export default function RuntimePicker({
         </div>
       )}
 
+      {/* Shown, not hidden, so the person whose CLI is not ready learns why — in gold, the
+          colour of *needs you*, because it is something they can go and fix. */}
       {unavailable.map((one) => (
         <div
           key={one.id}
           aria-disabled
-          className="flex w-full items-start gap-3 rounded-md border border-[#E3D7BC] bg-[#EDE4CE]/50 px-3 py-2.5 opacity-80"
+          className="flex w-full items-start gap-3 rounded-lg border border-dashed border-line-strong bg-inset px-4 py-3"
         >
-          <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full border border-[#D6CBB2]" aria-hidden />
+          <span className="mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 border-line" aria-hidden />
           <span className="min-w-0">
-            <span className="block font-mono text-[13px] text-[#6B5E4E]">{one.cliKind}</span>
-            <span className="flex items-center gap-1 text-[12px] text-[#6B5E4E]">
-              <Laptop className="h-3 w-3" aria-hidden />
-              {t('runtimePicker.onMachine', { machine: one.machineName })}
+            <span className="block truncate font-mono text-[13px] text-ink-light">{one.cliKind}</span>
+            <span className="flex min-w-0 items-center gap-1.5 font-body text-body-sm text-ink-light">
+              <Laptop className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span className="truncate">{t('runtimePicker.onMachine', { machine: one.machineName })}</span>
             </span>
-            <span className="mt-0.5 block text-[12px] text-[#8A3B22]">
+            <span className="mt-1 block font-body text-body-sm text-gold-ink">
               {t(`machines.notReady.${one.reason}`, {
                 defaultValue: t('machines.notReady.unknown'),
               })}
@@ -112,9 +117,9 @@ export default function RuntimePicker({
       ))}
 
       {ready.length > 1 && !chosen && (
-        <p className="text-[12px] text-[#6B5E4E]">{t('runtimePicker.chooseOne')}</p>
+        <p className="font-body text-body-sm text-ink-light">{t('runtimePicker.chooseOne')}</p>
       )}
-      <p className="text-[11px] text-[#A89880]">{t('runtimePicker.forLife')}</p>
+      <p className="font-body text-body-sm text-ink-muted">{t('runtimePicker.forLife')}</p>
     </div>
   )
 }
