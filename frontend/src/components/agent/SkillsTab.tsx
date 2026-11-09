@@ -43,33 +43,21 @@ export default function SkillsTab({
     }
   }
 
+  // The block's title and lead live in the SettingsSection that holds this list.
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-[1_1_260px]">
-          <h2 className="font-display text-[20px] font-medium leading-tight text-ink">
-            {t('agentDetail.tab.skills')}
-          </h2>
-          <p className="mt-1 font-body text-body-md text-ink-light">{t('agentDetail.skillsTab.hint')}</p>
-        </div>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-md border border-line-strong bg-paper px-4 font-body text-body-md font-medium text-ink transition-colors hover:bg-inset"
-        >
-          <Plus className="h-4 w-4" aria-hidden /> {t('agentDetail.linkSkills.add')}
-        </button>
-      </div>
-
+    <div className="grid gap-3">
       {carried.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-line-strong px-4 py-8 text-center font-body text-body-md text-ink-muted">
+        <p className="rounded-md border border-dashed border-line-strong px-4 py-7 text-center font-body text-body-md text-ink-muted">
           {t('agentDetail.skillsTab.none')}
         </p>
       ) : (
-        <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line">
+        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {carried.map((skill) => (
-            <li key={skill.id} className="flex items-center gap-3 bg-paper py-1.5 pl-4 pr-1.5">
-              <span className="min-w-0 flex-1 truncate font-body text-body-md text-ink">
+            <li
+              key={skill.id}
+              className="flex min-h-[46px] items-center gap-2 rounded-md border border-sapphire/35 bg-sapphire-soft py-1 pl-3.5 pr-1"
+            >
+              <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-ink-strong">
                 {skill.name}
               </span>
               <button
@@ -79,8 +67,8 @@ export default function SkillsTab({
                 aria-label={t('agentDetail.skillsTab.removeAria', { name: skill.name })}
                 title={t('agentDetail.skillsTab.removeAria', { name: skill.name })}
                 className={cn(
-                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-ink-light transition-colors',
-                  'hover:bg-vermilion-bg hover:text-vermilion-ink disabled:cursor-not-allowed disabled:opacity-40',
+                  'grid h-10 w-10 shrink-0 place-items-center rounded-md text-ink-light transition-colors',
+                  'hover:bg-danger/10 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40',
                 )}
               >
                 {removing === skill.id ? (
@@ -93,6 +81,11 @@ export default function SkillsTab({
           ))}
         </ul>
       )}
+      <div>
+        <button type="button" onClick={onAdd} disabled={!canEdit} className="btn btn-secondary">
+          <Plus className="h-4 w-4" aria-hidden /> {t('agentDetail.linkSkills.add')}
+        </button>
+      </div>
     </div>
   )
 }

@@ -51,23 +51,23 @@ export function ErrorFallback({ message, onReload }: { message: string; onReload
   const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
-      <AlertTriangle className="w-12 h-12 text-vermilion-ink mb-4" />
-      <h2 className="font-display text-display-md text-ink mb-2">
+      <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-danger/30 bg-danger-soft text-danger">
+        <AlertTriangle className="h-6 w-6" aria-hidden />
+      </span>
+      <p className="eyebrow mb-2">{t('common.errorEyebrow')}</p>
+      <h2 className="font-display text-display-md text-ink-strong mb-2">
         {t('common.somethingWentWrong')}
       </h2>
       <p className="font-body text-body-md text-ink-light mb-1 max-w-md">
         {t('common.errorBoundaryHint')}
       </p>
       {message && (
-        <p className="font-mono text-mono-sm text-ink-muted mb-6 max-w-xl break-words">
+        <p className="mb-6 max-w-xl break-words rounded-md border border-line bg-canvas-deep px-3 py-2 font-mono text-mono-sm text-ink-muted">
           {message}
         </p>
       )}
-      <button
-        onClick={onReload}
-        className="inline-flex items-center gap-2 bg-ink hover:bg-ink/85 text-white font-body font-medium text-body-md px-4 py-2.5 rounded-md transition-colors"
-      >
-        <RotateCcw className="w-4 h-4" />
+      <button type="button" onClick={onReload} className="btn btn-primary">
+        <RotateCcw className="w-4 h-4" aria-hidden />
         {t('common.reload')}
       </button>
     </div>

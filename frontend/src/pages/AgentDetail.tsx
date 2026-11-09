@@ -1,35 +1,36 @@
 // Single-agent detail view (#72) — the one screen where an agent is managed (FR-007m, FR-007o).
-// Opened by clicking an agent card in the Directory. The header says who the agent is and
-// where it works; the tabs below hold what can be read or changed about it; a direct chat with
-// it (FR-007p) sits in a column beside the tabs from xl up, and behind the header's button on
-// narrower screens. Activity is the system↔agent run log: every Run dispatched to this agent,
-// each expandable to its durable trace. A live run advances in place off the workspace event
-// channel — no timer (T167, FR-080). Removing the agent lives here too, behind the header's
-// menu, rather than on every card of the list.
+// Opened by clicking an agent card in the Directory. The header and the identity card say who
+// the agent is and where it works; three tabs below hold what it is doing (Overview), what it has
+// done (Activity — every Run dispatched to it, each expandable to its durable trace) and what can
+// be changed about it (Configuration: name, runtime settings, skills, instructions, removal).
+// A live run advances in place off the workspace event channel — no timer (T167, FR-080).
+// The direct chat with the agent (FR-007p) opens as a drawer from the header's Chat button.
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
-  ChevronLeft,
+  ArrowLeft,
+  ArrowUpRight,
   ChevronDown,
   ChevronUp,
-  Star,
   Activity,
   Loader2,
-  Globe,
-  Code,
-  Terminal,
-  Settings,
-  Server,
-  Clock,
+  Cpu,
+  Monitor,
+  Waves,
   Wrench,
   MessageSquare,
+  MessageCircle,
   AlertTriangle,
   Check,
   CheckCircle2,
+  Clock,
   Plus,
   ExternalLink,
-  MoreHorizontal,
+  SlidersHorizontal,
+  Sparkles,
+  Settings2,
   Trash2,
 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
@@ -37,28 +38,22 @@ import type { AgentStatus, PlacementOption } from '@/store/appStore';
 import { listMariusRuns, listRunEvents, type RunDTO, type RunEventDTO } from '@/lib/api';
 import Modal from '@/components/Modal';
 import StatusChip from '@/components/StatusChip';
+import AgentAvatar from '@/components/AgentAvatar';
+import PageTitle from '@/components/PageTitle';
 import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
 import { onWorkspaceEvent } from '@/hooks/use-workspace-events';
-import { useViewport } from '@/hooks/use-viewport';
 import InstructionsTab from '@/components/agent/InstructionsTab';
 import HostRuntimeChooser from '@/components/agent/HostRuntimeChooser';
 import SkillsTab, { type SkillRow } from '@/components/agent/SkillsTab';
 import SettingsTab from '@/components/agent/SettingsTab';
-import AgentChatPanel, { AGENT_CHAT_INPUT_ID } from '@/components/agent/AgentChatPanel';
+import SettingsSection from '@/components/agent/SettingsSection';
+import AgentChatDrawer from '@/components/agent/AgentChatDrawer';
+import { heldTasks, useHydrateWorkspaceTasks } from '@/components/agent/holding';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
-// ─── Liveness ring (the same ring the Directory cards, the sidebar and Home use) ──────────────
-
-const AVATAR_TONE: Record<AgentStatus, string> = {
-  working: 'bg-lapis-bg text-lapis-ink ring-2 ring-offset-[3px] ring-offset-vellum ring-lapis',
-  online: 'bg-verdigris-bg text-verdigris-ink ring-2 ring-offset-[3px] ring-offset-vellum ring-verdigris',
-  idle: 'bg-verdigris-bg text-verdigris-ink ring-2 ring-offset-[3px] ring-offset-vellum ring-verdigris',
-  offline: 'bg-paper text-ink-muted border-2 border-dashed border-ash',
-};
-
-// Run lifecycle → the StatusChip tone that means the same thing: in flight is lapis, finished
-// well is verdigris, failed is vermilion, and a run that never started or was stopped rests ash.
+// Run lifecycle → the StatusChip tone that means the same thing: in flight is gold, finished
+// well is green, failed is red, and a run that never started or was stopped rests faint.
 const RUN_CHIP_STATUS: Record<string, string> = {
   queued: 'todo',
   running: 'in_progress',
@@ -68,18 +63,7 @@ const RUN_CHIP_STATUS: Record<string, string> = {
   stopped: 'cancelled',
 };
 
-const ADAPTER_ICON: Record<string, typeof Globe> = {
-  openclaw_gateway: Settings,
-  claude_local: Code,
-  echo: Terminal,
-};
-
-// Shared button looks, so the header, the cards and the dialog speak with one voice.
-const PRIMARY_BTN =
-  'inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-md bg-ink font-body text-body-md font-medium text-paper hover:bg-ink/85 transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
-const SECONDARY_BTN =
-  'inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 rounded-md border border-line-strong bg-paper font-body text-body-md font-medium text-ink hover:bg-inset transition-colors';
-const CARD = 'rounded-xl border border-line bg-paper';
+const CARD = 'rounded-lg border border-line bg-surface';
 
 // ─── Time helpers ─────────────────────────────────────────────────────────────
 
@@ -105,19 +89,18 @@ function formatAbsolute(iso?: string | null): string {
   return new Date(iso).toLocaleString();
 }
 
-// ─── Field row (label · value) ────────────────────────────────────────────────
+// ─── Identity fact (label above, value with its icon below) ───────────────────
 
-function Field({ label, children, wide = false }: { label: string; children: React.ReactNode; wide?: boolean }) {
+function Fact({ label, icon: Icon, children, title }: { label: string; icon?: typeof Cpu; children: React.ReactNode; title?: string }) {
   return (
-    <div className={cn('min-w-0', wide && 'col-span-full')}>
-      <dt className="font-body text-body-sm font-medium text-ink-light">{label}</dt>
-      <dd className="mt-1 font-body text-body-md text-ink break-words">{children}</dd>
+    <div className="min-w-0">
+      <dt className="mb-1.5 font-body text-[11px] text-ink-muted">{label}</dt>
+      <dd className="flex min-w-0 items-center gap-1.5 font-body text-[13px] text-ink" title={title}>
+        {Icon && <Icon className="h-4 w-4 shrink-0 text-ink-light" aria-hidden />}
+        <span className="min-w-0 truncate">{children}</span>
+      </dd>
     </div>
   );
-}
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h2 className="font-display text-[20px] font-medium leading-tight text-ink">{children}</h2>;
 }
 
 // ─── Run event row (the durable per-run trace) ────────────────────────────────
@@ -146,7 +129,7 @@ function RunEventList({ runId }: { runId: string }) {
   if (loading) {
     return (
       <div className="flex items-center gap-2 px-4 py-3 font-body text-body-sm text-ink-muted">
-        <Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('agentDetail.loadingTrace')}
+        <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('agentDetail.loadingTrace')}
       </div>
     );
   }
@@ -160,11 +143,11 @@ function RunEventList({ runId }: { runId: string }) {
         const Icon = isTool ? Wrench : MessageSquare;
         const text = eventText(ev);
         return (
-          <div key={ev.seq} className="flex gap-2.5 px-3 py-2 rounded-lg bg-paper border border-line">
-            <Icon className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-ink-muted" aria-hidden />
+          <div key={ev.seq} className="flex gap-2.5 rounded-md border border-line bg-surface px-3 py-2">
+            <Icon className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-ink-muted" aria-hidden />
             <div className="min-w-0">
               <span className="font-mono text-mono-sm text-ink-muted">{ev.type}</span>
-              {text && <p className="font-body text-body-sm text-ink break-words whitespace-pre-wrap">{text}</p>}
+              {text && <p className="whitespace-pre-wrap break-words font-body text-body-sm text-ink">{text}</p>}
             </div>
           </div>
         );
@@ -173,7 +156,7 @@ function RunEventList({ runId }: { runId: string }) {
   );
 }
 
-// ─── Run card (one system→agent dispatch) ─────────────────────────────────────
+// ─── Run row (one system→agent dispatch) ──────────────────────────────────────
 
 function RunRow({ run }: { run: RunDTO }) {
   const { t } = useTranslation();
@@ -191,54 +174,60 @@ function RunRow({ run }: { run: RunDTO }) {
         .map((c) => t(`agentDetail.wakeReason.${c.code}`, { ...(c.params ?? {}), defaultValue: c.code }))
         .join(' · ')
     : run.trigger_detail;
+  const tone = RUN_CHIP_STATUS[run.status] ?? 'cancelled';
 
   return (
-    <div className={cn(CARD, 'overflow-hidden')}>
+    <div className="overflow-hidden rounded-md border border-line bg-surface">
       <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="w-full flex items-start gap-3 px-4 sm:px-5 py-3.5 text-left hover:bg-inset transition-colors"
+        className="flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-surface-hover sm:px-5"
       >
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-body text-[15px] font-medium text-ink">{wakeLabel}</span>
-            <StatusChip status={RUN_CHIP_STATUS[run.status] ?? 'cancelled'} label={statusLabel} />
+        <span
+          aria-hidden
+          className={cn(
+            'mt-[7px] h-2 w-2 shrink-0 rounded-full',
+            tone === 'in_progress' ? 'bg-gold' : tone === 'done' ? 'bg-success' : tone === 'blocked' ? 'bg-danger' : 'bg-ink-faint',
+          )}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-body text-[14px] font-semibold text-ink-strong">{wakeLabel}</span>
+            <StatusChip status={tone} label={statusLabel} />
           </div>
           {wakeReason && (
-            <p className="mt-1 font-body text-body-sm text-ink-light break-words line-clamp-2">{wakeReason}</p>
+            <p className="mt-1 line-clamp-2 break-words font-body text-body-sm text-ink-light">{wakeReason}</p>
           )}
           {run.error && (
-            <p className="mt-1 flex items-start gap-1.5 font-body text-body-sm text-vermilion-ink break-words">
-              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" aria-hidden /> {run.error}
+            <p className="mt-1 flex items-start gap-1.5 break-words font-body text-body-sm text-danger">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden /> {run.error}
             </p>
           )}
           {run.next_action && (
-            <p className="mt-1 font-body text-body-sm text-ink-light break-words">
+            <p className="mt-1 break-words font-body text-body-sm text-ink-light">
               <span className="text-ink-muted">{t('agentDetail.nextAction')}: </span>{run.next_action}
             </p>
           )}
-          <p className="mt-1 font-body text-body-sm text-ink-muted" title={formatAbsolute(run.created_at)}>
+          <p className="mt-1 font-mono text-[11px] text-ink-muted" title={formatAbsolute(run.created_at)}>
             {rel(run.created_at)}
           </p>
         </div>
         {open ? (
-          <ChevronUp className="w-4 h-4 text-ink-muted mt-1 flex-shrink-0" aria-hidden />
+          <ChevronUp className="mt-1 h-4 w-4 flex-shrink-0 text-ink-muted" aria-hidden />
         ) : (
-          <ChevronDown className="w-4 h-4 text-ink-muted mt-1 flex-shrink-0" aria-hidden />
+          <ChevronDown className="mt-1 h-4 w-4 flex-shrink-0 text-ink-muted" aria-hidden />
         )}
       </button>
       {open && (
-        <div className="border-t border-line bg-inset">
+        <div className="border-t border-line bg-canvas-deep">
           <RunEventList runId={run.id} />
           {/* The panel above is a preview. The whole log — every event, filterable, with the
               long fields openable — is its own page, because answering *what did it do and
               why* is a different act from glancing at a run (FR-016, SC-013). */}
-          <div className="px-4 pb-3">
-            <Link
-              to={wsHref(workspaceId, `runs/${run.id}`)}
-              className="inline-flex items-center gap-1.5 min-h-[44px] font-body text-body-sm font-medium text-terracotta hover:text-terracotta-dark"
-            >
-              <ExternalLink className="w-3.5 h-3.5" aria-hidden /> {t('runTrace.openFullLog')}
+          <div className="px-4 pb-2">
+            <Link to={wsHref(workspaceId, `runs/${run.id}`)} className="btn-text">
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden /> {t('runTrace.openFullLog')}
             </Link>
           </div>
         </div>
@@ -251,13 +240,15 @@ function RunRow({ run }: { run: RunDTO }) {
 // PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/** The sections of this screen, in the order they are offered.
- *
- *  Overview and Activity are what was already here; the other three are where an agent can
- *  actually be changed (FR-007m). Named as one list so the bar and the panels below cannot
- *  drift apart. */
-const TABS = ['overview', 'activity', 'instructions', 'skills', 'settings'] as const;
-type Tab = (typeof TABS)[number];
+/** The sections of this screen, in the order they are offered: what the agent is doing, what it
+ *  has done, and what can be changed about it (FR-007m). Named as one list so the bar and the
+ *  panels below cannot drift apart. */
+const TABS = [
+  { id: 'overview', icon: Sparkles },
+  { id: 'activity', icon: Activity },
+  { id: 'config', icon: Settings2 },
+] as const;
+type Tab = (typeof TABS)[number]['id'];
 
 export default function AgentDetail() {
   const { t } = useTranslation();
@@ -266,6 +257,7 @@ export default function AgentDetail() {
   const { workspaceId, id } = useParams();
   const mariuses = useAppStore((s) => s.mariuses);
   const workspaces = useAppStore((s) => s.workspaces);
+  const tasks = useAppStore((s) => s.tasks);
   const allSkills = useAppStore((s) => s.skills);
   const installAgentSkills = useAppStore((s) => s.installAgentSkills);
   const updateMarius = useAppStore((s) => s.updateMarius);
@@ -273,13 +265,13 @@ export default function AgentDetail() {
   const listAgentOptions = useAppStore((s) => s.listAgentOptions);
   const agent = mariuses.find((m) => m.id === id);
 
+  // The Overview says what this agent holds, and tasks are loaded per project.
+  useHydrateWorkspaceTasks();
+
   const [tab, setTab] = useState<Tab>('overview');
-  // From xl the chat is a column beside the tabs; below it, a panel opened from the header.
-  const wide = useViewport() === 'desktop';
   const [chatOpen, setChatOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  // What the place this agent works at lets a person pick (FR-007k), read for the Settings tab.
+  // What the place this agent works at lets a person pick (FR-007k), read for the Configuration tab.
   const [options, setOptions] = useState<PlacementOption[]>([]);
   const [optionsLoading, setOptionsLoading] = useState(true);
   const [runs, setRuns] = useState<RunDTO[] | null>(null);
@@ -344,16 +336,27 @@ export default function AgentDetail() {
     };
   }, [workspaceId, id, loadRuns]);
 
+  const closeChat = useCallback(() => setChatOpen(false), []);
+
   const status: AgentStatus = agent?.status || 'offline';
+  const statusLabel = t('directory.status.' + status);
   const displayName = agent?.displayName || agent?.name || t('agentDetail.agentFallback');
-  const AdapterIcon = ADAPTER_ICON[agent?.adapterType || ''] || Globe;
   const linkedSkillNames = agent?.skills || [];
+  const workspace = workspaces.find((w) => w.id === workspaceId);
   // The host with nowhere to work is the one agent that may be given a runtime after it was
   // made (spec 003 FR-128). Read off the workspace's seat, not off a flag on the agent row:
   // the seat is the server's answer to *who is the host*.
-  const isHost =
-    agent != null && workspaces.find((w) => w.id === workspaceId)?.workspaceAgentId === agent.id;
+  const isHost = agent != null && workspace?.workspaceAgentId === agent.id;
   const needsRuntime = isHost && !agent?.runtime;
+  const roleText = isHost || agent?.isWorkspaceAgent ? t('directory.hostRole') : agent?.role || t('directory.noRole');
+  const offlineNote = agent?.offlineReason
+    ? t('agentDetail.offlineReason.' + agent.offlineReason, {
+        defaultValue: t('agentDetail.offlineReason.unknown'),
+      })
+    : undefined;
+
+  const held = id ? heldTasks(tasks, id) : [];
+  const holding = held[0];
 
   // The picker offers EVERY workspace skill — a linked one can be re-selected to re-push an
   // updated copy of its files (#74/#105), not only newly-linked skills.
@@ -458,158 +461,344 @@ export default function AgentDetail() {
     setInstalling(false);
   };
 
-  // The chat column's toggle. Below xl there is no room for a column beside the tabs, so the
-  // chat waits behind the header's button; from xl it is always beside the tabs and the same
-  // button only puts the cursor in its box.
-  const talk = () => {
-    if (wide) {
-      document.getElementById(AGENT_CHAT_INPUT_ID)?.focus();
-      return;
-    }
-    setChatOpen((was) => !was);
-  };
+  const eyebrow = isHost || agent?.isWorkspaceAgent
+    ? t('agentDetail.eyebrowHost', { workspace: workspace?.name ?? '' })
+    : t('agentDetail.eyebrowMember', { role: agent?.role || t('agentDetail.agentFallback'), workspace: workspace?.name ?? '' });
 
   return (
     <div className="mx-auto w-full max-w-[1240px] pb-10">
+      <button
+        type="button"
+        onClick={() => navigate(wsHref(workspaceId, '/agents'))}
+        className="-ml-2 mb-4 inline-flex min-h-[44px] items-center gap-2 rounded-md px-2 font-body text-[14px] text-ink-light transition-colors hover:bg-surface-hover hover:text-ink-strong"
+      >
+        <ArrowLeft className="h-[18px] w-[18px]" aria-hidden /> {t('agentDetail.backToAll')}
+      </button>
 
-      {/* Header and tabs on the left, the chat beside them from xl — beside the header too, so
-          the chat starts at the top of the page and its composer fits on screen. Below xl the
-          chat is one column with everything else and comes first when opened, so the button
-          that opened it is right above it. One AgentChatPanel either way — two would hold two
-          streams open. */}
-      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
-        <div className="min-w-0 xl:col-start-1 xl:row-start-1">
-          <button
-            onClick={() => navigate(wsHref(workspaceId, '/agents'))}
-            className="-ml-2 mb-3 inline-flex items-center gap-1.5 min-h-[44px] px-2 rounded-md font-body text-body-sm font-medium text-ink-light hover:text-ink hover:bg-inset transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" aria-hidden /> {t('agentDetail.backToAgents')}
-          </button>
+      <PageTitle
+        eyebrow={eyebrow}
+        title={displayName}
+        subtitle={agent?.description || undefined}
+        actions={
+          agent && workspaceId ? (
+            <>
+              <StatusChip status={status} label={statusLabel} size="md" />
+              <button
+                type="button"
+                onClick={() => setChatOpen(true)}
+                aria-haspopup="dialog"
+                aria-expanded={chatOpen}
+                className="btn btn-secondary"
+              >
+                <MessageCircle className="h-[18px] w-[18px]" aria-hidden />
+                {t('agentDetail.chat')}
+              </button>
+              <button type="button" onClick={() => setTab('config')} className="btn btn-primary">
+                <SlidersHorizontal className="h-[18px] w-[18px]" aria-hidden />
+                {t('agentDetail.configure')}
+              </button>
+            </>
+          ) : undefined
+        }
+      />
 
-          {/* Header: who this is, whether it is alive, where it works — and the two things a
-              person does from here, talking to it and (behind the menu) removing it. */}
-          <header className="mb-6 flex flex-wrap items-start gap-x-5 gap-y-4">
-            <div
+      {/* Identity: who this is and where it works, every field a real one. */}
+      <section className={cn(CARD, 'mt-6 grid grid-cols-1 gap-5 p-5 sm:p-6 lg:grid-cols-[minmax(240px,0.9fr)_1.5fr] lg:items-center lg:gap-7')}>
+        <div className="flex min-w-0 items-center gap-4">
+          <AgentAvatar name={displayName} status={status} size="lg" />
+          <div className="grid min-w-0 gap-1">
+            <strong className="flex min-w-0 items-center gap-1.5 font-body text-[15px] font-semibold text-ink-strong">
+              <span className="truncate">{roleText}</span>
+              {(isHost || agent?.isWorkspaceAgent) && <Sparkles className="h-4 w-4 shrink-0 text-gold" aria-hidden />}
+            </strong>
+            <small className="font-body text-[12px] text-ink-light">
+              {isHost || agent?.isWorkspaceAgent ? t('agentDetail.identity.hostLine') : t('agentDetail.identity.memberLine')}
+            </small>
+          </div>
+        </div>
+        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <Fact label={t('agentDetail.field.runtime')} icon={Cpu}>
+            <span className={cn(agent?.runtime && 'font-mono text-[12px]')}>
+              {agent?.runtime ? agent.runtime.cli_kind : t('agentDetail.runtimeNoneShort')}
+            </span>
+          </Fact>
+          <Fact label={t('agentDetail.field.machine')} icon={Monitor}>
+            {agent?.runtime ? agent.runtime.machine_name : '—'}
+          </Fact>
+          <Fact label={t('agentDetail.field.model')} icon={Waves}>
+            {agent?.runtimeOptions?.model ? (
+              <span className="font-mono text-[12px]">{agent.runtimeOptions.model}</span>
+            ) : (
+              t('agentDetail.modelDefaultShort')
+            )}
+          </Fact>
+          <Fact label={t('agentDetail.field.lastSeen')} icon={Clock} title={formatAbsolute(agent?.lastSeen)}>
+            {agent?.lastSeen ? rel(agent.lastSeen) : t('agentDetail.never')}
+          </Fact>
+        </dl>
+        {offlineNote && (
+          <div className="rounded-md border border-warning/30 bg-warning/[0.08] px-3.5 py-3 lg:col-span-2">
+            <p className="flex items-start gap-2 font-body text-[13px] font-semibold text-ink">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
+              {status === 'offline' ? t('agentDetail.offlineReasonTitle') : t('agentDetail.offlineReason.label')}
+            </p>
+            <p className="mt-1 pl-6 font-body text-body-sm text-ink-light">{offlineNote}</p>
+          </div>
+        )}
+      </section>
+
+      {/* Tabs: sapphire underline on the open one. Scrolls sideways on a narrow phone rather
+          than wrapping. */}
+      <div role="tablist" aria-label={t('agentDetail.tabsLabel')} className="no-scrollbar mb-6 mt-7 flex gap-0.5 overflow-x-auto border-b border-line sm:gap-1">
+        {TABS.map(({ id: tabId, icon: Icon }) => {
+          const active = tab === tabId;
+          return (
+            <button
+              key={tabId}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              data-tab={tabId}
+              onClick={() => setTab(tabId)}
               className={cn(
-                'w-16 h-16 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-body text-[24px] font-semibold',
-                AVATAR_TONE[status] ?? AVATAR_TONE.offline,
+                '-mb-px inline-flex min-h-[48px] shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-2.5 font-body text-[14px] transition-colors sm:px-3.5',
+                active
+                  ? 'border-sapphire text-ink-strong'
+                  : 'border-transparent text-ink-light hover:text-ink-strong',
               )}
             >
-              {agent?.avatar ? (
-                <img src={agent.avatar} alt={displayName} className="w-full h-full object-cover" />
+              <Icon className="h-[17px] w-[17px]" aria-hidden />
+              {t('agentDetail.tab.' + tabId)}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* One place for what went wrong, above whichever tab is open. */}
+      {error && (
+        <div role="alert" className="mb-5 flex items-start gap-2 rounded-md border border-danger/35 bg-danger/[0.08] px-4 py-3 font-body text-body-sm text-danger">
+          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden /> <span className="min-w-0 break-words">{error}</span>
+        </div>
+      )}
+
+      <AnimatePresence mode="wait" initial={false}>
+        {/* ── Overview: what it holds and what it is equipped with ── */}
+        {tab === 'overview' && (
+          <motion.div
+            key="overview"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.2 }}
+            className="grid grid-cols-1 gap-5 lg:grid-cols-[1.15fr_0.85fr]"
+          >
+            {needsRuntime && agent && workspaceId && (
+              <section className={cn(CARD, 'p-5 sm:p-7 lg:col-span-2')}>
+                <HostRuntimeChooser
+                  workspaceId={workspaceId}
+                  hostId={agent.id}
+                  hostName={displayName}
+                />
+              </section>
+            )}
+
+            <section className={cn(CARD, 'min-w-0 p-5 sm:p-7')}>
+              <p className="eyebrow">{t('agentDetail.holding.eyebrow')}</p>
+              {holding ? (
+                <>
+                  <div className="mt-5 flex flex-wrap items-center gap-2">
+                    {holding.identifier && <span className="task-code">{holding.identifier}</span>}
+                    <StatusChip status={holding.status} label={t(`tasks.status.${holding.status}`)} />
+                  </div>
+                  <h2 className="mt-2 break-words font-display text-[26px] font-normal leading-snug tracking-[-0.02em] text-ink-strong">
+                    {holding.title}
+                  </h2>
+                  {holding.description && (
+                    <p className="mt-2 line-clamp-3 whitespace-pre-line font-body text-[14px] leading-relaxed text-ink-light">
+                      {holding.description}
+                    </p>
+                  )}
+                  {holding.cardCounts && (
+                    <div className="my-5 flex flex-wrap gap-x-6 gap-y-2 border-y border-line py-4 font-body text-[12px] text-ink-light">
+                      <span>
+                        <strong className="mr-1 text-[18px] font-medium text-ink-strong">
+                          {holding.cardCounts.criteriaPassed}/{holding.cardCounts.criteriaTotal}
+                        </strong>
+                        {t('agentDetail.holding.criteria')}
+                      </span>
+                      <span>
+                        <strong className="mr-1 text-[18px] font-medium text-ink-strong">{holding.cardCounts.artifacts}</strong>
+                        {t('agentDetail.holding.artifacts')}
+                      </span>
+                      <span>
+                        <strong className="mr-1 text-[18px] font-medium text-ink-strong">{holding.cardCounts.comments}</strong>
+                        {t('agentDetail.holding.comments')}
+                      </span>
+                    </div>
+                  )}
+                  <Link to={wsHref(workspaceId, `/tasks/${holding.id}`)} className={cn('btn btn-secondary', !holding.cardCounts && 'mt-5')}>
+                    {t('agentDetail.holding.open')}
+                    <ArrowUpRight className="h-[18px] w-[18px]" aria-hidden />
+                  </Link>
+                  {held.length > 1 && (
+                    <div className="mt-6 border-t border-line pt-4">
+                      <p className="font-body text-[12px] text-ink-muted">
+                        {t('agentDetail.holding.alsoHolding', { count: held.length - 1 })}
+                      </p>
+                      <ul className="mt-2 grid gap-1">
+                        {held.slice(1, 5).map((tk) => (
+                          <li key={tk.id} className="min-w-0">
+                            <Link
+                              to={wsHref(workspaceId, `/tasks/${tk.id}`)}
+                              className="flex min-h-[36px] min-w-0 items-center gap-2 rounded-md px-1.5 font-body text-[13px] text-ink hover:bg-surface-hover"
+                            >
+                              {tk.identifier && <span className="task-code shrink-0">{tk.identifier}</span>}
+                              <span className="truncate">{tk.title}</span>
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
               ) : (
-                displayName.charAt(0).toUpperCase()
+                <>
+                  <h2 className="mt-5 font-display text-[26px] font-normal leading-snug tracking-[-0.02em] text-ink-strong">
+                    {t('agentDetail.holding.none')}
+                  </h2>
+                  <p className="mt-2 font-body text-[14px] leading-relaxed text-ink-light">{t('agentDetail.holding.noneHint')}</p>
+                </>
               )}
-            </div>
-            <div className="flex-[1_1_240px] min-w-0">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                <h1 className="min-w-0 break-words font-display text-[30px] font-medium leading-[1.1] tracking-tight text-ink">
-                  {displayName}
-                </h1>
-                <StatusChip status={status} label={t('directory.status.' + status)} size="md" />
-                {agent?.isWorkspaceAgent === true && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-body text-body-sm font-medium bg-gold-bg text-gold-ink">
-                    <Star className="w-3.5 h-3.5" aria-hidden /> {t('directory.workspaceAgent')}
-                  </span>
+            </section>
+
+            <section className={cn(CARD, 'min-w-0 p-5 sm:p-7')}>
+              <p className="eyebrow">{t('agentDetail.capabilities.eyebrow')}</p>
+              <h2 className="mt-5 font-display text-[26px] font-normal leading-snug tracking-[-0.02em] text-ink-strong">
+                {t('agentDetail.capabilities.title')}
+              </h2>
+              <div className="mt-4 flex flex-wrap gap-1.5">
+                {linkedSkillNames.length > 0 ? (
+                  linkedSkillNames.map((s) => (
+                    <span key={s} className="chip max-w-full truncate px-2.5 py-1.5 text-[12px]">{s}</span>
+                  ))
+                ) : (
+                  <p className="font-body text-body-md text-ink-muted">{t('agentDetail.noSkills')}</p>
                 )}
               </div>
-              {agent?.role && (
-                <p className="mt-1.5 font-body text-body-md text-ink-light break-words">{agent.role}</p>
-              )}
-              {/* Mono only for the CLI and machine names themselves; "none chosen" is a sentence. */}
-              <p className="mt-1.5 flex items-center gap-1.5 text-ink-light min-w-0">
-                <Server className="w-3.5 h-3.5 flex-shrink-0" aria-hidden />
-                <span className={cn('truncate', agent?.runtime ? 'font-mono text-mono-sm' : 'font-body text-body-sm')}>
-                  {agent?.runtime
-                    ? t('agentDetail.runtimeLine', {
-                        cli: agent.runtime.cli_kind,
-                        machine: agent.runtime.machine_name,
-                      })
-                    : t('agentDetail.runtimeNone')}
-                </span>
-              </p>
-            </div>
-            {agent && workspaceId && (
-              <div className="flex items-center gap-2">
-                {!wide && (
-                <button
-                  type="button"
-                  onClick={talk}
-                  data-chat-toggle
-                  aria-controls="agent-chat"
-                  aria-expanded={chatOpen}
-                  className={PRIMARY_BTN}
-                >
-                  <MessageSquare className="w-4 h-4" aria-hidden />
-                  {chatOpen
-                    ? t('agentDetail.hideChat')
-                    : t('agentChat.title', { name: displayName })}
+              {agent && (
+                <button type="button" onClick={openLinkSkills} className="btn btn-secondary btn-sm mt-3">
+                  <Plus className="h-4 w-4" aria-hidden /> {t('agentDetail.linkSkills.add')}
                 </button>
-                )}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setMenuOpen((open) => !open)}
-                    className="w-11 h-11 inline-flex items-center justify-center rounded-md border border-line-strong bg-paper text-ink-light hover:text-ink hover:bg-inset transition-colors"
-                    aria-label={t('agentDetail.moreActions')}
-                    aria-expanded={menuOpen}
-                  >
-                    <MoreHorizontal className="w-5 h-5" aria-hidden />
-                  </button>
-                  {menuOpen && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-                      <div className="absolute right-0 top-full z-20 mt-1.5 w-52 rounded-lg border border-line bg-paper py-1 shadow-gilt">
-                        <button
-                          type="button"
-                          onClick={() => { setMenuOpen(false); setConfirmDelete(true); }}
-                          className="flex w-full items-center gap-2 min-h-[44px] px-3.5 text-left font-body text-body-md text-vermilion-ink hover:bg-vermilion-bg transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" aria-hidden /> {t('agentDetail.deleteAgent')}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
+              )}
+              <h3 className="mt-6 font-body text-[14px] font-semibold text-ink-strong">
+                {t('agentDetail.capabilities.instructions')}
+              </h3>
+              <p className="mt-2 line-clamp-6 whitespace-pre-line break-words font-body text-[14px] leading-relaxed text-ink-light">
+                {agent?.instructions?.trim() || t('agentDetail.capabilities.noInstructions')}
+              </p>
+              <button type="button" onClick={() => setTab('config')} className="btn-text mt-1">
+                {t('agentDetail.capabilities.edit')}
+                <ArrowUpRight className="h-4 w-4" aria-hidden />
+              </button>
+              <p className="mt-4 border-t border-line pt-3 font-mono text-[10px] text-ink-muted">
+                <span className="mr-1.5">{t('agentDetail.field.id')}</span>
+                <span className="break-all">{id}</span>
+              </p>
+            </section>
+          </motion.div>
+        )}
+
+        {/* ── Activity (system↔agent run log) ── */}
+        {tab === 'activity' && (
+          <motion.section
+            key="activity"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.2 }}
+            className={cn(CARD, 'p-5 sm:p-7')}
+          >
+            <header className="mb-5 flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <p className="eyebrow">{t('agentDetail.activityEyebrow')}</p>
+                <h2 className="mt-2 font-display text-[26px] font-normal leading-tight tracking-[-0.02em] text-ink-strong">
+                  {t('agentDetail.activityTitle')}
+                </h2>
+              </div>
+              {runs !== null && (
+                <span className="font-mono text-[11px] text-ink-muted">
+                  {t('agentDetail.runCount', { count: runs.length })}
+                </span>
+              )}
+            </header>
+
+            {runs === null ? (
+              <div className="flex items-center justify-center gap-2 py-14 font-body text-body-md text-ink-muted">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> {t('agentDetail.loadingActivity')}
+              </div>
+            ) : runs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed border-line-strong px-6 py-12 text-center">
+                <Activity className="mb-1 h-7 w-7 text-ink-muted" aria-hidden />
+                <p className="font-body text-[15px] font-semibold text-ink-strong">{t('agentDetail.noActivityTitle')}</p>
+                <p className="max-w-sm font-body text-body-md text-ink-light">{t('agentDetail.noActivityHint')}</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {runs.map((run) => (
+                  <RunRow key={run.id} run={run} />
+                ))}
               </div>
             )}
-          </header>
 
-          {/* The screen is a set of sections rather than one page, inherited from Multica's
-              agent view: what an agent *is* (its text, its skills, its settings) is a different
-              question from what it has been *doing*, and one scroll holding both meant the
-              editable half had nowhere to live. Their shape is Overview · Work · Capabilities ·
-              Settings; ours is the same idea with the tabs we have things to put in. */}
-          <div className="no-scrollbar -mx-4 mb-5 flex overflow-x-auto border-b border-line px-4 sm:mx-0 sm:px-0">
-            {TABS.map((id) => (
-              <button
-                key={id}
-                type="button"
-                data-tab={id}
-                onClick={() => setTab(id)}
-                aria-current={tab === id ? 'page' : undefined}
-                className={cn(
-                  '-mb-px shrink-0 whitespace-nowrap border-b-2 min-h-[44px] px-3.5 font-body text-body-md font-medium transition-colors',
-                  tab === id
-                    ? 'border-terracotta text-ink'
-                    : 'border-transparent text-ink-light hover:text-ink',
-                )}
-              >
-                {t('agentDetail.tab.' + id)}
-              </button>
-            ))}
-          </div>
+            {runs !== null && runs.length > 0 && (
+              <p className="mt-4 flex items-center gap-1.5 font-body text-body-sm text-ink-muted">
+                <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> {t('agentDetail.liveHint')}
+              </p>
+            )}
+          </motion.section>
+        )}
 
-          {/* One place for what went wrong, above whichever tab is open — a save refused on
-              the Settings tab used to be written into a box that only the Activity tab showed. */}
-          {error && (
-            <div className="mb-4 flex items-start gap-2 px-4 py-3 rounded-lg border border-[#EDB8B0] bg-vermilion-bg font-body text-body-sm text-vermilion-ink">
-              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden /> <span className="min-w-0 break-words">{error}</span>
-            </div>
-          )}
+        {/* ── Configuration: every changeable thing, as numbered blocks ── */}
+        {tab === 'config' && agent && (
+          <motion.div
+            key="config"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.2 }}
+            className="grid gap-4"
+          >
+            <SettingsTab
+              key={agent.id}
+              name={agent.displayName || agent.name}
+              description={agent.description ?? ''}
+              runtimeOptions={agent.runtimeOptions ?? {}}
+              runtime={agent.runtime}
+              options={options}
+              optionsLoading={optionsLoading}
+              canEdit
+              onSave={saveProfile}
+              onSaveRuntimeOptions={saveRuntimeOptions}
+            />
 
-          {tab === 'instructions' && agent && (
-            <section className={cn(CARD, 'max-w-3xl p-5 sm:p-6')}>
+            <SettingsSection
+              index="03"
+              title={t('agentDetail.config.skillsTitle')}
+              hint={t('agentDetail.skillsTab.hint')}
+            >
+              <SkillsTab
+                carried={carriedSkills}
+                canEdit
+                onRemove={removeSkill}
+                onAdd={openLinkSkills}
+              />
+            </SettingsSection>
+
+            <SettingsSection
+              index="04"
+              title={t('agentDetail.config.instructionsTitle')}
+              hint={t('agentDetail.instructions.ownHint')}
+            >
               <InstructionsTab
                 key={agent.id}
                 instructions={agent.instructions ?? ''}
@@ -617,219 +806,61 @@ export default function AgentDetail() {
                 canEdit
                 onSave={saveInstructions}
               />
-            </section>
-          )}
+            </SettingsSection>
 
-          {tab === 'skills' && agent && (
-            <section className={cn(CARD, 'max-w-3xl p-5 sm:p-6')}>
-              <SkillsTab
-                carried={carriedSkills}
-                canEdit
-                onRemove={removeSkill}
-                onAdd={() => setLinkSkillsOpen(true)}
-              />
-            </section>
-          )}
-
-          {tab === 'settings' && agent && (
-            <section className={cn(CARD, 'max-w-3xl p-5 sm:p-6')}>
-              <SettingsTab
-                key={agent.id}
-                name={agent.displayName || agent.name}
-                description={agent.description ?? ''}
-                runtimeOptions={agent.runtimeOptions ?? {}}
-                runtime={agent.runtime}
-                options={options}
-                optionsLoading={optionsLoading}
-                canEdit
-                onSave={saveProfile}
-                onSaveRuntimeOptions={saveRuntimeOptions}
-              />
-            </section>
-          )}
-
-          {/* Overview: what this agent is and where it works. The run log is its own tab and
-              is not repeated here — showing it in both places was the same panel twice. The
-              details are one card — liveness and last-seen with them. As a second card they
-              made two boxes of very different heights side by side. A host still choosing a
-              runtime gets its chooser above it. */}
-          {tab === 'overview' && (
-            <div className="flex flex-wrap items-start gap-5">
-              {needsRuntime && agent && workspaceId && (
-                <section className={cn(CARD, 'basis-full p-5 sm:p-6')}>
-                  <HostRuntimeChooser
-                    workspaceId={workspaceId}
-                    hostId={agent.id}
-                    hostName={displayName}
-                  />
-                </section>
-              )}
-
-              <section className={cn(CARD, 'basis-full min-w-0 p-5 sm:p-6')}>
-                <SectionTitle>{t('agentDetail.details')}</SectionTitle>
-                <dl className="mt-4 grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-3 gap-x-8 gap-y-5">
-                  <Field label={t('agentDetail.field.runtime')}>
-                    <span className="flex items-start gap-1.5 min-w-0">
-                      <AdapterIcon className="w-3.5 h-3.5 mt-[5px] flex-shrink-0 text-ink-light" aria-hidden />
-                      <span className={cn('break-words', agent?.runtime && 'font-mono text-mono-sm')}>
-                        {agent?.runtime
-                          ? t('agentDetail.runtimeLine', {
-                              cli: agent.runtime.cli_kind,
-                              machine: agent.runtime.machine_name,
-                            })
-                          : t('agentDetail.runtimeNone')}
-                      </span>
-                    </span>
-                  </Field>
-                  <Field label={t('agentDetail.field.model')}>
-                    {agent?.runtimeOptions?.model ? (
-                      <span className="font-mono text-mono-sm">{agent.runtimeOptions.model}</span>
-                    ) : (
-                      t('agentDetail.modelDefault')
-                    )}
-                  </Field>
-                  <Field label={t('agentDetail.field.liveness')}>
-                    <StatusChip status={status} label={t('directory.status.' + status)} />
-                  </Field>
-                  <Field label={t('agentDetail.field.lastSeen')}>
-                    <span title={formatAbsolute(agent?.lastSeen)}>
-                      {agent?.lastSeen ? rel(agent.lastSeen) : t('agentDetail.never')}
-                    </span>
-                  </Field>
-                  <Field label={t('agentDetail.field.workspaceAgent')}>
-                    {agent?.isWorkspaceAgent ? t('common.yes') : t('common.no')}
-                  </Field>
-                  {agent?.offlineReason && (
-                    <div className="col-span-full rounded-lg bg-gold-bg px-3.5 py-3">
-                      <dt className="sr-only">{t('agentDetail.offlineReason.label')}</dt>
-                      <dd className="flex items-start gap-1.5 font-body text-body-md text-gold-ink">
-                        <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden />
-                        <span className="min-w-0">
-                          {t('agentDetail.offlineReason.' + agent.offlineReason, {
-                            defaultValue: t('agentDetail.offlineReason.unknown'),
-                          })}
-                        </span>
-                      </dd>
-                    </div>
-                  )}
-                  <Field label={t('agentDetail.field.id')} wide>
-                    <span className="font-mono text-mono-sm break-all text-ink-light">{id}</span>
-                  </Field>
-                </dl>
-
-                <div className="mt-5 pt-5 border-t border-line">
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="font-body text-body-sm font-medium text-ink-light">
-                      {t('agentDetail.field.skills')}
-                    </h3>
-                    <button onClick={openLinkSkills} className={cn(SECONDARY_BTN, 'px-3 text-body-sm')}>
-                      <Plus className="w-4 h-4" aria-hidden /> {t('agentDetail.linkSkills.add')}
-                    </button>
-                  </div>
-                  {linkedSkillNames.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {linkedSkillNames.map((s) => (
-                        <span
-                          key={s}
-                          className="inline-flex items-center px-2.5 py-0.5 rounded-full font-body text-body-sm font-medium bg-ash-bg text-ink-light"
-                        >
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="font-body text-body-md text-ink-muted">{t('agentDetail.noSkills')}</p>
-                  )}
-                </div>
-              </section>
-
-            </div>
-          )}
-
-          {/* ── Activity (system↔agent run log) ── */}
-          {tab === 'activity' && (
-            <section>
-              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-ink-muted" aria-hidden />
-                  <SectionTitle>{t('agentDetail.activity')}</SectionTitle>
-                </div>
-                {runs !== null && (
-                  <span className="font-body text-body-sm text-ink-muted">
-                    {t('agentDetail.runCount', { count: runs.length })}
-                  </span>
-                )}
+            <SettingsSection
+              index="05"
+              tone="danger"
+              title={t('agentDetail.deleteAgent')}
+              hint={t('agentDetail.config.deleteHint')}
+            >
+              <div>
+                <button type="button" onClick={() => setConfirmDelete(true)} className="btn btn-danger">
+                  <Trash2 className="h-4 w-4" aria-hidden /> {t('agentDetail.deleteAgent')}
+                </button>
               </div>
-
-              {runs === null ? (
-                <div className={cn(CARD, 'flex items-center justify-center gap-2 py-16 font-body text-body-md text-ink-muted')}>
-                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> {t('agentDetail.loadingActivity')}
-                </div>
-              ) : runs.length === 0 ? (
-                <div className={cn(CARD, 'flex flex-col items-center justify-center gap-2 px-6 py-14 text-center')}>
-                  <div className="mb-1 w-12 h-12 rounded-full bg-inset flex items-center justify-center">
-                    <Clock className="w-6 h-6 text-ink-muted" aria-hidden />
-                  </div>
-                  <p className="font-body text-[15px] font-medium text-ink">{t('agentDetail.noActivityTitle')}</p>
-                  <p className="font-body text-body-md text-ink-light max-w-sm">{t('agentDetail.noActivityHint')}</p>
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  {runs.map((run) => (
-                    <RunRow key={run.id} run={run} />
-                  ))}
-                </div>
-              )}
-
-              {runs !== null && runs.length > 0 && (
-                <p className="mt-4 flex items-center gap-1.5 font-body text-body-sm text-ink-muted">
-                  <CheckCircle2 className="w-3.5 h-3.5" aria-hidden /> {t('agentDetail.liveHint')}
-                </p>
-              )}
-            </section>
-          )}
-        </div>
-
-        {/* The direct line to this agent (FR-007p). Sticky beside the tabs from xl, so it
-            stays in reach while the person scrolls a long run log or edits instructions. */}
-        {agent && workspaceId && (
-          <aside
-            id="agent-chat"
-            aria-label={t('agentChat.title', { name: displayName })}
-            className={cn(
-              'min-w-0 order-first xl:order-none xl:col-start-2 xl:row-start-1 xl:sticky xl:top-[72px]',
-              !wide && !chatOpen && 'hidden',
-            )}
-          >
-            <div className="h-[min(560px,78dvh)] xl:h-[min(880px,calc(100dvh-7rem))]">
-              <AgentChatPanel
-                key={agent.id}
-                workspaceId={workspaceId}
-                mariusId={agent.id}
-                agentName={displayName}
-                online={status !== 'offline'}
-              />
-            </div>
-          </aside>
+            </SettingsSection>
+          </motion.div>
         )}
-      </div>
+      </AnimatePresence>
 
-      {/* Post-invite skill install (#74) — link more skills + push a one-time install prompt. */}
+      {/* The direct line to this agent (FR-007p), as a drawer from the right edge. */}
+      {agent && workspaceId && (
+        <AgentChatDrawer
+          open={chatOpen}
+          onClose={closeChat}
+          workspaceId={workspaceId}
+          mariusId={agent.id}
+          agentName={displayName}
+          role={roleText}
+          status={status}
+          cli={agent.runtime?.cli_kind}
+          online={status !== 'offline'}
+          offlineNote={offlineNote}
+        />
+      )}
+
+      {/* Link more skills to the agent (#74). */}
       <Modal
         isOpen={linkSkillsOpen}
         onClose={() => setLinkSkillsOpen(false)}
-        title={t('agentDetail.linkSkills.title', { name: displayName })}
+        title={
+          <span className="block font-display text-[26px] font-normal leading-tight tracking-[-0.02em] text-ink-strong">
+            {t('agentDetail.linkSkills.title', { name: displayName })}
+          </span>
+        }
         footer={
           <>
-            <button onClick={() => setLinkSkillsOpen(false)} className={SECONDARY_BTN}>
+            <button type="button" onClick={() => setLinkSkillsOpen(false)} className="btn btn-secondary">
               {t('common.cancel')}
             </button>
             <button
+              type="button"
               onClick={handleInstallSkills}
               disabled={selectedNewIds.length === 0 || installing}
-              className={PRIMARY_BTN}
+              className="btn btn-primary"
             >
-              {installing && <Loader2 className="w-4 h-4 animate-spin" aria-hidden />}
+              {installing && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
               {linkFailed
                 ? t('agentDetail.linkSkills.retry')
                 : installing
@@ -839,31 +870,40 @@ export default function AgentDetail() {
           </>
         }
       >
-        <p className="font-body text-body-md text-ink-light mb-4">{t('agentDetail.linkSkills.hint')}</p>
+        <p className="mb-4 font-body text-body-md text-ink-light">{t('agentDetail.linkSkills.hint')}</p>
         {allSkills.length === 0 ? (
           <p className="font-body text-body-md text-ink-muted">{t('agentDetail.linkSkills.noneAvailable')}</p>
         ) : (
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {allSkills.map((skill) => {
-              const linked = linkedNameSet.has(skill.name);
+              const isLinked = linkedNameSet.has(skill.name);
               const selected = selectedNewIds.includes(skill.id);
               return (
                 <button
                   key={skill.id}
+                  type="button"
                   onClick={() => toggleNewSkill(skill.id)}
                   aria-pressed={selected}
-                  title={linked ? t('agentDetail.linkSkills.reinstallHint') : undefined}
+                  title={isLinked ? t('agentDetail.linkSkills.reinstallHint') : undefined}
                   className={cn(
-                    'inline-flex max-w-full items-center gap-1.5 min-h-[40px] px-3.5 py-1.5 rounded-[20px] border text-left break-all font-body text-body-sm font-medium transition-colors',
+                    'flex min-h-[45px] min-w-0 items-center gap-2.5 rounded-md border px-3 py-2 text-left font-mono text-[12px] transition-colors',
                     selected
-                      ? 'bg-ink text-paper border-ink'
-                      : 'bg-paper text-ink border-line-strong hover:bg-inset',
+                      ? 'border-sapphire bg-sapphire-soft text-ink-strong'
+                      : 'border-field-line bg-field text-ink-light hover:border-sapphire',
                   )}
                 >
-                  {selected && <Check className="w-3.5 h-3.5" aria-hidden />}
-                  {skill.name}
-                  {linked && !selected && (
-                    <span className="font-body text-body-xs text-ink-muted">
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'grid h-4 w-4 shrink-0 place-items-center rounded-[4px] border',
+                      selected ? 'border-sapphire-strong bg-sapphire-strong text-sapphire-ink' : 'border-line-strong',
+                    )}
+                  >
+                    {selected && <Check className="h-3 w-3" strokeWidth={3} />}
+                  </span>
+                  <span className="min-w-0 flex-1 break-all">{skill.name}</span>
+                  {isLinked && !selected && (
+                    <span className="shrink-0 font-body text-[11px] text-ink-muted">
                       {t('agentDetail.linkSkills.linkedTag')}
                     </span>
                   )}
@@ -873,13 +913,13 @@ export default function AgentDetail() {
           </div>
         )}
         {linked && (
-          <p className="mt-4 flex items-center gap-2 px-3.5 py-2.5 rounded-lg bg-verdigris-bg font-body text-body-sm text-verdigris-ink">
-            <CheckCircle2 className="w-4 h-4 flex-shrink-0" aria-hidden /> {t('agentDetail.linkSkills.sent')}
+          <p className="mt-4 flex items-center gap-2 rounded-md border border-success/30 bg-success-soft px-3.5 py-2.5 font-body text-body-sm text-success">
+            <CheckCircle2 className="h-4 w-4 flex-shrink-0" aria-hidden /> {t('agentDetail.linkSkills.sent')}
           </p>
         )}
         {linkFailed && (
-          <p className="mt-4 flex items-center gap-2 px-3.5 py-2.5 rounded-lg border border-[#EDB8B0] bg-vermilion-bg font-body text-body-sm text-vermilion-ink">
-            <AlertTriangle className="w-4 h-4 flex-shrink-0" aria-hidden /> {t('agentDetail.linkSkills.sendFailed')}
+          <p className="mt-4 flex items-center gap-2 rounded-md border border-danger/35 bg-danger/[0.08] px-3.5 py-2.5 font-body text-body-sm text-danger">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" aria-hidden /> {t('agentDetail.linkSkills.sendFailed')}
           </p>
         )}
       </Modal>

@@ -1,59 +1,31 @@
+// The skill library (Đài quan sát "Kỹ năng" view).
+//
+// Two columns on a wide screen: the workspace's library on the left, the chosen skill's files
+// on the right. On a narrow one they take turns — the list at `/skills`, a skill at
+// `/skills/:id` (the route `SkillEditor` answers, which renders this same page).
 import { useState, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { motion } from 'framer-motion';
 import {
-  Wrench,
   Plus,
   Search,
-  Palette,
   Github,
-  FileText,
+  FolderOpen,
   Loader2,
-  ChevronRight,
-  Trash2,
   AlertTriangle,
+  ScrollText,
+  WandSparkles,
 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
-import type { Skill } from '@/store/appStore';
 import Modal from '@/components/Modal';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import PageTitle from '@/components/PageTitle';
+import SkillViewer from '@/pages/skills/SkillViewer';
 import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
 import { useTranslation } from 'react-i18next';
 
-// ─── Shared classes ──────────────────────────────────────────────────────────
-
-const primaryButton =
-  'inline-flex items-center justify-center gap-2 min-h-[44px] px-[18px] rounded-md bg-ink font-body text-body-md font-medium text-paper hover:bg-ink/85 transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
-const secondaryButton =
-  'inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-md border border-line-strong bg-paper font-body text-body-md font-medium text-ink hover:bg-inset transition-colors';
-const fieldClasses = cn(
-  'w-full min-h-[44px] px-3.5 py-2.5 rounded-md bg-inset border border-line font-body text-body-md text-ink',
-  'placeholder:text-ink-muted',
-  'focus:outline-none focus:border-terracotta focus:ring-2 focus:ring-terracotta/15 transition-colors'
-);
-const fieldLabel = 'block mb-1.5 font-body text-body-sm font-medium text-ink-light';
-
-// ─── Skill Source Badge ──────────────────────────────────────────────────────
-
-function SourceBadge({ type }: { type: Skill['type'] }) {
-  const { t } = useTranslation();
-  // Where a skill came from is a fact, not a status, so both read in the same neutral chip;
-  // the icon is what tells them apart.
-  const config = {
-    github: { label: t('skills.imported'), icon: Github },
-    custom: { label: t('skills.type.manual'), icon: FileText },
-  };
-  // A skill with no recorded source reads as manual — same as `skillToVM`'s fallback.
-  const { label, icon: Icon } = (type && config[type]) || config.custom;
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-full border border-line bg-inset font-body text-body-xs font-medium text-ink-light">
-      <Icon className="w-3 h-3" aria-hidden />
-      {label}
-    </span>
-  );
-}
+const fieldLabel = 'mb-1.5 block font-body text-body-sm font-medium text-ink';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN PAGE: Skills
@@ -61,7 +33,7 @@ function SourceBadge({ type }: { type: Skill['type'] }) {
 
 export default function Skills() {
   const navigate = useNavigate();
-  const { workspaceId } = useParams();
+  const { workspaceId, id: routeId } = useParams();
   const { t } = useTranslation();
   const skills = useAppStore((s) => s.skills);
   const createSkill = useAppStore((s) => s.createSkill);
@@ -101,6 +73,12 @@ export default function Skills() {
 
     return filtered;
   }, [skills, searchQuery]);
+
+  // The skill in the right-hand pane: the one on the address, else (wide screens only, where
+  // both columns show) the first one listed.
+  const routeSkill = routeId ? skills.find((s) => s.id === routeId) : undefined;
+  const shownSkill = routeId ? routeSkill : (filteredSkills[0] ?? skills[0]);
+  const libraryHref = wsHref(workspaceId, '/skills');
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleOpenCreate = (mode: 'manual' | 'import') => {
@@ -164,164 +142,172 @@ export default function Skills() {
     if (newSkill?.id) navigate(wsHref(workspaceId, `/skills/${newSkill.id}`));
   };
 
-  const handleSkillClick = (skillId: string) => {
-    navigate(wsHref(workspaceId, `/skills/${skillId}`));
-  };
-
   // ── Render ─────────────────────────────────────────────────────────────────
 
+  const createButtons = (
+    <>
+      <button type="button" onClick={() => handleOpenCreate('import')} className="btn btn-secondary">
+        <Github className="h-4 w-4" aria-hidden />
+        {t('skills.importTitle')}
+      </button>
+      <button type="button" onClick={() => handleOpenCreate('manual')} className="btn btn-primary">
+        <Plus className="h-4 w-4" aria-hidden />
+        {t('skills.newSkill')}
+      </button>
+    </>
+  );
+
   return (
-    <div className="mx-auto w-full max-w-[1240px] flex flex-col gap-6 pb-10">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <PageTitle title={t('skills.title')} subtitle={t('skills.subtitle', { count: skills.length })} />
-        {/* Two ways in. The old header also carried a "manual" button that opened the very
-            same form as "new skill", so it is folded into the primary one. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => handleOpenCreate('import')} className={secondaryButton}>
-            <Github className="w-4 h-4" aria-hidden />
-            {t('skills.importTitle')}
-          </button>
-          <button onClick={() => handleOpenCreate('manual')} className={primaryButton}>
-            <Plus className="w-4 h-4" aria-hidden />
-            {t('skills.newSkill')}
-          </button>
-        </div>
+    <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-6 pb-10">
+      {/* On a narrow screen with a skill open, the page header steps aside for the skill. */}
+      <div className={cn(routeId && 'hidden lg:block')}>
+        <PageTitle
+          eyebrow={t('skills.eyebrow')}
+          title={t('skills.title')}
+          subtitle={t('skills.lead')}
+          actions={createButtons}
+        />
       </div>
 
-      {/* Search */}
-      {skills.length > 0 && (
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-muted" aria-hidden />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t('skills.searchPlaceholder')}
-            aria-label={t('skills.searchPlaceholder')}
-            className={cn(fieldClasses, 'pl-9')}
-          />
-        </div>
-      )}
-
-      {/* Skill Cards Grid */}
-      {filteredSkills.length === 0 ? (
-        <section className="flex flex-col items-center rounded-xl border border-line bg-paper px-5 py-12 text-center sm:px-8">
-          <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-inset text-ink-muted">
-            <Wrench className="h-6 w-6" strokeWidth={1.5} aria-hidden />
+      {skills.length === 0 && !routeId ? (
+        <section className="surface flex flex-col items-center px-5 py-12 text-center sm:px-8">
+          <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-line bg-canvas-deep text-ink-muted">
+            <WandSparkles className="h-6 w-6" strokeWidth={1.5} aria-hidden />
           </span>
-          <h2 className="font-display text-[22px] font-medium text-ink">{t('skills.emptyTitle')}</h2>
+          <h2 className="font-display text-display-sm text-ink-strong">{t('skills.emptyTitle')}</h2>
           <p className="mt-2 max-w-md font-body text-body-md text-ink-light">{t('skills.emptyLibraryDescription')}</p>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-            <button onClick={() => handleOpenCreate('import')} className={secondaryButton}>
-              <Github className="w-4 h-4" aria-hidden />
-              {t('skills.importTitle')}
-            </button>
-            <button onClick={() => handleOpenCreate('manual')} className={primaryButton}>
-              <Plus className="w-4 h-4" aria-hidden />
-              {t('skills.createSkill')}
-            </button>
-          </div>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-2.5">{createButtons}</div>
         </section>
       ) : (
-        <motion.div
-          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2 }}
-        >
-          {filteredSkills.map((skill) => (
-            <article
-              key={skill.id}
-              className="group relative flex min-w-0 flex-col rounded-xl border border-line bg-paper px-5 py-4 transition-colors hover:border-line-strong cursor-pointer"
-              onClick={() => handleSkillClick(skill.id)}
-            >
-              <div className="flex items-start gap-3">
-                <span className="w-10 h-10 shrink-0 rounded-full bg-inset text-ink-light flex items-center justify-center" aria-hidden>
-                  <Palette className="w-[18px] h-[18px]" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  {/* A real link inside the card, so keyboard and screen-reader users reach
-                      the skill too; the whole card stays clickable for the pointer. */}
-                  <a
-                    href={wsHref(workspaceId, `/skills/${skill.id}`)}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleSkillClick(skill.id);
-                    }}
-                    className="block font-display text-[18px] font-medium leading-snug text-ink truncate group-hover:text-terracotta transition-colors focus-visible:outline-none focus-visible:underline"
-                  >
-                    {skill.name}
-                  </a>
-                  <div className="mt-1">
-                    <SourceBadge type={skill.type} />
-                  </div>
+        <div className="grid grid-cols-1 items-start gap-[18px] lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)]">
+          {/* ── Library ── */}
+          <aside className={cn('min-w-0 overflow-hidden rounded-lg border border-line bg-surface', routeId && 'hidden lg:block')}>
+            <header className="border-b border-line px-5 pb-3.5 pt-[19px]">
+              <p className="eyebrow">{t('skills.libraryEyebrow')}</p>
+              <p className="mt-[3px] font-display text-[21px] font-normal text-ink-strong">
+                {t('skills.librarySummary', { count: skills.length })}
+              </p>
+              {skills.length > 1 && (
+                <div className="relative mt-3">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" aria-hidden />
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={t('skills.searchPlaceholder')}
+                    aria-label={t('skills.searchPlaceholder')}
+                    className="field pl-9"
+                  />
                 </div>
-              </div>
-
-              {skill.description && (
-                <p className="mt-3 font-body text-body-md text-ink-light line-clamp-2 break-words">
-                  {skill.description}
-                </p>
               )}
+            </header>
+            {filteredSkills.length === 0 ? (
+              <p className="px-5 py-8 text-center font-body text-body-sm text-ink-muted">
+                {skills.length === 0 ? t('skills.emptyTitle') : t('skills.noMatch')}
+              </p>
+            ) : (
+              <nav aria-label={t('skills.libraryEyebrow')}>
+                {filteredSkills.map((skill) => {
+                  const active = skill.id === shownSkill?.id;
+                  const imported = skill.type === 'github';
+                  return (
+                    <Link
+                      key={skill.id}
+                      to={wsHref(workspaceId, `/skills/${skill.id}`)}
+                      aria-current={active && routeId ? 'page' : undefined}
+                      className={cn(
+                        'flex w-full items-start gap-[11px] border-b border-line px-4 py-[17px] text-left transition-colors last:border-b-0',
+                        !active && 'hover:bg-surface-hover',
+                        active && routeId && 'bg-canvas-deep shadow-[inset_2px_0_0_0_oklch(var(--sapphire-strong))]',
+                        // With nothing on the address the first skill is shown only where both
+                        // columns are visible — so only there does it read as chosen.
+                        active && !routeId && 'hover:bg-surface-hover lg:bg-canvas-deep lg:shadow-[inset_2px_0_0_0_oklch(var(--sapphire-strong))]'
+                      )}
+                    >
+                      <span className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-full border border-line text-sapphire-strong">
+                        <WandSparkles className="h-[18px] w-[18px]" aria-hidden />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-mono text-[12px] font-medium text-ink-strong">{skill.name}</span>
+                        {skill.description && (
+                          <span className="mt-1 line-clamp-2 block break-words font-body text-[12px] leading-[1.45] text-ink-light">
+                            {skill.description}
+                          </span>
+                        )}
+                        <span className="mt-2 flex items-center gap-[5px] truncate font-body text-[11px] text-ink-muted">
+                          {imported ? <Github className="h-3 w-3 shrink-0" aria-hidden /> : <FolderOpen className="h-3 w-3 shrink-0" aria-hidden />}
+                          {imported ? t('skills.imported') : t('skills.type.manual')}
+                          {' · '}
+                          {t('skills.fileCount', { count: (skill.files || []).length })}
+                        </span>
+                      </span>
+                    </Link>
+                  );
+                })}
+              </nav>
+            )}
+          </aside>
 
-              <div className="mt-auto flex items-center justify-between gap-2 pt-3">
-                <span className="font-mono text-mono-sm text-ink-muted">
-                  {t('skills.fileCount', { count: (skill.files || []).length })}
+          {/* ── Viewer ── */}
+          <div className={cn('min-w-0', !routeId && 'hidden lg:block')}>
+            {shownSkill ? (
+              <SkillViewer
+                key={shownSkill.id}
+                skill={shownSkill}
+                backHref={libraryHref}
+                onDelete={() => setDeletingSkill({ id: shownSkill.id, name: shownSkill.name })}
+              />
+            ) : routeId ? (
+              <section className="surface flex flex-col items-center px-5 py-12 text-center sm:px-8">
+                <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-line bg-canvas-deep text-ink-muted">
+                  <ScrollText className="h-6 w-6" strokeWidth={1.5} aria-hidden />
                 </span>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setDeletingSkill({ id: skill.id, name: skill.name }); }}
-                    className="w-10 h-10 inline-flex items-center justify-center rounded-md text-ink-muted hover:text-vermilion-ink hover:bg-vermilion-bg transition-colors"
-                    aria-label={t('skills.delete')}
-                    title={t('skills.delete')}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                  <ChevronRight className="w-4 h-4 text-ink-muted group-hover:text-ink transition-colors" aria-hidden />
-                </div>
-              </div>
-            </article>
-          ))}
-        </motion.div>
+                <h1 className="font-display text-display-sm text-ink-strong">{t('skills.editor.notFound')}</h1>
+                <p className="mt-2 max-w-md font-body text-body-md text-ink-light">{t('skills.editor.notFoundDesc')}</p>
+                <Link to={libraryHref} className="btn btn-secondary mt-6">
+                  {t('skills.editor.backToSkills')}
+                </Link>
+              </section>
+            ) : null}
+          </div>
+        </div>
       )}
 
       {/* ─── Create/Import Skill Modal ────────────────────────────────────────── */}
       <Modal
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
-        title={
-          <span className="font-display text-[24px] font-medium text-ink">
-            {createMode === 'manual' ? t('skills.newSkill') : t('skills.importTitle')}
-          </span>
-        }
-        maxWidth="max-w-lg"
+        eyebrow={createMode === 'manual' ? t('skills.createEyebrow') : t('skills.importEyebrow')}
+        title={createMode === 'manual' ? t('skills.newSkill') : t('skills.importTitle')}
+        maxWidth="sm:max-w-[620px]"
         footer={
           createMode === 'manual' ? (
             <>
-              <button onClick={() => setCreateModalOpen(false)} className={secondaryButton}>
+              <button type="button" onClick={() => setCreateModalOpen(false)} className="btn btn-secondary">
                 {t('common.cancel')}
               </button>
               <button
+                type="button"
                 onClick={handleCreateManual}
                 disabled={!skillName.trim() || creating}
-                className={primaryButton}
+                className="btn btn-primary"
               >
-                {creating && <Loader2 className="w-4 h-4 animate-spin" />}
+                {creating && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
                 {t('skills.createSkill')}
               </button>
             </>
           ) : (
             <>
-              <button onClick={() => setCreateModalOpen(false)} className={secondaryButton}>
+              <button type="button" onClick={() => setCreateModalOpen(false)} className="btn btn-secondary">
                 {t('common.cancel')}
               </button>
               <button
+                type="button"
                 onClick={handleImport}
                 disabled={!githubUrl.trim() || creating}
-                className={primaryButton}
+                className="btn btn-primary"
               >
-                {creating && <Loader2 className="w-4 h-4 animate-spin" />}
+                {creating && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
                 {t('skills.import')}
               </button>
             </>
@@ -329,47 +315,50 @@ export default function Skills() {
         }
       >
         {createMode === 'manual' ? (
-          <div className="space-y-4">
+          <div className="space-y-[17px]">
             <div>
-              <label className={fieldLabel}>
-                {t('skills.nameLabel')} <span className="text-vermilion-ink" aria-hidden>*</span>
+              <label className={fieldLabel} htmlFor="skill-name">
+                {t('skills.nameLabel')} <span className="text-danger" aria-hidden>*</span>
               </label>
               <input
+                id="skill-name"
                 type="text"
                 value={skillName}
                 onChange={(e) => setSkillName(e.target.value)}
                 placeholder={t('skills.namePlaceholder')}
-                className={fieldClasses}
+                className="field font-mono text-[13px]"
                 autoFocus
               />
             </div>
             <div>
-              <label className={fieldLabel}>
+              <label className={fieldLabel} htmlFor="skill-desc">
                 {t('skills.descriptionLabel')}
               </label>
               <textarea
+                id="skill-desc"
                 value={skillDesc}
                 onChange={(e) => setSkillDesc(e.target.value)}
                 placeholder={t('skills.descriptionPlaceholder')}
                 rows={3}
-                className={cn(fieldClasses, 'resize-none')}
+                className="field resize-none py-2.5 leading-relaxed"
               />
             </div>
             <p className="font-body text-body-sm text-ink-muted">{t('skills.manualNote')}</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-[17px]">
             <div>
-              <label className={fieldLabel}>
-                {t('skills.githubUrlLabel')} <span className="text-vermilion-ink" aria-hidden>*</span>
+              <label className={fieldLabel} htmlFor="skill-github">
+                {t('skills.githubUrlLabel')} <span className="text-danger" aria-hidden>*</span>
               </label>
               <input
+                id="skill-github"
                 type="text"
                 value={githubUrl}
                 onChange={(e) => { setGithubUrl(e.target.value); setImportError(null); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !creating) handleImport(); }}
                 placeholder={t('skills.githubUrlPlaceholder')}
-                className={fieldClasses}
+                className="field font-mono text-[13px]"
                 autoFocus
               />
               <p className="mt-1.5 font-body text-body-sm text-ink-muted">{t('skills.importNote')}</p>
@@ -380,14 +369,14 @@ export default function Skills() {
                 animate={{ opacity: 1 }}
                 className="flex items-center gap-2 font-body text-body-sm text-ink-light"
               >
-                <Loader2 className="w-4 h-4 animate-spin text-lapis" />
+                <Loader2 className="h-4 w-4 animate-spin text-sapphire-strong" aria-hidden />
                 {t('skills.fetching')}
               </motion.div>
             )}
             {importError && (
-              <div className="flex items-start gap-2 rounded-lg border border-[#EDB8B0] bg-vermilion-bg px-3 py-2.5 font-body text-body-sm text-vermilion-ink" role="alert">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                <span>{importError}</span>
+              <div className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger-soft px-3 py-2.5 font-body text-body-sm text-danger" role="alert">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <span className="min-w-0">{importError}</span>
               </div>
             )}
           </div>
@@ -398,7 +387,12 @@ export default function Skills() {
       <ConfirmDialog
         isOpen={deletingSkill !== null}
         onClose={() => setDeletingSkill(null)}
-        onConfirm={async () => { if (deletingSkill) await deleteSkill(deletingSkill.id); }}
+        onConfirm={async () => {
+          if (!deletingSkill) return;
+          await deleteSkill(deletingSkill.id);
+          // The pane was showing the skill that is now gone: back to the library.
+          if (deletingSkill.id === routeId) navigate(libraryHref);
+        }}
         title={t('skills.deleteTitle')}
         message={t('skills.deleteConfirm', { name: deletingSkill?.name ?? '' })}
         confirmLabel={t('skills.delete')}

@@ -16,7 +16,7 @@ interface ConfirmDialogProps {
   message: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
-  /** Terracotta-red confirm button for destructive actions (default true). */
+  /** Danger-tinted confirm button for destructive actions (default true). */
   danger?: boolean;
 }
 
@@ -57,39 +57,35 @@ export default function ConfirmDialog({
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
-      title={<span className="dropcap">{title}</span>}
-      maxWidth="max-w-md"
+      title={title}
+      eyebrow={danger ? t('common.confirmEyebrow') : undefined}
+      maxWidth="sm:max-w-md"
       footer={
         <>
-          <button
-            onClick={handleClose}
-            disabled={busy}
-            className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-vellum-deep text-ink border border-vellum-dark hover:bg-vellum-dark transition-colors disabled:opacity-50"
-          >
+          <button type="button" onClick={handleClose} disabled={busy} className="btn btn-secondary">
             {cancelLabel || t('common.cancel')}
           </button>
           <button
+            type="button"
             onClick={handleConfirm}
             disabled={busy}
-            className={cn(
-              'inline-flex items-center gap-2 px-4 py-2 rounded-md font-body text-body-md font-medium transition-colors disabled:opacity-50',
-              danger
-                ? 'bg-[#C0492B] text-white hover:bg-[#D2664A]'
-                : 'bg-ink text-paper hover:bg-ink/85'
-            )}
+            className={cn('btn', danger ? 'btn-danger' : 'btn-primary')}
           >
-            {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+            {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
             {confirmLabel || t('common.delete')}
           </button>
         </>
       }
     >
       <div className="space-y-3">
-        <p className="font-body text-body-md text-ink-light break-words">{message}</p>
+        <p className="font-body text-body-md leading-relaxed text-ink-light break-words">{message}</p>
         {error && (
-          <div className="flex items-start gap-2 text-[13px] text-terracotta-dark bg-vermilion-bg border border-[#E3C0B2] rounded-md px-3 py-2">
-            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-            <span>{error}</span>
+          <div
+            className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger-soft px-3 py-2 font-body text-body-sm text-danger"
+            role="alert"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <span className="min-w-0">{error}</span>
           </div>
         )}
       </div>

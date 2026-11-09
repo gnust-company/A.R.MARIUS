@@ -16,7 +16,6 @@ import { Loader2, Server } from 'lucide-react'
 import { ApiError, errorText } from '@/lib/errors'
 import { currentRuntimeChoice } from '@/lib/runtimeChoice'
 import { WORKPLACES_REPORTED } from '@/lib/sse'
-import { cn } from '@/lib/utils'
 import { onWorkspaceEvent } from '@/hooks/use-workspace-events'
 import { useRuntimeOffer } from '@/hooks/use-runtime-offer'
 import { useAppStore } from '@/store/appStore'
@@ -75,11 +74,11 @@ export default function HostRuntimeChooser({
     <div className="space-y-4">
       <div className="flex items-start gap-3">
         {/* Gold: the host cannot work until somebody picks — it is waiting on the patron. */}
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold-bg text-gold-ink">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gold/35 bg-gold-soft text-gold">
           <Server className="h-[18px] w-[18px]" aria-hidden />
         </span>
         <div className="min-w-0">
-          <h2 className="font-display text-[20px] font-medium leading-tight text-ink">
+          <h2 className="font-display text-[22px] font-normal leading-tight tracking-[-0.02em] text-ink-strong">
             {t('agentDetail.chooseRuntime.title', { name: hostName })}
           </h2>
           <p className="mt-1 font-body text-body-md text-ink-light">
@@ -96,7 +95,7 @@ export default function HostRuntimeChooser({
         disabled={busy}
       />
       {error && (
-        <p className="font-body text-body-sm text-vermilion-ink" role="alert">
+        <p className="font-body text-body-sm text-danger" role="alert">
           {error}
         </p>
       )}
@@ -104,10 +103,7 @@ export default function HostRuntimeChooser({
         type="button"
         onClick={choose}
         disabled={busy || !chosen}
-        className={cn(
-          'inline-flex min-h-[44px] items-center gap-2 rounded-md px-4 font-body text-body-md font-medium transition-colors',
-          'bg-ink text-paper hover:bg-ink/85 disabled:cursor-not-allowed disabled:opacity-50',
-        )}
+        className="btn btn-primary"
       >
         {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
         {t('agentDetail.chooseRuntime.button')}

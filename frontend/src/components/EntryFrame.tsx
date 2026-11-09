@@ -2,60 +2,86 @@
 // the first steps, picking a workspace, approving a machine. None of them has the sidebar —
 // at that point there is no workspace for it to describe — so the brand mark that the sidebar
 // carries everywhere else has to be carried here instead, or these pages read as belonging to
-// some other product.
+// some other product. The theme switch rides along for the same reason: the sidebar is where
+// it lives inside a workspace, and these pages have no sidebar.
 
 import type { ReactNode } from 'react'
+import { Brand } from '@/components/Brand'
+import ThemeSwitch from '@/components/ThemeSwitch'
 import { cn } from '@/lib/utils'
 
-/** "Armarius" with the gilt initial, the same mark the sidebar shows: the "A" doubles as the
- *  logo and the wordmark continues with "rmarius", so the letter is never printed twice.
- *  Gold is decoration here, not text the reader depends on — the word still reads in ink. */
+/** The Armarius mark (sigil + wordmark), the same one the sidebar shows. `lg` sets it larger
+ *  for a page whose only heading is the brand itself. */
 export function Wordmark({ size = 'md', className }: { size?: 'md' | 'lg'; className?: string }) {
-  const large = size === 'lg'
   return (
-    <span className={cn('inline-flex items-baseline select-none', className)} aria-label="Armarius">
-      <span
-        aria-hidden
-        className="leading-none"
-        style={{
-          fontFamily: "'Cinzel Decorative', 'Cinzel', serif",
-          fontSize: large ? '46px' : '30px',
-          color: '#D4A843',
-          fontWeight: 700,
-          textShadow: '1px 1px 0 rgba(158, 74, 44, 0.18)',
-        }}
-      >
-        A
-      </span>
-      <span
-        aria-hidden
-        className={cn(
-          'font-display font-medium text-ink tracking-tight leading-none',
-          large ? 'text-[38px]' : 'text-[24px]',
-        )}
-      >
-        rmarius
-      </span>
-    </span>
+    <Brand
+      className={cn(
+        size === 'lg' && '[&>svg]:w-12 [&>svg]:h-12 [&_span>span:first-child]:text-[22px]',
+        className,
+      )}
+    />
   )
 }
 
-/** Vellum page with the wordmark in a slim top bar and the content centred under it. */
+/** The quiet sky behind every entry page: two faint glows in the theme's sapphire and gold,
+ *  and a pair of crossed orbits echoing the sigil. Decoration only — never read, never hit. */
+function Sky() {
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            'radial-gradient(60% 45% at 78% 0%, oklch(var(--sapphire) / .12), transparent 70%),' +
+            'radial-gradient(45% 40% at 8% 100%, oklch(var(--gold) / .08), transparent 70%)',
+        }}
+      />
+      <svg
+        viewBox="0 0 400 400"
+        className="absolute -right-40 -top-24 w-[640px] h-[640px] text-line-strong opacity-40 sm:-right-24"
+      >
+        <g fill="none" stroke="currentColor" strokeWidth="0.6">
+          <ellipse cx="200" cy="200" rx="180" ry="72" transform="rotate(32 200 200)" />
+          <ellipse cx="200" cy="200" rx="180" ry="72" transform="rotate(-32 200 200)" />
+          <circle cx="200" cy="200" r="118" strokeDasharray="2 6" />
+        </g>
+        <circle cx="352" cy="104" r="3" className="fill-gold" opacity=".7" />
+      </svg>
+    </div>
+  )
+}
+
+/** Canvas page with the brand and the theme switch in a slim top bar, the content under it. */
 export default function EntryFrame({
   children,
   aside,
+  center = false,
 }: {
   children: ReactNode
-  /** Something small for the right end of the top bar, if the page has one. */
+  /** Something small for the right end of the top bar, before the theme switch. */
   aside?: ReactNode
+  /** Centre the content vertically (a single short card, as on sign-in). */
+  center?: boolean
 }) {
   return (
-    <div className="min-h-[100dvh] bg-vellum flex flex-col">
-      <header className="h-16 shrink-0 flex items-center justify-between gap-3 px-4 sm:px-6 xl:px-9">
-        <Wordmark />
-        {aside}
+    <div className="relative isolate min-h-[100dvh] flex flex-col">
+      <Sky />
+      <header className="relative shrink-0 border-b border-line bg-canvas/70 backdrop-blur-md">
+        <div className="mx-auto w-full max-w-[1168px] h-16 sm:h-[72px] flex items-center justify-between gap-3 px-4 sm:px-6">
+          <Brand />
+          <div className="flex items-center gap-2 sm:gap-3">
+            {aside}
+            <ThemeSwitch compact className="sm:hidden" />
+            <ThemeSwitch className="hidden sm:flex" />
+          </div>
+        </div>
       </header>
-      <main className="flex-1 w-full flex flex-col items-center px-4 sm:px-6 pt-2 sm:pt-8 pb-16">
+      <main
+        className={cn(
+          'relative flex-1 w-full flex flex-col items-center px-4 sm:px-6 pb-16',
+          center ? 'justify-center pt-8 sm:pt-12' : 'pt-7 sm:pt-12 xl:pt-16',
+        )}
+      >
         {children}
       </main>
     </div>
@@ -73,7 +99,7 @@ export function WithCommands({ text }: { text: string }) {
         i % 2 === 1 ? (
           <code
             key={i}
-            className="font-mono text-mono-sm text-ink bg-inset border border-line rounded px-1 py-px break-words"
+            className="font-mono text-mono-sm text-sapphire-strong bg-canvas-deep border border-line rounded-xs px-1 py-px break-words"
           >
             {part}
           </code>

@@ -1,30 +1,29 @@
-import { useState, useRef, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { useParams, useNavigate, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ChevronLeft,
+  ArrowLeft,
   Send,
-  CheckCircle2,
-  Circle,
+  ShieldCheck,
+  ListChecks,
   Plus,
   X,
   Paperclip,
   ExternalLink,
   Lock,
   Unlock,
-  Play,
-  Pause,
-  Square,
-  RotateCcw,
   Activity,
-  Bot,
-  User,
-  Star,
+  Users,
   MessageSquare,
   XCircle,
   Hourglass,
   CircleDashed,
+  Flag,
+  CalendarDays,
+  ChevronDown,
+  Pencil,
+  CornerDownRight,
 } from 'lucide-react';
 import {
   ApiError,
@@ -38,7 +37,6 @@ import {
   type Priority,
   type Task,
   type TaskEditPatch,
-  type TraceEvent,
 } from '@/store/appStore';
 import { useTaskStream } from '@/hooks/use-task-stream';
 import { subscribeProjectEvents } from '@/lib/sse';
@@ -47,8 +45,13 @@ import { blockedReasonKey, needsReason, type TaskPhase } from '@/lib/taskRules';
 import { errorText } from '@/lib/errors';
 import { WAITING_FOR_A_MACHINE, waitKind, waitText } from '@/lib/drive';
 import Dropdown from '@/components/Dropdown';
+import Modal from '@/components/Modal';
+import StatusChip from '@/components/StatusChip';
+import AgentAvatar from '@/components/AgentAvatar';
+import TaskComment, { PatronMark } from '@/components/task/TaskComment';
+import TraceEventCard from '@/components/task/TraceEventCard';
 
-/** Bốn trường người chủ sửa được trên màn, ở dạng chuỗi mà ô nhập dùng. */
+/** The four fields the patron can edit on this screen, as the strings the inputs use. */
 interface TaskEditDraft {
   title: string
   description: string
@@ -56,26 +59,18 @@ interface TaskEditDraft {
   dueDate: string
 }
 
-/** Bốn mức ưu tiên, đúng bốn mức máy chủ có. */
+/** The four priority levels, exactly the ones the server has. */
 const PRIORITY_OPTIONS: readonly Priority[] = ['P0', 'P1', 'P2', 'P3'];
 
-// ─── Trace Event Type Colors ─────────────────────────────────────────────────
-
-// Same meanings as the run trace page: lapis = a tool call in flight, verdigris = words and
-// a clean finish, vermilion = failure, ash = bookkeeping.
-const TRACE_TYPE_COLORS: Record<string, { border: string; bg: string; label: string }> = {
-  'run.delta': { border: 'bg-verdigris', bg: 'bg-verdigris-bg', label: 'text-verdigris-ink' },
-  'run.tool': { border: 'bg-lapis', bg: 'bg-lapis-bg', label: 'text-lapis-ink' },
-  'run.usage': { border: 'bg-ash', bg: 'bg-ash-bg', label: 'text-ink-light' },
-  'run.complete': { border: 'bg-verdigris', bg: 'bg-verdigris-bg', label: 'text-verdigris-ink' },
-  'run.error': { border: 'bg-vermilion', bg: 'bg-vermilion-bg', label: 'text-vermilion-ink' },
-  'agent.comment': { border: 'bg-ash', bg: 'bg-ash-bg', label: 'text-ink-light' },
-  'agent.status': { border: 'bg-ash', bg: 'bg-ash-bg', label: 'text-ink-muted' },
+/** One colour per priority flag: urgent reads as danger, high as gold, the rest go quiet. */
+const PRIORITY_TONE: Record<string, string> = {
+  P0: 'text-danger',
+  P1: 'text-gold',
+  P2: 'text-ink-muted',
+  P3: 'text-ink-faint',
 };
 
 const STATUS_OPTIONS = ['draft', 'backlog', 'todo', 'in_progress', 'blocked', 'in_review', 'done', 'cancelled'] as const;
-
-// ─── Helper: format timestamp ────────────────────────────────────────────────
 
 /** Scroll the nearest scrollable ancestor of `end` to its bottom, leaving the window alone. */
 function scrollPaneToEnd(end: HTMLElement | null) {
@@ -86,221 +81,27 @@ function scrollPaneToEnd(end: HTMLElement | null) {
   }
 }
 
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
-// ─── Trace Event Card ────────────────────────────────────────────────────────
-
-/** A safe i18n key segment: the daemon's codes are snake_case, and anything else is a code this
- *  screen has never heard of rather than a path into the phrase table. */
-function segment(code: string): string {
-  return /^[a-z0-9_]+$/.test(code) ? code : 'unknown';
-}
-
-function TraceEventCard({ event }: { event: TraceEvent }) {
-  const { t } = useTranslation();
-  const [isExpanded, setIsExpanded] = useState(false);
-  const colors = TRACE_TYPE_COLORS[event.type] || TRACE_TYPE_COLORS['run.delta'];
-
-  // The daemon says what went wrong as a code with its details (Constitution VII); the sentence
-  // is built here, where the reader's language is known. A code this build has no phrase for
-  // still becomes a sentence — showing the raw key would put our own internals on their screen.
-  const said = event.code
-    ? t(`collaborationRoom.trace.error.${segment(event.code)}`, {
-        defaultValue: t('collaborationRoom.trace.error.unknown', { code: event.code }),
-        ...event.codeParams,
-      })
-    : '';
-  const body = event.content || said;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: -10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className={cn(
-        'rounded-lg border border-line bg-inset px-3 py-2 cursor-pointer hover:border-line-strong transition-colors'
-      )}
-      onClick={() => setIsExpanded(!isExpanded)}
-    >
-      <div className="flex items-center justify-between mb-1">
-        <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-mono-sm font-medium', colors.bg, colors.label)}>
-          <span className={cn('w-1.5 h-1.5 rounded-full', colors.border)} />
-          {event.type}
-        </span>
-        <span className="font-mono text-mono-sm text-ink-muted">
-          {formatTime(event.timestamp)}
-        </span>
-      </div>
-
-      {event.model && (
-        <div className="font-mono text-mono-sm text-ink-light mb-1">
-          model: {event.model}
-        </div>
-      )}
-
-      {event.tokens && (
-        <div className="font-mono text-mono-sm text-ink-light mb-1">
-          tokens: {event.tokens.used} / {event.tokens.total}
-          {event.tokens.prompt !== undefined && (
-            <span className="text-ink-muted ml-1">
-              (prompt: {event.tokens.prompt}, completion: {event.tokens.completion})
-            </span>
-          )}
-        </div>
-      )}
-
-      {event.toolName && (
-        <div className={cn('font-mono text-mono-sm rounded-sm px-2 py-0.5 mb-1 inline-block', colors.bg)}>
-          {event.toolName}
-        </div>
-      )}
-
-      {body && (
-        <div
-          className={cn(
-            'font-body text-body-xs text-ink-light leading-relaxed',
-            !isExpanded && 'line-clamp-3'
-          )}
-        >
-          {body}
-        </div>
-      )}
-
-      {/* Say what is missing and why, rather than leaving a gap (FR-047). A gap here reads as
-          an agent that called no tools — a different and untrue story. */}
-      {event.omission && (
-        <div className="font-mono text-mono-sm text-ink-muted mt-1">
-          {t(`collaborationRoom.trace.omission.${segment(event.omission.reason)}`, {
-            defaultValue: t('collaborationRoom.trace.omission.unknown'),
-          })}
-          {event.omission.originalBytes !== undefined && (
-            <span className="ml-1">
-              {t('collaborationRoom.trace.omission.size', { bytes: event.omission.originalBytes })}
-            </span>
-          )}
-        </div>
-      )}
-
-      {event.redacted && (
-        <div className="font-mono text-mono-sm text-ink-muted mt-1">
-          {t('collaborationRoom.trace.redacted')}
-        </div>
-      )}
-
-      {event.args && isExpanded && (
-        <pre className="mt-1.5 p-2 bg-vellum rounded-sm font-mono text-mono-sm text-ink-light overflow-x-auto">
-          {JSON.stringify(event.args, null, 2)}
-        </pre>
-      )}
-    </motion.div>
-  );
-}
-
-// ─── Comment Bubble ──────────────────────────────────────────────────────────
-
-function CommentBubble({
-  authorName,
-  authorId,
-  authorRole,
-  content,
-  timestamp,
+/** One section of the task document: a mono label (with an optional figure on the right) over
+ *  its content, divided from the next by a hairline. */
+function DocSection({
+  label,
+  aside,
+  children,
+  className,
 }: {
-  authorName: string;
-  authorId: string;
-  authorRole: string;
-  content: string;
-  timestamp: string;
+  label: ReactNode;
+  aside?: ReactNode;
+  children: ReactNode;
+  className?: string;
 }) {
-  const mariuses = useAppStore((s) => s.mariuses);
-  const currentUser = useAppStore((s) => s.currentUser);
-  const agent = mariuses.find((m) => m.id === authorId);
-  const isPatron = authorId === 'user-patron' || authorId === currentUser?.id;
-  const isSystem = authorId.startsWith('system');
-
-  // Highlight @mentions
-  const renderContent = (text: string) => {
-    const parts = text.split(/(@\w+)/g);
-    return parts.map((part, i) => {
-      if (part.startsWith('@')) {
-        return (
-          <span key={i} className="text-terracotta bg-terracotta/10 px-1 rounded-sm font-medium">
-            {part}
-          </span>
-        );
-      }
-      return part;
-    });
-  };
-
-  if (isSystem) {
-    return (
-      <div className="flex items-center justify-center gap-3 my-3">
-        <span className="w-10 h-px bg-line" />
-        <span className="font-body text-body-xs text-ink-muted italic">{content}</span>
-        <span className="w-10 h-px bg-line" />
-      </div>
-    );
-  }
-
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className={cn('flex gap-3 mb-5', isPatron && 'flex-row-reverse')}
-    >
-      {/* Avatar */}
-      <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
-        <div
-          className={cn(
-            'w-9 h-9 rounded-full overflow-hidden flex items-center justify-center font-body text-body-sm font-semibold',
-            isPatron
-              ? 'bg-paper border-[1.5px] border-gold text-gold-ink'
-              : agent?.status === 'working'
-                ? 'bg-lapis-bg text-lapis-ink'
-                : agent
-                  ? 'bg-verdigris-bg text-verdigris-ink'
-                  : 'bg-ash-bg text-ink-light'
-          )}
-        >
-          {agent?.avatar ? (
-            <img src={agent.avatar} alt={authorName} className="w-full h-full object-cover" />
-          ) : isPatron ? (
-            <User className="w-4 h-4" />
-          ) : agent ? (
-            (agent.displayName || agent.name).charAt(0).toUpperCase()
-          ) : (
-            <Bot className="w-4 h-4" />
-          )}
-        </div>
+    <section className={cn('border-b border-line px-5 py-5 last:border-b-0 sm:px-6', className)}>
+      <div className="flex items-center justify-between gap-3">
+        <span className="eyebrow">{label}</span>
+        {aside}
       </div>
-
-      {/* Bubble */}
-      <div className={cn('max-w-[85%]', isPatron && 'text-right')}>
-        {/* Name label */}
-        <div className={cn('flex items-baseline gap-2 mb-1', isPatron && 'justify-end')}>
-          <span className="font-body text-body-sm font-semibold text-ink">{authorName}</span>
-          {!isPatron && (
-            <span className="font-body text-body-xs text-ink-muted">{authorRole}</span>
-          )}
-          <span className="font-mono text-mono-sm text-ink-muted">{formatTime(timestamp)}</span>
-        </div>
-
-        <div
-          className={cn(
-            'inline-block px-4 py-2.5 rounded-xl font-body text-[15px] leading-relaxed text-left',
-            isPatron
-              ? 'bg-ink text-paper rounded-tr-sm'
-              : 'bg-inset border border-line rounded-tl-sm text-ink'
-          )}
-        >
-          {renderContent(content)}
-        </div>
-      </div>
-    </motion.div>
+      <div className="mt-3">{children}</div>
+    </section>
   );
 }
 
@@ -337,9 +138,20 @@ export default function CollaborationRoom() {
   // Load the task + its comment thread + artifacts on mount. Depends on the one
   // action, never on a whole-store object: an effect that re-runs on the very state it
   // writes is a loop.
+  // `hydratedId` says the first read for this id has come back (either way), so a task
+  // that is merely still loading is not announced as missing.
+  const [hydratedId, setHydratedId] = useState<string | null>(null);
   useEffect(() => {
     if (!taskId) return;
-    hydrateTask(taskId);
+    let alive = true;
+    hydrateTask(taskId)
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setHydratedId(taskId);
+      });
+    return () => {
+      alive = false;
+    };
   }, [taskId, hydrateTask]);
 
   // Push, not poll (Constitution IV, FR-080a). The trace stream above carries one task's
@@ -367,7 +179,6 @@ export default function CollaborationRoom() {
   const statusValue: Task['status'] = task?.status ?? 'todo';
   // Which ordinary wait this task is in, if any (FR-008b).
   const waiting = task ? waitKind(task) : undefined;
-  const [isTraceActive, setIsTraceActive] = useState(true);
   // null = the reader has not chosen; the drawer then opens only when there is a trace.
   const [traceChoice, setTraceOpen] = useState<boolean | null>(null);
   const [showAddArtifactModal, setShowAddArtifactModal] = useState(false);
@@ -423,6 +234,7 @@ export default function CollaborationRoom() {
   // Acceptance criteria — scored at approval (Story 3); here we render the yardstick.
   const criteriaPassed = task?.checklist?.filter((c) => c.result === 'passed').length ?? 0;
   const criteriaTotal = task?.checklist?.length ?? 0;
+  const criteriaPercent = criteriaTotal ? Math.round((criteriaPassed / criteriaTotal) * 100) : 0;
   const criteriaEditable = ['draft', 'backlog', 'todo'].includes(task?.status ?? '');
 
   // Auto-scroll to the newest message/event — inside its own pane only. `scrollIntoView`
@@ -472,9 +284,9 @@ export default function CollaborationRoom() {
   const [criteriaDraft, setCriteriaDraft] = useState<string | null>(null);
   const [criteriaError, setCriteriaError] = useState<string | null>(null);
 
-  // ── Người chủ sửa thẳng đầu việc (FR-070, FR-070a) ─────────────────────────
-  // Không có ô này thì người chủ gõ nhầm một hạn chót là phải huỷ đầu việc rồi tạo lại,
-  // mất cả bình luận, thành phẩm và vết. Bản nháp là `null` khi không mở ô sửa.
+  // ── The patron edits the task in place (FR-070, FR-070a) ─────────────────────
+  // Without this, a mistyped due date meant cancelling the task and creating it again,
+  // losing its comments, artifacts and trace. The draft is `null` while the editor is closed.
   const [editDraft, setEditDraft] = useState<TaskEditDraft | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -486,7 +298,7 @@ export default function CollaborationRoom() {
       title: task.title,
       description: task.description ?? '',
       priority: (task.priority as Priority) ?? 'P2',
-      // Ô ngày của trình duyệt chỉ nhận "YYYY-MM-DD"; máy chủ gửi về cả giờ.
+      // The browser's date input only takes "YYYY-MM-DD"; the server sends the time too.
       dueDate: task.dueDate ? task.dueDate.slice(0, 10) : '',
     });
   };
@@ -496,8 +308,9 @@ export default function CollaborationRoom() {
     setEditError(null);
     setSaving(true);
     try {
-      // Chỉ gửi thứ thật sự đổi. Ô để trống là **xoá** cái đang có, nên nó gửi đi một giá
-      // trị rỗng chứ không phải im lặng bỏ qua — đó là cách gỡ một hạn chót đặt nhầm.
+      // Send only what actually changed. An emptied field **clears** the current value, so
+      // it goes out as an empty value rather than being silently skipped — that is how a
+      // wrongly set due date is removed.
       const patch: TaskEditPatch = {};
       if (editDraft.title !== task.title) patch.title = editDraft.title;
       if (editDraft.description !== (task.description ?? '')) {
@@ -533,13 +346,13 @@ export default function CollaborationRoom() {
     }
   };
 
-  // ── Công nhận đầu ra (FR-033, FR-035) ──────────────────────────────────────
+  // ── Output acceptance (FR-033, FR-035) ──────────────────────────────────────
   const [approvals, setApprovals] = useState<ApprovalDTO[]>([]);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [signing, setSigning] = useState(false);
 
-  // Tải danh sách chữ ký bằng chuỗi lời hứa, không dùng `await` thẳng trong thân hiệu
-  // ứng: đặt trạng thái đồng bộ ở đó kéo theo một vòng vẽ lại thừa mỗi lần đầu việc đổi.
+  // Load the signatures through a promise chain, not a bare `await` in the effect body:
+  // setting state synchronously there costs an extra render every time the task changes.
   const [approvalsKey, setApprovalsKey] = useState(0);
   const signedTaskId = task?.id;
   const signedTaskStatus = task?.status;
@@ -552,7 +365,8 @@ export default function CollaborationRoom() {
         if (alive) setApprovals(rows);
       })
       .catch(() => {
-        // Danh sách chữ ký chỉ để đọc; hỏng thì ô ký vẫn dùng được, không chặn cả trang.
+        // The signature list is read-only; if it fails the signing box still works, so it
+        // must not take the whole page down.
         if (alive) setApprovals([]);
       });
     return () => {
@@ -560,7 +374,7 @@ export default function CollaborationRoom() {
     };
   }, [signedTaskId, signedTaskStatus, approvalsKey]);
 
-  /** Vòng hiện tại = số lần bị trả lại + 1; chữ ký vòng cũ không tính sang vòng mới. */
+  /** Current round = times sent back + 1; a signature from an old round does not carry over. */
   const currentRound = approvals.filter((a) => a.result === 'reject').length + 1;
   const leaderSigned = approvals.some(
     (a) => a.round === currentRound && a.signer_kind === 'leader' && a.result === 'approve',
@@ -634,16 +448,21 @@ export default function CollaborationRoom() {
     updateTask(task.id, { status: 'in_progress', statusReason: answer.trim() });
   };
 
+  if (!task && hydratedId !== taskId) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center" role="status">
+        <p className="font-body text-body-md text-ink-muted">{t('common.loading')}</p>
+      </div>
+    );
+  }
+
   if (!task) {
     return (
-      <div className="flex items-center justify-center h-[60vh]">
+      <div className="flex h-[60vh] items-center justify-center">
         <div className="text-center">
-          <Activity className="w-12 h-12 text-ink-muted mx-auto mb-4" />
-          <h2 className="font-display text-display-md text-ink">{t('collaborationRoom.taskNotFound')}</h2>
-          <button
-            onClick={() => navigate(-1)}
-            className="mt-4 px-4 py-2 rounded-md bg-ink text-paper font-body text-body-md hover:bg-ink/85 transition-colors"
-          >
+          <Activity className="mx-auto mb-4 h-12 w-12 text-ink-muted" strokeWidth={1.5} />
+          <h2 className="font-display text-display-md text-ink-strong">{t('collaborationRoom.taskNotFound')}</h2>
+          <button onClick={() => navigate(-1)} className="btn btn-secondary mt-4">
             {t('collaborationRoom.goBack')}
           </button>
         </div>
@@ -652,124 +471,433 @@ export default function CollaborationRoom() {
   }
 
   const traceOpen = traceChoice ?? (task.trace?.length ?? 0) > 0;
+  const traceCount = task.trace?.length ?? 0;
+  const comments = task.comments ?? [];
+  const project = projects.find((p) => p.id === task.projectId);
+  const projectCode = project?.key || project?.name || task.identifier?.split('-')[0] || '';
+  const code = task.identifier || task.id.slice(0, 8);
+  const assignee = assignedAgents[0];
+  const agentName = (id: string) => {
+    const m = mariuses.find((x) => x.id === id);
+    return m ? m.displayName || m.name : undefined;
+  };
+
+  // Who is in this thread: every agent that spoke in it, the assignee, and the patron, who
+  // owns the task whether or not they have said anything yet.
+  const isPatronId = (id: string) => id === 'user-patron' || id === currentUser?.id;
+  const participantIds = Array.from(
+    new Set([
+      ...(task.assigneeId ? [task.assigneeId] : []),
+      ...comments.map((c) => c.authorId).filter((id) => !isPatronId(id) && !id.startsWith('system')),
+    ]),
+  );
+  const participantCount = participantIds.length + 1;
 
   return (
-    <div className="flex flex-col xl:h-[calc(100dvh-56px)] -mx-4 -my-6 sm:-mx-6 sm:-my-7 xl:-mx-9">
-      {/* ─── Collapsed Header ─── */}
-      <motion.div
-        initial={{ opacity: 0, y: -8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="flex-shrink-0 flex items-center justify-between gap-3 px-4 sm:px-6 xl:px-9 py-3 border-b border-line bg-vellum"
+    <div className="mx-auto w-full max-w-[1480px]">
+      <Link
+        to={wsHref(workspaceId, `/projects/${task.projectId}`)}
+        className="mb-4 inline-flex min-h-[44px] items-center gap-2 font-body text-[15px] text-ink hover:text-sapphire-strong transition-colors"
       >
-        <div className="flex items-center gap-3 min-w-0">
-          <button
-            onClick={() => navigate(wsHref(workspaceId, `/projects/${task.projectId}`))}
-            className="inline-flex items-center gap-1 min-h-[40px] px-3 rounded-md bg-paper border border-line-strong font-body text-body-sm font-medium text-ink hover:bg-inset transition-colors whitespace-nowrap"
-            aria-label={t('collaborationRoom.backToBoard')}
-          >
-            <ChevronLeft className="w-4 h-4" />
-            <span className="hidden sm:inline">{t('collaborationRoom.backToBoard')}</span>
-          </button>
-          <span className="font-mono text-mono-md text-terracotta whitespace-nowrap">{task.identifier}</span>
-          <span className="hidden sm:inline text-ink-muted">&middot;</span>
-          <span className="hidden sm:inline font-body text-body-sm text-ink-light truncate max-w-[240px]">
-            {projects.find((p) => p.id === task.projectId)?.name}
-          </span>
-        </div>
+        <ArrowLeft className="h-[18px] w-[18px]" />
+        {t('collaborationRoom.backToProjectBoard', { code: projectCode })}
+      </Link>
 
-        <div className="flex items-center gap-3">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-verdigris-bg font-body text-body-xs font-medium text-verdigris-ink whitespace-nowrap">
-            <span className="w-1.5 h-1.5 rounded-full bg-success" />
-            {t('collaborationRoom.live')}
-          </span>
-        </div>
-      </motion.div>
-
-      {/* ─── Three-Pane Layout ─── */}
-      <div className="flex flex-col xl:flex-row flex-1 min-h-0 px-4 sm:px-6 xl:px-9 py-5 gap-5">
-        {/* ─── Left Pane: Context (30%) ─── */}
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-          className="order-1 xl:order-2 xl:w-[360px] xl:shrink-0 flex flex-col min-h-0 bg-paper border border-line rounded-xl overflow-hidden"
+      {/* Summary first and the thread beside it on a wide screen; stacked below xl as
+          summary → thread → the rest of the working context, so a narrow reader learns
+          which task this is before reading the conversation about it. */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.16fr)_minmax(370px,0.84fr)] xl:grid-rows-[auto_1fr] xl:gap-5">
+        {/* ─── Task summary ─── */}
+        <motion.section
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          aria-label={task.title}
+          className="surface min-w-0 px-5 py-5 sm:px-6 sm:py-6 xl:col-start-2 xl:row-start-1"
         >
-          <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
-            {/* Task Header — cùng chỗ đọc và chỗ sửa (FR-070, FR-070a). */}
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="font-mono text-mono-md text-terracotta">{task.identifier}</span>
-                <span className={cn('inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full font-body text-body-xs font-medium', task.priority === 'P0' ? 'bg-terracotta/10 text-terracotta' : task.priority === 'P1' ? 'bg-gold/10 text-gold' : 'bg-ink-muted/10 text-ink-muted')}>
-                  <Star className="w-3 h-3" fill="currentColor" />
-                  {t(`tasks.priority.${task.priority}`)}
-                </span>
-              </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="task-code">{code}</span>
+            <div className="flex items-center gap-3">
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.08em]',
+                  PRIORITY_TONE[task.priority] ?? 'text-ink-muted'
+                )}
+              >
+                <Flag className="h-3.5 w-3.5" />
+                {t(`tasks.priority.${task.priority}`)}
+              </span>
+              {editDraft === null && (
+                <button onClick={openEditor} className="btn-text min-h-[32px] text-[12px]">
+                  <Pencil className="h-3.5 w-3.5" />
+                  {t('collaborationRoom.context.edit.open')}
+                </button>
+              )}
+            </div>
+          </div>
 
-              {editDraft !== null ? (
-                <div className="space-y-2">
+          {/* Reading and editing happen in the same place (FR-070, FR-070a). */}
+          {editDraft !== null ? (
+            <div className="mt-4 space-y-3">
+              <input
+                value={editDraft.title}
+                onChange={(e) => setEditDraft({ ...editDraft, title: e.target.value })}
+                placeholder={t('collaborationRoom.context.edit.titlePlaceholder')}
+                aria-label={t('collaborationRoom.context.edit.titlePlaceholder')}
+                className="field font-display text-[20px]"
+              />
+              <textarea
+                value={editDraft.description}
+                onChange={(e) => setEditDraft({ ...editDraft, description: e.target.value })}
+                rows={4}
+                placeholder={t('collaborationRoom.context.edit.descriptionPlaceholder')}
+                aria-label={t('collaborationRoom.context.edit.descriptionPlaceholder')}
+                className="field resize-y py-2.5"
+              />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="block min-w-0">
+                  <span className="mb-1.5 block font-body text-[12px] font-medium text-ink-light">
+                    {t('collaborationRoom.context.edit.priority')}
+                  </span>
+                  <Dropdown
+                    size="sm"
+                    value={editDraft.priority}
+                    onChange={(value) => setEditDraft({ ...editDraft, priority: value as Priority })}
+                    items={PRIORITY_OPTIONS.map((p) => ({
+                      value: p,
+                      label: t(`tasks.priority.${p}`),
+                    }))}
+                  />
+                </label>
+                <label className="block min-w-0">
+                  <span className="mb-1.5 block font-body text-[12px] font-medium text-ink-light">
+                    {t('collaborationRoom.context.edit.dueDate')}
+                  </span>
                   <input
-                    value={editDraft.title}
-                    onChange={(e) => setEditDraft({ ...editDraft, title: e.target.value })}
-                    placeholder={t('collaborationRoom.context.edit.titlePlaceholder')}
-                    className="w-full px-3 py-2 bg-inset border border-line rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors"
+                    type="date"
+                    value={editDraft.dueDate}
+                    onChange={(e) => setEditDraft({ ...editDraft, dueDate: e.target.value })}
+                    className="field"
                   />
-                  <textarea
-                    value={editDraft.description}
-                    onChange={(e) => setEditDraft({ ...editDraft, description: e.target.value })}
-                    rows={4}
-                    placeholder={t('collaborationRoom.context.edit.descriptionPlaceholder')}
-                    className="w-full px-3 py-2 bg-inset border border-line rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors resize-none"
+                </label>
+              </div>
+              {/* An empty due date removes it rather than skipping it — said plainly, since
+                  this is exactly the button people hesitate over when unsure what happens. */}
+              <p className="font-body text-[12px] leading-relaxed text-ink-muted">
+                {t('collaborationRoom.context.edit.hint')}
+              </p>
+              {editError && <p className="font-body text-[12px] text-danger" role="alert">{editError}</p>}
+              <div className="flex flex-wrap gap-2">
+                <button disabled={saving} onClick={() => void handleSaveEdit()} className="btn btn-primary btn-sm">
+                  {t('common.save')}
+                </button>
+                <button
+                  disabled={saving}
+                  onClick={() => { setEditDraft(null); setEditError(null); }}
+                  className="btn btn-secondary btn-sm"
+                >
+                  {t('common.cancel')}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <h1 className="mt-3.5 break-words font-display text-[28px] font-normal leading-[1.13] tracking-[-0.035em] text-ink-strong sm:text-[clamp(30px,2.5vw,39px)]">
+                {task.title}
+              </h1>
+              {task.description && (
+                <p className="mt-3 whitespace-pre-wrap break-words font-body text-[14px] leading-[1.75] text-ink-light">
+                  {task.description}
+                </p>
+              )}
+            </>
+          )}
+
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
+            <StatusChip status={task.status} label={t('tasks.status.' + task.status)} size="md" />
+            {task.dueDate && (
+              <span
+                className="inline-flex items-center gap-1.5 font-body text-[12px] text-ink-light"
+                title={t('collaborationRoom.context.edit.dueDate')}
+              >
+                <CalendarDays className="h-4 w-4" />
+                {new Date(task.dueDate).toLocaleDateString()}
+              </span>
+            )}
+          </div>
+
+          {/* The wait the status alone cannot say. *Todo* covers both "nobody has come for
+              it" and "it is ready and every machine is busy", and the second one is not a
+              fault — so it is stated quietly, with no clock (FR-008b, FR-008e). */}
+          {waiting && (
+            <p className="mt-3 flex items-center gap-1.5 font-body text-[12px] text-ink-muted">
+              {waiting === WAITING_FOR_A_MACHINE ? (
+                <Hourglass className="h-3.5 w-3.5 shrink-0" />
+              ) : (
+                <CircleDashed className="h-3.5 w-3.5 shrink-0" />
+              )}
+              {waitText(waiting, t)}
+            </p>
+          )}
+
+          {/* Assignee (single owner per task) */}
+          <div className="mt-4">
+            {assignee ? (
+              <button
+                onClick={() => navigate(wsHref(workspaceId, `/agents/${assignee.id}`))}
+                className="group flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3 py-3 text-left transition-colors hover:border-sapphire hover:bg-surface-hover"
+              >
+                <AgentAvatar name={assignee.displayName || assignee.name} status={assignee.status} size="sm" />
+                <span className="grid min-w-0 gap-0.5">
+                  <small className="font-mono text-[8px] uppercase tracking-[0.1em] text-ink-muted">
+                    {t('collaborationRoom.context.assigned')}
+                  </small>
+                  <strong className="truncate font-body text-[13px] font-semibold text-ink-strong group-hover:text-sapphire-strong">
+                    {assignee.displayName || assignee.name}
+                  </strong>
+                </span>
+                <span className="ml-auto truncate text-right font-body text-[11px] text-ink-muted">{assignee.role}</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-3 rounded-md border border-dashed border-line-strong px-3 py-3">
+                <span className="font-mono text-[8px] uppercase tracking-[0.1em] text-ink-muted">
+                  {t('collaborationRoom.context.assigned')}
+                </span>
+                <span className="font-body text-[13px] text-ink-muted">{t('board.taskAssigneeNone')}</span>
+              </div>
+            )}
+          </div>
+        </motion.section>
+
+        {/* ─── Thread ─── */}
+        <motion.section
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.05 }}
+          aria-label={t('collaborationRoom.thread.eyebrow', { code })}
+          className={cn(
+            'flex min-w-0 flex-col overflow-hidden rounded-lg border border-line-strong bg-surface',
+            'h-[76dvh] min-h-[500px] md:h-[min(720px,82dvh)] md:min-h-[560px]',
+            'xl:sticky xl:top-[90px] xl:col-start-1 xl:row-span-2 xl:row-start-1 xl:h-[calc(100dvh-184px)] xl:min-h-[600px] xl:self-start'
+          )}
+        >
+          <header className="flex shrink-0 items-start justify-between gap-4 px-4 pb-4 pt-5 sm:px-6 sm:pb-5 sm:pt-6">
+            <div className="min-w-0">
+              <span className="eyebrow">{t('collaborationRoom.thread.eyebrow', { code })}</span>
+              <h2 className="mt-1.5 font-display text-[26px] font-normal leading-[1.12] tracking-[-0.025em] text-ink-strong sm:text-[clamp(28px,2.4vw,37px)]">
+                {t('collaborationRoom.thread.title')}
+              </h2>
+              <p className="mt-1.5 hidden font-body text-[12px] text-ink-light sm:block">
+                {t('collaborationRoom.thread.subtitle')}
+              </p>
+            </div>
+            <div className="grid shrink-0 justify-items-end gap-2">
+              <div className="flex pl-2">
+                {participantIds.slice(0, 3).map((id) => (
+                  <AgentAvatar
+                    key={id}
+                    name={agentName(id) || '?'}
+                    size="sm"
+                    className="-ml-2 ring-2 ring-surface"
                   />
-                  <div className="flex gap-2">
-                    <label className="flex-1">
-                      <span className="block font-body text-body-xs text-ink-muted mb-1">
-                        {t('collaborationRoom.context.edit.priority')}
-                      </span>
-                      <Dropdown
-                        size="xs"
-                        value={editDraft.priority}
-                        onChange={(value) =>
-                          setEditDraft({ ...editDraft, priority: value as Priority })
-                        }
-                        items={PRIORITY_OPTIONS.map((p) => ({
-                          value: p,
-                          label: t(`tasks.priority.${p}`),
-                        }))}
-                      />
-                    </label>
-                    <label className="flex-1">
-                      <span className="block font-body text-body-xs text-ink-muted mb-1">
-                        {t('collaborationRoom.context.edit.dueDate')}
-                      </span>
-                      <input
-                        type="date"
-                        value={editDraft.dueDate}
-                        onChange={(e) => setEditDraft({ ...editDraft, dueDate: e.target.value })}
-                        className="w-full px-2 py-1.5 bg-inset border border-line rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none"
-                      />
-                    </label>
-                  </div>
-                  {/* Ô hạn chót để trống là xoá hẳn, không phải bỏ qua — nói thẳng ra, vì
-                      đây đúng là chỗ người ta ngại bấm nếu không chắc chuyện gì xảy ra. */}
-                  <p className="font-body text-body-xs text-ink-muted">
-                    {t('collaborationRoom.context.edit.hint')}
+                ))}
+                <PatronMark className="-ml-2 ring-2 ring-surface" />
+              </div>
+              <span className="inline-flex items-center gap-1 whitespace-nowrap font-body text-[10px] text-ink-muted">
+                <Users className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{t('collaborationRoom.participants', { count: participantCount })}</span>
+                <span className="sm:hidden">{participantCount}</span>
+              </span>
+            </div>
+          </header>
+
+          <div className="mx-4 flex shrink-0 items-center gap-3 border-y border-line py-2.5 font-mono text-[9px] text-ink-muted sm:mx-6">
+            <span className="inline-flex items-center gap-1.5 uppercase tracking-[0.09em]">
+              <i className="h-[5px] w-[5px] rounded-full bg-success shadow-[0_0_0_3px_oklch(var(--success)/0.12)]" />
+              {t('collaborationRoom.thread.open')}
+            </span>
+            <strong className="font-medium text-sapphire-strong">{code}</strong>
+            <small className="ml-auto text-[9px]">{t('collaborationRoom.thread.comments', { count: comments.length })}</small>
+          </div>
+
+          {/* Approval Bar (when in_review) */}
+          <AnimatePresence>
+            {statusValue === 'in_review' && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="shrink-0 overflow-hidden"
+              >
+                <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-gold/35 bg-gold-soft px-4 py-3 sm:mx-6">
+                  <p className="font-body text-[13px] font-medium text-gold">
+                    {t('collaborationRoom.approval.awaitingReview')}
                   </p>
-                  {editError && (
-                    <p className="font-body text-body-xs text-error">{editError}</p>
-                  )}
-                  <div className="flex gap-2">
-                    <button
-                      disabled={saving}
-                      onClick={() => void handleSaveEdit()}
-                      className="px-3 py-1.5 rounded-md bg-gold text-ink font-body text-body-xs font-medium hover:bg-gold-light transition-colors disabled:opacity-50"
-                    >
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={handleApprove} className="btn btn-primary btn-sm">
+                      {t('collaborationRoom.approval.approve')}
+                    </button>
+                    <button onClick={handleRequestChanges} className="btn btn-secondary btn-sm">
+                      {t('collaborationRoom.approval.requestChanges')}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Messages */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-1 sm:px-6">
+            {comments.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center px-3 py-10 text-center">
+                <MessageSquare className="mb-3 h-8 w-8 text-ink-muted" strokeWidth={1.5} />
+                <strong className="font-body text-[14px] font-semibold text-ink">{t('collaborationRoom.noComments')}</strong>
+                <p className="mt-1.5 font-body text-[12px] text-ink-light">{t('collaborationRoom.startConversation')}</p>
+              </div>
+            ) : (
+              comments.map((comment) => {
+                const author = mariuses.find((m) => m.id === comment.authorId);
+                return (
+                  <TaskComment
+                    key={comment.id}
+                    // An agent's comment arrives without a name of its own; falling straight
+                    // back to "Patron" put the patron's name on every agent's words.
+                    authorName={
+                      comment.authorName ??
+                      (author ? author.displayName || author.name : t('collaborationRoom.patron'))
+                    }
+                    authorId={comment.authorId}
+                    authorRole={author?.role || t('collaborationRoom.patron')}
+                    content={comment.content}
+                    timestamp={comment.timestamp}
+                  />
+                );
+              })
+            )}
+            <div ref={threadEndRef} />
+          </div>
+
+          {/* Comment Composer */}
+          <form
+            className="shrink-0 border-t border-line-strong bg-surface-raised px-3 pb-4 pt-3.5 sm:px-6 sm:pb-5 sm:pt-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSendComment();
+            }}
+          >
+            <label htmlFor="task-comment" className="mb-2 block font-body text-[12px] font-medium text-ink-light">
+              {t('collaborationRoom.composer.label', { code })}
+            </label>
+            <textarea
+              id="task-comment"
+              value={commentInput}
+              onChange={(e) => setCommentInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendComment();
+                }
+              }}
+              placeholder={
+                assignee
+                  ? t('collaborationRoom.composer.placeholderAgent', { name: assignee.displayName || assignee.name })
+                  : t('collaborationRoom.composer.placeholder')
+              }
+              rows={2}
+              className="field min-h-[64px] resize-none py-2.5 sm:min-h-[82px]"
+            />
+            <div className="mt-2.5 flex items-center justify-between gap-3">
+              <small className="hidden font-body text-[11px] leading-snug text-ink-muted sm:block">
+                {t('collaborationRoom.composer.hint')}
+              </small>
+              <button
+                type="submit"
+                disabled={!commentInput.trim()}
+                aria-label={t('collaborationRoom.composer.send')}
+                className="btn btn-primary btn-sm ml-auto min-h-[40px]"
+              >
+                <Send className="h-4 w-4" />
+                <span className="hidden sm:inline">{t('collaborationRoom.composer.send')}</span>
+              </button>
+            </div>
+          </form>
+        </motion.section>
+
+        {/* ─── Working context ─── */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.1 }}
+          className="flex min-w-0 flex-col gap-4 self-start xl:col-start-2 xl:row-start-2"
+        >
+          <div className="overflow-hidden rounded-lg border border-line bg-surface">
+            {task.definitionOfDone && (
+              <DocSection label={t('collaborationRoom.context.definitionOfDone')}>
+                <p className="whitespace-pre-wrap break-words font-body text-[13px] leading-[1.75] text-ink-light">
+                  {task.definitionOfDone}
+                </p>
+              </DocSection>
+            )}
+
+            {/* Why the task sits where it does — a block, a cancellation, a send-back. */}
+            {task.statusReason && (
+              <section
+                className={cn(
+                  'flex gap-3 border-b border-line px-5 py-4 sm:px-6',
+                  task.status === 'blocked' ? 'bg-danger-soft text-danger' : 'text-ink-light'
+                )}
+              >
+                {task.status === 'blocked' ? (
+                  <Lock className="mt-0.5 h-[18px] w-[18px] shrink-0" />
+                ) : (
+                  <CornerDownRight className="mt-0.5 h-[18px] w-[18px] shrink-0" />
+                )}
+                <div className="min-w-0">
+                  <strong className="block font-body text-[13px] font-semibold">
+                    {t('collaborationRoom.context.statusReason')}
+                  </strong>
+                  <p className="mt-1 whitespace-pre-wrap break-words font-body text-[13px] leading-relaxed text-ink-light">
+                    {task.statusReason}
+                  </p>
+                </div>
+              </section>
+            )}
+
+            {/* Acceptance criteria (spec 001 FR-019) — the yardstick, replacing the old
+                free-text "definition of done". Written before the worker starts; after
+                that the server refuses an edit, because moving the bar mid-work is a
+                scope change the patron has to decide on. */}
+            <DocSection
+              label={t('collaborationRoom.context.criteria')}
+              aside={
+                criteriaTotal > 0 && criteriaDraft === null ? (
+                  <strong className="font-mono text-[12px] font-medium text-ink-strong">
+                    {criteriaPassed}/{criteriaTotal}
+                  </strong>
+                ) : undefined
+              }
+            >
+              {criteriaDraft !== null ? (
+                <div className="space-y-2.5">
+                  <textarea
+                    value={criteriaDraft}
+                    onChange={(e) => setCriteriaDraft(e.target.value)}
+                    rows={5}
+                    placeholder={t('collaborationRoom.context.criteriaPlaceholder')}
+                    aria-label={t('collaborationRoom.context.criteria')}
+                    className="field resize-y py-2.5"
+                  />
+                  <p className="font-body text-[12px] leading-relaxed text-ink-muted">
+                    {t('collaborationRoom.context.criteriaHint')}
+                  </p>
+                  {criteriaError && <p className="font-body text-[12px] text-danger" role="alert">{criteriaError}</p>}
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={handleSaveCriteria} className="btn btn-primary btn-sm">
                       {t('common.save')}
                     </button>
                     <button
-                      disabled={saving}
-                      onClick={() => { setEditDraft(null); setEditError(null); }}
-                      className="px-3 py-1.5 rounded-md border border-line text-ink-light font-body text-body-xs hover:text-ink transition-colors disabled:opacity-50"
+                      onClick={() => { setCriteriaDraft(null); setCriteriaError(null); }}
+                      className="btn btn-secondary btn-sm"
                     >
                       {t('common.cancel')}
                     </button>
@@ -777,52 +905,262 @@ export default function CollaborationRoom() {
                 </div>
               ) : (
                 <>
-                  <h1 className="font-display text-display-sm text-ink leading-tight">
-                    {task.title}
-                  </h1>
-                  {task.description && (
-                    <p className="mt-1.5 font-body text-body-sm text-ink-light whitespace-pre-wrap">
-                      {task.description}
+                  {criteriaTotal > 0 && (
+                    <div className="mb-2 grid grid-cols-[1fr_auto] items-center gap-4">
+                      <div className="h-1 overflow-hidden rounded-full bg-line">
+                        <motion.div
+                          className="h-full rounded-full bg-sapphire"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${criteriaPercent}%` }}
+                          transition={{ duration: 0.3 }}
+                        />
+                      </div>
+                      <strong className="font-body text-[13px] font-semibold text-ink-strong">{criteriaPercent}%</strong>
+                    </div>
+                  )}
+                  <ul>
+                    {task.checklist?.map((item) => (
+                      <li
+                        key={item.id}
+                        className={cn(
+                          'flex gap-3 border-t border-line py-3 first:border-t-0',
+                          item.result === 'passed'
+                            ? 'text-success'
+                            : item.result === 'failed'
+                              ? 'text-danger'
+                              : 'text-ink-muted'
+                        )}
+                      >
+                        {item.result === 'passed' ? (
+                          <ShieldCheck className="mt-0.5 h-[18px] w-[18px] shrink-0" />
+                        ) : item.result === 'failed' ? (
+                          <XCircle className="mt-0.5 h-[18px] w-[18px] shrink-0" />
+                        ) : (
+                          <ListChecks className="mt-0.5 h-[18px] w-[18px] shrink-0" />
+                        )}
+                        <span className="min-w-0 break-words font-body text-[13px] font-medium leading-relaxed text-ink">
+                          {item.text}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {criteriaTotal === 0 && (
+                    <p className="font-body text-[13px] text-ink-muted">{t('collaborationRoom.context.criteriaEmpty')}</p>
+                  )}
+                  {criteriaEditable ? (
+                    <button
+                      onClick={() => setCriteriaDraft((task.checklist || []).map((c) => c.text).join('\n'))}
+                      className="btn-text mt-1 min-h-[36px] text-[12px]"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      {criteriaTotal === 0
+                        ? t('collaborationRoom.context.criteriaSet')
+                        : t('collaborationRoom.context.criteriaEdit')}
+                    </button>
+                  ) : (
+                    <p className="mt-2 font-body text-[12px] leading-relaxed text-ink-muted">
+                      {t('collaborationRoom.context.criteriaLocked')}
                     </p>
                   )}
-                  {task.dueDate && (
-                    <p className="mt-1.5 font-body text-body-xs text-ink-muted">
-                      {t('collaborationRoom.context.edit.dueDate')}:{' '}
-                      {new Date(task.dueDate).toLocaleDateString()}
-                    </p>
-                  )}
-                  <button
-                    onClick={openEditor}
-                    className="mt-2 font-body text-body-xs text-terracotta hover:underline"
-                  >
-                    {t('collaborationRoom.context.edit.open')}
-                  </button>
                 </>
               )}
-            </div>
+            </DocSection>
 
-            {/* Status */}
-            <div>
-              <label className="block font-body text-body-sm font-medium text-ink-light mb-1.5">
-                {t('collaborationRoom.statusLabel')}
-              </label>
-              {/* The wait the status alone cannot say. *Todo* covers both "nobody has come
-                  for it" and "it is ready and every machine is busy", and the second one is
-                  not a fault — so it is stated quietly, with no clock (FR-008b, FR-008e). */}
-              {waiting && (
-                <div className="flex items-center gap-1.5 mb-1.5 text-ink-muted">
-                  {waiting === WAITING_FOR_A_MACHINE ? (
-                    <Hourglass className="w-3.5 h-3.5 flex-shrink-0" />
-                  ) : (
-                    <CircleDashed className="w-3.5 h-3.5 flex-shrink-0" />
-                  )}
-                  <span className="font-body text-body-xs">{waitText(waiting, t)}</span>
+            {/* Output acceptance (spec 001 FR-033) — right under the criteria and the
+                artifacts, since those are the two things a signer must look at first. Shown
+                only while the task is *in review*: earlier there is nothing to score, later
+                the work is closed. */}
+            {statusValue === 'in_review' && (
+              <DocSection label={t('collaborationRoom.acceptance.title')} className="bg-gold-soft/50">
+                <p className="font-body text-[13px] leading-relaxed text-ink">
+                  {leaderSigned
+                    ? t('collaborationRoom.acceptance.yourTurn')
+                    : t('collaborationRoom.acceptance.waitingLeader')}
+                </p>
+                {approvals.length > 0 && (
+                  <ul className="mt-3 space-y-1.5">
+                    {approvals.map((a) => (
+                      <li key={a.id} className="flex items-start gap-2 font-body text-[12px] text-ink-light">
+                        {a.result === 'approve' ? (
+                          <ShieldCheck className="mt-px h-3.5 w-3.5 shrink-0 text-success" />
+                        ) : (
+                          <XCircle className="mt-px h-3.5 w-3.5 shrink-0 text-danger" />
+                        )}
+                        <span className="min-w-0 break-words">
+                          {t(`collaborationRoom.acceptance.signer.${a.signer_kind}`)} ·{' '}
+                          {t(`collaborationRoom.acceptance.result.${a.result}`)}
+                          {a.is_auto && ` · ${t('collaborationRoom.acceptance.auto')}`}
+                          {a.reason && ` — ${a.reason}`}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {approvalError && <p className="mt-2 font-body text-[12px] text-danger" role="alert">{approvalError}</p>}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    disabled={!leaderSigned || signing}
+                    onClick={() => void handleSign(true)}
+                    className="btn btn-primary btn-sm"
+                  >
+                    {t('collaborationRoom.acceptance.accept')}
+                  </button>
+                  <button
+                    disabled={!leaderSigned || signing}
+                    onClick={() => void handleSign(false)}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    {t('collaborationRoom.acceptance.sendBack')}
+                  </button>
                 </div>
-              )}
+              </DocSection>
+            )}
+
+            {/* Artifacts + the done gate they open */}
+            <DocSection
+              label={t('collaborationRoom.context.artifacts')}
+              aside={<strong className="font-mono text-[12px] font-medium text-ink-strong">{task.artifacts?.length ?? 0}</strong>}
+            >
+              <div className="space-y-2">
+                {/* Two kinds, two things to do with them. A link names something somewhere
+                    else and opens where it points; a file's bytes live in the shared store
+                    behind a door that needs this person's token, so it is fetched and saved
+                    rather than linked to — an `<a href>` carries no header, which is why the
+                    link on this row used to point at a store path that resolves to nothing. */}
+                {(task.artifacts ?? []).map((artifact) =>
+                  artifact.type === 'link' ? (
+                    <a
+                      key={artifact.id}
+                      href={artifact.url || '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group flex min-h-[44px] items-center gap-3 rounded-md border border-line bg-field px-3 py-2 transition-colors hover:border-sapphire"
+                    >
+                      <ExternalLink className="h-4 w-4 shrink-0 text-ink-muted group-hover:text-sapphire-strong" />
+                      <span className="truncate font-body text-[13px] text-ink group-hover:text-sapphire-strong">
+                        {artifact.name}
+                      </span>
+                    </a>
+                  ) : (
+                    <button
+                      key={artifact.id}
+                      type="button"
+                      onClick={() => void saveArtifact(artifact)}
+                      disabled={fetchingArtifact === artifact.id}
+                      className="group flex min-h-[44px] w-full items-center gap-3 rounded-md border border-line bg-field px-3 py-2 text-left transition-colors hover:border-sapphire disabled:opacity-60"
+                    >
+                      <Paperclip className="h-4 w-4 shrink-0 text-ink-muted group-hover:text-sapphire-strong" />
+                      <span className="truncate font-body text-[13px] text-ink group-hover:text-sapphire-strong">
+                        {artifact.name}
+                      </span>
+                    </button>
+                  )
+                )}
+                {artifactError && (
+                  <p className="font-body text-[12px] text-danger" role="alert">
+                    {artifactError}
+                  </p>
+                )}
+                <button
+                  onClick={() => setShowAddArtifactModal(true)}
+                  className="btn btn-secondary btn-sm border-dashed"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {t('collaborationRoom.context.addArtifact')}
+                </button>
+              </div>
+
+              {/* DONE Gate */}
+              <div
+                className={cn(
+                  'mt-4 flex items-start gap-3 rounded-md border px-4 py-3.5',
+                  hasArtifacts
+                    ? 'border-success/35 bg-success-soft text-success'
+                    : 'border-danger/35 bg-danger-soft text-danger'
+                )}
+              >
+                {hasArtifacts ? (
+                  <Unlock className="mt-0.5 h-[18px] w-[18px] shrink-0" />
+                ) : (
+                  <Lock className="mt-0.5 h-[18px] w-[18px] shrink-0" />
+                )}
+                <div className="min-w-0">
+                  <p className="font-body text-[13px] font-semibold">
+                    {hasArtifacts
+                      ? t('collaborationRoom.context.doneGateUnblocked')
+                      : t('collaborationRoom.context.doneGateBlocked')}
+                  </p>
+                  {!hasArtifacts && (
+                    <p className="mt-1 font-body text-[12px] text-ink-light">
+                      {t('collaborationRoom.context.statusRequiredArtifact')}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </DocSection>
+
+            {/* Dependencies (blocked_by, #91) */}
+            <DocSection label={t('collaborationRoom.context.dependencies')}>
+              <div className="space-y-2">
+                {dependencyTasks.map((dep) => (
+                  <div
+                    key={dep.id}
+                    className="group flex min-h-[44px] items-center gap-2 rounded-md border border-line bg-field px-3 py-1.5"
+                  >
+                    <Link
+                      to={wsHref(workspaceId, `/tasks/${dep.id}`)}
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    >
+                      {dep.status === 'done' ? (
+                        <Unlock className="h-3.5 w-3.5 shrink-0 text-success" />
+                      ) : (
+                        <Lock className="h-3.5 w-3.5 shrink-0 text-danger" />
+                      )}
+                      <span className="task-code shrink-0">{dep.identifier}</span>
+                      <span className="truncate font-body text-[12px] text-ink-light group-hover:text-ink-strong">
+                        {dep.title}
+                      </span>
+                    </Link>
+                    <button
+                      onClick={() => handleRemoveDependency(dep.id)}
+                      title={t('collaborationRoom.context.removeDependency')}
+                      aria-label={t('collaborationRoom.context.removeDependency')}
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-muted transition-all hover:bg-danger-soft hover:text-danger focus:opacity-100 xl:opacity-0 xl:group-hover:opacity-100"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {dependencyTasks.length === 0 && (
+                  <p className="font-body text-[12px] text-ink-muted">{t('collaborationRoom.context.noDependencies')}</p>
+                )}
+                {candidateBlockers.length > 0 && (
+                  <Dropdown
+                    size="sm"
+                    className="border-dashed"
+                    value={depPicker}
+                    onChange={(value) => {
+                      setDepPicker(value);
+                      if (value) handleAddDependency(value);
+                    }}
+                    placeholder={t('collaborationRoom.context.addDependency')}
+                    items={candidateBlockers.map((c) => ({
+                      value: c.id,
+                      label: c.identifier ? `${c.identifier} — ${c.title}` : c.title,
+                    }))}
+                  />
+                )}
+                {depError && <p className="font-body text-[12px] text-danger" role="alert">{depError}</p>}
+              </div>
+            </DocSection>
+
+            {/* Status update */}
+            <DocSection label={t('collaborationRoom.statusLabel')} className="bg-canvas">
               <Dropdown
                 size="sm"
                 value={statusValue}
                 onChange={handleStatusChange}
+                ariaLabel={t('collaborationRoom.statusLabel')}
                 items={STATUS_OPTIONS.map((s) => {
                   const why =
                     s === task.status
@@ -840,633 +1178,111 @@ export default function CollaborationRoom() {
                   };
                 })}
               />
-            </div>
-
-            {/* Assignee (single owner per task) */}
-            <div>
-              <label className="block font-body text-body-sm font-medium text-ink-light mb-2">
-                {t('collaborationRoom.context.assigned')}
-              </label>
-              <div className="space-y-2">
-                {assignedAgents.length === 0 && (
-                  <span className="font-body text-body-sm text-ink-muted">{t('board.taskAssigneeNone')}</span>
-                )}
-                {assignedAgents.map((p) => (
-                  <div
-                    key={p.id}
-                    className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-md bg-inset border border-line"
-                  >
-                    <div className="relative">
-                      {p.avatar ? (
-                        <img
-                          src={p.avatar}
-                          alt={p.displayName || p.name}
-                          className="w-6 h-6 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-6 h-6 rounded-full bg-line flex items-center justify-center font-body text-body-xs text-ink-muted">
-                          {(p.displayName || p.name).charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-vellum"
-                        style={{ backgroundColor: p.status === 'online' || p.status === 'working' ? '#3E8F5F' : '#736450' }}
-                      />
-                    </div>
-                    <span className="font-body text-body-sm text-ink">{p.displayName || p.name}</span>
-                    <span className="font-body text-body-xs text-ink-muted ml-auto">{p.role}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Acceptance criteria (spec 001 FR-019) — the yardstick, replacing the old
-                free-text "definition of done". Written before the worker starts; after
-                that the server refuses an edit, because moving the bar mid-work is a
-                scope change the patron has to decide on. */}
-            <div>
-              <label className="block font-body text-body-sm font-medium text-ink-light mb-2">
-                {t('collaborationRoom.context.criteria')}
-              </label>
-
-              {criteriaDraft !== null ? (
-                <div className="space-y-2">
-                  <textarea
-                    value={criteriaDraft}
-                    onChange={(e) => setCriteriaDraft(e.target.value)}
-                    rows={5}
-                    placeholder={t('collaborationRoom.context.criteriaPlaceholder')}
-                    className="w-full px-3 py-2 bg-inset border border-line rounded-sm font-body text-body-sm text-ink focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors resize-none"
-                  />
-                  <p className="font-body text-body-xs text-ink-muted">
-                    {t('collaborationRoom.context.criteriaHint')}
-                  </p>
-                  {criteriaError && (
-                    <p className="font-body text-body-xs text-error">{criteriaError}</p>
-                  )}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleSaveCriteria}
-                      className="px-3 py-1.5 rounded-md bg-gold text-ink font-body text-body-xs font-medium hover:bg-gold-light transition-colors"
-                    >
-                      {t('common.save')}
-                    </button>
-                    <button
-                      onClick={() => { setCriteriaDraft(null); setCriteriaError(null); }}
-                      className="px-3 py-1.5 rounded-md border border-line text-ink-light font-body text-body-xs hover:text-ink transition-colors"
-                    >
-                      {t('common.cancel')}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {criteriaTotal > 0 && (
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="flex-1 h-1.5 bg-line rounded-full overflow-hidden">
-                        <motion.div
-                          className="h-full bg-success rounded-full"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${(criteriaPassed / criteriaTotal) * 100}%` }}
-                          transition={{ duration: 0.3 }}
-                        />
-                      </div>
-                      <span className="font-mono text-mono-sm text-ink-light">
-                        {criteriaPassed}/{criteriaTotal}
-                      </span>
-                    </div>
-                  )}
-                  <div className="space-y-1">
-                    {task.checklist?.map((item) => (
-                      <div key={item.id} className="flex items-start gap-2">
-                        {item.result === 'passed' ? (
-                          <CheckCircle2 className="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
-                        ) : item.result === 'failed' ? (
-                          <XCircle className="w-4 h-4 text-error flex-shrink-0 mt-0.5" />
-                        ) : (
-                          <Circle className="w-4 h-4 text-ink-muted flex-shrink-0 mt-0.5" />
-                        )}
-                        <span className="font-body text-body-sm text-ink">{item.text}</span>
-                      </div>
-                    ))}
-                    {criteriaTotal === 0 && (
-                      <p className="font-body text-body-sm text-ink-muted">
-                        {t('collaborationRoom.context.criteriaEmpty')}
-                      </p>
-                    )}
-                  </div>
-                  {criteriaEditable ? (
-                    <button
-                      onClick={() => setCriteriaDraft((task.checklist || []).map((c) => c.text).join('\n'))}
-                      className="mt-2 font-body text-body-xs text-terracotta hover:underline"
-                    >
-                      {criteriaTotal === 0
-                        ? t('collaborationRoom.context.criteriaSet')
-                        : t('collaborationRoom.context.criteriaEdit')}
-                    </button>
-                  ) : (
-                    <p className="mt-2 font-body text-body-xs text-ink-muted">
-                      {t('collaborationRoom.context.criteriaLocked')}
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Công nhận đầu ra (spec 001 FR-033) — đặt ngay dưới bộ tiêu chí và thành
-                phẩm, vì đó chính là hai thứ người ký phải nhìn trước khi ký. Ô này chỉ
-                hiện khi đầu việc đang *chờ rà soát*: ký sớm hơn thì chưa có gì để chấm,
-                ký muộn hơn thì việc đã đóng. */}
-            {statusValue === 'in_review' && (
-              <div>
-                <label className="block font-body text-body-sm font-medium text-ink-light mb-2">
-                  {t('collaborationRoom.acceptance.title')}
-                </label>
-                <p className="font-body text-body-xs text-ink-muted mb-2">
-                  {leaderSigned
-                    ? t('collaborationRoom.acceptance.yourTurn')
-                    : t('collaborationRoom.acceptance.waitingLeader')}
-                </p>
-                {approvals.length > 0 && (
-                  <ul className="space-y-1 mb-2">
-                    {approvals.map((a) => (
-                      <li key={a.id} className="font-body text-body-xs text-ink-light">
-                        {t(`collaborationRoom.acceptance.signer.${a.signer_kind}`)} ·{' '}
-                        {t(`collaborationRoom.acceptance.result.${a.result}`)}
-                        {a.is_auto && ` · ${t('collaborationRoom.acceptance.auto')}`}
-                        {a.reason && ` — ${a.reason}`}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {approvalError && (
-                  <p className="font-body text-body-xs text-error mb-2">{approvalError}</p>
-                )}
-                <div className="flex gap-2">
-                  <button
-                    disabled={!leaderSigned || signing}
-                    onClick={() => void handleSign(true)}
-                    className="px-3 py-1.5 rounded-md bg-gold text-white font-body text-body-xs disabled:opacity-50"
-                  >
-                    {t('collaborationRoom.acceptance.accept')}
-                  </button>
-                  <button
-                    disabled={!leaderSigned || signing}
-                    onClick={() => void handleSign(false)}
-                    className="px-3 py-1.5 rounded-md bg-line text-ink font-body text-body-xs disabled:opacity-50"
-                  >
-                    {t('collaborationRoom.acceptance.sendBack')}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Dependencies (blocked_by, #91) */}
-            <div>
-              <label className="block font-body text-body-sm font-medium text-ink-light mb-2">
-                {t('collaborationRoom.context.dependencies')}
-              </label>
-              <div className="space-y-1.5">
-                {dependencyTasks.map((dep) => (
-                  <div
-                    key={dep.id}
-                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-inset border border-line group"
-                  >
-                    <button
-                      onClick={() => navigate(wsHref(workspaceId, `/tasks/${dep.id}`))}
-                      className="flex items-center gap-2 flex-1 min-w-0 text-left hover:text-terracotta transition-colors"
-                    >
-                      {dep.status === 'done' ? (
-                        <Unlock className="w-3.5 h-3.5 text-success flex-shrink-0" />
-                      ) : (
-                        <Lock className="w-3.5 h-3.5 text-error flex-shrink-0" />
-                      )}
-                      <span className="font-mono text-mono-sm text-terracotta">{dep.identifier}</span>
-                      <span className="font-body text-body-xs text-ink-light truncate">{dep.title}</span>
-                    </button>
-                    <button
-                      onClick={() => handleRemoveDependency(dep.id)}
-                      title={t('collaborationRoom.context.removeDependency')}
-                      className="opacity-0 group-hover:opacity-100 text-ink-muted hover:text-error transition-all flex-shrink-0"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-                {dependencyTasks.length === 0 && (
-                  <p className="font-body text-body-xs text-ink-muted">
-                    {t('collaborationRoom.context.noDependencies')}
-                  </p>
-                )}
-                {candidateBlockers.length > 0 && (
-                  <Dropdown
-                    size="xs"
-                    className="border-dashed"
-                    value={depPicker}
-                    onChange={(value) => {
-                      setDepPicker(value);
-                      if (value) handleAddDependency(value);
-                    }}
-                    placeholder={t('collaborationRoom.context.addDependency')}
-                    items={candidateBlockers.map((c) => ({
-                      value: c.id,
-                      label: c.identifier ? `${c.identifier} — ${c.title}` : c.title,
-                    }))}
-                  />
-                )}
-                {depError && (
-                  <p className="font-body text-body-xs text-error">{depError}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Artifacts */}
-            <div>
-              <label className="block font-body text-body-sm font-medium text-ink-light mb-2">
-                {t('collaborationRoom.context.artifacts')}
-              </label>
-              <div className="space-y-1.5">
-                {/* Two kinds, two things to do with them. A link names something somewhere
-                    else and opens where it points; a file's bytes live in the shared store
-                    behind a door that needs this person's token, so it is fetched and saved
-                    rather than linked to — an `<a href>` carries no header, which is why the
-                    link on this row used to point at a store path that resolves to nothing. */}
-                {(task.artifacts ?? []).map((artifact) =>
-                  artifact.type === 'link' ? (
-                    <a
-                      key={artifact.id}
-                      href={artifact.url || '#'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-inset border border-line hover:border-terracotta hover:text-terracotta transition-colors group"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5 text-ink-muted group-hover:text-terracotta" />
-                      <span className="font-body text-body-sm text-ink group-hover:text-terracotta truncate">
-                        {artifact.name}
-                      </span>
-                    </a>
-                  ) : (
-                    <button
-                      key={artifact.id}
-                      type="button"
-                      onClick={() => void saveArtifact(artifact)}
-                      disabled={fetchingArtifact === artifact.id}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-inset border border-line hover:border-terracotta hover:text-terracotta transition-colors group disabled:opacity-60"
-                    >
-                      <Paperclip className="w-3.5 h-3.5 text-ink-muted group-hover:text-terracotta" />
-                      <span className="font-body text-body-sm text-ink group-hover:text-terracotta truncate">
-                        {artifact.name}
-                      </span>
-                    </button>
-                  )
-                )}
-                {artifactError && (
-                  <p className="font-body text-body-xs text-error" role="alert">
-                    {artifactError}
-                  </p>
-                )}
-                <button
-                  onClick={() => setShowAddArtifactModal(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-line hover:border-terracotta hover:bg-terracotta/5 font-body text-body-xs text-ink-muted hover:text-terracotta transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  {t('collaborationRoom.context.addArtifact')}
-                </button>
-              </div>
-            </div>
-
-            {/* DONE Gate */}
-            <div
-              className={cn(
-                'rounded-lg border px-3 py-3',
-                hasArtifacts
-                  ? 'bg-success-bg border-[#B9DCC3]'
-                  : 'bg-error-bg border-[#EDB8B0]'
-              )}
-            >
-              <div className="flex items-start gap-2">
-                {hasArtifacts ? (
-                  <Unlock className="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
-                ) : (
-                  <Lock className="w-4 h-4 text-error flex-shrink-0 mt-0.5" />
-                )}
-                <div>
-                  <p className={cn('font-body text-body-sm font-medium', hasArtifacts ? 'text-success' : 'text-error')}>
-                    {hasArtifacts
-                      ? t('collaborationRoom.context.doneGateUnblocked')
-                      : t('collaborationRoom.context.doneGateBlocked')}
-                  </p>
-                  {!hasArtifacts && (
-                    <p className="font-body text-body-xs text-error/70 mt-0.5">
-                      {t('collaborationRoom.context.statusRequiredArtifact')}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* ─── Center Pane: Thread (40%) ─── */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.15 }}
-          className="order-2 xl:order-1 flex-1 min-w-0 min-h-[520px] xl:min-h-0 flex flex-col bg-paper border border-line rounded-xl overflow-hidden"
-        >
-          {/* Thread Header */}
-          <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-line">
-            <div>
-              <h2 className="font-display text-[22px] font-medium text-ink">{t('collaborationRoom.threadTitle')}</h2>
-              <span className="font-body text-body-xs text-ink-muted">
-                {t('collaborationRoom.participants', { count: assignedAgents.length + 1 })}
-              </span>
-            </div>
+            </DocSection>
           </div>
 
-          {/* Approval Bar (when in_review) */}
-          <AnimatePresence>
-            {statusValue === 'in_review' && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="flex-shrink-0 overflow-hidden"
-              >
-                <div className="bg-warning-bg border-b border-warning/20 px-4 py-3">
-                  <p className="font-body text-body-sm text-warning font-medium mb-2">
-                    {t('collaborationRoom.approval.awaitingReview')}
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleApprove}
-                      className="px-4 py-1.5 rounded-md bg-gold text-ink font-body text-body-sm font-medium hover:bg-gold-light transition-colors"
-                    >
-                      {t('collaborationRoom.approval.approve')}
-                    </button>
-                    <button
-                      onClick={handleRequestChanges}
-                      className="px-4 py-1.5 rounded-md border border-line bg-paper font-body text-body-sm text-ink hover:bg-line transition-colors"
-                    >
-                      {t('collaborationRoom.approval.requestChanges')}
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-5 py-5">
-            {(task.comments?.length ?? 0) === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <MessageSquare className="w-10 h-10 text-ink-muted mb-3" strokeWidth={1.5} />
-                <p className="font-body text-body-md text-ink-light">{t('collaborationRoom.noComments')}</p>
-                <p className="font-body text-body-sm text-ink-muted">{t('collaborationRoom.startConversation')}</p>
-              </div>
-            ) : (
-              (task.comments ?? []).map((comment) => (
-                <CommentBubble
-                  key={comment.id}
-                  // An agent's comment arrives without a name of its own; falling straight
-                  // back to "Patron" put the patron's name on every agent's words.
-                  authorName={
-                    comment.authorName ??
-                    (() => {
-                      const author = mariuses.find((m) => m.id === comment.authorId);
-                      return author ? author.displayName || author.name : t('collaborationRoom.patron');
-                    })()
-                  }
-                  authorId={comment.authorId}
-                  authorRole={
-                    mariuses.find((m) => m.id === comment.authorId)?.role || t('collaborationRoom.patron')
-                  }
-                  content={comment.content}
-                  timestamp={comment.timestamp}
-                />
-              ))
-            )}
-            <div ref={threadEndRef} />
-          </div>
-
-          {/* Comment Composer */}
-          <div className="flex-shrink-0 border-t border-line bg-inset px-5 py-3.5">
-            <div className="flex items-end gap-2">
-              <textarea
-                value={commentInput}
-                onChange={(e) => setCommentInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendComment();
-                  }
-                }}
-                placeholder={t('collaborationRoom.composer.placeholder')}
-                rows={1}
-                className="flex-1 resize-none px-4 py-2.5 bg-paper border border-line-strong rounded-lg font-body text-body-md text-ink placeholder:text-ink-muted focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors max-h-[120px]"
-              />
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                onClick={handleSendComment}
-                disabled={!commentInput.trim()}
-                className={cn(
-                  'w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 transition-colors',
-                  commentInput.trim()
-                    ? 'bg-ink text-paper hover:bg-ink/85'
-                    : 'bg-line text-ink-muted cursor-not-allowed'
-                )}
-              >
-                <Send className="w-4 h-4" />
-              </motion.button>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* ─── Right Pane: Live Trace (30%) ─── */}
-        {/* A drawer: it takes a third of the screen only while there is a trace to read. */}
-        {!traceOpen ? (
-          <button
-            onClick={() => setTraceOpen(true)}
-            className="order-3 xl:w-12 shrink-0 flex xl:flex-col items-center justify-center gap-2 min-h-[44px] px-3 xl:py-4 rounded-xl border border-line bg-inset text-ink-light hover:text-ink hover:bg-paper transition-colors"
-            aria-label={t('collaborationRoom.liveTrace')}
-            title={t('collaborationRoom.liveTrace')}
-          >
-            <Activity className="w-4 h-4" />
-            <span className="font-body text-body-sm font-medium xl:[writing-mode:vertical-rl]">{t('collaborationRoom.liveTrace')}</span>
-            {(task.trace?.length ?? 0) > 0 && (
-              <span className="font-mono text-mono-sm text-ink-muted">{task.trace?.length}</span>
-            )}
-          </button>
-        ) : (
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.25 }}
-          className="order-3 xl:w-[340px] xl:shrink-0 flex flex-col min-h-[320px] xl:min-h-0 bg-paper border border-[#B9CCE4] rounded-xl overflow-hidden"
-        >
-          {/* Trace Header */}
-          <div className="flex-shrink-0 flex items-center justify-between gap-2 px-4 py-3 border-b border-lapis-bg">
-            <div className="flex items-center gap-2">
-              <h2 className="font-body text-[15px] font-semibold text-ink">{t('collaborationRoom.liveTrace')}</h2>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-lapis-bg font-body text-body-xs font-medium text-lapis-ink">
-                <span className="w-1.5 h-1.5 rounded-full bg-lapis" />
-                {isTraceActive ? t('collaborationRoom.traceRunning') : t('collaborationRoom.traceIdle')}
-              </span>
-            </div>
+          {/* ─── Live trace ─── */}
+          {/* A drawer: it opens by itself only while there is a trace to read. */}
+          <section className="overflow-hidden rounded-lg border border-line bg-surface">
             <button
-              onClick={() => setTraceOpen(false)}
-              className="p-2 rounded-md text-ink-muted hover:text-ink hover:bg-inset transition-colors"
-              aria-label={t('common.close')}
+              onClick={() => setTraceOpen(!traceOpen)}
+              aria-expanded={traceOpen}
+              className="flex min-h-[52px] w-full items-center gap-2.5 px-5 py-3 text-left transition-colors hover:bg-surface-hover sm:px-6"
             >
-              <X className="w-4 h-4" />
+              <Activity className="h-4 w-4 shrink-0 text-sapphire-strong" />
+              <span className="eyebrow">{t('collaborationRoom.liveTrace')}</span>
+              {traceCount > 0 && (
+                <span className="font-mono text-[11px] text-ink-muted">{t('runTrace.count', { count: traceCount })}</span>
+              )}
+              <ChevronDown
+                className={cn('ml-auto h-4 w-4 shrink-0 text-ink-muted transition-transform', traceOpen && 'rotate-180')}
+              />
             </button>
-          </div>
-
-          {/* Trace Stream */}
-          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
-            {(task.trace?.length ?? 0) === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <Activity className="w-10 h-10 text-ink-muted mb-3" strokeWidth={1.5} />
-                <p className="font-body text-body-md text-ink-light">{t('collaborationRoom.noTrace')}</p>
-                <p className="font-body text-body-sm text-ink-muted max-w-[200px]">
-                  {t('collaborationRoom.noTraceDescription')}
-                </p>
+            {traceOpen && (
+              <div className="max-h-[480px] overflow-y-auto border-t border-line px-4 py-4 sm:px-5">
+                {traceCount === 0 ? (
+                  <div className="flex flex-col items-center py-6 text-center">
+                    <Activity className="mb-3 h-8 w-8 text-ink-muted" strokeWidth={1.5} />
+                    <strong className="font-body text-[14px] font-semibold text-ink">{t('collaborationRoom.noTrace')}</strong>
+                    <p className="mt-1 max-w-[260px] font-body text-[12px] text-ink-light">
+                      {t('collaborationRoom.noTraceDescription')}
+                    </p>
+                  </div>
+                ) : (
+                  <ol>
+                    {(task.trace ?? []).map((event, i) => (
+                      <TraceEventCard key={event.id} event={event} last={i === traceCount - 1} />
+                    ))}
+                  </ol>
+                )}
+                <div ref={traceEndRef} />
               </div>
-            ) : (
-              <>
-                {(task.trace ?? []).map((event) => (
-                  <TraceEventCard key={event.id} event={event} />
-                ))}
-              </>
             )}
-            <div ref={traceEndRef} />
-          </div>
-
-          {/* Wake Controls */}
-          <div className="flex-shrink-0 border-t border-line px-4 py-3">
-            <div className="flex items-center justify-between">
-              <span className="font-body text-body-xs text-ink-muted">{t('collaborationRoom.wakeControls.pause')}</span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsTraceActive(!isTraceActive)}
-                  className="p-1.5 rounded-md bg-line hover:bg-vellum text-ink transition-colors"
-                  title={isTraceActive ? t('collaborationRoom.wakeControls.pause') : t('collaborationRoom.wakeControls.resume')}
-                >
-                  {isTraceActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                </button>
-                <button
-                  onClick={() => setIsTraceActive(false)}
-                  className="p-1.5 rounded-md bg-line hover:bg-error/10 hover:text-error text-ink transition-colors"
-                  title={t('collaborationRoom.wakeControls.stop')}
-                >
-                  <Square className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => setIsTraceActive(true)}
-                  className="p-1.5 rounded-md bg-line hover:bg-vellum text-ink transition-colors"
-                  title={t('collaborationRoom.wakeControls.resume')}
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          </div>
+          </section>
         </motion.div>
-        )}
       </div>
 
       {/* ─── Add Artifact Modal ─── */}
-      <AnimatePresence>
-        {showAddArtifactModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-modal flex items-center justify-center p-4"
-            onClick={() => setShowAddArtifactModal(false)}
-          >
-            <div className="absolute inset-0 bg-ink/50 backdrop-blur-sm" />
-            <motion.div
-              initial={{ opacity: 0, y: -8, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -8, scale: 0.98 }}
-              transition={{ duration: 0.25 }}
-              className="relative bg-paper rounded-xl w-full max-w-md shadow-gilt-lg border border-line p-6"
-              onClick={(e) => e.stopPropagation()}
+      <Modal
+        isOpen={showAddArtifactModal}
+        onClose={() => setShowAddArtifactModal(false)}
+        title={t('collaborationRoom.context.addArtifact')}
+        maxWidth="max-w-md"
+      >
+        <div className="mb-4 grid grid-cols-2 gap-1 rounded-md border border-line bg-canvas-deep p-1">
+          {(['file', 'link'] as const).map((type) => (
+            <button
+              key={type}
+              onClick={() => setArtifactForm((prev) => ({ ...prev, type }))}
+              aria-pressed={artifactForm.type === type}
+              className={cn(
+                'min-h-[38px] rounded-[6px] px-3 font-body text-[13px] font-medium transition-colors',
+                artifactForm.type === type
+                  ? 'bg-surface text-ink-strong shadow-sm'
+                  : 'text-ink-light hover:text-ink-strong'
+              )}
             >
-              <div className="flex items-start justify-between mb-4">
-                <h3 className="font-display text-display-md text-ink">
-                  {t('collaborationRoom.context.addArtifact')}
-                </h3>
-                <button
-                  onClick={() => setShowAddArtifactModal(false)}
-                  className="p-1 rounded-md text-ink-muted hover:text-ink hover:bg-line transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+              {type === 'file' ? t('collaborationRoom.uploadFile') : t('collaborationRoom.addLink')}
+            </button>
+          ))}
+        </div>
 
-              {/* Tabs */}
-              <div className="flex gap-2 mb-4">
-                {(['file', 'link'] as const).map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setArtifactForm((prev) => ({ ...prev, type }))}
-                    className={cn(
-                      'flex-1 px-3 py-2 rounded-md font-body text-body-sm font-medium transition-colors capitalize',
-                      artifactForm.type === type
-                        ? 'bg-ink text-paper'
-                        : 'bg-vellum text-ink border border-line hover:bg-line'
-                    )}
-                  >
-                    {type === 'file' ? t('collaborationRoom.uploadFile') : t('collaborationRoom.addLink')}
-                  </button>
-                ))}
-              </div>
+        <div className="space-y-3">
+          <label className="block">
+            <span className="mb-1.5 block font-body text-[13px] font-medium text-ink">
+              {t('collaborationRoom.artifactName')}
+            </span>
+            <input
+              type="text"
+              value={artifactForm.name}
+              onChange={(e) => setArtifactForm((prev) => ({ ...prev, name: e.target.value }))}
+              placeholder={
+                artifactForm.type === 'file'
+                  ? t('collaborationRoom.artifactNamePlaceholderFile')
+                  : t('collaborationRoom.artifactNamePlaceholderLink')
+              }
+              className="field"
+            />
+          </label>
 
-              <div className="space-y-3">
-                <div>
-                  <label className="block font-body text-body-sm font-medium text-ink mb-1">
-                    {t('collaborationRoom.artifactName')}
-                  </label>
-                  <input
-                    type="text"
-                    value={artifactForm.name}
-                    onChange={(e) => setArtifactForm((prev) => ({ ...prev, name: e.target.value }))}
-                    placeholder={artifactForm.type === 'file' ? t('collaborationRoom.artifactNamePlaceholderFile') : t('collaborationRoom.artifactNamePlaceholderLink')}
-                    className="w-full px-3 py-2 bg-inset border border-line rounded-md font-body text-body-md text-ink placeholder:text-ink-muted focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors"
-                  />
-                </div>
+          <label className="block">
+            <span className="mb-1.5 block font-body text-[13px] font-medium text-ink">
+              {artifactForm.type === 'file' ? t('collaborationRoom.filePathLabel') : t('collaborationRoom.urlLabel')}
+            </span>
+            <input
+              type="text"
+              value={artifactForm.url}
+              onChange={(e) => setArtifactForm((prev) => ({ ...prev, url: e.target.value }))}
+              placeholder={artifactForm.type === 'file' ? 'armarius/...' : 'https://...'}
+              className="field font-mono text-[13px]"
+            />
+          </label>
 
-                <div>
-                  <label className="block font-body text-body-sm font-medium text-ink mb-1">
-                    {artifactForm.type === 'file' ? t('collaborationRoom.filePathLabel') : t('collaborationRoom.urlLabel')}
-                  </label>
-                  <input
-                    type="text"
-                    value={artifactForm.url}
-                    onChange={(e) => setArtifactForm((prev) => ({ ...prev, url: e.target.value }))}
-                    placeholder={artifactForm.type === 'file' ? 'armarius/...' : 'https://...'}
-                    className="w-full px-3 py-2 bg-inset border border-line rounded-md font-body text-body-md text-ink placeholder:text-ink-muted focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/15 transition-colors"
-                  />
-                </div>
-
-                <button
-                  onClick={handleAddArtifact}
-                  disabled={!artifactForm.name.trim()}
-                  className={cn(
-                    'w-full px-4 py-2.5 rounded-md font-body text-body-md font-medium transition-colors',
-                    artifactForm.name.trim()
-                      ? 'bg-ink text-paper hover:bg-ink/85'
-                      : 'bg-line text-ink-muted cursor-not-allowed'
-                  )}
-                >
-                  {t('collaborationRoom.context.addArtifact')}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          <button onClick={handleAddArtifact} disabled={!artifactForm.name.trim()} className="btn btn-primary w-full">
+            {t('collaborationRoom.context.addArtifact')}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

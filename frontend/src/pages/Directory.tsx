@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { motion } from 'framer-motion';
 import {
@@ -7,23 +7,24 @@ import {
   Search,
   Check,
   Star,
-  Server,
+  Cpu,
   Loader2,
-  Clock,
-  WifiOff,
-  Activity,
-  Zap,
   AlertTriangle,
+  ArrowUpRight,
+  UserPlus,
+  Sparkles,
 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
-import type { Marius, AgentStatus, WorkplaceChoice } from '@/store/appStore';
-import VellumPanel from '@/components/VellumPanel';
+import type { Marius, WorkplaceChoice } from '@/store/appStore';
 import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import RuntimeOptionFields from '@/components/RuntimeOptionFields';
 import Dropdown from '@/components/Dropdown';
 import PageTitle from '@/components/PageTitle';
+import StatusChip from '@/components/StatusChip';
+import AgentAvatar from '@/components/AgentAvatar';
+import { heldTasks, useHydrateWorkspaceTasks } from '@/components/agent/holding';
 import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
 import { agentsOf } from '@/lib/workspaceScope';
@@ -35,190 +36,141 @@ const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { staggerChildren: 0.08, delayChildren: 0.2 },
+    transition: { staggerChildren: 0.04, delayChildren: 0.05 },
   },
 };
 
 const cardVariants = {
-  hidden: { opacity: 0, y: 24, filter: 'blur(2px)' },
+  hidden: { opacity: 0, y: 10 },
   visible: {
     opacity: 1,
     y: 0,
-    filter: 'blur(0px)',
-    transition: { duration: 0.5, ease: [0, 0, 0.2, 1] as [number, number, number, number] },
+    transition: { duration: 0.35, ease: [0, 0, 0.2, 1] as [number, number, number, number] },
   },
-};
-
-// ─── Status Configuration ────────────────────────────────────────────────────
-
-const STATUS_CONFIG: Record<
-  AgentStatus,
-  { color: string; pulse: boolean; label: string; icon: typeof Zap }
-> = {
-  online: { color: '#3E8F5F', pulse: true, label: 'Online', icon: Zap },
-  working: { color: '#3A6EA8', pulse: true, label: 'Working', icon: Activity },
-  idle: { color: '#A89A80', pulse: false, label: 'Idle', icon: Clock },
-  offline: { color: '#736450', pulse: false, label: 'Offline', icon: WifiOff },
 };
 
 // There is no adapter picker any more. It offered three choices of which only one was ever
 // registered, and the real answer — which tool runs this agent — follows from the workplace
 // the person picks, which is a thing they can actually see and reason about (FR-007g).
 
-// ─── Component: Agent Card ───────────────────────────────────────────────────
+/** The list's filter: every agent, the ones that answer, or the ones that do not. */
+type Filter = 'all' | 'available' | 'offline';
+const FILTERS: Filter[] = ['all', 'available', 'offline'];
 
-/** Which of an agent's tasks says most about what it is doing — running beats waiting. */
-const HOLDING_ORDER = ['in_progress', 'in_review', 'blocked', 'todo'];
+function matchesFilter(m: Marius, filter: Filter) {
+  if (filter === 'all') return true;
+  return filter === 'offline' ? m.status === 'offline' : m.status !== 'offline';
+}
+
+const LABEL_CLS = 'mb-1.5 block font-body text-[13px] font-semibold text-ink';
+const HINT_CLS = 'mt-1.5 font-body text-[12px] leading-relaxed text-ink-muted';
+
+// ─── Component: Agent Card ───────────────────────────────────────────────────
 
 function AgentCard({ agent }: { agent: Marius }) {
   const { t } = useTranslation();
   const tasks = useAppStore((s) => s.tasks);
-  const own = tasks.filter((tk) => tk.assigneeId === agent.id);
-  const holding = HOLDING_ORDER.map((st) => own.find((tk) => tk.status === st)).find(Boolean);
+  const holding = heldTasks(tasks, agent.id)[0];
   const navigate = useNavigate();
   const { workspaceId } = useParams();
-  const config = STATUS_CONFIG[agent.status] || STATUS_CONFIG.offline;
 
-  const StatusIcon = config.icon;
   const displayName = agent.displayName || agent.name;
   const agentSkills = agent.skills || [];
+  const roleLine = agent.role || agent.description;
 
   // Click the card → the agent's page, which is where an agent is managed (FR-007o): renaming,
-  // settings and removal all live there rather than behind a menu on every card. The one button
-  // left on the card stops propagation so acting on an agent never doubles as opening it.
+  // settings and removal all live there rather than behind a menu on every card.
   const openDetail = () => navigate(wsHref(workspaceId, `/agents/${agent.id}`));
 
   return (
-    <motion.div variants={cardVariants} layout>
-      <VellumPanel
-        className="relative h-full cursor-pointer flex flex-col gap-4"
+    <motion.div variants={cardVariants} layout className="min-w-0">
+      <div
+        className="group flex h-full min-h-[300px] cursor-pointer flex-col rounded-lg border border-line bg-surface p-5 text-left transition-colors hover:border-sapphire focus-visible:border-sapphire focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
         onClick={openDetail}
-        role="button"
+        role="link"
         tabIndex={0}
+        aria-label={t('directory.openProfileOf', { name: displayName })}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(); }
         }}
       >
-        {/* Top row: status dot + avatar + name + WA badge + menu */}
-        <div className="flex items-center gap-3.5">
-          {/* Avatar, ringed by liveness — the same ring the sidebar and Home use */}
-          <div
-            className={cn(
-              'w-[52px] h-[52px] rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-body text-[19px] font-semibold',
-              agent.status === 'offline'
-                ? 'bg-vellum text-ink-muted border-2 border-dashed border-ash'
-                : 'ring-2 ring-offset-[3px] ring-offset-paper',
-              agent.status === 'working' && 'bg-lapis-bg text-lapis-ink ring-lapis',
-              (agent.status === 'online' || agent.status === 'idle') && 'bg-verdigris-bg text-verdigris-ink ring-verdigris'
-            )}
-          >
-            {agent.avatar ? (
-              <img
-                src={agent.avatar}
-                alt={displayName}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              displayName.charAt(0).toUpperCase()
-            )}
-          </div>
-
-          {/* Name + Role */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3
-                className="font-['Fraunces',Georgia,serif] text-[22px] font-medium text-ink leading-tight"
-              >
-                {displayName}
-              </h3>
-              {agent.isWorkspaceAgent === true && (
-                <span
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-gold-bg text-gold-ink"
-                >
-                  <Star className="w-3 h-3" /> {t('directory.workspaceAgent')}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 mt-1">
-              <span
-                className="inline-flex items-center gap-1 text-[11px] font-medium"
-                style={{ color: config.color }}
-              >
-                <StatusIcon className="w-3 h-3" />
-                {t('directory.status.' + agent.status)}
-              </span>
-            </div>
-          </div>
-
+        <div className="flex items-start justify-between gap-3">
+          <AgentAvatar name={displayName} status={agent.status} size="lg" />
+          <StatusChip status={agent.status} label={t('directory.status.' + agent.status)} size="md" />
         </div>
 
-        {/* What it is holding right now — the question a person opens this page to answer. */}
-        <div
-          className={cn(
-            'rounded-lg px-3.5 py-3',
-            holding?.status === 'blocked' ? 'bg-vermilion-bg' : 'bg-inset'
+        <h2 className="mt-3.5 flex min-w-0 items-center gap-2 font-display text-[25px] font-normal leading-tight tracking-[-0.02em] text-ink-strong">
+          <span className="truncate">{displayName}</span>
+          {agent.isWorkspaceAgent === true && (
+            <Sparkles className="h-4 w-4 shrink-0 text-gold" aria-label={t('directory.workspaceAgent')} />
           )}
-        >
-          {holding ? (
-            <>
-              <div
-                className={cn(
-                  'font-body text-body-xs font-medium mb-1',
-                  holding.status === 'blocked'
-                    ? 'text-vermilion-ink'
-                    : holding.status === 'in_review'
-                      ? 'text-gold-ink'
-                      : 'text-ink-muted'
-                )}
-              >
-                {t(`tasks.status.${holding.status}`)}
-              </div>
-              <div className="font-body text-body-md text-ink truncate">
-                {holding.identifier && (
-                  <span className="font-mono text-mono-sm text-ink-muted mr-1.5">{holding.identifier}</span>
-                )}
-                {holding.title}
-              </div>
-            </>
-          ) : (
-            <div className="font-body text-body-md text-ink-light">{t('home.agentNoTask')}</div>
-          )}
-        </div>
+        </h2>
+        <p className="mt-0.5 truncate font-body text-[12px] text-ink-light">
+          {agent.isWorkspaceAgent === true
+            ? [t('directory.hostRole'), roleLine].filter(Boolean).join(' · ')
+            : roleLine || t('directory.noRole')}
+        </p>
 
         {/* Where it works — the CLI and the machine, which is what tells two agents apart at a
-            glance (FR-007o). The status is already said once, beside the name. */}
-        <div className="flex items-center gap-1.5 text-[12px] font-mono text-ink-light">
-          <Server className="w-3.5 h-3.5 flex-shrink-0" aria-hidden />
+            glance (FR-007o). */}
+        <p className="mt-3 flex min-w-0 items-center gap-1.5 font-mono text-[10px] text-ink-muted">
+          <Cpu className="h-3.5 w-3.5 shrink-0" aria-hidden />
           <span className="truncate">
             {agent.runtime
-              ? t('agentDetail.runtimeLine', {
-                  cli: agent.runtime.cli_kind,
-                  machine: agent.runtime.machine_name,
-                })
+              ? `${agent.runtime.cli_kind} · ${agent.runtime.machine_name}`
               : t('agentDetail.runtimeNone')}
           </span>
+        </p>
+
+        {/* What it is holding right now — the question a person opens this page to answer. */}
+        <div className="my-3.5 border-y border-line py-3">
+          {holding ? (
+            <>
+              <p className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] tracking-[0.06em]">
+                {holding.identifier && <span className="text-sapphire-strong">{holding.identifier}</span>}
+                <span
+                  className={cn(
+                    holding.status === 'blocked'
+                      ? 'text-danger'
+                      : holding.status === 'in_review'
+                        ? 'text-sapphire-strong'
+                        : 'text-ink-muted',
+                  )}
+                >
+                  {holding.identifier && '· '}
+                  {t(`tasks.status.${holding.status}`)}
+                </span>
+              </p>
+              <p className="mt-1 truncate font-body text-[12px] text-ink">{holding.title}</p>
+            </>
+          ) : (
+            <>
+              <p className="font-mono text-[10px] tracking-[0.06em] text-ink-muted">{t('directory.holdingNone')}</p>
+              <p className="mt-1 truncate font-body text-[12px] text-ink-muted">{t('home.agentNoTask')}</p>
+            </>
+          )}
         </div>
 
-        {/* Skills */}
         {agentSkills.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="mb-3.5 flex flex-wrap gap-1.5">
             {agentSkills.slice(0, 3).map((skill) => (
-              <span
-                key={skill}
-                className="px-2.5 py-0.5 rounded-full text-[12px] font-medium bg-ash-bg text-ink-light"
-              >
+              <span key={skill} className="chip max-w-full truncate">
                 {skill}
               </span>
             ))}
             {agentSkills.length > 3 && (
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-medium text-ink-muted">
+              <span className="chip border-dashed">
                 {t('directory.moreSkills', { count: agentSkills.length - 3 })}
               </span>
             )}
           </div>
         )}
 
-      </VellumPanel>
+        <div className="mt-auto flex items-center justify-between gap-3 border-t border-line pt-3.5 font-body text-[13px] font-medium text-sapphire-strong">
+          {t('directory.openProfile')}
+          <ArrowUpRight className="h-[18px] w-[18px] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden />
+        </div>
+      </div>
     </motion.div>
   );
 }
@@ -250,15 +202,7 @@ export default function Directory() {
   );
 
   // Cards say what each agent is holding, and tasks are loaded per project.
-  const allProjects = useAppStore((s) => s.projects);
-  const hydrateProject = useAppStore((s) => s.hydrateProject);
-  const projectKey = allProjects
-    .filter((p) => p.workspaceId === activeWorkspaceId)
-    .map((p) => p.id)
-    .join(',');
-  useEffect(() => {
-    projectKey.split(',').filter(Boolean).forEach((id) => void hydrateProject(id).catch(() => {}));
-  }, [projectKey, hydrateProject]);
+  useHydrateWorkspaceTasks();
 
   // Who may become the host: an agent that answers, which an offline one cannot.
   const hostCandidates = useMemo(() => mariuses.filter((m) => m.status !== 'offline'), [mariuses]);
@@ -270,7 +214,7 @@ export default function Directory() {
 
   // ── Filter State ───────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<Filter>('all');
 
   // ── Invite Modal State ─────────────────────────────────────────────────────
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
@@ -311,14 +255,13 @@ export default function Directory() {
         (m) =>
           (m.displayName || m.name).toLowerCase().includes(q) ||
           m.role.toLowerCase().includes(q) ||
+          (m.description || '').toLowerCase().includes(q) ||
           (m.adapterType || '').toLowerCase().includes(q) ||
           (m.skills || []).some((s) => s.toLowerCase().includes(q))
       );
     }
 
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter((m) => m.status === statusFilter);
-    }
+    filtered = filtered.filter((m) => matchesFilter(m, statusFilter));
 
     // Sort: online/working first, then by name
     filtered.sort((a, b) => {
@@ -397,7 +340,7 @@ export default function Directory() {
   };
 
   const handleInvite = () => {
-    // Seating a new host over a sitting one is a swap \u2014 confirm before inviting (#32).
+    // Seating a new host over a sitting one is a swap — confirm before inviting (#32).
     if (makeWorkspaceAgent && currentHost) {
       setInviteSwapConfirmOpen(true);
       return;
@@ -434,66 +377,65 @@ export default function Directory() {
     );
   };
 
+  const clearFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('all');
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="mx-auto w-full max-w-[1240px] pb-10">
-      {/* Page Header */}
       <motion.div
-        initial={{ opacity: 0, y: 24, filter: 'blur(2px)' }}
-        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-        transition={{ duration: 0.5, ease: [0, 0, 0.2, 1] as [number, number, number, number] }}
-        className="flex items-center justify-between mb-6"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0, 0, 0.2, 1] as [number, number, number, number] }}
+        className="mb-7"
       >
-        <div className="flex items-center gap-3">
-          <PageTitle title={t('directory.pageTitle')} subtitle={t('directory.agentsInWorkspace', { count: mariuses.length })} />
-        </div>
-        <motion.button
-          onClick={handleOpenInvite}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2, duration: 0.3 }}
-          className={cn(
-            'inline-flex items-center gap-2 px-5 py-2.5 rounded-md text-[15px] font-medium',
-            'bg-ink text-white hover:bg-ink/85 transition-all',
-            'hover:-translate-y-0.5 hover:shadow-md'
-          )}
-        >
-          <Plus className="w-4 h-4" />
-          {t('directory.inviteAgent')}
-        </motion.button>
+        <PageTitle
+          eyebrow={t('directory.eyebrow')}
+          title={t('directory.heading')}
+          subtitle={t('directory.lead')}
+          actions={
+            <button type="button" onClick={handleOpenInvite} className="btn btn-primary">
+              <UserPlus className="h-[18px] w-[18px]" aria-hidden />
+              {t('directory.createAgent')}
+            </button>
+          }
+        />
       </motion.div>
 
       {/* No host yet: one place to pick one, instead of a button on every card */}
       {!currentHost && mariuses.length > 0 && (
-        <section className="mb-6 flex flex-wrap items-center gap-4 rounded-xl border border-[#EBCF8A] bg-[#FBF3DF] px-5 py-4">
-          <span className="w-12 h-12 shrink-0 rounded-full border-[1.5px] border-dashed border-gold flex items-center justify-center text-gold-ink">
-            <Star className="w-5 h-5" />
+        <section className="mb-6 flex flex-wrap items-center gap-4 rounded-lg border border-gold/35 bg-gold-soft px-5 py-4">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-dashed border-gold text-gold">
+            <Star className="h-5 w-5" aria-hidden />
           </span>
-          <div className="flex-[1_1_320px] min-w-0">
-            <h2 className="font-display text-[19px] font-medium text-ink">{t('directory.hostBanner.title')}</h2>
-            <p className="mt-0.5 font-body text-body-md text-ink-light">
+          <div className="min-w-0 flex-[1_1_300px]">
+            <h2 className="font-display text-[20px] font-normal leading-snug tracking-[-0.01em] text-ink-strong">
+              {t('directory.hostBanner.title')}
+            </h2>
+            <p className="mt-0.5 font-body text-body-sm text-ink-light">
               {hostCandidates.length > 0 ? t('directory.hostBanner.body') : t('directory.hostBanner.noneOnline')}
             </p>
           </div>
           {hostCandidates.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2">
-              <label htmlFor="host-pick" className="sr-only">{t('directory.hostBanner.pick')}</label>
-              <select
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
+              <Dropdown
                 id="host-pick"
+                ariaLabel={t('directory.hostBanner.pick')}
                 value={hostPick}
-                onChange={(e) => setHostPick(e.target.value)}
-                className="min-h-[44px] px-3 rounded-md border border-line-strong bg-paper font-body text-body-md text-ink"
-              >
-                <option value="">{t('directory.hostBanner.pick')}</option>
-                {hostCandidates.map((m) => (
-                  <option key={m.id} value={m.id}>{m.displayName || m.name}</option>
-                ))}
-              </select>
+                onChange={setHostPick}
+                placeholder={t('directory.hostBanner.pick')}
+                items={hostCandidates.map((m) => ({ value: m.id, label: m.displayName || m.name }))}
+                size="sm"
+                className="min-h-[44px] min-w-[180px] flex-1 sm:w-[220px] sm:flex-none"
+              />
               <button
+                type="button"
                 onClick={() => hostPick && handleDesignate(hostPick)}
                 disabled={!hostPick}
-                className="min-h-[44px] px-4 rounded-md bg-ink font-body text-body-md font-medium text-paper hover:bg-ink/85 disabled:opacity-50 transition-colors"
+                className="btn btn-primary flex-1 sm:flex-none"
               >
                 {t('directory.actions.designate')}
               </button>
@@ -502,82 +444,64 @@ export default function Directory() {
         </section>
       )}
 
-      {/* Filter Bar */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2, duration: 0.3 }}
-        className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-6 flex-wrap"
-      >
-        {/* Status Filter */}
-        <div role="group" aria-label={t('directory.filter.all')} className="flex flex-wrap items-center gap-1.5">
-          {(['all', 'working', 'online', 'idle', 'offline'] as const).map((key) => {
-            const count = key === 'all' ? mariuses.length : mariuses.filter((m) => m.status === key).length;
-            if (key !== 'all' && count === 0) return null;
-            const active = statusFilter === key;
-            return (
-              <button
-                key={key}
-                onClick={() => setStatusFilter(key)}
-                aria-pressed={active}
-                className={cn(
-                  'min-h-[36px] px-3 rounded-full border font-body text-body-sm font-medium transition-colors',
-                  active ? 'bg-ink text-paper border-ink' : 'bg-paper text-ink border-line-strong hover:bg-inset'
-                )}
-              >
-                {key === 'all' ? t('directory.filter.all') : t(`directory.status.${key}`)} {count}
-              </button>
-            );
-          })}
+      {/* Toolbar: search on the left, the reachability filter beside it */}
+      {mariuses.length > 0 && (
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+          <label className="relative block w-full sm:min-w-0 sm:max-w-[440px] sm:flex-1">
+            <span className="sr-only">{t('directory.searchLabel')}</span>
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-ink-muted" aria-hidden />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t('directory.searchPlaceholderLong')}
+              className="field bg-surface pl-10 text-[13px]"
+            />
+          </label>
+          <div role="group" aria-label={t('directory.filter.label')} className="no-scrollbar flex shrink-0 gap-1 overflow-x-auto">
+            {FILTERS.map((key) => {
+              const count = mariuses.filter((m) => matchesFilter(m, key)).length;
+              const active = statusFilter === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setStatusFilter(key)}
+                  aria-pressed={active}
+                  className={cn(
+                    'inline-flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-md px-3 font-body text-[12px] transition-colors',
+                    active
+                      ? 'bg-sapphire-soft text-ink-strong'
+                      : 'text-ink-light hover:bg-surface-hover hover:text-ink-strong'
+                  )}
+                >
+                  {t(`directory.filter.${key}`)}
+                  <span className={cn('font-mono text-[10px]', active ? 'text-sapphire-strong' : 'text-ink-muted')}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <div className="flex-1" />
-
-        {/* Search */}
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-muted" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t('directory.searchPlaceholder')}
-            className={cn(
-              'w-full pl-9 pr-4 py-2 rounded-md bg-inset border border-line text-[15px] text-ink',
-              'placeholder:text-ink-muted',
-              'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15',
-              'transition-all'
-            )}
-          />
-        </div>
-      </motion.div>
+      )}
 
       {/* Agent Cards Grid */}
-      {filteredAgents.length === 0 ? (
+      {mariuses.length === 0 ? (
         <EmptyState
           icon={Users}
           title={t('directory.noAgentsFound')}
-          description={
-            searchQuery
-              ? t('directory.adjustSearch')
-              : t('directory.inviteFirst')
-          }
+          description={t('directory.inviteFirst')}
           action={
-            !searchQuery && (
-              <button
-                onClick={handleOpenInvite}
-                className={cn(
-                  'inline-flex items-center gap-2 px-5 py-2.5 rounded-md text-[15px] font-medium',
-                  'bg-ink text-white hover:bg-ink/85 transition-all'
-                )}
-              >
-                <Plus className="w-4 h-4" />
-                {t('directory.inviteAgent')}
-              </button>
-            )
+            <button type="button" onClick={handleOpenInvite} className="btn btn-primary">
+              <UserPlus className="h-4 w-4" aria-hidden />
+              {t('directory.createAgent')}
+            </button>
           }
         />
       ) : (
         <motion.div
-          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-stretch"
+          className="grid grid-cols-1 items-stretch gap-3 md:grid-cols-2 xl:grid-cols-3"
           variants={containerVariants}
           initial="hidden"
           animate="visible"
@@ -585,228 +509,236 @@ export default function Directory() {
           {filteredAgents.map((agent) => (
             <AgentCard key={agent.id} agent={agent} />
           ))}
+
+          {filteredAgents.length === 0 && (
+            <div className="col-span-full flex min-h-[200px] flex-col items-center justify-center px-5 py-6 text-center text-ink-muted">
+              <Search className="h-7 w-7" aria-hidden />
+              <h3 className="mt-2.5 font-display text-[22px] font-normal text-ink-strong">{t('directory.noAgentsFound')}</h3>
+              <p className="mb-4 mt-1 font-body text-body-sm">{t('directory.adjustSearch')}</p>
+              <button type="button" onClick={clearFilters} className="btn btn-secondary">
+                {t('directory.clearFilters')}
+              </button>
+            </div>
+          )}
+
+          {/* A new seat, at the end of the list — the same form as the header's button. */}
+          <motion.button
+            variants={cardVariants}
+            type="button"
+            onClick={handleOpenInvite}
+            className="flex min-h-[200px] flex-col items-center justify-center rounded-lg border border-dashed border-line-strong px-6 py-8 text-center text-ink-muted transition-colors hover:border-sapphire hover:text-sapphire-strong md:min-h-[300px]"
+          >
+            <Plus className="h-7 w-7" aria-hidden />
+            <strong className="mt-3 font-display text-[20px] font-normal text-ink-strong">{t('directory.newSeat')}</strong>
+            <span className="mt-1 max-w-[240px] font-body text-[12px]">{t('directory.newSeatHint')}</span>
+          </motion.button>
         </motion.div>
       )}
 
-      {/* ─── Invite Agent Modal ─────────────────────────────────────────────── */}
+      {/* ─── Create Agent Modal ─────────────────────────────────────────────── */}
       <Modal
         isOpen={inviteModalOpen}
         onClose={handleCloseInvite}
         title={
-          <span className="font-['Fraunces',Georgia,serif] text-[28px] font-semibold text-ink">
-            <span className="title-initial">{t('directory.inviteAgent').charAt(0)}</span>
-            {t('directory.inviteAgent').slice(1)}
+          <span className="block">
+            <span className="eyebrow block">{t('directory.createEyebrow')}</span>
+            <span className="mt-1.5 block font-display text-[28px] font-normal leading-tight tracking-[-0.02em] text-ink-strong">
+              {t('directory.createAgent')}
+            </span>
           </span>
         }
         maxWidth="max-w-xl"
       >
-        <div className="space-y-5">
-              {/* Agent Name */}
-              <div>
-                <label className="block text-[13px] font-medium text-ink mb-1">
-                  {t('directory.agentName')} <span className="text-terracotta">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={agentName}
-                  onChange={(e) => setAgentName(e.target.value)}
-                  placeholder={t('directory.agentNamePlaceholder')}
-                  className={cn(
-                    'w-full px-4 py-2.5 rounded-md bg-inset border border-line text-[15px] text-ink',
-                    'placeholder:text-ink-muted',
-                    'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15',
-                    'transition-all'
-                  )}
-                />
-              </div>
+        <div className="grid gap-5">
+          {/* Agent Name */}
+          <div>
+            <label htmlFor="new-agent-name" className={LABEL_CLS}>
+              {t('directory.agentName')} <span className="text-danger">*</span>
+            </label>
+            <input
+              id="new-agent-name"
+              type="text"
+              value={agentName}
+              onChange={(e) => setAgentName(e.target.value)}
+              placeholder={t('directory.agentNamePlaceholder')}
+              className="field"
+            />
+          </div>
 
-              {/* Where this agent will work (FR-007f). Required: the attachment is made once
-                  here and never again, so there is no "decide later". */}
-              <div>
-                <label className="block text-[13px] font-medium text-ink mb-1">
-                  {t('directory.workplace')} <span className="text-terracotta">*</span>
-                </label>
-                {workplacesLoading ? (
-                  <p className="text-[13px] text-ink-muted">{t('directory.workplaceLoading')}</p>
-                ) : workplaces.length === 0 ? (
-                  // Not an error state — nothing is broken, there is simply nowhere to put an
-                  // agent yet. Say what to do about it rather than leaving an empty box.
-                  <div className="rounded-md border border-line bg-inset p-3">
-                    <p className="text-[13px] text-ink">{t('directory.workplaceNone')}</p>
-                    <p className="mt-1 text-[11px] text-ink-muted">
-                      {t('directory.workplaceNoneHint')}
-                    </p>
-                  </div>
-                ) : (
-                  <Dropdown
-                    value={workplaceId}
-                    onChange={(value) => {
-                      setWorkplaceId(value);
-                      // The settings belong to the **workplace**, not to the agent: two
-                      // workplaces offer different ones, and a value carried over from the
-                      // last pick would be a setting the new one never offered — refused by
-                      // the server at the far end of a form the person thought was filled in.
-                      setRuntimeOptions({});
-                    }}
-                    placeholder={t('directory.workplacePlaceholder')}
-                    items={workplaces.map((w) => ({
-                      value: w.id,
-                      label: t('directory.workplaceOption', {
-                        cliKind: w.cliKind,
-                        machineName: w.machineName,
-                      }),
-                    }))}
-                  />
-                )}
-                <p className="mt-1 text-[11px] text-ink-muted">{t('directory.workplaceHint')}</p>
+          {/* Where this agent will work (FR-007f). Required: the attachment is made once
+              here and never again, so there is no "decide later". */}
+          <div>
+            <label htmlFor="new-agent-workplace" className={LABEL_CLS}>
+              {t('directory.workplace')} <span className="text-danger">*</span>
+            </label>
+            {workplacesLoading ? (
+              <p className="font-body text-[13px] text-ink-muted">{t('directory.workplaceLoading')}</p>
+            ) : workplaces.length === 0 ? (
+              // Not an error state — nothing is broken, there is simply nowhere to put an
+              // agent yet. Say what to do about it rather than leaving an empty box.
+              <div className="rounded-md border border-dashed border-line-strong bg-canvas-deep p-3">
+                <p className="font-body text-[13px] text-ink">{t('directory.workplaceNone')}</p>
+                <p className="mt-1 font-body text-[12px] text-ink-muted">
+                  {t('directory.workplaceNoneHint')}
+                </p>
               </div>
-
-              {/* What this workplace's tool takes, as the tool itself answered it (FR-007k,
-                  FR-017). Nothing here is keyed on which CLI it is: the list arrives with the
-                  workplace, and a workplace that offered none simply shows nothing. */}
-              <RuntimeOptionFields
-                options={chosenWorkplace?.options ?? []}
-                chosen={runtimeOptions}
-                onChange={(key, value) =>
-                  setRuntimeOptions((was) => ({ ...was, [key]: value }))
-                }
+            ) : (
+              <Dropdown
+                id="new-agent-workplace"
+                value={workplaceId}
+                onChange={(value) => {
+                  setWorkplaceId(value);
+                  // The settings belong to the **workplace**, not to the agent: two
+                  // workplaces offer different ones, and a value carried over from the
+                  // last pick would be a setting the new one never offered — refused by
+                  // the server at the far end of a form the person thought was filled in.
+                  setRuntimeOptions({});
+                }}
+                placeholder={t('directory.workplacePlaceholder')}
+                items={workplaces.map((w) => ({
+                  value: w.id,
+                  label: t('directory.workplaceOption', {
+                    cliKind: w.cliKind,
+                    machineName: w.machineName,
+                  }),
+                }))}
               />
+            )}
+            <p className={HINT_CLS}>{t('directory.workplaceHint')}</p>
+          </div>
 
-              {/* What the agent is told to be (FR-007i). This is the whole of how it
-                  behaves: there is no per-project role adding to it later. */}
-              <div>
-                <label className="block text-[13px] font-medium text-ink mb-1">
-                  {t('directory.instructions')}
-                </label>
-                <textarea
-                  value={instructions}
-                  onChange={(e) => setInstructions(e.target.value)}
-                  rows={5}
-                  placeholder={t('directory.instructionsPlaceholder')}
-                  className={cn(
-                    'w-full px-4 py-2.5 rounded-md bg-inset border border-line text-[15px] text-ink',
-                    'placeholder:text-ink-muted resize-y',
-                    'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15',
-                    'transition-all'
-                  )}
-                />
-                <p className="mt-1 text-[11px] text-ink-muted">{t('directory.instructionsHint')}</p>
-              </div>
+          {/* What this workplace's tool takes, as the tool itself answered it (FR-007k,
+              FR-017). Nothing here is keyed on which CLI it is: the list arrives with the
+              workplace, and a workplace that offered none simply shows nothing. */}
+          <RuntimeOptionFields
+            options={chosenWorkplace?.options ?? []}
+            chosen={runtimeOptions}
+            onChange={(key, value) =>
+              setRuntimeOptions((was) => ({ ...was, [key]: value }))
+            }
+          />
 
-              {/* What the team calls it. Never sent to the agent (FR-007j). */}
-              <div>
-                <label className="block text-[13px] font-medium text-ink mb-1">
-                  {t('directory.agentDescription')}
-                </label>
-                <input
-                  type="text"
-                  value={agentDescription}
-                  onChange={(e) => setAgentDescription(e.target.value)}
-                  placeholder={t('directory.agentDescriptionPlaceholder')}
-                  className={cn(
-                    'w-full px-4 py-2.5 rounded-md bg-inset border border-line text-[15px] text-ink',
-                    'placeholder:text-ink-muted',
-                    'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15',
-                    'transition-all'
-                  )}
-                />
-                <p className="mt-1 text-[11px] text-ink-muted">
-                  {t('directory.agentDescriptionHint')}
-                </p>
-              </div>
+          {/* What the agent is told to be (FR-007i). This is the whole of how it
+              behaves: there is no per-project role adding to it later. */}
+          <div>
+            <label htmlFor="new-agent-instructions" className={LABEL_CLS}>
+              {t('directory.instructions')}
+            </label>
+            <textarea
+              id="new-agent-instructions"
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              rows={5}
+              placeholder={t('directory.instructionsPlaceholder')}
+              className="field resize-y py-2.5 leading-relaxed"
+            />
+            <p className={HINT_CLS}>{t('directory.instructionsHint')}</p>
+          </div>
 
-              {/* Workspace Agent seat (#32) */}
-              <div>
-                <label className="flex items-start gap-2.5 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={makeWorkspaceAgent}
-                    onChange={(e) => setMakeWorkspaceAgent(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 accent-terracotta"
-                  />
-                  <span>
-                    <span className="flex items-center gap-1.5 text-[13px] font-medium text-ink">
-                      <Star className="w-3.5 h-3.5 text-gold" />
-                      {t('directory.setAsWorkspaceAgent')}
-                    </span>
-                    <span className="block text-[11px] text-ink-muted">
-                      {t('directory.setAsWorkspaceAgentHint')}
-                    </span>
-                  </span>
-                </label>
-                {makeWorkspaceAgent && currentHost && (
-                  <p className="mt-2 px-3 py-2 rounded-md bg-gold-bg text-[12px] text-gold-ink">
-                    {t('directory.replaceHostWarning', {
-                      name: currentHost.displayName || currentHost.name,
-                    })}
-                  </p>
-                )}
-              </div>
+          {/* What the team calls it. Never sent to the agent (FR-007j). */}
+          <div>
+            <label htmlFor="new-agent-description" className={LABEL_CLS}>
+              {t('directory.agentDescription')}{' '}
+              <small className="font-normal text-ink-muted">{t('directory.notSentToAgent')}</small>
+            </label>
+            <input
+              id="new-agent-description"
+              type="text"
+              value={agentDescription}
+              onChange={(e) => setAgentDescription(e.target.value)}
+              placeholder={t('directory.agentDescriptionPlaceholder')}
+              className="field"
+            />
+            <p className={HINT_CLS}>{t('directory.agentDescriptionHint')}</p>
+          </div>
 
-              {/* Skills */}
-              <div>
-                <label className="block text-[13px] font-medium text-ink mb-1">
-                  {t('directory.skills')}
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {/* Only skills people added. The ones every agent carries are never offered:
-                      they ride every run whether or not anybody picks them, and the server does
-                      not send them (spec 003 FR-123). */}
-                  {skills.map((skill) => {
-                    const on = selectedSkillIds.includes(skill.id);
-                    return (
-                      <button
-                        key={skill.id}
-                        onClick={() => toggleSkill(skill.id)}
-                        className={cn(
-                          'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all',
-                          on
-                            ? 'bg-ink text-white'
-                            : 'bg-line text-ink-light hover:bg-line-strong',
-                        )}
-                      >
-                        {on && <Check className="w-3 h-3" />}
-                        {skill.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+          {/* Workspace Agent seat (#32) */}
+          <div>
+            <label className="flex cursor-pointer select-none items-start gap-2.5 rounded-md border border-line bg-canvas-deep p-3">
+              <input
+                type="checkbox"
+                checked={makeWorkspaceAgent}
+                onChange={(e) => setMakeWorkspaceAgent(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-sapphire-strong"
+              />
+              <span>
+                <span className="flex items-center gap-1.5 font-body text-[13px] font-semibold text-ink">
+                  <Star className="h-3.5 w-3.5 text-gold" aria-hidden />
+                  {t('directory.setAsWorkspaceAgent')}
+                </span>
+                <span className="mt-0.5 block font-body text-[12px] text-ink-muted">
+                  {t('directory.setAsWorkspaceAgentHint')}
+                </span>
+              </span>
+            </label>
+            {makeWorkspaceAgent && currentHost && (
+              <p className="mt-2 rounded-md border border-gold/35 bg-gold-soft px-3 py-2 font-body text-[12px] text-ink">
+                {t('directory.replaceHostWarning', {
+                  name: currentHost.displayName || currentHost.name,
+                })}
+              </p>
+            )}
+          </div>
 
-              {/* The server's refusal, worded from its own code — a name already taken, a
-                  workplace that stopped being able to take work between opening this form
-                  and submitting it. Swallowing it would leave the person clicking a button
-                  that does nothing and says nothing. */}
-              {inviteError && (
-                <p className="flex items-start gap-1.5 px-3 py-2 rounded-md bg-vermilion-bg text-[12px] text-terracotta-dark border border-[#E3C0B2]">
-                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> {inviteError}
-                </p>
+          {/* Skills */}
+          <div>
+            <p className={LABEL_CLS}>{t('directory.skills')}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {/* Only skills people added. The ones every agent carries are never offered:
+                  they ride every run whether or not anybody picks them, and the server does
+                  not send them (spec 003 FR-123). */}
+              {skills.map((skill) => {
+                const on = selectedSkillIds.includes(skill.id);
+                return (
+                  <button
+                    key={skill.id}
+                    type="button"
+                    onClick={() => toggleSkill(skill.id)}
+                    aria-pressed={on}
+                    className={cn(
+                      'inline-flex min-h-[36px] max-w-full items-center gap-1.5 rounded-md border px-3 font-mono text-[11px] transition-colors',
+                      on
+                        ? 'border-sapphire bg-sapphire-soft text-ink-strong'
+                        : 'border-field-line bg-field text-ink-light hover:border-sapphire',
+                    )}
+                  >
+                    {on && <Check className="h-3 w-3 shrink-0" aria-hidden />}
+                    <span className="truncate">{skill.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* The server's refusal, worded from its own code — a name already taken, a
+              workplace that stopped being able to take work between opening this form
+              and submitting it. Swallowing it would leave the person clicking a button
+              that does nothing and says nothing. */}
+          {inviteError && (
+            <p className="flex items-start gap-1.5 rounded-md border border-danger/35 bg-danger/[0.08] px-3 py-2 font-body text-[12px] text-danger">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden /> {inviteError}
+            </p>
+          )}
+
+          {/* Footer buttons */}
+          <div className="flex flex-wrap justify-end gap-2.5 border-t border-line pt-4">
+            <button type="button" onClick={handleCloseInvite} className="btn btn-secondary">
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={handleInvite}
+              disabled={!agentName.trim() || !workplaceId || sending}
+              className="btn btn-primary"
+            >
+              {sending ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <UserPlus className="h-4 w-4" aria-hidden />
               )}
-
-              {/* Footer buttons */}
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  onClick={handleCloseInvite}
-                  className="px-4 py-2 rounded-md text-[13px] font-medium bg-paper text-ink border border-line hover:bg-line transition-colors"
-                >
-                  {t('common.cancel')}
-                </button>
-                <button
-                  onClick={handleInvite}
-                  disabled={
-                    !agentName.trim() || !workplaceId || sending
-                  }
-                  className={cn(
-                    'inline-flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-all',
-                    agentName.trim() && workplaceId && !sending
-                      ? 'bg-ink text-white hover:bg-ink/85'
-                      : 'bg-line text-ink-muted cursor-not-allowed'
-                  )}
-                >
-                  {sending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  {sending ? t('directory.send.sending') : t('directory.invite')}
-                </button>
-              </div>
+              {sending ? t('directory.send.sending') : t('directory.createAgent')}
+            </button>
+          </div>
         </div>
       </Modal>
 

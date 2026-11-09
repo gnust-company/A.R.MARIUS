@@ -1,4 +1,5 @@
-// What this agent is, as fields rather than as a card to read.
+// What this agent is, as fields rather than as a card to read: blocks 01 (name and description)
+// and 02 (how it runs) of the agent's configuration.
 //
 // Name and description were both settable exactly once — at creation — and the description was
 // not shown anywhere afterwards at all. The runtime settings were worse: the door accepted them
@@ -14,11 +15,11 @@
 
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Loader2, Save } from 'lucide-react'
+import { Cpu, Loader2, Save } from 'lucide-react'
 
 import RuntimeOptionFields from '@/components/RuntimeOptionFields'
 import type { PlacementOption } from '@/store/appStore'
-import { cn } from '@/lib/utils'
+import SettingsSection from './SettingsSection'
 
 export default function SettingsTab({
   name,
@@ -65,14 +66,7 @@ export default function SettingsTab({
   )
   const optionsDirty = Object.keys(touched).length > 0
 
-  const fieldCls = cn(
-    'w-full min-h-[44px] rounded-md border border-line bg-inset px-3.5 py-2.5',
-    'font-body text-body-md text-ink placeholder:text-ink-muted',
-    'focus:border-terracotta focus:bg-paper focus:outline-none focus:ring-[3px] focus:ring-terracotta/15',
-  )
-  const labelCls = 'mb-1.5 block font-body text-body-sm font-medium text-ink'
-  const saveCls =
-    'inline-flex min-h-[44px] items-center gap-2 rounded-md bg-ink px-4 font-body text-body-md font-medium text-paper transition-colors hover:bg-ink/85 disabled:cursor-not-allowed disabled:opacity-50'
+  const labelCls = 'mb-1.5 block font-body text-[13px] font-semibold text-ink'
 
   async function save() {
     setSaving(true)
@@ -101,11 +95,12 @@ export default function SettingsTab({
   }
 
   return (
-    <div className="space-y-8">
-      <div className="space-y-5">
-        <h2 className="font-display text-[20px] font-medium leading-tight text-ink">
-          {t('agentDetail.tab.settings')}
-        </h2>
+    <>
+      <SettingsSection
+        index="01"
+        title={t('agentDetail.config.profileTitle')}
+        hint={t('agentDetail.config.profileHint')}
+      >
         <div>
           <label htmlFor="agent-name" className={labelCls}>
             {t('agentDetail.settingsTab.nameLabel')}
@@ -115,17 +110,14 @@ export default function SettingsTab({
             value={draftName}
             onChange={(e) => setDraftName(e.target.value)}
             readOnly={!canEdit}
-            className={fieldCls}
+            className="field"
           />
         </div>
 
         <div>
-          <label htmlFor="agent-description" className={cn(labelCls, 'mb-0.5')}>
+          <label htmlFor="agent-description" className={labelCls}>
             {t('agentDetail.settingsTab.descriptionLabel')}
           </label>
-          <p className="mb-2 font-body text-body-sm text-ink-muted">
-            {t('agentDetail.settingsTab.descriptionHint')}
-          </p>
           <textarea
             id="agent-description"
             value={draftDescription}
@@ -133,8 +125,11 @@ export default function SettingsTab({
             readOnly={!canEdit}
             rows={3}
             placeholder={t('agentDetail.settingsTab.descriptionPlaceholder')}
-            className={fieldCls}
+            className="field py-2.5 leading-relaxed"
           />
+          <p className="mt-1.5 font-body text-[12px] text-ink-muted">
+            {t('agentDetail.settingsTab.descriptionHint')}
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -142,7 +137,7 @@ export default function SettingsTab({
             type="button"
             onClick={save}
             disabled={!canEdit || !dirty || !trimmed || saving}
-            className={saveCls}
+            className="btn btn-primary"
           >
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -152,29 +147,31 @@ export default function SettingsTab({
             {t('agentDetail.settingsTab.save')}
           </button>
           {saved && (
-            <span className="font-body text-body-sm text-verdigris-ink" role="status">
+            <span className="font-body text-body-sm text-success" role="status">
               {t('agentDetail.settingsTab.saved')}
             </span>
           )}
         </div>
-      </div>
+      </SettingsSection>
 
       {/* How this agent runs: where, and on which settings. The settings are the place's
           answer (FR-007k) — a place that offers nothing draws nothing, and the agent runs on its
           tool's own defaults. */}
-      <div className="space-y-4 border-t border-line pt-6">
-        <div>
-          <h2 className="font-display text-[20px] font-medium leading-tight text-ink">
-            {t('agentDetail.settingsTab.runtimeHeading')}
-          </h2>
-          <p className="mt-1 font-body text-body-md text-ink-light">
+      <SettingsSection
+        index="02"
+        title={t('agentDetail.settingsTab.runtimeHeading')}
+        hint={t('agentDetail.config.runtimeHint')}
+      >
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-canvas-deep px-3.5 py-3">
+          <Cpu className="h-4 w-4 shrink-0 text-ink-light" aria-hidden />
+          <span className="min-w-0 font-body text-body-sm text-ink">
             {runtime
               ? t('agentDetail.settingsTab.runsOn', {
                   cli: runtime.cli_kind,
                   machine: runtime.machine_name,
                 })
               : t('agentDetail.settingsTab.runsNowhere')}
-          </p>
+          </span>
         </div>
         {optionsLoading ? (
           <p className="font-body text-body-md text-ink-muted">{t('directory.workplaceLoading')}</p>
@@ -186,13 +183,13 @@ export default function SettingsTab({
               onChange={(key, value) => setDraftOptions((was) => ({ ...was, [key]: value }))}
               idPrefix="settings-option"
             />
-            <p className="font-body text-body-sm text-ink-muted">{t('directory.optionAppliesNextRun')}</p>
+            <p className="font-body text-[12px] text-ink-muted">{t('directory.optionAppliesNextRun')}</p>
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={saveOptions}
                 disabled={!canEdit || !optionsDirty || savingOptions}
-                className={saveCls}
+                className="btn btn-primary"
               >
                 {savingOptions ? (
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -202,7 +199,7 @@ export default function SettingsTab({
                 {t('agentDetail.settingsTab.saveRuntime')}
               </button>
               {savedOptions && (
-                <span className="font-body text-body-sm text-verdigris-ink" role="status">
+                <span className="font-body text-body-sm text-success" role="status">
                   {t('agentDetail.settingsTab.saved')}
                 </span>
               )}
@@ -213,7 +210,7 @@ export default function SettingsTab({
             {t('agentDetail.settingsTab.runtimeDefaults')}
           </p>
         ) : (
-          <dl className="divide-y divide-line rounded-lg border border-line bg-inset">
+          <dl className="divide-y divide-line rounded-md border border-line bg-canvas-deep">
             {settings.map(([key, value]) => (
               <div key={key} className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 px-4 py-2.5">
                 <dt className="min-w-[8rem] font-body text-body-sm text-ink-light">
@@ -224,7 +221,7 @@ export default function SettingsTab({
             ))}
           </dl>
         )}
-      </div>
-    </div>
+      </SettingsSection>
+    </>
   )
 }

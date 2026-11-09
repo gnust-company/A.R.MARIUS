@@ -29,7 +29,7 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-modal flex items-start justify-center px-4 pt-[12vh] bg-ink-strong/30 backdrop-blur-[3px]"
+          className="fixed inset-0 z-modal flex items-start justify-center px-4 pt-[12vh] bg-scrim/45 backdrop-blur-[3px]"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}

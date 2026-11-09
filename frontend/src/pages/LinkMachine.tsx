@@ -183,30 +183,21 @@ export default function LinkMachine() {
     setBusy(false)
   }
 
-  const inputCls = cn(
-    'w-full min-h-[44px] px-3 py-2 rounded-md bg-inset border border-line-strong',
-    'font-body text-body-md text-ink placeholder:text-ink-muted',
-    'focus:outline-none focus:bg-paper focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15 transition-colors',
-  )
-  const labelCls = 'block font-body text-body-sm font-medium text-ink-light mb-1.5'
-  const buttonCls = cn(
-    'w-full min-h-[44px] px-4 rounded-md font-body text-body-md font-medium transition-colors',
-    'bg-ink text-paper hover:bg-ink/85',
-    'disabled:bg-line disabled:text-ink-muted disabled:cursor-not-allowed',
-  )
-  const ghostCls = cn(
-    'w-full min-h-[44px] px-4 rounded-md flex items-center justify-center gap-1.5',
-    'font-body text-body-md text-ink-light hover:text-ink hover:bg-inset transition-colors',
-  )
+  const labelCls = 'mb-1.5 block font-body text-body-sm font-medium text-ink'
+  const buttonCls = 'btn btn-primary w-full'
+  const ghostCls = 'btn btn-ghost w-full'
   const errorLine = (text: string) => (
     <p
-      className="flex items-start gap-2 rounded-md border border-[#EDB8B0] bg-vermilion-bg px-3 py-2 font-body text-body-sm text-vermilion-ink"
+      className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger-soft px-3 py-2 font-body text-body-sm text-danger"
       role="alert"
     >
       <TriangleAlert className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
       <span className="min-w-0">{text}</span>
     </p>
   )
+  // A notice the person should weigh before saying yes — gold, the colour of "this is yours".
+  const noticeCls =
+    'flex items-start gap-2 rounded-md border border-gold/30 bg-gold-soft px-3 py-2.5 font-body text-body-sm text-ink'
 
   return (
     <EntryFrame>
@@ -217,24 +208,25 @@ export default function LinkMachine() {
         transition={{ duration: 0.2 }}
       >
         <div className="text-center mb-6">
-          <span className="mx-auto mb-3 w-12 h-12 rounded-full bg-paper border border-line flex items-center justify-center">
-            <Link2 className="w-5 h-5 text-ink-light" aria-hidden />
+          <span className="mx-auto mb-4 w-12 h-12 rounded-full bg-surface border border-line flex items-center justify-center">
+            <Link2 className="w-5 h-5 text-sapphire-strong" aria-hidden />
           </span>
-          <h1 className="font-display font-medium text-[28px] leading-tight text-ink">
+          <p className="eyebrow">{t('linkMachine.eyebrow')}</p>
+          <h1 className="mt-2 font-display font-normal text-[30px] sm:text-[34px] leading-[1.1] tracking-[-0.03em] text-ink-strong">
             {t('linkMachine.title')}
           </h1>
-          <p className="mt-2 font-body text-body-md text-ink-light">
+          <p className="mt-2.5 font-body text-body-md text-ink-light">
             <WithCommands text={t('linkMachine.lead')} />
           </p>
         </div>
 
-        <div className="bg-paper border border-line rounded-xl shadow-gilt px-5 py-6 sm:p-8">
+        <div className="surface shadow-[var(--shadow)] px-[18px] py-6 sm:p-8">
           {approved ? (
             <div className="text-center space-y-3">
-              <span className="mx-auto w-12 h-12 rounded-full bg-verdigris-bg flex items-center justify-center">
-                <Check className="w-6 h-6 text-verdigris-ink" aria-hidden />
+              <span className="mx-auto w-12 h-12 rounded-full border border-success/30 bg-success-soft flex items-center justify-center">
+                <Check className="w-6 h-6 text-success" aria-hidden />
               </span>
-              <h2 className="font-display font-medium text-[22px] text-ink">
+              <h2 className="font-display font-normal text-[24px] text-ink-strong">
                 {t('linkMachine.doneTitle')}
               </h2>
               <p className="font-body text-body-md text-ink-light">
@@ -282,15 +274,13 @@ export default function LinkMachine() {
             <div className="space-y-5">
               <div>
                 <p className={labelCls}>{t('linkMachine.machineHeading')}</p>
-                <div className="flex items-center gap-3 rounded-lg bg-inset border border-line p-4">
-                  <span className="w-10 h-10 shrink-0 rounded-full bg-paper border border-line flex items-center justify-center">
-                    <Laptop className="w-5 h-5 text-ink-light" aria-hidden />
-                  </span>
+                <div className="flex items-center gap-3 rounded-md bg-canvas-deep border border-line p-4">
+                  <Laptop className="w-7 h-7 shrink-0 text-sapphire-strong" strokeWidth={1.4} aria-hidden />
                   <div className="min-w-0">
-                    <p className="font-body text-[15px] font-medium text-ink break-words">
+                    <p className="font-display text-[20px] font-normal leading-tight text-ink-strong break-words">
                       {pending.hostname || t('linkMachine.hostnameUnknown')}
                     </p>
-                    <p className="font-mono text-mono-sm text-ink-muted break-words">
+                    <p className="mt-0.5 font-mono text-mono-sm text-ink-muted break-words">
                       {pending.platform} · {pending.daemon_version}
                     </p>
                   </div>
@@ -307,8 +297,8 @@ export default function LinkMachine() {
                   link has nothing but the link, and a link is the one thing another person
                   can send them. */}
               {fromLink && (
-                <p className="flex items-start gap-2 rounded-md bg-gold-bg px-3 py-2 font-body text-body-sm text-gold-ink">
-                  <ShieldQuestion className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
+                <p className={noticeCls}>
+                  <ShieldQuestion className="w-4 h-4 mt-0.5 shrink-0 text-gold" aria-hidden />
                   <span className="min-w-0">
                     <WithCommands text={t('linkMachine.fromLinkNotice')} />
                   </span>
@@ -336,11 +326,8 @@ export default function LinkMachine() {
 
               {/* One line, right where the yes is given (FR-013b): a run on this machine is
                   granted whatever it asks for, because nobody is there to be asked. */}
-              <p
-                className="flex items-start gap-2 rounded-md bg-gold-bg px-3 py-2 font-body text-body-sm text-gold-ink"
-                data-testid="link-unattended-warning"
-              >
-                <TriangleAlert className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
+              <p className={noticeCls} data-testid="link-unattended-warning">
+                <TriangleAlert className="w-4 h-4 mt-0.5 shrink-0 text-gold" aria-hidden />
                 <span className="min-w-0">{t('linkMachine.unattendedWarning')}</span>
               </p>
 
@@ -384,7 +371,7 @@ export default function LinkMachine() {
                   autoComplete="off"
                   spellCheck={false}
                   className={cn(
-                    inputCls,
+                    'field',
                     'min-h-[52px] text-center font-mono text-[20px] tracking-[0.3em] uppercase',
                     'placeholder:font-body placeholder:text-body-md placeholder:tracking-normal placeholder:normal-case',
                   )}

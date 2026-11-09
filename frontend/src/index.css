@@ -47,6 +47,8 @@
     --sidebar-subtle: 0.935 0.035 263;
     --field-bg: 1 0 0;
     --field-line: 0.64 0.04 245;
+    /* Backdrop behind modals and drawers: dark on both themes, so the layer reads as "behind". */
+    --scrim: 0.22 0.04 245;
     --grid-line: oklch(0.30 0.04 245 / 0.035);
     --shadow: 0 18px 45px oklch(0.30 0.035 245 / 0.09);
     --radius: 0.75rem;
@@ -86,6 +88,7 @@
     --sidebar-subtle: 0.24 0.035 210;
     --field-bg: 0.19 0.025 245;
     --field-line: 0.43 0.038 245;
+    --scrim: 0.08 0.02 245;
     --grid-line: oklch(0.5 0.04 245 / 0.055);
     --shadow: 0 18px 50px oklch(0.08 0.02 245 / 0.25);
   }

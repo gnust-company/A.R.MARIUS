@@ -29,6 +29,7 @@ import {
   Laptop,
   Loader2,
   RotateCw,
+  TerminalSquare,
   User as UserIcon,
 } from 'lucide-react'
 
@@ -71,14 +72,15 @@ function Command({ text }: { text: string }) {
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-lg bg-inset border border-line pl-3 pr-1 py-1">
-      <code className="flex-1 min-w-0 py-1.5 font-mono text-mono-sm text-ink break-all">{text}</code>
+    <div className="flex items-stretch min-h-[44px] rounded-md bg-canvas-deep border border-line overflow-hidden">
+      <TerminalSquare className="hidden sm:block shrink-0 self-center ml-3 w-4 h-4 text-ink-muted" aria-hidden />
+      <code className="flex-1 min-w-0 self-center px-3 sm:px-2.5 py-2 font-mono text-mono-sm text-sapphire-strong break-all">{text}</code>
       <button
         type="button"
         onClick={take}
         className={cn(
-          'shrink-0 w-10 h-10 rounded-md flex items-center justify-center transition-colors',
-          copied ? 'text-verdigris-ink' : 'text-ink-muted hover:text-ink hover:bg-paper',
+          'shrink-0 w-11 flex items-center justify-center border-l border-line transition-colors',
+          copied ? 'text-success' : 'text-ink-muted hover:text-ink-strong hover:bg-surface-hover',
         )}
         aria-label={t('firstSteps.copy')}
         title={t('firstSteps.copy')}
@@ -110,27 +112,28 @@ function Part({
     <section className="flex gap-3">
       <span
         className={cn(
-          'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border font-body text-body-sm font-medium',
+          'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border font-display text-[15px]',
           done
-            ? 'border-verdigris bg-verdigris text-paper'
+            ? 'border-success/40 bg-success-soft text-success'
             : current
-              ? 'border-ink bg-ink text-paper'
-              : 'border-line-strong bg-paper text-ink-muted',
+              ? 'border-gold/60 bg-surface text-gold ring-4 ring-gold/10'
+              : 'border-line bg-surface text-ink-faint',
         )}
         aria-hidden
       >
         {done ? <Check className="h-4 w-4" /> : n}
       </span>
-      <div className="min-w-0 flex-1 space-y-2 pt-0.5">
+      <div className="min-w-0 flex-1 space-y-2.5 pt-0.5">
         <h2
           className={cn(
-            'flex flex-wrap items-center gap-x-2 gap-y-1 font-body text-[15px] font-medium',
-            done || current ? 'text-ink' : 'text-ink-light',
+            'flex flex-wrap items-center gap-x-2.5 gap-y-1 font-display font-normal text-[19px] leading-snug tracking-[-0.01em]',
+            done || current ? 'text-ink-strong' : 'text-ink-light',
           )}
         >
           {title}
           {done && (
-            <span className="inline-flex items-center rounded-full bg-verdigris-bg px-2 py-0.5 font-body text-body-sm font-medium text-verdigris-ink">
+            <span className="status-pill border-success/40 text-success">
+              <span className="status-dot bg-success" aria-hidden />
               {t('firstSteps.partDone')}
             </span>
           )}
@@ -163,19 +166,19 @@ function StepTrail({ current, labels }: { current: number; labels: string[] }) {
                 <span
                   className={cn(
                     'absolute top-4 right-1/2 w-full h-0.5 -translate-y-1/2',
-                    i <= current ? 'bg-ink' : 'bg-line-strong',
+                    i <= current ? 'bg-sapphire-strong' : 'bg-line',
                   )}
                   aria-hidden
                 />
               )}
               <span
                 className={cn(
-                  'relative z-[1] flex h-8 w-8 items-center justify-center rounded-full border font-body text-body-sm font-medium',
+                  'relative z-[1] flex h-8 w-8 items-center justify-center rounded-full border font-display text-[15px]',
                   done
-                    ? 'border-ink bg-ink text-paper'
+                    ? 'border-sapphire-strong bg-sapphire-strong text-sapphire-ink'
                     : here
-                      ? 'border-ink bg-paper text-ink ring-4 ring-ink/10'
-                      : 'border-line-strong bg-vellum text-ink-muted',
+                      ? 'border-gold bg-surface text-gold ring-4 ring-gold/15'
+                      : 'border-line-strong bg-canvas text-ink-faint',
                 )}
               >
                 {done ? <Check className="h-4 w-4" aria-hidden /> : i + 1}
@@ -183,7 +186,7 @@ function StepTrail({ current, labels }: { current: number; labels: string[] }) {
               <span
                 className={cn(
                   'hidden sm:block px-1 text-center font-body text-body-sm leading-snug',
-                  here ? 'text-ink font-medium' : done ? 'text-ink-light' : 'text-ink-muted',
+                  here ? 'text-ink-strong font-medium' : done ? 'text-ink-light' : 'text-ink-muted',
                 )}
               >
                 {label}
@@ -196,7 +199,7 @@ function StepTrail({ current, labels }: { current: number; labels: string[] }) {
       <p className="sm:hidden mt-3 text-center font-body text-body-sm text-ink-light">
         {t('firstSteps.stepOf', { current: current + 1, total: labels.length })}
         {' · '}
-        <span className="font-medium text-ink">{labels[current]}</span>
+        <span className="font-medium text-ink-strong">{labels[current]}</span>
       </p>
     </nav>
   )
@@ -418,29 +421,16 @@ export default function Onboarding() {
     }
   }
 
-  const inputCls = cn(
-    'w-full min-h-[44px] px-3 py-2 rounded-md bg-inset border border-line-strong',
-    'font-body text-body-md text-ink placeholder:text-ink-muted',
-    'focus:outline-none focus:bg-paper focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15 transition-colors',
-  )
-  const labelCls = 'block font-body text-body-sm font-medium text-ink-light mb-1.5'
-  const buttonCls = cn(
-    'min-h-[44px] px-5 rounded-md font-body text-body-md font-medium transition-colors',
-    'bg-ink text-paper hover:bg-ink/85',
-    'disabled:bg-line disabled:text-ink-muted disabled:cursor-not-allowed',
-  )
-  const ghostCls = cn(
-    'min-h-[44px] px-3 rounded-md inline-flex items-center justify-center gap-1.5',
-    'font-body text-body-md text-ink-light hover:text-ink hover:bg-inset transition-colors',
-    'disabled:cursor-not-allowed',
-  )
-  const linkCls =
-    'min-h-[44px] inline-flex items-center gap-1 font-body text-body-md font-medium text-terracotta hover:text-terracotta-dark transition-colors'
+  const inputCls = 'field'
+  const labelCls = 'block font-body text-body-sm font-medium text-ink mb-1.5'
+  const buttonCls = 'btn btn-primary whitespace-normal text-center'
+  const ghostCls = 'btn btn-ghost font-medium whitespace-normal text-center'
+  const linkCls = 'btn-text'
   // Back on the left, the way on at the right; on a phone the way on comes first, full width.
   const footerCls = 'flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2 pt-2'
   const errorLine = error && (
     <p
-      className="flex items-start gap-2 rounded-md border border-[#EDB8B0] bg-vermilion-bg px-3 py-2 font-body text-body-sm text-vermilion-ink"
+      className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger-soft px-3 py-2 font-body text-body-sm text-danger"
       role="alert"
     >
       <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
@@ -449,12 +439,14 @@ export default function Onboarding() {
   )
   const heading = (icon: ReactNode, title: string, lead: string) => (
     <div className="flex items-start gap-4">
-      <span className="hidden sm:flex w-11 h-11 shrink-0 rounded-full bg-inset border border-line items-center justify-center text-ink-light">
+      <span className="hidden sm:flex w-12 h-12 shrink-0 rounded-full border border-line-strong items-center justify-center text-sapphire-strong">
         {icon}
       </span>
       <div className="min-w-0">
-        <h1 className="font-display font-medium text-[24px] leading-tight text-ink">{title}</h1>
-        <p className="mt-1.5 font-body text-body-md text-ink-light">{lead}</p>
+        {/* The phone's step trail already spells this out right above the card. */}
+        <p className="eyebrow hidden sm:block mb-1.5">{t('firstSteps.stepOf', { current: shownStep + 1, total: STEPS })}</p>
+        <h1 className="font-display font-normal text-[26px] sm:text-display-md text-ink-strong">{title}</h1>
+        <p className="mt-2 font-body text-body-md text-ink-light">{lead}</p>
       </div>
     </div>
   )
@@ -462,12 +454,13 @@ export default function Onboarding() {
   return (
     <EntryFrame>
       <motion.div
-        className="w-full max-w-[680px]"
+        className="w-full max-w-[720px]"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2 }}
       >
-        <div className="mb-6 sm:mb-8">
+        <div className="mb-6 sm:mb-9">
+          <p className="eyebrow text-center mb-4 sm:mb-5">{t('firstSteps.eyebrow')}</p>
           <StepTrail
             current={shownStep}
             labels={[
@@ -479,7 +472,7 @@ export default function Onboarding() {
           />
         </div>
 
-        <div className="bg-paper border border-line rounded-xl shadow-gilt px-5 py-6 sm:p-8">
+        <div className="surface shadow-gilt px-5 py-6 sm:p-9">
           {shownStep === 0 && (
             <form onSubmit={saveName} className="space-y-6">
               {heading(
@@ -575,10 +568,10 @@ export default function Onboarding() {
                 <p className="font-body text-body-sm text-ink-muted">{t('firstSteps.loginStepHint')}</p>
                 {!progress.linked && (
                   <p
-                    className="flex items-center gap-2 rounded-md bg-gold-bg px-3 py-2 font-body text-body-sm text-gold-ink"
+                    className="flex items-center gap-2.5 rounded-md border border-dashed border-gold/50 bg-gold-soft/60 px-3 py-2.5 font-body text-body-sm text-ink"
                     role="status"
                   >
-                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin text-gold" aria-hidden />
                     {t('firstSteps.waitingLink')}
                   </p>
                 )}
@@ -590,10 +583,10 @@ export default function Onboarding() {
                 <p className="font-body text-body-sm text-ink-muted">{t('firstSteps.startStepHint')}</p>
                 {progress.linked && !progress.running && (
                   <p
-                    className="flex items-center gap-2 rounded-md bg-lapis-bg px-3 py-2 font-body text-body-sm text-lapis-ink"
+                    className="flex items-center gap-2.5 rounded-md border border-dashed border-sapphire/50 bg-sapphire-soft/60 px-3 py-2.5 font-body text-body-sm text-ink"
                     role="status"
                   >
-                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin text-sapphire-strong" aria-hidden />
                     {t('firstSteps.waitingStart')}
                   </p>
                 )}
@@ -635,10 +628,10 @@ export default function Onboarding() {
               ) : placedAt ? (
                 <div className="space-y-4">
                   <p
-                    className="flex items-start gap-2 rounded-md bg-verdigris-bg px-3 py-2 font-body text-body-md text-verdigris-ink"
+                    className="flex items-start gap-2 rounded-md border border-success/30 bg-success-soft px-3 py-2.5 font-body text-body-md text-ink-strong"
                     role="status"
                   >
-                    <Check className="w-4 h-4 mt-1 shrink-0" aria-hidden />
+                    <Check className="w-4 h-4 mt-1 shrink-0 text-success" aria-hidden />
                     <span className="min-w-0">
                       {t('firstSteps.agentAlreadyPlaced', {
                         name: hostName,
@@ -683,7 +676,7 @@ export default function Onboarding() {
                       value={instructions}
                       onChange={(e) => setTypedInstructions(e.target.value)}
                       rows={6}
-                      className={cn(inputCls, 'py-2.5 font-mono text-mono-sm leading-relaxed')}
+                      className={cn(inputCls, 'py-2.5 font-mono text-mono-md leading-relaxed')}
                     />
                   </div>
 

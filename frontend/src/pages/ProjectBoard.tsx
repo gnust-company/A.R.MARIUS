@@ -3,19 +3,14 @@ import { useParams, useNavigate, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Calendar,
-  GitBranch,
-  Users,
-  ScrollText,
   AlertTriangle,
   Plus,
-  Check,
+  ListChecks,
   MessageSquare,
   Paperclip,
   Lock,
   X,
   ArrowRight,
-  GripVertical,
   Trash2,
   Radar,
   Hourglass,
@@ -25,11 +20,10 @@ import { EMPTY_CARD_COUNTS, useAppStore, type TaskStatus, type Task } from '@/st
 import { CREATABLE_PHASES, type TaskPhase } from '@/lib/taskRules';
 import * as api from '@/lib/api';
 import { subscribeProjectEvents } from '@/lib/sse';
-import VellumPanel from '@/components/VellumPanel';
 import StatusChip from '@/components/StatusChip';
+import AgentAvatar from '@/components/AgentAvatar';
 import Modal from '@/components/Modal';
-import Dropdown from '@/components/Dropdown';
-import LeaderChatWidget from '@/components/LeaderChatWidget';
+import ProjectHeader from '@/components/project/ProjectHeader';
 import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
 import { stallText } from '@/lib/stall';
@@ -39,22 +33,23 @@ import { WAITING_FOR_A_MACHINE, waitKind, waitText } from '@/lib/drive';
 // worked, waiting for signatures, finished — and each card still names its own status, so
 // nothing is folded away. *Bị chặn* stays visible on purpose: a blocked task used to fall
 // off the board entirely, which is the exact failure spec 001 is built to prevent. It sits
-// in the "being worked" lane with a vermilion tag rather than in a column of its own.
+// in the "being worked" lane with a danger tag rather than in a column of its own.
 type LaneKey = 'prep' | 'doing' | 'review' | 'done';
 const LANES: { key: LaneKey; statuses: TaskStatus[]; dot: string; createAs?: TaskStatus }[] = [
-  { key: 'prep', statuses: ['draft', 'backlog', 'todo'], dot: 'border-[1.5px] border-ash', createAs: 'todo' },
-  { key: 'doing', statuses: ['in_progress', 'blocked'], dot: 'bg-lapis' },
-  { key: 'review', statuses: ['in_review'], dot: 'bg-gold' },
-  { key: 'done', statuses: ['done'], dot: 'bg-verdigris' },
+  { key: 'prep', statuses: ['draft', 'backlog', 'todo'], dot: 'border-[1.5px] border-ink-muted', createAs: 'todo' },
+  { key: 'doing', statuses: ['in_progress', 'blocked'], dot: 'bg-gold' },
+  { key: 'review', statuses: ['in_review'], dot: 'bg-sapphire' },
+  { key: 'done', statuses: ['done'], dot: 'bg-success' },
 ];
 
-type BoardPriority = 'P0' | 'P1' | 'P2' | 'P3'
+type BoardPriority = 'P0' | 'P1' | 'P2' | 'P3';
 
-const PRIORITY_BADGE: Record<BoardPriority, { bg: string; text: string }> = {
-  P0: { bg: 'bg-vermilion-bg', text: 'text-vermilion-ink' },
-  P1: { bg: 'bg-gold-bg', text: 'text-gold-ink' },
-  P2: { bg: 'bg-ash-bg', text: 'text-ink-light' },
-  P3: { bg: 'bg-ash-bg', text: 'text-ink-muted' },
+// The top two tiers read in the danger colour, the rest stay faint (DESIGN: one meaning per colour).
+const PRIORITY_TONE: Record<BoardPriority, string> = {
+  P0: 'text-danger',
+  P1: 'text-danger',
+  P2: 'text-ink-muted',
+  P3: 'text-ink-muted',
 };
 
 // ─── Task Card ───────────────────────────────────────────────────────────────
@@ -71,10 +66,9 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
     return !b || b.status !== 'done';
   }).length;
 
-  // Normalize to a key the priority maps actually define (P0/P1/P2). The backend exposes no
-  // priority, so tasks can arrive with values (e.g. 'normal') that have no PRIORITY_BADGE /
-  // PRIORITY_BORDER entry — reading `.bg` off the resulting undefined crashed the whole board
-  // (#70). Fall back to the lowest tier for anything unrecognized.
+  // Normalize to a key the priority maps actually define. Tasks can arrive with values
+  // (e.g. 'normal') that have no entry — reading a field off the resulting undefined crashed
+  // the whole board once (#70). Fall back to the middle tier for anything unrecognized.
   const priorityKey: BoardPriority = (['P0', 'P1', 'P2', 'P3'] as const).includes(task.priority as BoardPriority)
     ? (task.priority as BoardPriority)
     : 'P2';
@@ -84,92 +78,63 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
   // there was no loaded value to refresh (T177). Both loaders now fill `cardCounts`.
   const counts = task.cardCounts ?? EMPTY_CARD_COUNTS;
   const assigneeAgent = task.assigneeId ? mariuses.find((m) => m.id === task.assigneeId) : undefined;
+  const assigneeName = assigneeAgent ? assigneeAgent.displayName || assigneeAgent.name : null;
   // Which ordinary wait this card is in, if any — waiting for a free machine and waiting
   // for anyone to pick it up are two different states and get two different lines (FR-008b).
   const waiting = waitKind(task);
+  const hasCounts = counts.criteriaTotal > 0 || counts.comments > 0 || counts.artifacts > 0 || blockerCount > 0;
 
   return (
-    <motion.div
+    <motion.button
+      type="button"
       layout
-      initial={{ opacity: 0, scale: 0.95 }}
+      initial={{ opacity: 0, scale: 0.97 }}
       animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
+      exit={{ opacity: 0, scale: 0.97 }}
       transition={{ duration: 0.2 }}
       onClick={onClick}
       className={cn(
-        'relative bg-paper border rounded-[10px] p-3.5 cursor-pointer group',
-        'hover:border-line-strong hover:shadow-gilt-lg transition-[border-color,box-shadow] duration-200',
-        task.status === 'in_review' ? 'border-[#EBCF8A]' : 'border-line',
-        task.status === 'done' && 'bg-inset'
+        'w-full min-w-0 text-left rounded-[9px] border bg-surface p-[15px]',
+        'transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-sapphire hover:shadow-gilt',
+        task.status === 'in_review' ? 'border-sapphire/40' : 'border-line'
       )}
     >
-      {/* Top row: ID + the task's own status (a lane holds more than one) */}
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <span className="font-mono text-mono-sm text-ink-muted">{task.identifier}</span>
-        <span className="flex items-center gap-1.5">
-          {(priorityKey === 'P0' || priorityKey === 'P1') && (
-            <span
-              className={cn(
-                'text-body-xs font-medium px-1.5 py-0.5 rounded-full',
-                PRIORITY_BADGE[priorityKey].bg,
-                PRIORITY_BADGE[priorityKey].text
-              )}
-            >
-              {t(`tasks.priority.${priorityKey}`)}
-            </span>
-          )}
-          <StatusChip status={task.status} label={t(`tasks.status.${task.status}`)} />
+      {/* Top row: identifier + priority */}
+      <div className="flex items-center justify-between gap-2.5">
+        <span className="task-code truncate">{task.identifier}</span>
+        <span className={cn('shrink-0 font-mono text-[10px] uppercase tracking-[0.06em]', PRIORITY_TONE[priorityKey])}>
+          {t(`tasks.priority.${priorityKey}`)}
         </span>
       </div>
 
       {/* Title */}
-      <h4 className={cn('font-body text-[15px] font-medium mb-2.5 leading-snug', task.status === 'done' ? 'text-ink-light' : 'text-ink')}>
+      <h3
+        className={cn(
+          'mt-2.5 mb-3 font-display text-[16px] font-normal leading-[1.45] break-words',
+          task.status === 'done' || task.status === 'cancelled' ? 'text-ink-light' : 'text-ink-strong'
+        )}
+      >
         {task.title}
-      </h4>
-
-      {/* Checklist + Comments + Artifacts */}
-      <div className="flex items-center gap-3 mb-3 text-ink-light">
-        {counts.criteriaTotal > 0 && (
-          <span className="flex items-center gap-1 text-body-xs">
-            <Check className="w-3.5 h-3.5" />
-            {counts.criteriaPassed}/{counts.criteriaTotal}
-          </span>
-        )}
-        {counts.comments > 0 && (
-          <span className="flex items-center gap-1 text-body-xs">
-            <MessageSquare className="w-3.5 h-3.5" />
-            {counts.comments}
-          </span>
-        )}
-        {counts.artifacts > 0 && (
-          <span className="flex items-center gap-1 text-body-xs">
-            <Paperclip className="w-3.5 h-3.5" />
-          </span>
-        )}
-        {blockerCount > 0 && (
-          <span
-            className="flex items-center gap-1 text-body-xs text-error"
-            title={t('board.blockedBy', { count: blockerCount })}
-          >
-            <Lock className="w-3.5 h-3.5" />
-            {blockerCount}
-          </span>
-        )}
-      </div>
+      </h3>
 
       {/* Why this card is not moving. The stall flag comes first: it means the system
           dropped the task, and no door into *done* will open until it clears (FR-058).
           Below it, the reason whoever blocked or cancelled the task had to write (FR-030). */}
       {task.stalled && (
-        <div className="flex items-start gap-1.5 mb-2">
-          <AlertTriangle className="w-3.5 h-3.5 text-vermilion-ink flex-shrink-0 mt-0.5" />
-          <span className="font-body text-body-sm text-vermilion-ink leading-snug">
+        <div className="-mt-1 mb-3 flex items-start gap-1.5 text-danger">
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          <span className="font-body text-[12px] leading-snug">
             {stallText(task.stalledReasonCode, t) || t('board.stalled')}
           </span>
         </div>
       )}
       {!task.stalled && task.statusReason && (task.status === 'blocked' || task.status === 'cancelled') && (
-        <p className={cn('mb-2 font-body text-body-sm leading-snug line-clamp-2', task.status === 'blocked' ? 'text-vermilion-ink' : 'text-ink-muted')}>
+        <p
+          className={cn(
+            '-mt-1 mb-3 font-body text-[12px] leading-snug line-clamp-2',
+            task.status === 'blocked' ? 'text-danger' : 'text-ink-muted'
+          )}
+        >
           {task.statusReason}
         </p>
       )}
@@ -177,51 +142,65 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
           clock: a task waiting for a free machine is the system working, and the thing
           holding the machine is already being watched on its own (FR-008b, FR-008e). */}
       {waiting && (
-        <div className="flex items-center gap-1.5 mb-2 text-ink-muted">
+        <div className="-mt-1 mb-3 flex items-center gap-1.5 text-ink-muted">
           {waiting === WAITING_FOR_A_MACHINE ? (
             <Hourglass className="w-3.5 h-3.5 flex-shrink-0" />
           ) : (
             <CircleDashed className="w-3.5 h-3.5 flex-shrink-0" />
           )}
-          <span className="font-body text-body-xs">{waitText(waiting, t)}</span>
+          <span className="font-body text-[12px]">{waitText(waiting, t)}</span>
         </div>
       )}
 
-      {/* Assignee avatar (single owner per task) */}
-      {assigneeAgent && (
-        <div className="flex items-center gap-2 font-body text-body-sm text-ink-light">
-          <div
-            className={cn(
-              'w-6 h-6 rounded-full overflow-hidden shrink-0',
-              assigneeAgent.status === 'working'
-                ? 'bg-lapis-bg'
-                : assigneeAgent.status === 'offline'
-                  ? 'bg-vellum border-[1.5px] border-dashed border-ash'
-                  : 'bg-verdigris-bg'
-            )}
-            title={assigneeAgent.displayName || assigneeAgent.name}
-          >
-            {assigneeAgent.avatar ? (
-              <img src={assigneeAgent.avatar} alt={assigneeAgent.displayName || assigneeAgent.name} className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-[11px] font-semibold text-ink-light">
-                {(assigneeAgent.displayName || assigneeAgent.name).charAt(0)}
-              </div>
-            )}
-          </div>
-          <span className="truncate">{assigneeAgent.displayName || assigneeAgent.name}</span>
+      {/* Acceptance criteria · comments · artifacts · open blockers */}
+      {hasCounts && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-body text-[12px] text-ink-muted">
+          {counts.criteriaTotal > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <ListChecks className="w-3.5 h-3.5" />
+              {counts.criteriaPassed}/{counts.criteriaTotal}
+            </span>
+          )}
+          {counts.comments > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <MessageSquare className="w-3.5 h-3.5" />
+              {counts.comments}
+            </span>
+          )}
+          {counts.artifacts > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <Paperclip className="w-3.5 h-3.5" />
+              {counts.artifacts}
+            </span>
+          )}
+          {blockerCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-danger" title={t('board.blockedBy', { count: blockerCount })}>
+              <Lock className="w-3.5 h-3.5" />
+              {blockerCount}
+            </span>
+          )}
         </div>
       )}
 
-      {/* Drag handle (visual only) */}
-      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        <GripVertical className="w-4 h-4 text-ink-muted" />
+      {/* Footer: the single owner, and the task's own status (a lane holds more than one) */}
+      <div className="mt-3.5 flex items-center gap-2 border-t border-line pt-3">
+        {assigneeAgent ? (
+          <AgentAvatar name={assigneeName ?? ''} status={assigneeAgent.status} size="sm" />
+        ) : (
+          <span className="w-8 h-8 shrink-0 rounded-full border border-dashed border-line-strong" aria-hidden />
+        )}
+        <span className={cn('flex-1 min-w-0 truncate font-body text-[12px]', assigneeAgent ? 'text-ink-light' : 'text-ink-muted')}>
+          {assigneeName ?? t('projectView.unassigned')}
+        </span>
+        <StatusChip status={task.status} label={t(`tasks.status.${task.status}`)} />
       </div>
-    </motion.div>
+    </motion.button>
   );
 }
 
 // ─── Add Task (full definition) Modal ────────────────────────────────────────
+
+const LABEL = 'block mb-1.5 font-body text-[13px] font-semibold text-ink';
 
 function AddTaskFormModal({
   onClose,
@@ -273,124 +252,122 @@ function AddTaskFormModal({
     setBusy(false);
   };
 
-  const inputCls = cn(
-    'w-full px-3 py-2 rounded-md bg-inset border border-line',
-    'font-body text-body-md text-ink placeholder:text-ink-muted',
-    'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15 transition-all',
-  );
-  const labelCls = 'block font-body text-body-sm text-ink-light mb-1';
-
   return (
-    <Modal isOpen onClose={onClose} title={t('board.addTaskTitle')}>
-      <div className="space-y-3">
-        <input
-          type="text"
-          value={form.title}
-          onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-          placeholder={t('board.taskTitlePlaceholder')}
-          className={inputCls}
-          autoFocus
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              void submit();
-            }
-          }}
-        />
+    <Modal
+      isOpen
+      onClose={onClose}
+      maxWidth="sm:max-w-[620px]"
+      eyebrow={t('projectView.createTaskEyebrow')}
+      title={t('projectView.createTaskTitle')}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="btn btn-secondary">
+            {t('common.cancel')}
+          </button>
+          <button type="submit" form="new-task-form" disabled={!form.title.trim() || busy} className="btn btn-primary">
+            <Plus className="w-4 h-4" />
+            {t('projectView.createTask')}
+          </button>
+        </>
+      }
+    >
+      <form
+        id="new-task-form"
+        className="flex flex-col gap-[17px]"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
         <div>
-          <label className={labelCls}>{t('board.taskDescLabel')}</label>
-          <textarea
-            value={form.description}
-            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-            rows={2}
-            placeholder={t('board.taskDescPlaceholder')}
-            className={cn(inputCls, 'resize-none')}
+          <label htmlFor="new-task-title" className={LABEL}>{t('projectView.taskTitleLabel')}</label>
+          <input
+            id="new-task-title"
+            type="text"
+            value={form.title}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+            placeholder={t('board.taskTitlePlaceholder')}
+            className="field"
+            autoFocus
           />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={labelCls}>{t('board.taskStatusLabel')}</label>
-            <Dropdown
-              size="sm"
-              value={form.status}
-              onChange={(value) => setForm((f) => ({ ...f, status: value }))}
-              items={CREATABLE_PHASES.map((phase) => ({
-                value: phase,
-                label: t('tasks.status.' + phase),
-              }))}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>{t('board.taskPriorityLabel')}</label>
-            <Dropdown
-              size="sm"
-              value={form.priority}
-              onChange={(value) => setForm((f) => ({ ...f, priority: value }))}
-              items={[
-                { value: 'critical', label: t('board.priorityCritical') },
-                { value: 'high', label: t('board.priorityHigh') },
-                { value: 'medium', label: t('board.priorityMedium') },
-                { value: 'low', label: t('board.priorityLow') },
-              ]}
-            />
-          </div>
+        <div>
+          <label htmlFor="new-task-desc" className={LABEL}>{t('board.taskDescLabel')}</label>
+          <textarea
+            id="new-task-desc"
+            value={form.description}
+            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+            rows={3}
+            placeholder={t('board.taskDescPlaceholder')}
+            className="field py-3 leading-relaxed resize-none"
+          />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={labelCls}>{t('board.taskAssigneeLabel')}</label>
-            <Dropdown
-              size="sm"
-              value={form.assigneeId}
-              onChange={(value) => setForm((f) => ({ ...f, assigneeId: value }))}
-              items={[
-                { value: '', label: t('board.taskAssigneeNone') },
-                ...agents.map((a) => ({ value: a.marius_id, label: a.name })),
-              ]}
-            />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-[13px]">
+          <div className="min-w-0">
+            <label htmlFor="new-task-status" className={LABEL}>{t('board.taskStatusLabel')}</label>
+            <select
+              id="new-task-status"
+              value={form.status}
+              onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+              className="field"
+            >
+              {CREATABLE_PHASES.map((phase) => (
+                <option key={phase} value={phase}>{t('tasks.status.' + phase)}</option>
+              ))}
+            </select>
           </div>
-          <div>
-            <label className={labelCls}>{t('board.taskDueDateLabel')}</label>
+          <div className="min-w-0">
+            <label htmlFor="new-task-priority" className={LABEL}>{t('board.taskPriorityLabel')}</label>
+            <select
+              id="new-task-priority"
+              value={form.priority}
+              onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
+              className="field"
+            >
+              <option value="critical">{t('board.priorityCritical')}</option>
+              <option value="high">{t('board.priorityHigh')}</option>
+              <option value="medium">{t('board.priorityMedium')}</option>
+              <option value="low">{t('board.priorityLow')}</option>
+            </select>
+          </div>
+          <div className="min-w-0">
+            <label htmlFor="new-task-assignee" className={LABEL}>{t('board.taskAssigneeLabel')}</label>
+            <select
+              id="new-task-assignee"
+              value={form.assigneeId}
+              onChange={(e) => setForm((f) => ({ ...f, assigneeId: e.target.value }))}
+              className="field"
+            >
+              <option value="">{t('projectView.unassigned')}</option>
+              {agents.map((a) => (
+                <option key={a.marius_id} value={a.marius_id}>{a.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-0">
+            <label htmlFor="new-task-due" className={LABEL}>{t('board.taskDueDateLabel')}</label>
             <input
+              id="new-task-due"
               type="date"
               value={form.dueDate}
               onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
-              className={inputCls}
+              className="field"
             />
           </div>
         </div>
         <div>
-          <label className={labelCls}>{t('board.taskDodLabel')}</label>
+          <label htmlFor="new-task-dod" className={LABEL}>{t('board.taskDodLabel')}</label>
           <textarea
+            id="new-task-dod"
             value={form.dod}
             onChange={(e) => setForm((f) => ({ ...f, dod: e.target.value }))}
-            rows={2}
+            rows={3}
             placeholder={t('board.taskDodPlaceholder')}
-            className={cn(inputCls, 'resize-none')}
+            className="field py-3 leading-relaxed resize-none"
           />
         </div>
-        {err && <p className="font-body text-body-sm text-terracotta">{err}</p>}
-      </div>
-      <div className="flex justify-end gap-3 mt-5 -mb-1">
-        <button
-          onClick={onClose}
-          className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-paper text-ink border border-line-strong hover:bg-inset transition-colors"
-        >
-          {t('common.cancel')}
-        </button>
-        <button
-          onClick={submit}
-          disabled={!form.title.trim() || busy}
-          className={cn(
-            'flex items-center gap-1.5 px-4 py-2 rounded-md font-body text-body-md font-medium transition-colors',
-            form.title.trim() && !busy
-              ? 'bg-ink text-paper hover:bg-ink/85'
-              : 'bg-line text-ink-muted cursor-not-allowed',
-          )}
-        >
-          <Plus className="w-4 h-4" />
-          {t('common.create')}
-        </button>
-      </div>
+        {err && <p role="alert" className="font-body text-[13px] text-danger">{err}</p>}
+      </form>
     </Modal>
   );
 }
@@ -406,8 +383,8 @@ export default function ProjectBoard() {
   const hydrateProject = useAppStore((s) => s.hydrateProject);
   const deleteProject = useAppStore((s) => s.deleteProject);
 
-  // One add-task form drives every entry point — the gold CTA (status=backlog) and each
-  // column's "+" (status=that column). They used to open two different modals (title-only vs
+  // One add-task form drives every entry point — the header CTA (status=backlog) and the prep
+  // lane's "+" (status=that lane). They used to open two different modals (title-only vs
   // full) and the column "+" silently dropped into backlog; now they're in sync (#82).
   const [addTask, setAddTask] = useState<{ open: boolean; status: TaskStatus }>({ open: false, status: 'backlog' });
   // The setup banner's close button used to be wired to nothing. Hidden for this visit only:
@@ -416,14 +393,9 @@ export default function ProjectBoard() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // Công tắc tự động công nhận của **chính người đang xem** (FR-036 → FR-038). Không phải
-  // một thiết lập của dự án: mỗi người chủ có công tắc riêng, và không ai bật hộ ai.
-  const [autoApproval, setAutoApproval] = useState<boolean | null>(null);
-  const [switching, setSwitching] = useState(false);
-
-  // Lượt rà gần nhất của nhịp điều phối (spec 001 FR-052 → FR-055). Đọc **bản ghi lượt rà**
-  // chứ không tự tính lại danh sách điểm treo: một danh sách tính lại lúc mở trang sẽ trông
-  // vẫn ổn ngay cả khi vòng điều phối đã chết — đúng thứ mà bản ghi này sinh ra để lộ.
+  // The orchestration cadence's latest sweep (spec 001 FR-052 → FR-055). Read the **sweep
+  // record** rather than recomputing the snag list here: a list recomputed on page open would
+  // still look fine after the orchestration loop died — exactly what this record exists to expose.
   const [cadence, setCadence] = useState<api.OrchestrationDTO | null>(null);
 
   const loadCadence = useCallback(() => {
@@ -435,26 +407,6 @@ export default function ProjectBoard() {
   }, [projectId]);
 
   useEffect(() => { loadCadence(); }, [loadCadence]);
-
-  useEffect(() => {
-    if (!projectId) return;
-    api
-      .getAutoApproval(projectId)
-      .then((row) => setAutoApproval(row.enabled))
-      .catch(() => setAutoApproval(null));
-  }, [projectId]);
-
-  const toggleAutoApproval = async () => {
-    if (!projectId || autoApproval === null) return;
-    setSwitching(true);
-    try {
-      const row = await api.setAutoApproval(projectId, !autoApproval);
-      setAutoApproval(row.enabled);
-    } catch {
-      // Giữ nguyên trạng thái đang hiện: thà không đổi còn hơn hiện sai điều người chủ đã chọn.
-    }
-    setSwitching(false);
-  };
 
   const handleDeleteProject = async () => {
     if (!projectId) return;
@@ -514,7 +466,7 @@ export default function ProjectBoard() {
   if (!project) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
-        <h2 className="font-display text-display-md text-ink mb-2">{t('common.loading')}</h2>
+        <h2 className="font-display text-display-md font-normal text-ink-light">{t('common.loading')}</h2>
       </div>
     );
   }
@@ -525,206 +477,48 @@ export default function ProjectBoard() {
   // board must not offer a button that is guaranteed to 409.
   const acceptsTasks = project.status === 'operating' || project.status === 'maintaining';
   const isPlanning = project.status === 'planning';
-  const seatsTotal = (project.seats || []).length;
-  const seatsFilled = (project.seats || []).filter((s) => s.mariusId).length;
 
   return (
-    <div className="flex flex-col h-full">
-      {/* ─── Project Header ─────────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 24, filter: 'blur(2px)' }}
-        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-        transition={{ duration: 0.4, ease: [0, 0, 0.2, 1] as [number, number, number, number] }}
-      >
-        <VellumPanel hover={false} className="mb-5">
-          {/* Top row: name + status */}
-          <div className="flex items-start justify-between mb-3">
-            <h1 className="font-display text-[30px] font-medium leading-tight text-ink">{project.name}</h1>
-            <div className="flex items-center gap-3">
-              <StatusChip status={project.status ?? 'setup'} label={t(`projects.status.${project.status}`)} />
-              <button
-                onClick={() => setConfirmDelete(true)}
-                className="p-1.5 rounded-md text-ink-muted hover:text-vermilion-ink hover:bg-vermilion-bg transition-colors"
-                title={t('board.deleteProject')}
-                aria-label={t('board.deleteProject')}
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Công tắc tự động công nhận — chỉ hiện khi dự án đã nhận việc thật, vì trước
-              đó chưa có đầu ra nào để công nhận. */}
-          {autoApproval !== null && acceptsTasks && (
-            <div className="mb-3 flex items-start gap-2">
-              <input
-                id="auto-approval"
-                type="checkbox"
-                checked={autoApproval}
-                disabled={switching}
-                onChange={() => void toggleAutoApproval()}
-                className="mt-1"
-              />
-              <label htmlFor="auto-approval" className="font-body text-body-sm text-ink-light">
-                <span className="text-ink">{t('board.autoApproval')}</span>
-                <span className="block text-body-xs text-ink-muted">
-                  {autoApproval ? t('board.autoApprovalOn') : t('board.autoApprovalOff')}
-                </span>
-              </label>
-            </div>
-          )}
-
-          {/* Objective */}
-          <p className="font-body text-body-md text-ink-light mb-3">{project.objective || ''}</p>
-
-          {/* Meta row */}
-          <div className="flex flex-wrap items-center gap-4 font-body text-body-sm text-ink-light">
-            <span className="flex items-center gap-1.5">
-              <Calendar className="w-4 h-4" />
-              {t('board.targetDate', { date: project.createdAt ? new Date(project.createdAt).toLocaleDateString() : '—' })}
-            </span>
-            {project.githubUrl && (
-              <>
-                <span className="text-ink-muted">&middot;</span>
-                <a
-                  href={project.githubUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 text-terracotta hover:underline"
-                >
-                  <GitBranch className="w-4 h-4" />
-                  <span>{project.githubUrl.replace(/^https?:\/\//, '')}</span>
-                </a>
-              </>
-            )}
-            <span className="text-ink-muted">&middot;</span>
-            <span className="flex items-center gap-1.5">
-              <Users className="w-4 h-4" />
-              {t('board.seatCount', { filled: seatsFilled, total: seatsTotal })}
-            </span>
-            <span className="text-ink-muted">&middot;</span>
-            <span className="flex items-center gap-1.5">
-              <ScrollText className="w-4 h-4" />
-              {t('board.taskCount', { count: projectTasks.length })}
-            </span>
-          </div>
-
-          {/* ─── Nhịp điều phối ────────────────────────────────────────
-              Chỉ hiện khi dự án đã thật sự chạy: trước giai đoạn *đang chạy* chưa có
-              bảng việc nào để rà, nên một ô trống ở đó chỉ gây hoang mang. */}
-          {acceptsTasks && cadence !== null && (
-            <div className="mt-3 pt-3 border-t border-line">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-body text-body-sm">
-                <span className="flex items-center gap-1.5 text-ink">
-                  <Radar className="w-4 h-4" />
-                  {t('board.cadence.title')}
-                </span>
-                <span className="text-ink-muted">&middot;</span>
-                <span className="text-ink-light">
-                  {cadence.last_swept_at
-                    ? t('board.cadence.lastSwept', {
-                        when: new Date(cadence.last_swept_at).toLocaleString(),
-                      })
-                    : t('board.cadence.neverSwept')}
-                </span>
-                {cadence.next_sweep_at && (
-                  <>
-                    <span className="text-ink-muted">&middot;</span>
-                    <span className="text-ink-light">
-                      {t('board.cadence.nextSweep', {
-                        when: new Date(cadence.next_sweep_at).toLocaleString(),
-                      })}
-                    </span>
-                  </>
-                )}
-              </div>
-
-              {cadence.last_swept_at && cadence.snags.length === 0 && (
-                <p className="mt-1.5 font-body text-body-sm text-ink-muted">
-                  {t('board.cadence.allClear')}
-                </p>
-              )}
-
-              {cadence.snags.length > 0 && (
-                <ul className="mt-2 space-y-1">
-                  {cadence.snags.map((snag) => (
-                    <li key={`${snag.kind}-${snag.task_id}`} className="flex items-start gap-2">
-                      <span className="mt-0.5 shrink-0 rounded px-1.5 py-0.5 bg-vermilion-bg text-vermilion-ink font-body text-body-xs">
-                        {t(`board.cadence.kind.${snag.kind}`)}
-                      </span>
-                      <span className="font-body text-body-sm text-ink-light">
-                        {t(`board.cadence.detail.${snag.kind}`, {
-                          identifier: snag.identifier,
-                          title: snag.title,
-                          hours: snag.mark_hours ?? '',
-                        })}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {cadence.skipped_reason && (
-                <p className="mt-1.5 font-body text-body-xs text-ink-muted">
-                  {t('board.cadence.skipped', { reason: cadence.skipped_reason })}
-                </p>
-              )}
-            </div>
-          )}
-        </VellumPanel>
-      </motion.div>
-
-      {/* ─── Tabs ───────────────────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.1, duration: 0.3 }}
-        className="flex items-center gap-1 mb-4 border-b border-line"
-      >
-        <TabLink>{t('board.title')}</TabLink>
-        <TabLink to={wsHref(workspaceId, `/projects/${projectId}/roster`)}>{t('board.roster')}</TabLink>
-
-        {/* Right-side actions: Add Task. (Leader chat moved to the floating bubble — LeaderChatWidget.) */}
-        <div className="ml-auto mb-1 flex items-center gap-2">
-          <AnimatePresence>
+    <div className="mx-auto w-full max-w-[1440px] flex flex-col">
+      <ProjectHeader
+        project={project}
+        active="board"
+        actions={
+          <>
             {acceptsTasks && (
-              <motion.button
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                onClick={() => setAddTask({ open: true, status: 'backlog' })}
-                className={cn(
-                  'flex items-center gap-1.5 px-4 py-2 rounded-md font-body text-body-sm font-medium',
-                  'bg-gold text-ink hover:bg-gold-light transition-colors',
-                  'animate-pulse-glow'
-                )}
-              >
+              <button type="button" onClick={() => setAddTask({ open: true, status: 'backlog' })} className="btn btn-primary">
                 <Plus className="w-4 h-4" />
-                {t('board.addTask')}
-              </motion.button>
+                {t('projectView.createTask')}
+              </button>
             )}
-          </AnimatePresence>
-        </div>
-      </motion.div>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className="btn btn-ghost w-11 px-0 hover:enabled:text-danger"
+              title={t('board.deleteProject')}
+              aria-label={t('board.deleteProject')}
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </>
+        }
+      />
 
-      {/* ─── Setup Banner ───────────────────────────────────────────── */}
-      {/* ─── Planning Banner (spec 001 FR-003) ─────────────────────── */}
+      {/* ─── Planning banner (spec 001 FR-003) ─── */}
       <AnimatePresence>
         {isPlanning && (
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
+            initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.3 }}
-            className="mb-5 bg-gold-bg border border-[#EBCF8A] rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2"
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25 }}
+            className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-gold/30 bg-gold-soft px-4 py-3.5"
           >
-            <AlertTriangle className="w-5 h-5 text-gold-ink flex-shrink-0" />
-            <div className="flex-[1_1_240px] min-w-0">
-              <p className="font-body text-body-md text-ink">{t('board.planningBanner')}</p>
-            </div>
+            <AlertTriangle className="w-5 h-5 shrink-0 text-gold" />
+            <p className="flex-[1_1_240px] min-w-0 font-body text-[14px] text-ink">{t('board.planningBanner')}</p>
             <Link
               to={wsHref(workspaceId, `/projects/${projectId}/plan`)}
-              className="flex items-center gap-1 min-h-[36px] font-body text-body-sm font-medium text-gold-ink hover:text-ink transition-colors whitespace-nowrap"
+              className="btn-text min-h-[36px] text-gold hover:text-sapphire-strong whitespace-nowrap"
             >
               {t('board.goToPlan')}
               <ArrowRight className="w-4 h-4" />
@@ -733,29 +527,28 @@ export default function ProjectBoard() {
         )}
       </AnimatePresence>
 
+      {/* ─── Setup banner ─── */}
       <AnimatePresence>
         {isSetup && !setupBannerHidden && (
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
+            initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.3 }}
-            className="mb-5 bg-gold-bg border border-[#EBCF8A] rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2"
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25 }}
+            className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-gold/30 bg-gold-soft px-4 py-3.5"
           >
-            <AlertTriangle className="w-5 h-5 text-gold-ink flex-shrink-0" />
-            <div className="flex-[1_1_240px] min-w-0">
-              <p className="font-body text-body-md text-ink">{t('board.setupBanner')}</p>
-            </div>
+            <AlertTriangle className="w-5 h-5 shrink-0 text-gold" />
+            <p className="flex-[1_1_240px] min-w-0 font-body text-[14px] text-ink">{t('board.setupBanner')}</p>
             <Link
               to={wsHref(workspaceId, `/projects/${projectId}/roster`)}
-              className="flex items-center gap-1 min-h-[36px] font-body text-body-sm font-medium text-gold-ink hover:text-ink transition-colors whitespace-nowrap"
+              className="btn-text min-h-[36px] text-gold hover:text-sapphire-strong whitespace-nowrap"
             >
               {t('board.goToRoster')}
               <ArrowRight className="w-4 h-4" />
             </Link>
             <button
               onClick={() => setSetupBannerHidden(true)}
-              className="p-0.5 rounded text-ink-muted hover:text-ink transition-colors"
+              className="grid place-items-center w-9 h-9 rounded-md text-ink-muted hover:text-ink-strong hover:bg-surface/70 transition-colors"
               aria-label={t('common.dismiss')}
             >
               <X className="w-4 h-4" />
@@ -764,12 +557,76 @@ export default function ProjectBoard() {
         )}
       </AnimatePresence>
 
-      {/* ─── Board (kanban) + Leader chat dock (VS Code-style right panel) ──── */}
-      <div className="flex flex-1 min-h-0">
-        <div className="flex-1 min-w-0 min-h-0 flex">
-        {/* One row of four lanes at every width — a board read as a 2×2 grid puts "done" under
-            "getting ready". Below ~850px of room it scrolls sideways, lane by lane. */}
-        <div className="grid grid-flow-col auto-cols-[minmax(200px,1fr)] gap-4 xl:gap-5 items-start pb-24 flex-1 min-h-0 overflow-x-auto snap-x snap-mandatory sm:snap-none -mx-4 px-4 sm:mx-0 sm:px-0">
+      {/* ─── Orchestration cadence ───
+          Only once the project is really running: before *operating* there is no board to
+          sweep, so an empty box there would only confuse. */}
+      {acceptsTasks && cadence !== null && (
+        <section className="surface mb-5 px-5 py-4">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-body text-[13px]">
+            <span className="inline-flex items-center gap-1.5 font-semibold text-ink-strong">
+              <Radar className="w-4 h-4 text-sapphire-strong" />
+              {t('board.cadence.title')}
+            </span>
+            <span className="text-ink-muted" aria-hidden>&middot;</span>
+            <span className="text-ink-light">
+              {cadence.last_swept_at
+                ? t('board.cadence.lastSwept', { when: new Date(cadence.last_swept_at).toLocaleString() })
+                : t('board.cadence.neverSwept')}
+            </span>
+            {cadence.next_sweep_at && (
+              <>
+                <span className="text-ink-muted" aria-hidden>&middot;</span>
+                <span className="text-ink-light">
+                  {t('board.cadence.nextSweep', { when: new Date(cadence.next_sweep_at).toLocaleString() })}
+                </span>
+              </>
+            )}
+          </div>
+
+          {cadence.last_swept_at && cadence.snags.length === 0 && (
+            <p className="mt-1.5 font-body text-[13px] text-ink-muted">{t('board.cadence.allClear')}</p>
+          )}
+
+          {cadence.snags.length > 0 && (
+            <ul className="mt-2.5 space-y-1.5">
+              {cadence.snags.map((snag) => (
+                <li key={`${snag.kind}-${snag.task_id}`} className="flex items-start gap-2">
+                  <span className="mt-0.5 shrink-0 rounded-full border border-danger/35 px-2 py-px font-body text-[11px] text-danger">
+                    {t(`board.cadence.kind.${snag.kind}`)}
+                  </span>
+                  <span className="min-w-0 font-body text-[13px] text-ink-light">
+                    {t(`board.cadence.detail.${snag.kind}`, {
+                      identifier: snag.identifier,
+                      title: snag.title,
+                      hours: snag.mark_hours ?? '',
+                    })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {cadence.skipped_reason && (
+            <p className="mt-1.5 font-body text-[12px] text-ink-muted">
+              {t('board.cadence.skipped', { reason: cadence.skipped_reason })}
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* ─── Board (kanban) ───
+          One row of four lanes at every width — a board read as a 2×2 grid puts "done" under
+          "getting ready". Where there is no room for all four it scrolls sideways and snaps lane
+          by lane; on a phone each lane is most of the screen wide and the next one peeks in, so
+          the swipe is obvious and no lane is ever cut in an arbitrary place. */}
+      <div
+        className={cn(
+          'grid grid-flow-col gap-3 items-stretch pb-24 overflow-x-auto snap-x snap-mandatory overscroll-x-contain',
+          'auto-cols-[minmax(272px,86%)] -mx-4 px-4 scroll-px-4',
+          'sm:auto-cols-[minmax(272px,60%)] sm:-mx-6 sm:px-6 sm:scroll-px-6',
+          'md:auto-cols-[minmax(250px,1fr)] md:mx-0 md:px-0 md:scroll-px-0'
+        )}
+      >
         {LANES.map((lane, laneIndex) => {
           const laneLabel = t(`board.lanes.${lane.key}`);
           const laneTasks = tasksByLane[lane.key] || [];
@@ -780,28 +637,33 @@ export default function ProjectBoard() {
             .filter((p) => p.n > 0)
             .map((p) => `${t('tasks.status.' + p.st)} ${p.n}`);
           if (lane.key === 'done' && cancelledCount > 0) parts.push(`${t('tasks.status.cancelled')} ${cancelledCount}`);
+          const canCreateHere = acceptsTasks && lane.createAs && CREATABLE_PHASES.includes(lane.createAs as TaskPhase);
           return (
             <motion.section
               key={lane.key}
               aria-label={laneLabel}
-              initial={{ opacity: 0, y: 16 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{
-                delay: 0.06 * laneIndex,
-                duration: 0.35,
+                delay: 0.05 * laneIndex,
+                duration: 0.3,
                 ease: [0, 0, 0.2, 1] as [number, number, number, number],
               }}
-              className="min-w-0 flex flex-col gap-2.5 snap-start"
+              className="min-w-0 min-h-[340px] snap-start flex flex-col gap-2.5 rounded-lg border border-line bg-canvas-deep/50 p-3"
             >
-              {/* Lane header */}
-              <div className="flex flex-col gap-0.5 px-0.5 pb-1.5">
+              {/* Lane header: label + count, then which statuses it folds */}
+              <header className="px-[3px] pt-[3px] pb-2">
                 <div className="flex items-center gap-2">
-                  <span className={cn('w-2.5 h-2.5 rounded-[3px] box-border', lane.dot)} />
-                  <h2 className="font-display text-[18px] font-medium text-ink">{laneLabel}</h2>
-                  <span className="font-body text-body-sm text-ink-muted">{laneTasks.length}</span>
+                  <span className={cn('w-2 h-2 rounded-full box-border shrink-0', lane.dot)} />
+                  <h2 className="flex-1 min-w-0 truncate font-body text-[13px] font-medium text-ink-light">{laneLabel}</h2>
+                  <b className="grid place-items-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-surface font-body text-[11px] font-semibold text-ink-strong">
+                    {laneTasks.length}
+                  </b>
                 </div>
-                <p className="font-body text-body-sm text-ink-muted min-h-[20px]">{parts.join(' · ')}</p>
-              </div>
+                {parts.length > 0 && (
+                  <p className="mt-1 pl-4 font-body text-[11px] text-ink-muted truncate">{parts.join(' · ')}</p>
+                )}
+              </header>
 
               <AnimatePresence mode="popLayout">
                 {laneTasks.map((task) => (
@@ -815,33 +677,30 @@ export default function ProjectBoard() {
 
               {/* Empty state. A lane you cannot create into says so instead of inviting a
                   drop that would skip every gate. */}
-              {laneTasks.length === 0 && !(acceptsTasks && lane.createAs) && (
-                <div className="flex items-center justify-center py-7 border border-dashed border-line-strong rounded-[10px] text-ink-muted">
-                  <span className="font-body text-body-sm px-3 text-center">{t('board.reachedByWorking')}</span>
+              {laneTasks.length === 0 && !canCreateHere && (
+                <div className="grid place-items-center min-h-[90px] rounded-lg border border-dashed border-line-strong px-3 text-center font-body text-[12px] text-ink-muted">
+                  {lane.createAs ? t('projectView.laneEmpty') : t('board.reachedByWorking')}
                 </div>
               )}
 
               {/* Add button — only in the lane where a new task may legally start. A task
                   cannot be born *in review* or *done*: those are reached by doing the work
                   (spec 001 FR-024). */}
-              {acceptsTasks && lane.createAs && CREATABLE_PHASES.includes(lane.createAs as TaskPhase) && (
+              {canCreateHere && (
                 <button
                   onClick={() => setAddTask({ open: true, status: lane.createAs as TaskStatus })}
-                  className="flex items-center justify-center gap-1.5 min-h-[44px] rounded-[10px] border border-dashed border-line-strong text-ink-light hover:text-ink hover:bg-paper transition-colors"
+                  className="flex items-center justify-center gap-1.5 min-h-[44px] rounded-lg border border-dashed border-line-strong font-body text-[13px] font-medium text-ink-light hover:text-sapphire-strong hover:border-sapphire hover:bg-surface transition-colors"
                 >
                   <Plus className="w-4 h-4" />
-                  <span className="font-body text-body-md font-medium">{t('board.addTask')}</span>
+                  {t('projectView.createTask')}
                 </button>
               )}
             </motion.section>
           );
         })}
-        </div>
-        </div>
-
       </div>
 
-      {/* ─── Add Task (full definition) — one form for the CTA + every column "+" (#82) */}
+      {/* ─── Add Task (full definition) — one form for the CTA + the lane "+" (#82) */}
       {addTask.open && projectId && (
         <AddTaskFormModal
           defaultStatus={addTask.status}
@@ -850,92 +709,27 @@ export default function ProjectBoard() {
         />
       )}
 
-      {/* ─── Delete Project Confirm ─────────────────────────────────── */}
+      {/* ─── Delete Project Confirm ─── */}
       <Modal
         isOpen={confirmDelete}
         onClose={() => !deleting && setConfirmDelete(false)}
         title={t('board.deleteConfirmTitle')}
         footer={
           <>
-            <button
-              onClick={() => setConfirmDelete(false)}
-              disabled={deleting}
-              className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-paper text-ink border border-line-strong hover:bg-inset transition-colors disabled:opacity-50"
-            >
+            <button onClick={() => setConfirmDelete(false)} disabled={deleting} className="btn btn-secondary">
               {t('common.cancel')}
             </button>
-            <button
-              onClick={handleDeleteProject}
-              disabled={deleting}
-              className="px-4 py-2 rounded-md font-body text-body-md font-medium bg-vermilion-ink text-white hover:bg-ink transition-colors disabled:opacity-50"
-            >
+            <button onClick={handleDeleteProject} disabled={deleting} className="btn btn-danger">
+              <Trash2 className="w-4 h-4" />
               {deleting ? t('board.deleting') : t('common.delete')}
             </button>
           </>
         }
       >
-        <p className="font-body text-body-md text-ink-light">
+        <p className="font-body text-[14px] leading-relaxed text-ink-light">
           {t('board.deleteConfirmBody', { name: project.name })}
         </p>
       </Modal>
-
-      {/* Floating Leader-chat bubble (project-only, bottom-right) — opens a large chat panel (#82) */}
-      {projectId && <LeaderChatWidget projectId={projectId} />}
     </div>
-  );
-}
-
-// ─── Tab Link Component ─────────────────────────────────────────────────────
-
-// The active tab is the one without a `to` — there is nowhere to navigate to
-// from the page you are already on. An `active` prop would be a second source
-// of truth for the same fact, so there isn't one.
-function TabLink({
-  children,
-  to,
-  disabled,
-}: {
-  children: React.ReactNode;
-  to?: string;
-  disabled?: boolean;
-}) {
-  const { t } = useTranslation();
-  if (disabled) {
-    return (
-      <span
-        className={cn(
-          'flex items-center px-4 py-2.5 font-body text-body-md font-medium text-ink-muted',
-          'border-b-2 border-transparent cursor-not-allowed'
-        )}
-        title={t('board.commissionLocked')}
-      >
-        {children}
-      </span>
-    );
-  }
-
-  if (to) {
-    return (
-      <Link
-        to={to}
-        className={cn(
-          'flex items-center px-4 py-2.5 font-body text-body-md font-medium text-ink-light hover:text-ink transition-colors',
-          'border-b-2 border-transparent hover:border-line-strong'
-        )}
-      >
-        {children}
-      </Link>
-    );
-  }
-
-  return (
-    <span
-      className={cn(
-        'flex items-center px-4 py-2.5 font-body text-body-md font-medium text-terracotta',
-        'border-b-2 border-terracotta'
-      )}
-    >
-      {children}
-    </span>
   );
 }
