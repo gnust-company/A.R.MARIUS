@@ -19,7 +19,10 @@ i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false },
 })
 
+// <html lang> follows the language, so screen readers and hyphenation read Vietnamese as such.
+if (typeof document !== 'undefined') document.documentElement.lang = initialLang
 i18n.on('languageChanged', (lng) => {
+  document.documentElement.lang = lng
   try {
     localStorage.setItem(LANG_KEY, lng)
   } catch {

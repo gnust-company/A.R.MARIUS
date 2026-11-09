@@ -1,13 +1,21 @@
 <!doctype html>
-<html lang="en">
+<html lang="vi">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Armarius</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Cinzel:wght@400;500;600;700&family=Cinzel+Decorative:wght@400;700&family=Caveat:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <meta name="theme-color" content="#f9f7f2" />
+    <!-- Set the theme before first paint so a reload never flashes the wrong one. Same rule as
+         src/hooks/use-theme.ts: the stored choice, else the OS preference. -->
+    <script>
+      (function () {
+        var t = null
+        try { t = localStorage.getItem('armarius.theme') } catch (e) {}
+        if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        document.documentElement.dataset.theme = t
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

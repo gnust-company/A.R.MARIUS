@@ -1,5 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, Navigate, useParams } from 'react-router';
+import CommandPalette from './CommandPalette';
+import MobileNav from './MobileNav';
 import Navbar from './Navbar';
 import TopBar from './TopBar';
 import { useAppStore } from '@/store/appStore';
@@ -36,6 +38,19 @@ export default function Layout() {
   // here because the sidebar shows the count on every screen.
   useInboxCount(Boolean(workspaceId));
 
+  // ⌘K / Ctrl+K opens "go anywhere" from every in-workspace page.
+  const [commandOpen, setCommandOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCommandOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   // A stale/unknown workspace id (e.g. an old deep link) → back to the launcher. Guard
   // only after the list has loaded so we don't bounce during the initial hydrate.
   if (workspaces.length > 0 && workspaceId && !workspaces.some((w) => w.id === workspaceId)) {
@@ -55,11 +70,14 @@ export default function Layout() {
           viewport === 'desktop' && (collapsed ? 'ml-[68px]' : 'ml-[240px]')
         )}
       >
-        <TopBar />
-        <main className="px-4 py-6 sm:px-6 sm:py-7 xl:px-9">
+        <TopBar onOpenCommand={() => setCommandOpen(true)} />
+        {/* On a phone the bottom bar sits over the page, so the page keeps clear of it. */}
+        <main className={cn('px-4 py-6 sm:px-6 sm:py-8 xl:px-9', viewport === 'phone' && 'pb-28')}>
           <Outlet />
         </main>
       </div>
+      {viewport === 'phone' && <MobileNav />}
+      <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />
     </div>
   );
 }
