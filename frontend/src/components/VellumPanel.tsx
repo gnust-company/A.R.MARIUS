@@ -21,9 +21,9 @@ export default function VellumPanel({
   return (
     <Tag
       className={cn(
-        'bg-vellum-deep border border-vellum-dark rounded-md p-6',
-        hover && 'gilt',
-        largeHover && 'gilt-lg',
+        // A quiet card of the Đài quan sát design (`.surface`); hover only firms up the hairline.
+        'surface p-6',
+        (hover || largeHover) && 'transition-colors hover:border-line-strong',
         deckle && 'deckle',
         className
       )}

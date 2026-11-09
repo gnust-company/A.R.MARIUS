@@ -16,12 +16,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { AlertTriangle, ChevronLeft, Circle, Loader2, MessageSquare, Radio, Wrench } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Circle, Loader2, MessageSquare, Wrench } from 'lucide-react';
 
 import { getRun, readRunEventInFull, type RunEventDTO } from '@/lib/api';
 import { useRunTrace } from '@/hooks/use-run-trace';
 import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
+import PageTitle from '@/components/PageTitle';
 
 /** A safe i18n key segment: the daemon's codes are snake_case, and anything else is a code this
  *  screen has never heard of rather than a path into the phrase table. */
@@ -29,23 +30,23 @@ function segment(code: string): string {
   return /^[a-z0-9_]+$/.test(code) ? code : 'unknown';
 }
 
-// One meaning per colour, as everywhere else: lapis is a tool at work, verdigris is the agent
-// saying something, vermilion is something broken, ash is the bookkeeping in between. Read off
+// One meaning per colour, as everywhere else: sapphire is a tool at work, success is the agent
+// saying something, danger is something broken, faint is the bookkeeping in between. Read off
 // the type name so a type this screen has not met yet still lands somewhere sensible.
-type Tone = 'lapis' | 'verdigris' | 'vermilion' | 'ash';
+type Tone = 'tool' | 'said' | 'broken' | 'quiet';
 
 function toneOf(event: RunEventDTO): Tone {
-  if (/error|fail/.test(event.type) || typeof event.payload?.code === 'string') return 'vermilion';
-  if (event.type.startsWith('tool.')) return 'lapis';
-  if (event.type === 'assistant.message' || /completed|done|success/.test(event.type)) return 'verdigris';
-  return 'ash';
+  if (/error|fail/.test(event.type) || typeof event.payload?.code === 'string') return 'broken';
+  if (event.type.startsWith('tool.')) return 'tool';
+  if (event.type === 'assistant.message' || /completed|done|success/.test(event.type)) return 'said';
+  return 'quiet';
 }
 
 const TONE: Record<Tone, { chip: string; icon: typeof Circle }> = {
-  lapis: { chip: 'bg-lapis-bg text-lapis-ink', icon: Wrench },
-  verdigris: { chip: 'bg-verdigris-bg text-verdigris-ink', icon: MessageSquare },
-  vermilion: { chip: 'bg-vermilion-bg text-vermilion-ink', icon: AlertTriangle },
-  ash: { chip: 'bg-ash-bg text-ink-light', icon: Circle },
+  tool: { chip: 'bg-sapphire-soft text-sapphire-strong', icon: Wrench },
+  said: { chip: 'bg-success-soft text-success', icon: MessageSquare },
+  broken: { chip: 'bg-danger-soft text-danger', icon: AlertTriangle },
+  quiet: { chip: 'bg-canvas-deep text-ink-light', icon: Circle },
 };
 
 /** Only scalars, and never the underscored facts about the record — those are drawn as their
@@ -85,7 +86,7 @@ function formatTime(iso?: string | null): string {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-function EventRow({ runId, event }: { runId: string; event: RunEventDTO }) {
+function EventRow({ runId, event, first, last }: { runId: string; event: RunEventDTO; first?: boolean; last?: boolean }) {
   const { t } = useTranslation();
   const { text, args } = useBody(event);
   const [whole, setWhole] = useState<string | null>(null);
@@ -114,36 +115,48 @@ function EventRow({ runId, event }: { runId: string; event: RunEventDTO }) {
       data-testid="run-trace-event"
       data-seq={event.seq}
       data-type={event.type}
-      className="flex gap-3 rounded-lg bg-paper border border-line px-3.5 py-3 mb-2"
+      className="relative flex gap-3 px-3 py-3.5 sm:gap-4 sm:px-5"
     >
-      <span className={cn('hidden sm:flex w-7 h-7 shrink-0 rounded-full items-center justify-center', tone.chip)}>
-        <Icon className="w-3.5 h-3.5" />
-      </span>
+      {/* When and which, in mono beside the spine — a log is read down this column. */}
+      <div className="hidden w-[78px] shrink-0 pt-1.5 text-right font-mono text-[10px] leading-relaxed text-ink-muted sm:block">
+        <div>{formatTime(event.created_at)}</div>
+        <div>#{event.seq}</div>
+      </div>
 
-      <div className="flex-1 min-w-0">
-        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-1.5">
-          <span className="flex flex-wrap items-center gap-1.5 min-w-0">
-            <span className="font-mono text-mono-sm text-ink-muted">#{event.seq}</span>
-            <span className={cn('font-mono text-mono-sm font-medium rounded-full px-2 py-0.5', tone.chip)}>
-              {event.type}
-            </span>
-            {name && (
-              <span className="font-mono text-mono-sm rounded-md px-2 py-0.5 bg-inset border border-line text-ink break-all">
-                {name}
-              </span>
-            )}
+      {/* The timeline spine, carried through the row's padding so rows join into one line. */}
+      <div className="relative flex w-7 shrink-0 justify-center self-stretch">
+        <span
+          aria-hidden="true"
+          className={cn('absolute w-px bg-line-strong', first ? 'top-3.5' : '-top-3.5', last ? 'bottom-[calc(100%-14px)]' : '-bottom-3.5')}
+        />
+        <span className={cn('relative grid h-7 w-7 place-items-center rounded-full ring-4 ring-surface', tone.chip)}>
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+      </div>
+
+      <div className="min-w-0 flex-1 pt-0.5">
+        <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+          <span className={cn('rounded-[4px] px-1.5 py-0.5 font-mono text-[11px] font-medium', tone.chip)}>
+            {event.type}
           </span>
-          <span className="font-mono text-mono-sm text-ink-muted">{formatTime(event.created_at)}</span>
+          {name && (
+            <span className="break-all rounded-[4px] border border-line px-1.5 py-0.5 font-mono text-[11px] text-ink">
+              {name}
+            </span>
+          )}
+          <span className="ml-auto font-mono text-[10px] text-ink-muted sm:hidden">
+            #{event.seq} · {formatTime(event.created_at)}
+          </span>
         </div>
 
         {text && (
-          <div className="font-body text-body-md text-ink leading-relaxed whitespace-pre-wrap break-words">
+          <div className="whitespace-pre-wrap break-words font-body text-[14px] leading-relaxed text-ink">
             {whole ?? text}
           </div>
         )}
 
         {args && (
-          <pre className="mt-2 p-2.5 bg-inset border border-line rounded-md font-mono text-mono-sm text-ink-light overflow-x-auto">
+          <pre className="mt-2 overflow-x-auto rounded-md border border-line bg-canvas-deep p-2.5 font-mono text-[11px] text-ink-light">
             {whole && event.full_field === 'args' ? whole : JSON.stringify(args, null, 2)}
           </pre>
         )}
@@ -151,7 +164,7 @@ function EventRow({ runId, event }: { runId: string; event: RunEventDTO }) {
         {/* Why part of this row is missing, rather than a gap that reads as an agent doing
             nothing (FR-047). Two reasons, told apart on purpose. */}
         {event.omission_reason && (
-          <div className="font-body text-body-sm text-ink-muted mt-1.5">
+          <div className="mt-1.5 font-body text-[12px] text-ink-muted">
             {t(`collaborationRoom.trace.omission.${segment(event.omission_reason)}`, {
               defaultValue: t('collaborationRoom.trace.omission.unknown'),
             })}
@@ -164,7 +177,7 @@ function EventRow({ runId, event }: { runId: string; event: RunEventDTO }) {
         )}
 
         {event.redacted && (
-          <div className="font-body text-body-sm text-ink-muted mt-1.5">
+          <div className="mt-1.5 font-body text-[12px] text-ink-muted">
             {t('collaborationRoom.trace.redacted')}
           </div>
         )}
@@ -177,16 +190,16 @@ function EventRow({ runId, event }: { runId: string; event: RunEventDTO }) {
             data-testid={whole === null ? 'run-trace-open-full' : 'run-trace-close-full'}
             onClick={whole === null ? openTheWholeOfIt : () => setWhole(null)}
             disabled={opening}
-            className="mt-1.5 inline-flex items-center gap-1.5 min-h-[36px] font-body text-body-sm font-medium text-terracotta hover:text-terracotta-dark disabled:cursor-wait"
+            className="btn-text mt-1 min-h-[36px] text-[12px] disabled:cursor-wait"
           >
-            {opening && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {opening && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             {whole === null
               ? t('runTrace.openTheWhole', { bytes: event.full_byte_size ?? 0 })
               : t('runTrace.foldItBack')}
           </button>
         )}
 
-        {failed && <div className="font-body text-body-sm text-vermilion-ink mt-1">{failed}</div>}
+        {failed && <div className="mt-1 font-body text-[12px] text-danger">{failed}</div>}
       </div>
     </div>
   );
@@ -228,7 +241,7 @@ function VirtualLog({ runId, events }: { runId: string; events: RunEventDTO[] })
     <div
       ref={scroller}
       data-testid="run-trace-scroller"
-      className="flex-1 overflow-y-auto rounded-xl bg-inset border border-line p-2.5 sm:p-3"
+      className="flex-1 overflow-y-auto rounded-lg border border-line bg-surface py-1.5"
       style={fits ? { height: fits, flex: 'none' } : undefined}
     >
       <div style={{ height: rows.getTotalSize(), position: 'relative' }}>
@@ -245,7 +258,7 @@ function VirtualLog({ runId, events }: { runId: string; events: RunEventDTO[] })
               transform: `translateY(${row.start}px)`,
             }}
           >
-            <EventRow runId={runId} event={events[row.index]} />
+            <EventRow runId={runId} event={events[row.index]} first={row.index === 0} last={row.index === events.length - 1} />
           </div>
         ))}
       </div>
@@ -296,40 +309,47 @@ export default function RunTrace() {
     return counted;
   }, [events]);
 
-  const PILL = 'min-h-[36px] px-3 rounded-full border font-mono text-mono-sm font-medium transition-colors';
+  const PILL = 'inline-flex min-h-[36px] items-center gap-1.5 rounded-full border px-3 font-mono text-[11px] transition-colors';
   const pillTone = (active: boolean) =>
-    active ? 'bg-ink text-paper border-ink' : 'bg-paper text-ink border-line-strong hover:bg-inset';
+    active
+      ? 'border-sapphire bg-sapphire-soft text-sapphire-strong'
+      : 'border-line-strong bg-surface text-ink-light hover:border-sapphire hover:text-ink-strong';
+  const NOTE = 'rounded-lg border border-line bg-surface px-5 py-5 font-body text-body-md text-ink-muted';
 
   return (
-    <div className="h-full mx-auto w-full max-w-[1240px] flex flex-col gap-4">
-      <div className="flex-shrink-0 flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <Link
-            to={wsHref(workspaceId, 'agents')}
-            className="w-10 h-10 -ml-2 shrink-0 rounded-md flex items-center justify-center text-ink-light hover:text-ink hover:bg-inset transition-colors"
-            aria-label={t('common.back')}
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </Link>
-          <h1 className="font-display text-[30px] font-medium leading-[1.1] tracking-tight text-ink">{t('runTrace.title')}</h1>
-          <span data-testid="run-trace-count" className="font-body text-body-sm text-ink-muted">
-            {t('runTrace.count', { count: events.length })}
-          </span>
-          {live && (
-            <span className="ml-auto inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 bg-lapis-bg font-body text-body-sm font-medium text-lapis-ink">
-              <Radio className="w-3.5 h-3.5" /> {t('runTrace.live')}
-            </span>
-          )}
-        </div>
+    <div className="mx-auto flex h-full w-full max-w-[1240px] flex-col gap-5">
+      <div className="flex shrink-0 flex-col gap-4">
+        <Link
+          to={wsHref(workspaceId, 'agents')}
+          className="inline-flex min-h-[44px] items-center gap-2 self-start font-body text-[15px] text-ink transition-colors hover:text-sapphire-strong"
+        >
+          <ArrowLeft className="h-[18px] w-[18px]" />
+          {t('common.back')}
+        </Link>
+
+        <PageTitle
+          eyebrow={t('runTrace.eyebrow', { id: (runId ?? '').slice(0, 8) })}
+          title={t('runTrace.title')}
+          subtitle={<span data-testid="run-trace-count">{t('runTrace.count', { count: events.length })}</span>}
+          actions={
+            live ? (
+              <span className="status-pill border-sapphire/40 text-sapphire-strong">
+                <span className="status-dot animate-pulse bg-sapphire" />
+                {t('runTrace.live')}
+              </span>
+            ) : undefined
+          }
+        />
 
         {kinds.length > 0 && (
           <div className="flex flex-wrap gap-1.5" data-testid="run-trace-filters">
             <button
               onClick={() => setOnly([])}
               aria-pressed={only.length === 0}
-              className={cn(PILL, 'font-body text-body-sm', pillTone(only.length === 0))}
+              className={cn(PILL, 'font-body text-[12px]', pillTone(only.length === 0))}
             >
-              {t('runTrace.everything')} {events.length}
+              {t('runTrace.everything')}
+              <span className="font-mono text-[10px] opacity-70">{events.length}</span>
             </button>
             {kinds.map((kind) => (
               <button
@@ -337,9 +357,10 @@ export default function RunTrace() {
                 data-testid={`run-trace-filter-${kind}`}
                 onClick={() => toggle(kind)}
                 aria-pressed={only.includes(kind)}
-                className={cn(PILL, pillTone(only.includes(kind)))}
+                className={cn(PILL, 'max-w-full break-all', pillTone(only.includes(kind)))}
               >
-                {kind} {perKind[kind] ?? 0}
+                {kind}
+                <span className="text-[10px] opacity-70">{perKind[kind] ?? 0}</span>
               </button>
             ))}
           </div>
@@ -347,14 +368,14 @@ export default function RunTrace() {
       </div>
 
       {loading && events.length === 0 ? (
-        <p className="bg-paper border border-line rounded-xl px-5 py-5 font-body text-body-md text-ink-muted">{t('runTrace.loading')}</p>
+        <p className={NOTE}>{t('runTrace.loading')}</p>
       ) : error ? (
-        <p className="flex items-start gap-2 bg-vermilion-bg border border-vermilion/30 rounded-xl px-5 py-4 font-body text-body-md text-vermilion-ink">
-          <AlertTriangle className="w-[18px] h-[18px] mt-0.5 shrink-0" />
+        <p className="flex items-start gap-2 rounded-lg border border-danger/35 bg-danger-soft px-5 py-4 font-body text-body-md text-danger">
+          <AlertTriangle className="mt-0.5 h-[18px] w-[18px] shrink-0" />
           {error}
         </p>
       ) : shown.length === 0 ? (
-        <p className="bg-paper border border-line rounded-xl px-5 py-5 font-body text-body-md text-ink-muted">
+        <p className={NOTE}>
           {events.length > 0
             ? t('runTrace.nothing')
             : outcome

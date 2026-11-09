@@ -162,7 +162,7 @@ export default function Navbar() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[99] bg-ink-strong/30 backdrop-blur-[2px]"
+            className="fixed inset-0 z-[99] bg-scrim/45 backdrop-blur-[2px]"
             onClick={() => setDrawerOpen(false)}
             aria-hidden="true"
           />

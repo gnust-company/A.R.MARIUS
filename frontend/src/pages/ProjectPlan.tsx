@@ -3,13 +3,14 @@
 // This page exists so the patron can do exactly one thing well: read what the Leader
 // proposes and answer it. Three buttons, no fourth path, and no default — the system
 // never decides here, which is the whole point of the gate.
-import { useCallback, useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, Check, PenLine, MessageCircleQuestion, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Check, PenLine, MessageCircleQuestion, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
-import PageTitle from '@/components/PageTitle';
 import StatusChip from '@/components/StatusChip';
+import ProjectHeader from '@/components/project/ProjectHeader';
+import { useAppStore } from '@/store/appStore';
 import {
   approveProjectContext,
   decideProjectPlan,
@@ -21,61 +22,75 @@ import {
   type ProjectContextViewDTO,
 } from '@/lib/api';
 import { subscribeProjectEvents } from '@/lib/sse';
-import { cn, wsHref } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
 
-const SECTION_TITLE = 'font-display text-[22px] font-medium text-ink';
-const PART_LABEL = 'font-body text-body-sm font-medium text-ink-light';
-const SECONDARY_BUTTON =
-  'inline-flex items-center gap-2 min-h-[44px] px-4 rounded-md bg-paper border border-line-strong font-body text-body-md font-medium text-ink hover:bg-inset transition-colors disabled:cursor-not-allowed disabled:text-ink-muted';
-const PRIMARY_BUTTON =
-  'inline-flex items-center gap-2 min-h-[44px] px-[18px] rounded-md bg-ink font-body text-body-md font-medium text-paper hover:bg-ink/85 transition-colors disabled:cursor-not-allowed disabled:bg-line disabled:text-ink-muted';
+const PART_LABEL = 'font-body text-[11px] text-ink-muted';
+const SECTION_TITLE = 'font-display text-[20px] font-normal tracking-[-0.01em] text-ink-strong';
 
 /** A context part. Empty reads as "không có" — absent must never look like a gap. */
 function ContextPart({ label, value }: { label: string; value: string }) {
   const { t } = useTranslation();
   return (
-    <div>
+    <div className="py-3 border-t border-line first:border-t-0 first:pt-0">
       <div className={PART_LABEL}>{label}</div>
-      <p className="font-body text-body-md text-ink whitespace-pre-wrap break-words mt-1">
+      <p className="mt-1 font-body text-[14px] leading-relaxed text-ink whitespace-pre-wrap break-words">
         {value.trim() || <span className="text-ink-muted">{t('projectPlan.empty')}</span>}
       </p>
     </div>
   );
 }
 
-/** One version of the context. The heading is its state — waiting on the patron (gold) or in
- *  force (verdigris) — so it is drawn as the status chip rather than a second title. */
+/** A section of the plan document: a Lora heading over the Leader's own text. */
+function PlanSection({ label, value }: { label: string; value: string }) {
+  const { t } = useTranslation();
+  return (
+    <div className="mt-6 first:mt-0">
+      <h3 className={SECTION_TITLE}>{label}</h3>
+      <p className="mt-2 font-body text-[14px] leading-[1.75] text-ink-light whitespace-pre-wrap break-words">
+        {value.trim() || <span className="text-ink-muted">{t('projectPlan.empty')}</span>}
+      </p>
+    </div>
+  );
+}
+
+/** One version of the context. Its state — waiting on the patron (gold) or in force (success) —
+ *  is drawn as the status chip rather than a second title. */
 function ContextCard({
   context,
   heading,
   pending,
+  children,
 }: {
   context: ProjectContextDTO;
   heading: string;
   pending: boolean;
+  children?: ReactNode;
 }) {
   const { t } = useTranslation();
   return (
-    <div className="bg-paper border border-line rounded-xl p-5 flex flex-col gap-4">
+    <section className={cn('surface p-6', pending && 'border-gold/40')}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <StatusChip status={pending ? 'in_review' : 'done'} size="md" label={heading} />
-        <span className="font-mono text-mono-sm text-ink-muted">
-          {t('projectPlan.contextVersion', { version: context.version })}
-        </span>
+        <span className="eyebrow">{t('projectView.contextEyebrow', { version: context.version })}</span>
+        <StatusChip status={pending ? 'planning' : 'done'} label={heading} />
       </div>
+      <h2 className="mt-2 mb-4 font-display text-[24px] font-normal leading-tight tracking-[-0.02em] text-ink-strong">
+        {t('projectPlan.contextHeading')}
+      </h2>
       <ContextPart label={t('projectPlan.objective')} value={context.objective} />
       <ContextPart label={t('projectPlan.background')} value={context.background} />
       <ContextPart label={t('projectPlan.constraints')} value={context.constraints} />
       <ContextPart label={t('projectPlan.scope')} value={context.scope} />
       <ContextPart label={t('projectPlan.principles')} value={context.principles} />
-    </div>
+      {children}
+    </section>
   );
 }
 
 export default function ProjectPlan() {
-  const { workspaceId, id: projectId } = useParams();
+  const { id: projectId } = useParams();
   const { t } = useTranslation();
+  const project = useAppStore((s) => s.projects.find((p) => p.id === projectId));
 
   const [context, setContext] = useState<ProjectContextViewDTO | null>(null);
   const [plan, setPlan] = useState<PlanDTO | null>(null);
@@ -164,169 +179,161 @@ export default function ProjectPlan() {
 
   const awaitingDecision = plan?.status === 'submitted';
 
+  const message_ = (message || error) && (
+    <p
+      role={error ? 'alert' : 'status'}
+      className={cn(
+        'flex items-start gap-2 rounded-md border px-4 py-3 font-body text-[14px]',
+        error ? 'bg-danger-soft border-danger/30 text-danger' : 'bg-success-soft border-success/30 text-success',
+      )}
+    >
+      {error ? (
+        <AlertTriangle className="w-[18px] h-[18px] mt-0.5 shrink-0" />
+      ) : (
+        <CheckCircle2 className="w-[18px] h-[18px] mt-0.5 shrink-0" />
+      )}
+      {error ?? message}
+    </p>
+  );
 
   return (
-    <div className="mx-auto w-full max-w-3xl flex flex-col gap-6 pb-16">
-      <div className="flex flex-col gap-3">
-        <Link
-          to={wsHref(workspaceId, `/projects/${projectId}`)}
-          className="inline-flex items-center gap-1 self-start min-h-[44px] -ml-2 px-2 rounded-md font-body text-body-md text-ink-light hover:text-ink hover:bg-inset transition-colors"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          {t('projectPlan.back')}
-        </Link>
-        <PageTitle title={t('projectPlan.title')} subtitle={t('projectPlan.subtitle')} />
-      </div>
+    <div className="mx-auto w-full max-w-[1240px] flex flex-col pb-16">
+      {project && <ProjectHeader project={project} active="plan" />}
 
-      {/* ── Context ─────────────────────────────────────────────────────── */}
-      <section className="flex flex-col gap-3">
-        <h2 className={SECTION_TITLE}>{t('projectPlan.contextHeading')}</h2>
-        {context?.pending && (
-          <>
-            <ContextCard context={context.pending} heading={t('projectPlan.contextPending')} pending />
-            <button
-              type="button"
-              disabled={busy}
-              onClick={approveContext}
-              // One primary per view: when the plan is also waiting, its decision is the main act.
-              className={cn(awaitingDecision ? SECONDARY_BUTTON : PRIMARY_BUTTON, 'self-start')}
-            >
-              <Check className="w-4 h-4" />
-              {t('projectPlan.approveContext')}
-            </button>
-          </>
-        )}
-        {context?.approved && (
-          <ContextCard context={context.approved} heading={t('projectPlan.contextApproved')} pending={false} />
-        )}
-        {!context?.approved && !context?.pending && (
-          <p className="bg-paper border border-line rounded-xl px-5 py-5 font-body text-body-md text-ink-muted">
-            {t('projectPlan.contextEmpty')}
-          </p>
-        )}
-      </section>
+      <div className="grid gap-[18px] lg:grid-cols-[minmax(0,1.5fr)_minmax(0,.8fr)] items-start">
+        {/* ── The plan, and the patron's three choices ───────────────────── */}
+        <div className="flex min-w-0 flex-col gap-[18px]">
+          {!plan && (
+            <section className="surface p-6 sm:p-7">
+              <span className="eyebrow">{t('projectPlan.planHeading')}</span>
+              <p className="mt-3 font-body text-[14px] leading-relaxed text-ink-muted">{t('projectPlan.planEmpty')}</p>
+            </section>
+          )}
 
-      {/* ── Plan ────────────────────────────────────────────────────────── */}
-      <section className="flex flex-col gap-3">
-        <h2 className={SECTION_TITLE}>{t('projectPlan.planHeading')}</h2>
-        {!plan && (
-          <p className="bg-paper border border-line rounded-xl px-5 py-5 font-body text-body-md text-ink-muted">
-            {t('projectPlan.planEmpty')}
-          </p>
-        )}
-
-        {plan && (
-          <div className="bg-paper border border-line rounded-xl p-5 flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <StatusChip
-                status={plan.status === 'approved' ? 'done' : 'in_review'}
-                size="md"
-                label={t(`projectPlan.statusLabel.${plan.status}`)}
-              />
-              <span className="font-mono text-mono-sm text-ink-muted">
-                {t('projectPlan.planVersion', { version: plan.version })}
-              </span>
-            </div>
-
-            <ContextPart label={t('projectPlan.summary')} value={plan.summary} />
-            <ContextPart label={t('projectPlan.risks')} value={plan.risks} />
-            <ContextPart label={t('projectPlan.milestones')} value={plan.milestones} />
-
-            <div className="flex flex-col gap-2">
-              <div className={PART_LABEL}>{t('projectPlan.items')}</div>
-              {plan.items.length === 0 ? (
-                <p className="font-body text-body-md text-ink-muted">{t('projectPlan.itemsEmpty')}</p>
-              ) : (
-                <ol className="flex flex-col gap-2">
-                  {plan.items.map((item, index) => (
-                    <li key={item.id} className="flex gap-3 bg-inset border border-line rounded-lg p-3.5">
-                      <span className="w-7 h-7 shrink-0 rounded-full bg-paper border border-line-strong flex items-center justify-center font-body text-body-sm font-semibold text-ink-light">
-                        {index + 1}
-                      </span>
-                      <div className="min-w-0 flex-1 flex flex-col gap-1">
-                        <div className="font-body font-medium text-[15px] text-ink break-words">{item.title}</div>
-                        {item.description && (
-                          <p className="font-body text-body-md text-ink-light whitespace-pre-wrap break-words">
-                            {item.description}
-                          </p>
-                        )}
-                        {item.definition_of_done && (
-                          <p className="font-body text-body-sm text-ink-light break-words">
-                            <span className="font-medium text-ink">{t('projectPlan.itemDefinitionOfDone')}:</span>{' '}
-                            {item.definition_of_done}
-                          </p>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
-
-            {plan.patron_note && (
-              <div className="rounded-lg bg-inset border border-line p-3.5">
-                <div className={PART_LABEL}>{t('projectPlan.patronNote')}</div>
-                <p className="font-body text-body-md text-ink whitespace-pre-wrap break-words mt-1">
-                  {plan.patron_note}
-                </p>
+          {plan && (
+            <section className="surface p-6 sm:p-7">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="eyebrow">{t('projectView.planEyebrow', { version: plan.version })}</span>
+                <StatusChip
+                  status={plan.status === 'approved' ? 'done' : plan.status === 'submitted' ? 'planning' : 'in_review'}
+                  label={t(`projectPlan.statusLabel.${plan.status}`)}
+                />
               </div>
-            )}
-          </div>
-        )}
-      </section>
+              <h2 className="mt-2 mb-5 font-display text-[28px] font-normal leading-tight tracking-[-0.02em] text-ink-strong">
+                {t('projectPlan.planHeading')}
+              </h2>
 
-      {/* ── The three choices ───────────────────────────────────────────── */}
-      {awaitingDecision && (
-        <section className="bg-paper border border-line-strong rounded-xl p-5 flex flex-col gap-3">
-          <div>
-            <h3 className="font-display text-[20px] font-medium text-ink">{t('projectPlan.decisionHeading')}</h3>
-            <p className="font-body text-body-md text-ink-light mt-1">{t('projectPlan.decisionHint')}</p>
-          </div>
+              <PlanSection label={t('projectPlan.summary')} value={plan.summary} />
+              <PlanSection label={t('projectPlan.risks')} value={plan.risks} />
+              <PlanSection label={t('projectPlan.milestones')} value={plan.milestones} />
 
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder={t('projectPlan.notePlaceholder')}
-            aria-label={t('projectPlan.patronNote')}
-            rows={3}
-            className="w-full rounded-md border border-line bg-inset px-3.5 py-2.5 font-body text-body-md text-ink placeholder:text-ink-muted focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15 transition-colors resize-y"
-          />
+              <div className="mt-7">
+                <h3 className={SECTION_TITLE}>{t('projectPlan.items')}</h3>
+                {plan.items.length === 0 ? (
+                  <p className="mt-2 font-body text-[14px] text-ink-muted">{t('projectPlan.itemsEmpty')}</p>
+                ) : (
+                  <ol className="mt-3 flex flex-col">
+                    {plan.items.map((item, index) => (
+                      <li key={item.id} className="flex gap-3.5 py-4 border-t border-line">
+                        <span className="grid place-items-center w-8 h-8 shrink-0 rounded-full border border-line-strong font-mono text-[11px] text-sapphire-strong">
+                          {index + 1}
+                        </span>
+                        <div className="min-w-0 flex-1 flex flex-col gap-1">
+                          <div className="font-display text-[17px] leading-snug text-ink-strong break-words">{item.title}</div>
+                          {item.description && (
+                            <p className="font-body text-[14px] leading-relaxed text-ink-light whitespace-pre-wrap break-words">
+                              {item.description}
+                            </p>
+                          )}
+                          {item.definition_of_done && (
+                            <p className="font-body text-[13px] text-ink-light break-words">
+                              <span className="font-semibold text-ink">{t('projectPlan.itemDefinitionOfDone')}:</span>{' '}
+                              {item.definition_of_done}
+                            </p>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
 
-          <div className="flex flex-wrap gap-2">
-            <button type="button" disabled={busy} onClick={() => decide('duyet')} className={PRIMARY_BUTTON}>
-              <Check className="w-4 h-4" />
-              {busy ? t('projectPlan.deciding') : t('projectPlan.approve')}
-            </button>
-            <button type="button" disabled={busy} onClick={() => decide('yeu_cau_chinh')} className={SECONDARY_BUTTON}>
-              <PenLine className="w-4 h-4" />
-              {t('projectPlan.requestChanges')}
-            </button>
-            <button type="button" disabled={busy} onClick={() => decide('hoi_lai')} className={SECONDARY_BUTTON}>
-              <MessageCircleQuestion className="w-4 h-4" />
-              {t('projectPlan.askBack')}
-            </button>
-          </div>
-        </section>
-      )}
-
-      {(message || error) && (
-        <p
-          role={error ? 'alert' : 'status'}
-          className={cn(
-            'flex items-start gap-2 rounded-lg border px-4 py-3 font-body text-body-md',
-            error
-              ? 'bg-vermilion-bg border-vermilion/30 text-vermilion-ink'
-              : 'bg-verdigris-bg border-verdigris/30 text-verdigris-ink',
+              {plan.patron_note && (
+                <div className="mt-5 rounded-md border border-line bg-canvas-deep p-4">
+                  <div className={PART_LABEL}>{t('projectPlan.patronNote')}</div>
+                  <p className="mt-1 font-body text-[14px] leading-relaxed text-ink whitespace-pre-wrap break-words">
+                    {plan.patron_note}
+                  </p>
+                </div>
+              )}
+            </section>
           )}
-        >
-          {error ? (
-            <AlertTriangle className="w-[18px] h-[18px] mt-0.5 shrink-0" />
-          ) : (
-            <CheckCircle2 className="w-[18px] h-[18px] mt-0.5 shrink-0" />
+
+          {/* ── The three choices ── */}
+          {awaitingDecision && (
+            <section className="surface border-gold/40 p-6 flex flex-col gap-3.5">
+              <div>
+                <span className="eyebrow">{t('projectView.decisionEyebrow')}</span>
+                <h3 className="mt-1.5 font-display text-[22px] font-normal text-ink-strong">{t('projectPlan.decisionHeading')}</h3>
+                <p className="mt-1 font-body text-[14px] leading-relaxed text-ink-light">{t('projectPlan.decisionHint')}</p>
+              </div>
+
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder={t('projectPlan.notePlaceholder')}
+                aria-label={t('projectPlan.patronNote')}
+                rows={3}
+                className="field py-3 leading-relaxed resize-y"
+              />
+
+              <div className="flex flex-wrap gap-2.5">
+                <button type="button" disabled={busy} onClick={() => decide('duyet')} className="btn btn-primary">
+                  <Check className="w-4 h-4" />
+                  {busy ? t('projectPlan.deciding') : t('projectPlan.approve')}
+                </button>
+                <button type="button" disabled={busy} onClick={() => decide('yeu_cau_chinh')} className="btn btn-secondary">
+                  <PenLine className="w-4 h-4" />
+                  {t('projectPlan.requestChanges')}
+                </button>
+                <button type="button" disabled={busy} onClick={() => decide('hoi_lai')} className="btn btn-secondary">
+                  <MessageCircleQuestion className="w-4 h-4" />
+                  {t('projectPlan.askBack')}
+                </button>
+              </div>
+            </section>
           )}
-          {error ?? message}
-        </p>
-      )}
+
+          {message_}
+        </div>
+
+        {/* ── Context ─────────────────────────────────────────────────────── */}
+        <aside className="flex min-w-0 flex-col gap-[18px]">
+          {context?.pending && (
+            <ContextCard context={context.pending} heading={t('projectPlan.contextPending')} pending>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={approveContext}
+                // One primary per view: when the plan is also waiting, its decision is the main act.
+                className={cn('btn mt-4 self-start', awaitingDecision ? 'btn-secondary' : 'btn-primary')}
+              >
+                <Check className="w-4 h-4" />
+                {t('projectPlan.approveContext')}
+              </button>
+            </ContextCard>
+          )}
+          {context?.approved && (
+            <ContextCard context={context.approved} heading={t('projectPlan.contextApproved')} pending={false} />
+          )}
+          {!context?.approved && !context?.pending && (
+            <section className="surface p-6">
+              <span className="eyebrow">{t('projectPlan.contextHeading')}</span>
+              <p className="mt-3 font-body text-[14px] leading-relaxed text-ink-muted">{t('projectPlan.contextEmpty')}</p>
+            </section>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }

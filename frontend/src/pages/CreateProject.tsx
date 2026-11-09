@@ -5,11 +5,12 @@ import { ApiError } from '@/lib/api';
 import { agentsOf } from '@/lib/workspaceScope';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  AlertTriangle, Check, CheckCircle2, Loader2, ArrowLeft, ArrowRight, X,
+  AlertTriangle, Check, CheckCircle2, Loader2, ArrowLeft, ArrowRight, X, PenLine, Sparkles,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore, type Marius } from '@/store/appStore';
 import PageTitle from '@/components/PageTitle';
+import AgentAvatar from '@/components/AgentAvatar';
 import StatusChip from '@/components/StatusChip';
 import Dropdown from '@/components/Dropdown';
 import OnboardingChat from '@/components/OnboardingChat';
@@ -103,26 +104,16 @@ const PROJECT_KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/;
 
 // ─── Shared field styles ─────────────────────────────────────────────────────
 
-/** Every text box on this form: an inset well, 44px tall, terracotta focus ring. */
-const FIELD =
-  'w-full min-h-[44px] bg-inset border rounded-md px-3.5 py-2.5 font-body text-body-md text-ink placeholder:text-ink-muted focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15 transition-colors';
-const fieldBorder = (hasError: boolean) => (hasError ? 'border-vermilion' : 'border-line');
-const LABEL = 'block font-body text-body-sm font-medium text-ink mb-1.5';
-const ERROR = 'mt-1.5 font-body text-body-sm text-vermilion-ink';
-const SECTION_TITLE = 'font-display text-[20px] font-medium text-ink';
+/** Every text box on this form: the shared design field (46px, sapphire focus). */
+const FIELD = 'field py-2.5';
+const fieldBorder = (hasError: boolean) => (hasError ? 'border-danger' : '');
+const LABEL = 'block font-body text-[13px] font-semibold text-ink mb-1.5';
+const ERROR = 'mt-1.5 font-body text-[13px] text-danger';
+const SECTION_TITLE = 'font-display text-[22px] font-normal tracking-[-0.015em] text-ink-strong';
 
-/** A small initial disc for an agent — the same shape the front page uses. */
+/** An agent's ringed initial — the same avatar every other screen draws. */
 function AgentInitial({ agent, size = 'md' }: { agent: Marius; size?: 'sm' | 'md' }) {
-  return (
-    <span
-      className={cn(
-        'shrink-0 rounded-full bg-inset border border-line flex items-center justify-center font-body font-semibold text-ink-light',
-        size === 'md' ? 'w-10 h-10 text-[15px]' : 'w-8 h-8 text-[13px]'
-      )}
-    >
-      {(agent.displayName || agent.name || '?').charAt(0).toUpperCase()}
-    </span>
-  );
+  return <AgentAvatar name={agent.displayName || agent.name || '?'} status={agent.status} size={size} />;
 }
 
 /** The three-step rail above the wizard. A module-level component, not one declared
@@ -154,9 +145,9 @@ function StepIndicator({ step }: { step: number }) {
             <span
               className={cn(
                 'w-7 h-7 shrink-0 rounded-full flex items-center justify-center font-body text-body-sm font-semibold border transition-colors',
-                isCompleted && 'bg-verdigris-bg border-verdigris text-verdigris-ink',
-                isCurrent && 'bg-ink border-ink text-paper',
-                !isCompleted && !isCurrent && 'bg-paper border-line-strong text-ink-muted'
+                isCompleted && 'bg-success-soft border-success text-success',
+                isCurrent && 'bg-sapphire-strong border-sapphire-strong text-sapphire-ink',
+                !isCompleted && !isCurrent && 'bg-surface border-line-strong text-ink-muted'
               )}
             >
               {isCompleted ? <Check className="w-3.5 h-3.5" /> : stepNum}
@@ -164,14 +155,14 @@ function StepIndicator({ step }: { step: number }) {
             <span
               className={cn(
                 'font-body text-body-sm whitespace-nowrap',
-                isCurrent ? 'text-ink font-medium' : isCompleted ? 'text-ink-light' : 'text-ink-muted'
+                isCurrent ? 'text-ink-strong font-medium' : isCompleted ? 'text-ink-light' : 'text-ink-muted'
               )}
             >
               {s.label}
             </span>
             {/* Connecting line */}
             {i < steps.length - 1 && (
-              <span className={cn('h-px flex-1 min-w-3', isCompleted ? 'bg-verdigris' : 'bg-line-strong')} />
+              <span className={cn('h-px flex-1 min-w-3', isCompleted ? 'bg-success' : 'bg-line-strong')} />
             )}
           </li>
         );
@@ -377,7 +368,7 @@ export default function CreateProject() {
       {/* Name */}
       <div>
         <label htmlFor="cp-name" className={LABEL}>
-          {t('createProject.fields.name')} <span className="text-terracotta">*</span>
+          {t('createProject.fields.name')} <span className="text-danger">*</span>
         </label>
         <input
           id="cp-name"
@@ -429,7 +420,7 @@ export default function CreateProject() {
       {/* Objective */}
       <div>
         <label htmlFor="cp-objective" className={LABEL}>
-          {t('createProject.fields.objective')} <span className="text-terracotta">*</span>
+          {t('createProject.fields.objective')} <span className="text-danger">*</span>
         </label>
         <textarea
           id="cp-objective"
@@ -497,18 +488,18 @@ export default function CreateProject() {
     <div className="flex flex-col gap-7">
       <h2 className={SECTION_TITLE}>{t('createProject.step2Title')}</h2>
 
-      {/* HARD Rule Banner — gold while something is still missing, verdigris once it is not */}
+      {/* HARD Rule Banner — gold while something is still missing, success once it is not */}
       {!bannerDismissed && (
         <div
           className={cn(
             'flex items-start gap-3 rounded-lg border pl-4 pr-1 py-1 transition-colors',
-            isRosterValid ? 'bg-verdigris-bg border-verdigris/30' : 'bg-gold-bg border-gold/40'
+            isRosterValid ? 'bg-success-soft border-success/30' : 'bg-gold-soft border-gold/30'
           )}
         >
           {isRosterValid ? (
-            <CheckCircle2 className="w-[18px] h-[18px] text-verdigris-ink mt-3 shrink-0" />
+            <CheckCircle2 className="w-[18px] h-[18px] text-success mt-3 shrink-0" />
           ) : (
-            <AlertTriangle className="w-[18px] h-[18px] text-gold-ink mt-3 shrink-0" />
+            <AlertTriangle className="w-[18px] h-[18px] text-gold mt-3 shrink-0" />
           )}
           <p className="flex-1 py-2.5 font-body text-body-md text-ink">
             {isRosterValid
@@ -518,7 +509,7 @@ export default function CreateProject() {
           <button
             onClick={() => setBannerDismissed(true)}
             aria-label={t('common.dismiss')}
-            className="w-10 h-10 shrink-0 rounded-md flex items-center justify-center text-ink-light hover:text-ink hover:bg-paper/70 transition-colors"
+            className="w-10 h-10 shrink-0 rounded-md flex items-center justify-center text-ink-light hover:text-ink-strong hover:bg-surface/70 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -529,7 +520,7 @@ export default function CreateProject() {
       <section className="flex flex-col gap-3">
         <h3 className={SECTION_TITLE}>
           {t('createProject.roster.projectLeader')}
-          <span className="text-terracotta ml-1">*</span>
+          <span className="text-danger ml-1">*</span>
         </h3>
 
         {/* Agent selector dropdown */}
@@ -574,7 +565,7 @@ export default function CreateProject() {
           const agent = mariuses.find((a) => a.id === formData.leaderId);
           if (!agent) return null;
           return (
-            <div className="flex items-center gap-3 bg-inset border border-line rounded-lg pl-3 pr-1 py-1">
+            <div className="flex items-center gap-3 bg-canvas-deep border border-line rounded-md pl-3 pr-1 py-1">
               <AgentInitial agent={agent} />
               <div className="flex-1 min-w-0 py-2">
                 <p className="font-body font-medium text-body-md text-ink truncate">{agent.displayName || agent.name}</p>
@@ -584,7 +575,7 @@ export default function CreateProject() {
               <button
                 onClick={() => setFormData((p) => ({ ...p, leaderId: null }))}
                 aria-label={t('createProject.roster.clearLeader')}
-                className="w-10 h-10 shrink-0 rounded-md flex items-center justify-center text-ink-light hover:text-vermilion-ink hover:bg-paper transition-colors"
+                className="w-10 h-10 shrink-0 rounded-md flex items-center justify-center text-ink-light hover:text-danger hover:bg-surface transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -593,7 +584,7 @@ export default function CreateProject() {
         })()}
 
         {formData.assignLeaderLater && (
-          <p className="bg-ash-bg border border-line rounded-lg px-4 py-3 font-body text-body-md text-ink-light">
+          <p className="bg-canvas-deep border border-line rounded-md px-4 py-3 font-body text-body-md text-ink-light">
             {t('createProject.roster.assignLater')}
           </p>
         )}
@@ -601,7 +592,7 @@ export default function CreateProject() {
         {/* Leader role description — reaches the Leader's prompt (#93) */}
         <div>
           <label htmlFor="cp-leader-description" className={LABEL}>
-            {t('createProject.roster.leaderDescription')} <span className="text-terracotta">*</span>
+            {t('createProject.roster.leaderDescription')} <span className="text-danger">*</span>
           </label>
           <textarea
             id="cp-leader-description"
@@ -619,7 +610,7 @@ export default function CreateProject() {
       <section className="flex flex-col gap-1.5">
         <label htmlFor="cp-worker-count" className={SECTION_TITLE}>
           {t('createProject.roster.workerCount')}
-          <span className="text-terracotta ml-1">*</span>
+          <span className="text-danger ml-1">*</span>
         </label>
         <p className="font-body text-body-md text-ink-light">{t('createProject.roster.workerCountHint')}</p>
         <input
@@ -650,7 +641,7 @@ export default function CreateProject() {
         <p className="font-body text-body-md text-ink-light">{t('createProject.roster.teamHint')}</p>
 
         {teamCandidates.length === 0 ? (
-          <p className="mt-1.5 bg-inset border border-dashed border-line-strong rounded-lg px-4 py-5 text-center font-body text-body-md text-ink-muted">
+          <p className="mt-1.5 border border-dashed border-line-strong rounded-md px-4 py-5 text-center font-body text-body-md text-ink-muted">
             {t('createProject.roster.noAgentsYet')}
           </p>
         ) : (
@@ -663,10 +654,10 @@ export default function CreateProject() {
                   onClick={() => toggleMember(agent.id)}
                   aria-pressed={picked}
                   className={cn(
-                    'min-w-0 min-h-[64px] flex items-center gap-3 p-3 rounded-lg border text-left transition-colors',
+                    'min-w-0 min-h-[64px] flex items-center gap-3 p-3 rounded-md border text-left transition-colors',
                     picked
-                      ? 'bg-paper border-ink ring-1 ring-ink'
-                      : 'bg-paper border-line hover:border-line-strong hover:bg-inset'
+                      ? 'bg-sapphire-soft border-sapphire'
+                      : 'bg-surface border-line hover:border-line-strong hover:bg-surface-hover'
                   )}
                 >
                   <AgentInitial agent={agent} size="sm" />
@@ -682,7 +673,7 @@ export default function CreateProject() {
                   <span
                     className={cn(
                       'w-5 h-5 shrink-0 rounded-[5px] border flex items-center justify-center transition-colors',
-                      picked ? 'bg-ink border-ink text-paper' : 'bg-paper border-line-strong'
+                      picked ? 'bg-sapphire-strong border-sapphire-strong text-sapphire-ink' : 'bg-surface border-line-strong'
                     )}
                   >
                     {picked && <Check className="w-3.5 h-3.5" />}
@@ -715,11 +706,11 @@ export default function CreateProject() {
         <h2 className={SECTION_TITLE}>{t('createProject.step3Title')}</h2>
 
         {/* Project Summary Card */}
-        <div className="bg-inset border border-line rounded-lg p-5">
+        <div className="bg-canvas-deep border border-line rounded-md p-5">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-2">
-            <h3 className="font-display text-[22px] font-medium text-ink break-words min-w-0">{formData.name}</h3>
+            <h3 className="font-display text-[24px] font-normal tracking-[-0.015em] text-ink-strong break-words min-w-0">{formData.name}</h3>
             {formData.key && (
-              <span className="font-mono text-mono-sm text-ink-muted bg-paper border border-line rounded px-1.5 py-0.5">
+              <span className="task-code border border-line rounded px-1.5 py-0.5">
                 {formData.key}
               </span>
             )}
@@ -748,7 +739,7 @@ export default function CreateProject() {
           <h3 className={SECTION_TITLE}>{t('createProject.review.rosterSummary')}</h3>
 
           {/* Leader */}
-          <div className="bg-inset border border-line rounded-lg p-4">
+          <div className="bg-canvas-deep border border-line rounded-md p-4">
             <p className="font-body text-body-sm font-medium text-ink-light mb-2">
               {t('createProject.roster.projectLeader')}
             </p>
@@ -770,7 +761,7 @@ export default function CreateProject() {
               created here, and a project of three empty places is a normal thing to review
               (FR-007n). It used to be hidden unless somebody was seated, which is exactly the
               case a person needs to see before pressing create. */}
-          <div className="bg-inset border border-line rounded-lg p-4">
+          <div className="bg-canvas-deep border border-line rounded-md p-4">
             <p className="font-body text-body-sm font-medium text-ink-light mb-1">
               {t('createProject.roster.team')}
             </p>
@@ -815,44 +806,68 @@ export default function CreateProject() {
   return (
     <div className="mx-auto w-full max-w-3xl flex flex-col gap-6 pb-10">
       {/* Header */}
-      <div>
-        <nav className="font-body text-body-sm text-ink-muted mb-2 flex flex-wrap items-center gap-1.5">
-          <Link to={wsHref(workspaceId, '/projects')} className="text-terracotta hover:text-terracotta-dark">
-            {t('projects.title')}
-          </Link>
-          <span aria-hidden>/</span>
-          <span className="text-ink-light">{t('createProject.breadcrumb')}</span>
-        </nav>
-        <PageTitle title={t('createProject.title')} />
+      <div className="flex flex-col">
+        <Link
+          to={wsHref(workspaceId, '/projects')}
+          className="group inline-flex items-center gap-2 self-start min-h-[42px] -mt-2 mb-3 font-body text-[14px] font-medium text-ink-light hover:text-sapphire-strong transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
+          {t('projectView.allProjects')}
+        </Link>
+        <PageTitle eyebrow={t('projectView.newProjectEyebrow')} title={t('createProject.title')} />
       </div>
 
       {/* Mode toggle — manual wizard vs. agent-assisted chat (Sprint 7) */}
       <div className="flex flex-col gap-3">
-        <div role="group" className="grid grid-cols-2 gap-1 bg-inset border border-line rounded-lg p-1 sm:w-fit">
+        {/* Two ways in, drawn as choice cards: the selected one carries the sapphire edge and
+            a filled mark, the unavailable one is dimmed and says why on hover. */}
+        <div role="radiogroup" aria-label={t('createProject.title')} className="grid gap-2.5 sm:grid-cols-2">
           {(['manual', 'agent'] as const).map((m) => {
             const active = mode === m;
             const disabled = m === 'agent' && !hasWorkspaceAgent;
+            const Icon = m === 'manual' ? PenLine : Sparkles;
             return (
               <button
                 key={m}
+                type="button"
+                role="radio"
+                aria-checked={active}
                 onClick={() => !disabled && setMode(m)}
                 disabled={disabled}
-                aria-pressed={active}
                 className={cn(
-                  'min-h-[44px] px-4 py-2 rounded-md text-left sm:min-w-[200px] transition-colors',
+                  'group flex min-h-[76px] items-start gap-3.5 rounded-lg border px-4 py-3.5 text-left transition-colors',
                   active
-                    ? 'bg-paper border border-line-strong shadow-xs'
+                    ? 'border-sapphire bg-sapphire-soft'
                     : disabled
-                      ? 'border border-transparent cursor-not-allowed'
-                      : 'border border-transparent hover:bg-paper/70'
+                      ? 'cursor-not-allowed border-line bg-surface opacity-60'
+                      : 'border-line bg-surface hover:border-line-strong hover:bg-surface-hover'
                 )}
                 title={disabled ? t('createProject.mode.agentDisabled') : undefined}
               >
-                <span className={cn('block font-body text-body-md font-medium', disabled ? 'text-ink-muted' : 'text-ink')}>
-                  {t(`createProject.mode.${m}`)}
+                <span
+                  className={cn(
+                    'grid h-10 w-10 shrink-0 place-items-center rounded-full border',
+                    active ? 'border-sapphire bg-surface text-sapphire-strong' : 'border-line-strong text-ink-light'
+                  )}
+                >
+                  <Icon className="h-[18px] w-[18px]" strokeWidth={1.7} />
                 </span>
-                <span className="block font-body text-body-sm text-ink-muted">
-                  {t(`createProject.mode.${m}Desc`)}
+                <span className="min-w-0 flex-1">
+                  <span className={cn('block font-body text-[15px] font-semibold', disabled ? 'text-ink-muted' : 'text-ink-strong')}>
+                    {t(`createProject.mode.${m}`)}
+                  </span>
+                  <span className="mt-0.5 block font-body text-[13px] leading-snug text-ink-light">
+                    {t(`createProject.mode.${m}Desc`)}
+                  </span>
+                </span>
+                <span
+                  aria-hidden
+                  className={cn(
+                    'mt-1 grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full border-[1.5px]',
+                    active ? 'border-sapphire-strong' : 'border-line-strong'
+                  )}
+                >
+                  {active && <span className="h-2 w-2 rounded-full bg-sapphire-strong" />}
                 </span>
               </button>
             );
@@ -861,8 +876,8 @@ export default function CreateProject() {
 
         {/* Warning message when agent mode is not available */}
         {mode === 'agent' && !hasWorkspaceAgent && (
-          <div className="flex items-start gap-3 bg-gold-bg border border-gold/40 rounded-lg px-4 py-3">
-            <AlertTriangle className="w-[18px] h-[18px] text-gold-ink mt-0.5 shrink-0" />
+          <div className="flex items-start gap-3 bg-gold-soft border border-gold/30 rounded-md px-4 py-3">
+            <AlertTriangle className="w-[18px] h-[18px] text-gold mt-0.5 shrink-0" />
             <div className="font-body text-body-md text-ink">
               <p className="font-medium">{t('createProject.mode.agentUnavailable')}</p>
               <p className="text-ink-light mt-1">{t('createProject.mode.setupWorkspaceAgent')}</p>
@@ -874,7 +889,7 @@ export default function CreateProject() {
       {mode === 'agent' ? (
         <OnboardingChat onCreated={(pid) => navigate(wsHref(workspaceId, `/projects/${pid}`))} />
       ) : (
-      <div className="bg-paper border border-line rounded-xl">
+      <div className="surface">
         {/* Step Indicator */}
         <div className="px-5 sm:px-7 pt-5 pb-4 border-b border-line flex flex-col gap-2">
           <p className="font-body text-body-sm text-ink-muted">
@@ -902,43 +917,25 @@ export default function CreateProject() {
         </div>
 
         {/* Footer buttons — wrap on phones, primary stays on the right */}
-        <div className="flex flex-wrap items-center justify-between gap-2 px-5 sm:px-7 py-4 border-t border-line bg-inset rounded-b-xl">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-5 sm:px-7 py-4 border-t border-line">
           {step > 1 ? (
-            <button
-              onClick={goBack}
-              className="inline-flex items-center gap-2 min-h-[44px] px-4 rounded-md bg-paper border border-line-strong font-body text-body-md font-medium text-ink hover:bg-inset transition-colors"
-            >
+            <button onClick={goBack} className="btn btn-secondary">
               <ArrowLeft className="w-4 h-4" />
               {t('createProject.buttons.back')}
             </button>
           ) : (
-            <button
-              onClick={() => navigate(wsHref(workspaceId, '/projects'))}
-              className="inline-flex items-center gap-2 min-h-[44px] px-4 rounded-md font-body text-body-md font-medium text-ink-light hover:text-ink hover:bg-paper transition-colors"
-            >
+            <button onClick={() => navigate(wsHref(workspaceId, '/projects'))} className="btn btn-ghost">
               {t('createProject.buttons.cancel')}
             </button>
           )}
 
           {step < 3 ? (
-            <button
-              onClick={goNext}
-              className="ml-auto inline-flex items-center gap-2 min-h-[44px] px-[18px] rounded-md bg-ink font-body text-body-md font-medium text-paper hover:bg-ink/85 transition-colors"
-            >
+            <button onClick={goNext} className="btn btn-primary ml-auto">
               {step === 1 ? t('createProject.buttons.nextRoster') : t('createProject.buttons.nextReview')}
               <ArrowRight className="w-4 h-4" />
             </button>
           ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={createDisabled}
-              className={cn(
-                'ml-auto inline-flex items-center gap-2 min-h-[44px] px-[18px] rounded-md font-body text-body-md font-medium transition-colors',
-                createDisabled
-                  ? 'bg-line text-ink-muted cursor-not-allowed'
-                  : 'bg-ink text-paper hover:bg-ink/85'
-              )}
-            >
+            <button onClick={handleSubmit} disabled={createDisabled} className="btn btn-primary ml-auto">
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />

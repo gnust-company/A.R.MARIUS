@@ -28,8 +28,8 @@ export interface DropdownItem {
 }
 
 const SIZES = {
-  md: 'px-4 py-2.5 text-[15px]',
-  sm: 'px-3 py-2 text-[13px]',
+  md: 'min-h-[44px] px-4 py-2.5 text-[15px]',
+  sm: 'min-h-[40px] px-3 py-2 text-[13px]',
   xs: 'px-2.5 py-1.5 text-xs',
 } as const
 
@@ -73,9 +73,9 @@ export default function Dropdown({
         aria-label={ariaLabel}
         data-testid={testId}
         className={cn(
-          'flex w-full items-center justify-between gap-2 rounded-md border border-line bg-inset text-left text-ink',
-          'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15 transition-all',
-          'data-[placeholder]:text-ink-muted disabled:cursor-not-allowed disabled:opacity-60',
+          'flex w-full items-center justify-between gap-2 rounded-md border border-field-line bg-field text-left text-ink',
+          'outline-none transition-colors hover:enabled:border-sapphire focus:border-sapphire focus-visible:ring-2 focus-visible:ring-gold/60',
+          'data-[state=open]:border-sapphire data-[placeholder]:text-ink-muted disabled:cursor-not-allowed disabled:opacity-60',
           SIZES[size],
           className,
         )}
@@ -93,7 +93,7 @@ export default function Dropdown({
           sideOffset={4}
           className={cn(
             'z-tooltip min-w-[var(--radix-select-trigger-width)] max-h-[min(var(--radix-select-content-available-height),20rem)]',
-            'overflow-hidden rounded-md border border-line bg-inset shadow-lg',
+            'overflow-hidden rounded-md border border-line-strong bg-surface-raised shadow-[var(--shadow)]',
           )}
         >
           <Select.Viewport className="p-1">
@@ -105,14 +105,14 @@ export default function Dropdown({
                 textValue={item.text ?? (typeof item.label === 'string' ? item.label : undefined)}
                 className={cn(
                   'relative flex cursor-pointer select-none items-start gap-2 rounded-sm py-1.5 pl-2.5 pr-8 text-[13px] text-ink outline-none',
-                  'data-[highlighted]:bg-paper data-[state=checked]:text-terracotta',
+                  'data-[highlighted]:bg-surface-hover data-[highlighted]:text-ink-strong data-[state=checked]:text-sapphire-strong',
                   'data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
                 )}
               >
                 <span className="min-w-0">
                   <Select.ItemText>{item.label}</Select.ItemText>
                   {item.hint && (
-                    <span className="block text-[11px] text-ink-light">{item.hint}</span>
+                    <span className="block text-[11px] text-ink-muted">{item.hint}</span>
                   )}
                 </span>
                 <Select.ItemIndicator className="absolute right-2 top-2">

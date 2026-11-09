@@ -144,24 +144,24 @@ export default function OnboardingChat({ onCreated }: OnboardingChatProps) {
   return (
     // Capped by the window as well as by a fixed height, so on a short phone screen the answer
     // buttons at the bottom of the interview stay on screen instead of below the fold.
-    <div className="flex flex-col h-[600px] max-h-[80dvh] bg-paper border border-line rounded-xl overflow-hidden">
+    <div className="surface flex flex-col h-[600px] max-h-[80dvh] overflow-hidden">
       {/* Header */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 sm:px-5 py-4 border-b border-line bg-paper">
-        <div className="w-10 h-10 rounded-full bg-ink flex items-center justify-center text-paper flex-shrink-0">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 sm:px-5 py-4 border-b border-line">
+        <div className="w-11 h-11 rounded-full border border-line-strong bg-sapphire-soft flex items-center justify-center text-sapphire-strong flex-shrink-0">
           <Bot className="w-5 h-5" aria-hidden />
         </div>
         <div className="min-w-0 flex-[1_1_180px]">
-          <p className="font-display font-medium text-[18px] text-ink leading-tight">{t('onboarding.agentName')}</p>
-          <p className="font-body text-body-sm text-ink-muted">{t('onboarding.subtitle')}</p>
+          <p className="font-display font-normal text-[19px] tracking-[-0.01em] text-ink-strong leading-tight">{t('onboarding.agentName')}</p>
+          <p className="mt-0.5 font-body text-body-sm text-ink-muted">{t('onboarding.subtitle')}</p>
         </div>
-        <span className="inline-flex items-center gap-1.5 font-body text-body-sm font-medium text-ink-light bg-inset border border-line px-2.5 py-1 rounded-full">
+        <span className="status-pill border-gold/40 text-gold">
           <Sparkles className="w-3.5 h-3.5" aria-hidden />
           {t('onboarding.title')}
         </span>
       </div>
 
       {/* Body */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto bg-vellum/40 px-4 sm:px-5 py-4 space-y-3">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto bg-canvas/50 px-4 sm:px-5 py-5 space-y-4">
         {waOffline ? (
           <NotReadyPanel onRetry={restart} />
         ) : (
@@ -188,15 +188,15 @@ export default function OnboardingChat({ onCreated }: OnboardingChatProps) {
             )}
 
             {awaitingAgent && (
-              <div className="flex items-center gap-2 font-body text-body-sm text-lapis-ink" role="status">
-                <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+              <div className="flex items-center gap-2 font-body text-body-sm text-ink-light" role="status">
+                <Loader2 className="w-4 h-4 animate-spin text-sapphire-strong" aria-hidden />
                 {t('onboarding.waiting')}
               </div>
             )}
 
             {error && (
               <div
-                className="flex items-center gap-2 font-body text-body-sm text-vermilion-ink bg-vermilion-bg border border-[#EDB8B0] rounded-md px-3 py-2"
+                className="flex items-center gap-2 font-body text-body-sm text-danger bg-danger-soft border border-danger/30 rounded-md px-3 py-2"
                 role="alert"
               >
                 <AlertCircle className="w-4 h-4 flex-shrink-0" aria-hidden />
@@ -252,10 +252,10 @@ function QuestionPanel({
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-paper border border-line rounded-lg p-4 space-y-3"
+      className="bg-surface border border-line-strong rounded-lg p-4 sm:p-5 space-y-3"
     >
-      <p className="font-display font-medium text-[18px] leading-snug text-ink">{question.question}</p>
-      <p className="font-body text-body-sm text-ink-muted">
+      <p className="font-display font-normal text-[20px] leading-snug tracking-[-0.01em] text-ink-strong">{question.question}</p>
+      <p className="eyebrow">
         {multi ? t('onboarding.pickMany') : t('onboarding.pickOne')}
       </p>
       <div className="flex flex-wrap gap-2">
@@ -269,11 +269,11 @@ function QuestionPanel({
               aria-pressed={active}
               className={`inline-flex items-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-md border font-body text-body-md text-left transition-colors ${
                 active
-                  ? 'bg-ink border-ink text-paper'
-                  : 'bg-paper border-line-strong text-ink hover:bg-inset'
+                  ? 'bg-sapphire-soft border-sapphire text-ink-strong'
+                  : 'bg-surface border-line-strong text-ink hover:border-sapphire hover:bg-surface-hover'
               }`}
             >
-              {active && <Check className="w-3.5 h-3.5" />}
+              {active && <Check className="w-3.5 h-3.5 text-sapphire-strong" />}
               {opt.label}
             </button>
           );
@@ -291,7 +291,7 @@ function QuestionPanel({
             }
           }}
           placeholder={t('onboarding.otherPlaceholder')}
-          className="w-full min-h-[44px] bg-inset border border-line-strong rounded-md px-3 py-2 font-body text-body-md text-ink placeholder:text-ink-muted focus:outline-none focus:bg-paper focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15 transition-colors"
+          className="field"
         />
       )}
       <div className="flex justify-end">
@@ -299,7 +299,7 @@ function QuestionPanel({
           type="button"
           onClick={submit}
           disabled={!canSubmit}
-          className="inline-flex items-center gap-1.5 min-h-[44px] bg-ink hover:bg-ink/85 text-paper disabled:bg-line disabled:text-ink-muted disabled:cursor-not-allowed font-body font-medium text-body-md px-4 rounded-md transition-colors"
+          className="btn btn-primary"
         >
           {busy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : <ArrowRight className="w-4 h-4" aria-hidden />}
           {t('onboarding.submit')}
@@ -326,14 +326,14 @@ function DraftCard({
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-paper border border-line-strong rounded-lg p-4 space-y-3"
+      className="bg-surface border border-gold/40 rounded-lg p-4 sm:p-5 space-y-3"
     >
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-bg px-2.5 py-1 font-body text-body-sm font-medium text-gold-ink">
+      <span className="status-pill border-gold/40 bg-gold-soft text-gold">
         <Sparkles className="w-3.5 h-3.5" aria-hidden />
         {t('onboarding.draftReady')}
       </span>
       <div>
-        <p className="font-display font-medium text-[22px] leading-tight text-ink break-words">{draft.name}</p>
+        <p className="font-display font-normal text-display-sm text-ink-strong break-words">{draft.name}</p>
         {draft.objective && <p className="font-body text-body-md text-ink-light mt-1">{draft.objective}</p>}
       </div>
       {/* The team is not part of the draft: the agent interviews about the project, and the
@@ -344,7 +344,7 @@ function DraftCard({
           type="button"
           onClick={onRestart}
           disabled={finalizing}
-          className="inline-flex items-center gap-1.5 min-h-[44px] px-3 -ml-3 rounded-md font-body text-body-md text-ink-light hover:text-ink hover:bg-inset disabled:cursor-not-allowed transition-colors"
+          className="btn btn-ghost -ml-3"
         >
           <RotateCcw className="w-4 h-4" aria-hidden />
           {t('onboarding.startOver')}
@@ -353,7 +353,7 @@ function DraftCard({
           type="button"
           onClick={onConfirm}
           disabled={finalizing}
-          className="inline-flex items-center gap-1.5 min-h-[44px] bg-ink hover:bg-ink/85 text-paper disabled:cursor-wait font-body font-medium text-body-md px-4 rounded-md transition-colors"
+          className="btn btn-primary disabled:cursor-wait"
         >
           {finalizing ? (
             <>
@@ -381,15 +381,15 @@ function NotReadyPanel({ onRetry }: { onRetry: () => void }) {
       animate={{ opacity: 1, y: 0 }}
       className="flex flex-col items-center justify-center text-center gap-3 py-10 px-6"
     >
-      <div className="w-12 h-12 rounded-full bg-vermilion-bg flex items-center justify-center">
-        <AlertCircle className="w-6 h-6 text-vermilion-ink" aria-hidden />
+      <div className="w-12 h-12 rounded-full border border-danger/30 bg-danger-soft flex items-center justify-center">
+        <AlertCircle className="w-6 h-6 text-danger" aria-hidden />
       </div>
-      <p className="font-display font-medium text-[20px] text-ink">{t('onboarding.waOffline')}</p>
+      <p className="font-display font-normal text-display-sm text-ink-strong">{t('onboarding.waOffline')}</p>
       <p className="font-body text-body-md text-ink-light max-w-sm">{t('onboarding.waOfflineHint')}</p>
       <button
         type="button"
         onClick={onRetry}
-        className="inline-flex items-center gap-1.5 min-h-[44px] bg-ink hover:bg-ink/85 text-paper font-body font-medium text-body-md px-4 rounded-md transition-colors"
+        className="btn btn-primary"
       >
         <RotateCcw className="w-4 h-4" aria-hidden />
         {t('onboarding.retry')}
@@ -408,10 +408,12 @@ function ChatBubble({ turn, you, agent }: { turn: OnboardingTurn; you: string; a
       className={`flex ${isAgent ? 'justify-start' : 'justify-end'}`}
     >
       <div className={`max-w-[85%] sm:max-w-[80%] min-w-0 ${isAgent ? '' : 'text-right'}`}>
-        <p className="font-body text-body-sm mb-1 text-ink-muted">{isAgent ? agent : you}</p>
+        <p className="eyebrow mb-1.5">{isAgent ? agent : you}</p>
         <div
-          className={`inline-block px-3.5 py-2.5 rounded-lg font-body text-body-md whitespace-pre-wrap break-words text-left ${
-            isAgent ? 'bg-paper border border-line text-ink' : 'bg-ink text-paper'
+          className={`inline-block px-3.5 py-2.5 border font-body text-body-md leading-relaxed whitespace-pre-wrap break-words text-left text-ink ${
+            isAgent
+              ? 'bg-canvas-deep border-line rounded-[3px_12px_12px_12px]'
+              : 'bg-sapphire-soft border-sapphire/25 rounded-[12px_3px_12px_12px]'
           }`}
         >
           {turn.text}

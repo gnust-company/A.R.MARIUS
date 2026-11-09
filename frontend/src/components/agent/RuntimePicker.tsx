@@ -42,7 +42,7 @@ export default function RuntimePicker({
   return (
     <div className="space-y-2">
       {ready.length === 0 && (
-        <div className="rounded-lg border border-dashed border-line-strong px-4 py-3">
+        <div className="rounded-md border border-dashed border-line-strong px-4 py-3">
           <p className="font-body text-body-md text-ink">{t('runtimePicker.noneReady')}</p>
           <p className="mt-0.5 font-body text-body-sm text-ink-light">
             <WithCommands text={t('runtimePicker.noneReadyHint')} />
@@ -63,24 +63,24 @@ export default function RuntimePicker({
                 disabled={disabled}
                 onClick={() => onChoose(one.id)}
                 className={cn(
-                  'flex min-h-[44px] w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors',
+                  'flex min-h-[44px] w-full items-center gap-3 rounded-md border px-4 py-3 text-left transition-colors',
                   on
-                    ? 'border-ink bg-paper ring-1 ring-ink'
-                    : 'border-line bg-paper hover:border-line-strong hover:bg-inset',
+                    ? 'border-sapphire bg-sapphire-soft ring-1 ring-sapphire'
+                    : 'border-line bg-surface hover:border-line-strong hover:bg-surface-hover',
                   disabled && 'cursor-not-allowed opacity-60',
                 )}
               >
                 <span
                   className={cn(
                     'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2',
-                    on ? 'border-ink bg-ink text-paper' : 'border-line-strong bg-paper',
+                    on ? 'border-sapphire-strong bg-sapphire-strong text-sapphire-ink' : 'border-line-strong bg-surface',
                   )}
                   aria-hidden
                 >
                   {on && <Check className="h-3 w-3" strokeWidth={3} />}
                 </span>
                 <span className="min-w-0">
-                  <span className="block truncate font-mono text-[13px] text-ink">{one.cli_kind}</span>
+                  <span className="block truncate font-mono text-[13px] text-ink-strong">{one.cli_kind}</span>
                   <span className="flex min-w-0 items-center gap-1.5 font-body text-body-sm text-ink-light">
                     <Laptop className="h-3.5 w-3.5 shrink-0" aria-hidden />
                     <span className="truncate">{t('runtimePicker.onMachine', { machine: one.machine_name })}</span>
@@ -98,7 +98,7 @@ export default function RuntimePicker({
         <div
           key={one.id}
           aria-disabled
-          className="flex w-full items-start gap-3 rounded-lg border border-dashed border-line-strong bg-inset px-4 py-3"
+          className="flex w-full items-start gap-3 rounded-md border border-dashed border-line-strong bg-canvas-deep px-4 py-3"
         >
           <span className="mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 border-line" aria-hidden />
           <span className="min-w-0">
@@ -107,7 +107,7 @@ export default function RuntimePicker({
               <Laptop className="h-3.5 w-3.5 shrink-0" aria-hidden />
               <span className="truncate">{t('runtimePicker.onMachine', { machine: one.machineName })}</span>
             </span>
-            <span className="mt-1 block font-body text-body-sm text-gold-ink">
+            <span className="mt-1 block font-body text-body-sm text-gold">
               {t(`machines.notReady.${one.reason}`, {
                 defaultValue: t('machines.notReady.unknown'),
               })}

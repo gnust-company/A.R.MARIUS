@@ -48,7 +48,7 @@ export default function RuntimeOptionFields({
         const nothingLeft = values.length === 0;
         return (
           <div key={option.key}>
-            <label htmlFor={id} className="block font-body text-body-sm font-medium text-ink-light mb-1.5">
+            <label htmlFor={id} className="mb-1.5 block font-body text-body-sm font-medium text-ink">
               {label}
             </label>
             {isClosed(option) || nothingLeft ? (
@@ -80,7 +80,7 @@ export default function RuntimeOptionFields({
               />
             )}
             {nothingLeft && (
-              <p className="mt-1 font-body text-body-sm text-ink-light">
+              <p className="mt-1 font-body text-body-xs font-normal text-ink-muted">
                 {t('directory.optionRuledOut')}
               </p>
             )}

@@ -15,13 +15,15 @@ export default function EmptyState({ icon: Icon, title, description, action, cla
     <div
       className={cn(
         'flex flex-col items-center justify-center text-center py-12 px-6',
-        'border border-dashed border-vellum-dark rounded-lg',
+        'border border-dashed border-line-strong rounded-lg',
         className
       )}
     >
-      <Icon className="w-12 h-12 text-ink-muted mb-4" strokeWidth={1.5} />
-      <h3 className="font-display text-display-sm text-ink mb-2">{title}</h3>
-      <p className="font-body text-body-md text-ink-light max-w-sm mb-6">{description}</p>
+      <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-line bg-canvas-deep text-ink-muted">
+        <Icon className="h-6 w-6" strokeWidth={1.5} aria-hidden />
+      </span>
+      <h3 className="mb-2 font-display text-display-sm text-ink-strong">{title}</h3>
+      <p className={cn('max-w-sm font-body text-body-md text-ink-light', action && 'mb-6')}>{description}</p>
       {action}
     </div>
   );

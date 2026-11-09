@@ -68,6 +68,7 @@ module.exports = {
         'danger-soft': c('danger-soft'),
         field: c('field-bg'),
         'field-line': c('field-line'),
+        scrim: c('scrim'),
 
         // ─── Earlier names, kept as aliases so every screen re-themes at once ───
         // Each now points at the semantic token that carries the same meaning.

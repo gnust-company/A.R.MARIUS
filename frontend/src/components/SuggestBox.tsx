@@ -57,7 +57,7 @@ export default function SuggestBox({
       <>
         <span className="min-w-0 flex-1">
           <span className="block truncate">{label}</span>
-          {raw && <span className="block truncate font-mono text-[11px] text-ink-light">{raw}</span>}
+          {raw && <span className="block truncate font-mono text-[11px] text-ink-muted">{raw}</span>}
         </span>
         {on && <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />}
       </>
@@ -66,7 +66,7 @@ export default function SuggestBox({
 
   const itemCls = cn(
     'flex cursor-pointer select-none items-start gap-2 rounded-sm px-2.5 py-1.5 text-[13px] text-ink outline-none',
-    'data-[selected=true]:bg-paper',
+    'data-[selected=true]:bg-surface-hover data-[selected=true]:text-ink-strong',
   )
 
   return (
@@ -85,15 +85,15 @@ export default function SuggestBox({
           aria-label={ariaLabel}
           aria-haspopup="listbox"
           className={cn(
-            'flex w-full items-center justify-between gap-2 rounded-md border border-line bg-inset px-4 py-2.5 text-left text-[15px] text-ink',
-            'focus:outline-none focus:border-terracotta focus:ring-[3px] focus:ring-terracotta/15 transition-all',
-            'disabled:cursor-not-allowed disabled:opacity-60',
+            'flex w-full min-h-[44px] items-center justify-between gap-2 rounded-md border border-field-line bg-field px-4 py-2.5 text-left text-[15px] text-ink',
+            'outline-none transition-colors hover:enabled:border-sapphire focus:border-sapphire focus-visible:ring-2 focus-visible:ring-gold/60',
+            'data-[state=open]:border-sapphire disabled:cursor-not-allowed disabled:opacity-60',
           )}
         >
           <span className={cn('min-w-0 flex-1 truncate', !value && 'text-ink-muted')}>
             {value ? (current?.label ?? value) : blankLabel}
             {value && current?.label && current.label !== value && (
-              <span className="ml-2 font-mono text-[12px] text-ink-light">{value}</span>
+              <span className="ml-2 font-mono text-[12px] text-ink-muted">{value}</span>
             )}
           </span>
           <ChevronDown className="h-4 w-4 shrink-0 text-ink-muted" aria-hidden />
@@ -103,14 +103,14 @@ export default function SuggestBox({
         <Popover.Content
           sideOffset={4}
           align="start"
-          className="z-tooltip w-[var(--radix-popover-trigger-width)] rounded-md border border-line bg-inset shadow-lg"
+          className="z-tooltip w-[var(--radix-popover-trigger-width)] overflow-hidden rounded-md border border-line-strong bg-surface-raised shadow-[var(--shadow)]"
         >
           <Command loop>
             <Command.Input
               value={search}
               onValueChange={setSearch}
               placeholder={t('choice.searchOrType')}
-              className="w-full border-b border-line bg-transparent px-3 py-2 text-[13px] text-ink placeholder:text-ink-muted focus:outline-none"
+              className="w-full min-h-[40px] border-b border-line bg-transparent px-3 py-2 text-[13px] text-ink placeholder:text-ink-muted focus:outline-none"
             />
             <Command.List className="max-h-72 overflow-y-auto p-1">
               {!typed && (

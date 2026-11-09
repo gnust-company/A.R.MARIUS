@@ -54,33 +54,29 @@ export default function InstructionsTab({
     }
   }
 
+  // The block's title and lead live in the SettingsSection that holds this editor.
   return (
-    <div className="space-y-6">
+    <div className="grid gap-4">
       {hasSystem && <SystemPromptBlock text={systemInstructions} />}
 
       <div>
         <label
           htmlFor="agent-instructions"
-          className="block font-display text-[20px] font-medium leading-tight text-ink"
+          className="mb-1.5 block font-body text-[13px] font-semibold text-ink"
         >
           {hasSystem
             ? t('agentDetail.instructions.ownLabelWithSystem')
             : t('agentDetail.instructions.ownLabel')}
         </label>
-        <p className="mt-1 mb-3 font-body text-body-md text-ink-light">
-          {t('agentDetail.instructions.ownHint')}
-        </p>
         <textarea
           id="agent-instructions"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           readOnly={!canEdit}
-          rows={14}
+          rows={12}
           placeholder={t('agentDetail.instructions.placeholder')}
           className={cn(
-            'w-full rounded-md border border-line bg-inset px-3.5 py-3',
-            'font-mono text-[13px] leading-relaxed text-ink placeholder:text-ink-muted',
-            'focus:border-terracotta focus:bg-paper focus:outline-none focus:ring-[3px] focus:ring-terracotta/15',
+            'field py-3 font-mono text-[13px] leading-relaxed',
             !canEdit && 'cursor-default',
           )}
         />
@@ -89,10 +85,7 @@ export default function InstructionsTab({
             type="button"
             onClick={save}
             disabled={!canEdit || !dirty || saving}
-            className={cn(
-              'inline-flex min-h-[44px] items-center gap-2 rounded-md px-4 font-body text-body-md font-medium transition-colors',
-              'bg-ink text-paper hover:bg-ink/85 disabled:cursor-not-allowed disabled:opacity-50',
-            )}
+            className="btn btn-primary"
           >
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -102,7 +95,7 @@ export default function InstructionsTab({
             {t('agentDetail.instructions.save')}
           </button>
           {saved && (
-            <span className="font-body text-body-sm text-verdigris-ink" role="status">
+            <span className="font-body text-body-sm text-success" role="status">
               {t('agentDetail.instructions.savedNextRun')}
             </span>
           )}
