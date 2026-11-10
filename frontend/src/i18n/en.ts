@@ -141,6 +141,11 @@ export const en = {
     lightTitle: 'Light theme · the office by day',
     darkTitle: 'Dark theme · the office with the lamps on',
   },
+  notify: {
+    loadFailedTitle: 'Could not load the latest data',
+    loadFailedBody: 'This screen may be showing old data. Check your connection, then reload.',
+    reload: 'Reload',
+  },
   command: {
     eyebrow: 'Command palette',
     title: 'Go anywhere',

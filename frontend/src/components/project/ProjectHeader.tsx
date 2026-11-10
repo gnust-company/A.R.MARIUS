@@ -15,6 +15,7 @@ import PageTitle from '@/components/PageTitle';
 import AgentAvatar from '@/components/AgentAvatar';
 import LeaderChatWidget from '@/components/LeaderChatWidget';
 import { formatDate, projectCode } from '@/components/project/projectFormat';
+import { notifyLoadFailed } from '@/lib/notify';
 
 export type ProjectTab = 'board' | 'plan' | 'roster';
 
@@ -54,7 +55,7 @@ export default function ProjectHeader({
   // the seats and tasks, so it loads them when nobody has yet.
   const needsDetail = project.seats === undefined;
   useEffect(() => {
-    if (needsDetail) void hydrateProject(project.id).catch(() => {});
+    if (needsDetail) void hydrateProject(project.id).catch(notifyLoadFailed);
   }, [needsDetail, project.id, hydrateProject]);
 
   // The viewer's own auto-approval switch (FR-036 → FR-038). It is not a project setting: every

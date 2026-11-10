@@ -30,6 +30,7 @@ import { errorText } from '@/lib/errors';
 import { useViewport } from '@/hooks/use-viewport';
 import { cn } from '@/lib/utils';
 import { useAppStore, type Project } from '@/store/appStore';
+import { notifyLoadFailed } from '@/lib/notify';
 
 interface Group {
   id: string;
@@ -103,7 +104,7 @@ export default function Inbox() {
       const id = item.project_id;
       if (!id || hydrated.current.has(id)) continue;
       hydrated.current.add(id);
-      void hydrateProject(id).catch(() => {});
+      void hydrateProject(id).catch(notifyLoadFailed);
     }
   }, [items, hydrateProject]);
 

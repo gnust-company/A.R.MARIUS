@@ -29,6 +29,7 @@ import { useAppStore } from '@/store/appStore'
 import EntryFrame, { WithCommands } from '@/components/EntryFrame'
 import Dropdown from '@/components/Dropdown'
 import { cn, wsHref } from '@/lib/utils'
+import { notifyLoadFailed } from '@/lib/notify'
 
 /** The alphabet the server draws codes from: no 0/O and no 1/I, because a person copies
  *  this off one screen and onto another. Anything else typed is punctuation to ignore. */
@@ -87,7 +88,7 @@ export default function LinkMachine() {
   const inFirstSteps = currentUser?.onboarded === false
 
   useEffect(() => {
-    void hydrateWorkspaces().catch(() => {})
+    void hydrateWorkspaces().catch(notifyLoadFailed)
   }, [hydrateWorkspaces])
 
   const remaining = pending ? minutesLeft(pending.expires_at) : null

@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Outlet, Navigate, useParams } from 'react-router';
 import CommandPalette from './CommandPalette';
 import MobileNav from './MobileNav';
 import Navbar from './Navbar';
 import TopBar from './TopBar';
 import { useAppStore } from '@/store/appStore';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useInboxCount } from '@/hooks/use-inbox-count';
 import { useWorkspaceEvents } from '@/hooks/use-workspace-events';
 import { cn } from '@/lib/utils';
 import { useViewport } from '@/hooks/use-viewport';
+import { notifyLoadFailed } from '@/lib/notify';
 
 export default function Layout() {
   // The URL is the source of truth for which workspace is open. Everything below the
@@ -27,7 +29,7 @@ export default function Layout() {
   useEffect(() => {
     if (!workspaceId) return;
     if (workspaceId !== activeWorkspaceId) setActiveWorkspace(workspaceId);
-    void hydrateWorkspace(workspaceId).catch(() => {});
+    void hydrateWorkspace(workspaceId).catch(notifyLoadFailed);
   }, [workspaceId, activeWorkspaceId, setActiveWorkspace, hydrateWorkspace]);
 
   // Subscribe to this workspace's control-plane SSE.
@@ -37,6 +39,9 @@ export default function Layout() {
   // addressed to a person, not to a workspace, so it arrives keyed by who is asking. Mounted
   // here because the sidebar shows the count on every screen.
   useInboxCount(Boolean(workspaceId));
+
+  // The tab says which screen it holds and how many letters are waiting.
+  useDocumentTitle();
 
   // ⌘K / Ctrl+K opens "go anywhere" from every in-workspace page.
   const [commandOpen, setCommandOpen] = useState(false);
@@ -73,7 +78,11 @@ export default function Layout() {
         <TopBar onOpenCommand={() => setCommandOpen(true)} />
         {/* On a phone the bottom bar sits over the page, so the page keeps clear of it. */}
         <main className={cn('px-4 py-6 sm:px-6 sm:py-8 xl:px-9', viewport === 'phone' && 'pb-28')}>
-          <Outlet />
+          {/* Each screen is its own chunk. While one loads, only this area waits: the shell
+              around it stays, and the reserved height keeps the footer from jumping up. */}
+          <Suspense fallback={<div className="min-h-[60vh]" aria-busy="true" />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
       {viewport === 'phone' && <MobileNav />}

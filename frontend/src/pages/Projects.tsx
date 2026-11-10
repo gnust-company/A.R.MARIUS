@@ -9,6 +9,7 @@ import EmptyState from '@/components/EmptyState';
 import PageTitle from '@/components/PageTitle';
 import AgentAvatar from '@/components/AgentAvatar';
 import { formatDate, projectCode } from '@/components/project/projectFormat';
+import { notifyLoadFailed } from '@/lib/notify';
 
 /** The board's eleven spellings of a status, folded to the backend's eight (same fold as Home). */
 function normalizeStatus(status: string): string {
@@ -104,7 +105,7 @@ export default function Projects() {
   // here, the same way Home does for its project summaries.
   const projectKey = workspaceProjects.map((p) => p.id).join(',');
   useEffect(() => {
-    projectKey.split(',').filter(Boolean).forEach((id) => void hydrateProject(id).catch(() => {}));
+    projectKey.split(',').filter(Boolean).forEach((id) => void hydrateProject(id).catch(notifyLoadFailed));
   }, [projectKey, hydrateProject]);
 
   // Workspace-wide figures for the summary strip — all counted, none estimated.

@@ -28,6 +28,7 @@ import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
 import { stallText } from '@/lib/stall';
 import { WAITING_FOR_A_MACHINE, waitKind, waitText } from '@/lib/drive';
+import { notifyLoadFailed } from '@/lib/notify';
 
 // The board's lanes. Eight statuses read as four stages of work — getting ready, being
 // worked, waiting for signatures, finished — and each card still names its own status, so
@@ -222,7 +223,7 @@ function AddTaskFormModal({
 
   // Fresh mount each time the modal opens (conditionally rendered), so state resets.
   useEffect(() => {
-    if (projectId) api.listProjectAgents(projectId).then(setAgents).catch(() => {});
+    if (projectId) api.listProjectAgents(projectId).then(setAgents).catch(notifyLoadFailed);
   }, [projectId]);
 
   const submit = async () => {

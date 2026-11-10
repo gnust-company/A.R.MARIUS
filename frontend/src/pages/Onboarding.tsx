@@ -46,6 +46,7 @@ import { useAppStore } from '@/store/appStore'
 import EntryFrame from '@/components/EntryFrame'
 import RuntimePicker from '@/components/agent/RuntimePicker'
 import SystemPromptBlock from '@/components/agent/SystemPromptBlock'
+import { notifyLoadFailed } from '@/lib/notify'
 
 /** The one command that installs the daemon, kept beside the docs that explain it. */
 const INSTALL =
@@ -276,7 +277,7 @@ export default function Onboarding() {
       : null)
 
   useEffect(() => {
-    void hydrateWorkspaces().catch(() => {})
+    void hydrateWorkspaces().catch(notifyLoadFailed)
   }, [hydrateWorkspaces])
 
   // The approval page is another window — the daemon opens it (FR-001b) — and starting the

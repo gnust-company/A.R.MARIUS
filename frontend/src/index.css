@@ -2,12 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-@font-face { font-family: "Be Vietnam Pro"; src: url("/fonts/be-vietnam-pro-400.ttf") format("truetype"); font-weight: 400; font-display: swap; }
-@font-face { font-family: "Be Vietnam Pro"; src: url("/fonts/be-vietnam-pro-500.ttf") format("truetype"); font-weight: 500; font-display: swap; }
-@font-face { font-family: "Be Vietnam Pro"; src: url("/fonts/be-vietnam-pro-600.ttf") format("truetype"); font-weight: 600; font-display: swap; }
-@font-face { font-family: "Be Vietnam Pro"; src: url("/fonts/be-vietnam-pro-700.ttf") format("truetype"); font-weight: 700; font-display: swap; }
-@font-face { font-family: "Lora"; src: url("/fonts/lora-400.ttf") format("truetype"); font-weight: 400 500; font-display: swap; }
-@font-face { font-family: "Lora"; src: url("/fonts/lora-600.ttf") format("truetype"); font-weight: 600 700; font-display: swap; }
+@font-face { font-family: "Be Vietnam Pro"; src: url("/fonts/be-vietnam-pro-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Be Vietnam Pro"; src: url("/fonts/be-vietnam-pro-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Be Vietnam Pro"; src: url("/fonts/be-vietnam-pro-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Be Vietnam Pro"; src: url("/fonts/be-vietnam-pro-700.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+@font-face { font-family: "Lora"; src: url("/fonts/lora-400.woff2") format("woff2"); font-weight: 400 500; font-display: swap; }
+@font-face { font-family: "Lora"; src: url("/fonts/lora-600.woff2") format("woff2"); font-weight: 600 700; font-display: swap; }
 
 @layer base {
   /* Theme tokens (DESIGN §3.3, §4). Each holds an OKLCH triplet "L C H" so Tailwind can wrap
