@@ -39,6 +39,7 @@ import { useViewport } from '@/hooks/use-viewport';
 import { cn, wsHref } from '@/lib/utils';
 import { agentsOf } from '@/lib/workspaceScope';
 import { useAppStore, type Marius, type Task } from '@/store/appStore';
+import { notifyLoadFailed } from '@/lib/notify';
 
 /*
  * Đài quan sát — the workspace as one office floor (DESIGN §5–§9). Live data only: the agents
@@ -135,7 +136,7 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
     projectKey
       .split(',')
       .filter(Boolean)
-      .forEach((id) => void hydrateProject(id).catch(() => {}));
+      .forEach((id) => void hydrateProject(id).catch(notifyLoadFailed));
   }, [projectKey, hydrateProject]);
 
   const layout = layoutOffice(agents, tasks);

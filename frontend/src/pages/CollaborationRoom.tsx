@@ -50,6 +50,7 @@ import StatusChip from '@/components/StatusChip';
 import AgentAvatar from '@/components/AgentAvatar';
 import TaskComment, { PatronMark } from '@/components/task/TaskComment';
 import TraceEventCard from '@/components/task/TraceEventCard';
+import { notifyLoadFailed } from '@/lib/notify';
 
 /** The four fields the patron can edit on this screen, as the strings the inputs use. */
 interface TaskEditDraft {
@@ -145,7 +146,7 @@ export default function CollaborationRoom() {
     if (!taskId) return;
     let alive = true;
     hydrateTask(taskId)
-      .catch(() => {})
+      .catch(notifyLoadFailed)
       .finally(() => {
         if (alive) setHydratedId(taskId);
       });

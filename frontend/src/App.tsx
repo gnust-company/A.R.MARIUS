@@ -2,31 +2,86 @@ import { Suspense, lazy, useEffect, useState } from 'react'
 import { Routes, Route, Navigate, Outlet } from 'react-router'
 import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
-import Login from './pages/Login'
-import Workspaces from './pages/Workspaces'
-import LinkMachine from './pages/LinkMachine'
-import Onboarding from './pages/Onboarding'
-import Projects from './pages/Projects'
-import Home from './pages/Home'
-import CreateProject from './pages/CreateProject'
-import ProjectBoard from './pages/ProjectBoard'
-import ProjectPlan from '@/pages/ProjectPlan';
-import Roster from './pages/Roster'
-import Directory from './pages/Directory'
-import AgentDetail from './pages/AgentDetail'
-import Machines from './pages/Machines'
-import Skills from './pages/Skills'
-import SkillEditor from './pages/SkillEditor'
-import Inbox from './pages/Inbox'
-import Account from './pages/Account'
-import CollaborationRoom from './pages/CollaborationRoom'
-import RunTrace from './pages/RunTrace'
 import { useAppStore } from './store/appStore'
+import { notifyLoadFailed } from '@/lib/notify'
 
-// The two three.js pages load on demand, so three.js ships in their own chunks and no other
-// screen pays for it.
-const Landing = lazy(() => import('./pages/Landing'))
-const Observatory = lazy(() => import('./pages/Observatory'))
+// Every screen is its own chunk, so opening the app downloads the shell and the one screen
+// being looked at, not all of them. The two three.js pages matter most: three.js rides in
+// their chunks and no other screen pays for it.
+const pages = {
+  Landing: () => import('./pages/Landing'),
+  Observatory: () => import('./pages/Observatory'),
+  Login: () => import('./pages/Login'),
+  Workspaces: () => import('./pages/Workspaces'),
+  LinkMachine: () => import('./pages/LinkMachine'),
+  Onboarding: () => import('./pages/Onboarding'),
+  Home: () => import('./pages/Home'),
+  Projects: () => import('./pages/Projects'),
+  CreateProject: () => import('./pages/CreateProject'),
+  ProjectBoard: () => import('./pages/ProjectBoard'),
+  ProjectPlan: () => import('./pages/ProjectPlan'),
+  Roster: () => import('./pages/Roster'),
+  Directory: () => import('./pages/Directory'),
+  AgentDetail: () => import('./pages/AgentDetail'),
+  Machines: () => import('./pages/Machines'),
+  Skills: () => import('./pages/Skills'),
+  SkillEditor: () => import('./pages/SkillEditor'),
+  Inbox: () => import('./pages/Inbox'),
+  Account: () => import('./pages/Account'),
+  CollaborationRoom: () => import('./pages/CollaborationRoom'),
+  RunTrace: () => import('./pages/RunTrace'),
+}
+
+const Landing = lazy(pages.Landing)
+const Observatory = lazy(pages.Observatory)
+const Login = lazy(pages.Login)
+const Workspaces = lazy(pages.Workspaces)
+const LinkMachine = lazy(pages.LinkMachine)
+const Onboarding = lazy(pages.Onboarding)
+const Home = lazy(pages.Home)
+const Projects = lazy(pages.Projects)
+const CreateProject = lazy(pages.CreateProject)
+const ProjectBoard = lazy(pages.ProjectBoard)
+const ProjectPlan = lazy(pages.ProjectPlan)
+const Roster = lazy(pages.Roster)
+const Directory = lazy(pages.Directory)
+const AgentDetail = lazy(pages.AgentDetail)
+const Machines = lazy(pages.Machines)
+const Skills = lazy(pages.Skills)
+const SkillEditor = lazy(pages.SkillEditor)
+const Inbox = lazy(pages.Inbox)
+const Account = lazy(pages.Account)
+const CollaborationRoom = lazy(pages.CollaborationRoom)
+const RunTrace = lazy(pages.RunTrace)
+
+/** The in-workspace screens a signed-in person is likely to open next. Fetched once the
+ *  browser is idle, so moving between them does not wait on the network. The three.js pages
+ *  stay out: they are the heavy ones, and only whoever opens them should pay. */
+const WARM: (keyof typeof pages)[] = [
+  'Home', 'Inbox', 'Projects', 'ProjectBoard', 'CollaborationRoom', 'Directory', 'AgentDetail',
+  'Machines', 'Skills',
+]
+
+function useWarmPages(enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return
+    // Somebody who asked their browser to save data did not ask for screens they may never open.
+    const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection
+    if (connection?.saveData) return
+    let idle = 0
+    const warm = () => WARM.forEach((name) => void pages[name]().catch(() => {}))
+    // Not straight away: the first screen is still fetching its own data, and these downloads
+    // would queue in front of it on the same few connections.
+    const timer = setTimeout(() => {
+      if ('requestIdleCallback' in window) idle = window.requestIdleCallback(warm, { timeout: 4000 })
+      else warm()
+    }, 2500)
+    return () => {
+      clearTimeout(timer)
+      if (idle) window.cancelIdleCallback(idle)
+    }
+  }, [enabled])
+}
 
 /** Boot: rehydrate the session from the stored JWT before rendering routes, so the auth
  * guard doesn't bounce a logged-in user on a hard refresh. Also rehydrates the workspace
@@ -44,7 +99,7 @@ function useBootSession() {
         // Only fetch workspaces when authenticated; otherwise the auth guard redirects to
         // /login and there's nothing to hydrate (also avoids a stray 401 here).
         if (useAppStore.getState().currentUser) {
-          await hydrateWorkspaces().catch(() => {})
+          await hydrateWorkspaces().catch(notifyLoadFailed)
         }
       } catch (e) {
         // A failed hydrate still has to release the boot gate, or the app never renders
@@ -72,6 +127,8 @@ function RequireAuth() {
 
 export default function App() {
   const booted = useBootSession()
+  const signedIn = useAppStore((s) => Boolean(s.currentUser))
+  useWarmPages(booted && signedIn)
 
   if (!booted) {
     return <div className="min-h-[100dvh] bg-canvas" />
@@ -79,6 +136,9 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+    {/* Catches the screens outside the workspace layout while their chunk loads. The screens
+        inside it suspend at the layout's own boundary, so the sidebar and top bar stay put. */}
+    <Suspense fallback={<div className="min-h-[100dvh] bg-canvas" />}>
     <Routes>
       {/* Landing page — cinematic scroll storytelling (default) */}
       <Route
@@ -143,6 +203,7 @@ export default function App() {
         </Route>
       </Route>
     </Routes>
+    </Suspense>
     </ErrorBoundary>
   )
 }

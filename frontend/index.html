@@ -6,6 +6,11 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Armarius</title>
     <meta name="theme-color" content="#f9f7f2" />
+    <!-- The body face and the title face are on every screen; fetching them alongside the
+         stylesheet instead of after it keeps the first paint from swapping fonts late.
+         `crossorigin` is required for a font preload to be reused, even on the same origin. -->
+    <link rel="preload" href="/fonts/be-vietnam-pro-400.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/lora-400.woff2" as="font" type="font/woff2" crossorigin />
     <!-- Set the theme before first paint so a reload never flashes the wrong one. Same rule as
          src/hooks/use-theme.ts: the stored choice, else the OS preference. -->
     <script>

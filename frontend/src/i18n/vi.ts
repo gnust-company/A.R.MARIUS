@@ -141,6 +141,11 @@ export const vi = {
     lightTitle: 'Theme sáng · văn phòng ban ngày',
     darkTitle: 'Theme tối · văn phòng bật đèn',
   },
+  notify: {
+    loadFailedTitle: 'Không tải được dữ liệu mới nhất',
+    loadFailedBody: 'Màn hình có thể đang hiện dữ liệu cũ. Kiểm tra kết nối rồi tải lại trang.',
+    reload: 'Tải lại',
+  },
   command: {
     eyebrow: 'Bảng lệnh',
     title: 'Đi tới bất cứ đâu',

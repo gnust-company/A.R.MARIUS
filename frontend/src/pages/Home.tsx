@@ -11,6 +11,7 @@ import { getInbox, type InboxItemDTO } from '@/lib/api';
 import { subscribeProjectEvents } from '@/lib/sse';
 import { cn, wsHref } from '@/lib/utils';
 import { useAppStore, type Marius, type Task } from '@/store/appStore';
+import { notifyLoadFailed } from '@/lib/notify';
 
 /** The board's eleven spellings of a status, folded to the backend's eight. */
 function normalizeStatus(status: string): string {
@@ -140,7 +141,7 @@ export default function Home() {
   // project, so the front page asks for each project it is about to summarise.
   const projectKey = projects.map((p) => p.id).join(',');
   useEffect(() => {
-    projects.forEach((p) => void hydrateProject(p.id).catch(() => {}));
+    projects.forEach((p) => void hydrateProject(p.id).catch(notifyLoadFailed));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectKey, hydrateProject]);
 
@@ -183,7 +184,7 @@ export default function Home() {
       .then((items) => {
         if (alive) setInbox(items.filter((i) => !i.workspace_id || i.workspace_id === workspaceId));
       })
-      .catch(() => {});
+      .catch(notifyLoadFailed);
     return () => {
       alive = false;
     };

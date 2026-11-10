@@ -23,6 +23,7 @@ import { useRunTrace } from '@/hooks/use-run-trace';
 import { cn, wsHref } from '@/lib/utils';
 import { errorText } from '@/lib/errors';
 import PageTitle from '@/components/PageTitle';
+import { notifyLoadFailed } from '@/lib/notify';
 
 /** A safe i18n key segment: the daemon's codes are snake_case, and anything else is a code this
  *  screen has never heard of rather than a path into the phrase table. */
@@ -285,7 +286,7 @@ export default function RunTrace() {
       .then((run) => {
         if (!dropped) setOutcome(run.status);
       })
-      .catch(() => {});
+      .catch(notifyLoadFailed);
     return () => {
       dropped = true;
     };

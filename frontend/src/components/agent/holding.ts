@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useAppStore } from '@/store/appStore';
 import type { Task } from '@/store/appStore';
+import { notifyLoadFailed } from '@/lib/notify';
 
 /** Which of an agent's tasks says most about what it is doing — running beats waiting. */
 const HOLDING_ORDER = ['in_progress', 'in_review', 'blocked', 'todo'];
@@ -26,6 +27,6 @@ export function useHydrateWorkspaceTasks() {
     .map((p) => p.id)
     .join(',');
   useEffect(() => {
-    projectKey.split(',').filter(Boolean).forEach((id) => void hydrateProject(id).catch(() => {}));
+    projectKey.split(',').filter(Boolean).forEach((id) => void hydrateProject(id).catch(notifyLoadFailed));
   }, [projectKey, hydrateProject]);
 }
