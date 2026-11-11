@@ -5,7 +5,7 @@
 // be changed about it (Configuration: name, runtime settings, skills, instructions, removal).
 // A live run advances in place off the workspace event channel — no timer (T167, FR-080).
 // The direct chat with the agent (FR-007p) opens as a drawer from the header's Chat button.
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -296,11 +296,18 @@ export default function AgentDetail() {
   //
   // The event is a **signal**, not the data: on receipt this re-reads the run list rather
   // than trying to patch a row out of the payload (contracts/push-events.md, principle 1).
+  //
+  // This screen is not remounted when the route moves from one agent to another, so an answer
+  // about the agent just left can arrive after the move. `shown` is the agent on screen now;
+  // an answer for any other is dropped.
+  const shown = useRef(id);
+  useLayoutEffect(() => { shown.current = id; }, [id]);
+
   const loadRuns = useCallback(() => {
     if (!workspaceId || !id) return;
     listMariusRuns(workspaceId, id)
-      .then((rows) => { setRuns(rows); setError(null); })
-      .catch((e) => setError(errorText(e, t)));
+      .then((rows) => { if (shown.current === id) { setRuns(rows); setError(null); } })
+      .catch((e) => { if (shown.current === id) setError(errorText(e, t)); });
   }, [workspaceId, id, t]);
 
   useEffect(() => { loadRuns(); }, [loadRuns]);
@@ -308,9 +315,9 @@ export default function AgentDetail() {
   const loadOptions = useCallback(() => {
     if (!id) return;
     listAgentOptions(id)
-      .then(setOptions)
-      .catch(() => setOptions([]))
-      .finally(() => setOptionsLoading(false));
+      .then((rows) => { if (shown.current === id) setOptions(rows); })
+      .catch(() => { if (shown.current === id) setOptions([]); })
+      .finally(() => { if (shown.current === id) setOptionsLoading(false); });
   }, [id, listAgentOptions]);
 
   useEffect(() => { loadOptions(); }, [loadOptions]);

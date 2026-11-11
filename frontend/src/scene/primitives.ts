@@ -7,8 +7,15 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
  * so they cannot follow the CSS theme tokens. The theme reaches the scene through lighting.
  */
 
+/*
+ * Shared by every scene built from this module, so they are counted: a scene takes a hold with
+ * `retainCaches()` when it starts and gives it back with `releaseCaches()` when it goes, and
+ * the caches are emptied only when the last one has gone. Today one scene lives at a time; two
+ * side by side must not have the first to leave empty what the other is still drawing with.
+ */
 const geometryCache = new Map<string, THREE.BufferGeometry>();
 const materialCache = new Map<string, THREE.MeshStandardMaterial>();
+let cacheHolds = 0;
 
 export function material(color: string, roughness = 0.8): THREE.MeshStandardMaterial {
   const key = `${color}:${roughness}`;
@@ -243,8 +250,20 @@ export function contactShadow(
   parent.add(mesh);
 }
 
-/** Release every shared geometry, material and texture. Called when the last scene goes away. */
-export function disposeCaches(): void {
+/** A scene that draws with the shared geometries and materials takes a hold on them. */
+export function retainCaches(): void {
+  cacheHolds += 1;
+}
+
+/** Give a hold back. The caches are emptied when no scene holds them any more. */
+export function releaseCaches(): void {
+  if (cacheHolds === 0) return;
+  cacheHolds -= 1;
+  if (cacheHolds === 0) disposeCaches();
+}
+
+/** Release every shared geometry, material and texture. */
+function disposeCaches(): void {
   geometryCache.forEach((geometry) => geometry.dispose());
   geometryCache.clear();
   materialCache.forEach((item) => item.dispose());
