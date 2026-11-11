@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createCharacter, type Appearance, type CharacterRig } from '@/scene/character';
 import { chair, coffeeTable, makeFurniture, plant } from '@/scene/furniture';
-import { box, cylinder, disposeCaches, group, rod, sphere, woodTexture } from '@/scene/primitives';
+import { box, cylinder, group, releaseCaches, retainCaches, rod, sphere, woodTexture } from '@/scene/primitives';
 import { clinicBed, podLetter, workSeat, type AgentZone, type OfficeLayout, type OfficePlan, type Placement } from './officePlan';
 
 /*
@@ -554,6 +554,8 @@ export class OfficeEngine {
     this.plan = initial.layout.plan;
     this.overview = new THREE.Vector3(this.plan.centerX + 19, 39 + this.plan.workPods * 0.5, 29 + this.plan.workPods * 0.7);
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+    // From here on the scene draws with the shared caches; `dispose()` gives the hold back.
+    retainCaches();
     const gl = this.renderer.getContext();
     const debug = gl.getExtension('WEBGL_debug_renderer_info');
     this.software = !!debug && /swiftshader|llvmpipe|software/i.test(String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)));
@@ -960,7 +962,7 @@ export class OfficeEngine {
     canvas.removeEventListener('contextmenu', this.preventContextMenu);
     this.motionQuery.removeEventListener('change', this.onMotionChange);
     this.disposeObject(this.scene);
-    disposeCaches();
+    releaseCaches();
     this.rigs.clear();
     this.labels.clear();
     this.renderer.dispose();

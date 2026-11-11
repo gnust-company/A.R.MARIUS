@@ -4,6 +4,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
 import { useAppStore } from './store/appStore'
 import { notifyLoadFailed } from '@/lib/notify'
+import { screenLoader } from '@/lib/chunkReload'
 
 // Every screen is its own chunk, so opening the app downloads the shell and the one screen
 // being looked at, not all of them. The two three.js pages matter most: three.js rides in
@@ -32,27 +33,29 @@ const pages = {
   RunTrace: () => import('./pages/RunTrace'),
 }
 
-const Landing = lazy(pages.Landing)
-const Observatory = lazy(pages.Observatory)
-const Login = lazy(pages.Login)
-const Workspaces = lazy(pages.Workspaces)
-const LinkMachine = lazy(pages.LinkMachine)
-const Onboarding = lazy(pages.Onboarding)
-const Home = lazy(pages.Home)
-const Projects = lazy(pages.Projects)
-const CreateProject = lazy(pages.CreateProject)
-const ProjectBoard = lazy(pages.ProjectBoard)
-const ProjectPlan = lazy(pages.ProjectPlan)
-const Roster = lazy(pages.Roster)
-const Directory = lazy(pages.Directory)
-const AgentDetail = lazy(pages.AgentDetail)
-const Machines = lazy(pages.Machines)
-const Skills = lazy(pages.Skills)
-const SkillEditor = lazy(pages.SkillEditor)
-const Inbox = lazy(pages.Inbox)
-const Account = lazy(pages.Account)
-const CollaborationRoom = lazy(pages.CollaborationRoom)
-const RunTrace = lazy(pages.RunTrace)
+// A screen being opened reloads the tab when its chunk is gone (a deploy happened under it).
+// Only these wrapped loaders do: see `useWarmPages` for the bare ones.
+const Landing = lazy(screenLoader(pages.Landing))
+const Observatory = lazy(screenLoader(pages.Observatory))
+const Login = lazy(screenLoader(pages.Login))
+const Workspaces = lazy(screenLoader(pages.Workspaces))
+const LinkMachine = lazy(screenLoader(pages.LinkMachine))
+const Onboarding = lazy(screenLoader(pages.Onboarding))
+const Home = lazy(screenLoader(pages.Home))
+const Projects = lazy(screenLoader(pages.Projects))
+const CreateProject = lazy(screenLoader(pages.CreateProject))
+const ProjectBoard = lazy(screenLoader(pages.ProjectBoard))
+const ProjectPlan = lazy(screenLoader(pages.ProjectPlan))
+const Roster = lazy(screenLoader(pages.Roster))
+const Directory = lazy(screenLoader(pages.Directory))
+const AgentDetail = lazy(screenLoader(pages.AgentDetail))
+const Machines = lazy(screenLoader(pages.Machines))
+const Skills = lazy(screenLoader(pages.Skills))
+const SkillEditor = lazy(screenLoader(pages.SkillEditor))
+const Inbox = lazy(screenLoader(pages.Inbox))
+const Account = lazy(screenLoader(pages.Account))
+const CollaborationRoom = lazy(screenLoader(pages.CollaborationRoom))
+const RunTrace = lazy(screenLoader(pages.RunTrace))
 
 /** The in-workspace screens a signed-in person is likely to open next. Fetched once the
  *  browser is idle, so moving between them does not wait on the network. The three.js pages
@@ -69,6 +72,8 @@ function useWarmPages(enabled: boolean) {
     const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection
     if (connection?.saveData) return
     let idle = 0
+    // The bare imports, not the wrapped loaders: a warm-up that fails (the build changed under
+    // an open tab) must stay silent, or it would reload a page somebody is typing into.
     const warm = () => WARM.forEach((name) => void pages[name]().catch(() => {}))
     // Not straight away: the first screen is still fetching its own data, and these downloads
     // would queue in front of it on the same few connections.
