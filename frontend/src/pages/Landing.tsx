@@ -7,7 +7,6 @@ import {
   ArrowRight,
   Binoculars,
   Building2,
-  ChevronRight,
   Orbit,
   Sparkle,
   SquareKanban,
@@ -15,7 +14,9 @@ import {
 } from 'lucide-react';
 import { Brand } from '@/components/Brand';
 import ThemeSwitch from '@/components/ThemeSwitch';
+import DemoPanel from '@/components/landing/DemoPanel';
 import GalaxyScene from '@/components/landing/GalaxyScene';
+import { LandingDemo } from '@/components/landing/landingDemo';
 import { useTheme } from '@/hooks/use-theme';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/appStore';
@@ -35,6 +36,11 @@ const CHAPTERS = [
   { id: 'enter-armarius', label: 'landing.chapters.invitation' },
 ] as const;
 
+/** Stable across renders: the scene paces its journey by these sections. */
+const CHAPTER_IDS = CHAPTERS.map((chapter) => chapter.id);
+/** The scripted demo only plays while one of these chapters is on screen. */
+const DEMO_CHAPTERS = ['living-company', 'working-orbit'];
+
 function prefersReducedMotion() {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
@@ -48,14 +54,17 @@ const chapterTitle = 'my-[23px] font-display font-normal tracking-[-0.052em] tex
 const chapterBody = 'max-w-[590px] font-body text-[14px] leading-[1.75] text-ink-light sm:text-[16px] sm:leading-[1.85]';
 const chapterShell =
   'relative mx-auto flex w-full max-w-[1680px] min-h-[108svh] items-end px-[22px] pb-[92px] pt-[100px] md:min-h-[112vh] md:items-center md:px-[55px] md:pb-[100px] md:pt-[130px] lg:px-[clamp(70px,8vw,138px)]';
-const chapterCopy = 'relative w-full md:w-[min(650px,68vw)] lg:w-[min(660px,56vw)]';
+/** Narrow and portrait screens: the building takes a band above the copy (see GalaxyScene). */
+const chapterBand =
+  'max-md:pt-[calc(100px+min(61vw,36svh))] md:portrait:items-end md:portrait:pt-[calc(100px+min(61vw,36svh))]';
+const chapterCopy = 'relative w-full md:w-[min(650px,68vw)] lg:w-[min(660px,50vw)]';
 
 function Annotation({ kickerText, text, side }: { kickerText: string; text: string; side: 'left' | 'right' }) {
   return (
     <div
       aria-hidden="true"
       className={cn(
-        'absolute hidden gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-ink-muted md:grid',
+        'absolute hidden gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-ink-muted md:landscape:grid',
         side === 'left' ? 'bottom-[19%] left-[10%]' : 'bottom-[22%] right-[10%] text-right'
       )}
     >
@@ -86,6 +95,11 @@ export default function Landing() {
   const currentUser = useAppStore((s) => s.currentUser);
   const [activeChapter, setActiveChapter] = useState<string>('origin');
   const dark = theme === 'dark';
+  // One scripted demo for the page: the scene and the inbox panel both read it.
+  const [demo] = useState(() => new LandingDemo());
+  // Without WebGL there is no building, so the chapters keep no band free for it.
+  const [sceneLost, setSceneLost] = useState(false);
+  const band = sceneLost ? '' : chapterBand;
 
   // Signed in: straight to the workspaces. Otherwise the sign-in screen first.
   const enter = () => navigate(currentUser ? '/workspaces' : '/login');
@@ -105,9 +119,34 @@ export default function Landing() {
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    const onScreen = new Set<string>();
+    const sync = () => demo.setRunning(onScreen.size > 0 && !document.hidden);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) onScreen.add(entry.target.id);
+          else onScreen.delete(entry.target.id);
+        });
+        sync();
+      },
+      { threshold: 0.2 }
+    );
+    DEMO_CHAPTERS.forEach((id) => {
+      const element = document.getElementById(id);
+      if (element) observer.observe(element);
+    });
+    document.addEventListener('visibilitychange', sync);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener('visibilitychange', sync);
+      demo.setRunning(false);
+    };
+  }, [demo]);
+
   return (
     <div className={cn('relative min-h-[100dvh] overflow-x-clip font-body text-ink', dark ? 'bg-canvas-deep' : 'bg-canvas')}>
-      <GalaxyScene theme={theme} />
+      <GalaxyScene theme={theme} chapterIds={CHAPTER_IDS} demo={demo} onUnavailable={() => setSceneLost(true)} />
       {/* Veil between galaxy and copy: from the left on wide screens, from below on a phone. */}
       <div
         aria-hidden="true"
@@ -175,6 +214,7 @@ export default function Landing() {
               <br />
               <em className="not-italic text-gold">{t('landing.origin.titleEm')}</em>
             </h1>
+            <p className="mb-3 font-display text-[18px] leading-snug text-ink-strong sm:text-[22px]">{t('landing.origin.lede')}</p>
             <p className={chapterBody}>{t('landing.origin.body')}</p>
             <div className="mt-[26px] flex flex-col items-stretch gap-2.5 sm:mt-[34px] sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-4">
               <button type="button" onClick={enter} className="btn btn-primary min-h-[52px] px-[21px] text-[14px]">
@@ -214,8 +254,8 @@ export default function Landing() {
         </section>
 
         {/* 01 · The living company */}
-        <section id="living-company" className={cn(chapterShell, 'md:justify-end')}>
-          <div className={cn(chapterCopy, 'border-l border-line-strong py-6 pl-5 backdrop-blur-[5px] md:py-9 md:pl-[34px]', dark ? 'bg-gradient-to-r from-canvas-deep/70 to-transparent' : 'bg-gradient-to-r from-canvas/85 to-transparent')}>
+        <section id="living-company" className={cn(chapterShell, band)}>
+          <div className={cn(chapterCopy, 'border-l border-line-strong py-6 pl-5 md:py-9 md:pl-[34px]', dark ? 'bg-gradient-to-r from-canvas-deep/70 to-transparent' : 'bg-gradient-to-r from-canvas/85 to-transparent')}>
             <span className={kicker}>{t('landing.company.kicker')}</span>
             <h2 className={cn(chapterTitle, 'text-[clamp(38px,11vw,56px)] leading-[1.07] md:text-[clamp(43px,4.7vw,70px)]')}>
               {t('landing.company.titleA')}
@@ -229,12 +269,12 @@ export default function Landing() {
               <FloorRow code="01" icon={Sparkle} title={t('landing.company.setupTitle')} body={t('landing.company.setupBody')} />
             </div>
           </div>
-          <Annotation side="left" kickerText={t('landing.company.annotationKicker')} text={t('landing.company.annotation')} />
+          <Annotation side="right" kickerText={t('landing.company.annotationKicker')} text={t('landing.company.annotation')} />
         </section>
 
         {/* 02 · The orbit of work */}
-        <section id="working-orbit" className={chapterShell}>
-          <div className={cn(chapterCopy, 'border-l border-line-strong py-6 pl-5 backdrop-blur-[5px] md:py-9 md:pl-[34px]', dark ? 'bg-gradient-to-r from-canvas-deep/70 to-transparent' : 'bg-gradient-to-r from-canvas/85 to-transparent')}>
+        <section id="working-orbit" className={cn(chapterShell, band)}>
+          <div className={cn(chapterCopy, 'border-l border-line-strong py-6 pl-5 md:py-9 md:pl-[34px]', dark ? 'bg-gradient-to-r from-canvas-deep/70 to-transparent' : 'bg-gradient-to-r from-canvas/85 to-transparent')}>
             <span className={kicker}>{t('landing.workflow.kicker')}</span>
             <h2 className={cn(chapterTitle, 'text-[clamp(38px,11vw,56px)] leading-[1.07] md:text-[clamp(43px,4.7vw,70px)]')}>
               {t('landing.workflow.titleA')}
@@ -242,17 +282,7 @@ export default function Landing() {
               {t('landing.workflow.titleB')} <em className="not-italic text-gold">{t('landing.workflow.titleEm')}</em>
             </h2>
             <p className={chapterBody}>{t('landing.workflow.body')}</p>
-            <div aria-label={t('landing.workflow.flowLabel')} role="list" className="my-[34px] flex flex-wrap items-center gap-2.5 sm:gap-4">
-              {[t('landing.workflow.step1'), t('landing.workflow.step2'), t('landing.workflow.step3')].map((step, index) => (
-                <span key={step} role="listitem" className="flex items-center gap-2.5 sm:gap-4">
-                  {index > 0 && <ChevronRight className="h-[13px] w-[13px] text-ink-muted sm:h-[17px] sm:w-[17px]" aria-hidden />}
-                  <span className="grid gap-[7px]">
-                    <small className="font-mono text-[9px] text-ink-muted">0{index + 1}</small>
-                    <strong className="font-display text-[16px] font-normal text-ink-strong sm:text-[20px]">{step}</strong>
-                  </span>
-                </span>
-              ))}
-            </div>
+            <DemoPanel demo={demo} />
             <button type="button" onClick={enter} className="group inline-flex items-center gap-2.5 border-b border-line-strong py-3 text-[13px] text-ink-strong">
               {t('landing.workflow.link')}
               <SquareKanban className="h-[19px] w-[19px]" strokeWidth={1.5} aria-hidden />
