@@ -18,3 +18,23 @@ export function agentsOf<T extends { workspaceId: string }>(
   if (!workspaceId) return []
   return agents.filter((agent) => agent.workspaceId === workspaceId)
 }
+
+/**
+ * The letters of one workspace, out of everything waiting on this person.
+ *
+ * The inbox is answered per person — a letter is addressed to somebody, not to a workspace —
+ * so the server hands back every workspace's letters in one list. The inbox screen, the badge
+ * beside it and the home page each sit **inside** one workspace, and two of the three showed
+ * the whole list: a workspace with a single finished project carried four stalled tasks from
+ * another one, with links that led out of the workspace the reader was in (found 2026-11-12).
+ *
+ * A letter that names no workspace belongs to whichever one is asking. That is how rows older
+ * than the field read, and dropping them would hide a decision somebody is still waiting on.
+ */
+export function lettersOf<T extends { workspace_id?: string | null }>(
+  letters: readonly T[],
+  workspaceId: string | null | undefined,
+): T[] {
+  if (!workspaceId) return []
+  return letters.filter((letter) => !letter.workspace_id || letter.workspace_id === workspaceId)
+}

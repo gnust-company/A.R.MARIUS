@@ -12,6 +12,8 @@ import type { Project } from '@/store/appStore';
 import AttemptDossier from './AttemptDossier';
 import EscalationActions from './EscalationActions';
 import { relativeTime } from './inbox-utils';
+import OutputEvidence from './OutputEvidence';
+import PhaseDecisionActions from './PhaseDecisionActions';
 
 interface Props {
   item: InboxItemDTO;
@@ -194,8 +196,23 @@ export default function InboxDetail({
           patron to go and reconstruct the history before they can answer. */}
       {item.kind === 'escalation' && <AttemptDossier item={item} />}
 
+      {item.kind === 'output_acceptance' && item.task_id && (
+        <OutputEvidence key={item.task_id} taskId={item.task_id} workspaceId={workspaceId} />
+      )}
+
       {pending && item.kind === 'output_acceptance' && item.task_id && (
         <OutputAcceptanceActions
+          item={item}
+          frozen={frozen}
+          busy={busy}
+          setBusy={setBusy}
+          onError={onError}
+          onDone={onDone}
+        />
+      )}
+
+      {pending && item.kind === 'phase_decision' && (
+        <PhaseDecisionActions
           item={item}
           frozen={frozen}
           busy={busy}

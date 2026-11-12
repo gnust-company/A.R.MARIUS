@@ -772,6 +772,24 @@ export const vi = {
       notReminded: 'Chưa nhắc',
       resolvedAt: 'Xử lý',
     },
+    phase: {
+      question: 'Đợt việc đã khép. Bạn quyết bước tiếp theo:',
+      newBatch: 'Mở đợt việc mới',
+      newBatchHint: 'Dự án tiếp tục vận hành. Nhắn Leader việc kế tiếp trong chat dự án.',
+      maintain: 'Chuyển sang bảo trì',
+      maintainHint: 'Giữ đội và dự án, chỉ nhận việc sửa và việc nhỏ.',
+      close: 'Đóng dự án',
+      closeHint: 'Dự án thành lịch sử, không nhận thêm việc.',
+      closeConfirm: 'Đóng rồi thì không mở lại được. Mọi thư đang chờ của dự án này cũng khép theo.',
+      closeYes: 'Đóng dự án',
+    },
+    evidence: {
+      title: 'Sản phẩm đã nộp',
+      none: 'Đầu việc này chưa nộp sản phẩm nào.',
+      version: 'bản {{version}}/{{of}}',
+      lastWord: 'Lời gần nhất trong luồng trao đổi',
+      lastWordBy: 'Lời gần nhất trong luồng trao đổi · {{name}}',
+    },
     // FR-061 — hồ sơ đã thử, đi kèm mỗi lần leo thang lên người chủ. Không có nó thì
     // người chủ phải tự đi dựng lại xem hệ đã làm gì rồi mới trả lời được.
     dossier: {
@@ -861,7 +879,7 @@ export const vi = {
     stalled: 'Đình trệ — hệ thống đánh rơi đầu việc này',
     // Hai cái chờ bình thường, không phải cảnh báo (FR-008b). Cái hỏng đã có ô đỏ riêng.
     waitingForMachine: 'Đang chờ máy rảnh',
-    nobodyHasTakenIt: 'Chưa ai nhận việc',
+    nobodyHasTakenIt: 'Đã gọi, agent chưa bắt đầu',
     reachedByWorking: 'Tới đây bằng cách làm, không tạo thẳng.',
     addTask: 'Thêm Nhiệm vụ',
     addTaskTitle: 'Tạo Nhiệm vụ Mới',
@@ -947,7 +965,7 @@ export const vi = {
     offlineBanner: 'Leader đang ngoại tuyến — hộp chat bị khóa cho đến khi nó trực tuyến trở lại.',
     empty: 'Bắt đầu cuộc trò chuyện với Leader của dự án.',
     thinking: 'Leader đang trả lời…',
-    turnFailed: 'Leader chưa trả lời xong. Hãy thử lại.',
+    turnFailed: 'Lượt trả lời của Leader bị lỗi giữa chừng nên tin vừa rồi chưa được trả lời. Hãy gửi lại.',
     inputPlaceholder: 'Nhắn cho Leader…',
     inputThinking: 'Chờ Leader trả lời xong…',
     inputDisabled: 'Leader đang ngoại tuyến.',
@@ -980,7 +998,6 @@ export const vi = {
   },
   taskRules: {
     reasonPrompt: 'Nêu lý do (bắt buộc):',
-    reworkPrompt: 'Trả lại để sửa — nói rõ cần sửa gì:',
     blocked: {
       closed: 'đầu việc đã đóng, mở lại mới đi tiếp được',
       stalled: 'đang mang cờ đình trệ',
@@ -1109,6 +1126,8 @@ export const vi = {
       dependencyFailed: 'Không cập nhật được phụ thuộc.',
       artifacts: 'Sản phẩm',
       addArtifact: 'Thêm Sản phẩm',
+      artifactVersionCurrent: 'bản {{version}}/{{of}} · mới nhất',
+      artifactVersionOld: 'bản {{version}}/{{of}} · cũ',
       doneGateBlocked: 'Nhiệm vụ không thể hoàn thành nếu chưa có sản phẩm tệp hoặc liên kết.',
       doneGateUnblocked: 'Sản phẩm đã xuất bản — nhiệm vụ có thể tiếp tục',
       statusRequiredArtifact: 'Trạng thái: BỊ CHẶN — Chưa có đầu ra',
@@ -1116,8 +1135,6 @@ export const vi = {
     },
     approval: {
       awaitingReview: 'Nhiệm vụ đang chờ xem xét',
-      approve: 'Phê duyệt',
-      requestChanges: 'Yêu cầu Thay đổi',
     },
     composer: {
       placeholder: 'Thêm bình luận...',
@@ -1548,15 +1565,12 @@ export const vi = {
   },
   observatory: {
     eyebrow: 'Không gian chung · Trực tiếp',
-    subtitle: 'Một mặt bằng, năm khu vực — mọi agent và việc họ đang giữ đều nằm trong tầm nhìn.',
     running: '{{count}} agent đang chạy',
     blocked: '{{count}} việc bị chặn',
     sceneLabel: 'Mặt bằng một tầng của workspace',
-    canvas: 'Mặt bằng văn phòng agent một tầng. Rê chuột để xem nhanh, bấm vào agent để mở chi tiết, bấm vào phòng CEO để mở hộp thư Patron.',
+    canvas: 'Mặt bằng văn phòng agent một tầng. Kéo để di chuyển, lăn chuột để phóng, giữ Shift rồi kéo để xoay. Bằng bàn phím: phím mũi tên để di chuyển, + và − để phóng, R để xoay, 0 để về toàn cảnh. Bấm vào agent để mở chi tiết, bấm vào phòng CEO để mở hộp thư Patron.',
     capacity: {
-      label: 'Sức chứa của mặt bằng',
       agents: 'agent',
-      pods: 'work pod',
       desks: 'bàn đã gán',
       beds: 'giường hồi phục',
       ceoQueue: 'chờ CEO',
@@ -1576,20 +1590,11 @@ export const vi = {
     },
     zoneNav: {
       label: 'Điều hướng khu vực',
-      count: '{{count}} agent',
       focus: 'Phóng đến {{zone}}',
-      overview: 'Toàn cảnh',
-      overviewShort: 'Tất cả',
     },
     patronEntry: {
-      title: 'Phòng CEO',
+      short: '{{count}} chờ duyệt',
       detail: 'Mở hộp thư Patron · {{count}} chờ duyệt',
-    },
-    time: {
-      dayTitle: 'Ban ngày · Nắng ngoài cửa sổ',
-      dayBody: 'Ánh sáng tự nhiên, đèn văn phòng đã tắt',
-      nightTitle: 'Ban đêm · Đèn đang bật',
-      nightBody: 'Khung cảnh đêm, ánh đèn ấm đang hoạt động',
     },
     camera: {
       label: 'Điều khiển góc nhìn',
@@ -1598,7 +1603,7 @@ export const vi = {
       rotate: 'Xoay góc nhìn',
       reset: 'Đặt lại góc nhìn',
     },
-    gesture: 'Rê chuột để xem chỗ được gán · Bấm vào agent để mở chi tiết',
+    gesture: 'Kéo để di chuyển · Lăn chuột để phóng · Chuột phải hoặc Shift + kéo để xoay',
     dock: {
       label: 'Chọn agent trong văn phòng',
       select: 'Chọn một trong {{count}} agent',
@@ -1615,7 +1620,7 @@ export const vi = {
       checkIn: 'Hàng check-in · vị trí {{position}}',
     },
     zoneDescription: {
-      setup: 'Agent đang ở lễ tân: chưa mang kỹ năng nào, hoặc đang giữ một task nháp. Các agent ở đây xếp hàng theo thứ tự vào khu.',
+      setup: 'Agent đang ở lễ tân: chưa được chọn runtime, hoặc đang giữ một task nháp. Các agent ở đây xếp hàng theo thứ tự vào khu.',
       lounge: 'Agent đang online nhưng chưa có task đang chạy. Agent ngồi nghỉ trong lounge cho đến khi nhận việc mới.',
       clinic: 'Runtime đang ngoại tuyến nên agent được đưa vào phòng hồi phục. Lần cuối hệ thống ghi nhận: {{lastSeen}}.',
       clinicNever: 'Runtime đang ngoại tuyến nên agent được đưa vào phòng hồi phục. Hệ thống chưa từng ghi nhận agent này.',
@@ -1623,13 +1628,6 @@ export const vi = {
       patron: 'Agent đang có task chờ duyệt. Một agent đứng ở vị trí trình task; các agent còn lại xếp hàng chờ quyết định của Patron.',
     },
     strip: {
-      eyebrow: 'Nhịp điều phối',
-      title: 'Chuyển động mô phỏng theo trạng thái thật',
-      data: 'Dữ liệu',
-      modules: 'Mở rộng',
-      modulesValue: '{{count}} module làm việc',
-      waiting: 'Chờ chỗ',
-      waitingValue: '{{count}} agent',
       live: 'Trực tiếp',
       reconnecting: 'Đang nối lại',
     },

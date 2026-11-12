@@ -65,6 +65,19 @@ export function livenessToAgentStatus(liveness: string): AgentStatus {
   }
 }
 
+/**
+ * What an agent is doing, as the screens show it: liveness, plus whether a run is in hand.
+ *
+ * Two facts from two places. Liveness says the agent can be reached; `running` says it is
+ * carrying out a run right now. A run on a person's machine changes only the second, so a
+ * screen reading liveness alone showed a whole team idle while it was building. An agent that
+ * cannot be reached is offline whatever its last run says.
+ */
+export function agentStatusOf(dto: { liveness: string; running?: boolean | null }): AgentStatus {
+  const status = livenessToAgentStatus(dto.liveness)
+  return status !== 'offline' && dto.running ? 'working' : status
+}
+
 export function taskStatusFromDTO(status: string): TaskStatus {
   // Backend enum is a subset of the frontend union; pass through known values,
   // fallback to a safe default.
@@ -217,7 +230,7 @@ export function mariusToVM(dto: MariusDTO): Marius {
     // An agent's status is its liveness and nothing else. It used to be read off an invite
     // lifecycle first, but that lifecycle marked exactly one moment — the minting of the
     // agent's own token — and there is no such token any more (FR-014a).
-    status: livenessToAgentStatus(dto.liveness),
+    status: agentStatusOf(dto),
     workspaceId: dto.workspace_id ?? '',
     projectIds: [], // populated by the frontend from roster grants
     skills: dto.skills,

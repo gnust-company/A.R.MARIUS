@@ -21,7 +21,6 @@ export interface SceneAgent {
   id: string;
   name: string;
   status: string;
-  runtimeLabel: string;
 }
 
 export interface SceneState {
@@ -29,6 +28,14 @@ export interface SceneState {
   layout: OfficeLayout;
   theme: 'light' | 'dark';
   selectedId: string | null;
+  /** What floats above each zone at a distance: its name and how full it is. */
+  captions: Record<AgentZone, string>;
+}
+
+/** Pixels of the canvas the page covers with its own controls; the floor is framed inside. */
+export interface SceneInsets {
+  top: number;
+  bottom: number;
 }
 
 /** Words painted onto signs and floor markings. Built once per scene, in the page's language. */
@@ -51,6 +58,8 @@ interface EngineCallbacks {
   onSelect: (id: string) => void;
   onOpenPatron: () => void;
   onHover: (hover: HoverState) => void;
+  /** The person moved the view themselves: whatever the page had focused is no longer in frame. */
+  onRoam: () => void;
 }
 
 // ─── Appearance ──────────────────────────────────────────────────────────────
@@ -102,43 +111,81 @@ function canvas2d(width: number, height: number): [HTMLCanvasElement, CanvasRend
 
 const SCENE_FONT = '"Be Vietnam Pro", Arial, sans-serif';
 
+/*
+ * Tags and captions are drawn at a fixed size on screen, whatever the zoom: a name that
+ * shrinks with the floor is a name nobody can read from the overview, which is the one view
+ * where it matters. Their canvases keep one size (a texture cannot change its size once it is
+ * on the GPU); the plate is drawn centred and `span` remembers how much of the width it takes.
+ */
+const TAG = { width: 512, height: 72, screen: 26 };
+const CAPTION = { width: 640, height: 72, screen: 28 };
+
 function paintLabel(sprite: THREE.Sprite, agent: SceneAgent, theme: string) {
   const mat = sprite.material as THREE.SpriteMaterial;
   const canvas = mat.map!.image as HTMLCanvasElement;
   const ctx = canvas.getContext('2d')!;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = token('surface', 0.94);
+  ctx.font = `700 37px ${SCENE_FONT}`;
+  const room = TAG.width - 96;
+  const plate = Math.min(ctx.measureText(agent.name).width, room) + 84;
+  const left = (TAG.width - plate) / 2;
+  ctx.fillStyle = token('surface', 0.95);
   ctx.beginPath();
-  ctx.roundRect(6, 8, 500, 106, 28);
+  ctx.roundRect(left, 6, plate, 60, 30);
   ctx.fill();
-  ctx.strokeStyle = token('line', 0.8);
+  ctx.strokeStyle = token('line', 0.9);
   ctx.lineWidth = 2;
   ctx.stroke();
   ctx.fillStyle = token(STATUS_TOKEN[agent.status] ?? 'faint');
   ctx.beginPath();
-  ctx.arc(45, 61, 12, 0, Math.PI * 2);
+  ctx.arc(left + 30, 36, 10, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = token('ink-strong');
-  ctx.font = `600 42px ${SCENE_FONT}`;
   ctx.textBaseline = 'middle';
-  ctx.fillText(agent.name, 74, 51, 420);
-  ctx.fillStyle = token('muted');
-  ctx.font = '24px ui-monospace, monospace';
-  ctx.fillText(agent.runtimeLabel.toUpperCase(), 75, 88, 420);
+  ctx.fillText(agent.name, left + 52, 38, room);
   mat.map!.needsUpdate = true;
-  sprite.userData.paintKey = `${theme}:${agent.status}:${agent.name}:${agent.runtimeLabel}`;
+  sprite.userData.span = plate / TAG.width;
+  sprite.userData.paintKey = `${theme}:${agent.status}:${agent.name}`;
 }
 
 function labelSprite(agent: SceneAgent, theme: string): THREE.Sprite {
-  const [canvas] = canvas2d(512, 128);
+  const [canvas] = canvas2d(TAG.width, TAG.height);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
-  sprite.scale.set(1.65, 0.41, 1);
-  sprite.position.set(0, 1.93, 0);
+  // UI text: the theme's exact colours, untouched by the scene's tone mapping and fog.
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, toneMapped: false, fog: false }));
   sprite.renderOrder = 4;
   sprite.userData.agentId = agent.id;
   paintLabel(sprite, agent, theme);
+  return sprite;
+}
+
+function paintCaption(sprite: THREE.Sprite, text: string, theme: string) {
+  const mat = sprite.material as THREE.SpriteMaterial;
+  const canvas = mat.map!.image as HTMLCanvasElement;
+  const ctx = canvas.getContext('2d')!;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.font = `700 35px ${SCENE_FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  // No plate: a halo in the page's own ground colour keeps the words readable over any floor.
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 7;
+  ctx.strokeStyle = token('canvas-deep', 0.92);
+  ctx.strokeText(text, CAPTION.width / 2, 38, CAPTION.width - 24);
+  ctx.fillStyle = token('ink-strong');
+  ctx.fillText(text, CAPTION.width / 2, 38, CAPTION.width - 24);
+  mat.map!.needsUpdate = true;
+  sprite.userData.span = Math.min(ctx.measureText(text).width + 14, CAPTION.width) / CAPTION.width;
+  sprite.userData.paintKey = `${theme}:${text}`;
+}
+
+function captionSprite(): THREE.Sprite {
+  const [canvas] = canvas2d(CAPTION.width, CAPTION.height);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, toneMapped: false, fog: false }));
+  sprite.renderOrder = 3;
   return sprite;
 }
 
@@ -514,6 +561,16 @@ const NIGHT = { background: '#101a24', ground: '#111b26', groundEmissive: '#0000
 
 type Motion = { moving: boolean; typing: boolean; pose: Placement['pose'] };
 
+const MIN_ZOOM = 0.8;
+const MAX_ZOOM = 3.2;
+/** One press of a zoom button, or of + and -. */
+const ZOOM_STEP = 1.35;
+const FLIGHT_SECONDS = 0.55;
+/** How far a press may wander, in pixels, and still be a click rather than a drag. */
+const CLICK_SLOP = 6;
+/** Below this canvas width the zone bar alone names the zones: captions would run off the edge. */
+const CAPTION_MIN_WIDTH = 720;
+
 export class OfficeEngine {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -524,6 +581,16 @@ export class OfficeEngine {
   private ground: THREE.Mesh;
   private rigs = new Map<string, CharacterRig>();
   private labels = new Map<string, THREE.Sprite>();
+  private captions = new Map<AgentZone, THREE.Sprite>();
+  /** The floor's own level, where a drag takes hold of it. */
+  private floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.5);
+  private pointers = new Set<number>();
+  /** A drag across the floor: the point of the floor the pointer took hold of. */
+  private pan: { pointer: number; grab: THREE.Vector3; moved: boolean } | null = null;
+  /** A camera move in progress, eased rather than jumped so the eye can follow where it went. */
+  private flight: { fromPosition: THREE.Vector3; toPosition: THREE.Vector3; fromTarget: THREE.Vector3; toTarget: THREE.Vector3; fromZoom: number; toZoom: number; progress: number } | null = null;
+  private insets: SceneInsets;
+  private roomForCaptions = true;
   private raycaster = new THREE.Raycaster();
   private pointer = new THREE.Vector2();
   private pointerStart: [number, number] = [0, 0];
@@ -544,10 +611,11 @@ export class OfficeEngine {
   private signature = '';
   private lastState: SceneState | null = null;
   private software = false;
-  private scratch = { color: new THREE.Color(), desired: new THREE.Vector3(), away: new THREE.Vector3() };
+  private scratch = { color: new THREE.Color(), desired: new THREE.Vector3(), away: new THREE.Vector3(), ground: new THREE.Vector3(), shift: new THREE.Vector3() };
 
-  constructor(host: HTMLElement, state: () => SceneState, labels: SceneLabels, callbacks: EngineCallbacks) {
+  constructor(host: HTMLElement, state: () => SceneState, labels: SceneLabels, callbacks: EngineCallbacks, insets: SceneInsets = { top: 0, bottom: 0 }) {
     this.host = host;
+    this.insets = insets;
     this.state = state;
     this.callbacks = callbacks;
     const initial = state();
@@ -571,6 +639,10 @@ export class OfficeEngine {
     canvas.style.width = '100%';
     canvas.style.height = '100%';
     canvas.style.touchAction = 'none';
+    canvas.style.cursor = 'grab';
+    // Reachable by keyboard: the arrows move across the floor (see onKeyDown).
+    canvas.tabIndex = 0;
+    canvas.className = 'outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gold';
     host.prepend(canvas);
 
     const look = initial.theme === 'dark' ? NIGHT : DAY;
@@ -583,9 +655,23 @@ export class OfficeEngine {
     this.controls.dampingFactor = 0.075;
     this.controls.minPolarAngle = 0.32;
     this.controls.maxPolarAngle = 1.28;
-    this.controls.minZoom = 0.6;
-    this.controls.maxZoom = 2.8;
+    this.controls.minZoom = MIN_ZOOM;
+    this.controls.maxZoom = MAX_ZOOM;
+    /*
+     * This is a floor plan, so it moves like a map: a plain drag slides the floor, the wheel
+     * zooms toward the pointer, and turning the view is the deliberate gesture (right button,
+     * or a drag with Shift/Ctrl held; two fingers on a touch screen).
+     *
+     * The slide itself is ours (onPointerMove), not the orbit control's: its pan moves the
+     * target by screen distance, so on a tilted floor the point under the pointer drifts away
+     * from it. With its pan switched off, the PAN binding below still gives the orbit control
+     * the modified drag as a rotate and leaves the plain one alone.
+     */
     this.controls.enablePan = false;
+    this.controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+    this.controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
+    this.controls.zoomToCursor = true;
+    this.controls.addEventListener('start', this.onRoam);
     this.controls.update();
     this.hemi = new THREE.HemisphereLight(look.sky, look.skyGround, look.hemi);
     this.scene.add(this.hemi);
@@ -599,6 +685,26 @@ export class OfficeEngine {
     this.ground = box(this.scene, [200, 0.08, 200], [0, -0.42, 0], new THREE.MeshStandardMaterial({ color: look.ground, emissive: look.groundEmissive, emissiveIntensity: look.groundGlow }), 0);
     this.ground.receiveShadow = true;
     this.office = buildCompany(this.scene, this.plan, labels);
+    // Each zone is named just outside the wall it shares with the outside of the building,
+    // where no agent ever stands: a caption over the room itself lands on its name tags.
+    const mid = (values: number[]) => (Math.min(...values) + Math.max(...values)) / 2;
+    const west = this.plan.centerX - this.plan.floorWidth / 2 - 0.7;
+    const east = this.plan.centerX + this.plan.floorWidth / 2 + 0.7;
+    const zoneSpots: Record<AgentZone, [x: number, z: number, outward: number]> = {
+      setup: [west, -8, -1],
+      lounge: [west, 0, -1],
+      clinic: [west, this.plan.clinicZ, -1],
+      work: [east, mid(this.plan.workRows), 1],
+      patron: [east, this.plan.patronZ, 1],
+    };
+    (Object.keys(zoneSpots) as AgentZone[]).forEach((zone) => {
+      const [x, z, outward] = zoneSpots[zone];
+      const caption = captionSprite();
+      caption.position.set(x, 0.6, z);
+      caption.userData.outward = outward;
+      this.scene.add(caption);
+      this.captions.set(zone, caption);
+    });
     optimizeOffice(this.office.root, [this.office.hologram, this.office.patronTarget]);
     this.applyLook(1);
     this.syncAgents(true);
@@ -612,8 +718,12 @@ export class OfficeEngine {
     this.resize();
     canvas.addEventListener('pointerdown', this.onPointerDown);
     canvas.addEventListener('pointerup', this.onPointerUp);
+    canvas.addEventListener('pointercancel', this.onPointerCancel);
     canvas.addEventListener('pointermove', this.onPointerMove);
     canvas.addEventListener('pointerleave', this.onPointerLeave);
+    canvas.addEventListener('dblclick', this.onDoubleClick);
+    canvas.addEventListener('keydown', this.onKeyDown);
+    canvas.addEventListener('wheel', this.onRoam, { passive: true });
     canvas.addEventListener('contextmenu', this.preventContextMenu);
     this.motionQuery.addEventListener('change', this.onMotionChange);
     this.renderer.render(this.scene, this.camera);
@@ -623,14 +733,13 @@ export class OfficeEngine {
   // ─── Camera controls (every button on the page drives one of these) ───
 
   zoom(direction: number) {
-    this.camera.zoom = THREE.MathUtils.clamp(this.camera.zoom + direction * 0.14, 0.6, 2.8);
-    this.camera.updateProjectionMatrix();
+    const zoom = THREE.MathUtils.clamp(this.camera.zoom * (direction > 0 ? ZOOM_STEP : 1 / ZOOM_STEP), MIN_ZOOM, MAX_ZOOM);
+    this.flyTo(this.camera.position, this.controls.target, zoom);
   }
 
   rotate() {
     const offset = this.camera.position.clone().sub(this.controls.target).applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
-    this.camera.position.copy(this.controls.target).add(offset);
-    this.controls.update();
+    this.flyTo(offset.add(this.controls.target), this.controls.target, this.camera.zoom);
   }
 
   focusZone(zone: AgentZone) {
@@ -647,33 +756,79 @@ export class OfficeEngine {
       z = (Math.min(...plan.workRows) + Math.max(...plan.workRows)) / 2;
       zoom = plan.large ? 1.05 : 1.7;
     }
-    this.lookAt(x, z, zoom, [10, 21, 14]);
+    this.lookAt(x, z, zoom);
   }
 
   focusWorkPod(index: number) {
     const safe = THREE.MathUtils.clamp(index, 0, this.plan.workCenters.length - 1);
-    this.lookAt(this.plan.workCenters[safe], this.plan.workRows[safe], 2.15, [9, 19, 13]);
+    this.lookAt(this.plan.workCenters[safe], this.plan.workRows[safe], 2.15);
   }
 
   focusAgent(id: string) {
     const placement = this.state().layout.placements.get(id);
-    if (placement) this.lookAt(placement.x, placement.z, 2.4, [9, 19, 13]);
+    if (placement) this.lookAt(placement.x, placement.z, 2.4);
   }
 
   reset() {
-    this.camera.position.copy(this.overview);
-    this.camera.zoom = 1;
-    this.camera.updateProjectionMatrix();
-    this.controls.target.set(this.plan.centerX, 0.5, 0);
-    this.controls.update();
+    this.flyTo(this.overview, new THREE.Vector3(this.plan.centerX, 0.5, 0), 1);
   }
 
-  private lookAt(x: number, z: number, zoom: number, offset: [number, number, number]) {
-    this.camera.position.set(x + offset[0], offset[1], z + offset[2]);
-    this.camera.zoom = zoom;
-    this.camera.updateProjectionMatrix();
-    this.controls.target.set(x, 0.4, z);
-    this.controls.update();
+  /** Centre a spot of the floor, from the direction the person is already looking from. */
+  private lookAt(x: number, z: number, zoom: number) {
+    const target = new THREE.Vector3(x, 0.5, z);
+    const position = this.camera.position.clone().sub(this.controls.target).add(target);
+    this.flyTo(position, target, zoom);
+  }
+
+  private flyTo(position: THREE.Vector3, target: THREE.Vector3, zoom: number) {
+    if (this.reduced) {
+      this.flight = null;
+      this.camera.position.copy(position);
+      this.controls.target.copy(target);
+      this.camera.zoom = zoom;
+      this.camera.updateProjectionMatrix();
+      this.controls.update();
+      return;
+    }
+    this.flight = {
+      fromPosition: this.camera.position.clone(),
+      toPosition: position.clone(),
+      fromTarget: this.controls.target.clone(),
+      toTarget: target.clone(),
+      fromZoom: this.camera.zoom,
+      toZoom: zoom,
+      progress: 0,
+    };
+  }
+
+  /** Keep the floor in frame: the view's centre never leaves the building. */
+  private keepInside() {
+    const target = this.controls.target;
+    const halfWidth = this.plan.floorWidth / 2 + 1;
+    const halfDepth = this.plan.floorDepth / 2 + 1;
+    const x = THREE.MathUtils.clamp(target.x, this.plan.centerX - halfWidth, this.plan.centerX + halfWidth);
+    const z = THREE.MathUtils.clamp(target.z, -halfDepth, halfDepth);
+    if (x === target.x && z === target.z) return;
+    this.camera.position.x += x - target.x;
+    this.camera.position.z += z - target.z;
+    target.x = x;
+    target.z = z;
+  }
+
+  /** Slide the view across the floor by a vector on it. */
+  private slide(shift: THREE.Vector3) {
+    this.camera.position.add(shift);
+    this.controls.target.add(shift);
+    this.keepInside();
+  }
+
+  /** The point of the floor under a pointer position, or null when the pointer is over the sky. */
+  private floorAt(clientX: number, clientY: number, out: THREE.Vector3): THREE.Vector3 | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    this.camera.updateMatrixWorld();
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    return this.raycaster.ray.intersectPlane(this.floor, out);
   }
 
   // ─── Agents ───
@@ -684,9 +839,13 @@ export class OfficeEngine {
     if (!force && state === this.lastState) return;
     this.lastState = state;
     const { agents, layout, selectedId, theme } = state;
-    const signature = JSON.stringify([agents.map((agent) => [agent.id, agent.name, agent.status, agent.runtimeLabel, layout.placements.get(agent.id)]), selectedId, theme]);
+    const signature = JSON.stringify([agents.map((agent) => [agent.id, agent.name, agent.status, layout.placements.get(agent.id)]), selectedId, theme, state.captions]);
     if (!force && signature === this.signature) return;
     this.signature = signature;
+    this.captions.forEach((caption, zone) => {
+      const text = state.captions[zone];
+      if (caption.userData.paintKey !== `${theme}:${text}`) paintCaption(caption, text, theme);
+    });
     const present = new Set(agents.map((agent) => agent.id));
     for (const [id, rig] of this.rigs) {
       if (present.has(id)) continue;
@@ -713,7 +872,7 @@ export class OfficeEngine {
         this.rigs.set(agent.id, rig);
       }
       const label = this.labels.get(agent.id);
-      if (label && label.userData.paintKey !== `${theme}:${agent.status}:${agent.name}:${agent.runtimeLabel}`) paintLabel(label, agent, theme);
+      if (label && label.userData.paintKey !== `${theme}:${agent.status}:${agent.name}`) paintLabel(label, agent, theme);
       rig.ring.visible = selectedId === agent.id;
       rig.routineDial.visible = placement.pose !== 'lying' && (this.plan.large ? selectedId === agent.id : placement.zone === 'work' || selectedId === agent.id);
     }
@@ -810,6 +969,34 @@ export class OfficeEngine {
     const blend = this.reduced ? 1 : Math.min(delta * 4.2, 1);
     const lerp = THREE.MathUtils.lerp;
     const desired = this.scratch.desired;
+    if (this.flight) {
+      const flight = this.flight;
+      flight.progress = Math.min(1, flight.progress + delta / FLIGHT_SECONDS);
+      const eased = THREE.MathUtils.smootherstep(flight.progress, 0, 1);
+      this.camera.position.lerpVectors(flight.fromPosition, flight.toPosition, eased);
+      this.controls.target.lerpVectors(flight.fromTarget, flight.toTarget, eased);
+      this.camera.zoom = lerp(flight.fromZoom, flight.toZoom, eased);
+      this.camera.updateProjectionMatrix();
+      if (flight.progress >= 1) this.flight = null;
+    }
+    this.keepInside();
+    // World units per screen pixel right now: what keeps tags and captions one size on screen.
+    const unitsPerPixel = (this.camera.top - this.camera.bottom) / this.camera.zoom / Math.max(this.host.clientHeight, 1);
+    const tagHeight = TAG.screen * unitsPerPixel;
+    const captionHeight = CAPTION.screen * unitsPerPixel;
+    // Up close the signs on the walls are readable and the captions would only sit on top of them.
+    const captionOpacity = 1 - THREE.MathUtils.smoothstep(this.camera.zoom, 1.45, 1.95);
+    // Which way "out of the building" points on screen, so a caption always reads away from the
+    // floor however the view has been turned.
+    const elements = this.camera.matrixWorld.elements;
+    this.captions.forEach((caption) => {
+      const outward = caption.userData.outward as number;
+      const span = (caption.userData.span as number | undefined) ?? 1;
+      caption.center.set(0.5 - THREE.MathUtils.clamp(outward * elements[0] * 1.5, -1, 1) * (span / 2), 0.5 - THREE.MathUtils.clamp(outward * elements[4] * 1.5, -1, 1) * 0.42);
+      caption.scale.set((captionHeight * CAPTION.width) / CAPTION.height, captionHeight, 1);
+      caption.material.opacity = captionOpacity;
+      caption.visible = this.roomForCaptions && captionOpacity > 0.02;
+    });
     this.rigs.forEach((rig, id) => {
       const placement = layout.placements.get(id);
       if (!placement) return;
@@ -833,7 +1020,9 @@ export class OfficeEngine {
       rig.body.rotation.x = lerp(rig.body.rotation.x, lying ? -Math.PI / 2 : 0, blend);
       const label = this.labels.get(id);
       if (label) {
-        label.position.y = lying ? 0.62 : 1.93;
+        const scale = rig.root.scale.y || 1;
+        label.scale.set((tagHeight * TAG.width) / TAG.height / scale, tagHeight / scale, 1);
+        label.userData.rest = (lying ? 0.7 : 1.78) + (tagHeight * 0.62) / scale;
         // A crowded floor only names the agent in focus (DESIGN §7).
         label.visible = !this.plan.large || selectedId === id || this.hoveredId === id;
       }
@@ -842,6 +1031,7 @@ export class OfficeEngine {
         rig.routineDial.position.y = 1.73 + Math.sin(this.elapsed * 2) * 0.04;
       }
     });
+    this.spreadTags(unitsPerPixel, blend);
     this.applyLook(this.reduced ? 1 : Math.min(delta * 3.5, 1));
     if (!this.reduced) {
       this.office.hologram.rotation.y += delta * 0.24;
@@ -850,6 +1040,55 @@ export class OfficeEngine {
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
   };
+
+  /**
+   * Neighbours on one sofa stand closer than their names are wide. Tags that would land on each
+   * other are stacked upward instead, in a fixed order so the stack does not reshuffle, and
+   * eased so a tag joining or leaving the stack slides rather than jumps.
+   */
+  private spreadTags(unitsPerPixel: number, blend: number) {
+    const width = this.host.clientWidth;
+    const height = this.host.clientHeight;
+    const tagWidth = (TAG.screen * TAG.width) / TAG.height;
+    const placed: { left: number; right: number; top: number; bottom: number }[] = [];
+    const point = this.scratch.ground;
+    // The zone captions were here first: a tag never sits on one of them either.
+    const captionWidth = (CAPTION.screen * CAPTION.width) / CAPTION.height;
+    this.captions.forEach((caption) => {
+      if (!caption.visible) return;
+      point.copy(caption.position).project(this.camera);
+      const span = (caption.userData.span as number | undefined) ?? 1;
+      const left = (point.x * 0.5 + 0.5) * width - caption.center.x * captionWidth + (0.5 - span / 2) * captionWidth;
+      const top = (-point.y * 0.5 + 0.5) * height - (1 - caption.center.y) * CAPTION.screen;
+      placed.push({ left, right: left + span * captionWidth, top, bottom: top + CAPTION.screen });
+    });
+    // How far one world unit of height moves a tag on screen, in pixels.
+    const rise = Math.max(0.2, this.camera.matrixWorld.elements[5]) / unitsPerPixel;
+    [...this.labels.keys()].sort().forEach((id) => {
+      const label = this.labels.get(id)!;
+      const rig = this.rigs.get(id);
+      if (!rig || !label.visible) return;
+      const rest = (label.userData.rest as number | undefined) ?? label.position.y;
+      point.set(0, rest, 0).applyMatrix4(rig.root.matrixWorld).project(this.camera);
+      const x = (point.x * 0.5 + 0.5) * width;
+      let y = (-point.y * 0.5 + 0.5) * height;
+      const half = (tagWidth * ((label.userData.span as number | undefined) ?? 1)) / 2 + 2;
+      let lift = 0;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const top = y - TAG.screen / 2;
+        const bottom = y + TAG.screen / 2;
+        const clash = placed.some((box) => x - half < box.right && x + half > box.left && top < box.bottom && bottom > box.top);
+        if (!clash) break;
+        y -= TAG.screen + 2;
+        lift += TAG.screen + 2;
+      }
+      placed.push({ left: x - half, right: x + half, top: y - TAG.screen / 2, bottom: y + TAG.screen / 2 });
+      const scale = rig.root.scale.y || 1;
+      const shown = THREE.MathUtils.lerp((label.userData.lift as number | undefined) ?? 0, lift / rise / scale, blend);
+      label.userData.lift = shown;
+      label.position.y = rest + shown;
+    });
+  }
 
   private onMotionChange = (event: MediaQueryListEvent) => {
     this.reduced = event.matches;
@@ -861,24 +1100,60 @@ export class OfficeEngine {
     const height = this.host.clientHeight;
     if (!width || !height) return;
     this.renderer.setSize(width, height, false);
-    const aspect = width / height;
-    const viewHeight = Math.max(25, (this.plan.floorWidth + 7) / aspect, this.plan.floorWidth * 0.36 + this.plan.floorDepth * 0.58 + 7);
+    // The floor is fitted to the part of the canvas the page leaves uncovered, and centred there.
+    const clear = Math.max(120, height - this.insets.top - this.insets.bottom);
+    const aspect = width / clear;
+    // Seen from the overview the floor is a diamond, wider than either of its sides; the zone
+    // captions stand outside it and need their own room where there is a canvas wide enough.
+    this.roomForCaptions = width >= CAPTION_MIN_WIDTH;
+    const across = this.plan.floorWidth * 0.84 + this.plan.floorDepth * 0.55 + (this.roomForCaptions ? 13 : 3);
+    const viewHeight = Math.max(25, across / aspect, this.plan.floorWidth * 0.36 + this.plan.floorDepth * 0.58 + 7);
+    const unitsPerPixel = viewHeight / clear;
     this.camera.left = (-viewHeight * aspect) / 2;
     this.camera.right = (viewHeight * aspect) / 2;
-    this.camera.top = viewHeight / 2;
-    this.camera.bottom = -viewHeight / 2;
+    this.camera.top = viewHeight / 2 + this.insets.top * unitsPerPixel;
+    this.camera.bottom = -viewHeight / 2 - this.insets.bottom * unitsPerPixel;
     this.camera.updateProjectionMatrix();
   };
 
   // ─── Pointer ───
 
   private preventContextMenu = (event: Event) => event.preventDefault();
+  private onRoam = () => {
+    this.flight = null;
+    this.callbacks.onRoam();
+  };
   private onPointerDown = (event: PointerEvent) => {
     this.pointerStart = [event.clientX, event.clientY];
+    this.pointers.add(event.pointerId);
+    this.flight = null;
+    // A plain press with one pointer takes hold of the floor. Anything else — a second finger,
+    // the right button, a modifier key — is the orbit control's.
+    const plain = event.pointerType !== 'mouse' || (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey);
+    const grab = this.pointers.size === 1 && plain ? this.floorAt(event.clientX, event.clientY, this.scratch.ground) : null;
+    this.pan = grab ? { pointer: event.pointerId, grab: grab.clone(), moved: false } : null;
   };
   private onPointerMove = (event: PointerEvent) => {
+    const canvas = this.renderer.domElement;
+    if (this.pan && event.pointerId === this.pan.pointer) {
+      if (!this.pan.moved) {
+        if (Math.hypot(event.clientX - this.pointerStart[0], event.clientY - this.pointerStart[1]) <= CLICK_SLOP) return;
+        this.pan.moved = true;
+        canvas.style.cursor = 'grabbing';
+        if (this.hoveredId) {
+          this.hoveredId = null;
+          this.callbacks.onHover(null);
+        }
+        this.callbacks.onRoam();
+      }
+      // Put the point that was grabbed back under the pointer.
+      const now = this.floorAt(event.clientX, event.clientY, this.scratch.ground);
+      if (now) this.slide(this.scratch.shift.subVectors(this.pan.grab, now));
+      return;
+    }
+    if (this.pointers.size > 0) return;
     const hit = this.pick(event);
-    this.renderer.domElement.style.cursor = hit ? 'pointer' : 'grab';
+    canvas.style.cursor = hit ? 'pointer' : 'grab';
     if (hit?.type !== 'agent') {
       if (this.hoveredId) {
         this.hoveredId = null;
@@ -894,13 +1169,52 @@ export class OfficeEngine {
       y: THREE.MathUtils.clamp(event.clientY - rect.top - 14, 150, Math.max(150, rect.height - 20)),
     });
   };
+  private onPointerCancel = (event: PointerEvent) => {
+    this.pointers.delete(event.pointerId);
+    this.pan = null;
+    this.renderer.domElement.style.cursor = 'grab';
+  };
+  private onDoubleClick = (event: MouseEvent) => {
+    const point = this.floorAt(event.clientX, event.clientY, this.scratch.ground);
+    if (!point) return;
+    this.callbacks.onRoam();
+    this.lookAt(point.x, point.z, Math.min(MAX_ZOOM, this.camera.zoom * 1.7));
+  };
+  private onKeyDown = (event: KeyboardEvent) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const step = 2.4 / this.camera.zoom;
+    const shift = this.scratch.shift.set(0, 0, 0);
+    // Screen directions laid onto the floor: right is the camera's own right, up is away from it.
+    const right = this.scratch.ground.setFromMatrixColumn(this.camera.matrixWorld, 0).setY(0).normalize();
+    const away = this.scratch.desired.subVectors(this.controls.target, this.camera.position).setY(0).normalize();
+    switch (event.key) {
+      case 'ArrowLeft': shift.addScaledVector(right, -step); break;
+      case 'ArrowRight': shift.addScaledVector(right, step); break;
+      case 'ArrowUp': shift.addScaledVector(away, step); break;
+      case 'ArrowDown': shift.addScaledVector(away, -step); break;
+      case '+': case '=': this.zoom(1); break;
+      case '-': case '_': this.zoom(-1); break;
+      case 'r': case 'R': this.rotate(); break;
+      case '0': this.reset(); break;
+      default: return;
+    }
+    event.preventDefault();
+    this.callbacks.onRoam();
+    if (shift.lengthSq() > 0) {
+      this.flight = null;
+      this.slide(shift);
+    }
+  };
   private onPointerLeave = () => {
     this.hoveredId = null;
     this.callbacks.onHover(null);
   };
   private onPointerUp = (event: PointerEvent) => {
-    // A drag is the orbit control's; only a still press counts as a click.
-    if (Math.hypot(event.clientX - this.pointerStart[0], event.clientY - this.pointerStart[1]) > 7) return;
+    this.pointers.delete(event.pointerId);
+    this.pan = null;
+    this.renderer.domElement.style.cursor = 'grab';
+    // A drag moved the view; only a still press counts as a click.
+    if (Math.hypot(event.clientX - this.pointerStart[0], event.clientY - this.pointerStart[1]) > CLICK_SLOP) return;
     const hit = this.pick(event);
     if (hit?.type === 'agent') {
       this.hoveredId = null;
@@ -915,6 +1229,8 @@ export class OfficeEngine {
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const hits = this.raycaster.intersectObjects([...this.rigs.values()].map((rig) => rig.root), true);
     for (const hit of hits) {
+      // A name tag's canvas is wider than its plate; only the plate itself counts.
+      if (hit.object instanceof THREE.Sprite && hit.uv && Math.abs(hit.uv.x - 0.5) > ((hit.object.userData.span as number | undefined) ?? 1) / 2) continue;
       for (let object: THREE.Object3D | null = hit.object; object; object = object.parent) {
         if (object.userData.agentId) return { type: 'agent', id: object.userData.agentId as string };
       }
@@ -957,6 +1273,16 @@ export class OfficeEngine {
     const canvas = this.renderer.domElement;
     canvas.removeEventListener('pointerdown', this.onPointerDown);
     canvas.removeEventListener('pointerup', this.onPointerUp);
+    canvas.removeEventListener('pointercancel', this.onPointerCancel);
+    canvas.removeEventListener('dblclick', this.onDoubleClick);
+    canvas.removeEventListener('keydown', this.onKeyDown);
+    canvas.removeEventListener('wheel', this.onRoam);
+    this.controls.removeEventListener('start', this.onRoam);
+    this.captions.forEach((caption) => {
+      caption.material.map?.dispose();
+      caption.material.dispose();
+    });
+    this.captions.clear();
     canvas.removeEventListener('pointermove', this.onPointerMove);
     canvas.removeEventListener('pointerleave', this.onPointerLeave);
     canvas.removeEventListener('contextmenu', this.preventContextMenu);

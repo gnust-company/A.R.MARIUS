@@ -5,21 +5,17 @@ import type { TFunction } from 'i18next';
 import { AnimatePresence } from 'framer-motion';
 import {
   ArrowUpRight,
-  Box,
+  Hand,
   Inbox,
   MapPin,
   Maximize2,
   Minus,
-  Moon,
   Plus,
   RotateCw,
   ScanLine,
-  Sun,
   UserRound,
   UserPlus,
-  Users,
 } from 'lucide-react';
-import PageTitle from '@/components/PageTitle';
 import StatusChip from '@/components/StatusChip';
 import AgentAvatar from '@/components/AgentAvatar';
 import ObservatoryScene, { type ObservatoryHandle } from '@/components/observatory/ObservatoryScene';
@@ -56,6 +52,9 @@ const STATUS_DOT: Record<string, string> = {
 };
 
 const overlay = 'border border-line bg-surface/85 text-ink backdrop-blur-md';
+
+/** The zone bar on top and the agent dock below cover this much of the canvas, in pixels. */
+const STAGE_INSETS = { top: 70, bottom: 80 };
 
 function relativeTime(iso: string | null | undefined, t: TFunction): string {
   if (!iso) return t('common.never');
@@ -113,7 +112,6 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
   const allProjects = useAppStore((s) => s.projects);
   const allMariuses = useAppStore((s) => s.mariuses);
   const allTasks = useAppStore((s) => s.tasks);
-  const workspaces = useAppStore((s) => s.workspaces);
   const hydrateProject = useAppStore((s) => s.hydrateProject);
   const sseConnected = useAppStore((s) => s.sseConnected);
   const inboxPending = useAppStore((s) => s.inboxPending);
@@ -122,12 +120,13 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [activeZone, setActiveZone] = useState<AgentZone | null>(null);
   const [activePod, setActivePod] = useState<number | null>(null);
+  // The gesture hint has done its job once the person has moved the view.
+  const [hasRoamed, setHasRoamed] = useState(false);
 
   const projects = allProjects.filter((p) => p.workspaceId === workspaceId);
   const projectIds = new Set(projects.map((p) => p.id));
   const tasks = allTasks.filter((task) => projectIds.has(task.projectId));
   const agents = agentsOf(allMariuses, workspaceId);
-  const workspaceName = workspaces.find((w) => w.id === workspaceId)?.name ?? '';
 
   // The workspace slice carries projects but not their tasks; load each project's tasks so
   // the floor can seat agents by what they hold.
@@ -139,7 +138,10 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
       .forEach((id) => void hydrateProject(id).catch(notifyLoadFailed));
   }, [projectKey, hydrateProject]);
 
-  const layout = layoutOffice(agents, tasks);
+  const layout = layoutOffice(
+    agents.map((agent) => ({ id: agent.id, name: agent.name, status: agent.status, placed: Boolean(agent.runtime || agent.adapterType) })),
+    tasks
+  );
   const { plan } = layout;
   const zoneOfAgent = (id: string): AgentZone => layout.zones.get(id) ?? 'lounge';
   const zoneCount = (zone: AgentZone) => agents.filter((agent) => zoneOfAgent(agent.id) === zone).length;
@@ -148,11 +150,29 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
   ).length;
   const blocked = tasks.filter((task) => normalizeTaskStatus(task.status) === 'blocked').length;
 
+  const statusLabel = (status: string) => t(`directory.status.${status}`);
+  const zoneLabel = (zone: AgentZone) => t(`observatory.zone.${zone}`);
+  // How full each zone is, in the unit that zone is counted in: desks, beds, or heads.
+  const zoneFill: Record<AgentZone, { value: string; unit: string }> = {
+    setup: { value: String(zoneCount('setup')), unit: t('observatory.capacity.agents') },
+    lounge: { value: String(zoneCount('lounge')), unit: t('observatory.capacity.agents') },
+    clinic: { value: `${Math.min(plan.clinicCount, plan.clinicBeds)}/${plan.clinicBeds}`, unit: t('observatory.capacity.beds') },
+    work: { value: `${plan.workCount}/${plan.workCapacity}`, unit: t('observatory.capacity.desks') },
+    patron: { value: String(plan.reviewCount), unit: t('observatory.capacity.ceoQueue') },
+  };
+
   const sceneState: SceneState = {
-    agents: agents.map((agent) => ({ id: agent.id, name: agentName(agent), status: agent.status, runtimeLabel: runtimeLabel(agent) })),
+    agents: agents.map((agent) => ({ id: agent.id, name: agentName(agent), status: agent.status })),
     layout,
     theme,
     selectedId,
+    captions: {
+      setup: `${zoneLabel('setup')} · ${zoneFill.setup.value}`,
+      lounge: `${zoneLabel('lounge')} · ${zoneFill.lounge.value}`,
+      clinic: `${zoneLabel('clinic')} · ${zoneFill.clinic.value}`,
+      work: `${zoneLabel('work')} · ${zoneFill.work.value}`,
+      patron: `${zoneLabel('patron')} · ${zoneFill.patron.value}`,
+    },
   };
   const sceneLabels: SceneLabels = {
     canvas: t('observatory.canvas'),
@@ -204,8 +224,12 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
     if (action === 'reset') resetCamera();
   };
 
-  const statusLabel = (status: string) => t(`directory.status.${status}`);
-  const zoneLabel = (zone: AgentZone) => t(`observatory.zone.${zone}`);
+  // Once the person moves the view themselves, no zone is "the one in focus" any more.
+  const roam = () => {
+    if (!hasRoamed) setHasRoamed(true);
+    if (activeZone !== null) setActiveZone(null);
+    if (activePod !== null) setActivePod(null);
+  };
   const detail = agents.find((agent) => agent.id === detailId);
   const pickWithSelect = viewport === 'phone' || agents.length > 8;
 
@@ -227,46 +251,29 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-3 pb-10">
-      <PageTitle
-        eyebrow={t('observatory.eyebrow')}
-        title={t('nav.observatory')}
-        subtitle={t('observatory.subtitle')}
-        actions={
-          <div className="flex flex-wrap items-center gap-x-[18px] gap-y-1 pb-1 text-[12px] text-ink-light">
-            <span className="flex items-center gap-2">
-              <span className="status-dot bg-gold" />
-              {t('observatory.running', { count: running })}
-            </span>
-            <span className="flex items-center gap-2">
-              <span className="status-dot bg-danger" />
-              {t('observatory.blocked', { count: blocked })}
-            </span>
-          </div>
-        }
-      />
-
-      {/* Capacity strip: the floor's resources, outside the scene (DESIGN §9). */}
-      <div aria-label={t('observatory.capacity.label')} className="no-scrollbar mt-4 flex items-center gap-[7px] overflow-x-auto md:flex-wrap">
-        {[
-          { icon: Users, value: agents.length, label: t('observatory.capacity.agents') },
-          { value: plan.workPods, label: t('observatory.capacity.pods') },
-          { value: `${plan.workCount}/${plan.workCapacity}`, label: t('observatory.capacity.desks') },
-          { value: `${Math.min(plan.clinicCount, plan.clinicBeds)}/${plan.clinicBeds}`, label: t('observatory.capacity.beds') },
-          { value: Math.max(0, plan.reviewCount - 1), label: t('observatory.capacity.ceoQueue') },
-        ].map(({ icon: Icon, value, label }) => (
-          <span key={label} className="inline-flex min-h-[30px] shrink-0 items-center gap-[5px] rounded-md border border-line bg-surface/80 px-2.5 py-1.5 text-[11px] text-ink-light">
-            {Icon && <Icon className="h-4 w-4 text-sapphire-strong" aria-hidden />}
-            <strong className="font-mono font-medium text-ink">{value}</strong>
-            {label}
+    <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-3">
+      {/* One line of header: this screen is the floor, and the floor gets the height. */}
+      <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+        <div className="min-w-0">
+          <p className="eyebrow">{t('observatory.eyebrow')}</p>
+          <h1 className="mt-1 font-display text-[26px] font-normal leading-tight tracking-[-0.02em] text-ink-strong sm:text-[30px]">{t('nav.observatory')}</h1>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-[18px] gap-y-1 pb-1 text-[12px] text-ink-light">
+          <span className="flex items-center gap-2">
+            <span className="status-dot bg-gold" />
+            {t('observatory.running', { count: running })}
           </span>
-        ))}
-        {plan.clinicWaiting > 0 && (
-          <span className="inline-flex min-h-[30px] shrink-0 items-center rounded-md border border-gold/35 bg-gold-soft px-2.5 py-1.5 text-[11px] font-semibold text-gold">
-            {t('observatory.capacity.clinicWaiting', { count: plan.clinicWaiting })}
+          <span className="flex items-center gap-2">
+            <span className="status-dot bg-danger" />
+            {t('observatory.blocked', { count: blocked })}
           </span>
-        )}
-      </div>
+          {plan.clinicWaiting > 0 && <span className="font-semibold text-gold">{t('observatory.capacity.clinicWaiting', { count: plan.clinicWaiting })}</span>}
+          <span className={cn('flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em]', sseConnected ? 'text-success' : 'text-gold')}>
+            <span className={cn('h-[7px] w-[7px] rounded-full', sseConnected ? 'bg-success' : 'bg-gold')} />
+            {t(sseConnected ? 'observatory.strip.live' : 'observatory.strip.reconnecting')}
+          </span>
+        </div>
+      </header>
 
       {plan.workPods > 1 && (
         <div aria-label={t('observatory.podNav.label')} role="group" className="no-scrollbar flex items-center gap-[5px] overflow-x-auto rounded-[9px] border border-line bg-surface p-[5px]">
@@ -295,7 +302,9 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
         aria-label={t('observatory.sceneLabel')}
         className={cn(
           'relative min-w-0 overflow-hidden rounded-xl border border-line-strong bg-canvas-deep shadow-gilt',
-          plan.large ? 'h-[520px] md:h-[680px] xl:h-[720px]' : 'h-[600px] md:h-[680px] xl:h-[720px]'
+          // As tall as the window allows, so the whole floor and its controls are in view at once
+          // and the page has nothing left to scroll under the wheel.
+          'h-[max(420px,calc(100dvh-286px))] sm:h-[max(480px,calc(100dvh-214px))]'
         )}
       >
         <ObservatoryScene
@@ -305,66 +314,50 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
           labels={sceneLabels}
           onSelect={inspect}
           onOpenPatron={openPatron}
+          onRoam={roam}
+          insets={STAGE_INSETS}
           renderHover={renderHover}
         />
 
-        {/* Time of day follows the theme: lamps on at night, off by day (DESIGN §4). */}
-        <div className={cn('pointer-events-none absolute left-3 right-[70px] top-3 z-[2] flex items-center gap-2.5 rounded-md px-3 py-2.5 md:left-[18px] md:right-auto md:top-[18px]', overlay)}>
-          <span className="text-gold">{theme === 'light' ? <Sun className="h-[18px] w-[18px]" aria-hidden /> : <Moon className="h-[18px] w-[18px]" aria-hidden />}</span>
-          <div className="min-w-0">
-            <strong className="block truncate text-[11px] font-semibold">{t(theme === 'light' ? 'observatory.time.dayTitle' : 'observatory.time.nightTitle')}</strong>
-            <small className="mt-0.5 block truncate text-[10px] text-ink-light">{t(theme === 'light' ? 'observatory.time.dayBody' : 'observatory.time.nightBody')}</small>
-          </div>
-        </div>
-
-        {/* Zone navigation and the way into the Patron inbox, stacked top-right. */}
-        <div className="absolute right-2.5 top-[76px] z-[3] flex w-12 flex-col gap-2 md:right-[18px] md:top-[18px] md:w-[174px] xl:w-[190px]">
-          <nav aria-label={t('observatory.zoneNav.label')} className={cn('grid rounded-[10px] p-1 md:p-[5px]', overlay)}>
+        {/* Zones along the top: where to go, how full each one is, and the way into the inbox. */}
+        <div className={cn('no-scrollbar absolute inset-x-2.5 top-2.5 z-[3] flex items-center gap-1 overflow-x-auto rounded-xl p-[5px] md:inset-x-[14px] md:top-[14px]', overlay)}>
+          <nav aria-label={t('observatory.zoneNav.label')} className="flex items-center gap-1">
             {ZONES.map((zone, index) => {
               const active = activeZone === zone && activePod === null;
               const title = zoneLabel(zone);
+              const fill = zoneFill[zone];
+              const hint = `${t('observatory.zoneNav.focus', { zone: title })} · ${fill.value} ${fill.unit}`;
               return (
                 <button
                   key={zone}
                   type="button"
                   onClick={() => focusZone(zone)}
                   aria-pressed={active}
-                  aria-label={t('observatory.zoneNav.focus', { zone: title })}
-                  title={t('observatory.zoneNav.focus', { zone: title })}
+                  aria-label={hint}
+                  title={hint}
                   className={cn(
-                    'grid min-h-[34px] place-items-center border-b border-line px-1 py-1.5 text-center transition-colors hover:bg-surface-hover md:min-h-[39px] md:grid-cols-[27px_1fr] md:place-items-stretch md:items-center md:gap-2 md:px-2 md:text-left',
-                    active && 'bg-sapphire-soft'
+                    'flex min-h-[40px] shrink-0 items-center gap-2 rounded-lg px-2.5 py-1 text-left transition-colors',
+                    active ? 'bg-sapphire-soft ring-1 ring-inset ring-sapphire/45' : 'hover:bg-surface-hover'
                   )}
                 >
                   <span className="font-mono text-[10px] text-gold">0{index + 1}</span>
-                  <span className="hidden min-w-0 md:block">
-                    <strong className="block truncate text-[11px] font-semibold text-ink-strong">{title}</strong>
-                    <small className="block text-[10px] text-ink-light">{t('observatory.zoneNav.count', { count: zoneCount(zone) })}</small>
-                  </span>
+                  <strong className="whitespace-nowrap text-[11px] font-semibold text-ink-strong">{title}</strong>
+                  <span className="font-mono text-[11px] text-ink-light">{fill.value}</span>
                 </button>
               );
             })}
-            <button type="button" onClick={resetCamera} className="min-h-[32px] text-[10px] text-ink-light transition-colors hover:text-ink-strong">
-              <span className="font-mono uppercase md:hidden">{t('observatory.zoneNav.overviewShort')}</span>
-              <span className="hidden md:inline">{t('observatory.zoneNav.overview')}</span>
-            </button>
           </nav>
-          <Link
-            to={inboxHref}
-            aria-label={t('observatory.patronEntry.detail', { count: inboxPending })}
-            className={cn(
-              'flex min-h-[45px] items-center justify-center gap-2.5 rounded-[9px] border-gold/45 p-2 transition-colors hover:border-gold hover:bg-surface-hover md:min-h-[52px] md:justify-start md:px-2.5',
-              overlay,
-              'border-gold/45'
-            )}
-          >
-            <Inbox className="h-[19px] w-[19px] shrink-0 text-gold" aria-hidden />
-            <span className="hidden min-w-0 md:block">
-              <strong className="block text-[11px] text-ink-strong">{t('observatory.patronEntry.title')}</strong>
-              <small className="block text-[10px] leading-snug text-ink-light">{t('observatory.patronEntry.detail', { count: inboxPending })}</small>
-            </span>
-            <ArrowUpRight className="ml-auto hidden h-4 w-4 shrink-0 text-ink-light md:block" aria-hidden />
-          </Link>
+          {inboxPending > 0 && (
+            <Link
+              to={inboxHref}
+              aria-label={t('observatory.patronEntry.detail', { count: inboxPending })}
+              className="ml-auto flex min-h-[40px] shrink-0 items-center gap-2 rounded-lg border border-gold/45 px-2.5 py-1 text-[11px] font-semibold text-ink-strong transition-colors hover:border-gold hover:bg-surface-hover"
+            >
+              <Inbox className="h-[17px] w-[17px] shrink-0 text-gold" aria-hidden />
+              <span className="whitespace-nowrap">{t('observatory.patronEntry.short', { count: inboxPending })}</span>
+              <ArrowUpRight className="h-4 w-4 shrink-0 text-ink-light" aria-hidden />
+            </Link>
+          )}
         </div>
 
         {/* Camera: every button drives the real camera. */}
@@ -395,10 +388,12 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
           })}
         </div>
 
-        <div className={cn('pointer-events-none absolute bottom-[96px] right-[18px] z-[2] hidden max-w-[330px] items-center gap-[7px] rounded-md px-2.5 py-1.5 text-[11px] text-ink-light lg:flex', overlay)}>
-          <Box className="h-[15px] w-[15px] shrink-0" aria-hidden />
-          {t('observatory.gesture')}
-        </div>
+        {!hasRoamed && (
+          <div className={cn('pointer-events-none absolute bottom-[96px] right-[18px] z-[2] hidden items-center gap-[7px] rounded-md px-2.5 py-1.5 text-[11px] text-ink-light lg:flex', overlay)}>
+            <Hand className="h-[15px] w-[15px] shrink-0" aria-hidden />
+            {t('observatory.gesture')}
+          </div>
+        )}
 
         {/* Agent picker: avatars while they fit, a select on a phone or a crowded floor. */}
         <div aria-label={t('observatory.dock.label')} role="group" className={cn('absolute inset-x-2.5 bottom-2.5 z-[3] flex justify-center gap-1 rounded-xl p-[5px] md:inset-x-[14px] md:bottom-[14px]', overlay)}>
@@ -460,32 +455,6 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
           </div>
         )}
       </section>
-
-      {/* Coordination strip: what the scene is showing and how fresh it is. */}
-      <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface/75 px-5 py-4 md:flex-row md:items-center md:gap-7">
-        <div className="md:min-w-[235px]">
-          <span className="eyebrow">{t('observatory.strip.eyebrow')}</span>
-          <strong className="mt-1 block font-display text-[16px] font-normal text-ink-strong">{t('observatory.strip.title')}</strong>
-        </div>
-        <dl className="grid flex-1 grid-cols-2 gap-x-8 gap-y-3 sm:flex sm:gap-8">
-          <div className="min-w-0">
-            <dt className="text-[10px] text-ink-muted">{t('observatory.strip.data')}</dt>
-            <dd className="mt-0.5 truncate text-[12px] text-ink">{workspaceName}</dd>
-          </div>
-          <div>
-            <dt className="text-[10px] text-ink-muted">{t('observatory.strip.modules')}</dt>
-            <dd className="mt-0.5 text-[12px] text-ink">{t('observatory.strip.modulesValue', { count: plan.workPods })}</dd>
-          </div>
-          <div>
-            <dt className="text-[10px] text-ink-muted">{t('observatory.strip.waiting')}</dt>
-            <dd className="mt-0.5 text-[12px] text-ink">{t('observatory.strip.waitingValue', { count: plan.clinicWaiting + Math.max(0, plan.reviewCount - 1) })}</dd>
-          </div>
-        </dl>
-        <span className={cn('flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em]', sseConnected ? 'text-success' : 'text-gold')}>
-          <span className={cn('h-[7px] w-[7px] rounded-full', sseConnected ? 'bg-success' : 'bg-gold')} />
-          {t(sseConnected ? 'observatory.strip.live' : 'observatory.strip.reconnecting')}
-        </span>
-      </div>
 
       <AnimatePresence>
         {detail && (

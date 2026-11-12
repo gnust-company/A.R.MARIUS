@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { agentsOf } from './workspaceScope'
+import { agentsOf, lettersOf } from './workspaceScope'
 
 const livia = (id: string, workspaceId: string) => ({ id, name: 'Livia', workspaceId })
 
@@ -28,5 +28,20 @@ describe('agentsOf', () => {
 
   it('gives nobody for a workspace that has no agents', () => {
     expect(agentsOf(everyone, 'home')).toEqual([])
+  })
+})
+
+describe('lettersOf', () => {
+  const letter = (id: string, workspace_id?: string | null) => ({ id, workspace_id })
+  const waiting = [letter('calc', 'personal'), letter('sett', 'acme'), letter('old'), letter('older', null)]
+
+  it('keeps the letters of the workspace asked about, and the ones that name none', () => {
+    expect(lettersOf(waiting, 'personal').map((l) => l.id)).toEqual(['calc', 'old', 'older'])
+    expect(lettersOf(waiting, 'acme').map((l) => l.id)).toEqual(['sett', 'old', 'older'])
+  })
+
+  it('gives nothing when no workspace is known yet, rather than everything', () => {
+    expect(lettersOf(waiting, null)).toEqual([])
+    expect(lettersOf(waiting, '')).toEqual([])
   })
 })

@@ -41,6 +41,7 @@ import {
 import { useTaskStream } from '@/hooks/use-task-stream';
 import { subscribeProjectEvents } from '@/lib/sse';
 import { cn, wsHref } from '@/lib/utils';
+import { withVersions } from '@/lib/artifactVersions';
 import { blockedReasonKey, needsReason, type TaskPhase } from '@/lib/taskRules';
 import { errorText } from '@/lib/errors';
 import { WAITING_FOR_A_MACHINE, waitKind, waitText } from '@/lib/drive';
@@ -435,20 +436,6 @@ export default function CollaborationRoom() {
     setShowAddArtifactModal(false);
   };
 
-  const handleApprove = () => {
-    if (!task) return;
-    updateTask(task.id, { status: 'done' });
-  };
-
-  const handleRequestChanges = () => {
-    if (!task) return;
-    // Sending work back is *in_review → in_progress*, and it costs a reason: the worker
-    // has to know what to fix (spec 001 FR-030).
-    const answer = window.prompt(t('taskRules.reworkPrompt'));
-    if (!answer || !answer.trim()) return;
-    updateTask(task.id, { status: 'in_progress', statusReason: answer.trim() });
-  };
-
   if (!task && hydratedId !== taskId) {
     return (
       <div className="flex h-[60vh] items-center justify-center" role="status">
@@ -731,17 +718,19 @@ export default function CollaborationRoom() {
                 className="shrink-0 overflow-hidden"
               >
                 <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-gold/35 bg-gold-soft px-4 py-3 sm:mx-6">
+                  {/* A notice, not a second set of buttons. This bar used to carry its own
+                      Approve and Request-changes, which moved the status directly — a door
+                      the server refuses, since *done* takes two signatures — beside the
+                      real ones in the acceptance section. Two pairs, one of them dead. */}
                   <p className="font-body text-[13px] font-medium text-gold">
                     {t('collaborationRoom.approval.awaitingReview')}
+                    <span className="font-normal">
+                      {' · '}
+                      {leaderSigned
+                        ? t('collaborationRoom.acceptance.yourTurn')
+                        : t('collaborationRoom.acceptance.waitingLeader')}
+                    </span>
                   </p>
-                  <div className="flex flex-wrap gap-2">
-                    <button onClick={handleApprove} className="btn btn-primary btn-sm">
-                      {t('collaborationRoom.approval.approve')}
-                    </button>
-                    <button onClick={handleRequestChanges} className="btn btn-secondary btn-sm">
-                      {t('collaborationRoom.approval.requestChanges')}
-                    </button>
-                  </div>
                 </div>
               </motion.div>
             )}
@@ -1028,7 +1017,7 @@ export default function CollaborationRoom() {
                     behind a door that needs this person's token, so it is fetched and saved
                     rather than linked to — an `<a href>` carries no header, which is why the
                     link on this row used to point at a store path that resolves to nothing. */}
-                {(task.artifacts ?? []).map((artifact) =>
+                {withVersions(task.artifacts ?? []).map(({ artifact, version, of, current }) =>
                   artifact.type === 'link' ? (
                     <a
                       key={artifact.id}
@@ -1051,9 +1040,23 @@ export default function CollaborationRoom() {
                       className="group flex min-h-[44px] w-full items-center gap-3 rounded-md border border-line bg-field px-3 py-2 text-left transition-colors hover:border-sapphire disabled:opacity-60"
                     >
                       <Paperclip className="h-4 w-4 shrink-0 text-ink-muted group-hover:text-sapphire-strong" />
-                      <span className="truncate font-body text-[13px] text-ink group-hover:text-sapphire-strong">
+                      <span
+                        className={cn(
+                          'min-w-0 flex-1 truncate font-body text-[13px] group-hover:text-sapphire-strong',
+                          current ? 'text-ink' : 'text-ink-muted line-through decoration-line-strong',
+                        )}
+                      >
                         {artifact.name}
                       </span>
+                      {/* The same name published twice is two versions of one file. Without
+                          this nobody could tell which `script.js` was the corrected one. */}
+                      {of > 1 && (
+                        <span className="shrink-0 font-mono text-[11px] text-ink-muted">
+                          {current
+                            ? t('collaborationRoom.artifactVersionCurrent', { version, of })
+                            : t('collaborationRoom.artifactVersionOld', { version, of })}
+                        </span>
+                      )}
                     </button>
                   )
                 )}

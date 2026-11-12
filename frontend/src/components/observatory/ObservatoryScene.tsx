@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { RotateCw, TriangleAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { OfficeEngine, type HoverState, type SceneLabels, type SceneState } from './OfficeEngine';
+import { OfficeEngine, type HoverState, type SceneInsets, type SceneLabels, type SceneState } from './OfficeEngine';
 import type { AgentZone } from './officePlan';
 
 export interface ObservatoryHandle {
@@ -18,6 +18,10 @@ interface Props {
   labels: SceneLabels;
   onSelect: (id: string) => void;
   onOpenPatron: () => void;
+  /** The person moved the view themselves (drag, wheel, keys). */
+  onRoam: () => void;
+  /** Pixels at the top and bottom of the canvas that the page covers with its own controls. */
+  insets: SceneInsets;
   /** The hover card for an agent, drawn by the page from the same assignment as the modal. */
   renderHover: (id: string) => ReactNode;
 }
@@ -37,21 +41,22 @@ function webglAvailable(): boolean {
  * one is built and the page never holds two canvases (DESIGN §8).
  */
 const ObservatoryScene = forwardRef<ObservatoryHandle, Props>(function ObservatoryScene(
-  { state, labels, onSelect, onOpenPatron, renderHover },
+  { state, labels, onSelect, onOpenPatron, onRoam, insets, renderHover },
   ref,
 ) {
   const { t } = useTranslation();
   const host = useRef<HTMLDivElement>(null);
   const engine = useRef<OfficeEngine | null>(null);
   // The engine reads the latest props every frame without being rebuilt.
-  const latest = useRef({ state, onSelect, onOpenPatron });
+  const latest = useRef({ state, onSelect, onOpenPatron, onRoam });
   const labelsAtMount = useRef(labels);
+  const insetsAtMount = useRef(insets);
   const [supported] = useState(webglAvailable);
   const [failed, setFailed] = useState(false);
   const [hover, setHover] = useState<HoverState>(null);
 
   useLayoutEffect(() => {
-    latest.current = { state, onSelect, onOpenPatron };
+    latest.current = { state, onSelect, onOpenPatron, onRoam };
   });
 
   useImperativeHandle(ref, () => ({
@@ -72,7 +77,8 @@ const ObservatoryScene = forwardRef<ObservatoryHandle, Props>(function Observato
         onSelect: (id) => latest.current.onSelect(id),
         onOpenPatron: () => latest.current.onOpenPatron(),
         onHover: setHover,
-      });
+        onRoam: () => latest.current.onRoam(),
+      }, insetsAtMount.current);
       engine.current = instance;
     } catch (cause) {
       console.warn('Observatory: WebGL scene could not start', cause);

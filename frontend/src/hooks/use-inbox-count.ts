@@ -17,6 +17,7 @@ import { useEffect } from 'react'
 
 import { getInbox } from '@/lib/api'
 import { subscribeInboxEvents } from '@/lib/sse'
+import { lettersOf } from '@/lib/workspaceScope'
 import { useAppStore } from '@/store/appStore'
 
 /** Coalescing window, in ms. Resolving a letter lands its own event next to whatever caused it. */
@@ -28,11 +29,11 @@ const REFRESH_DEBOUNCE_MS = 300
  * Mounted by `Layout` and nowhere else: a second caller would open a second stream to the same
  * endpoint for the same data.
  */
-export function useInboxCount(enabled: boolean): void {
+export function useInboxCount(workspaceId: string | null | undefined): void {
   const setInboxPending = useAppStore((s) => s.setInboxPending)
 
   useEffect(() => {
-    if (!enabled) return
+    if (!workspaceId) return
 
     let alive = true
     let timer: ReturnType<typeof setTimeout> | null = null
@@ -40,7 +41,8 @@ export function useInboxCount(enabled: boolean): void {
     const read = async () => {
       try {
         const items = await getInbox({ status: 'pending' })
-        if (alive) setInboxPending(items.length)
+        // The badge sits in one workspace's sidebar, so it counts that workspace's letters.
+        if (alive) setInboxPending(lettersOf(items, workspaceId).length)
       } catch {
         // A failed read leaves the last known count alone. Zeroing it here would turn a network
         // hiccup into "nothing is waiting for you", which is the one wrong answer that costs
@@ -60,5 +62,5 @@ export function useInboxCount(enabled: boolean): void {
       if (timer) clearTimeout(timer)
       unsubscribe()
     }
-  }, [enabled, setInboxPending])
+  }, [workspaceId, setInboxPending])
 }

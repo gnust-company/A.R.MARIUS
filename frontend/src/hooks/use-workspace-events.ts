@@ -40,6 +40,9 @@ export function onWorkspaceEvent(listener: (event: WorkspaceEvent) => void): () 
 /** Coalescing window for agent re-reads, in ms. */
 const REFRESH_DEBOUNCE_MS = 300
 
+/** A run began or ended somewhere in this workspace (the server's `EVENT_RUN_STATE_CHANGED`). */
+const RUN_STATUS_CHANGED = 'run.status_changed'
+
 export function useWorkspaceEvents(workspaceId: string | null | undefined): void {
   const setSseConnected = useAppStore((s) => s.setSseConnected)
 
@@ -67,7 +70,11 @@ export function useWorkspaceEvents(workspaceId: string | null | undefined): void
         // Liveness (`marius.online` / `marius.offline`), invite and delete
         // (`marius.status_changed`), and skill install state (`marius.skills_updated`,
         // `marius.skill_installed`) all ride this one read.
-        if (event.type.startsWith('marius.')) {
+        //
+        // A run starting or ending changes what an agent is *doing*, which the roster carries
+        // too (`running`). Named exactly rather than by prefix: this one is a run's event, and
+        // only its lifecycle — not its every line of output — is a reason to re-read agents.
+        if (event.type.startsWith('marius.') || event.type === RUN_STATUS_CHANGED) {
           scheduleRefresh()
         }
         for (const listener of listeners) listener({ type: event.type, payload })

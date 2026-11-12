@@ -8,6 +8,7 @@ import StatusChip from '@/components/StatusChip';
 import AgentAvatar from '@/components/AgentAvatar';
 import { kindIcon, kindTone } from '@/components/inbox/inbox-utils';
 import { getInbox, type InboxItemDTO } from '@/lib/api';
+import { lettersOf } from '@/lib/workspaceScope';
 import { subscribeProjectEvents } from '@/lib/sse';
 import { cn, wsHref } from '@/lib/utils';
 import { useAppStore, type Marius, type Task } from '@/store/appStore';
@@ -182,7 +183,7 @@ export default function Home() {
     let alive = true;
     getInbox({ status: 'pending' })
       .then((items) => {
-        if (alive) setInbox(items.filter((i) => !i.workspace_id || i.workspace_id === workspaceId));
+        if (alive) setInbox(lettersOf(items, workspaceId));
       })
       .catch(notifyLoadFailed);
     return () => {

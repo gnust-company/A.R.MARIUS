@@ -38,7 +38,7 @@ export default function Layout() {
   // And to the patron's own inbox channel, which is a different channel on purpose: a letter is
   // addressed to a person, not to a workspace, so it arrives keyed by who is asking. Mounted
   // here because the sidebar shows the count on every screen.
-  useInboxCount(Boolean(workspaceId));
+  useInboxCount(workspaceId);
 
   // The tab says which screen it holds and how many letters are waiting.
   useDocumentTitle();

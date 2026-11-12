@@ -16,7 +16,8 @@ export interface ObservedAgent {
   id: string;
   name: string;
   status: string;
-  skills?: string[];
+  /** False when the agent has not been given a runtime yet, so it cannot be called at all. */
+  placed?: boolean;
 }
 
 export interface ObservedTask {
@@ -96,16 +97,22 @@ export function openTasksOf<T extends ObservedTask>(agentId: string, tasks: read
 }
 
 /**
- * Where an agent belongs (DESIGN §6.1). Priority: review → offline → setup → work → lounge.
- * Changing this order means changing the scene, the modal and the capacity strip together —
- * they all read it from here.
+ * Where an agent belongs. Priority: review → offline → draft → work → not placed → lounge.
+ * Changing this order means changing the scene, the modal and the zone bar together — they
+ * all read it from here.
+ *
+ * Reception is for an agent that is not ready to take work: it holds a draft, or it has no
+ * runtime yet. The design's rule was "carries no skill" (DESIGN §6.1), but linking a skill is
+ * optional here — every agent comes with what it needs to work — so that rule parked a whole
+ * working team at the front desk for good.
  */
 export function zoneOf(agent: ObservedAgent, tasks: readonly ObservedTask[]): AgentZone {
   const open = openTasksOf(agent.id, tasks).map((task) => normalizeTaskStatus(task.status));
   if (open.includes('in_review')) return 'patron';
   if (agent.status === 'offline') return 'clinic';
-  if (open.includes('draft') || !agent.skills?.length) return 'setup';
+  if (open.includes('draft')) return 'setup';
   if (agent.status === 'working' || agent.status === 'hung' || open.includes('in_progress') || open.includes('blocked')) return 'work';
+  if (agent.placed === false) return 'setup';
   return 'lounge';
 }
 

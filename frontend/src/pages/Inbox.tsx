@@ -26,6 +26,7 @@ import PageTitle from '@/components/PageTitle';
 import InboxDetail from '@/components/inbox/InboxDetail';
 import { kindIcon, kindTone, relativeTime } from '@/components/inbox/inbox-utils';
 import { getInbox, type InboxItemDTO } from '@/lib/api';
+import { lettersOf } from '@/lib/workspaceScope';
 import { errorText } from '@/lib/errors';
 import { useViewport } from '@/hooks/use-viewport';
 import { cn } from '@/lib/utils';
@@ -79,8 +80,9 @@ export default function Inbox() {
     // project closed — nobody answered those, so the server does not file them under
     // resolved. One call for everything, filtered here, rather than two for one list.
     getInbox({ status: tab === 'pending' ? 'pending' : 'all' })
-      .then((rows) => {
+      .then((everyone) => {
         if (!alive) return;
+        const rows = lettersOf(everyone, workspaceId);
         setItems(tab === 'pending' ? rows : rows.filter((r) => r.status !== 'pending'));
         setPendingCount(rows.filter((r) => r.status === 'pending').length);
         setError(null);
@@ -94,7 +96,7 @@ export default function Inbox() {
     return () => {
       alive = false;
     };
-  }, [tab, reloadKey, inboxSignal, t]);
+  }, [tab, reloadKey, inboxSignal, t, workspaceId]);
 
   // Task codes ("ACME-12") live with each project's tasks, which the workspace slice does not
   // carry. Load each project a letter points at, once per visit.

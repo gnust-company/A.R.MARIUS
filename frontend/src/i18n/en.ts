@@ -773,6 +773,24 @@ export const en = {
       notReminded: 'Not yet',
       resolvedAt: 'Handled',
     },
+    phase: {
+      question: 'The batch is done. Decide what comes next:',
+      newBatch: 'Open a new batch',
+      newBatchHint: 'The project stays in operation. Tell the Leader what is next in the project chat.',
+      maintain: 'Move to maintenance',
+      maintainHint: 'Keep the team and the project; take only fixes and small work.',
+      close: 'Close the project',
+      closeHint: 'The project becomes history and takes no more work.',
+      closeConfirm: 'A closed project cannot be reopened. Every letter still waiting on it closes with it.',
+      closeYes: 'Close the project',
+    },
+    evidence: {
+      title: 'What was handed in',
+      none: 'This task has published nothing yet.',
+      version: 'v{{version}} of {{of}}',
+      lastWord: 'Last word on the thread',
+      lastWordBy: 'Last word on the thread · {{name}}',
+    },
     // FR-061 — the record of what was already tried, attached to every escalation.
     dossier: {
       title: 'What the system already tried',
@@ -861,7 +879,7 @@ export const en = {
     stalled: 'Stalled — the system dropped this task',
     // Two ordinary waits, not warnings (FR-008b). What is broken has its own red block.
     waitingForMachine: 'Waiting for a free machine',
-    nobodyHasTakenIt: 'Nobody has taken it yet',
+    nobodyHasTakenIt: 'Called, not started yet',
     reachedByWorking: 'Reached by working, not created here.',
     addTask: 'Add Task',
     addTaskTitle: 'Create New Task',
@@ -945,7 +963,7 @@ export const en = {
     offlineBanner: 'The Leader is offline — the chat is disabled until it comes back online.',
     empty: 'Start the conversation with your project Leader.',
     thinking: 'The Leader is replying…',
-    turnFailed: 'The Leader could not finish its reply. Try again.',
+    turnFailed: "The Leader's turn failed partway, so your last message was not answered. Send it again.",
     inputPlaceholder: 'Message the Leader…',
     inputThinking: 'Wait for the Leader to finish replying…',
     inputDisabled: 'The Leader is offline.',
@@ -978,7 +996,6 @@ export const en = {
   },
   taskRules: {
     reasonPrompt: 'State the reason (required):',
-    reworkPrompt: 'Sending it back — say what needs fixing:',
     blocked: {
       closed: 'the task is closed; reopen it first',
       stalled: 'flagged as stalled',
@@ -1108,6 +1125,8 @@ export const en = {
       dependencyFailed: 'Could not update the dependency.',
       artifacts: 'Artifacts',
       addArtifact: 'Add Artifact',
+      artifactVersionCurrent: 'v{{version}} of {{of}} · latest',
+      artifactVersionOld: 'v{{version}} of {{of}} · superseded',
       doneGateBlocked: 'Task cannot reach done without a file or link artifact.',
       doneGateUnblocked: 'Artifact published — task can advance',
       statusRequiredArtifact: 'Status: BLOCKED — No output',
@@ -1115,8 +1134,6 @@ export const en = {
     },
     approval: {
       awaitingReview: 'This task is awaiting review',
-      approve: 'Approve',
-      requestChanges: 'Request Changes',
     },
     composer: {
       placeholder: 'Add a comment...',
@@ -1548,15 +1565,12 @@ export const en = {
   },
   observatory: {
     eyebrow: 'Shared space · Live',
-    subtitle: 'One floor, five zones — every agent and the work they hold, in a single view.',
     running: '{{count}} agents running',
     blocked: '{{count}} tasks blocked',
     sceneLabel: 'One-floor plan of the workspace',
-    canvas: 'One-floor plan of the agent office. Hover for a quick look, click an agent to open its details, click the CEO office to open the Patron inbox.',
+    canvas: 'One-floor plan of the agent office. Drag to move, scroll to zoom, hold Shift and drag to turn. With the keyboard: arrow keys to move, + and − to zoom, R to turn, 0 for the overview. Click an agent to open its details, click the CEO office to open the Patron inbox.',
     capacity: {
-      label: 'Floor capacity',
       agents: 'agents',
-      pods: 'work pods',
       desks: 'desks assigned',
       beds: 'recovery beds',
       ceoQueue: 'waiting for the CEO',
@@ -1576,20 +1590,11 @@ export const en = {
     },
     zoneNav: {
       label: 'Zone navigation',
-      count: '{{count}} agents',
       focus: 'Zoom to {{zone}}',
-      overview: 'Overview',
-      overviewShort: 'All',
     },
     patronEntry: {
-      title: 'CEO office',
+      short: '{{count}} awaiting review',
       detail: 'Open the Patron inbox · {{count}} awaiting review',
-    },
-    time: {
-      dayTitle: 'Daytime · Sun at the windows',
-      dayBody: 'Natural light, office lamps off',
-      nightTitle: 'Night · Lamps on',
-      nightBody: 'Night outside, warm lamps lit',
     },
     camera: {
       label: 'View controls',
@@ -1598,7 +1603,7 @@ export const en = {
       rotate: 'Rotate view',
       reset: 'Reset view',
     },
-    gesture: 'Hover to see an assigned spot · Click an agent for details',
+    gesture: 'Drag to move · Scroll to zoom · Right-drag or Shift + drag to turn',
     dock: {
       label: 'Pick an agent in the office',
       select: 'Pick one of {{count}} agents',
@@ -1615,7 +1620,7 @@ export const en = {
       checkIn: 'Check-in queue · position {{position}}',
     },
     zoneDescription: {
-      setup: 'The agent is at reception: it carries no skills yet, or holds a draft task. Agents here queue in the order they arrived.',
+      setup: 'The agent is at reception: it has no runtime yet, or holds a draft task. Agents here queue in the order they arrived.',
       lounge: 'The agent is online with no task running. It rests in the lounge until new work comes in.',
       clinic: 'Its runtime is offline, so the agent is in the recovery clinic. Last seen: {{lastSeen}}.',
       clinicNever: 'Its runtime is offline, so the agent is in the recovery clinic. It has never been seen.',
@@ -1623,13 +1628,6 @@ export const en = {
       patron: 'The agent has a task awaiting review. One agent presents at the CEO desk; the others queue for the Patron’s decision.',
     },
     strip: {
-      eyebrow: 'Coordination rhythm',
-      title: 'Motion simulated from real status',
-      data: 'Data',
-      modules: 'Scale',
-      modulesValue: '{{count}} work modules',
-      waiting: 'Waiting for a spot',
-      waitingValue: '{{count}} agents',
       live: 'Live',
       reconnecting: 'Reconnecting',
     },

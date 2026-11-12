@@ -186,7 +186,11 @@ export default function LeaderChatPanel({
             })
             .catch(() => {});
         }
-        if (next === 'failed') setError(t('leaderChat.turnFailed'));
+        // The error line follows the state, both ways. The stream replays its recent
+        // events to a panel that has just opened, so a failure from last night arrives
+        // again — and with nothing clearing it, it stayed under a conversation that had
+        // long since carried on (found 2026-11-12).
+        setError(next === 'failed' ? t('leaderChat.turnFailed') : null);
       }
     });
     return disconnect;
