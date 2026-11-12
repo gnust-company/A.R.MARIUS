@@ -435,6 +435,7 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 		Runs:     held,
 		Watchdog: watchdog,
 		Report:   func(err error) { emit(out, "run: %v\n", err) },
+		Note:     func(line string) { emit(out, "%s\n", line) },
 	}
 
 	// **Runs do not stop when the daemon is told to stop** (FR-034). Every loop below is on
@@ -714,6 +715,7 @@ func grantsFrom(granted []client.GrantedRun) []supervisor.Grant {
 			ProjectID:      run.ProjectID,
 			RuntimeOptions: run.RuntimeOptions,
 			WorkplaceID:    run.WorkplaceID,
+			AgentID:        run.MariusID,
 			RunToken:       run.RunToken,
 			Expires:        run.ClaimExpiresAt,
 			Prompt:         run.Prompt,

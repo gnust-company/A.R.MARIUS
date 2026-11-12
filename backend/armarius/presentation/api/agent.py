@@ -65,7 +65,7 @@ from armarius.presentation.schemas import (
     TransitionIn,
     decode_artifact_content,
 )
-from armarius.shared.errors import BadRequest, NotFound
+from armarius.shared.errors import BadRequest, CodedError, NotFound
 
 # Two guards, both hung on the router rather than on each route, so a route added later
 # cannot forget either: a run reaches only what it is about (FR-059), and a closed project is
@@ -313,6 +313,101 @@ async def agent_ready_queue(
         TaskOut.model_validate(t)
         for t in await container.tasks.ready_queue(project_id)
     ]
+
+
+# What a text artifact may weigh and still be read back inline to the Leader. A report or a
+# source file is a few kilobytes; anything past this is named and sized, not poured into a
+# prompt.
+_INLINE_ARTIFACT_BYTES = 32 * 1024
+
+
+@router.get("/projects/{project_id}/tasks")
+async def leader_task_board(
+    project_id: UUID, marius: CurrentMarius, container: ContainerDep
+) -> list[dict]:
+    """Every task of the Leader's project and where it stands (FR-047c).
+
+    The queue answers *what to hand out next* and leaves out everything already moving. This
+    answers the question the patron actually asks in the chat — *where are we* — which the
+    Leader could not answer without being told: measured 2026-11-12, a Leader asked which
+    files were final told the patron to paste the list in.
+
+    The Leader's seat only. A worker's run is about its own task and has no business reading
+    the rest of the board (FR-049).
+    """
+    await _leader_seat(container, marius, project_id)
+    names = {
+        m.id: m.name for m in await container.mariuses.list_directory(marius.workspace_id)
+    }
+    board: list[dict] = []
+    for task in await container.tasks.list_by_project(project_id):
+        artifacts = await container.artifacts.list_by_task(task.id)
+        board.append(
+            {
+                "id": str(task.id),
+                "identifier": task.identifier,
+                "title": task.title,
+                "status": str(task.status),
+                "assigned_marius_id": (
+                    str(task.assigned_marius_id) if task.assigned_marius_id else None
+                ),
+                "assignee": names.get(task.assigned_marius_id),
+                "next_action": task.next_action,
+                "artifacts": [a.name for a in artifacts],
+            }
+        )
+    return board
+
+
+@router.get("/projects/{project_id}/tasks/{task_ref}")
+async def leader_task_read(
+    project_id: UUID, task_ref: str, marius: CurrentMarius, container: ContainerDep
+) -> dict:
+    """One task of the Leader's project in full, read-only (FR-047c).
+
+    Named by identifier (`CALC-1`) or by id, and looked up **inside this project** — the
+    reference is never resolved on its own, so there is no task it can name outside the
+    project the run is about. Judging is not done from here: rating and signing belong to a
+    run about the task, which is where the Leader is woken when one is handed in (FR-047b).
+
+    Small text artifacts are read back inline, because *read the report* is the whole reason
+    the Leader opens a task from the chat. Anything large or not text is listed with its
+    size and left in the store.
+    """
+    await _leader_seat(container, marius, project_id)
+    wanted = task_ref.strip().lower()
+    task = next(
+        (
+            t
+            for t in await container.tasks.list_by_project(project_id)
+            if str(t.id) == wanted or (t.identifier or "").lower() == wanted
+        ),
+        None,
+    )
+    if task is None:
+        raise NotFound("task_not_found")
+    comments = await container.threads.list_comments(task.id)
+    published: list[dict] = []
+    for artifact in await container.artifacts.list_by_task(task.id):
+        row = ArtifactOut.model_validate(artifact).model_dump(mode="json")
+        # Everything whose bytes the store holds — a file, and a note, which is how agents
+        # publish their reports. A link names something somewhere else and has no bytes here.
+        if artifact.kind != "link" and (artifact.size_bytes or 0) <= _INLINE_ARTIFACT_BYTES:
+            try:
+                _, blob = await container.artifacts.fetch(task.id, artifact.id)
+                row["text"] = blob.decode("utf-8")
+            except (UnicodeDecodeError, CodedError):
+                # Not text, or the store could not produce it. The row still says it exists
+                # and how big it is; what it does not do is pretend to have been read.
+                pass
+        published.append(row)
+    return {
+        "task": TaskOut.model_validate(task).model_dump(mode="json"),
+        "thread": [
+            CommentOut.model_validate(c).model_dump(mode="json") for c in comments
+        ],
+        "artifacts": published,
+    }
 
 
 @router.get("/tasks/{task_id}")

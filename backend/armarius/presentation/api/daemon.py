@@ -232,6 +232,10 @@ class GrantedRunOut(BaseModel):
     # is kept, and it dies with the run (FR-014, FR-014a).
     run_token: str
     claim_expires_at: datetime
+    # The agent this run belongs to. A task's working directory is shared by every agent woken
+    # on the task; the machine uses this to keep one conversation per agent rather than one per
+    # directory (spec 002 FR-023a).
+    marius_id: UUID | None = None
     # The message the agent reads, assembled on this side and in English (FR-011a,
     # Constitution VII). The machine writes it into the file its CLI already reads; it does
     # not compose any of it, and it does not send it back.
@@ -573,6 +577,7 @@ async def claim_runs(
                 task_id=g.task_id,
                 project_id=g.project_id,
                 workplace_id=g.workplace_id,
+                marius_id=g.marius_id,
                 run_token=g.run_token,
                 claim_expires_at=g.claim_expires_at,
                 prompt=g.prompt,

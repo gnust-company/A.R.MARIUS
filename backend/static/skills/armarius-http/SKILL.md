@@ -99,6 +99,8 @@ armarius task escalate -reason "This needs a decision only the patron can make."
 And, on a run about the project as a whole:
 
 ```bash
+armarius project tasks
+armarius project task -task CALC-1
 armarius project queue
 armarius project new-task -title "Write the importer" -description "..."
 armarius project context -objective "..." -scope "..."
@@ -107,6 +109,12 @@ armarius project phase -target_phase operating -reason "The plan is approved."
 armarius project sprint-summary -summary "..."
 armarius project change-request -area scope -summary "The patron asked for a second format."
 ```
+
+`project tasks` is the whole board: every task, its status, who holds it and what it has
+published. `project task` opens one of them — the brief, the thread, and the published files,
+with small text files read back to you. Use them before you answer the patron about where the
+project stands; do not ask the patron to tell you what the board already says. They read only:
+you rate and sign on a run about that task, which is where you are woken when one is handed in.
 
 There is no command for approving a plan or moving a phase, and that is deliberate. You
 submit and you propose; the patron decides.

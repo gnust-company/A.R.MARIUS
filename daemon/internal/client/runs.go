@@ -31,6 +31,10 @@ type GrantedRun struct {
 	TaskID      string `json:"task_id"`
 	ProjectID   string `json:"project_id"`
 	WorkplaceID string `json:"workplace_id"`
+	// MariusID is the agent this run belongs to. Several agents can be woken on one task and
+	// they share its working directory, so this is what keeps each one's conversation its own
+	// (FR-023a). Empty from a server older than the field.
+	MariusID string `json:"marius_id"`
 	// RunToken opens exactly this run and dies with it. It is never the machine's own token,
 	// and it is never written to disk beside one: minting it is the server's job precisely so
 	// that a compromised run cannot speak for the whole machine (FR-014a, FR-014c).

@@ -28,8 +28,12 @@ type Grant struct {
 	TaskID      string
 	ProjectID   string
 	WorkplaceID string
-	RunToken    string
-	Expires     time.Time
+	// AgentID is whose run this is. A task's directory is shared by every agent woken on the
+	// task, so the directory alone does not say whose conversation to carry on — this does
+	// (FR-023a). Empty from a server that does not send it.
+	AgentID  string
+	RunToken string
+	Expires  time.Time
 	// Prompt is what the agent is told this turn: assembled by the server, in English, and
 	// already written down there before it was sent (FR-011a, FR-012a). Nothing on this side
 	// composes any of it, abbreviates it, or sends it back.

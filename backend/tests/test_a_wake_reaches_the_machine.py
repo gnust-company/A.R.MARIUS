@@ -42,7 +42,7 @@ from armarius.infrastructure.database.models import RunModel, TaskModel, WakeupM
 from armarius.main import app
 from tests.support.agents import invite_agent
 from tests.support.machines import LinkedMachine, auth, link_machine
-from tests.support.work import a_project, a_task
+from tests.support.work import a_project, a_task, shelve
 
 pytestmark = pytest.mark.anyio
 
@@ -215,6 +215,117 @@ async def test_the_message_is_written_when_the_machine_takes_the_work() -> None:
         assert taken[0]["run_id"] == str(woken.run_id)
         assert "Dựng cổng đăng nhập" in taken[0]["prompt"], taken[0]["prompt"]
         assert taken[0]["run_token"], "việc đi ra mà không có giấy tờ để gọi về"
+
+
+async def test_the_machine_is_told_whose_run_it_holds() -> None:
+    """The work names its agent, so the machine can keep one conversation per agent.
+
+    A task's working directory is shared by every agent woken on the task. Told only the task,
+    the machine carried the second agent on in the first one's session (spec 002 FR-023a,
+    measured 2026-11-12 on a real team of three).
+    """
+    async with _client() as c:
+        woken = await _woken(c, "whose@example.com")
+
+        answered = await c.post(
+            "/daemon/runs/claim",
+            json={"workplace_ids": [woken.machine.workplace_id], "max": 1},
+            headers=woken.headers,
+        )
+        assert answered.status_code == 200, answered.text
+        taken = answered.json()["runs"]
+        assert len(taken) == 1, taken
+        assert taken[0]["marius_id"] == woken.marius_id, taken[0]
+
+
+async def _task_status(task_id: UUID) -> str:
+    async with get_sessionmaker()() as session:
+        return (await session.get(TaskModel, task_id)).status
+
+
+async def test_the_holders_run_starting_is_what_puts_the_task_in_progress() -> None:
+    """The board follows the run, not the agent's own word for it (FR-024a).
+
+    Measured 2026-11-12: a worker built for a minute and a half while its task read *todo*,
+    because it reported *in progress* only at the end, in the same breath as handing in.
+    """
+    async with _client() as c:
+        woken = await _woken(c, "begun@example.com")
+        await c.post(
+            "/daemon/runs/claim",
+            json={"workplace_ids": [woken.machine.workplace_id], "max": 1},
+            headers=woken.headers,
+        )
+        assert await _task_status(woken.task_id) == TaskStatus.TODO.value, (
+            "taking the work off the shelf is not starting it"
+        )
+
+        began = await c.post(
+            f"/daemon/runs/{woken.run_id}/start",
+            json={"session_handle": "sess-1"},
+            headers=woken.headers,
+        )
+        assert began.status_code == 200, began.text
+
+        assert await _task_status(woken.task_id) == TaskStatus.IN_PROGRESS.value
+
+
+async def test_the_roster_says_who_is_at_work_while_a_run_is_carried_out() -> None:
+    """A run on a person's machine shows on the roster as work in hand (FR-080b).
+
+    Liveness is not where this is read: nothing in this process watches a machine's run to
+    take *working* back, so it was never set — and a team of three read as idle to the
+    Observatory for the twenty minutes it spent building (measured 2026-11-12).
+    """
+    async with _client() as c:
+        woken = await _woken(c, "roster@example.com")
+        roster = f"/v1/workspaces/{woken.machine.workspace_id}/mariuses"
+
+        async def at_work() -> bool:
+            listed = await c.get(roster, headers=woken.machine.headers)
+            assert listed.status_code == 200, listed.text
+            return next(a for a in listed.json() if a["id"] == woken.marius_id)["running"]
+
+        await c.post(
+            "/daemon/runs/claim",
+            json={"workplace_ids": [woken.machine.workplace_id], "max": 1},
+            headers=woken.headers,
+        )
+        assert await at_work() is False, "work taken off the shelf is not work begun"
+
+        await c.post(
+            f"/daemon/runs/{woken.run_id}/start",
+            json={"session_handle": "sess-1"},
+            headers=woken.headers,
+        )
+        assert await at_work() is True
+
+        ended = await c.post(
+            f"/daemon/runs/{woken.run_id}/finish",
+            json={"status": "completed"},
+            headers=woken.headers,
+        )
+        assert ended.status_code == 200, ended.text
+        assert await at_work() is False
+
+
+async def test_somebody_elses_run_on_the_task_does_not_move_it() -> None:
+    """A teammate woken by a mention, or the Leader woken to judge, is not doing the work."""
+    async with _client() as c:
+        woken = await _woken(c, "visitor@example.com")
+        other = await invite_agent(
+            c,
+            woken.machine.workspace_id,
+            woken.machine.headers,
+            name="visitor",
+            workplace_id=woken.machine.workplace_id,
+            adapter_type=None,
+        )
+        visiting = await shelve(marius_id=other["id"], task_id=woken.task_id)
+
+        await app.state.container.tasks.worker_started(visiting)
+
+        assert await _task_status(woken.task_id) == TaskStatus.TODO.value
 
 
 async def test_nothing_books_a_follow_up_while_the_work_is_still_on_the_shelf() -> None:

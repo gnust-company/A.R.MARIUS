@@ -224,6 +224,8 @@ func TestProjectCommandsAimAtTheProjectThisRunIsAbout(t *testing.T) {
 		path   string
 	}{
 		{[]string{"project", "queue"}, "GET", "/agent/projects/project-1/queue"},
+		{[]string{"project", "tasks"}, "GET", "/agent/projects/project-1/tasks"},
+		{[]string{"project", "task", "-task", "CALC-1"}, "GET", "/agent/projects/project-1/tasks/CALC-1"},
 		{[]string{"project", "new-task", "-title", "Ship it"}, "POST", "/agent/projects/project-1/tasks"},
 		{[]string{"project", "context", "-objective", "o"}, "POST", "/agent/projects/project-1/context"},
 		{[]string{"project", "plan", "-summary", "s"}, "POST", "/agent/projects/project-1/plan"},
@@ -237,6 +239,25 @@ func TestProjectCommandsAimAtTheProjectThisRunIsAbout(t *testing.T) {
 		}
 		if server.method != c.method || server.path != c.path {
 			t.Fatalf("%v: went to %s %s, wanted %s %s", c.args, server.method, server.path, c.method, c.path)
+		}
+	}
+}
+
+// FR-047c: the Leader answers the patron about the project, so its project run can read every
+// task of it. Measured 2026-11-12: asked which files were final, a Leader with no way to open a
+// task told the patron to paste the list in.
+func TestATaskReferenceThatCouldNameSomethingElseIsRefusedBeforeItIsSent(t *testing.T) {
+	server := armarius(t)
+	env := server.env()
+	env.TaskID = ""
+
+	for _, ref := range []string{"../../tasks/other", "a/b", "..", "CALC-1?x=1", ""} {
+		server.method = ""
+		if code, _, _ := run(t, env, "project", "task", "-task", ref); code != ExitUsage {
+			t.Fatalf("%q: exit %d, wanted %d", ref, code, ExitUsage)
+		}
+		if server.method != "" {
+			t.Fatalf("%q: a call went out to %s", ref, server.path)
 		}
 	}
 }

@@ -28,7 +28,7 @@ from armarius.domain.entities.project import ProjectStatus
 from armarius.domain.entities.project_context import ContextApprovalStatus, ProjectContext
 from armarius.domain.entities.push_reason import TaskPushReason
 from armarius.domain.entities.role import Role
-from armarius.domain.entities.run import ACTIVE_RUN_STATUSES, Run, RunEvent
+from armarius.domain.entities.run import ACTIVE_RUN_STATUSES, Run, RunEvent, RunStatus
 from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.entities.session import AgentTaskSession
 from armarius.domain.entities.skill import Skill
@@ -1587,6 +1587,21 @@ class SqlRunRepository(RunRepository):
         ).scalars().all()
         return {r for r in rows if r is not None}
 
+    async def marius_ids_mid_run(self, marius_ids: Sequence[UUID]) -> set[UUID]:
+        if not marius_ids:
+            return set()
+        rows = (
+            await self._s.execute(
+                select(RunModel.marius_id)
+                .where(
+                    RunModel.marius_id.in_(list(marius_ids)),
+                    RunModel.status == str(RunStatus.RUNNING),
+                )
+                .distinct()
+            )
+        ).scalars().all()
+        return {r for r in rows if r is not None}
+
     async def list_silent_active(
         self, silent_since: datetime, *, limit: int = 200
     ) -> Sequence[Run]:
@@ -1870,6 +1885,20 @@ class SqlWakeupRepository(WakeupRepository):
                     WakeupModel.task_id == task_id,
                     WakeupModel.status.in_([str(s) for s in PENDING_WAKEUP_STATUSES]),
                 )
+            )
+        ).scalars().all()
+        return [mappers.wakeup_to_entity(m) for m in rows]
+
+    async def list_queued_for_project(self, project_id: UUID) -> Sequence[WakeupRequest]:
+        rows = (
+            await self._s.execute(
+                select(WakeupModel)
+                .where(
+                    WakeupModel.project_id == project_id,
+                    WakeupModel.task_id.is_(None),
+                    WakeupModel.status == str(WakeupStatus.QUEUED),
+                )
+                .order_by(WakeupModel.created_at)
             )
         ).scalars().all()
         return [mappers.wakeup_to_entity(m) for m in rows]

@@ -263,9 +263,11 @@ async def _as_shown(container: Container, mariuses: Sequence[Marius]) -> list[Ma
     ids = [m.id for m in mariuses]
     reasons = await container.mariuses.offline_reasons(ids)
     where = await container.daemon_workplaces.where_agents_work(ids)
+    busy = await container.mariuses.mid_run(ids)
     return [
         MariusOut.model_validate(m).model_copy(
             update={
+                "running": m.id in busy,
                 "offline_reason": reasons.get(m.id),
                 "runtime": (
                     AgentRuntimeOut(

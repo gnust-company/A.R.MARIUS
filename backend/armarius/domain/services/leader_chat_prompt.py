@@ -131,7 +131,11 @@ def build_leader_chat_prompt(ctx: LeaderChatContext, *, carrying_on: bool = Fals
     # while it reads who is available to help.
     if ctx.wake_reason:
         lines.append("## Why you were woken")
-        lines.append(f"- {ctx.wake_reason.strip()}")
+        # One line per cause: causes that waited for the previous turn to end arrive together
+        # (FR-050), and each is its own reason.
+        for cause in ctx.wake_reason.strip().splitlines():
+            if cause.strip():
+                lines.append(f"- {cause.strip()}")
         lines.append("")
         if ctx.wake_detail.strip():
             lines.append(ctx.wake_detail.strip())
@@ -185,8 +189,15 @@ def build_leader_chat_prompt(ctx: LeaderChatContext, *, carrying_on: bool = Fals
         "shown to the patron as it streams — just answer, do NOT call any API to deliver it."
     )
     lines.append(
-        "- Use your read tools freely to ground your answer in the real project state "
-        "(tasks, roster, artifacts) before you respond."
+        "- Ground your answer in the real project state before you respond: "
+        "`armarius project tasks` lists every task with its status, holder and published "
+        "files, and `armarius project task -task <identifier>` opens one in full — brief, "
+        "thread, and the published files. Never ask the patron to tell you what those show."
+    )
+    lines.append(
+        "- You do not judge work from here. When a task is handed in you are woken on that "
+        "task, with the commands to rate and sign it; what you did there is on the task's "
+        "thread, which `project task` reads back."
     )
     lines.append("### When the patron asks you to create work")
     lines.append(

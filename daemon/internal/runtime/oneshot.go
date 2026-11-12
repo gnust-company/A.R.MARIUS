@@ -403,9 +403,12 @@ func resultOf(raw json.RawMessage) Result {
 //
 // The server holds the whole closed list — an exhausted quota, a credential that was refused,
 // a workplace set up for work it cannot do — and this side may only use words already on it.
-// Only the first is spelled here, because only the first has been measured; a constant for an
-// ending nobody has watched is an invitation to guess at it.
-const failureQuotaExhausted = "quota_exhausted"
+// Spelled here only once each has been measured; a constant for an ending nobody has watched
+// is an invitation to guess at it.
+const (
+	failureQuotaExhausted     = "quota_exhausted"
+	failureCredentialRejected = "credential_rejected" //nolint:gosec // G101: a code naming an ending, not a credential
+)
 
 // wall is one ending a CLI announces in words, and the code that ending is.
 type wall struct {
@@ -432,6 +435,18 @@ var walls = map[string][]wall{
 		// from any other bad exit; the sentence is the only place the difference is stated,
 		// which is why the table is a table of sentences.
 		{saying: "You've hit your session limit", failure: failureQuotaExhausted},
+		// The same wall in the words of a later release. Measured 2026-11-13 on Claude Code
+		// 2.1.322, live: three runs in a row each printed `You've hit your 5-hour limit ·
+		// resets 3:20am (Asia/Kuala_Lumpur)` and exited 1. The sentence above no longer
+		// matched, so all three went down as unclassified and the workplace stayed *ready*.
+		{saying: "You've hit your 5-hour limit", failure: failureQuotaExhausted},
+		// Measured 2026-11-11 on Claude Code 2.1.314, live: the operator's login had lapsed,
+		// and the run printed one assistant line — `Failed to authenticate: OAuth session
+		// expired and could not be refreshed` — then exited 1 with `is_error: true` and
+		// `subtype: "success"`, the same structured ending as the wall above. Retried, it
+		// fails the same way every time until a person signs in again (FR-014f); left
+		// unclassified, the chat showed "the Leader has not finished replying, try again".
+		{saying: "Failed to authenticate", failure: failureCredentialRejected},
 	},
 }
 
@@ -469,12 +484,23 @@ func readClaudeCode(line []byte, journal *Journal, out *Outcome) {
 		if json.Unmarshal(parsed.Message, &blocks) != nil {
 			return
 		}
+		// A `user` line is what the agent was *given*: a tool's result, or text the CLI itself
+		// put into the conversation — the body of a skill it loaded arrives exactly this way
+		// (`isMeta: true`). None of that is the agent speaking. Recorded as its words, a whole
+		// skill file became the Leader's reply in the patron's chat (measured 2026-11-12).
+		spoken := parsed.Type == "assistant"
 		for _, block := range blocks.Content {
 			switch block.Type {
 			case "text":
+				if !spoken {
+					continue
+				}
 				journal.Text(block.Text)
 				hitAWall("claude_code", block.Text, out)
 			case "thinking":
+				if !spoken {
+					continue
+				}
 				journal.Thought(block.Thinking)
 			case "tool_use":
 				// Arguments in full, on purpose: FR-043 asks for the whole of them, and it is

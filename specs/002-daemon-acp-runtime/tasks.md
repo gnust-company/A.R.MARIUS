@@ -614,3 +614,30 @@ kiểm lại đã giãn tới 16 phút; gắn nó vào chỗ làm không báo g�
   thiết bị ký tự không, mà `/dev/null` cũng là một — nên script chạy `< /dev/null` bị hỏi, đọc rỗng, rồi thoát
   như thể người ta nói không, thay vì từ chối và nêu `-yes`. Sửa bằng cách hỏi thẳng thiết bị ấy có phải
   terminal không (Linux, macOS, Windows), kèm một bài kiểm đỏ trên cách cũ.
+
+## Phase 14: Một đội agent thật chạy trọn một dự án (2026-11-12)
+
+*Cùng lần chạy thử ghi ở Giai đoạn 12 của đặc tả 001: ba agent `claude` trên một máy, 23 lượt chạy. Bốn chỗ
+dưới đây nằm ở phía daemon.*
+
+- [x] T199 **Mỗi agent một phiên trên mỗi đầu việc** per FR-023a. Server gửi `marius_id` kèm gói việc; daemon
+  giữ ghi chú phiên theo agent ở `.armarius/threads/<agent>.json` trong thư mục làm việc. Ghi chú cũ
+  `.armarius/thread.json` chỉ còn được đọc cho lượt chạy không nêu agent (server cũ). Tên agent đi vào đường
+  dẫn nên bị giữ ở đúng một đoạn.
+- [x] T200 **Chữ agent được đưa không phải lời agent** per FR-044a. Bộ đọc stream của Claude Code chỉ ghi chữ
+  và suy luận ở dòng `assistant`; dòng `user` vẫn được đọc cho kết quả công cụ.
+- [x] T201 **Nhật ký daemon ghi lượt chạy** per FR-046a. Một dòng lúc bắt đầu, một dòng lúc kết thúc.
+- [x] T202 **Đăng nhập hết hạn là việc của người** per FR-032a. Thêm câu đã đo được của Claude Code
+  (`Failed to authenticate`) vào bảng các bức tường, mã `credential_rejected`, để lượt chạy không bị thử lại
+  vô ích và màn hình nói đúng lý do. Cùng bảng ấy thêm cách nói mới của bức tường hạn mức, đo ngày 2026-11-13
+  trên claude 2.1.322: `You've hit your 5-hour limit` — câu cũ `session limit` không còn khớp.
+
+**Xong 2026-11-13.** `make check` sạch (vet, lint, test). Mỗi bài mới đều được thử ngược.
+**Đo trên máy thật** với daemon dựng từ nhánh này, môi trường sạch (`env -i`): trên CALC-3, ba agent để lại ba
+ghi chú phiên và ba tệp phiên riêng (lần trước là một tệp chung cho cả ba); nhật ký daemon có một dòng bắt đầu
+và một dòng kết thúc cho từng lượt; chat với Trưởng dự án không còn lộ chữ của tệp skill. Nhân lần dựng lại,
+danh sách model hiện đủ mười ba model CLI liệt kê (có Haiku 5.5): bản `v0.2.0` đang cài dựng trước khi có cơ
+chế hỏi danh mục nên chỉ đưa được ba tên ví dụ trong `--help`.
+**Chưa chứng minh được:** nghi vấn daemon làm mất đăng nhập `claude` (token làm mới trong home tạm). Lần này
+không có lượt chạy nào rơi đúng lúc token hết hạn, nên chưa có phép đo nào khẳng định hay bác nó.
+

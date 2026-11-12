@@ -132,7 +132,14 @@ async def test_the_third_round_does_not_tell_the_leader_the_same_thing_twice() -
     # Hai vòng đầu báo Trưởng dự án; vòng thứ ba nhường chỗ cho lời gọi soát đề bài.
     told = [w for w in project_wakes if "patron_rejected_output" in w["codes"]]
     assert len(told) == 2, project_wakes
-    assert len([w for w in task_wakes if w["source"] == "brief_review"]) == 1
+    # One wake, however many causes were folded into it. The Leader is now woken **on the
+    # task** when work is handed in (FR-047b), so the call to review the brief can arrive
+    # while that wake is still owed — and FR-050 folds it in rather than opening a second.
+    # A folded cause is a row marked *coalesced*: it is the same wake, not another one.
+    called = [
+        w for w in task_wakes if w["source"] == "brief_review" and w["status"] != "coalesced"
+    ]
+    assert len(called) == 1, task_wakes
 
 
 async def test_the_leader_rejecting_does_not_wake_itself() -> None:
@@ -206,7 +213,11 @@ async def test_three_rounds_pull_the_leader_back_to_the_brief() -> None:
         wakes = await wakeups_for_task(task_id)
         entries = (await c.get(f"/v1/tasks/{task_id}/log", headers=p.headers)).json()
 
-    review_brief = [w for w in wakes if w["source"] == "brief_review"]
+    # One call, whatever was folded into it (FR-050) — see the note in the test above the
+    # next one down: a coalesced row is a cause joined to the wake, not a second wake.
+    review_brief = [
+        w for w in wakes if w["source"] == "brief_review" and w["status"] != "coalesced"
+    ]
     assert len(review_brief) == 1, wakes
     assert review_brief[0]["marius_id"] == str(p.leader_id)
     assert [e for e in entries if e["kind"] == "escalated"], entries

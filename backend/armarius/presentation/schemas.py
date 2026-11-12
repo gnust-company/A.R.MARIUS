@@ -427,6 +427,10 @@ class MariusOut(_Out):
     # the workspace. Filled here in presentation, because the layers below are not allowed to
     # know that a place is a CLI on a machine (Constitution III).
     runtime: AgentRuntimeOut | None = None
+    # Whether this agent is carrying out a run right now (FR-080b). Beside `liveness`, not
+    # folded into it: one says the agent can be reached, the other that it is at work, and a
+    # run on a person's machine changes only the second.
+    running: bool = False
     # `adapter_config` is deliberately omitted — it holds secrets, never serialized out.
     last_seen_at: datetime | None = None
     created_at: datetime | None = None

@@ -3,8 +3,12 @@ package callback
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"strings"
 )
+
+// taskReference is what may name a task in a path: an identifier (CALC-1) or an id.
+var taskReference = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 
 // projectCommands is what a run about a project may do — the Leader's set (FR-013d).
 //
@@ -24,6 +28,44 @@ func projectCommands() []Command {
 			Summary: "What to hand out next, in order. Anything waiting on the patron is left out.",
 			Call: func(ctx context.Context, c *Client, _ Args) (json.RawMessage, error) {
 				path, err := projectPath(c, "/queue")
+				if err != nil {
+					return nil, err
+				}
+				return c.Call(ctx, "GET", path, nil)
+			},
+		},
+		{
+			Name:    "project tasks",
+			Group:   GroupProject,
+			Summary: "Every task of this project and where it stands: status, who holds it, what was published.",
+			Call: func(ctx context.Context, c *Client, _ Args) (json.RawMessage, error) {
+				path, err := projectPath(c, "/tasks")
+				if err != nil {
+					return nil, err
+				}
+				return c.Call(ctx, "GET", path, nil)
+			},
+		},
+		{
+			// Reading only. Judging a task — rating a criterion, signing — is done on a run
+			// about that task, which is where the Leader is woken when one is handed in. This
+			// is for the other half of the Leader's work: answering the patron about the state
+			// of the project without having to be told it (FR-047c).
+			Name:    "project task",
+			Group:   GroupProject,
+			Summary: "Read one task of this project in full: the brief, the thread, and what was published.",
+			Params: []Param{
+				{Name: "task", Type: TypeString, Required: true, Description: "Which task: its identifier (CALC-1) or its id, from `project tasks`."},
+			},
+			Call: func(ctx context.Context, c *Client, args Args) (json.RawMessage, error) {
+				// The reference becomes one segment of a path, so it is held to what an
+				// identifier or an id can contain. Escaping it is not enough: an escaped
+				// slash is a slash again by the time most servers route it.
+				ref := strings.TrimSpace(args.String("task"))
+				if !taskReference.MatchString(ref) {
+					return nil, fail(ExitUsage, "task must be an identifier like CALC-1 or a task id, got %q", ref)
+				}
+				path, err := projectPath(c, "/tasks/"+ref)
 				if err != nil {
 					return nil, err
 				}

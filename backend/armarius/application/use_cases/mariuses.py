@@ -210,6 +210,19 @@ class MariusService:
         async with self._uow() as uow:
             return await uow.mariuses.list_by_workspace(workspace_id)
 
+    async def mid_run(self, marius_ids: Sequence[UUID]) -> set[UUID]:
+        """Which of these agents are carrying out a run at this moment. For the screen.
+
+        Asked of the runs rather than read off liveness, and the two are kept apart on
+        purpose: liveness answers *can this agent be reached*, on a clock; this answers *is
+        it doing something*, off a fact. A run carried out on a person's machine never set
+        liveness to *working* — nothing in this process watches it to take that back — so a
+        screen reading liveness alone showed a whole team idle while it was building
+        (measured 2026-11-12, FR-080b).
+        """
+        async with self._uow() as uow:
+            return await uow.runs.marius_ids_mid_run(list(marius_ids))
+
     async def offline_reasons(self, marius_ids: Sequence[UUID]) -> dict[UUID, str]:
         """Why each of these agents has nowhere to work. For the screen, and only that.
 

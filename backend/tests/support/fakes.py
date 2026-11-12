@@ -187,6 +187,14 @@ class _FakeRunRepo:
             if r.task_id in wanted and r.status in ACTIVE_RUN_STATUSES and r.task_id
         }
 
+    async def marius_ids_mid_run(self, marius_ids) -> set[UUID]:  # noqa: ANN001
+        wanted = set(marius_ids)
+        return {
+            r.marius_id
+            for r in self._s.runs.values()
+            if r.marius_id in wanted and r.status == RunStatus.RUNNING
+        }
+
     async def has_active_for_task(self, task_id: UUID) -> bool:
         return any(
             r.task_id == task_id and r.status in ACTIVE_RUN_STATUSES
@@ -561,6 +569,18 @@ class _FakeWakeupRepo:
             for w in self._s.wakeups.values()
             if w.task_id == task_id and w.status in PENDING_WAKEUP_STATUSES
         ]
+
+    async def list_queued_for_project(self, project_id: UUID) -> list[WakeupRequest]:
+        epoch = datetime.min.replace(tzinfo=UTC)
+        waiting = [
+            w
+            for w in self._s.wakeups.values()
+            if w.project_id == project_id
+            and w.task_id is None
+            and w.status == WakeupStatus.QUEUED
+        ]
+        waiting.sort(key=lambda w: w.created_at or epoch)
+        return waiting
 
     async def list_coalesced_into(self, run_id: UUID) -> list[WakeupRequest]:
         epoch = datetime.min.replace(tzinfo=UTC)
