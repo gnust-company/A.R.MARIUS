@@ -413,6 +413,14 @@ class RunRepository(ABC):
         ``has_active_for_task``, asked once for a whole board."""
 
     @abstractmethod
+    async def marius_ids_mid_run(self, marius_ids: Sequence[UUID]) -> set[UUID]:
+        """Which of these agents have a run **running** right now, on a task or not.
+
+        *Running*, not merely live: a run waiting on a shelf is work nobody has started, and
+        an agent with only that is not at work yet. Asked once for a whole roster.
+        """
+
+    @abstractmethod
     async def list_silent_active(
         self, silent_since: datetime, *, limit: int = 200
     ) -> Sequence[Run]:
@@ -526,6 +534,16 @@ class WakeupRepository(ABC):
         not whether one particular agent has a wake pending — a task can be reassigned
         between the booking and the sweep, and asking about the current assignee would
         call it dropped while the old assignee's wake was still queued.
+        """
+
+    @abstractmethod
+    async def list_queued_for_project(self, project_id: UUID) -> Sequence[WakeupRequest]:
+        """Every project-level wake still waiting to be delivered, oldest first.
+
+        A project-level wake is addressed to the Leader about the project, not about one
+        task, and it is left *queued* when it arrives while the Leader is mid-turn or
+        unreachable. Read when a turn ends, which is the moment FR-050 says the need to wake
+        is looked at again.
         """
 
     @abstractmethod

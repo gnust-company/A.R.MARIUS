@@ -75,6 +75,19 @@ async def _a_machine_with_an_agent(c: AsyncClient, email: str) -> tuple[object, 
     return machine, agent, project_id
 
 
+async def _a_task_this_file_drives(project_id: UUID) -> UUID:
+    """A task whose runs are opened by these tests and by nothing else.
+
+    Held by nobody, on purpose. A run of the task's own holder now puts the task in progress
+    when it starts (spec 001 FR-024a), and a task in progress whose run ends is owed a
+    follow-up wake — a run the system opens for the same (agent, task) pair, which is the
+    pair these tests open their second run on. What is measured here is the conversation
+    row keyed by (agent, runtime, task), and that key does not care who holds the task: an
+    agent woken on somebody else's task by a mention keeps a conversation there too.
+    """
+    return await a_task(project_id)
+
+
 # ── cùng một đầu việc ────────────────────────────────────────────────────────
 
 
@@ -84,7 +97,7 @@ async def test_two_wakes_on_one_task_are_one_conversation() -> None:
         machine, agent, project_id = await _a_machine_with_an_agent(
             c, f"same-{uuid4().hex[:8]}@example.com"
         )
-        task_id = await a_task(project_id, assigned_to=agent["id"])
+        task_id = await _a_task_this_file_drives(project_id)
 
         await shelve(marius_id=agent["id"], task_id=task_id)
         first = await _take_one(c, machine)
@@ -112,7 +125,7 @@ async def test_the_run_itself_says_which_conversation_it_took_up() -> None:
         machine, agent, project_id = await _a_machine_with_an_agent(
             c, f"onrun-{uuid4().hex[:8]}@example.com"
         )
-        task_id = await a_task(project_id, assigned_to=agent["id"])
+        task_id = await _a_task_this_file_drives(project_id)
         await shelve(marius_id=agent["id"], task_id=task_id)
         run = await _take_one(c, machine)
         await _say_it_started(c, machine, run["run_id"], "sess-onrun")
@@ -134,7 +147,7 @@ async def test_two_tasks_are_two_conversations_for_the_same_agent() -> None:
         )
         handles = {}
         for handle in ("sess-one", "sess-two"):
-            task_id = await a_task(project_id, assigned_to=agent["id"])
+            task_id = await _a_task_this_file_drives(project_id)
             await shelve(marius_id=agent["id"], task_id=task_id)
             run = await _take_one(c, machine)
             await _say_it_started(c, machine, run["run_id"], handle)
@@ -163,7 +176,7 @@ async def test_a_run_that_opened_a_new_conversation_does_not_erase_the_old_one()
         machine, agent, project_id = await _a_machine_with_an_agent(
             c, f"keep-{uuid4().hex[:8]}@example.com"
         )
-        task_id = await a_task(project_id, assigned_to=agent["id"])
+        task_id = await _a_task_this_file_drives(project_id)
 
         await shelve(marius_id=agent["id"], task_id=task_id)
         first = await _take_one(c, machine)
@@ -197,7 +210,7 @@ async def test_the_conversation_the_run_ended_on_is_the_one_written_down() -> No
         machine, agent, project_id = await _a_machine_with_an_agent(
             c, f"ended-{uuid4().hex[:8]}@example.com"
         )
-        task_id = await a_task(project_id, assigned_to=agent["id"])
+        task_id = await _a_task_this_file_drives(project_id)
         await shelve(marius_id=agent["id"], task_id=task_id)
         run = await _take_one(c, machine)
         await _say_it_started(c, machine, run["run_id"], "")
@@ -231,7 +244,7 @@ async def test_a_run_that_ends_without_naming_a_conversation_leaves_the_old_one_
         machine, agent, project_id = await _a_machine_with_an_agent(
             c, f"failed-{uuid4().hex[:8]}@example.com"
         )
-        task_id = await a_task(project_id, assigned_to=agent["id"])
+        task_id = await _a_task_this_file_drives(project_id)
 
         await shelve(marius_id=agent["id"], task_id=task_id)
         first = await _take_one(c, machine)

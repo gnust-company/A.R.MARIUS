@@ -54,7 +54,15 @@ COOKBOOK = {
 # moment, so two runs a second apart can never carry the same one. What must not differ is the
 # **length** of the hold, and that is checked on its own below rather than waved through.
 MAY_DIFFER = frozenset(
-    {"run_id", "task_id", "project_id", "workplace_id", "run_token", "claim_expires_at"}
+    {
+        "run_id",
+        "task_id",
+        "project_id",
+        "workplace_id",
+        "marius_id",
+        "run_token",
+        "claim_expires_at",
+    }
 )
 
 

@@ -490,6 +490,12 @@ thứ tự gắn trên từng chữ ký.
   thái cũ và nêu lý do rõ ràng — chặn thôi, không tự nghĩ hộ cách gỡ.
 - **FR-024**: HỆ THỐNG PHẢI từ chối các lối tắt: từ *nháp*, *tồn kho* hoặc *chờ làm* sang thẳng *xong*; từ
   *đang làm* sang thẳng *xong*; từ *nháp* sang thẳng *đang làm*.
+- **FR-024a**: KHI lượt chạy của **chính người giữ đầu việc** bắt đầu trên một đầu việc đang *chờ làm*, HỆ
+  THỐNG PHẢI tự chuyển đầu việc sang *đang làm*, qua đúng cổng chuyển trạng thái thường (FR-023, FR-025) —
+  cổng từ chối thì đầu việc đứng yên và lượt chạy vẫn tiếp tục. Lượt chạy của người khác trên đầu việc ấy
+  (Trưởng dự án vào chấm, đồng đội bị nhắc tên) KHÔNG làm đổi trạng thái. *(Đo 2026-11-12 trên một đội
+  thật: thợ dựng suốt một phút rưỡi trong lúc bảng việc ghi "chờ làm" và "chưa ai nhận việc", vì agent chỉ
+  tự báo "đang làm" ở phút chót, cùng lúc với nộp bài. Lượt chạy bắt đầu là sự thật hệ thống đã cầm sẵn.)*
 - **FR-025** *(cổng phụ thuộc)*: HỆ THỐNG PHẢI chặn một đầu việc vào *chờ làm* hoặc *đang làm* khi danh sách
   việc phụ thuộc còn ít nhất một đầu việc chưa *xong*, và PHẢI liệt kê mã của những việc còn thiếu.
 - **FR-026** *(cổng bằng chứng)*: HỆ THỐNG PHẢI chặn một đầu việc vào *chờ rà soát* khi trường thành phẩm còn
@@ -586,6 +592,16 @@ thứ tự gắn trên từng chữ ký.
   chủ quyết chuyển giai đoạn hoặc mở đợt mới; một thợ báo kẹt; một đầu việc chuyển sang *chờ rà soát*; một
   đầu việc chuyển sang *xong*; một đầu việc thất bại hoặc quá hạn; một nhịp điều phối có điểm treo thật;
   hoặc **bị nhắc tên** trong luồng trao đổi của một đầu việc.
+- **FR-047b**: Lời gọi Trưởng dự án vì một đầu việc sang *chờ rà soát* PHẢI là một lượt chạy **về chính đầu
+  việc đó** — mang bộ lệnh của đầu việc (đọc, chấm tiêu chí, ký, trả về), luồng trao đổi và thư mục làm
+  việc của nó. KHÔNG ĐƯỢC đưa qua khung chat cấp dự án. Dự án chưa có ai ngồi ghế Trưởng dự án thì cớ được
+  ghi ở cấp dự án như cũ. *(Đo 2026-11-12: Trưởng dự án bị gọi trong chat để "chấm CALC-1" bằng một lượt
+  chạy chỉ có lệnh cấp dự án — không mở được đầu việc, không đọc được thành phẩm, không ký được — rồi trả
+  lời người chủ "tôi không đọc được báo cáo" về chính bài nó đã ký trong luồng trao đổi của đầu việc.)*
+- **FR-047c**: Lượt chạy cấp dự án của Trưởng dự án PHẢI **đọc được** cả bảng việc của dự án mình (mọi đầu
+  việc: trạng thái, người giữ, thành phẩm đã nộp) và từng đầu việc (đề bài, luồng trao đổi, thành phẩm; tệp
+  chữ nhỏ được đọc kèm nội dung). Chỉ đọc: chấm và ký thuộc lượt chạy về đầu việc (FR-047b). Chỉ ghế Trưởng
+  dự án; thợ không có lối này (FR-049). Đầu việc được tra **trong** dự án của lượt chạy, không tra rời.
 - **FR-048**: HỆ THỐNG PHẢI đánh thức một thợ khi và chỉ khi có một trong các cớ: được giao đầu việc mới; bị
   nhắc tên trong trao đổi; có bình luận mới trên đầu việc mình phụ trách; cần làm tiếp một lượt còn dở; vướng
   của mình đã được gỡ; **đầu ra của mình bị trả về để sửa** (FR-040); **yêu cầu của đầu việc bị người chủ đổi
@@ -612,6 +628,12 @@ thứ tự gắn trên từng chữ ký.
   tối đa **một** lượt chạy tại một thời điểm. Cớ mới đến khi đã có lệnh treo thì nhập vào lệnh đó và mang
   theo lý do mạnh hơn; cớ đến khi đang có lượt chạy thì lượt chạy hấp thụ, và hệ thống đánh giá lại nhu cầu
   gọi khi lượt kết thúc.
+- **FR-050a**: Vế "đánh giá lại nhu cầu gọi khi lượt kết thúc" của FR-050 áp cho cả lời gọi **cấp dự án**
+  tới Trưởng dự án: cớ đến lúc Trưởng dự án đang giữa một lượt thì nằm chờ, và KHI lượt ấy kết thúc tốt HỆ
+  THỐNG PHẢI giao **mọi** cớ đang chờ trong **một** lượt kế tiếp, mỗi cớ một dòng ở phần *lý do gọi dậy*.
+  *(Đo 2026-11-12: người chủ ký hai đầu việc cách nhau vài giây; "CALC-2 đã xong" và "cả đợt đã khép" được
+  ghi là đang chờ và không bao giờ được đọc lại — mười ba giờ sau vẫn nằm đó — nên bản tổng kết đợt ở
+  FR-043 không bao giờ được soạn và dự án không khép được.)*
 - **FR-051**: Trước khi kết thúc một lượt, agent PHẢI để lại *việc kế tiếp* — hoặc chỉ rõ bóng đã chuyền cho
   ai, hoặc mô tả cụ thể phần còn dở. HỆ THỐNG PHẢI lưu bền phần này.
 
@@ -822,6 +844,11 @@ thứ tự gắn trên từng chữ ký.
   trị trên màn hình chỉ đúng lại sau khi tải lại trang. FR-080 mới cấm *hỏi vòng*; chỗ hụt thứ ba là
   **không hỏi mà cũng không được báo** — nhìn giống "đang yên" y hệt như hỏi vòng bị treo
   *(Hiến pháp IV, hợp đồng `contracts/push-events.md` nguyên tắc 1)*.
+- **FR-080b**: Danh bạ agent trả về giao diện PHẢI nói **agent nào đang chạy một lượt** ngay lúc đó, đọc từ
+  chính lượt chạy chứ không suy từ trạng thái trực tuyến: trực tuyến trả lời *gọi được không*, còn đây trả
+  lời *đang làm gì không*. Lượt chạy bắt đầu và kết thúc đều đã có tin đẩy (FR-080a); giao diện nhận tin
+  rồi đọc lại danh bạ. *(Đo 2026-11-12: Đài quan sát ghi "0 agent đang chạy" suốt hai mươi phút cả đội làm
+  việc, vì lượt chạy trên máy người dùng không bao giờ đặt trạng thái "đang làm".)*
 - **FR-081**: Mọi truy vấn dữ liệu của tính năng này PHẢI giới hạn trong workspace của người gọi; truy cập
   chéo workspace PHẢI trả về "không tìm thấy" *(Hiến pháp I)*.
 - **FR-082**: Ngữ cảnh của agent (vai, đồng đội, đánh thức, lời nhắc vai) PHẢI lấy theo vai trong **dự án**

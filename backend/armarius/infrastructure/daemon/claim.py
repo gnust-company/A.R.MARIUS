@@ -113,6 +113,10 @@ class GrantedRun:
     workplace_id: UUID
     run_token: str
     claim_expires_at: datetime
+    # Whose run this is. Several agents can be woken on one task and they share its working
+    # directory on the machine; the machine keeps each one's conversation apart by this
+    # (spec 002 FR-023a). Optional only because a run row may, in principle, name no agent.
+    marius_id: UUID | None = None
     # What the agent is to read, in English, assembled on this side (FR-011a). Empty only
     # where nothing composes packets at all, which is a service wired for the shelf and
     # nothing else; whoever receives an empty one must refuse the run rather than start an
@@ -559,14 +563,16 @@ class DaemonClaimService:
         )
         rows = (
             await session.execute(
-                select(RunClaimModel, RunModel.task_id, RunModel.project_id)
+                select(
+                    RunClaimModel, RunModel.task_id, RunModel.project_id, RunModel.marius_id
+                )
                 .join(RunModel, RunModel.id == RunClaimModel.run_id)
                 .where(RunClaimModel.run_id.in_(list(taken)))
             )
         ).all()
 
         granted: list[GrantedRun] = []
-        for claim, task_id, project_id in rows:
+        for claim, task_id, project_id, marius_id in rows:
             token = f"{RUN_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
             claim.run_token_hash = hash_run_token(token)
             granted.append(
@@ -574,6 +580,7 @@ class DaemonClaimService:
                     run_id=claim.run_id,
                     task_id=task_id,
                     project_id=project_id,
+                    marius_id=marius_id,
                     workplace_id=claim.workplace_id,
                     run_token=token,
                     # Read back through `as_utc` rather than handed over as stored. A

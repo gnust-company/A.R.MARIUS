@@ -6,6 +6,7 @@ concrete infrastructure implementations.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -297,6 +298,16 @@ def build_container() -> Container:
         await leader_chat.run_ended(run_id)
         await agent_chat.run_ended(run_id)
 
+    # Filled in once the task service exists, a few lines down: the machine's door is built
+    # first, and what a run starting means for the *task* is not something that door knows.
+    on_work_begun: list[Callable[[UUID], Awaitable[None]]] = []
+
+    async def run_has_begun(run_id: UUID) -> None:
+        """A run reported started from a machine, and everyone who is owed that news."""
+        await wake_engine.run_started(run_id)
+        for told in on_work_begun:
+            await told(run_id)
+
     async def close_run(run_id: UUID, **ending: object) -> None:
         """A run reported finished from a machine, and everyone who is owed that news.
 
@@ -326,7 +337,7 @@ def build_container() -> Container:
         # open. The in-process road announces this transition itself; without this line the
         # same run carried out on a machine sat at *queued* on screen for the whole time it
         # ran, and only moved when it ended (FR-080).
-        on_start=wake_engine.run_started,
+        on_start=run_has_begun,
         # And the end of a run handed to the layer that decides what a task does next — the
         # follow-up wake above all, which is what stops a finished run leaving a task with
         # nothing scheduled to look at it again (FR-030a).
@@ -344,6 +355,9 @@ def build_container() -> Container:
         inbox=inbox,
         push_reasons=push_reasons,
     )
+    # The holder's run starting is what *in progress* means; the board should not wait for
+    # the agent to get round to saying so (FR-024a).
+    on_work_begun.append(tasks.worker_started)
     # One escalator, shared: the watchdog climbs the ladder and the Leader's recovery
     # endpoint clears it. Two instances would each hold their own idea of where a task
     # stands, and the rung the Leader answered would not be the rung the sweep reads.

@@ -794,6 +794,29 @@ func shellScript(t *testing.T, dir, body string) string {
 	return path
 }
 
+// The log says what this machine ran. Read 2026-11-12 after a team of three had done 23 runs:
+// not one line about any of them.
+func TestARunLeavesALineWhenItStartsAndALineWhenItEnds(t *testing.T) {
+	w := aWorld(t)
+	var lines []string
+	options := w.options()
+	options.Note = func(line string) { lines = append(lines, line) }
+
+	options.Do(context.Background(), w.grant())
+
+	if len(lines) != 2 {
+		t.Fatalf("the log has %d lines about the run, want a start and an end: %q", len(lines), lines)
+	}
+	grant := w.grant()
+	if !strings.Contains(lines[0], grant.RunID) || !strings.Contains(lines[0], "started") ||
+		!strings.Contains(lines[0], grant.TaskID) {
+		t.Errorf("the start line does not say which run began on which task: %q", lines[0])
+	}
+	if !strings.Contains(lines[1], grant.RunID) || !strings.Contains(lines[1], string(Completed)) {
+		t.Errorf("the end line does not say how the run ended: %q", lines[1])
+	}
+}
+
 // ── carrying one task's conversation from one wake to the next ───────────────
 
 // FR-023: the second wake on a task carries on the conversation the first one opened. Nothing
@@ -879,6 +902,38 @@ func TestTwoTasksNeverShareAConversation(t *testing.T) {
 	w.options().Do(context.Background(), back)
 	if w.engine.saw.Session != "sess-one" {
 		t.Errorf("the first task came back to %q, want %q", w.engine.saw.Session, "sess-one")
+	}
+}
+
+// FR-023a: several agents woken on one task work in one directory and keep one conversation
+// **each**. Measured 2026-11-12 on a real team: the tester's run carried on the builder's
+// session, and the Leader's run carried on both.
+func TestTwoAgentsWokenOnOneTaskNeverShareAConversation(t *testing.T) {
+	w := aWorld(t)
+
+	builder := w.grant()
+	builder.AgentID = "agent-builder"
+	w.engine.session = "sess-builder"
+	w.options().Do(context.Background(), builder)
+
+	tester := w.grant()
+	tester.RunID, tester.AgentID = "run-2", "agent-tester"
+	w.engine.session = "sess-tester"
+	w.options().Do(context.Background(), tester)
+	if w.engine.saw.Session != "" {
+		t.Errorf("the second agent on the task was handed %q — the first one's conversation",
+			w.engine.saw.Session)
+	}
+	if w.engine.saw.Restart != nil {
+		t.Errorf("an agent's first turn on a task was announced as a restart: %v",
+			w.engine.saw.Restart.Code)
+	}
+
+	again := w.grant()
+	again.RunID, again.AgentID = "run-3", "agent-builder"
+	w.options().Do(context.Background(), again)
+	if w.engine.saw.Session != "sess-builder" {
+		t.Errorf("the first agent came back to %q, want its own %q", w.engine.saw.Session, "sess-builder")
 	}
 }
 

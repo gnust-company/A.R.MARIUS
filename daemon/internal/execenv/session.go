@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -22,8 +23,40 @@ import (
 // the store a CLI reads, where a stray entry is a project the agent thinks it has.
 const threadFile = ".armarius/thread.json"
 
-// Thread is what this machine remembers of one task's conversation, so that the next wake on the
-// same task carries it on rather than starting again (FR-023).
+// threadsDir holds one note per agent, for a working directory more than one agent works in.
+//
+// A task's directory is shared on purpose — the tester opens the files the builder wrote — but
+// a conversation is not something to share. Keyed on the directory alone, the second agent woken
+// on a task carried on the first one's session: it read the other's reasoning as its own past,
+// answered under two names, and the model changing between turns threw the prompt cache away
+// each time (measured 2026-11-12: three agents, one session, on both tasks of a project).
+// FR-050 already counts by the pair *(agent, task)*; this is the same pair, kept on disk.
+const threadsDir = ".armarius/threads"
+
+// threadPath is where the note for one agent's conversation in one working directory lives.
+//
+// No agent named is the note this daemon wrote before it was told whose run it was holding — a
+// server that has not learned to say. That file is still read and written for such a run, so an
+// old server keeps what it had; a run that does name its agent never reads it, because what is
+// in it may be somebody else's conversation.
+func threadPath(workDir, agent string) (string, error) {
+	if workDir == "" {
+		return "", fmt.Errorf("a thread needs a working directory")
+	}
+	if agent == "" {
+		return filepath.Join(workDir, filepath.FromSlash(threadFile)), nil
+	}
+	// One segment and nothing else: the name came off the wire, and a name that could climb is
+	// a name that could put this file anywhere on the machine.
+	if agent == "." || agent == ".." || strings.ContainsAny(agent, `/\`) || filepath.Base(agent) != agent {
+		return "", fmt.Errorf("agent %q cannot name a thread", agent)
+	}
+	return filepath.Join(workDir, filepath.FromSlash(threadsDir), agent+".json"), nil
+}
+
+// Thread is what this machine remembers of one agent's conversation about one task, so that the
+// next wake of that agent on that task carries it on rather than starting again (FR-023,
+// FR-023a).
 //
 // The handle is opaque and it is the CLI's, not ours: `--resume <this>` for one family,
 // `session/load` for the other. Nothing here reads into it.
@@ -60,7 +93,8 @@ const (
 	ThreadUnreadable Verdict = "session_unreadable"
 )
 
-// RecallThread answers what may be carried on in this working directory, and why not when not.
+// RecallThread answers what this agent may carry on in this working directory, and why not when
+// not. `agent` is whose run this is; empty only for a server that does not say (see threadPath).
 //
 // **The keeping is enforced here and not only by the sweep**, and that is what this call is
 // for. The sweep runs on a clock of its own — hours apart, and not at all while the machine is
@@ -70,9 +104,10 @@ const (
 // and the run's record shows a thread that was carried on when it was not (FR-027, FR-025).
 //
 // A missing file is not an error and not a failure. It is the first run on this task.
-func RecallThread(workDir string, now time.Time, keep time.Duration) (Thread, Verdict, error) {
-	if workDir == "" {
-		return Thread{}, ThreadNone, fmt.Errorf("recalling a thread needs a working directory")
+func RecallThread(workDir, agent string, now time.Time, keep time.Duration) (Thread, Verdict, error) {
+	path, err := threadPath(workDir, agent)
+	if err != nil {
+		return Thread{}, ThreadNone, fmt.Errorf("recalling a thread: %w", err)
 	}
 	if keep <= 0 {
 		keep = DefaultSessionRetention
@@ -81,7 +116,7 @@ func RecallThread(workDir string, now time.Time, keep time.Duration) (Thread, Ve
 	// #nosec G304 -- the path is this daemon's own constant under a directory this daemon made;
 	// the caller is the run flow, and the only part of it that came off the wire is the task id,
 	// which WorkDir already refused to let name anything but a single segment.
-	raw, err := os.ReadFile(filepath.Join(workDir, filepath.FromSlash(threadFile)))
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return Thread{}, ThreadNone, nil
@@ -103,21 +138,21 @@ func RecallThread(workDir string, now time.Time, keep time.Duration) (Thread, Ve
 	return thread, ThreadUsable, nil
 }
 
-// RememberThread writes down the conversation this run leaves behind, for the next wake on the
-// same task to pick up (FR-023).
+// RememberThread writes down the conversation this run leaves behind, for the next wake of the
+// same agent on the same task to pick up (FR-023, FR-023a).
 //
 // Called with what the CLI itself said it called the conversation. A run that produced no handle
 // — a CLI that cannot resume, or one that failed before it opened anything — leaves what was
 // already remembered alone: overwriting it with nothing would throw away a thread the *next*
 // run could still have carried on, over a single bad turn.
-func RememberThread(workDir string, thread Thread) error {
-	if workDir == "" {
-		return fmt.Errorf("remembering a thread needs a working directory")
+func RememberThread(workDir, agent string, thread Thread) error {
+	path, err := threadPath(workDir, agent)
+	if err != nil {
+		return fmt.Errorf("remembering a thread: %w", err)
 	}
 	if thread.Handle == "" {
 		return nil
 	}
-	path := filepath.Join(workDir, filepath.FromSlash(threadFile))
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("making room for the thread of %s: %w", workDir, err)
 	}
@@ -145,11 +180,12 @@ func RememberThread(workDir string, thread Thread) error {
 // the case this covers — the note has to be taken away rather than merely overwritten later.
 //
 // A note that is not there is not a failure. It is the state this call is trying to reach.
-func ForgetThread(workDir string) error {
-	if workDir == "" {
-		return fmt.Errorf("forgetting a thread needs a working directory")
+func ForgetThread(workDir, agent string) error {
+	path, err := threadPath(workDir, agent)
+	if err != nil {
+		return fmt.Errorf("forgetting a thread: %w", err)
 	}
-	err := os.Remove(filepath.Join(workDir, filepath.FromSlash(threadFile)))
+	err = os.Remove(path)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("forgetting the thread of %s: %w", workDir, err)
 	}

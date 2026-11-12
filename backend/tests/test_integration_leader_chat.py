@@ -377,3 +377,68 @@ async def test_the_leader_is_told_the_approved_brief_not_the_raw_project_columns
     assert "No third-party maths libraries." in packet
     assert "STALE OBJECTIVE COLUMN" not in packet
     assert "STALE CONTEXT COLUMN" not in packet
+
+
+async def test_what_arrived_during_a_turn_is_delivered_when_the_turn_ends(uow_factory) -> None:
+    """A cause that lands while the Leader is mid-turn waits — and is then delivered (FR-050).
+
+    Measured 2026-11-12 on a real team: the patron signed two tasks a few seconds apart. The
+    Leader was told about the first; "the second is done" and "the batch is closed" were
+    written down as queued and never read again, so no wrap-up was ever written (FR-043).
+    """
+    bus = TopicEventBus()
+    workspaces = WorkspaceService(uow_factory)
+    projects = ProjectService(uow_factory)
+    liveness = LivenessEngine(uow_factory, FakeLivenessProbe(True))
+    chat = _chat_service(uow_factory, bus, step_delay=0.05)  # keep the first turn in flight
+
+    ws = await workspaces.create_workspace("WS")
+    project = await projects.create_project(ws.id, "Apollo", leader_description="Leads.")
+    await _register_leader(uow_factory, projects, ws, project, online_via=liveness)
+
+    first = await chat.notify(
+        project_id=project.id,
+        source=WakeSource.TASK_DONE,
+        reason=wake_reason("task_done", task="APO-1"),
+    )
+    assert first is True
+    # Both of these find the Leader mid-turn.
+    second = await chat.notify(
+        project_id=project.id,
+        source=WakeSource.TASK_DONE,
+        reason=wake_reason("task_done", task="APO-2"),
+    )
+    third = await chat.notify(
+        project_id=project.id,
+        source=WakeSource.TASK_DONE,
+        reason=wake_reason("batch_done"),
+        detail="Write the batch wrap-up.",
+    )
+    assert (second, third) == (False, False)
+
+    # Settled means idle with nothing left waiting: the follow-up turn starts on its own.
+    for _ in range(400):
+        async with uow_factory() as uow:
+            waiting = await uow.wakeups.list_queued_for_project(project.id)
+        view = await chat.get_or_open(project.id)
+        if not waiting and view.conversation.state == ChatState.IDLE:
+            break
+        await asyncio.sleep(0.02)
+
+    assert not waiting, [w.reason for w in waiting]
+    assert view.conversation.state == ChatState.IDLE
+    told = [
+        (t["role"], t.get("code"), (t.get("params") or {}).get("task"))
+        for t in view.conversation.transcript
+        if t["role"] == "system"
+    ]
+    assert told == [
+        ("system", "task_done", "APO-1"),
+        ("system", "task_done", "APO-2"),
+        ("system", "batch_done", None),
+    ], told
+    # Two turns, not three: what waited was handed over together.
+    assert [t["role"] for t in view.conversation.transcript].count("leader") == 2
+    # And the extra the last cause owed the agent travelled with it.
+    wrap_up = view.conversation.transcript[-2]
+    assert wrap_up["role"] == "system" and wrap_up["detail"] == "Write the batch wrap-up."

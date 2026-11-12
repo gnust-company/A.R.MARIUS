@@ -214,6 +214,26 @@ echo '`+doneLine+`'`)
 	}
 }
 
+// The shape below is the real one, read out of a session of claude 2.1.322 on 2026-11-12: when the
+// agent loads a skill, the CLI puts the skill's body into the conversation as a `user` line.
+const skillBodyLine = `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Base directory for this skill: /work/.claude/skills/armarius-http"}]},"isMeta":true,"session_id":"76342bdf-65bf-4ff5-b7ad-88f612dc929f"}`
+
+func TestTextTheAgentWasGivenIsNotRecordedAsSomethingItSaid(t *testing.T) {
+	cli := fakeCLI(t, `echo '`+skillBodyLine+`'
+echo '`+sayLine+`'
+echo '`+doneLine+`'`)
+
+	events, _, err := aTurn(t, Request{Binary: cli})
+	if err != nil {
+		t.Fatalf("chạy một lượt: %v", err)
+	}
+
+	// `only` fails when there are two: the skill body must not be a second thing "said".
+	if said := only(t, events, EventAssistantMessage); said.Payload["text"] != "ok" {
+		t.Fatalf("chữ agent nói: %v", said.Payload["text"])
+	}
+}
+
 func TestAnAgentThatReportsItFailedIsRecordedRatherThanHidden(t *testing.T) {
 	const failed = `{"type":"result","subtype":"error_during_execution","is_error":true,"session_id":"s"}`
 	cli := fakeCLI(t, `echo '`+failed+`'`)
@@ -674,6 +694,36 @@ func TestAnExhaustedQuotaIsReportedAsSomethingAPersonHasToClear(t *testing.T) {
 	}
 	if out.Failure != "quota_exhausted" {
 		t.Fatalf("không đọc ra cạn hạn mức: %q", out.Failure)
+	}
+}
+
+// The line is the real one, from a run of claude 2.1.322 on 2026-11-13.
+func TestTheSameQuotaWallInALaterReleasesWordsIsStillRead(t *testing.T) {
+	later := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text",` +
+		`"text":"You've hit your 5-hour limit · resets 3:20am (Asia/Kuala_Lumpur)"}]},"session_id":"s"}`
+	cli := sayingCLI(t, 1, later, badResultLine)
+
+	_, out, err := aTurn(t, Request{Binary: cli})
+	if err == nil {
+		t.Fatal("CLI thoát 1 mà lượt chạy vẫn coi là xong")
+	}
+	if out.Failure != "quota_exhausted" {
+		t.Fatalf("không đọc ra cạn hạn mức: %q", out.Failure)
+	}
+}
+
+// The line is the real one, from a run of claude 2.1.314 on 2026-11-11 whose login had lapsed.
+func TestALapsedLoginIsReportedAsSomethingAPersonHasToClear(t *testing.T) {
+	lapsed := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text",` +
+		`"text":"Failed to authenticate: OAuth session expired and could not be refreshed"}]},"session_id":"s"}`
+	cli := sayingCLI(t, 1, lapsed, badResultLine)
+
+	_, out, err := aTurn(t, Request{Binary: cli})
+	if err == nil {
+		t.Fatal("CLI thoát 1 mà lượt chạy vẫn coi là xong")
+	}
+	if out.Failure != "credential_rejected" {
+		t.Fatalf("không đọc ra đăng nhập đã hết hạn: %q", out.Failure)
 	}
 }
 

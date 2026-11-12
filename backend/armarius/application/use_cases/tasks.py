@@ -22,6 +22,7 @@ from uuid import UUID
 
 from armarius.application.ports.unit_of_work import UnitOfWork
 from armarius.application.use_cases.review_reset import retire_signatures_on_move
+from armarius.application.use_cases.seats import leader_marius_id
 from armarius.application.use_cases.threads import announce_comment
 from armarius.application.use_cases.types import UowFactory
 from armarius.application.use_cases.wake_engine import WakeEngine
@@ -67,6 +68,7 @@ from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.infrastructure.events.topic_bus import TopicEventBus, project_topic
 from armarius.shared.clock import as_utc, utcnow
 from armarius.shared.errors import CodedError, NotFound
+from armarius.shared.logging import get_logger
 
 if TYPE_CHECKING:  # pragma: no cover — typing only, keeps the import graph acyclic
     from armarius.application.use_cases.inbox import InboxService
@@ -84,6 +86,8 @@ EVENT_TASK_DEPENDENCIES = "task.dependencies_changed"
 # The patron rewrote the job itself — title, priority or deadline are all drawn on the
 # card, so the board owes the same signal it owes a move (FR-070a, FR-080a).
 EVENT_TASK_UPDATED = "task.updated"
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -908,6 +912,44 @@ class TaskService:
             unlocked=tuple(unlocked),
         )
 
+    async def worker_started(self, run_id: UUID) -> None:
+        """The holder's run has begun on a task still *todo* → the task is in progress (FR-024a).
+
+        A worker reports its own status, and it reports it when it gets round to it — which
+        on a real run was at the very end, in the same breath as handing the work in. For
+        the minute and a half the agent spent building, the board said *todo* and *nobody
+        has picked this up*, and the Observatory counted nobody at work (measured
+        2026-11-12). The run starting is a fact the system already holds; the status follows
+        from it rather than waiting to be told.
+
+        Only for the task's own holder, and only from *todo*. A Leader woken on the task to
+        judge it, or a teammate woken by a mention, is not the one doing the work. And a
+        task anywhere else — blocked, in review, already in progress — is where somebody put
+        it on purpose.
+
+        It goes through the same gated door as any other move (FR-023, FR-025). If a gate
+        says no, the task stays where it is and the refusal is logged: this is the system
+        noticing something, not a reason to fail a run that has already begun.
+        """
+        async with self._uow() as uow:
+            run = await uow.runs.get(run_id)
+            if run is None or run.task_id is None or run.marius_id is None:
+                return
+            task = await uow.tasks.get(run.task_id)
+            if (
+                task is None
+                or task.status is not TaskStatus.TODO
+                or task.assigned_marius_id != run.marius_id
+            ):
+                return
+            task_id, marius_id = task.id, run.marius_id
+        try:
+            await self.transition(task_id, TaskStatus.IN_PROGRESS, marius_id=marius_id)
+        except CodedError as refused:
+            logger.info(
+                "task %s stays todo although its holder's run began: %s", task_id, refused
+            )
+
     async def after_transition(self, effects: TransitionEffects) -> None:
         """Everything a status change sets off once its writes have landed."""
         task_id = effects.task_id
@@ -926,12 +968,7 @@ class TaskService:
             # FR-047: handing work in is a cause to wake the **Leader**, who owes the
             # judgement. FR-049 is the other half — the worker is not woken for its own
             # submission; it has nothing left to do until somebody answers.
-            await self._notify_leader(
-                project_id,
-                reason=wake_reason("task_in_review", task=updated.identifier or task_id),
-                source=WakeSource.TASK_IN_REVIEW,
-                detail="Judge it against the task's acceptance criteria.",
-            )
+            await self._call_the_leader_to_judge(project_id, updated)
         if target is TaskStatus.DONE:
             await self._notify_leader(
                 project_id,
@@ -1432,6 +1469,42 @@ class TaskService:
             reason=wake_reason(
                 "dependency_cleared", blocker=cleared_by.identifier or cleared_by.id
             ),
+        )
+
+    async def _call_the_leader_to_judge(self, project_id: UUID | None, task: Task) -> None:
+        """Wake the Leader **on the task** it has to judge (FR-047, FR-047b).
+
+        This used to leave by the project door, into the Leader's chat with the patron. A
+        run that is about the project is handed the project's commands and stands in the
+        chat's own directory: it could not open the task, read what was published, rate a
+        criterion or sign — it was told to judge and given nothing to judge with. Measured
+        2026-11-12 on a real team: the Leader answered the patron "I cannot read the report"
+        about work it had, under a mention on the task's own thread, already signed.
+
+        A judgement is about one task, so the wake is too. The Leader's run then carries the
+        task: the task's commands, the thread, and the directory the work was done in.
+
+        The project door is still the fallback for a project with nobody in the Leader's
+        seat — the cause is written down there, where a seat filled later can be told.
+        """
+        cause = wake_reason("task_in_review", task=task.identifier or task.id)
+        leader_id: UUID | None = None
+        if project_id is not None:
+            async with self._uow() as uow:
+                leader_id = await leader_marius_id(uow, project_id)
+        if leader_id is None:
+            await self._notify_leader(
+                project_id,
+                reason=cause,
+                source=WakeSource.TASK_IN_REVIEW,
+                detail="Judge it against the task's acceptance criteria.",
+            )
+            return
+        await self._wake.enqueue(
+            marius_id=leader_id,
+            task_id=task.id,
+            source=WakeSource.TASK_IN_REVIEW,
+            reason=cause,
         )
 
     async def _notify_leader(

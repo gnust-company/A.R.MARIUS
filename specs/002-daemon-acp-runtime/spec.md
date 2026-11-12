@@ -1175,6 +1175,13 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 ### Nhóm D — Phiên và mạch làm việc
 
 - **FR-023**: Mọi lượt gọi dậy trong **cùng một đầu việc** PHẢI nối lại **cùng một phiên** với agent.
+- **FR-023a**: Phiên ở FR-023 là của **một agent trên một đầu việc**. Nhiều agent được gọi dậy trên cùng một
+  đầu việc dùng chung thư mục làm việc (người kiểm thử mở đúng tệp người dựng viết) nhưng mỗi agent PHẢI có
+  **phiên riêng**; lượt đầu của một agent trên đầu việc là một lượt mới, không phải bắt đầu lại (FR-025a).
+  Server PHẢI nói kèm gói việc lượt chạy là **của agent nào**. Ghi chú phiên viết từ trước khi có điều
+  khoản này (không ghi tên agent) KHÔNG ĐƯỢC đưa cho một lượt chạy có nêu agent. *(Đo 2026-11-12: ba agent
+  trên một đầu việc nối chung một phiên — người kiểm thử đọc trọn suy nghĩ của người dựng như quá khứ của
+  chính mình, và model đổi giữa các lượt làm mất cache prompt mỗi lần.)*
 - **FR-024**: Hai đầu việc khác nhau PHẢI có hai phiên tách biệt, kể cả khi cùng một agent.
 - **FR-025**: Khi không nối lại được phiên cũ, hệ thống PHẢI mở phiên mới **và gửi cho agent một câu báo
   bằng tiếng Anh** nói rõ đây là bắt đầu lại cùng lý do.
@@ -1418,10 +1425,18 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
 - **FR-043b**: Bản rút gọn PHẢI ghi rõ **đã bị cắt** và **cắt mất bao nhiêu**, để người đọc không tưởng đó
   là toàn bộ kết quả.
 - **FR-044**: Hệ thống PHẢI ghi lại chữ agent sinh ra, phần suy luận nếu CLI có lộ, và mọi lỗi.
+- **FR-044a**: Chỉ chữ ở dòng **của agent** mới được ghi là chữ agent sinh ra. Chữ ở dòng mà CLI đưa *cho*
+  agent — kết quả công cụ, hay nội dung một skill CLI tự chèn vào hội thoại — KHÔNG ĐƯỢC ghi thành lời
+  agent. *(Đo 2026-11-12 trên claude 2.1.322: nguyên văn tệp skill hiện thành câu trả lời của Trưởng dự án
+  trong chat với người chủ.)*
 - **FR-045**: Các sự kiện của một lượt chạy PHẢI có **thứ tự xác định** và **không trùng**, để xem lại đúng
   trình tự đã xảy ra.
 - **FR-046**: Người dùng PHẢI xem được nhật ký này **trong lúc lượt chạy đang diễn ra**, không phải đợi
   xong, và không phải bấm tải lại (Hiến pháp — Điều IV).
+- **FR-046a**: Nhật ký **của chính daemon** PHẢI ghi một dòng khi một lượt chạy bắt đầu trên máy (lượt nào,
+  CLI nào, về đầu việc hay cuộc trò chuyện nào) và một dòng khi nó kết thúc (kết thúc thế nào, sau bao
+  lâu). Chỉ mã và chữ daemon tự chọn, không có chữ nào của agent. *(Đo 2026-11-12: 23 lượt chạy, nhật ký
+  không có dòng nào về chúng.)*
 - **FR-047**: Độ chi tiết ghi được PHỤ THUỘC khả năng từng CLI. Khi một CLI không lộ tham số hoặc kết quả
   công cụ, hệ thống PHẢI **đánh dấu rõ là thiếu và thiếu vì sao** — KHÔNG ĐƯỢC để khoảng trống trông như
   agent không gọi công cụ nào. Chỗ thiếu vì **CLI không lộ** phải phân biệt được với chỗ ngắn vì **bị cắt

@@ -103,6 +103,9 @@ class LeaderChatService:
         self._close_run = close_run
         self._bg: set[asyncio.Task[None]] = set()
         self._active: set[UUID] = set()  # conversation ids with an in-flight turn
+        # Conversations owed another turn as soon as the one in flight lets go (see
+        # `_spawn_turn`).
+        self._again: set[UUID] = set()
         # Runs handed to a machine, and the project whose chat is waiting on each. Held here
         # rather than looked up, because the door that reports a run's events reports
         # *every* run's events: a database read there would be one read per event across the
@@ -320,6 +323,11 @@ class LeaderChatService:
     # ── the isolated project-scoped turn ─────────────────────────────────────────
     def _spawn_turn(self, conversation_id: UUID) -> None:
         if conversation_id in self._active:
+            # A turn asked for from inside the one that is still unwinding — what was queued
+            # is delivered as the last act of the turn before it (FR-050). Starting it here
+            # would be refused as a duplicate and leave the conversation *thinking* with
+            # nothing behind it, so it is noted and started the moment this one lets go.
+            self._again.add(conversation_id)
             return
         self._active.add(conversation_id)
         bg = asyncio.create_task(self._run_turn(conversation_id))
@@ -344,6 +352,9 @@ class LeaderChatService:
             )
         finally:
             self._active.discard(conversation_id)
+            if conversation_id in self._again:
+                self._again.discard(conversation_id)
+                self._spawn_turn(conversation_id)
 
     async def _do_run_turn(self, conversation_id: UUID) -> None:
         async with self._uow() as uow:
@@ -395,9 +406,14 @@ class LeaderChatService:
             # not one more line of chat history. It is lifted out of the tail so it is said
             # once, in the part built to say it — and so its extra (FR-044a) rides along
             # instead of being flattened into a quote of something nobody said.
-            opening_wake = (
-                tail.pop() if tail and tail[-1].get("role") == "system" else None
-            )
+            #
+            # **Every** wake at the end of the tail, not only the last: causes that waited
+            # out the previous turn are delivered together (FR-050), and a turn told only
+            # the newest would read the others as old news it had already answered.
+            opening_wakes: list[dict] = []
+            while tail and tail[-1].get("role") == "system":
+                opening_wakes.insert(0, tail.pop())
+            opening_wake = opening_wakes[-1] if opening_wakes else None
             context = LeaderChatContext(
                 leader_name=leader.name,
                 project_id=project_id,
@@ -410,11 +426,15 @@ class LeaderChatService:
                     ChatTurn(role=str(t.get("role", "")), text=str(t.get("text", "")))
                     for t in tail
                 ],
-                wake_reason=(
-                    str(opening_wake.get("text", "")) if opening_wake else ""
+                wake_reason="\n".join(
+                    str(w.get("text", "")).strip()
+                    for w in opening_wakes
+                    if str(w.get("text", "")).strip()
                 ),
-                wake_detail=(
-                    str(opening_wake.get("detail", "")) if opening_wake else ""
+                wake_detail="\n\n".join(
+                    str(w.get("detail", "")).strip()
+                    for w in opening_wakes
+                    if str(w.get("detail", "")).strip()
                 ),
                 plan_items=plan_items,
                 leader_role_description=(
@@ -711,6 +731,74 @@ class LeaderChatService:
             "chat.state",
             {"state": str(state), "error": error} if error else {"state": str(state)},
         )
+        if ok:
+            # FR-050: a cause that arrives during a turn waits, and the need to wake is looked
+            # at again when the turn ends. This is that look. Only after a turn that worked —
+            # a Leader that just failed a turn is not asked to take another on the spot, and
+            # what is owed stays on the record for the next turn that does end well.
+            await self._deliver_queued(project_id)
+
+    async def _deliver_queued(self, project_id: UUID) -> None:
+        """Hand the Leader what arrived while it could not be handed anything (FR-050).
+
+        `notify` leaves a wake *queued* when the Leader is mid-turn, and until this existed
+        nothing ever read that queue: a patron who signed two tasks a few seconds apart had
+        the Leader told about the first and never about the second, nor that the batch was
+        closed — so no wrap-up was written and the project could not be brought to an end
+        (FR-043; measured 2026-11-12, two wakes still queued thirteen hours later).
+
+        Everything waiting goes into **one** turn. Several causes are not several reasons to
+        interrupt the Leader several times; they are one account of what changed while it was
+        busy, and the turn that reads them is told all of them at once.
+        """
+        async with self._uow() as uow:
+            owed = list(await uow.wakeups.list_queued_for_project(project_id))
+            if not owed:
+                return
+            conversation = await uow.leader_chats.get_by_project(project_id)
+            leader_id = await self._leader_of(uow, project_id)
+            leader = await uow.mariuses.get(leader_id) if leader_id else None
+            if (
+                conversation is None
+                or conversation.state == ChatState.THINKING
+                or leader is None
+                or leader.liveness not in _AVAILABLE
+            ):
+                # Still nobody to hand it to. It stays queued, and the next turn that ends
+                # well asks again.
+                return
+            now = utcnow()
+            announced: list[dict] = []
+            for wake in owed:
+                cause = wake.causes[0] if wake.causes else reason("leader_chat_message")
+                said = wake.reason or cause.render_en()
+                # `prompt` is the cause followed by what this call type owed on top of it
+                # (see `notify`); the part after the cause is the agent-only extra.
+                extra = (wake.prompt or "")[len(said) :].strip() if wake.prompt else ""
+                conversation.append_system(
+                    code=cause.code,
+                    params=dict(cause.params),
+                    text=said,
+                    detail=extra,
+                    ts=now,
+                )
+                announced.append(
+                    {"code": cause.code, "params": dict(cause.params), "text": said}
+                )
+                wake.status = WakeupStatus.DISPATCHED
+                wake.updated_at = now
+                await uow.wakeups.update(wake)
+            conversation.leader_marius_id = leader_id
+            conversation.state = ChatState.THINKING
+            conversation.updated_at = now
+            await uow.leader_chats.update(conversation)
+            await uow.commit()
+            conversation_id = conversation.id
+
+        for message in announced:
+            await self._publish(project_id, "system.message", message)
+        await self._publish(project_id, "chat.state", {"state": str(ChatState.THINKING)})
+        self._spawn_turn(conversation_id)
 
     # ── helpers ──────────────────────────────────────────────────────────────────
     async def _publish(self, project_id: UUID, event_type: str, payload: dict) -> None:

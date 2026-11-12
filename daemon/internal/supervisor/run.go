@@ -155,6 +155,12 @@ type RunOptions struct {
 
 	// Report is told about anything that went wrong which did not end the run.
 	Report func(error)
+	// Note is told when a run starts here and when it ends, one line each. The log used to say
+	// nothing between "asking for work" and the next sweep: a person reading it could not tell
+	// whether this machine had run anything at all, let alone what, and the only place to find
+	// out was the server (measured 2026-11-12, 23 runs and not a line about any of them).
+	// Ids and words this daemon chose — never anything the agent wrote.
+	Note func(string)
 	// Now is the clock, handed in so a test does not have to wait for one.
 	Now func() time.Time
 }
@@ -240,7 +246,23 @@ func (o RunOptions) see(ctx context.Context, grant Grant, release func()) {
 		return
 	}
 
-	o.remember(grant, req, prior, o.carry(ctx, grant, place, engine, req))
+	began := o.Now()
+	o.Note(fmt.Sprintf("Run %s started: %s, %s.", grant.RunID, place.CLI, about(grant)))
+	outcome, status := o.carry(ctx, grant, place, engine, req)
+	o.Note(fmt.Sprintf("Run %s ended: %s after %s.", grant.RunID, status, o.Now().Sub(began).Round(time.Second)))
+	o.remember(grant, req, prior, outcome)
+}
+
+// about says what a run is about in the words the log uses: a task, a conversation, or neither.
+func about(grant Grant) string {
+	switch {
+	case grant.TaskID != "":
+		return "task " + grant.TaskID
+	case grant.Conversation != "":
+		return "conversation " + grant.Conversation
+	default:
+		return "no task"
+	}
 }
 
 // remember writes down the conversation this run leaves behind, so the next wake on the same
@@ -263,7 +285,7 @@ func (o RunOptions) remember(
 			// start that failed for its own reasons. Leaving the note where it is would have the
 			// next wake offer the same dead handle and fail the same way, and the one after
 			// that, until the thread aged out (FR-025, FR-027).
-			if err := execenv.ForgetThread(req.WorkDir); err != nil {
+			if err := execenv.ForgetThread(req.WorkDir, grant.AgentID); err != nil {
 				o.Report(fmt.Errorf("forgetting the conversation of task %s: %w", grant.TaskID, err))
 			}
 		}
@@ -274,7 +296,7 @@ func (o RunOptions) remember(
 	if outcome.Session != prior.Handle || opened.IsZero() {
 		opened = now
 	}
-	if err := execenv.RememberThread(req.WorkDir, execenv.Thread{
+	if err := execenv.RememberThread(req.WorkDir, grant.AgentID, execenv.Thread{
 		Handle:     outcome.Session,
 		Workplace:  grant.WorkplaceID,
 		OpenedAt:   opened,
@@ -363,10 +385,12 @@ func (o RunOptions) prepare(
 	if err != nil {
 		return runtime.Request{}, "", execenv.Thread{}, err
 	}
-	// What this task was last saying, and whether it may still be said (FR-023, FR-027). Read
+	// What this agent was last saying on this task, and whether it may still be said (FR-023,
+	// FR-023a, FR-027). The agent's own thread and nobody else's: the directory is shared by
+	// everyone woken on the task, the conversation is not. Read
 	// before anything is built: a failure to read is not a reason to refuse the run — it is a
 	// new conversation with a sentence explaining itself (FR-025).
-	prior, verdict, err := execenv.RecallThread(workDir, o.Now(), o.SessionRetention)
+	prior, verdict, err := execenv.RecallThread(workDir, grant.AgentID, o.Now(), o.SessionRetention)
 	if err != nil {
 		return runtime.Request{}, "", execenv.Thread{}, err
 	}
@@ -456,7 +480,7 @@ func (o RunOptions) prepare(
 // carry runs the agent and reports how it went.
 func (o RunOptions) carry(
 	ctx context.Context, grant Grant, place Workplace, engine runtime.Runtime, req runtime.Request,
-) runtime.Outcome {
+) (runtime.Outcome, string) {
 	// Cancelled from three directions, and the run cannot tell which: the daemon being stopped,
 	// the server saying the run is not ours, and the agent going silent for too long. Each one
 	// ends the CLI and its whole process tree the same way.
@@ -485,8 +509,9 @@ func (o RunOptions) carry(
 	stop()
 	carrying.Wait()
 
+	status := o.verdict(err, silent(), endedFromOutside)
 	o.close(ctx, grant, Conclusion{
-		Status:  o.verdict(err, silent(), endedFromOutside),
+		Status:  status,
 		Error:   errorText(err),
 		Usage:   outcome.Usage,
 		Session: outcome.Session,
@@ -496,7 +521,7 @@ func (o RunOptions) carry(
 		// put it in front of a person (FR-032).
 		Failure: o.walledIn(err, silent(), endedFromOutside, outcome.Failure),
 	})
-	return outcome
+	return outcome, status
 }
 
 // watchSilence cuts a run that has stopped producing anything (FR-031).
@@ -662,6 +687,9 @@ func (o RunOptions) withDefaults() RunOptions {
 	}
 	if o.Report == nil {
 		o.Report = func(error) {}
+	}
+	if o.Note == nil {
+		o.Note = func(string) {}
 	}
 	if o.Now == nil {
 		o.Now = time.Now

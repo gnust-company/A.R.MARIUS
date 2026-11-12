@@ -1480,3 +1480,45 @@ tồn tại không có nghĩa là luật được canh; phải kiểm bài kiể
   mọi route `/agent/*` phải được tờ hướng dẫn nhắc tới. Chiều thứ hai mới là chiều đáng giá: chiều thứ
   nhất chỉ bắt lúc gỡ cửa, chiều thứ hai bắt lúc **thêm cửa mà quên dạy**, tức đúng cái lỗ đã nuốt cả
   phần Trưởng dự án. Đã chứng minh đỏ trên tờ hướng dẫn cũ: nó nêu đủ 1 cửa chết và 17 cửa bị bỏ quên
+
+## Giai đoạn 12: Một đội agent thật chạy trọn một dự án (2026-11-12)
+
+*Người chủ bảo dựng một đội ba agent chạy bằng `claude` trên chính máy này (Trưởng dự án dùng sonnet, hai thợ
+dùng haiku) rồi cho chúng tự làm một máy tính web. Vòng đời chạy trọn và sản phẩm đạt, nhưng lần chạy phơi ra
+năm chỗ dưới đây. Mỗi chỗ đều đo được trên dữ liệu của lần chạy ấy: dự án CALC, 2 đầu việc, 23 lượt chạy.*
+
+- [x] T205 **Gọi Trưởng dự án chấm bài ngay trên đầu việc** per FR-047b. `TaskService` thôi đưa cớ *chờ rà
+  soát* qua khung chat dự án mà mở một lượt chạy cho người ngồi ghế Trưởng dự án **về chính đầu việc đó**,
+  qua đúng cửa gọi dậy của đầu việc (nên vẫn chịu FR-048a và FR-050). Dự án chưa có Trưởng dự án thì giữ lối
+  cũ. Bài kiểm đi qua cửa thật ở `backend/tests/test_the_leader_reads_and_judges_its_own_project.py`.
+- [x] T206 **Trưởng dự án đọc được bảng việc của dự án mình** per FR-047c. Hai cửa chỉ-đọc
+  `GET /agent/projects/{id}/tasks` và `GET /agent/projects/{id}/tasks/{mã hoặc id}`, chỉ ghế Trưởng dự án,
+  tra đầu việc trong dự án của lượt chạy; hai lệnh `project tasks` và `project task` ở
+  `daemon/internal/callback/project.go`; tờ hướng dẫn và prompt chat của Trưởng dự án dạy dùng chúng thay
+  cho câu "use your read tools" không trỏ vào đâu.
+- [x] T207 **Giao nốt các cớ cấp dự án đã nằm chờ** per FR-050a. `LeaderChatService` đọc lại hàng chờ khi một
+  lượt kết thúc tốt và giao mọi cớ trong một lượt; phần *lý do gọi dậy* nhận nhiều dòng.
+- [x] T208 **Lượt chạy của người giữ việc bắt đầu thì đầu việc sang *đang làm*** per FR-024a. Nối vào chỗ máy
+  báo lượt chạy bắt đầu, đi qua cổng chuyển trạng thái thường.
+- [x] T209 **Danh bạ nói ai đang chạy** per FR-080b. Trường `running` trên mỗi agent, đọc từ lượt chạy đang
+  ở trạng thái *đang chạy*; giao diện đọc lại danh bạ khi có tin đẩy về lượt chạy.
+- [x] T210 **Giao diện theo kịp năm điều trên** per FR-043, FR-080b, FR-081. Phần này nằm ở nhánh giao diện
+  (`giao-dien-dai-quan-sat`): hộp thư, huy hiệu và trang Hôm nay chỉ đếm thư của workspace đang mở; thư
+  *công nhận đầu ra* hiện sản phẩm đã nộp (bản mới nhất của mỗi tên) và lời gần nhất trong luồng trao đổi;
+  thư *đợt việc đã khép* có đủ ba lựa chọn của FR-043 (đóng dự án phải bấm hai lần); tệp trùng tên có nhãn
+  bản; agent đang chạy hiện là *đang làm* và danh bạ đọc lại khi có tin về lượt chạy; bỏ cặp nút duyệt chết
+  trên thanh luồng trao đổi; dòng lỗi của chat tự tắt khi cuộc trò chuyện đi tiếp.
+
+**Xong 2026-11-13.** Bộ kiểm backend 1355 đạt, 0 trượt (hai bài cũ phải sửa cho khớp luật mới: bài đếm lời
+gọi soát đề bài nay bỏ qua hàng *đã gộp*, và bài ranh giới phiên tự lái lượt chạy trên một đầu việc không ai
+giữ). Mỗi bài mới đều được thử ngược: gỡ chỗ sửa thì bài đỏ.
+**Đo trên dịch vụ thật**, cùng đội ba agent ấy, sau khi dựng lại backend, frontend và daemon từ nhánh này:
+hai cớ nằm chờ mười ba giờ ("CALC-2 đã xong", "cả đợt đã khép") được giao ngay khi lượt kế tiếp kết thúc, và
+Trưởng dự án soạn bản tổng kết đợt, thư vào hộp thư người chủ; hỏi "bản cuối gồm file nào" thì Trưởng dự án tự
+mở bảng việc, trả lời đúng từng file kèm sha, và tự đính chính hai câu trả lời sai hôm trước. Mở đợt mới bằng
+một đầu việc nhỏ (CALC-3): đầu việc sang *đang làm* ngay lúc lượt chạy của thợ bắt đầu, Đài quan sát ghi "1
+agent đang chạy" và đặt thợ ở khu làm việc; lời gọi chấm bài tới Trưởng dự án là một lượt chạy **về CALC-3**
+và nó ký được ở đó; người chủ ký trong hộp thư, đợt khép, thư tổng kết thứ hai tới.
+**Còn hở, chưa làm:** Trưởng dự án báo trường chữ ký trên bảng việc trống dù đầu việc đã *xong*; lựa chọn
+"mở đợt mới" mới chỉ khép thư chứ chưa gọi Trưởng dự án dậy (FR-047 có nêu cớ này).
+
