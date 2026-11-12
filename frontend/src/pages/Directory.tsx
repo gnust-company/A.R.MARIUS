@@ -116,8 +116,12 @@ function AgentCard({ agent }: { agent: Marius }) {
         <p className="mt-3 flex min-w-0 items-center gap-1.5 font-mono text-[10px] text-ink-muted">
           <Cpu className="h-3.5 w-3.5 shrink-0" aria-hidden />
           <span className="truncate">
+            {/* The model beside the runtime, when one was picked: two agents on one CLI
+                can differ only in this, and the card is where a team is read at a glance. */}
             {agent.runtime
-              ? `${agent.runtime.cli_kind} · ${agent.runtime.machine_name}`
+              ? [agent.runtime.cli_kind, agent.runtimeOptions?.model, agent.runtime.machine_name]
+                  .filter(Boolean)
+                  .join(' · ')
               : t('agentDetail.runtimeNone')}
           </span>
         </p>

@@ -234,6 +234,8 @@ export interface MariusDTO {
   /** Where this agent works: which agent CLI, on which machine (FR-007o). `null` when it works
    *  nowhere — never placed, or its machine was taken out of the workspace. */
   runtime?: AgentRuntimeDTO | null
+  /** Whether this agent is carrying out a run right now. Absent from an older server. */
+  running?: boolean
   last_seen_at?: string | null
   created_at?: string | null
 }

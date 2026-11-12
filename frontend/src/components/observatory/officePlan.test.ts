@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { layoutOffice, zoneOf, type ObservedAgent, type ObservedTask } from './officePlan';
 
-const agent = (id: string, status: string, skills: string[] = ['api']): ObservedAgent => ({ id, name: id, status, skills });
+const agent = (id: string, status: string, placed = true): ObservedAgent => ({ id, name: id, status, placed });
 
 describe('zoneOf', () => {
   it('sends a task in review to the CEO even when the agent is offline', () => {
@@ -9,13 +9,24 @@ describe('zoneOf', () => {
     expect(zoneOf(agent('a', 'offline'), tasks)).toBe('patron');
   });
 
-  it('puts offline before setup, setup before work, work before lounge', () => {
-    expect(zoneOf(agent('a', 'offline', []), [])).toBe('clinic');
-    expect(zoneOf(agent('a', 'online', []), [])).toBe('setup');
+  it('puts offline before setup, a draft before work, work before lounge', () => {
+    expect(zoneOf(agent('a', 'offline', false), [])).toBe('clinic');
+    expect(zoneOf(agent('a', 'online', false), [])).toBe('setup');
     expect(zoneOf(agent('a', 'online'), [{ id: 't', status: 'draft', assigneeId: 'a' }])).toBe('setup');
     expect(zoneOf(agent('a', 'online'), [{ id: 't', status: 'blocked', assigneeId: 'a' }])).toBe('work');
     expect(zoneOf(agent('a', 'working'), [])).toBe('work');
     expect(zoneOf(agent('a', 'online'), [{ id: 't', status: 'done', assigneeId: 'a' }])).toBe('lounge');
+  });
+});
+
+describe('zoneOf, for a team that links no skills', () => {
+  it('lets an idle agent with a runtime rest in the lounge, not queue at reception', () => {
+    expect(zoneOf({ id: 'a', name: 'a', status: 'online', placed: true }, [])).toBe('lounge');
+    expect(zoneOf({ id: 'a', name: 'a', status: 'online' }, [])).toBe('lounge');
+  });
+
+  it('seats an agent that is working even when nothing says where it runs', () => {
+    expect(zoneOf(agent('a', 'working', false), [])).toBe('work');
   });
 });
 
