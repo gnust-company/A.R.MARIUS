@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Archive, Layers, Wrench } from 'lucide-react';
 
-import { changeProjectPhase, resolveInboxItem, type InboxItemDTO } from '@/lib/api';
+import { changeProjectPhase, openNextBatch, type InboxItemDTO } from '@/lib/api';
 import { errorText } from '@/lib/errors';
 
 interface Props {
@@ -31,10 +31,17 @@ const NEW_BATCH = 'mo_dot_moi';
  * Leader *proposing* a move, which names its target in prose and is answered on the project.
  *
  * Closing is the one answer that cannot be taken back, so it takes two presses.
+ *
+ * Another batch takes a step too, for a different reason: it is the one answer that is not
+ * complete without words. Chosen bare, it closed the letter and told nobody — the Leader,
+ * who has to turn it into tasks, slept on (found 2026-11-13). So it asks what goes in the
+ * batch and hands the Leader that sentence along with the news (FR-043a).
  */
 export default function PhaseDecisionActions({ item, frozen, busy, setBusy, onError, onDone }: Props) {
   const { t } = useTranslation();
   const [confirmingClose, setConfirmingClose] = useState(false);
+  const [planningBatch, setPlanningBatch] = useState(false);
+  const [note, setNote] = useState('');
 
   const offered = Array.isArray(item.attempt_dossier?.choices)
     ? (item.attempt_dossier.choices as unknown[]).filter((c): c is string => typeof c === 'string')
@@ -48,9 +55,9 @@ export default function PhaseDecisionActions({ item, frozen, busy, setBusy, onEr
     try {
       if (choice === CLOSE) await changeProjectPhase(projectId, 'closed');
       else if (choice === MAINTAIN) await changeProjectPhase(projectId, 'maintaining');
-      // A new batch changes no phase: the project stays in operation and the patron tells
-      // the Leader what comes next. The letter is what gets answered.
-      else await resolveInboxItem(item.id);
+      // A new batch changes no phase: the project stays where it is. The server closes
+      // this letter and wakes the Leader with the note, as one decision.
+      else await openNextBatch(projectId, note.trim());
       onDone();
     } catch (e) {
       onError(errorText(e, t));
@@ -62,15 +69,46 @@ export default function PhaseDecisionActions({ item, frozen, busy, setBusy, onEr
     <div className="mt-6" data-testid="inbox-phase-decision">
       <p className="font-body text-body-sm font-semibold text-ink-strong">{t('inbox.phase.question')}</p>
       <div className="mt-3 flex flex-col gap-2">
-        {offered.includes(NEW_BATCH) && (
-          <button className="btn btn-secondary h-auto min-h-[44px] justify-start whitespace-normal py-2.5 text-left" disabled={busy || frozen} onClick={() => void decide(NEW_BATCH)}>
-            <Layers className="h-4 w-4 shrink-0" aria-hidden />
-            <span className="min-w-0 text-left">
-              {t('inbox.phase.newBatch')}
-              <span className="block font-normal text-ink-muted">{t('inbox.phase.newBatchHint')}</span>
-            </span>
-          </button>
-        )}
+        {offered.includes(NEW_BATCH) &&
+          (planningBatch ? (
+            <div className="rounded-md border border-line px-3 py-3" data-testid="inbox-phase-new-batch">
+              <label htmlFor={`next-batch-${item.id}`} className="font-body text-body-sm font-semibold text-ink-strong">
+                {t('inbox.phase.newBatchAsk')}
+              </label>
+              <textarea
+                id={`next-batch-${item.id}`}
+                className="field mt-2 resize-y py-2.5"
+                rows={3}
+                value={note}
+                // The server caps this at 4000 characters; stopping it here means the writer
+                // finds out while typing rather than from a bare 422.
+                maxLength={4000}
+                disabled={busy || frozen}
+                autoFocus
+                placeholder={t('inbox.phase.newBatchPlaceholder')}
+                onChange={(e) => setNote(e.target.value)}
+              />
+              <p className="mt-1.5 font-body text-body-xs text-ink-muted">
+                {note.trim() ? t('inbox.phase.newBatchWithNote') : t('inbox.phase.newBatchNoNote')}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button className="btn btn-primary btn-sm" disabled={busy || frozen} onClick={() => void decide(NEW_BATCH)}>
+                  {t('inbox.phase.newBatchYes')}
+                </button>
+                <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => setPlanningBatch(false)}>
+                  {t('common.cancel')}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button className="btn btn-secondary h-auto min-h-[44px] justify-start whitespace-normal py-2.5 text-left" disabled={busy || frozen} onClick={() => setPlanningBatch(true)}>
+              <Layers className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="min-w-0 text-left">
+                {t('inbox.phase.newBatch')}
+                <span className="block font-normal text-ink-muted">{t('inbox.phase.newBatchHint')}</span>
+              </span>
+            </button>
+          ))}
         {offered.includes(MAINTAIN) && (
           <button className="btn btn-secondary h-auto min-h-[44px] justify-start whitespace-normal py-2.5 text-left" disabled={busy || frozen} onClick={() => void decide(MAINTAIN)}>
             <Wrench className="h-4 w-4 shrink-0" aria-hidden />
