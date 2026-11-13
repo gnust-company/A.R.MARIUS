@@ -319,9 +319,18 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 			Capabilities:   answered,
 		})
 	}
+	// Whether anybody is signed in to each CLI, asked of the CLI itself (FR-007r). Asked again
+	// for as long as the daemon runs — see the sign-in loop below — because unlike everything
+	// above it is not a fact about the moment the daemon started.
+	signedIn := askSignIns(ctx, swept.Found)
+	for kind, said := range signedIn {
+		if !said {
+			emit(out, "Nobody is signed in to %s on this machine, so it will be registered as not ready.\n", kind)
+		}
+	}
 
 	registered, err := session.SyncWorkplaces(ctx, client.WorkplacesRequest{
-		Workplaces:     reported,
+		Workplaces:     withSignIns(reported, signedIn),
 		SymlinkCapable: links.SymlinkCapable(),
 	})
 	if err != nil {
@@ -377,7 +386,16 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 	// What this machine can actually run, keyed the way work arrives: by workplace id. A
 	// workplace the server knows about but this daemon cannot drive is left out, and the ask
 	// loop below never asks for work there — see runtime.Supported.
+	//
+	// Held behind a pointer because it is not fixed for the life of the daemon any more: a
+	// workplace that was closed for want of a sign-in comes back when the person signs in, and
+	// the ask loop has to start asking for work there without a restart (FR-007r).
+	var placesNow atomic.Pointer[map[string]supervisor.Workplace]
 	places := workplacesOnThisMachine(registered.Workplaces, swept.Found, answers)
+	placesNow.Store(&places)
+	// What `status` reads, kept current by the same loop.
+	var workplacesNow atomic.Pointer[[]client.RegisteredWorkplace]
+	workplacesNow.Store(&registered.Workplaces)
 	// Said only for the CLIs this build genuinely cannot drive, and not for a workplace that
 	// simply is not ready: one is a gap in this program, the other is a machine reporting
 	// honestly about itself, and telling the operator the wrong one sends them to fix the wrong
@@ -414,6 +432,8 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 		emit(out, "%s\n", pulled)
 	}
 
+	// One buffered slot: a question already waiting to be asked is the same question.
+	askSignInAgain := make(chan struct{}, 1)
 	held := &supervisor.Runs{}
 	// Stops the ask loop, so the question *is this machine idle* can be answered for certain
 	// before an update restarts it (FR-008n).
@@ -427,7 +447,7 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 		CallbackProgram:  callback,
 		SessionRetention: settings.SessionRetention.Duration(),
 		Workplace: func(id string) (supervisor.Workplace, bool) {
-			place, known := places[id]
+			place, known := (*placesNow.Load())[id]
 			return place, known
 		},
 		Runtime:  runtimeFor,
@@ -436,6 +456,18 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 		Watchdog: watchdog,
 		Report:   func(err error) { emit(out, "run: %v\n", err) },
 		Note:     func(line string) { emit(out, "%s\n", line) },
+		Ended: func(_, failure string) {
+			if failure != failureCredentialRejected {
+				return
+			}
+			// The provider refused the sign-in a run was carried out with, and the server has
+			// closed the workplace on it. Ask the CLI now and say what it answers: that report
+			// is what reopens the workplace, or says in plainer words why it stays closed.
+			select {
+			case askSignInAgain <- struct{}{}:
+			default:
+			}
+		},
 	}
 
 	// **Runs do not stop when the daemon is told to stop** (FR-034). Every loop below is on
@@ -471,8 +503,9 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 			Admit:    gate.Admit,
 			Capacity: func() int { return settings.MaxConcurrentRuns - held.Count() },
 			Workplaces: func() []string {
-				ids := make([]string, 0, len(places))
-				for id := range places {
+				open := *placesNow.Load()
+				ids := make([]string, 0, len(open))
+				for id := range open {
 					ids = append(ids, id)
 				}
 				return ids
@@ -499,6 +532,38 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 				work.Start(runCtx, grant)
 			},
 			Report: func(err error) { emit(out, "asking for work: %v\n", err) },
+		})
+	}()
+
+	go func() {
+		_ = supervisor.RunSignInLoop(ctx, supervisor.SignInOptions{
+			Interval: settings.SignInInterval.Duration(),
+			Ask:      func(ctx context.Context) map[string]bool { return askSignIns(ctx, swept.Found) },
+			Reported: signedIn,
+			Again:    askSignInAgain,
+			Tell: func(ctx context.Context, heard map[string]bool) error {
+				again, err := session.SyncWorkplaces(ctx, client.WorkplacesRequest{
+					Workplaces:     withSignIns(reported, heard),
+					SymlinkCapable: links.SymlinkCapable(),
+				})
+				if err != nil {
+					return err
+				}
+				before := *workplacesNow.Load()
+				for _, line := range readinessNews(before, again.Workplaces) {
+					emit(out, "%s\n", line)
+				}
+				open := workplacesOnThisMachine(again.Workplaces, swept.Found, answers)
+				placesNow.Store(&open)
+				workplacesNow.Store(&again.Workplaces)
+				// A workplace that just opened may have work queued behind it.
+				select {
+				case nudges <- struct{}{}:
+				default:
+				}
+				return nil
+			},
+			Report: func(err error) { emit(out, "reporting sign-ins: %v\n", err) },
 		})
 	}()
 
@@ -595,6 +660,7 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 				state.LastBeatOKAt = time.Now()
 				state.LastBeatError = ""
 			}
+			state.Workplaces = *workplacesNow.Load()
 			// A state file that cannot be written is not worth ending a healthy daemon over:
 			// the machine is doing its job, and the only thing lost is this machine's own
 			// account of it.
@@ -653,6 +719,61 @@ func runStart(ctx context.Context, args []string, out io.Writer) error {
 		return restarting{program: program}
 	}
 	return err
+}
+
+// failureCredentialRejected is the server's code for a run the provider refused to sign in. The
+// same word the runtime writes on such a run; said here because this file is what acts on it.
+const failureCredentialRejected = "credential_rejected" //nolint:gosec // G101: a code naming an ending, not a credential
+
+// askSignIns asks every CLI found here whether anybody is signed in to it (FR-007r).
+//
+// Only the ones that answered are in the result. A CLI with no way of being asked, or whose
+// answer could not be read, is left out — and left out travels to the server as *unknown*,
+// never as signed out.
+func askSignIns(ctx context.Context, found []discovery.Found) map[string]bool {
+	heard := make(map[string]bool, len(found))
+	for _, cli := range found {
+		if said := discovery.AskSignIn(ctx, cli, discovery.Options{}).Reported(); said != nil {
+			heard[string(cli.Kind)] = *said
+		}
+	}
+	return heard
+}
+
+// withSignIns is this machine's list of workplaces carrying the latest answers. A copy: the
+// list it was given is read again by every later report.
+func withSignIns(reported []client.WorkplaceReport, signedIn map[string]bool) []client.WorkplaceReport {
+	carrying := make([]client.WorkplaceReport, len(reported))
+	for i, one := range reported {
+		one.SignedIn = nil
+		if said, asked := signedIn[one.CLIKind]; asked {
+			one.SignedIn = &said
+		}
+		carrying[i] = one
+	}
+	return carrying
+}
+
+// readinessNews is one line for each workplace whose readiness is not what it was, in the same
+// words registering uses.
+func readinessNews(before, after []client.RegisteredWorkplace) []string {
+	was := make(map[string]client.RegisteredWorkplace, len(before))
+	for _, workplace := range before {
+		was[workplace.ID] = workplace
+	}
+	var lines []string
+	for _, workplace := range after {
+		old, known := was[workplace.ID]
+		if known && old.Ready == workplace.Ready && old.NotReadyReason == workplace.NotReadyReason {
+			continue
+		}
+		state := "ready"
+		if !workplace.Ready {
+			state = "not ready (" + workplace.NotReadyReason + ")"
+		}
+		lines = append(lines, fmt.Sprintf("%s on %s: now %s", workplace.CLIKind, workplace.MachineName, state))
+	}
+	return lines
 }
 
 // workplacesOnThisMachine pairs what the server now holds with what was actually found here.

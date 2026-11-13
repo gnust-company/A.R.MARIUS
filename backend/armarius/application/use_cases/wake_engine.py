@@ -16,7 +16,7 @@ this policy reacting to a finished/dropped run.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from uuid import UUID
 
 from armarius.application.ports.adapter import (
@@ -125,6 +125,14 @@ class WakeEngine:
         # common in-process case from doing redundant work — it is not the guarantee.
         self._lock = asyncio.Lock()
         self._bg: set[asyncio.Task[None]] = set()
+        # Who is told when a run this process carries out itself has begun. The machine's
+        # door has had such a list since FR-024a; this is the same news on the other road,
+        # so a task does not read *todo* for a whole run just because of where it ran.
+        self._on_begun: list[Callable[[UUID], Awaitable[None]]] = []
+
+    def when_a_run_begins(self, told: Callable[[UUID], Awaitable[None]]) -> None:
+        """Register somebody owed the news that an in-process run has started."""
+        self._on_begun.append(told)
 
     # ------------------------------------------------------------------ enqueue
 
@@ -985,6 +993,11 @@ class WakeEngine:
             )
             await self._tee_task(task.id, "run.queued", {"prompt_preview": prompt[:400]})
             await self.announce_run(run, marius)
+            for told in self._on_begun:
+                try:
+                    await told(run_id)
+                except Exception:  # noqa: BLE001 - a listener's trouble is not the run's
+                    logger.exception("a listener failed on run %s starting", run_id)
 
             seq = 0
             assistant_parts: list[str] = []

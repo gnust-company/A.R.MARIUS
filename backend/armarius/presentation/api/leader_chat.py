@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends
 from armarius.domain.entities.task import TaskStatus
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.api.frozen import refuse_when_frozen
+from armarius.presentation.api.task_view import task_out, tasks_out
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
     LeaderChatOut,
@@ -82,7 +83,7 @@ async def list_proposed_tasks(
     items = await container.tasks.list_by_project(
         project_id, statuses=[str(TaskStatus.DRAFT)]
     )
-    return [TaskOut.model_validate(t) for t in items]
+    return await tasks_out(container, items)
 
 
 @router.post("/tasks/{task_id}/approve", response_model=TaskOut)
@@ -94,7 +95,7 @@ async def approve_task(
         raise NotFound("task_not_found")
     await _require_owned_project(container, user, task.project_id)
     approved = await container.tasks.approve_proposed(task_id)
-    return TaskOut.model_validate(approved)
+    return await task_out(container, approved)
 
 
 @router.post("/tasks/{task_id}/reject", response_model=TaskOut)
@@ -106,4 +107,4 @@ async def reject_task(
         raise NotFound("task_not_found")
     await _require_owned_project(container, user, task.project_id)
     rejected = await container.tasks.reject_proposed(task_id)
-    return TaskOut.model_validate(rejected)
+    return await task_out(container, rejected)

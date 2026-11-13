@@ -55,6 +55,11 @@ REASON_LINK_UNSUPPORTED = "link_unsupported"
 #: reinstall a CLI, the other to start the daemon again. Without this code a routine restart
 #: told every operator their agent CLI had been uninstalled.
 REASON_DAEMON_STOPPED = "daemon_stopped"
+# The CLI is installed and runs, and nobody is signed in to it — or the sign-in lapsed. The
+# workplace cannot do a turn until a person signs in on that machine, and saying so before
+# the first run fails is the difference between a screen that reads *ready* over a dead
+# login and one that tells the person what to do (measured 2026-11-11: it read *ready*).
+REASON_CLI_SIGNED_OUT = "cli_signed_out"
 
 # The range a machine's ceiling may be set to (FR-008).
 #
@@ -81,6 +86,10 @@ class ReportedWorkplace:
     cli_version: str = ""
     protocol_family: str = ""
     capabilities: dict[str, object] = field(default_factory=dict)
+    # Whether the CLI says somebody is signed in to it, when the machine could ask (FR-007r).
+    # Three answers on purpose: True and False are what the CLI said, and None is a CLI
+    # that has no way of being asked — which must never be read as either.
+    signed_in: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -271,8 +280,14 @@ class DaemonWorkplaceService:
                     row.cli_version = one.cli_version
                     row.protocol_family = one.protocol_family
                     row.capabilities = one.capabilities
-                    row.ready = blocked is None
-                    row.not_ready_reason = blocked
+                    # Signed out is the CLI's own answer, asked without running a turn
+                    # (FR-007r). Only a plain *no* closes the workplace: a CLI that could
+                    # not be asked is offered exactly as it was before anyone could ask.
+                    why = blocked or (
+                        REASON_CLI_SIGNED_OUT if one.signed_in is False else None
+                    )
+                    row.ready = why is None
+                    row.not_ready_reason = why
                     row.updated_at = now
 
                 # Whatever is left in `stored` was registered before and is not on the machine

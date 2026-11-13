@@ -163,7 +163,20 @@ type RunOptions struct {
 	Note func(string)
 	// Now is the clock, handed in so a test does not have to wait for one.
 	Now func() time.Time
+	// CarryEvery is how often a run's home is looked at for a sign-in the CLI renewed, so it
+	// can be carried back to the operator's own (FR-007s). Zero takes defaultCarryEvery.
+	CarryEvery time.Duration
+	// Ended is told how each run on this machine ended, by workplace kind and failure code —
+	// what lets the daemon ask a CLI about its sign-in again the moment the provider refuses
+	// it, instead of on the next slow tick (FR-007r). Optional.
+	Ended func(cli, failure string)
 }
+
+// defaultCarryEvery is short because of who else is waiting: once a CLI has renewed its sign-in
+// inside a run, the operator's own file holds a spent one until it is carried back, and anything
+// else on the machine that starts in that window meets a sign-in that cannot be renewed. Cheap
+// enough to be short — one lstat of one path.
+const defaultCarryEvery = 2 * time.Second
 
 // Do carries one granted run from being handed over to being closed (FR-015, FR-039).
 //
@@ -216,6 +229,9 @@ func (o RunOptions) see(ctx context.Context, grant Grant, release func()) {
 	// the run is a link out to a store that is not in here, so taking it away takes away
 	// nothing that will be wanted again (FR-023).
 	defer func() {
+		// Last look before the home goes: a sign-in renewed in the final seconds of the run is
+		// still only in here, and deleting the home deletes the only good copy (FR-007s).
+		o.carryBack(grant, place.CLI, home)
 		if err := os.RemoveAll(home); err != nil {
 			o.Report(fmt.Errorf("clearing the home of run %s: %w", grant.RunID, err))
 		}
@@ -248,9 +264,51 @@ func (o RunOptions) see(ctx context.Context, grant Grant, release func()) {
 
 	began := o.Now()
 	o.Note(fmt.Sprintf("Run %s started: %s, %s.", grant.RunID, place.CLI, about(grant)))
+	watched := make(chan struct{})
+	go o.keepSignInCurrent(grant, place.CLI, home, watched)
 	outcome, status := o.carry(ctx, grant, place, engine, req)
+	close(watched)
 	o.Note(fmt.Sprintf("Run %s ended: %s after %s.", grant.RunID, status, o.Now().Sub(began).Round(time.Second)))
 	o.remember(grant, req, prior, outcome)
+	if o.Ended != nil {
+		o.Ended(place.CLI, outcome.Failure)
+	}
+}
+
+// keepSignInCurrent carries a renewed sign-in back to the operator's home while the run is
+// still going, rather than only at the end (FR-007s).
+//
+// During, because a run can last an hour and the operator's file is spent from the moment the
+// CLI renews: another run starting on this machine, or the operator opening their own terminal,
+// reads the spent one and is told its session cannot be refreshed.
+func (o RunOptions) keepSignInCurrent(grant Grant, cli, home string, done <-chan struct{}) {
+	every := o.CarryEvery
+	if every <= 0 {
+		every = defaultCarryEvery
+	}
+	tick := time.NewTicker(every)
+	defer tick.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-tick.C:
+			o.carryBack(grant, cli, home)
+		}
+	}
+}
+
+// carryBack looks once, and says so only when something was carried. The line names the run,
+// the CLI and the file — never what is in it.
+func (o RunOptions) carryBack(grant Grant, cli, home string) {
+	carried, err := execenv.CarryBack(cli, home, o.OperatorHome)
+	if err != nil {
+		o.Report(fmt.Errorf("run %s: %w", grant.RunID, err))
+	}
+	for _, path := range carried {
+		o.Note(fmt.Sprintf("Run %s: %s renewed its sign-in; carried %s back to this machine's own.",
+			grant.RunID, cli, path))
+	}
 }
 
 // about says what a run is about in the words the log uses: a task, a conversation, or neither.

@@ -773,8 +773,14 @@ class LeaderChatService:
                 cause = wake.causes[0] if wake.causes else reason("leader_chat_message")
                 said = wake.reason or cause.render_en()
                 # `prompt` is the cause followed by what this call type owed on top of it
-                # (see `notify`); the part after the cause is the agent-only extra.
-                extra = (wake.prompt or "")[len(said) :].strip() if wake.prompt else ""
+                # (see `notify`); the part after the cause is the agent-only extra. That
+                # shape is `notify`'s and nobody else's, so it is checked rather than
+                # assumed: a queued wake written any other way keeps its whole prompt as
+                # the extra, instead of losing its first words to a blind cut.
+                packet = wake.prompt or ""
+                extra = (
+                    packet[len(said) :].strip() if packet.startswith(said) else packet.strip()
+                )
                 conversation.append_system(
                     code=cause.code,
                     params=dict(cause.params),

@@ -817,6 +817,49 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
     hết dùng được — agent báo offline, đầu việc đậu lại, Trưởng dự án được báo — nên không dựng đường thứ
     hai. Chỗ làm đang đóng thì **giữ nguyên lý do cũ**: câu trả lời đầu là câu đã đo được, đè lên nó bằng
     một câu muộn hơn và mơ hồ hơn là cách đẩy người đọc đi sửa nhầm thứ.
+  - **Bổ sung 2026-11-13**: lời khai *nhà cung cấp từ chối đăng nhập* (`credential_rejected`) cũng đóng chỗ
+    làm, cùng lý lẽ: đăng nhập là của chỗ làm, agent kế tiếp tới đó sẽ đâm vào đúng bức tường ấy. Đường về
+    là FR-007r.
+- **FR-007r**: *Sẵn sàng* PHẢI gồm cả việc **có người đang đăng nhập CLI ấy**, khi CLI có cách để hỏi mà
+  không phải chạy một lượt. Daemon PHẢI hỏi chính CLI, báo câu trả lời kèm danh sách chỗ làm, và **hỏi lại
+  định kỳ** suốt lúc nó chạy (mặc định 5 phút, chỉnh được bằng `sign_in_interval`). CLI nói *không* thì chỗ
+  làm đóng với lý do `cli_signed_out`; nói *có* trở lại thì chỗ làm **tự mở**, không cần khởi động lại
+  daemon. Ba điều KHÔNG ĐƯỢC làm:
+  - **Không coi "không hỏi được" là "chưa đăng nhập".** CLI không có lệnh để hỏi, lệnh hỏng, hay trả lời
+    không đúng hình dạng đã đo, đều là *không biết* và được báo là không có gì. Gemini và Codex hôm nay
+    thuộc nhóm này vì chưa đo được lệnh nào của chúng.
+  - **Không đưa lệnh hỏi cho một CLI chưa tự liệt kê lệnh ấy trong `--help`.** Một bản CLI quá cũ sẽ không
+    từ chối mấy chữ ấy mà coi chúng là lời người gõ, và một daemon hỏi mỗi năm phút sẽ thành mỗi năm phút
+    chạy một lượt trên tài khoản của người ta.
+  - **Không đợi nhịp kế tiếp khi vừa có lượt chạy bị từ chối đăng nhập.** Daemon hỏi lại ngay và báo câu
+    trả lời dù nó không đổi, vì bản báo ấy là thứ duy nhất mở lại chỗ làm server vừa đóng.
+
+  *(Đo 2026-11-11: phiên đăng nhập `claude` hết hạn, mọi lượt chạy hỏng ngay dòng đầu, và màn Máy ghi "Sẵn
+  sàng" suốt thời gian ấy, vì "sẵn sàng" trước giờ chỉ có nghĩa là CLI trả lời được `--version`. Đo
+  2026-11-13 trên claude 2.1.322: `claude auth status --json` in `"loggedIn": true` và thoát 0 khi đã đăng
+  nhập; ở một thư mục nhà chưa ai đăng nhập thì in `"loggedIn": false` và thoát 1. Lệnh chạy tại chỗ, không
+  gọi model.)* Agent trên chỗ làm vừa đóng hay vừa mở đổi trạng thái ở lần kiểm kế tiếp của chúng, không
+  phải ngay lập tức: FR-006e đã để việc ấy ngoài phạm vi.
+- **FR-007s**: Tệp đăng nhập mà một CLI **thay thế** thay vì ghi xuyên qua liên kết PHẢI được daemon **mang
+  về thư mục nhà thật của người vận hành** và đặt lại liên kết: trong lúc lượt chạy còn diễn ra (mỗi vài
+  giây nhìn một lần) và một lần cuối trước khi thư mục nhà của lượt chạy bị xoá. Tệp nào thuộc loại này là
+  một dòng khai trong bảng của từng CLI, không phải luật chung. Daemon KHÔNG ĐƯỢC chép đè khi tệp của người
+  vận hành mới hơn (họ vừa đăng nhập lại), KHÔNG ĐƯỢC chép một tệp không phải JSON hợp lệ, KHÔNG ĐƯỢC xoá
+  đăng nhập của người vận hành vì CLI đăng xuất bên trong một lượt chạy, và KHÔNG ĐƯỢC ghi nội dung tệp vào
+  nhật ký. Nếu tệp của người vận hành tự nó là một liên kết thì ghi vào đích của liên kết ấy.
+  - **Vì sao**: thư mục nhà của lượt chạy *liên kết* tệp đăng nhập của người vận hành để agent khỏi đăng
+    nhập lại. Liên kết chỉ che được việc đọc. Claude Code gia hạn đăng nhập bằng cách ghi một tệp tạm cạnh
+    tên rồi **đổi tên đè lên tên**; phép đổi tên rơi lên chính cái liên kết chứ không xuyên qua nó. Bản
+    đăng nhập mới thành một tệp thường trong thư mục sẽ bị xoá khi lượt chạy kết thúc, còn tệp thật của
+    người vận hành vẫn giữ bản cũ. Token gia hạn chỉ dùng được một lần, nên bản cũ ấy không gia hạn được
+    nữa: mọi lượt chạy sau, và cả terminal của chính người vận hành, báo *session expired and could not be
+    refreshed* trên một cái máy không ai đăng xuất (thấy ngày 2026-11-11).
+  - **Bằng chứng tới đâu** (ghi thẳng, 2026-11-13): cách ghi nói trên đọc được từ chính binary claude
+    2.1.322 (ghi tệp tạm rồi đổi tên; nhánh ghi tại chỗ mở bằng `O_NOFOLLOW`), và mô phỏng đúng cách ghi ấy
+    trong thư mục nhà của một lượt chạy thật thì daemon mang tệp về trong hai giây. **Chưa bắt được một lần
+    CLI tự gia hạn thật** giữa lượt chạy, vì token còn hạn suốt buổi đo. Nghi phạm thứ hai của ngày
+    2026-11-11 (daemon bật từ phiên desktop nên agent thừa hưởng biến môi trường của phiên) vẫn chưa bị
+    loại.
 - **FR-007d**: Hệ thống PHẢI bảo đảm **một lượt chạy chỉ được đúng một máy nhận**. Khi một lượt chạy bị
   tuyên là hỏng, **token của lượt chạy ấy** PHẢI bị thu hồi ngay, để một tiến trình ngủ dậy muộn không ghi
   thêm được gì vào đầu việc.

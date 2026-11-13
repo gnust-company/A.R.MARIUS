@@ -33,6 +33,8 @@ from armarius.domain.entities.role import Role
 from armarius.domain.entities.seat_grant import SeatGrant
 from armarius.domain.services import project_key, project_rules
 from armarius.domain.services.project_rules import ProjectClosed
+from armarius.domain.services.wake_reason import WakeReason
+from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.shared.clock import utcnow
 from armarius.shared.errors import BadRequest, CodedError, NotFound
 from armarius.shared.logging import get_logger
@@ -864,7 +866,101 @@ class ProjectService:
             await self._retire_open_letters(project_id)
         else:
             await self._resolve_phase_questions(project_id, updated.created_by_user_id)
+            # The Leader runs this project and has just had its phase moved under it
+            # (FR-047). A closed project is the one move with nobody left to tell (FR-005).
+            await self._tell_the_leader(
+                project_id,
+                wake_reason("phase_changed", phase=str(target_phase)),
+                detail=f"What the patron wrote: {reason}" if (reason or "").strip() else "",
+            )
         return updated
+
+    async def open_next_batch(
+        self, project_id: UUID, *, user_id: str, note: str | None = None
+    ) -> bool:
+        """The patron answers a finished batch with *another one* (FR-043a).
+
+        Returns whether this call is what answered. The other two answers to the same
+        letter are phase changes and already had a door; this one changes no phase, so it
+        used to be nothing but the letter being closed — and the Leader, the only one who
+        can turn *another batch* into tasks, was never told. Measured 2026-11-13: the
+        patron chose it, the letter left the inbox, and the project sat with every task
+        done and nobody awake.
+
+        Answering is closing the letter **and** waking the Leader, as one decision. A
+        repeat finds no letter waiting and does nothing: pressing twice must not call the
+        Leader twice for one answer (the same rule a Mức 3 answer follows, FR-061e).
+        """
+        async with self._uow() as uow:
+            project = await self._writable(uow, project_id)
+            if not project_rules.accepts_real_tasks(project.status):
+                # Before the plan is approved there is no batch to follow: the phase the
+                # project is in refuses the move, which is what this refusal already means.
+                raise project_rules.InvalidPhaseTransition(
+                    "project_not_ready_for_tasks", status=str(project.status)
+                )
+            recipient = project.created_by_user_id
+
+        answered = await self._close_batch_letters(project_id, recipient)
+        if not answered:
+            return False
+
+        await self._publish(
+            project_id, "project.batch_opened", {"decided_by": user_id}
+        )
+        wanted = (note or "").strip()
+        await self._tell_the_leader(
+            project_id,
+            wake_reason("new_batch_opened"),
+            detail=(
+                f"What the patron wants in it: {wanted}"
+                if wanted
+                else (
+                    "The patron left no note on what goes in it. Ask them in this chat "
+                    "before you create anything."
+                )
+            ),
+        )
+        return True
+
+    async def _close_batch_letters(
+        self, project_id: UUID, recipient: str | None
+    ) -> int:
+        """Close the wrap-up letters still waiting on this project. Returns how many.
+
+        Only the letters that *offered* another batch. A Leader's proposal to change phase
+        is the same kind of letter and a different question; closing it here would record
+        an answer to something the patron was never asked.
+        """
+        if self._inbox is None or not recipient:
+            return 0
+        from armarius.domain.entities.inbox_item import InboxItemKind
+
+        closed = 0
+        for item in await self._inbox.list_for(recipient, project_id=project_id):
+            offered = (item.attempt_dossier or {}).get("choices") or ()
+            if item.kind is InboxItemKind.PHASE_DECISION and "mo_dot_moi" in offered:
+                await self._inbox.resolve(item.id)
+                closed += 1
+        return closed
+
+    async def _tell_the_leader(
+        self, project_id: UUID, reason: WakeReason, *, detail: str = ""
+    ) -> None:
+        """Wake the Leader about a decision the patron just made on the project."""
+        if self._leader_chat is None:
+            return
+        from armarius.domain.entities.run import WakeSource
+
+        try:
+            await self._leader_chat.notify(
+                project_id=project_id,
+                source=WakeSource.PATRON_DECISION,
+                reason=reason,
+                detail=detail,
+            )
+        except LookupError:  # pragma: no cover - project vanished mid-flight
+            return
 
     async def _announce_planning(self, project_id: UUID) -> None:
         """The roster just filled and everyone is online — wake the Leader once (FR-002).
@@ -885,7 +981,6 @@ class ProjectService:
         if self._leader_chat is None:
             return
         from armarius.domain.entities.run import WakeSource
-        from armarius.domain.services.wake_reason import reason as wake_reason
 
         try:
             await self._leader_chat.notify(

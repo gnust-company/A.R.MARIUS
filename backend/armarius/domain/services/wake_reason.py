@@ -87,6 +87,10 @@ ENGLISH: dict[str, str] = {
     "roster_complete": "The roster is full and everyone is online. Go and plan.",
     "context_change_requested": "The patron asked for changes to the project context.",
     "plan_decided": "The patron decided on the plan: {decision}.",
+    # The two decisions FR-047 names beside the plan gate, which nothing fired until a
+    # patron chose *another batch* and the Leader slept through it (2026-11-13).
+    "phase_changed": "The patron moved the project to '{phase}'.",
+    "new_batch_opened": "The patron opened a new batch of work.",
     "patron_rejected_output": (
         "The patron refused the output of {task}: {note}. It went back to the same worker "
         "— review what you passed and decide what has to change."

@@ -24,6 +24,7 @@ func TestDefaultsAreTheNumbersTheResearchSettledOn(t *testing.T) {
 		{"tool_result_inline_limit_bytes", c.ToolResultInlineLimit, 2048},
 		{"max_concurrent_runs", c.MaxConcurrentRuns, 5},
 		{"sweep_interval", c.SweepInterval.Duration(), 2 * time.Hour},
+		{"sign_in_interval", c.SignInInterval.Duration(), 5 * time.Minute},
 		{"work_dir_retention", c.WorkDirRetention.Duration(), 24 * time.Hour},
 		{"session_retention", c.SessionRetention.Duration(), 14 * 24 * time.Hour},
 		{"orphan_retention", c.OrphanRetention.Duration(), 72 * time.Hour},
@@ -151,6 +152,7 @@ func TestSettingsThatWouldStopTheMachineWorkingAreRefused(t *testing.T) {
 		"no room for any tool output": `{"tool_result_inline_limit_bytes": 0}`,
 		"no room for any run":         `{"max_concurrent_runs": 0}`,
 		"a sweep that never comes":    `{"sweep_interval": "0s"}`,
+		"a sign-in never asked again": `{"sign_in_interval": "0s"}`,
 		"nothing kept at all":         `{"work_dir_retention": "0s"}`,
 		"no conversation kept":        `{"session_retention": "0s"}`,
 	} {

@@ -223,6 +223,54 @@ async def test_a_run_that_runs_out_of_quota_closes_the_workplace_for_everyone_on
         )
 
 
+async def test_a_refused_login_closes_the_workplace_until_the_machine_reports_again() -> None:
+    """FR-007c, FR-007r — the login belongs to the workplace exactly as the quota does.
+
+    Left open, the next agent is sent to the same refusal and the screen goes on reading
+    *ready* over a login that takes nothing. The way back is not a restart: the machine
+    asks its CLI again and reports what it heard, and that report is what reopens it.
+    """
+    async with _client() as c:
+        machine, alice, bob = await _two_agents_on_one_machine(c, "login@t.dev")
+        project = await a_project(machine.workspace_id)
+        task = await a_task(project, assigned_to=alice)
+        await _in_progress(task)
+        run_id = await shelve(marius_id=alice, task_id=task)
+
+        await _take_and_end(c, machine, run_id, failure=CREDENTIAL_REJECTED)
+
+        place = await _workplace(machine.workplace_id)
+        assert place.ready is False
+        assert place.not_ready_reason == CREDENTIAL_REJECTED
+        reasons = await _offline_reasons(c, machine)
+        assert reasons["Alice"] == CREDENTIAL_REJECTED
+        assert reasons["Bob"] == CREDENTIAL_REJECTED
+
+        # The person signed in again; the daemon asked the CLI and says so.
+        reported = await c.put(
+            "/daemon/workplaces",
+            json={
+                "workplaces": [
+                    {
+                        "cli_kind": place.cli_kind,
+                        "cli_version": place.cli_version,
+                        "protocol_family": place.protocol_family,
+                        "capabilities": place.capabilities,
+                        "signed_in": True,
+                    }
+                ],
+                "symlink_capable": True,
+            },
+            headers=auth(machine.token),
+        )
+        assert reported.status_code == 200, reported.text
+
+        place = await _workplace(machine.workplace_id)
+        assert place.ready is True and place.not_ready_reason is None
+        back = await _offline_reasons(c, machine)
+        assert (back["Alice"], back["Bob"]) == (None, None)
+
+
 async def test_a_run_that_runs_out_of_quota_is_never_started_again() -> None:
     """The whole point, measured where it costs: no second run row on that task."""
     async with _client() as c:

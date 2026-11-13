@@ -60,7 +60,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from armarius.application.ports.work_packet import SkillBundle, WorkPacket
 from armarius.domain.entities.project import ProjectStatus
 from armarius.domain.entities.run import RunStatus
-from armarius.domain.services.failure_kind import QUOTA_EXHAUSTED
+from armarius.domain.services.failure_kind import SHARED_LOGIN_ENDINGS
 from armarius.infrastructure.daemon import event_blobs
 from armarius.infrastructure.daemon.enrollment import MachineIdentity
 from armarius.infrastructure.daemon.models import (
@@ -1036,13 +1036,15 @@ class DaemonClaimService:
         release and nothing left to conclude, so the call returns quietly rather than sending
         the task through its ending a second time.
 
-        A run that ended because the workplace has no provider quota left closes **the
-        workplace**, not the run's own little corner of it (FR-007c). Quota belongs to the
-        login the workplace was set up with, so it is out for every agent working there and
-        for the next run as much as this one; closing it here is what stops the next agent
-        being sent to the same wall, and every consequence after that — the agents reported
-        offline, their tasks parked, the Leader told — is the door that already exists for a
-        workplace that stops being usable.
+        A run that ended because the workplace has no provider quota left, or because the
+        provider no longer takes its login, closes **the workplace**, not the run's own
+        little corner of it (FR-007c). Both belong to the login the workplace was set up
+        with, so it is out for every agent working there and for the next run as much as
+        this one; closing it here is what stops the next agent being sent to the same wall,
+        and every consequence after that — the agents reported offline, their tasks parked,
+        the Leader told — is the door that already exists for a workplace that stops being
+        usable. The way back is the machine's next report of its workplaces: a daemon that
+        hears this ending asks its CLI again and says what it found (FR-007r).
         """
         async with self._sessions()() as session:
             claim = await session.get(RunClaimModel, run_id)
@@ -1057,7 +1059,7 @@ class DaemonClaimService:
             claim.machine_id = None
             claim.claim_expires_at = None
             claim.run_token_hash = None
-            if failure == QUOTA_EXHAUSTED:
+            if failure in SHARED_LOGIN_ENDINGS:
                 await self._close_the_workplace(
                     session, claim.workplace_id, reason=failure
                 )

@@ -29,6 +29,7 @@ from armarius.domain.entities.project import ProjectStatus
 from armarius.domain.entities.task import Task, TaskStatus
 from armarius.presentation.api.frozen import refuse_when_frozen
 from armarius.presentation.api.run_scope import refuse_outside_run_scope
+from armarius.presentation.api.task_view import task_out, tasks_out
 from armarius.presentation.container import Container
 from armarius.presentation.deps import (
     ContainerDep,
@@ -204,7 +205,7 @@ async def agent_create_task(
         assigned_marius_id=body.assignee_marius_id,
         plan_item_id=body.plan_item_id,
     )
-    return TaskOut.model_validate(task)
+    return await task_out(container, task)
 
 
 @router.post("/projects/{project_id}/change-request", status_code=202)
@@ -261,7 +262,7 @@ async def agent_declare_recovery(
     await container.recovery.leader_decided(task_id, action=body.action)
     if body.next_action:
         task = await container.tasks.set_next_action(task_id, body.next_action)
-    return TaskOut.model_validate(task)
+    return await task_out(container, task)
 
 
 @router.post("/tasks/{task_id}/escalate", status_code=202)
@@ -309,10 +310,7 @@ async def agent_ready_queue(
     project = await container.projects.get_project(project_id)
     if project is None or project.workspace_id != marius.workspace_id:
         raise NotFound("project_not_found")  # cross-workspace → 404
-    return [
-        TaskOut.model_validate(t)
-        for t in await container.tasks.ready_queue(project_id)
-    ]
+    return await tasks_out(container, await container.tasks.ready_queue(project_id))
 
 
 # What a text artifact may weigh and still be read back inline to the Leader. A report or a
@@ -340,7 +338,11 @@ async def leader_task_board(
         m.id: m.name for m in await container.mariuses.list_directory(marius.workspace_id)
     }
     board: list[dict] = []
-    for task in await container.tasks.list_by_project(project_id):
+    tasks = await container.tasks.list_by_project(project_id)
+    # Who has signed what is in review, card by card. Without it the board says *in review*
+    # and leaves out the one thing the Leader needs from that word: whose move it is.
+    signed = await container.approvals.current_for_tasks([t.id for t in tasks])
+    for task in tasks:
         artifacts = await container.artifacts.list_by_task(task.id)
         board.append(
             {
@@ -348,6 +350,10 @@ async def leader_task_board(
                 "identifier": task.identifier,
                 "title": task.title,
                 "status": str(task.status),
+                "signatures": [
+                    {"signer_kind": str(a.signer_kind), "result": str(a.result)}
+                    for a in signed.get(task.id, ())
+                ],
                 "assigned_marius_id": (
                     str(task.assigned_marius_id) if task.assigned_marius_id else None
                 ),
@@ -402,7 +408,7 @@ async def leader_task_read(
                 pass
         published.append(row)
     return {
-        "task": TaskOut.model_validate(task).model_dump(mode="json"),
+        "task": (await task_out(container, task)).model_dump(mode="json"),
         "thread": [
             CommentOut.model_validate(c).model_dump(mode="json") for c in comments
         ],
@@ -421,7 +427,7 @@ async def get_task_view(
     artifacts = await container.artifacts.list_by_task(task_id)
     directory = await container.mariuses.list_directory(marius.workspace_id)
     return {
-        "task": TaskOut.model_validate(task).model_dump(mode="json"),
+        "task": (await task_out(container, task)).model_dump(mode="json"),
         "thread": [
             CommentOut.model_validate(c).model_dump(mode="json") for c in comments
         ],
@@ -451,7 +457,7 @@ async def request_task(
     """Ask to be put on a task. Routed to the Leader; nothing is assigned here."""
     await _task_in_caller_workspace(container, marius, task_id)
     task = await container.tasks.request_assignment(task_id, marius.id, note=body.note)
-    return TaskOut.model_validate(task)
+    return await task_out(container, task)
 
 
 @router.post("/tasks/{task_id}/handback", response_model=TaskOut)
@@ -465,7 +471,7 @@ async def handback_task(
     live drive (a wake is booked for the Leader) and is not counted as stalled."""
     await _task_in_caller_workspace(container, marius, task_id)
     task = await container.tasks.hand_back(task_id, marius.id, reason=body.reason)
-    return TaskOut.model_validate(task)
+    return await task_out(container, task)
 
 
 @router.post("/tasks/{task_id}/comment", response_model=CommentOut, status_code=201)
@@ -494,7 +500,7 @@ async def update_status(
     task = await container.tasks.transition(
         task_id, target, reason=body.reason, marius_id=marius.id
     )
-    return TaskOut.model_validate(task)
+    return await task_out(container, task)
 
 
 @router.post("/tasks/{task_id}/approval", response_model=TaskOut)
@@ -514,7 +520,7 @@ async def sign_approval(
     signed = await container.approvals.sign_as_leader(
         task_id, marius_id=marius.id, approve=body.approve, reason=body.reason
     )
-    return TaskOut.model_validate(signed)
+    return await task_out(container, signed)
 
 
 @router.get("/tasks/{task_id}/criteria", response_model=list[CriterionOut])
@@ -566,7 +572,7 @@ async def set_next_action(
 ) -> TaskOut:
     await _task_in_caller_workspace(container, marius, task_id)
     task = await container.tasks.set_next_action(task_id, body.next_action)
-    return TaskOut.model_validate(task)
+    return await task_out(container, task)
 
 
 @router.post("/tasks/{task_id}/artifact", response_model=AgentArtifactOut, status_code=201)

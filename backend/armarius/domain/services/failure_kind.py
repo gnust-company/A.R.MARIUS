@@ -48,6 +48,14 @@ NEEDS_A_PERSON: frozenset[str] = frozenset(
     {QUOTA_EXHAUSTED, CREDENTIAL_REJECTED, MISCONFIGURED}
 )
 
+#: The endings that are true of **the login the work was carried out with**, and so of
+#: everyone else working on that login, not just of the run that met them (FR-007c): the
+#: provider's quota and the provider's acceptance of the sign-in. The next agent sent the
+#: same way meets the same wall. *Misconfigured* is left out on purpose — what is wrong
+#: there can be particular to what one agent was asked to do, and nothing has yet measured
+#: one that was not.
+SHARED_LOGIN_ENDINGS: frozenset[str] = frozenset({QUOTA_EXHAUSTED, CREDENTIAL_REJECTED})
+
 #: What each ending means, in English, for records and for anything said to an agent
 #: (Constitution VII). The screen renders the same code in the reader's own language.
 NEEDS_A_PERSON_ENGLISH: dict[str, str] = {

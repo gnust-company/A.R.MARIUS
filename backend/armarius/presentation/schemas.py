@@ -210,7 +210,12 @@ class ApprovalOut(_Out):
 
     id: UUID
     task_id: UUID | None = None
-    round: int = 1
+    # True once the work went back and this signature stopped speaking for what is in
+    # review. Sent as the server recorded it, because the screen used to *derive* which
+    # signatures were current from a `round` this schema defaulted to 1 for every row —
+    # so after one rejection no signature ever matched the round the screen worked out,
+    # and the patron's own buttons stayed disabled for good (found 2026-11-13).
+    superseded: bool = False
     signer_kind: str
     signer_marius_id: UUID | None = None
     signer_user_id: str | None = None
@@ -601,6 +606,21 @@ class AnswerEscalationIn(BaseModel):
     text: str | None = Field(default=None, max_length=2000)
 
 
+class SignatureOut(_Out):
+    """One signature standing on the deliverable now in review (FR-033a).
+
+    The short form a task carries with it. Who exactly signed and every retired signature
+    are behind `GET /v1/tasks/{id}/approvals`; this answers the question a board, a room
+    and a Leader all ask of a task — *has each side signed what is in front of them*.
+    """
+
+    signer_kind: str
+    result: str
+    is_auto: bool = False
+    reason: str | None = None
+    signed_at: datetime | None = None
+
+
 class TaskOut(_Out):
     id: UUID
     project_id: UUID | None = None
@@ -627,9 +647,10 @@ class TaskOut(_Out):
     # `stalled_reason_code` is what the screen builds the patron's own sentence from.
     stalled_reason: str | None = None
     stalled_reason_code: str | None = None
-    # Filled by Story 3's two-signature rule; an empty list until then, never omitted, so
-    # the board can render one shape whatever đợt it is talking to.
-    signatures: list[dict[str, object]] = Field(default_factory=list)
+    # Who has signed the deliverable now in review (FR-033a). Filled by the one funnel a
+    # task leaves through (`task_view.tasks_out`), never by a route on its own; an empty
+    # list means nobody has signed this deliverable, and never means "not looked up".
+    signatures: list[SignatureOut] = Field(default_factory=list)
     assigned_marius_id: UUID | None = None
     next_action: str | None = None
     # The two lifecycle marks (FR-015). The completion mark is what FR-031 requires a
@@ -1246,3 +1267,19 @@ class PlanDecisionIn(BaseModel):
 class PhaseChangeIn(BaseModel):
     target_phase: str
     reason: str | None = None
+
+
+class NextBatchIn(BaseModel):
+    """The patron's answer *open another batch* to a finished one (FR-043a).
+
+    `note` is what they want in it, in their own words and their own language — it is
+    handed to the Leader as written (FR-012 keeps a person's text as the person typed it).
+    """
+
+    note: str | None = Field(default=None, max_length=4000)
+
+
+class NextBatchOut(BaseModel):
+    # False when no wrap-up letter was waiting: the answer had already been given, and
+    # giving it again called nobody.
+    answered: bool
