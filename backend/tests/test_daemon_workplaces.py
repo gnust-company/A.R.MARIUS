@@ -426,3 +426,60 @@ async def _last_beat(token: str):
         row = await session.get(MachineModel, machine_id)
         assert row is not None
         return row.last_heartbeat_at
+
+
+# ── 4. a CLI nobody is signed in to (FR-007r) ─────────────────────────────────
+#
+# Measured 2026-11-11: the operator's sign-in to Claude Code had lapsed, every run failed
+# at its first line, and this screen read *ready* throughout — a CLI that runs `--version`
+# was all "ready" had ever meant.
+
+
+async def test_a_cli_nobody_is_signed_in_to_is_not_offered_work() -> None:
+    async with _client() as c:
+        machine, _ = await _linked_machine(c, "wp-signed-out@example.com")
+
+        answered = await _sync(c, machine, _cli("claude_code", signed_in=False))
+
+        (place,) = answered.json()["workplaces"]
+        assert place["ready"] is False
+        assert place["not_ready_reason"] == "cli_signed_out"
+
+
+async def test_signing_in_again_reopens_the_same_workplace() -> None:
+    async with _client() as c:
+        machine, _ = await _linked_machine(c, "wp-signed-back@example.com")
+        before = await _sync(c, machine, _cli("claude_code", signed_in=False))
+        was = before.json()["workplaces"][0]["id"]
+
+        after = await _sync(c, machine, _cli("claude_code", signed_in=True))
+
+        (place,) = after.json()["workplaces"]
+        assert place["id"] == was, "the same workplace, not a second one"
+        assert place["ready"] is True
+        assert place["not_ready_reason"] is None
+
+
+async def test_a_cli_that_was_never_asked_is_offered_as_before() -> None:
+    """No answer is not *no*. A daemon too old to ask, or a CLI with no way of answering,
+    reports nothing — and must go on being offered exactly as it was."""
+    async with _client() as c:
+        machine, _ = await _linked_machine(c, "wp-unasked@example.com")
+
+        answered = await _sync(c, machine, _cli("codex"), _cli("gemini", signed_in=None))
+
+        assert all(w["ready"] is True for w in answered.json()["workplaces"])
+
+
+async def test_a_machine_that_cannot_link_says_so_before_it_says_signed_out() -> None:
+    """Two things wrong, one sentence on the screen: the one about the machine, because
+    signing in would not make this workplace usable."""
+    async with _client() as c:
+        machine, _ = await _linked_machine(c, "wp-both@example.com")
+
+        answered = await _sync(
+            c, machine, _cli("claude_code", signed_in=False), symlink=False
+        )
+
+        (place,) = answered.json()["workplaces"]
+        assert place["not_ready_reason"] == "link_unsupported"

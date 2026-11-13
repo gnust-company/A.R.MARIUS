@@ -641,3 +641,40 @@ chế hỏi danh mục nên chỉ đưa được ba tên ví dụ trong `--help`
 **Chưa chứng minh được:** nghi vấn daemon làm mất đăng nhập `claude` (token làm mới trong home tạm). Lần này
 không có lượt chạy nào rơi đúng lúc token hết hạn, nên chưa có phép đo nào khẳng định hay bác nó.
 
+→ Làm ở Phase 15 (T205): có cơ chế và có phép đo mô phỏng, chưa có phép đo một lần gia hạn thật.
+
+## Phase 15: Đăng nhập của agent CLI (2026-11-13)
+
+*Hai chỗ còn hở của Phase 14, cùng một gốc: daemon coi đăng nhập của CLI là chuyện không phải của mình, nên
+vừa không biết nó hết hạn, vừa làm nó hỏng mà không hay.*
+
+- [x] T203 **Hỏi CLI còn đăng nhập không** per FR-007r. `discovery.AskSignIn`: chỉ hỏi khi `--help` của
+  chính CLI liệt kê lệnh; ba câu trả lời *có / không / không biết*. Claude Code khai lệnh
+  `auth status --json`; Gemini và Codex chưa khai gì nên không bị hỏi.
+- [x] T204 **Báo, hỏi lại, và tự mở lại** per FR-007r. Bản báo chỗ làm mang câu trả lời; server đóng chỗ
+  làm với lý do `cli_signed_out` khi CLI nói *không*, mở lại khi nói *có*. Vòng hỏi lại mỗi
+  `sign_in_interval`; vòng nhận việc đọc danh sách chỗ làm mới nên không phải khởi động lại daemon. Lượt
+  chạy kết thúc với `credential_rejected` thì đóng chỗ làm (FR-007c) và daemon hỏi lại ngay.
+- [x] T205 **Mang đăng nhập đã gia hạn về** per FR-007s. `execenv.CarryBack`, gọi mỗi hai giây trong lúc
+  lượt chạy diễn ra và một lần trước khi xoá thư mục nhà. Claude Code khai `.claude/.credentials.json`.
+- [x] T206 **Màn hình nói đúng việc cần làm** per FR-007r, FR-006c. Câu cho hai lý do mới ở màn Máy và màn
+  Agent, hai thứ tiếng. Sửa luôn câu của *cạn hạn mức*, vốn hứa runtime "sống lại" khi nạp thêm trong khi
+  thực tế phải khởi động lại daemon.
+
+**Xong 2026-11-13.** `make check` sạch. **Đo trên máy thật**, daemon dựng từ nhánh này:
+- Bật daemon với một thư mục nhà chưa ai đăng nhập: nhật ký ghi "Nobody is signed in to claude_code", màn Máy
+  ghi *Không nhận việc được* kèm câu chỉ cách đăng nhập lại, bốn agent mang lý do `cli_signed_out`. Đặt tệp
+  đăng nhập vào thư mục ấy: 18 giây sau (nhịp hỏi đặt 20 giây cho phép đo) nhật ký ghi "now ready" và màn Máy
+  mở lại, daemon không khởi động lại.
+- Trong một lượt chạy thật của Trưởng dự án, thay liên kết tệp đăng nhập bằng một tệp thường theo đúng cách
+  CLI ghi: hai giây sau nhật ký ghi đã mang tệp về, tệp của người vận hành còn nguyên nội dung và quyền 600,
+  liên kết trong thư mục nhà được đặt lại, `claude auth status` vẫn báo đã đăng nhập, lượt chạy kết thúc
+  bình thường.
+
+**Chưa đo được:** một lần Claude Code **tự** gia hạn đăng nhập giữa lượt chạy. Token còn hạn suốt buổi, nên
+T205 mới được chứng minh bằng mô phỏng cách ghi đọc từ binary. Lần tới có lượt chạy rơi sau giờ token hết
+hạn thì xem nhật ký daemon có dòng "renewed its sign-in" không: có là xác nhận, không có mà đăng nhập vẫn
+mất là cơ chế này trượt.
+**Còn hở:** chỗ làm đóng vì *cạn hạn mức* vẫn chỉ mở lại khi daemon khởi động lại. Không có cách nào hỏi CLI
+"hạn mức đã hồi chưa" mà không chạy một lượt, nên vòng hỏi lại ở T204 không giúp được ca này; màn hình nay
+nói đúng điều ấy thay vì hứa runtime tự sống lại.

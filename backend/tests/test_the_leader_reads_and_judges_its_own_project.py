@@ -118,3 +118,86 @@ async def test_only_the_leader_reads_the_board_and_only_of_its_own_project() -> 
     assert next_door.status_code == 404, next_door.text
     assert smuggled.status_code == 404, smuggled.text
     assert nothing.status_code == 404, nothing.text
+
+
+# ── who has signed (FR-033a) ───────────────────────────────────────────────────
+#
+# Measured 2026-11-13: asked where the project stood, the Leader read its board and told the
+# patron three tasks were done "with nobody's signature on them". Both sides had signed all
+# three. The field a task carries for this had been declared and never filled.
+
+
+async def _sign_as_leader(c, p, task_id: str) -> None:
+    signed = await c.post(
+        f"/agent/tasks/{task_id}/approval", headers=p.leader_headers, json={"approve": True}
+    )
+    assert signed.status_code == 200, signed.text
+
+
+async def test_a_task_carries_the_signatures_standing_on_it() -> None:
+    async with client() as c:
+        p = await operating_project(c, "signed-a@armarius.dev")
+        task_id = await task_awaiting_acceptance(c, p)
+
+        unsigned = (await c.get(f"/v1/tasks/{task_id}", headers=p.headers)).json()
+        await _sign_as_leader(c, p, task_id)
+        half = (await c.get(f"/v1/tasks/{task_id}", headers=p.headers)).json()
+        closed = await c.post(
+            f"/v1/tasks/{task_id}/approval", headers=p.headers, json={"approve": True}
+        )
+        assert closed.status_code == 200, closed.text
+
+        on_the_board = await c.get(
+            f"/agent/projects/{p.project_id}/tasks", headers=p.leader_headers
+        )
+        opened = await c.get(
+            f"/agent/projects/{p.project_id}/tasks/{task_id}", headers=p.leader_headers
+        )
+        listed = await c.get(f"/v1/projects/{p.project_id}/tasks", headers=p.headers)
+
+    assert unsigned["signatures"] == []
+    assert [(s["signer_kind"], s["result"]) for s in half["signatures"]] == [
+        ("leader", "approve")
+    ]
+    both = [("leader", "approve"), ("patron", "approve")]
+    # The answer to the signing call itself — the patron's screen reads it straight back.
+    assert [(s["signer_kind"], s["result"]) for s in closed.json()["signatures"]] == both
+    # What the Leader reads, on the board and on the task.
+    (row,) = [t for t in on_the_board.json() if t["id"] == task_id]
+    assert row["status"] == "done"
+    assert [(s["signer_kind"], s["result"]) for s in row["signatures"]] == both
+    assert [
+        (s["signer_kind"], s["result"]) for s in opened.json()["task"]["signatures"]
+    ] == both
+    # And the patron's own board, which reads the same field for every card at once.
+    (card,) = [t for t in listed.json() if t["id"] == task_id]
+    assert [(s["signer_kind"], s["result"]) for s in card["signatures"]] == both
+
+
+async def test_signatures_retired_by_rework_stop_standing_on_the_task() -> None:
+    """Sent back, the deliverable they signed is gone — and the record says which ones.
+
+    The screen used to work this out from a `round` number the server sent as 1 for every
+    row, so after one rejection no signature matched the round it derived and the patron's
+    own buttons never came back.
+    """
+    async with client() as c:
+        p = await operating_project(c, "signed-b@armarius.dev")
+        task_id = await task_awaiting_acceptance(c, p)
+        await _sign_as_leader(c, p, task_id)
+        refused = await c.post(
+            f"/v1/tasks/{task_id}/approval",
+            headers=p.headers,
+            json={"approve": False, "reason": "Thiếu cột tháng 7."},
+        )
+        assert refused.status_code == 200, refused.text
+
+        task = (await c.get(f"/v1/tasks/{task_id}", headers=p.headers)).json()
+        history = (await c.get(f"/v1/tasks/{task_id}/approvals", headers=p.headers)).json()
+
+    assert task["status"] == "in_progress", task
+    assert task["signatures"] == [], "a retired signature is still shown as standing"
+    assert [(a["signer_kind"], a["result"], a["superseded"]) for a in history] == [
+        ("leader", "approve", True),
+        ("patron", "reject", True),
+    ]

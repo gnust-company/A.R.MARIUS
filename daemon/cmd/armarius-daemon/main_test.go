@@ -618,3 +618,54 @@ func TestNeitherNullNorAPipeNorAFileIsAPersonAtATerminal(t *testing.T) {
 		t.Error("một file thường được coi là một người ngồi ở terminal")
 	}
 }
+
+// ── what this machine says about its sign-ins (FR-007r) ───────────────────────
+
+func TestOnlyACLIThatAnsweredCarriesAnAnswer(t *testing.T) {
+	reported := []client.WorkplaceReport{{CLIKind: "claude_code"}, {CLIKind: "gemini"}}
+
+	carrying := withSignIns(reported, map[string]bool{"claude_code": false})
+
+	if said := carrying[0].SignedIn; said == nil || *said {
+		t.Errorf("claude_code carries %v, want an explicit false", said)
+	}
+	if carrying[1].SignedIn != nil {
+		t.Errorf("gemini was never asked and carries %v", *carrying[1].SignedIn)
+	}
+	if reported[0].SignedIn != nil {
+		t.Error("the list every later report starts from was written into")
+	}
+}
+
+// An answer from the last report must not ride along on the next one once the CLI can no
+// longer be asked.
+func TestAnAnswerNoLongerGivenIsNoLongerCarried(t *testing.T) {
+	yes := true
+	reported := []client.WorkplaceReport{{CLIKind: "claude_code", SignedIn: &yes}}
+
+	carrying := withSignIns(reported, map[string]bool{})
+
+	if carrying[0].SignedIn != nil {
+		t.Errorf("carries %v from a report nobody is standing behind", *carrying[0].SignedIn)
+	}
+}
+
+func TestOnlyAWorkplaceWhoseReadinessMovedIsNews(t *testing.T) {
+	before := []client.RegisteredWorkplace{
+		{ID: "a", CLIKind: "claude_code", Ready: true, MachineName: "laptop"},
+		{ID: "b", CLIKind: "gemini", Ready: false, NotReadyReason: "cli_removed", MachineName: "laptop"},
+	}
+	after := []client.RegisteredWorkplace{
+		{ID: "a", CLIKind: "claude_code", Ready: false, NotReadyReason: "cli_signed_out", MachineName: "laptop"},
+		{ID: "b", CLIKind: "gemini", Ready: false, NotReadyReason: "cli_removed", MachineName: "laptop"},
+	}
+
+	lines := readinessNews(before, after)
+
+	if len(lines) != 1 || lines[0] != "claude_code on laptop: now not ready (cli_signed_out)" {
+		t.Errorf("news = %q", lines)
+	}
+	if back := readinessNews(after, before); len(back) != 1 || back[0] != "claude_code on laptop: now ready" {
+		t.Errorf("news on the way back = %q", back)
+	}
+}

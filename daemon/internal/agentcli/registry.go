@@ -201,6 +201,26 @@ type CLI struct {
 	// a different program than the one that gets the work.
 	ProtocolArgs []string
 
+	// SignInArgs is how this CLI is asked whether anybody is signed in to it, without running a
+	// turn. Empty when it has no such question — and then nothing is claimed either way: a
+	// workplace is never called signed out because its CLI could not be asked (FR-007r).
+	SignInArgs []string
+	// SignInCommand is the command the CLI's own `--help` must list before SignInArgs is ever
+	// passed to it. Not a formality: a CLI too old to have the command does not refuse the
+	// words, it takes them as something a person typed — and a daemon that asks every few
+	// minutes would be starting a turn every few minutes on somebody's account.
+	SignInCommand string
+
+	// Refreshed names the files inside the home, linked out to the operator's own, that this
+	// CLI **replaces** rather than writes through (FR-007s). Same relative path on both sides.
+	//
+	// A link stops protecting anything the moment the program on the other end writes by
+	// staging a file and renaming it over the name: the rename lands on the link, the
+	// operator's real file never hears of it, and the home it landed in is deleted when the
+	// run ends. For a sign-in that is renewed with a one-time token this is the whole of how a
+	// machine gets signed out by running an agent on it — see execenv.CarryBack.
+	Refreshed []string
+
 	// ContextFile is the file this CLI opens of its own accord at the start of a session.
 	//
 	// This is the whole of Multica's trick and the reason the daemon writes a file instead of
@@ -337,6 +357,16 @@ var rows = []CLI{
 		Family:      FamilyOneShot,
 		Binary:      "claude",
 		VersionArgs: []string{"--version"},
+		// Measured 2026-11-13 on Claude Code 2.1.322: signed in, it prints a JSON object with
+		// `"loggedIn": true` and exits 0; in a home nobody has signed in to, the same object
+		// with `"loggedIn": false`, and exits 1. Local, no model call.
+		SignInArgs:    []string{"auth", "status", "--json"},
+		SignInCommand: "auth",
+		// Read out of the 2.1.322 binary on 2026-11-13: its credential store writes
+		// `.credentials.json` by staging `<name>.tmp.<random>` beside it and renaming that
+		// over the name, and its in-place fallback opens with O_NOFOLLOW. Neither ever
+		// writes through a link.
+		Refreshed:   []string{".claude/.credentials.json"},
 		ContextFile: "CLAUDE.md",
 		Skills:      Skills{Path: ".claude/skills"},
 		Home: []Entry{

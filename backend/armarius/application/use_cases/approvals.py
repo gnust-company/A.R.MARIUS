@@ -212,6 +212,25 @@ class ApprovalService:
         async with self._uow() as uow:
             return await uow.approvals.list_for_task(task_id)
 
+    async def current_for_tasks(
+        self, task_ids: Sequence[UUID]
+    ) -> dict[UUID, list[Approval]]:
+        """The signatures standing on each task's current deliverable, in one read (FR-033a).
+
+        For whoever shows tasks to somebody — a board, a room, the Leader's own view. Goes
+        through `current_signatures`, the single door onto *which signatures still count*,
+        so a screen can never disagree with the gate that closes the task.
+        """
+        if not task_ids:
+            return {}
+        async with self._uow() as uow:
+            rows = await uow.approvals.list_for_tasks(list(task_ids))
+        standing: dict[UUID, list[Approval]] = {}
+        for approval in current_signatures(rows):
+            if approval.task_id is not None:
+                standing.setdefault(approval.task_id, []).append(approval)
+        return standing
+
     async def _sign(
         self,
         task_id: UUID,

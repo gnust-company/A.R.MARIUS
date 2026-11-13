@@ -221,6 +221,7 @@ Durations are written the way you say them: `"5s"`, `"10m"`, `"24h"`.
 | `drain_patience` | `"60s"` | how long a stopping daemon lets its runs finish before cutting them. Pair it with `TimeoutStopSec` |
 | `tool_result_inline_limit_bytes` | `2048` | how much of a tool's output travels to the server inside the event. Past it, only the opening bytes, the true size, and the fact that it was cut — never the rest, which does not leave this machine |
 | `sweep_interval` | `"2h"` | how often it looks over what it has left on its own disk |
+| `sign_in_interval` | `"5m"` | how often each agent CLI is asked again whether anybody is signed in to it. A workplace whose CLI says *no* is reported not ready, and reopens by itself within this long of the person signing in — no restart |
 | `work_dir_retention` | `"24h"` | how long a task's working directory survives after the server said that task was finished with |
 | `session_retention` | `"336h"` | how long a conversation may sit idle and still be carried on |
 | `orphan_retention` | `"72h"` | how long a working directory the server cannot account for survives. Longer than `work_dir_retention` on purpose: that clock acts on something the server stated, this one acts on the absence of a statement |

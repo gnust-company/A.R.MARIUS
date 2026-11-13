@@ -143,6 +143,9 @@ class WorkplaceIn(BaseModel):
     cli_version: str = Field(default="", max_length=40)
     protocol_family: str = Field(default="", max_length=20)
     capabilities: dict[str, object] = Field(default_factory=dict)
+    # What the CLI answered when asked whether anybody is signed in (FR-007r). Left out by
+    # a daemon too old to ask and by a CLI with no way of answering; both mean *unknown*.
+    signed_in: bool | None = None
 
 
 class WorkplacesIn(BaseModel):
@@ -503,6 +506,7 @@ async def sync_workplaces(
                 cli_version=one.cli_version,
                 protocol_family=one.protocol_family,
                 capabilities=one.capabilities,
+                signed_in=one.signed_in,
             )
             for one in body.workplaces
         ],

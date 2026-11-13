@@ -496,6 +496,7 @@ thứ tự gắn trên từng chữ ký.
   (Trưởng dự án vào chấm, đồng đội bị nhắc tên) KHÔNG làm đổi trạng thái. *(Đo 2026-11-12 trên một đội
   thật: thợ dựng suốt một phút rưỡi trong lúc bảng việc ghi "chờ làm" và "chưa ai nhận việc", vì agent chỉ
   tự báo "đang làm" ở phút chót, cùng lúc với nộp bài. Lượt chạy bắt đầu là sự thật hệ thống đã cầm sẵn.)*
+  Luật này áp cho **mọi đường chạy**: lượt do daemon trên máy người dùng cầm, và lượt do chính server lái.
 - **FR-025** *(cổng phụ thuộc)*: HỆ THỐNG PHẢI chặn một đầu việc vào *chờ làm* hoặc *đang làm* khi danh sách
   việc phụ thuộc còn ít nhất một đầu việc chưa *xong*, và PHẢI liệt kê mã của những việc còn thiếu.
 - **FR-026** *(cổng bằng chứng)*: HỆ THỐNG PHẢI chặn một đầu việc vào *chờ rà soát* khi trường thành phẩm còn
@@ -518,6 +519,15 @@ thứ tự gắn trên từng chữ ký.
 - **FR-033**: Mỗi đầu việc PHẢI cần **hai chữ ký** mới được đóng: Trưởng dự án, và **người chủ chịu trách
   nhiệm** cho con agent đã thực hiện đầu việc đó. Đây là mặc định áp cho **mọi** đầu việc — không có khái
   niệm cờ bật/tắt theo từng việc.
+- **FR-033a**: Mỗi lối trả về một đầu việc — bảng việc, phòng của đầu việc, và lối đọc của Trưởng dự án —
+  PHẢI mang theo **các chữ ký đang đứng trên bản đang rà soát**: ai ký, ký thế nào. Danh sách rỗng chỉ có
+  một nghĩa là *chưa ai ký bản này*. Chữ ký đã hết hiệu lực vì bài bị trả về sửa (FR-040) KHÔNG nằm trong
+  danh sách ấy; nó vẫn ở sổ chữ ký của đầu việc, kèm **dấu hết hiệu lực do server ghi**. Màn hình PHẢI đọc
+  dấu ấy, KHÔNG ĐƯỢC tự suy ra chữ ký nào còn hiệu lực. *(Đo 2026-11-13: trường chữ ký trên đầu việc được
+  khai từ ngày dựng bảng và chưa từng được điền, nên Trưởng dự án đọc bảng việc rồi báo người chủ ba đầu
+  việc "xong mà không ai ký" trong khi cả hai bên đã ký đủ. Cùng lúc, phòng đầu việc tự tính "vòng hiện
+  tại" từ một con số server luôn gửi là 1: sau một lần trả về, màn hình tìm chữ ký của vòng 2, không bao
+  giờ thấy, và hai nút của người chủ khoá vĩnh viễn.)*
 - **FR-034**: Người chủ chịu trách nhiệm cho một agent là **người đã cấp agent đó vào ghế** trong dự án. HỆ
   THỐNG PHẢI ghi lại quan hệ này ngay lúc cấp ghế và dùng nó để xác định ai phải ký cho đầu ra của agent đó.
   Quy tắc này giữ nguyên trong phạm vi **một người chủ**: quan hệ vẫn phải được ghi thật và tra cứu thật, dù
@@ -560,6 +570,15 @@ thứ tự gắn trên từng chữ ký.
   chuyển giai đoạn diễn ra ở cấp dự án.
 - **FR-043**: KHI cả một đợt việc đã *xong*, HỆ THỐNG PHẢI đánh thức Trưởng dự án soạn bản tổng kết đợt, rồi
   đẩy vào hộp thư người chủ kèm ba lựa chọn: đóng dự án, chuyển bảo trì, hoặc mở đợt việc mới.
+- **FR-043a**: Lựa chọn **mở đợt việc mới** ở FR-043 PHẢI là một quyết định trọn vẹn: khép thư tổng kết
+  **và** đánh thức Trưởng dự án (cớ *người chủ mở đợt mới* của FR-047), trong cùng một lời đáp. Người chủ
+  ĐƯỢC ghi kèm đợt mới làm gì; câu ấy tới Trưởng dự án **nguyên văn** (FR-012). Không ghi gì thì Trưởng dự
+  án được dặn hỏi lại người chủ trước khi tạo việc. Lựa chọn này KHÔNG đổi giai đoạn. Đáp lần hai khi thư
+  đã khép thì không gọi ai nữa. Thư *đề xuất chuyển giai đoạn* của Trưởng dự án là một câu hỏi khác và
+  KHÔNG bị khép theo. Hai lựa chọn còn lại là đổi giai đoạn; đổi sang *bảo trì* (hoặc từ *bảo trì* về
+  *vận hành*) cũng PHẢI đánh thức Trưởng dự án, vì FR-047 nêu cớ ấy. Đóng dự án thì không gọi ai (FR-005).
+  *(Đo 2026-11-13: người chủ chọn mở đợt mới, thư rời hộp thư, và không gì khác xảy ra. Trưởng dự án, người
+  duy nhất biến câu trả lời ấy thành đầu việc, không hề được báo.)*
 
 #### G. Gói tin đánh thức và điều phối lời gọi
 

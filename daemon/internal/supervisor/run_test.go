@@ -1291,3 +1291,125 @@ func TestARunThatMerelyMentionedTheWallAndFinishedCarriesNoVerdict(t *testing.T)
 		t.Fatalf("lượt chạy xong xuôi mà vẫn bị gán một lý do: %+v", done)
 	}
 }
+
+// ── a sign-in the CLI renews while it works (FR-007s) ─────────────────────────
+
+const signInFile = ".claude/.credentials.json"
+
+// signedInOperator gives the world an operator who signed in an hour ago.
+func (w *world) signedInOperator(body string) string {
+	w.t.Helper()
+	theirs := filepath.Join(w.root, "home", filepath.FromSlash(signInFile))
+	if err := os.MkdirAll(filepath.Dir(theirs), 0o700); err != nil {
+		w.t.Fatal(err)
+	}
+	if err := os.WriteFile(theirs, []byte(body), 0o600); err != nil {
+		w.t.Fatal(err)
+	}
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(theirs, old, old); err != nil {
+		w.t.Fatal(err)
+	}
+	return theirs
+}
+
+// renewInside does what Claude Code does to its sign-in mid-run: stages a file beside the name
+// in the run's own home and renames it over the name.
+func renewInside(t *testing.T, env []string, body string) {
+	t.Helper()
+	home, found := valueIn(env, "HOME")
+	if !found {
+		t.Fatal("the run was not told where its home is")
+	}
+	name := filepath.Join(home, filepath.FromSlash(signInFile))
+	if err := os.WriteFile(name+".tmp.9c2e", []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(name+".tmp.9c2e", name); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The machine was being signed out by running agents on it: the CLI renewed its sign-in into a
+// home that was deleted a moment later, and what stayed in the operator's home was the spent
+// one. Seen 2026-11-11 as *OAuth session expired and could not be refreshed*.
+func TestASignInRenewedInARunsLastMomentIsNotDeletedWithItsHome(t *testing.T) {
+	w := aWorld(t)
+	theirs := w.signedInOperator(`{"refreshToken":"spent-by-the-renewal"}`)
+	renewed := `{"refreshToken":"the-only-good-one"}`
+	w.engine.waitFor = func(context.Context) { renewInside(t, w.engine.saw.Env, renewed) }
+	var mu sync.Mutex
+	var lines []string
+	options := w.options()
+	options.Note = func(line string) {
+		mu.Lock()
+		defer mu.Unlock()
+		lines = append(lines, line)
+	}
+
+	options.Do(context.Background(), w.grant())
+
+	got, err := os.ReadFile(theirs) //nolint:gosec // a path inside this test's own directory
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != renewed {
+		t.Fatalf("the operator is left holding %s", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	said := strings.Join(lines, "\n")
+	if !strings.Contains(said, "renewed its sign-in") || !strings.Contains(said, signInFile) {
+		t.Errorf("the log does not say a sign-in was carried back: %q", lines)
+	}
+	if strings.Contains(said, "the-only-good-one") {
+		t.Error("the log repeats what is in the sign-in")
+	}
+	if problems := w.complaints(); len(problems) != 0 {
+		t.Errorf("complaints: %v", problems)
+	}
+}
+
+// Not only at the end. A run can last an hour, and until the renewed sign-in is back in the
+// operator's home everything else on the machine reads one that can no longer be renewed.
+func TestASignInRenewedMidRunIsBackInTheOperatorsHomeWhileTheRunGoesOn(t *testing.T) {
+	w := aWorld(t)
+	theirs := w.signedInOperator(`{"refreshToken":"spent-by-the-renewal"}`)
+	renewed := `{"refreshToken":"the-only-good-one"}`
+	var midRun string
+	w.engine.waitFor = func(context.Context) {
+		renewInside(t, w.engine.saw.Env, renewed)
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			got, _ := os.ReadFile(theirs) //nolint:gosec // a path inside this test's own directory
+			midRun = string(got)
+			if midRun == renewed {
+				return
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	options := w.options()
+	options.CarryEvery = 5 * time.Millisecond
+
+	options.Do(context.Background(), w.grant())
+
+	if midRun != renewed {
+		t.Fatalf("while the run was still going the operator held %s", midRun)
+	}
+}
+
+func TestHowARunEndedIsToldToWhoeverWatchesTheSignIn(t *testing.T) {
+	w := aWorld(t)
+	w.engine.failure = "credential_rejected"
+	w.engine.fails = errors.New("exit status 1")
+	var cli, failure string
+	options := w.options()
+	options.Ended = func(c, f string) { cli, failure = c, f }
+
+	options.Do(context.Background(), w.grant())
+
+	if cli != "claude_code" || failure != "credential_rejected" {
+		t.Errorf("told (%q, %q), want the CLI and the wall it hit", cli, failure)
+	}
+}

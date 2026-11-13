@@ -32,6 +32,9 @@ type WorkplaceReport struct {
 	CLIVersion     string                 `json:"cli_version"`
 	ProtocolFamily string                 `json:"protocol_family"`
 	Capabilities   discovery.Capabilities `json:"capabilities"`
+	// SignedIn is what the CLI answered when asked whether anybody is signed in to it. Left
+	// out when it could not be asked: no answer is not *no* (FR-007r).
+	SignedIn *bool `json:"signed_in,omitempty"`
 }
 
 // WorkplacesRequest is the machine's whole list, sent every time rather than as a difference.

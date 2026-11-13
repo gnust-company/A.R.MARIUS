@@ -88,6 +88,10 @@ type Options struct {
 	// start a CLI that is waiting for a question and then wait for it to exit, and both sides
 	// would wait until the timeout.
 	Handshake func(ctx context.Context, path string, args []string, talk func(to io.Writer, from io.Reader) error) error
+	// Answer runs a discovered binary and returns what it printed to its output **whatever its
+	// exit status**. A third edge because some questions are answered partly by the status: a
+	// CLI asked whether anybody is signed in says *no* and exits non-zero. Defaults to answerOf.
+	Answer func(ctx context.Context, path string, args ...string) ([]byte, error)
 	// Timeout bounds one such call. A CLI that hangs on `--version` must not hold up the
 	// sweep — the machine still has other CLIs, and the server is waiting to hear about them.
 	Timeout time.Duration
@@ -164,6 +168,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.Handshake == nil {
 		o.Handshake = startAndTalk
+	}
+	if o.Answer == nil {
+		o.Answer = answerOf
 	}
 	if o.Timeout <= 0 {
 		o.Timeout = defaultTimeout

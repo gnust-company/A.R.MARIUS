@@ -21,6 +21,7 @@ from armarius.domain.services.wake_reason import reason as wake_reason
 from armarius.presentation.api.auth import CurrentUser
 from armarius.presentation.api.frozen import refuse_when_frozen
 from armarius.presentation.api.scoping import own_project, own_task
+from armarius.presentation.api.task_view import task_out, tasks_out
 from armarius.presentation.deps import ContainerDep
 from armarius.presentation.schemas import (
     AddDependencyIn,
@@ -78,7 +79,7 @@ async def create_task(
         plan_item_id=body.plan_item_id,
         created_by_user_id=body.created_by_user_id,
     )
-    return TaskOut.model_validate(task)
+    return await task_out(container, task)
 
 
 @router.get("/projects/{project_id}/tasks", response_model=list[TaskOut])
@@ -91,14 +92,14 @@ async def list_tasks(
     await own_project(container, user, project_id)
     statuses = [s.strip() for s in status.split(",")] if status else None
     items = await container.tasks.list_by_project(project_id, statuses=statuses)
-    return [TaskOut.model_validate(t) for t in items]
+    return await tasks_out(container, items)
 
 
 @router.get("/tasks/{task_id}", response_model=TaskOut)
 async def get_task(
     task_id: UUID, container: ContainerDep, user: CurrentUser
 ) -> TaskOut:
-    return TaskOut.model_validate(await own_task(container, user, task_id))
+    return await task_out(container, await own_task(container, user, task_id))
 
 
 @router.patch("/tasks/{task_id}", response_model=TaskOut)
@@ -115,7 +116,7 @@ async def edit_task(
     await own_task(container, user, task_id)
     sent = body.model_dump(include=body.model_fields_set)
     task = await container.tasks.edit(task_id, user_id=str(user.id), **sent)
-    return TaskOut.model_validate(task)
+    return await task_out(container, task)
 
 
 @router.post("/tasks/{task_id}/assign", response_model=TaskOut)
@@ -129,7 +130,7 @@ async def assign_task(
         transfer_reason=body.transfer_reason,
         user_id=str(user.id),
     )
-    return TaskOut.model_validate(task)
+    return await task_out(container, task)
 
 
 @router.post("/tasks/{task_id}/status", response_model=TaskOut)
@@ -140,7 +141,7 @@ async def transition_task(
     task = await container.tasks.transition(
         task_id, _parse_status(body.status), reason=body.reason, user_id=str(user.id)
     )
-    return TaskOut.model_validate(task)
+    return await task_out(container, task)
 
 
 @router.post("/tasks/{task_id}/reopen", response_model=TaskOut)
@@ -150,7 +151,7 @@ async def reopen_task(
     """The only way out of *done*/*cancelled* (FR-022). Reason mandatory, trace kept."""
     await own_task(container, user, task_id)
     task = await container.tasks.reopen(task_id, reason=body.reason, user_id=str(user.id))
-    return TaskOut.model_validate(task)
+    return await task_out(container, task)
 
 
 @router.post("/tasks/{task_id}/approval", response_model=TaskOut)
@@ -169,7 +170,7 @@ async def sign_approval(
     task = await container.approvals.sign_as_patron(
         task_id, user_id=str(user.id), approve=body.approve, reason=body.reason
     )
-    return TaskOut.model_validate(task)
+    return await task_out(container, task)
 
 
 @router.get("/tasks/{task_id}/approvals", response_model=list[ApprovalOut])
@@ -209,7 +210,7 @@ async def set_next_action(
 ) -> TaskOut:
     await own_task(container, user, task_id)
     task = await container.tasks.set_next_action(task_id, body.next_action)
-    return TaskOut.model_validate(task)
+    return await task_out(container, task)
 
 
 @router.get("/tasks/{task_id}/dependencies", response_model=list[BlockerOut])

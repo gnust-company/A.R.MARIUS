@@ -28,6 +28,8 @@ from armarius.presentation.schemas import (
     AutoApprovalOut,
     ContextDecisionIn,
     CreateProjectPlanIn,
+    NextBatchIn,
+    NextBatchOut,
     OrchestrationOut,
     PhaseChangeIn,
     PlanDecisionIn,
@@ -466,6 +468,23 @@ async def change_project_phase(
         reason=body.reason,
     )
     return await _detail(container, project)
+
+
+@router.post("/projects/{project_id}/next-batch", response_model=NextBatchOut)
+async def open_next_batch(
+    project_id: UUID, body: NextBatchIn, container: ContainerDep, user: CurrentUser
+) -> NextBatchOut:
+    """The third answer to a finished batch: *another one* (FR-043a).
+
+    Closing the project and moving it to maintenance are phase changes and go through the
+    route above. This one changes no phase — it closes the wrap-up letter and wakes the
+    Leader with what the patron wants next, as a single decision.
+    """
+    await _require_owned_project(container, user, project_id)
+    answered = await container.projects.open_next_batch(
+        project_id, user_id=str(user.id), note=body.note
+    )
+    return NextBatchOut(answered=answered)
 
 
 def _parse_decision(value: str) -> PlanDecision:

@@ -81,6 +81,11 @@ type Config struct {
 	// a reclaim can be, never whether one happens.
 	SweepInterval Duration `json:"sweep_interval"`
 
+	// SignInInterval is how often each agent CLI is asked again whether anybody is signed in
+	// to it (FR-007r). Decides how long a workplace can read *ready* over a lapsed sign-in,
+	// and how long a person who has just signed in waits for it to reopen by itself.
+	SignInInterval Duration `json:"sign_in_interval"`
+
 	// WorkDirRetention is how long a task's working directory survives after the server said
 	// that task was finished with and nothing more happened to it (FR-021).
 	WorkDirRetention Duration `json:"work_dir_retention"`
@@ -128,6 +133,7 @@ func Defaults() Config {
 		MaxConcurrentRuns:     5,
 		DrainPatience:         Duration(60 * time.Second),
 		SweepInterval:         Duration(execenv.DefaultSweepInterval),
+		SignInInterval:        Duration(5 * time.Minute),
 		WorkDirRetention:      Duration(execenv.DefaultWorkDirRetention),
 		SessionRetention:      Duration(execenv.DefaultSessionRetention),
 		OrphanRetention:       Duration(execenv.DefaultOrphanRetention),
@@ -174,6 +180,7 @@ func (c Config) Validate() error {
 		{"claim_lease", c.ClaimLease.Duration()},
 		{"drain_patience", c.DrainPatience.Duration()},
 		{"sweep_interval", c.SweepInterval.Duration()},
+		{"sign_in_interval", c.SignInInterval.Duration()},
 		{"work_dir_retention", c.WorkDirRetention.Duration()},
 		{"session_retention", c.SessionRetention.Duration()},
 		{"orphan_retention", c.OrphanRetention.Duration()},

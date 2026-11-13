@@ -1522,3 +1522,37 @@ và nó ký được ở đó; người chủ ký trong hộp thư, đợt khép
 **Còn hở, chưa làm:** Trưởng dự án báo trường chữ ký trên bảng việc trống dù đầu việc đã *xong*; lựa chọn
 "mở đợt mới" mới chỉ khép thư chứ chưa gọi Trưởng dự án dậy (FR-047 có nêu cớ này).
 
+→ Hai chỗ này làm ở Giai đoạn 13.
+
+## Giai đoạn 13: Sau lần chạy thử, những chỗ còn hở (2026-11-13)
+
+*Người chủ bảo làm tiếp các chỗ còn hở của Giai đoạn 12. Đào chỗ "trường chữ ký trống" thì ra hai lỗi cùng
+gốc, một ở server và một ở màn hình.*
+
+- [x] T211 **Đầu việc mang chữ ký thật** per FR-033a. Một phễu duy nhất cho mọi lối trả về đầu việc
+  (`presentation/api/task_view.py`), điền từ sổ chữ ký qua đúng cửa quyết định chữ ký nào còn hiệu lực. Bảng
+  việc của Trưởng dự án (`armarius project tasks`) cũng có chữ ký từng đầu việc. Sổ chữ ký trả thêm dấu
+  *hết hiệu lực*; bỏ trường `round` mà server luôn gửi là 1.
+- [x] T212 **Mở đợt mới là một quyết định trọn vẹn** per FR-043a. Cửa `POST /v1/projects/{id}/next-batch`:
+  khép thư tổng kết và gọi Trưởng dự án, kèm lời người chủ. Đáp hai lần chỉ gọi một lần; thư đề xuất chuyển
+  giai đoạn không bị khép theo.
+- [x] T213 **Đổi giai đoạn thì Trưởng dự án được báo** per FR-047, FR-043a. Chuyển sang *bảo trì* hoặc về
+  *vận hành* gọi Trưởng dự án với cớ `phase_changed`, kèm lý do người chủ ghi. Đóng dự án không gọi ai.
+- [x] T214 **Lượt chạy do server lái cũng đưa đầu việc sang *đang làm*** per FR-024a. Góp ý của người
+  duyệt PR #294: luật chỉ mới nối ở cửa của máy. Nay cả hai đường báo cùng một tin.
+- [x] T215 **Cớ nằm chờ không bị cắt mù** per FR-050a. Góp ý thứ hai của người duyệt: phần riêng cho agent
+  được tách khỏi câu cớ bằng một phép cắt theo độ dài, đúng chỉ khi gói tin do đúng một hàm dựng. Nay kiểm
+  điều ấy trước khi cắt; gói tin dựng kiểu khác thì giữ nguyên.
+- [x] T216 **Giao diện theo kịp** per FR-033a, FR-043a. Nằm ở nhánh giao diện: phòng đầu việc đọc dấu hết
+  hiệu lực thay vì tự tính vòng, và giữ mục *Chữ ký* trên đầu việc đã xong; thư *đợt việc đã khép* hỏi "đợt
+  mới làm gì" trước khi gửi; chat với Trưởng dự án hết ném lỗi khi rê chuột qua tin nhắn.
+
+**Xong 2026-11-13.** **Đo trên dịch vụ thật** sau khi dựng lại backend, frontend và daemon: API trả đủ hai chữ ký cho
+CALC-1, CALC-2, CALC-3; phòng CALC-3 hiện mục *Chữ ký* với lời chấm của Trưởng dự án; trả lời thư tổng kết
+bằng "mở đợt mới" kèm một câu dặn thì thư khép, Trưởng dự án được gọi ngay, đọc đúng nguyên
+văn câu dặn, tự đính chính lời báo "chữ ký trống" trước đó và đề xuất hai việc cho đợt mới, không tạo task
+nào như được dặn.
+**Còn hở:** khi một runtime đóng hay mở lại, các agent trên đó chỉ đổi trạng thái ở lần kiểm kế tiếp (tới
+90 giây), nên màn Agent có lúc ghi *trực tuyến* trong khi màn Máy đã ghi runtime đóng. Đặc tả 002 FR-006e
+để việc này ngoài phạm vi theo quyết định của người chủ; đây nhiều khả năng cũng là gốc của lần thấy Livia
+lệch trạng thái giữa hai màn, thứ không tái hiện lại được.

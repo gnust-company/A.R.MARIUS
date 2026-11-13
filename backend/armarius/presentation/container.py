@@ -358,6 +358,9 @@ def build_container() -> Container:
     # The holder's run starting is what *in progress* means; the board should not wait for
     # the agent to get round to saying so (FR-024a).
     on_work_begun.append(tasks.worker_started)
+    # The same news from the other road: a run this process carries out itself, for an
+    # agent reached through a gateway rather than a machine.
+    wake_engine.when_a_run_begins(tasks.worker_started)
     # One escalator, shared: the watchdog climbs the ladder and the Leader's recovery
     # endpoint clears it. Two instances would each hold their own idea of where a task
     # stands, and the rung the Leader answered would not be the rung the sweep reads.
