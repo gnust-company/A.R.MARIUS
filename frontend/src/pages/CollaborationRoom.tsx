@@ -42,6 +42,7 @@ import { useTaskStream } from '@/hooks/use-task-stream';
 import { subscribeProjectEvents } from '@/lib/sse';
 import { cn, wsHref } from '@/lib/utils';
 import { withVersions } from '@/lib/artifactVersions';
+import { leaderHasSigned } from '@/lib/signatures';
 import { blockedReasonKey, needsReason, type TaskPhase } from '@/lib/taskRules';
 import { errorText } from '@/lib/errors';
 import { WAITING_FOR_A_MACHINE, waitKind, waitText } from '@/lib/drive';
@@ -376,11 +377,8 @@ export default function CollaborationRoom() {
     };
   }, [signedTaskId, signedTaskStatus, approvalsKey]);
 
-  /** Current round = times sent back + 1; a signature from an old round does not carry over. */
-  const currentRound = approvals.filter((a) => a.result === 'reject').length + 1;
-  const leaderSigned = approvals.some(
-    (a) => a.round === currentRound && a.signer_kind === 'leader' && a.result === 'approve',
-  );
+  /** Whether the Leader has passed what is in review now — as the server recorded it. */
+  const leaderSigned = leaderHasSigned(approvals);
 
   const handleSign = async (approve: boolean) => {
     if (!task) return;
@@ -957,29 +955,40 @@ export default function CollaborationRoom() {
             </DocSection>
 
             {/* Output acceptance (spec 001 FR-033) — right under the criteria and the
-                artifacts, since those are the two things a signer must look at first. Shown
-                only while the task is *in review*: earlier there is nothing to score, later
-                the work is closed. */}
-            {statusValue === 'in_review' && (
-              <DocSection label={t('collaborationRoom.acceptance.title')} className="bg-gold-soft/50">
+                artifacts, since those are the two things a signer must look at first. The
+                question and its buttons show only while the task is *in review*: earlier
+                there is nothing to score, later the work is closed. The record of who signed
+                stays for as long as there is one — a closed task that could not say who
+                closed it was the gap a Leader read as "signed by nobody" (found 2026-11-13). */}
+            {(statusValue === 'in_review' || approvals.length > 0) && (
+              <DocSection
+                label={t(statusValue === 'in_review' ? 'collaborationRoom.acceptance.title' : 'collaborationRoom.acceptance.record')}
+                className={statusValue === 'in_review' ? 'bg-gold-soft/50' : undefined}
+              >
+                {statusValue === 'in_review' && (
                 <p className="font-body text-[13px] leading-relaxed text-ink">
                   {leaderSigned
                     ? t('collaborationRoom.acceptance.yourTurn')
                     : t('collaborationRoom.acceptance.waitingLeader')}
                 </p>
+                )}
                 {approvals.length > 0 && (
-                  <ul className="mt-3 space-y-1.5">
+                  <ul className={statusValue === 'in_review' ? 'mt-3 space-y-1.5' : 'space-y-1.5'}>
                     {approvals.map((a) => (
-                      <li key={a.id} className="flex items-start gap-2 font-body text-[12px] text-ink-light">
+                      <li
+                        key={a.id}
+                        className={`flex items-start gap-2 font-body text-[12px] ${a.superseded ? 'text-ink-muted' : 'text-ink-light'}`}
+                      >
                         {a.result === 'approve' ? (
-                          <ShieldCheck className="mt-px h-3.5 w-3.5 shrink-0 text-success" />
+                          <ShieldCheck className={`mt-px h-3.5 w-3.5 shrink-0 ${a.superseded ? 'text-ink-muted' : 'text-success'}`} />
                         ) : (
-                          <XCircle className="mt-px h-3.5 w-3.5 shrink-0 text-danger" />
+                          <XCircle className={`mt-px h-3.5 w-3.5 shrink-0 ${a.superseded ? 'text-ink-muted' : 'text-danger'}`} />
                         )}
                         <span className="min-w-0 break-words">
                           {t(`collaborationRoom.acceptance.signer.${a.signer_kind}`)} ·{' '}
                           {t(`collaborationRoom.acceptance.result.${a.result}`)}
                           {a.is_auto && ` · ${t('collaborationRoom.acceptance.auto')}`}
+                          {a.superseded && ` · ${t('collaborationRoom.acceptance.earlier')}`}
                           {a.reason && ` — ${a.reason}`}
                         </span>
                       </li>
@@ -987,6 +996,7 @@ export default function CollaborationRoom() {
                   </ul>
                 )}
                 {approvalError && <p className="mt-2 font-body text-[12px] text-danger" role="alert">{approvalError}</p>}
+                {statusValue === 'in_review' && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     disabled={!leaderSigned || signing}
@@ -1003,6 +1013,7 @@ export default function CollaborationRoom() {
                     {t('collaborationRoom.acceptance.sendBack')}
                   </button>
                 </div>
+                )}
               </DocSection>
             )}
 

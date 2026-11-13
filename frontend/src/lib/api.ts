@@ -289,8 +289,8 @@ export interface TaskDTO {
   stalled_reason?: string | null
   /** The verdict as a code; the screen words it (see `lib/stall.ts`). */
   stalled_reason_code?: string | null
-  /** Filled by the two-signature rule; empty until that ships. */
-  signatures?: Record<string, unknown>[]
+  /** Who has signed the work now in review (FR-033a). Empty means nobody has. */
+  signatures?: { signer_kind: 'leader' | 'patron'; result: 'approve' | 'reject'; is_auto?: boolean; reason?: string | null; signed_at?: string | null }[]
   assigned_marius_id?: string | null
   next_action?: string | null
   created_at?: string | null
@@ -887,7 +887,8 @@ export async function setTaskCriteria(taskId: string, texts: string[]): Promise<
 export interface ApprovalDTO {
   id: string
   task_id?: string | null
-  round: number
+  /** True once the work went back: this signature no longer speaks for what is in review. */
+  superseded?: boolean
   signer_kind: 'leader' | 'patron'
   signer_marius_id?: string | null
   signer_user_id?: string | null
@@ -1440,6 +1441,15 @@ export async function decideProjectPlan(
   note?: string,
 ): Promise<PlanDTO> {
   return post<PlanDTO>(`/v1/projects/${projectId}/plan/decision`, { decision, note })
+}
+
+/** The third answer to a finished batch: another one (FR-043a).
+ *
+ * One call, not "close the letter, then go and tell the Leader": the server closes the
+ * wrap-up letter and wakes the Leader with the note as a single decision. `answered` is false
+ * when the letter had already been answered — nobody was called a second time. */
+export async function openNextBatch(projectId: string, note?: string): Promise<{ answered: boolean }> {
+  return post<{ answered: boolean }>(`/v1/projects/${projectId}/next-batch`, { note: note || null })
 }
 
 export async function changeProjectPhase(

@@ -6,7 +6,23 @@ import {
   type TextMessagePartComponent,
 } from '@assistant-ui/react';
 import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown';
+import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+
+// The row one message sits in. A plain element, deliberately not `MessagePrimitive.Root`.
+//
+// The library's root does two things beyond being a `div`: it registers the row as a scroll
+// anchor (only for the top-anchored layout, which these chats do not use) and it tracks
+// whether the pointer is over the message, for an action bar that appears on hover. These
+// chats have no action bar, so the hover state has no reader — and writing it throws: with
+// the external-store runtime the per-message store is never mounted, and every pointer
+// crossing a bubble raised "Resource updated before mount" as an uncaught page error
+// (found 2026-11-12; measured again 2026-11-13, one error per bubble crossed). Newer builds
+// of the library's internals turn the same write into an update loop, so upgrading is not
+// the way out. The message *content* still comes from the library (`MessagePrimitive.Parts`).
+function MessageRow({ className, children }: { className: string; children: ReactNode }) {
+  return <div className={className}>{children}</div>;
+}
 
 // assistant-ui markdown renderer. MarkdownTextPrimitive reads the part text from
 // context, so the wrapper takes no props — it just satisfies the Text part
@@ -19,11 +35,11 @@ const MarkdownText: TextMessagePartComponent = () => (
 // no markdown rendering).
 export function PatronBubble() {
   return (
-    <MessagePrimitive.Root className="flex justify-end">
+    <MessageRow className="flex justify-end">
       <div className="max-w-[85%] rounded-[13px] rounded-tr-[4px] border border-sapphire/30 bg-sapphire-soft px-4 py-2.5 text-ink font-body text-[14px] leading-[1.7] whitespace-pre-wrap break-words">
         <MessagePrimitive.Parts />
       </div>
-    </MessagePrimitive.Root>
+    </MessageRow>
   );
 }
 
@@ -32,11 +48,11 @@ export function PatronBubble() {
 // arrive dressed as the Leader talking to itself.
 export function SystemNotice() {
   return (
-    <MessagePrimitive.Root className="flex justify-center">
+    <MessageRow className="flex justify-center">
       <div className="max-w-[92%] rounded-md px-3 py-1.5 bg-canvas-deep border border-dashed border-line-strong text-ink-muted font-body text-body-sm text-center whitespace-pre-wrap break-words">
         <MessagePrimitive.Parts />
       </div>
-    </MessagePrimitive.Root>
+    </MessageRow>
   );
 }
 
@@ -45,7 +61,7 @@ export function SystemNotice() {
 // Tailwind variants (no @tailwindcss/typography dependency).
 export function AgentBubble() {
   return (
-    <MessagePrimitive.Root className="flex justify-start">
+    <MessageRow className="flex justify-start">
       <div
         className={cn(
           'max-w-[90%] rounded-[13px] rounded-tl-[4px] px-4 py-2.5 bg-field border border-line text-ink font-body text-[14px] leading-[1.7] break-words',
@@ -61,6 +77,6 @@ export function AgentBubble() {
       >
         <MessagePrimitive.Parts components={{ Text: MarkdownText }} />
       </div>
-    </MessagePrimitive.Root>
+    </MessageRow>
   );
 }
