@@ -9,7 +9,6 @@ export interface ObservatoryHandle {
   rotate: () => void;
   reset: () => void;
   focusZone: (zone: AgentZone) => void;
-  focusWorkPod: (index: number) => void;
   focusAgent: (id: string) => void;
 }
 
@@ -64,7 +63,6 @@ const ObservatoryScene = forwardRef<ObservatoryHandle, Props>(function Observato
     rotate: () => engine.current?.rotate(),
     reset: () => engine.current?.reset(),
     focusZone: (zone) => engine.current?.focusZone(zone),
-    focusWorkPod: (index) => engine.current?.focusWorkPod(index),
     focusAgent: (id) => engine.current?.focusAgent(id),
   }), []);
 
