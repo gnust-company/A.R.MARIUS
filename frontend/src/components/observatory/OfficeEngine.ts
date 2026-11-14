@@ -5,7 +5,7 @@ import { createCharacter, type Appearance, type CharacterRig } from '@/scene/cha
 import { box, cylinder, releaseCaches, retainCaches } from '@/scene/primitives';
 import { LoungeLife, type IdleAgent } from './loungeLife';
 import { SCENE_FONT, buildCompany, canvas2d, type SceneLabels } from './officeBuilding';
-import { walkBetween, wayInto, type Activity, type AgentZone, type OfficeLayout, type OfficePlan, type Placement, type Point, type Spot, type Step } from './officePlan';
+import { reportSpot, walkTo, wayOut, type Activity, type AgentZone, type OfficeLayout, type OfficePlan, type Placement, type Point, type Spot, type Step } from './officePlan';
 
 export type { SceneLabels } from './officeBuilding';
 
@@ -29,6 +29,8 @@ export interface SceneAgent {
   role?: string;
   /** The codes of the tasks it is holding, for the plate on its desk. */
   holding?: string;
+  /** Ids of its tasks that are waiting for the patron: a new one sends it up with the report. */
+  reviewing?: string[];
 }
 
 export interface SceneState {
@@ -319,12 +321,14 @@ interface Walker {
   /** The spot it is at or heading for; a new key is a new walk. */
   key: string;
   steps: Step[];
-  /** The way in to where it stands, or — while walking — to the step it last left. */
-  trail: Point[];
+  /** The way from where it is out onto the walkways: back out of its spot, or the rest of its current step. */
+  out: Point[];
   settled: boolean;
   zone: AgentZone;
-  /** It reached the lounge from another zone while the scene was open. */
+  /** It reached the lounge from another zone, or from the patron's desk, while the scene was open. */
   cameOffWork: boolean;
+  /** Seconds it has stood at the patron's desk with a report. */
+  handover: number;
   cup: THREE.Mesh;
   paper: THREE.Mesh;
   paddle: THREE.Mesh;
@@ -340,8 +344,12 @@ const OVERVIEW_TURN = 0.21;
 const OVERVIEW_TILT = 0.7;
 const OVERVIEW = new THREE.Vector3(Math.sin(OVERVIEW_TURN) * Math.cos(OVERVIEW_TILT), Math.sin(OVERVIEW_TILT), Math.cos(OVERVIEW_TURN) * Math.cos(OVERVIEW_TILT)).multiplyScalar(52);
 
-/** Floor units a figure covers in a second. */
+/** Floor units a figure covers in a second: at a walk, and hurrying up to the patron with a report. */
 const WALK_SPEED = 2;
+const RUN_SPEED = 3.8;
+/** How long handing a report over takes, and when in it the paper changes hands. */
+const HANDOVER_SECONDS = 2.6;
+const HANDOVER_GIVEN = 1.4;
 
 /** Turn an angle toward another by the short way round. */
 function turnToward(from: number, to: number, blend: number): number {
@@ -374,6 +382,10 @@ export class OfficeEngine {
   /** Seconds left of the notice board calling for attention after a new letter. */
   private boardPulse = 0;
   private boardCount = -1;
+  /** Agents on their way to the patron with a report, or waiting their turn, in order. */
+  private errands: string[] = [];
+  /** The tasks each agent is known to have handed in, so a new one can be told from an old one. */
+  private handed = new Map<string, Set<string>>();
   private labelsOnSigns: SceneLabels;
   private labels = new Map<string, THREE.Sprite>();
   private captions = new Map<AgentZone, THREE.Sprite>();
@@ -486,17 +498,17 @@ export class OfficeEngine {
     // where no agent ever stands: a caption over the room itself lands on its name tags.
     const west = this.plan.centerX - this.plan.floorWidth / 2 - 0.7;
     const east = this.plan.centerX + this.plan.floorWidth / 2 + 0.7;
-    const zoneSpots: Record<AgentZone, [x: number, z: number, outward: number]> = {
-      setup: [west, this.plan.reception.z, -1],
-      lounge: [east, this.plan.lounge.z, 1],
-      clinic: [west, this.plan.clinic.z, -1],
-      work: [east, this.plan.work.z, 1],
-      patron: [east, this.plan.patron.z, 1],
+    const zoneSpots: Record<AgentZone, [x: number, y: number, z: number, outward: number]> = {
+      setup: [west, 0.6, this.plan.reception.z, -1],
+      lounge: [east, 0.6, this.plan.lounge.z, 1],
+      clinic: [west, 0.6, this.plan.clinic.z, -1],
+      work: [east, 0.6, this.plan.work.z, 1],
+      patron: [east, 0.6, this.plan.patron.z, 1],
     };
     (Object.keys(zoneSpots) as AgentZone[]).forEach((zone) => {
-      const [x, z, outward] = zoneSpots[zone];
+      const [x, y, z, outward] = zoneSpots[zone];
       const caption = captionSprite();
-      caption.position.set(x, 0.6, z);
+      caption.position.set(x, y, z);
       caption.userData.outward = outward;
       this.scene.add(caption);
       this.captions.set(zone, caption);
@@ -621,7 +633,7 @@ export class OfficeEngine {
     if (!force && state === this.lastState) return;
     this.lastState = state;
     const { agents, layout, selectedId, theme } = state;
-    const signature = JSON.stringify([agents.map((agent) => [agent.id, agent.name, agent.status, agent.role, agent.holding, layout.placements.get(agent.id)]), selectedId, theme, state.captions, state.inboxPending]);
+    const signature = JSON.stringify([agents.map((agent) => [agent.id, agent.name, agent.status, agent.role, agent.holding, agent.reviewing, layout.placements.get(agent.id)]), selectedId, theme, state.captions, state.inboxPending]);
     if (!force && signature === this.signature) return;
     this.signature = signature;
     this.captions.forEach((caption, zone) => {
@@ -636,6 +648,17 @@ export class OfficeEngine {
       this.rigs.delete(id);
       this.labels.delete(id);
       this.walkers.delete(id);
+      this.handed.delete(id);
+      this.errands = this.errands.filter((other) => other !== id);
+    }
+    // A task that has just gone up for review sends its agent to the patron with the report.
+    // Only a change seen while the scene is open counts: what was already waiting when the
+    // page opened was handed in long ago.
+    for (const agent of agents) {
+      const now = new Set(agent.reviewing ?? []);
+      const before = this.handed.get(agent.id);
+      if (before && !this.reduced && !this.errands.includes(agent.id) && [...now].some((task) => !before.has(task))) this.errands.push(agent.id);
+      this.handed.set(agent.id, now);
     }
     // The notice board: repainted when the count changes, and it calls out when it goes up.
     if (state.inboxPending !== this.boardCount) {
@@ -678,7 +701,7 @@ export class OfficeEngine {
         this.scene.add(rig.root);
         this.rigs.set(agent.id, rig);
         // A figure found on the floor starts where it belongs; only later changes are walked.
-        this.walkers.set(agent.id, { key: '', steps: [], trail: wayInto(placement), settled: false, zone: placement.zone, cameOffWork: false, cup, paper, paddle });
+        this.walkers.set(agent.id, { key: '', steps: [], out: wayOut(placement), settled: false, zone: placement.zone, cameOffWork: false, handover: 0, cup, paper, paddle });
       }
       const label = this.labels.get(agent.id);
       if (label && label.userData.paintKey !== tagKey(agent, theme)) paintLabel(label, agent, theme);
@@ -692,6 +715,8 @@ export class OfficeEngine {
 
   /** The spot a figure is at or heading for: its seat, or wherever the lounge has it right now. */
   private goalOf(id: string, placement: Placement): { key: string; spot: Spot } {
+    const turn = this.errands.indexOf(id);
+    if (turn >= 0) return { key: `report:${turn}`, spot: reportSpot(this.plan, turn) };
     if (placement.zone === 'lounge' && !this.reduced) {
       const index = this.life.spotOf(id);
       if (index !== undefined) return { key: `lounge:${index}`, spot: this.plan.loungeSpots[index] };
@@ -706,6 +731,7 @@ export class OfficeEngine {
    */
   private move(id: string, rig: CharacterRig, walker: Walker, placement: Placement, delta: number, blend: number) {
     const { key, spot } = this.goalOf(id, placement);
+    const reporting = key.startsWith('report:');
     const position = rig.root.position;
     const target = this.scratch.desired;
     if (walker.key !== key) {
@@ -717,13 +743,9 @@ export class OfficeEngine {
         position.set(spot.x, spot.y, spot.z);
         rig.root.rotation.y = spot.rotation;
       } else {
+        // Mid-walk it finishes the stretch it is on, then turns for the new place.
         const here: Point = [position.x, position.y, position.z];
-        // Mid-walk it is on the stretch between the step it left and the next one: the way
-        // out from here is the shorter of their two trails.
-        const next = walker.steps[0]?.trail;
-        const from = next ? [...(next.length < walker.trail.length ? next : walker.trail.slice(0, -1)), here] : walker.trail;
-        walker.steps = walkBetween(from, wayInto(spot));
-        walker.trail = from;
+        walker.steps = walkTo(this.plan, here, walker.steps[0]?.out ?? walker.out, spot);
       }
     }
 
@@ -734,10 +756,10 @@ export class OfficeEngine {
       target.set(x, y, z);
       const dx = x - position.x;
       const dz = z - position.z;
-      const stride = WALK_SPEED * delta;
+      const stride = (reporting ? RUN_SPEED : WALK_SPEED) * delta;
       if (position.distanceTo(target) <= stride) {
         position.copy(target);
-        walker.trail = walker.steps[0].trail;
+        walker.out = walker.steps[0].out;
         walker.steps.shift();
       } else {
         position.addScaledVector(target.sub(position).normalize(), stride);
@@ -747,7 +769,7 @@ export class OfficeEngine {
     }
     if (!moving && !walker.settled) {
       walker.settled = true;
-      walker.trail = wayInto(spot);
+      walker.out = wayOut(spot);
       if (placement.zone === 'lounge') this.life.arrived(id, this.elapsed);
     }
 
@@ -755,7 +777,7 @@ export class OfficeEngine {
     const calm = this.reduced;
     const seed = this.seed(id);
     const t = this.elapsed;
-    const phase = t * 8 + seed;
+    const phase = t * (reporting ? 13 : 8) + seed;
     const activity: Activity | 'walk' = moving ? 'walk' : spot.activity;
     const pose = moving ? 'standing' : spot.pose;
     let swing = moving ? Math.sin(phase) * 0.48 : 0;
@@ -767,8 +789,8 @@ export class OfficeEngine {
     if (!moving) target.set(spot.x, spot.y, spot.z);
     switch (activity) {
       case 'walk':
-        // Someone on the way up to the patron carries what they are about to present.
-        if (spot.activity === 'present') {
+        // Someone hurrying up to the patron carries the report they are about to hand in.
+        if (reporting) {
           held = walker.paper;
           rightArm = -0.75;
         }
@@ -821,15 +843,26 @@ export class OfficeEngine {
         headX = 0.32;
         break;
       case 'present': {
-        held = walker.paper;
-        rightArm = -0.8;
-        if (!calm) {
-          const cycle = (t + seed * 0.2) % 16;
-          target.z -= THREE.MathUtils.smoothstep(cycle, 3, 6) * 0.2 - THREE.MathUtils.smoothstep(cycle, 11, 14) * 0.2;
+        // At the patron's desk: hold the report out, let go of it, step back. Then the trip
+        // is over and the figure goes wherever it belongs — its desk, or the lounge.
+        walker.handover += delta;
+        const given = walker.handover > HANDOVER_GIVEN;
+        held = given ? null : walker.paper;
+        rightArm = given ? -0.2 : -1.3;
+        headX = given ? 0.12 : 0;
+        if (walker.handover > HANDOVER_SECONDS) {
+          walker.handover = 0;
+          walker.cameOffWork = true;
+          this.errands = this.errands.filter((other) => other !== id);
         }
         break;
       }
       case 'queue':
+        // In line behind someone at the patron's desk: still holding the report.
+        if (reporting) {
+          held = walker.paper;
+          rightArm = -0.75;
+        }
         headY = calm ? 0 : Math.sin(t * 0.45 + seed) * 0.3;
         break;
       case 'wait':
@@ -940,7 +973,8 @@ export class OfficeEngine {
         walker.cameOffWork = placement.zone === 'lounge';
         walker.zone = placement.zone;
       }
-      if (placement.zone === 'lounge') idle.push({ id, start: placement.start ?? 0, cameOffWork: walker?.cameOffWork ?? false });
+      // Someone up at the patron's desk has left the lounge, and their seat with it.
+      if (placement.zone === 'lounge' && !this.errands.includes(id)) idle.push({ id, start: placement.start ?? 0, cameOffWork: walker?.cameOffWork ?? false });
     });
     if (!this.reduced) this.life.step(this.elapsed, idle);
     this.lit.fill(false);
@@ -967,6 +1001,11 @@ export class OfficeEngine {
     parts.screens.forEach((screen, index) => {
       const color = (screen.material as THREE.MeshBasicMaterial).color;
       color.lerp(this.scratch.color.set(this.lit[index] ? (Math.sin(this.elapsed * 5 + index) > 0.6 ? '#b9d2ff' : '#8fb4ff') : '#27303a'), Math.min(1, delta * 6));
+    });
+    // The stack on the patron's desk: every report waiting for an answer, less those still on their way.
+    const waiting = Math.max(0, layout.plan.reviewCount - this.errands.length);
+    parts.reports.forEach((report, index) => {
+      report.visible = index < waiting;
     });
     // A ball crosses each table that has a player on both sides.
     parts.balls.forEach((ball, station) => {
