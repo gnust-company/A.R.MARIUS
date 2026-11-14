@@ -17,9 +17,6 @@ import { barStools, type OfficePlan, type Room, type Station } from './officePla
 export interface SceneLabels {
   canvas: string;
   entry: string;
-  reception: [string, string];
-  clinic: (beds: number, waiting: number) => [string, string];
-  patron: (queue: number) => [string, string];
   snackBar: string;
   /** The notice board in the patron's office: its heading, and the line under the count. */
   noticeBoard: (count: number) => [string, string];
@@ -34,29 +31,6 @@ export function canvas2d(width: number, height: number): [HTMLCanvasElement, Can
   const context = canvas.getContext('2d');
   if (!context) throw new Error('2D canvas unavailable');
   return [canvas, context];
-}
-
-/** A physical sign on a wall: always dark enamel with light lettering, in both themes. */
-function zoneSign(parent: THREE.Object3D, [title, subtitle]: [string, string], position: [number, number, number], accent: string) {
-  const [canvas, ctx] = canvas2d(768, 160);
-  ctx.fillStyle = 'rgba(20,29,42,.88)';
-  ctx.beginPath();
-  ctx.roundRect(4, 4, 760, 152, 18);
-  ctx.fill();
-  ctx.fillStyle = accent;
-  ctx.fillRect(4, 4, 9, 152);
-  ctx.fillStyle = '#f3efe5';
-  ctx.font = `600 42px ${SCENE_FONT}`;
-  ctx.fillText(title.toUpperCase(), 40, 67, 700);
-  ctx.fillStyle = '#acb8ca';
-  ctx.font = '24px ui-monospace, monospace';
-  ctx.fillText(subtitle.toUpperCase(), 40, 116, 700);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: true }));
-  sprite.position.set(...position);
-  sprite.scale.set(3.1, 0.65, 1);
-  parent.add(sprite);
 }
 
 function floorWayfinding(parent: THREE.Object3D, title: string, position: [number, number], color: string, turn = 0) {
@@ -90,22 +64,34 @@ function workstation(parent: THREE.Object3D, index: number, screenMaterial: THRE
 }
 
 /** A coloured floor laid over the slab: the carpet that tells one zone from the next. */
-function zoneFloor(parent: THREE.Object3D, room: Room, color: string) {
-  return box(parent, [room.width - 0.06, 0.035, room.depth - 0.06], [room.x, 0.035, room.z], color, 0.01);
+function zoneFloor(parent: THREE.Object3D, room: Room, color: string, lift = 0) {
+  return box(parent, [room.width - 0.06, 0.035, room.depth - 0.06], [room.x, 0.035 + lift, room.z], color, 0.01);
 }
 
-/** A glazed wall along z with one doorway in it, for a room that opens onto the aisle. */
-function glazedWallWithDoor(parent: THREE.Object3D, x: number, from: number, to: number, doorZ: number, wallColor: string, glass: THREE.Material) {
+/** A low wall with glass over it, along x or along z, with an optional doorway in it. */
+function glazedWall(parent: THREE.Object3D, from: [number, number], to: [number, number], wallColor: string, glass: THREE.Material, door?: number) {
+  const alongX = Math.abs(to[0] - from[0]) > Math.abs(to[1] - from[1]);
+  const start = alongX ? Math.min(from[0], to[0]) : Math.min(from[1], to[1]);
+  const end = alongX ? Math.max(from[0], to[0]) : Math.max(from[1], to[1]);
+  const fixed = alongX ? from[1] : from[0];
   const half = 0.85;
-  for (const [start, end] of [[from, doorZ - half], [doorZ + half, to]] as const) {
-    const length = end - start;
+  const spans: [number, number][] = door === undefined ? [[start, end]] : [[start, door - half], [door + half, end]];
+  const at = (along: number): [number, number] => (alongX ? [along, fixed] : [fixed, along]);
+  const size = (length: number, height: number, thickness: number): [number, number, number] => (alongX ? [length, height, thickness] : [thickness, height, length]);
+  for (const [a, b] of spans) {
+    const length = b - a;
     if (length < 0.15) continue;
-    const z = (start + end) / 2;
-    box(parent, [0.13, 0.68, length], [x, 0.34, z], wallColor, 0.025);
-    box(parent, [0.055, 0.82, Math.max(0.1, length - 0.12)], [x, 1.08, z], glass, 0.01);
+    const [x, z] = at((a + b) / 2);
+    box(parent, size(length, 0.68, 0.13), [x, 0.34, z], wallColor, 0.025);
+    box(parent, size(Math.max(0.1, length - 0.12), 0.82, 0.055), [x, 1.08, z], glass, 0.01);
   }
-  for (const side of [-1, 1]) box(parent, [0.16, 1.92, 0.09], [x, 0.96, doorZ + side * (half + 0.05)], '#6d777c', 0.015);
-  box(parent, [0.16, 0.09, half * 2 + 0.19], [x, 1.89, doorZ], '#6d777c', 0.015);
+  if (door === undefined) return;
+  for (const side of [-1, 1]) {
+    const [x, z] = at(door + side * (half + 0.05));
+    box(parent, size(0.09, 1.92, 0.16), [x, 0.96, z], '#6d777c', 0.015);
+  }
+  const [x, z] = at(door);
+  box(parent, size(half * 2 + 0.19, 0.09, 0.16), [x, 1.89, z], '#6d777c', 0.015);
 }
 
 /** A railing: glass under a handrail, on posts. Runs along x when `alongX`, else along z. */
@@ -202,22 +188,29 @@ function snackBar(root: THREE.Group, station: Station, label: string) {
 /** A table-tennis table. Returns where its ball rests, in the station's own frame. */
 function tennisTable(root: THREE.Group) {
   const z = -0.1;
-  box(root, [2.6, 0.07, 1.4], [0, 0.76, z], '#2f6f5e', 0.01);
-  box(root, [2.6, 0.012, 0.03], [0, 0.8, z], '#f1f1ee', 0);
+  box(root, [2.3, 0.07, 1.3], [0, 0.76, z], '#2f6f5e', 0.01);
+  box(root, [2.3, 0.012, 0.03], [0, 0.8, z], '#f1f1ee', 0);
   for (const side of [-1, 1]) {
-    box(root, [2.6, 0.012, 0.03], [0, 0.8, z + side * 0.685], '#f1f1ee', 0);
-    box(root, [0.03, 0.012, 1.4], [side * 1.285, 0.8, z], '#f1f1ee', 0);
+    box(root, [2.3, 0.012, 0.03], [0, 0.8, z + side * 0.635], '#f1f1ee', 0);
+    box(root, [0.03, 0.012, 1.3], [side * 1.135, 0.8, z], '#f1f1ee', 0);
   }
-  box(root, [0.025, 0.15, 1.52], [0, 0.875, z], '#e9ebe6', 0);
-  for (const x of [-0.95, 0.95]) for (const side of [-1, 1]) rod(root, [x, 0.04, z + side * 0.5], [x, 0.73, z + side * 0.5], 0.04, '#3e4148');
-  box(root, [1.9, 0.05, 0.05], [0, 0.4, z], '#3e4148', 0.01);
+  box(root, [0.025, 0.15, 1.42], [0, 0.875, z], '#e9ebe6', 0);
+  for (const x of [-0.85, 0.85]) for (const side of [-1, 1]) rod(root, [x, 0.04, z + side * 0.5], [x, 0.73, z + side * 0.5], 0.04, '#3e4148');
+  box(root, [1.7, 0.05, 0.05], [0, 0.4, z], '#3e4148', 0.01);
 }
 
-function readingNook(root: THREE.Group, index: number) {
-  const shelf = makeFurniture('bookshelf', '#675443');
-  shelf.position.set(-0.45, 0, -1);
-  shelf.scale.setScalar(0.92);
-  root.add(shelf);
+function readingNook(root: THREE.Group, index: number, low: boolean) {
+  // In a front row the shelf would stand between the camera and the reader: a low cabinet instead.
+  if (low) {
+    box(root, [1.5, 0.5, 0.4], [-0.45, 0.25, -1], '#675443', 0.03);
+    for (let book = 0; book < 5; book++) box(root, [0.1, 0.24 - (book % 2) * 0.05, 0.22], [-0.95 + book * 0.14, 0.62 - (book % 2) * 0.025, -1], ['#9e9fb6', '#d2b28b', '#bd8876', '#d8c695', '#7e7f95'][book], 0.005);
+    plant(root, 0.6, '#9c7658', true).position.set(-0.05, 0.5, -1);
+  } else {
+    const shelf = makeFurniture('bookshelf', '#675443');
+    shelf.position.set(-0.45, 0, -1);
+    shelf.scale.setScalar(0.92);
+    root.add(shelf);
+  }
   const armchair = makeFurniture('armchair', CHAIR_COLORS[(index + 1) % CHAIR_COLORS.length]);
   armchair.position.set(0.35, 0, -0.15);
   root.add(armchair);
@@ -240,6 +233,8 @@ export interface LiveParts {
   plates: THREE.Mesh[];
   board: THREE.Mesh;
   boardFrame: THREE.Mesh;
+  /** The stack of reports on the patron's desk, bottom sheet first. */
+  reports: THREE.Mesh[];
   /** The ball of each table-tennis table, keyed by station index, with where it rests. */
   balls: Map<number, { mesh: THREE.Mesh; x: number; z: number }>;
 }
@@ -260,10 +255,10 @@ export function buildCompany(scene: THREE.Scene, plan: OfficePlan, labels: Scene
   const back = -depth / 2;
   const front = depth / 2;
   const columnEdge = plan.reception.x + plan.reception.width / 2;
-  const galleryLeft = plan.patron.x - plan.patron.width / 2;
-  const galleryFront = plan.patron.z + plan.patron.depth / 2;
-  const height = plan.galleryHeight;
-  const loungeTop = plan.lounge.z - plan.lounge.depth / 2;
+  const platformWest = plan.patron.x - plan.patron.width / 2;
+  const platformFront = plan.patron.z + plan.patron.depth / 2;
+  const height = plan.platformHeight;
+  const clinicSouth = plan.clinic.z + plan.clinic.depth / 2;
   const entryZ = plan.receptionDoorZ;
 
   // Shell: floor slab, back wall with windows, a tall west wall with the way in, low east and front.
@@ -296,19 +291,17 @@ export function buildCompany(scene: THREE.Scene, plan: OfficePlan, labels: Scene
   const starsMaterial = new THREE.PointsMaterial({ color: '#ffe6a6', size: 0.035, transparent: true, opacity: 0 });
   root.add(new THREE.Points(starsGeometry, starsMaterial));
 
-  // The main aisle: one line from the foot of the gallery stairs down into the lounge.
-  const aisleFrom = plan.stairs.foot + 0.1;
-  const aisleTo = plan.loungeLanes[plan.loungeLanes.length - 1] + 0.6;
-  box(root, [1.5, 0.035, aisleTo - aisleFrom], [plan.aisleX, 0.036, (aisleFrom + aisleTo) / 2], '#77878a', 0.01);
-  box(root, [0.035, 0.018, aisleTo - aisleFrom - 0.4], [plan.aisleX, 0.075, (aisleFrom + aisleTo) / 2], '#d4b972', 0);
+  // The main aisle: one line from the back wall, between the west rooms and the work floor, down into the lounge.
+  const aisleFrom = back + 0.4;
+  const aisleTo = plan.loungeLanes[plan.loungeLanes.length - 1] + 0.5;
+  box(root, [1.5, 0.03, aisleTo - aisleFrom], [plan.aisleX, 0.07, (aisleFrom + aisleTo) / 2], '#77878a', 0.01);
+  box(root, [0.035, 0.012, aisleTo - aisleFrom - 0.4], [plan.aisleX, 0.092, (aisleFrom + aisleTo) / 2], '#d4b972', 0);
 
   // ── Sick bay: beds, bedside monitors, a bench for whoever is waiting for one.
   zoneFloor(root, plan.clinic, '#b8c9ca');
-  const clinicSouth = plan.clinic.z + plan.clinic.depth / 2;
-  glazedWallWithDoor(root, columnEdge, back + 0.1, clinicSouth, plan.clinicDoorZ, '#a3b6b9', glassMaterial);
+  glazedWall(root, [columnEdge, back + 0.1], [columnEdge, clinicSouth], '#a3b6b9', glassMaterial, plan.clinicDoorZ);
   // The wall it shares with the front desk is low and glazed, so the beds are not hidden behind it.
-  box(root, [plan.clinic.width, 0.9, 0.13], [plan.clinic.x, 0.45, clinicSouth], '#a3b6b9', 0.025);
-  box(root, [plan.clinic.width - 0.3, 0.7, 0.055], [plan.clinic.x, 1.25, clinicSouth], glassMaterial, 0.01);
+  glazedWall(root, [left + 0.16, clinicSouth], [columnEdge, clinicSouth], '#a3b6b9', glassMaterial);
   plan.beds.forEach((position, index) => {
     const bed = makeFurniture('bed', index % 2 ? '#8aa6b0' : '#91a99c');
     bed.scale.setScalar(0.72);
@@ -321,25 +314,22 @@ export function buildCompany(scene: THREE.Scene, plan: OfficePlan, labels: Scene
   const bench = makeFurniture('bench', '#7d9395');
   bench.scale.setScalar(0.78);
   bench.rotation.y = Math.PI;
-  bench.position.set(plan.clinic.x - 1.05, 0, clinicSouth - 0.5);
+  bench.position.set(plan.clinic.x - 1.55, 0, clinicSouth - 0.5);
   root.add(bench);
-  zoneSign(root, labels.clinic(plan.clinicBeds, plan.clinicWaiting), [plan.clinic.x, 3.25, back + 0.3], '#a8d5bd');
-  const cross = group(root, [columnEdge - 0.1, 1.72, plan.clinicDoorZ - 1.5]);
-  box(cross, [0.1, 0.62, 0.2], [0, 0, 0], '#d9eee6', 0.02);
-  box(cross, [0.1, 0.2, 0.62], [0, 0, 0], '#d9eee6', 0.02);
+  const cross = group(root, [columnEdge + 0.02, 2.2, plan.clinicDoorZ]);
+  box(cross, [0.08, 0.56, 0.18], [0, 0, 0], '#d9eee6', 0.02);
+  box(cross, [0.08, 0.18, 0.56], [0, 0, 0], '#d9eee6', 0.02);
 
   // ── Front desk: the way in from outside, a counter, and room to queue in front of it.
   zoneFloor(root, plan.reception, '#9eabb0');
-  glazedWallWithDoor(root, columnEdge, clinicSouth, loungeTop, plan.receptionDoorZ, '#a5b2b6', glassMaterial);
-  box(root, [plan.reception.width, 0.68, 0.13], [plan.reception.x, 0.34, loungeTop], '#a5b2b6', 0.025);
-  box(root, [plan.reception.width - 0.3, 0.82, 0.055], [plan.reception.x, 1.08, loungeTop], glassMaterial, 0.01);
+  glazedWall(root, [columnEdge, clinicSouth], [columnEdge, plan.partitionZ], '#a5b2b6', glassMaterial, plan.receptionDoorZ);
+  glazedWall(root, [left + 0.16, plan.partitionZ], [columnEdge, plan.partitionZ], '#a5b2b6', glassMaterial);
   const counterZ = clinicSouth + 0.85;
-  const counter = group(root, [plan.reception.x - 0.5, 0, counterZ]);
+  const counter = group(root, [plan.reception.x - 0.6, 0, counterZ]);
   box(counter, [3.5, 1.05, 0.9], [0, 0.54, 0], '#687e88', 0.08);
   box(counter, [3.7, 0.12, 1.08], [0, 1.09, 0], '#d2c2a2', 0.045);
   box(counter, [1.1, 0.06, 0.6], [0.9, 1.2, 0], '#263744', 0.025).rotation.x = -0.18;
   box(counter, [0.96, 0.025, 0.46], [0.9, 1.235, -0.015], screenMaterial, 0.015).rotation.x = -0.18;
-  zoneSign(root, labels.reception, [left + 0.3, 2.35, plan.reception.z + plan.reception.depth / 2 - 1], '#8fc4e8');
   const hologram = group(root, [columnEdge - 0.95, 1.05, counterZ + 0.15]);
   const holoMaterial = new THREE.MeshBasicMaterial({ color: '#9fb7ff', transparent: true, opacity: 0.52, depthWrite: false });
   for (let index = 0; index < 3; index++) {
@@ -355,82 +345,117 @@ export function buildCompany(scene: THREE.Scene, plan: OfficePlan, labels: Scene
   box(root, [0.035, 2.15, 1.85], [entryX + 0.03, 1.18, entryZ], glassMaterial, 0.005);
   floorWayfinding(root, labels.entry, [left + 0.75, entryZ], '#e5eef2', Math.PI / 2);
 
-  // ── The patron's gallery: a raised floor along the back wall, looking down over the desks.
-  const gallery = group(root, [0, height, 0]);
-  box(root, [plan.patron.width, height, plan.patron.depth], [plan.patron.x, height / 2, plan.patron.z], '#7d6a5c', 0.02);
-  box(root, [plan.landing.width, height, plan.landing.depth], [plan.landing.x, height / 2, plan.landing.z], '#7d6a5c', 0.02);
-  box(root, [plan.patron.width, 0.05, 0.05], [plan.patron.x, height - 0.04, galleryFront + 0.02], '#d2b568', 0);
-  const treads = 4;
-  const run = (plan.stairs.foot - plan.stairs.top) / treads;
-  for (let tread = 0; tread < treads; tread++) {
-    const top = (height * (treads - tread)) / (treads + 1);
-    box(root, [plan.stairs.width, top, run], [plan.stairs.x, top / 2, plan.stairs.top + run / 2 + tread * run], tread % 2 ? '#85715f' : '#7d6a5c', 0.01);
-  }
-  railing(root, [galleryLeft + 0.05, galleryFront - 0.06], [right - 0.2, galleryFront - 0.06], height, glassMaterial);
-  railing(root, [galleryLeft + 0.05, plan.stairs.top + 0.05], [galleryLeft + 0.05, galleryFront - 0.06], height, glassMaterial);
-  const galleryRug = makeFurniture('rug', '#6d5d59');
-  galleryRug.scale.set(2.1, 1, 1.5);
-  galleryRug.position.set(plan.patronDesk.x, 0.02, plan.patronDesk.z + 0.35);
-  gallery.add(galleryRug);
-  const desk = group(gallery, [plan.patronDesk.x, 0, plan.patronDesk.z]);
-  box(desk, [3.05, 0.16, 1.2], [0, 0.91, 0], '#6e5545', 0.05);
-  for (const x of [-1.28, 1.28]) box(desk, [0.18, 0.86, 1], [x, 0.45, 0], '#564238', 0.035);
-  box(desk, [0.72, 0.04, 0.48], [-0.5, 1.02, 0.05], '#d6c6a5', 0.015);
-  box(desk, [0.46, 0.055, 0.32], [-0.38, 1.07, 0.02], '#f0e5ca', 0.01).rotation.y = -0.1;
-  box(desk, [0.6, 0.38, 0.05], [0.55, 1.2, -0.2], '#242c35', 0.03).rotation.y = Math.PI;
-  chair(gallery, [plan.patronDesk.x, 0, plan.patronDesk.z - 0.98], 0, '#625563');
-  plant(gallery, 0.95, '#987556', true).position.set(right - 0.65, 0, galleryFront - 0.7);
-  plant(gallery, 0.8, '#987556').position.set(galleryLeft + 1.9, 0, plan.patron.z - plan.patron.depth / 2 + 0.6);
-  const presenterMark = new THREE.MeshStandardMaterial({ color: '#e0bd68', emissive: '#e0bd68', emissiveIntensity: 0.8 });
-  cylinder(gallery, 0.28, 0.28, 0.03, [plan.patronDesk.x, 0.03, plan.patronDesk.z + 1.3], presenterMark, 32);
-  zoneSign(root, labels.patron(Math.max(0, plan.reviewCount - 1)), [plan.patronDesk.x - 2.2, 3.3 + height * 0.2, back + 0.3], '#e7c27f');
+  // ── The work floor, an L: the rows of pods across the building, and the leg that runs up
+  // to the back wall beside the patron's platform. One carpet for both.
+  zoneFloor(root, plan.work, '#aa9b7d');
+  zoneFloor(root, { ...plan.workLeg, depth: plan.workLeg.depth + 0.1 }, '#aa9b7d');
 
-  // The notice board: what is waiting for the patron, on a stand beside the desk.
-  const boardBase = height;
-  for (const side of [-1, 1]) rod(root, [plan.noticeBoard.x + side * 1.05, boardBase, plan.noticeBoard.z], [plan.noticeBoard.x + side * 1.05, boardBase + 0.75, plan.noticeBoard.z], 0.035, '#3e4148');
-  box(root, [2.7, 1.55, 0.07], [plan.noticeBoard.x, boardBase + 1.45, plan.noticeBoard.z], '#1d2a36', 0.03);
+  // ── The patron's office: a raised platform in the corner the L leaves, with steps down
+  // into the leg. The patron sits with their back to the east wall, facing the steps, so
+  // whoever comes up with a report walks straight up to the front of the desk.
+  const platform = group(root, [0, height, 0]);
+  box(root, [plan.patron.width, height, plan.patron.depth], [plan.patron.x, height / 2, plan.patron.z], '#7d6a5c', 0.02);
+  box(root, [plan.patron.width, 0.05, 0.05], [plan.patron.x, height - 0.04, platformFront + 0.02], '#d2b568', 0);
+  const treads = 4;
+  const run = (plan.stairs.top - plan.stairs.foot) / treads;
+  for (let tread = 0; tread < treads; tread++) {
+    const top = (height * (tread + 1)) / (treads + 1);
+    box(root, [run, top, plan.stairs.width], [plan.stairs.foot + run / 2 + tread * run, top / 2, plan.stairs.z], tread % 2 ? '#85715f' : '#7d6a5c', 0.01);
+  }
+  railing(root, [platformWest + 0.05, platformFront - 0.06], [right - 0.2, platformFront - 0.06], height, glassMaterial);
+  // The west edge has the steps in the middle of it: a rail on either side of them.
+  railing(root, [platformWest + 0.05, back + 0.25], [platformWest + 0.05, plan.stairs.z - plan.stairs.width / 2], height, glassMaterial);
+  railing(root, [platformWest + 0.05, plan.stairs.z + plan.stairs.width / 2], [platformWest + 0.05, platformFront - 0.06], height, glassMaterial);
+  const rug = makeFurniture('rug', '#6d5d59');
+  rug.scale.set(1.45, 1, 1.45);
+  rug.position.set(plan.patronDesk.x - 0.75, 0.02, plan.patronDesk.z);
+  platform.add(rug);
+  const desk = group(platform, [plan.patronDesk.x, 0, plan.patronDesk.z], -Math.PI / 2);
+  box(desk, [2.3, 0.16, 1.1], [0, 0.91, 0], '#6e5545', 0.05);
+  for (const x of [-0.95, 0.95]) box(desk, [0.18, 0.86, 0.92], [x, 0.45, 0], '#564238', 0.035);
+  box(desk, [0.62, 0.04, 0.42], [-0.45, 1.02, -0.1], '#d6c6a5', 0.015);
+  box(desk, [0.56, 0.36, 0.05], [0.45, 1.19, 0.1], '#242c35', 0.03);
+  chair(platform, [plan.patronDesk.x + 0.95, 0, plan.patronDesk.z], -Math.PI / 2, '#625563');
+  plant(platform, 0.9, '#987556', true).position.set(right - 0.65, 0, platformFront - 0.6);
+  const presenterMark = new THREE.MeshStandardMaterial({ color: '#e0bd68', emissive: '#e0bd68', emissiveIntensity: 0.8 });
+  cylinder(platform, 0.28, 0.28, 0.03, [plan.patronDesk.x - 1.45, 0.05, plan.patronDesk.z], presenterMark, 32);
+  // Reports handed in and not yet answered pile up on the patron's side of the desk.
+  const reports: THREE.Mesh[] = [];
+  const sheet = new THREE.BoxGeometry(0.3, 0.014, 0.22);
+  const sheetMaterial = new THREE.MeshStandardMaterial({ color: '#f4efe2', roughness: 0.9 });
+  for (let index = 0; index < 8; index++) {
+    const report = new THREE.Mesh(sheet, sheetMaterial);
+    report.position.set(plan.patronDesk.x - 0.25, height + 1.0 + index * 0.016, plan.patronDesk.z - 0.62);
+    report.rotation.y = ((index * 37) % 11) * 0.05 - 0.25;
+    report.visible = false;
+    live.add(report);
+    reports.push(report);
+  }
+
+  // The notice board: what is waiting for the patron, on a stand against the back wall.
+  for (const side of [-1, 1]) rod(root, [plan.noticeBoard.x + side * 1.05, height, plan.noticeBoard.z], [plan.noticeBoard.x + side * 1.05, height + 0.75, plan.noticeBoard.z], 0.035, '#3e4148');
+  box(root, [2.7, 1.55, 0.07], [plan.noticeBoard.x, height + 1.45, plan.noticeBoard.z], '#1d2a36', 0.03);
   const boardFrame = new THREE.Mesh(new THREE.BoxGeometry(2.78, 1.63, 0.04), new THREE.MeshBasicMaterial({ color: '#d2b568' }));
-  boardFrame.position.set(plan.noticeBoard.x, boardBase + 1.45, plan.noticeBoard.z - 0.01);
+  boardFrame.position.set(plan.noticeBoard.x, height + 1.45, plan.noticeBoard.z - 0.01);
   live.add(boardFrame);
   const [boardCanvas] = canvas2d(640, 360);
   const boardTexture = new THREE.CanvasTexture(boardCanvas);
   boardTexture.colorSpace = THREE.SRGBColorSpace;
   const board = new THREE.Mesh(new THREE.PlaneGeometry(2.56, 1.44), new THREE.MeshBasicMaterial({ map: boardTexture, toneMapped: false }));
-  board.position.set(plan.noticeBoard.x, boardBase + 1.45, plan.noticeBoard.z + 0.04);
+  board.position.set(plan.noticeBoard.x, height + 1.45, plan.noticeBoard.z + 0.04);
   live.add(board);
 
-  // A click anywhere on the gallery opens the patron's inbox.
+  // A click anywhere in the patron's office opens the patron's inbox.
   const patronTarget = box(root, [plan.patron.width, 2.7, plan.patron.depth], [plan.patron.x, height + 1.35, plan.patron.z], new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }), 0);
   patronTarget.castShadow = false;
   patronTarget.receiveShadow = false;
 
-  // ── The work floor: one desk per agent, each with its owner's name on it.
-  zoneFloor(root, plan.work, '#aa9b7d');
+  // ── The pods: four desks each, two facing two, every desk with its owner's name on it.
   const screens: THREE.Mesh[] = [];
   const plates: THREE.Mesh[] = [];
   plan.desks.forEach((position, index) => {
-    const station = group(root, [position.x, 0, position.z]);
+    const station = group(root, [position.x, 0, position.z], position.rotation);
     const screen = workstation(station, index, new THREE.MeshBasicMaterial({ color: '#27303a' }));
     live.attach(screen);
     screen.castShadow = false;
     screens.push(screen);
+    // The plate stands on the owner's side of the desk and always faces the front of the building.
+    const side = position.rotation === 0 ? 1 : -1;
     const [canvas] = canvas2d(320, 96);
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.24), new THREE.MeshBasicMaterial({ map: texture, toneMapped: false }));
-    plate.position.set(position.x - 0.42, 1.03, position.z + 0.3);
+    plate.position.set(position.x - 0.42 * side, 1.03, position.z + 0.3 * side);
     plate.rotation.x = -0.5;
     live.add(plate);
     plates.push(plate);
-    box(root, [0.84, 0.03, 0.12], [position.x - 0.42, 0.905, position.z + 0.33], '#3e4148', 0.01);
+    box(root, [0.84, 0.03, 0.12], [position.x - 0.42 * side, 0.905, position.z + 0.3 * side + 0.03], '#3e4148', 0.01);
   });
-  plant(root, 0.85, '#8d7156').position.set(right - 0.6, 0, galleryFront + 0.7);
+  // Between two pods with room to spare: a printer on a cabinet, and a plant.
+  plan.pods.forEach((pod, index) => {
+    const next = plan.pods[index + 1];
+    if (!next || Math.abs(next.z - pod.z) > 0.1 || next.x - pod.x < 5.4) return;
+    const x = (pod.x + next.x) / 2;
+    box(root, [0.95, 0.72, 0.6], [x, 0.36, pod.z + 0.45], '#cfd6d8', 0.04);
+    box(root, [0.7, 0.26, 0.5], [x, 0.85, pod.z + 0.45], '#e9ebe6', 0.04);
+    box(root, [0.5, 0.02, 0.3], [x, 0.99, pod.z + 0.5], '#f4efe2', 0);
+    plant(root, 0.85, '#8d7156').position.set(x, 0, pod.z - 0.65);
+  });
 
-  // ── The lounge, across the front of the building, behind a low partition.
+  // ── The lounge, across the front of the building. The partition is dark timber with
+  // planting along the top, so it stands out from the floor on either side of it.
   zoneFloor(root, plan.lounge, '#82928d');
   const partitionFrom = plan.aisleX + 0.9;
-  box(root, [right - 0.2 - partitionFrom, 0.9, 0.12], [(partitionFrom + right - 0.2) / 2, 0.45, loungeTop], '#8e9999', 0.02);
-  box(root, [right - 0.2 - partitionFrom, 0.05, 0.18], [(partitionFrom + right - 0.2) / 2, 0.92, loungeTop], '#c5a767', 0.01);
+  const partitionLength = right - 0.2 - partitionFrom;
+  const partitionX = (partitionFrom + right - 0.2) / 2;
+  box(root, [partitionLength, 0.95, 0.22], [partitionX, 0.475, plan.partitionZ], '#4a382c', 0.03);
+  box(root, [partitionLength + 0.06, 0.06, 0.3], [partitionX, 0.98, plan.partitionZ], '#c9a45c', 0.015);
+  box(root, [partitionLength - 0.2, 0.1, 0.16], [partitionX, 1.02, plan.partitionZ], '#3a2c22', 0.01);
+  const shrubs = Math.max(2, Math.round(partitionLength / 1.9));
+  for (let index = 0; index < shrubs; index++) {
+    const shrub = plant(root, 0.62, '#3a2c22', true);
+    shrub.position.set(partitionFrom + (partitionLength * (index + 0.5)) / shrubs, 0.72, plan.partitionZ);
+  }
   const balls = new Map<number, { mesh: THREE.Mesh; x: number; z: number }>();
   const counts = { sofa: 0, bar: 0, table: 0, nook: 0 };
   plan.stations.forEach((station, index) => {
@@ -438,7 +463,7 @@ export function buildCompany(scene: THREE.Scene, plan: OfficePlan, labels: Scene
     const nth = counts[station.kind]++;
     if (station.kind === 'sofa') sofaGroup(spot, nth);
     if (station.kind === 'bar') snackBar(spot, station, labels.snackBar);
-    if (station.kind === 'nook') readingNook(spot, nth);
+    if (station.kind === 'nook') readingNook(spot, nth, station.low === true);
     if (station.kind === 'table') {
       tennisTable(spot);
       const sign = station.rotation === 0 ? 1 : -1;
@@ -454,15 +479,18 @@ export function buildCompany(scene: THREE.Scene, plan: OfficePlan, labels: Scene
   // Pendant lamps, lit only at night. Few of them: each one is a real light.
   const lampMaterial = new THREE.MeshStandardMaterial({ color: '#c7a962', emissive: '#ffd77e', emissiveIntensity: 0, roughness: 0.45 });
   const lights: THREE.PointLight[] = [];
+  const mainRow = plan.pods.filter((pod) => Math.abs(pod.z - plan.pods[0].z) < 0.1);
+  const overPods = mainRow.length <= 2 ? mainRow : [mainRow[0], mainRow[mainRow.length - 1]];
+  const legPod = plan.pods[plan.pods.length - 1];
   const lamps: [x: number, z: number, lift: number][] = [
     [plan.reception.x, plan.reception.z, 0],
     [plan.clinic.x, plan.clinic.z, 0],
-    [plan.patronDesk.x, plan.patronDesk.z + 0.4, height * 0.6],
-    [plan.work.x - plan.work.width / 4, plan.work.z + 0.5, 0],
-    [plan.work.x + plan.work.width / 4, plan.work.z + 0.5, 0],
-    ...plan.loungeLanes.slice(0, 2).flatMap((lane): [number, number, number][] => [[-width / 4, lane, 0], [width / 4, lane, 0]]),
+    [plan.patronDesk.x - 0.9, plan.patronDesk.z, height * 0.6],
+    [legPod.x, legPod.z, 0],
+    ...overPods.map((pod): [number, number, number] => [pod.x, pod.z, 0]),
+    ...plan.loungeLanes.slice(0, 1).flatMap((lane): [number, number, number][] => [[plan.aisleX - 3.5, lane - 0.6, 0], [plan.work.x, lane - 0.6, 0]]),
   ];
-  for (const [x, z, lift] of lamps.slice(0, 9)) {
+  for (const [x, z, lift] of lamps) {
     rod(root, [x, 3.65 + lift, z], [x, 3.05 + lift, z], 0.012, '#4b4842');
     cylinder(root, 0.14, 0.32, 0.25, [x, 2.95 + lift, z], lampMaterial, 20);
     const light = new THREE.PointLight('#ffd58a', 0, 9.2, 1.6);
@@ -470,6 +498,6 @@ export function buildCompany(scene: THREE.Scene, plan: OfficePlan, labels: Scene
     root.add(light);
     lights.push(light);
   }
-  const parts: LiveParts = { screens, plates, board, boardFrame, balls };
+  const parts: LiveParts = { screens, plates, board, boardFrame, reports, balls };
   return { root, live, windowMaterial, starsMaterial, lights, lampMaterial, hologram, patronTarget, parts };
 }
