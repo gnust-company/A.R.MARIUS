@@ -6,7 +6,8 @@ import {
   type TextMessagePartComponent,
 } from '@assistant-ui/react';
 import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown';
-import type { ReactNode } from 'react';
+import type { ComponentPropsWithoutRef, ReactNode } from 'react';
+import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 
 // The row one message sits in. A plain element, deliberately not `MessagePrimitive.Root`.
@@ -27,8 +28,27 @@ function MessageRow({ className, children }: { className: string; children: Reac
 // assistant-ui markdown renderer. MarkdownTextPrimitive reads the part text from
 // context, so the wrapper takes no props — it just satisfies the Text part
 // component contract. `smooth` enables the typing animation as tokens stream in.
+//
+// GitHub-flavoured markdown is switched on because agents answer in it: a Leader proposing
+// work lays the tasks out as a pipe table, and without the plugin the table arrived as one
+// paragraph of words and `|` (seen 2026-11-14 in the CALC project chat). The plugin list is
+// a module constant so the renderer is not handed a new array on every streamed token.
+const REMARK_PLUGINS = [remarkGfm];
+
+// A table is the one thing in a bubble that cannot wrap to the bubble's width, so it gets
+// its own scroll box: a wide table scrolls inside the bubble instead of widening the page.
+function ScrollingTable(props: ComponentPropsWithoutRef<'table'>) {
+  return (
+    <div className="my-2 max-w-full overflow-x-auto rounded-md border border-line">
+      <table {...props} />
+    </div>
+  );
+}
+
+const MARKDOWN_COMPONENTS = { table: ScrollingTable };
+
 const MarkdownText: TextMessagePartComponent = () => (
-  <MarkdownTextPrimitive smooth />
+  <MarkdownTextPrimitive smooth remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS} />
 );
 
 // Patron (user) bubble — right-aligned, sapphire-soft (the patron's colour in the design). Plain text (patron's own words,
@@ -57,7 +77,7 @@ export function SystemNotice() {
 }
 
 // Agent (assistant) bubble — left-aligned, on the field colour with a hairline. Text parts render as
-// Markdown (code, lists, headings, links) styled to match the brand via arbitrary
+// Markdown (code, lists, headings, links, tables) styled to match the brand via arbitrary
 // Tailwind variants (no @tailwindcss/typography dependency).
 export function AgentBubble() {
   return (
@@ -73,6 +93,11 @@ export function AgentBubble() {
           '[&_h2]:font-display [&_h2]:text-body-sm [&_h3]:font-display [&_h3]:text-body-sm [&_h4]:font-display [&_h4]:text-body-sm',
           '[&_blockquote]:my-1 [&_blockquote]:border-l-2 [&_blockquote]:border-line-strong [&_blockquote]:pl-2 [&_blockquote]:text-ink-light',
           '[&_strong]:font-semibold [&_em]:italic [&_hr]:my-2 [&_hr]:border-line',
+          '[&_table]:w-full [&_table]:border-collapse [&_table]:text-[13px] [&_table]:leading-[1.5]',
+          '[&_th]:bg-canvas-deep [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_th]:align-bottom',
+          '[&_td]:px-2.5 [&_td]:py-1.5 [&_td]:align-top [&_td]:border-t [&_td]:border-line',
+          '[&_th+th]:border-l [&_th+th]:border-line [&_td+td]:border-l',
+          '[&_del]:text-ink-muted [&_input[type=checkbox]]:mr-1.5 [&_input[type=checkbox]]:align-middle',
         )}
       >
         <MessagePrimitive.Parts components={{ Text: MarkdownText }} />
