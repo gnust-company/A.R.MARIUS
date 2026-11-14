@@ -26,7 +26,6 @@ import {
   layoutOffice,
   normalizeTaskStatus,
   openTasksOf,
-  podLetter,
   type AgentZone,
   type Assignment,
 } from '@/components/observatory/officePlan';
@@ -70,7 +69,7 @@ function assignmentText(assignment: Assignment | undefined, t: TFunction): strin
   if (!assignment) return '';
   switch (assignment.kind) {
     case 'desk':
-      return t('observatory.assignment.desk', { pod: podLetter(assignment.pod), desk: assignment.desk });
+      return t('observatory.assignment.desk', { desk: assignment.desk });
     case 'bed':
       return t('observatory.assignment.bed', { bed: assignment.bed });
     case 'clinicQueue':
@@ -79,10 +78,8 @@ function assignmentText(assignment: Assignment | undefined, t: TFunction): strin
       return t('observatory.assignment.presenting');
     case 'ceoQueue':
       return t('observatory.assignment.ceoQueue', { position: assignment.position });
-    case 'loungeSeat':
-      return t('observatory.assignment.loungeSeat', { seat: assignment.seat });
-    case 'loungeFloor':
-      return t('observatory.assignment.loungeFloor');
+    case 'lounge':
+      return t('observatory.assignment.lounge');
     case 'checkIn':
       return t('observatory.assignment.checkIn', { position: assignment.position });
   }
@@ -119,7 +116,6 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [activeZone, setActiveZone] = useState<AgentZone | null>(null);
-  const [activePod, setActivePod] = useState<number | null>(null);
   // The gesture hint has done its job once the person has moved the view.
   const [hasRoamed, setHasRoamed] = useState(false);
 
@@ -157,15 +153,34 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
     setup: { value: String(zoneCount('setup')), unit: t('observatory.capacity.agents') },
     lounge: { value: String(zoneCount('lounge')), unit: t('observatory.capacity.agents') },
     clinic: { value: `${Math.min(plan.clinicCount, plan.clinicBeds)}/${plan.clinicBeds}`, unit: t('observatory.capacity.beds') },
-    work: { value: `${plan.workCount}/${plan.workCapacity}`, unit: t('observatory.capacity.desks') },
+    work: { value: `${plan.workCount}/${plan.headcount}`, unit: t('observatory.capacity.desks') },
     patron: { value: String(plan.reviewCount), unit: t('observatory.capacity.ceoQueue') },
   };
 
+  // What an agent is on the team. Roles are per project and an agent may sit on several, so
+  // the tag carries the one that matters most: leading any project outranks being on one.
+  const seats = projects.flatMap((project) => project.seats ?? []);
+  const roleOf = (agent: Marius): string => {
+    if (agent.isWorkspaceAgent) return t('observatory.role.assistant');
+    const held = seats.filter((seat) => seat.mariusId === agent.id);
+    if (held.some((seat) => seat.role === 'leader')) return t('observatory.role.leader');
+    return held.length ? t('observatory.role.member') : '';
+  };
+  // The task codes an agent has on its desk: what it is working on, not everything assigned.
+  const holdingOf = (agentId: string): string =>
+    openTasksOf(agentId, tasks)
+      .filter((task) => ['in_progress', 'blocked'].includes(normalizeTaskStatus(task.status)))
+      .map((task) => task.identifier)
+      .filter(Boolean)
+      .slice(0, 2)
+      .join(' · ');
+
   const sceneState: SceneState = {
-    agents: agents.map((agent) => ({ id: agent.id, name: agentName(agent), status: agent.status })),
+    agents: agents.map((agent) => ({ id: agent.id, name: agentName(agent), status: agent.status, role: roleOf(agent), holding: holdingOf(agent.id) })),
     layout,
     theme,
     selectedId,
+    inboxPending,
     captions: {
       setup: `${zoneLabel('setup')} · ${zoneFill.setup.value}`,
       lounge: `${zoneLabel('lounge')} · ${zoneFill.lounge.value}`,
@@ -176,18 +191,16 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
   };
   const sceneLabels: SceneLabels = {
     canvas: t('observatory.canvas'),
-    mainCirculation: t('observatory.sign.mainCirculation'),
     entry: t('observatory.sign.entry'),
     reception: [t('observatory.sign.receptionTitle'), t('observatory.sign.receptionSub')],
-    lounge: [t('observatory.sign.loungeTitle'), t('observatory.sign.loungeSub')],
-    pod: (letter) => [t('observatory.sign.podTitle', { letter }), t('observatory.sign.podSub')],
-    podFloor: (letter) => t('observatory.sign.podFloor', { letter }),
     clinic: (beds, waiting) => [t('observatory.sign.clinicTitle'), t('observatory.sign.clinicSub', { beds, waiting })],
     patron: (queue) => [t('observatory.sign.patronTitle'), t('observatory.sign.patronSub', { queue })],
-    approvalQueue: t('observatory.sign.approvalQueue'),
+    snackBar: t('observatory.sign.snackBar'),
+    noticeBoard: (count) => [t('observatory.sign.noticeTitle'), count > 0 ? t('observatory.sign.noticeWaiting') : t('observatory.sign.noticeNone')],
   };
-  // The scene is rebuilt only when the building itself changes shape (or its signs' words).
-  const sceneKey = [plan.workPods, plan.clinicBeds, plan.clinicWaiting, plan.large, plan.reviewCount, i18n.language].join(':');
+  // The scene is rebuilt only when the building itself changes shape (or its signs' words):
+  // the building is sized by the team, so that is when an agent joins or leaves.
+  const sceneKey = [plan.shape, plan.clinicBeds, plan.clinicWaiting > 0, plan.reviewCount > 1, i18n.language].join(':');
 
   const inboxHref = wsHref(workspaceId, '/inbox');
   const openPatron = () => navigate(inboxHref);
@@ -197,24 +210,15 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
   };
   const pickFromList = (id: string) => {
     setActiveZone(null);
-    setActivePod(null);
     scene.current?.focusAgent(id);
     inspect(id);
   };
   const focusZone = (zone: AgentZone) => {
     setActiveZone(zone);
-    setActivePod(null);
     scene.current?.focusZone(zone);
-  };
-  const focusPod = (index: number | null) => {
-    setActivePod(index);
-    setActiveZone(index === null ? null : 'work');
-    if (index === null) scene.current?.reset();
-    else scene.current?.focusWorkPod(index);
   };
   const resetCamera = () => {
     setActiveZone(null);
-    setActivePod(null);
     scene.current?.reset();
   };
   const camera = (action: 'zoomOut' | 'zoomIn' | 'rotate' | 'reset') => {
@@ -228,7 +232,6 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
   const roam = () => {
     if (!hasRoamed) setHasRoamed(true);
     if (activeZone !== null) setActiveZone(null);
-    if (activePod !== null) setActivePod(null);
   };
   const detail = agents.find((agent) => agent.id === detailId);
   const pickWithSelect = viewport === 'phone' || agents.length > 8;
@@ -243,9 +246,10 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
           <strong className="min-w-0 truncate font-display text-[20px] font-normal text-ink-strong">{agentName(agent)}</strong>
           <small className="ml-auto shrink-0 text-[10px] text-ink-light">{statusLabel(agent.status)}</small>
         </div>
-        {agent.role && <p className="mb-2 mt-1 truncate text-[11px] text-ink-light">{agent.role}</p>}
+        {roleOf(agent) && <p className="mb-2 mt-1 truncate text-[11px] text-ink-light">{roleOf(agent)}</p>}
         <span className="mt-2 block border-t border-line pt-2 text-[11px] font-semibold text-sapphire-strong">{zoneLabel(zoneOfAgent(id))}</span>
         <small className="mt-1 block text-[10px] text-ink-light">{assignmentText(layout.placements.get(id)?.assignment, t)}</small>
+        {holdingOf(id) && <small className="mt-1 block font-mono text-[10px] text-gold">{holdingOf(id)}</small>}
       </div>
     );
   };
@@ -275,29 +279,6 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
         </div>
       </header>
 
-      {plan.workPods > 1 && (
-        <div aria-label={t('observatory.podNav.label')} role="group" className="no-scrollbar flex items-center gap-[5px] overflow-x-auto rounded-[9px] border border-line bg-surface p-[5px]">
-          <span className="hidden shrink-0 px-2.5 font-mono text-[9px] uppercase tracking-[0.06em] text-ink-muted md:inline">{t('observatory.podNav.label')}</span>
-          {[null, ...plan.workCenters.map((_, index) => index)].map((index) => {
-            const active = activePod === index;
-            return (
-              <button
-                key={index ?? 'all'}
-                type="button"
-                aria-pressed={active}
-                onClick={() => focusPod(index)}
-                className={cn(
-                  'min-h-[31px] shrink-0 rounded-md px-3 py-1.5 text-[11px] transition-colors',
-                  active ? 'bg-sapphire-soft font-semibold text-sapphire-strong' : 'text-ink-light hover:bg-surface-hover hover:text-ink'
-                )}
-              >
-                {index === null ? t('observatory.podNav.overview') : t('observatory.podNav.pod', { letter: podLetter(index) })}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
       <section
         aria-label={t('observatory.sceneLabel')}
         className={cn(
@@ -323,7 +304,7 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
         <div className={cn('no-scrollbar absolute inset-x-2.5 top-2.5 z-[3] flex items-center gap-1 overflow-x-auto rounded-xl p-[5px] md:inset-x-[14px] md:top-[14px]', overlay)}>
           <nav aria-label={t('observatory.zoneNav.label')} className="flex items-center gap-1">
             {ZONES.map((zone, index) => {
-              const active = activeZone === zone && activePod === null;
+              const active = activeZone === zone;
               const title = zoneLabel(zone);
               const fill = zoneFill[zone];
               const hint = `${t('observatory.zoneNav.focus', { zone: title })} · ${fill.value} ${fill.unit}`;
