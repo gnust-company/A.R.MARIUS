@@ -26,6 +26,7 @@ import {
   layoutOffice,
   normalizeTaskStatus,
   openTasksOf,
+  podLetter,
   type AgentZone,
   type Assignment,
 } from '@/components/observatory/officePlan';
@@ -69,15 +70,11 @@ function assignmentText(assignment: Assignment | undefined, t: TFunction): strin
   if (!assignment) return '';
   switch (assignment.kind) {
     case 'desk':
-      return t('observatory.assignment.desk', { desk: assignment.desk });
+      return t('observatory.assignment.desk', { pod: podLetter(assignment.pod), desk: assignment.desk });
     case 'bed':
       return t('observatory.assignment.bed', { bed: assignment.bed });
     case 'clinicQueue':
       return t('observatory.assignment.clinicQueue', { position: assignment.position });
-    case 'presenting':
-      return t('observatory.assignment.presenting');
-    case 'ceoQueue':
-      return t('observatory.assignment.ceoQueue', { position: assignment.position });
     case 'lounge':
       return t('observatory.assignment.lounge');
     case 'checkIn':
@@ -153,7 +150,7 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
     setup: { value: String(zoneCount('setup')), unit: t('observatory.capacity.agents') },
     lounge: { value: String(zoneCount('lounge')), unit: t('observatory.capacity.agents') },
     clinic: { value: `${Math.min(plan.clinicCount, plan.clinicBeds)}/${plan.clinicBeds}`, unit: t('observatory.capacity.beds') },
-    work: { value: `${plan.workCount}/${plan.headcount}`, unit: t('observatory.capacity.desks') },
+    work: { value: `${plan.workCount}/${plan.desks.length}`, unit: t('observatory.capacity.desks') },
     patron: { value: String(plan.reviewCount), unit: t('observatory.capacity.ceoQueue') },
   };
 
@@ -175,8 +172,18 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
       .slice(0, 2)
       .join(' · ');
 
+  // Tasks an agent has handed in and the patron has not answered yet.
+  const reviewingOf = (agentId: string) => openTasksOf(agentId, tasks).filter((task) => normalizeTaskStatus(task.status) === 'in_review');
+
   const sceneState: SceneState = {
-    agents: agents.map((agent) => ({ id: agent.id, name: agentName(agent), status: agent.status, role: roleOf(agent), holding: holdingOf(agent.id) })),
+    agents: agents.map((agent) => ({
+      id: agent.id,
+      name: agentName(agent),
+      status: agent.status,
+      role: roleOf(agent),
+      holding: holdingOf(agent.id),
+      reviewing: reviewingOf(agent.id).map((task) => task.id),
+    })),
     layout,
     theme,
     selectedId,
@@ -192,15 +199,12 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
   const sceneLabels: SceneLabels = {
     canvas: t('observatory.canvas'),
     entry: t('observatory.sign.entry'),
-    reception: [t('observatory.sign.receptionTitle'), t('observatory.sign.receptionSub')],
-    clinic: (beds, waiting) => [t('observatory.sign.clinicTitle'), t('observatory.sign.clinicSub', { beds, waiting })],
-    patron: (queue) => [t('observatory.sign.patronTitle'), t('observatory.sign.patronSub', { queue })],
     snackBar: t('observatory.sign.snackBar'),
     noticeBoard: (count) => [t('observatory.sign.noticeTitle'), count > 0 ? t('observatory.sign.noticeWaiting') : t('observatory.sign.noticeNone')],
   };
   // The scene is rebuilt only when the building itself changes shape (or its signs' words):
   // the building is sized by the team, so that is when an agent joins or leaves.
-  const sceneKey = [plan.shape, plan.clinicBeds, plan.clinicWaiting > 0, plan.reviewCount > 1, i18n.language].join(':');
+  const sceneKey = [plan.shape, i18n.language].join(':');
 
   const inboxHref = wsHref(workspaceId, '/inbox');
   const openPatron = () => navigate(inboxHref);
@@ -250,6 +254,11 @@ function ObservatoryView({ workspaceId }: { workspaceId: string }) {
         <span className="mt-2 block border-t border-line pt-2 text-[11px] font-semibold text-sapphire-strong">{zoneLabel(zoneOfAgent(id))}</span>
         <small className="mt-1 block text-[10px] text-ink-light">{assignmentText(layout.placements.get(id)?.assignment, t)}</small>
         {holdingOf(id) && <small className="mt-1 block font-mono text-[10px] text-gold">{holdingOf(id)}</small>}
+        {reviewingOf(id).length > 0 && (
+          <small className="mt-1 block text-[10px] text-ink-light">
+            {t('observatory.awaitingPatron', { tasks: reviewingOf(id).map((task) => task.identifier).filter(Boolean).join(' · ') })}
+          </small>
+        )}
       </div>
     );
   };
