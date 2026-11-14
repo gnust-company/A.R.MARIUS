@@ -2,12 +2,16 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createCharacter, type Appearance, type CharacterRig } from '@/scene/character';
-import { chair, coffeeTable, makeFurniture, plant } from '@/scene/furniture';
-import { box, cylinder, group, releaseCaches, retainCaches, rod, sphere, woodTexture } from '@/scene/primitives';
-import { clinicBed, podLetter, workSeat, type AgentZone, type OfficeLayout, type OfficePlan, type Placement } from './officePlan';
+import { box, cylinder, releaseCaches, retainCaches } from '@/scene/primitives';
+import { LoungeLife, type IdleAgent } from './loungeLife';
+import { SCENE_FONT, buildCompany, canvas2d, type SceneLabels } from './officeBuilding';
+import { reportSpot, walkTo, wayOut, type Activity, type AgentZone, type OfficeLayout, type OfficePlan, type Placement, type Point, type Spot, type Step } from './officePlan';
+
+export type { SceneLabels } from './officeBuilding';
 
 /*
- * The one-floor office diorama of the observatory (DESIGN §5, §7, §10).
+ * The one-floor office diorama of the observatory (DESIGN §5, §7, §10). The building itself
+ * is built in `officeBuilding.ts`; this file runs it: camera, figures, motion, pointer.
  *
  * A plain class rather than React: it owns a WebGL renderer, a render loop and a pile of GPU
  * resources whose lifetime has to be exactly "while this canvas is on screen". The React
@@ -21,6 +25,12 @@ export interface SceneAgent {
   id: string;
   name: string;
   status: string;
+  /** What this agent is on the team (leader, workspace assistant…), shown beside its name. */
+  role?: string;
+  /** The codes of the tasks it is holding, for the plate on its desk. */
+  holding?: string;
+  /** Ids of its tasks that are waiting for the patron: a new one sends it up with the report. */
+  reviewing?: string[];
 }
 
 export interface SceneState {
@@ -30,26 +40,14 @@ export interface SceneState {
   selectedId: string | null;
   /** What floats above each zone at a distance: its name and how full it is. */
   captions: Record<AgentZone, string>;
+  /** How many letters are waiting for the patron: the number on the notice board. */
+  inboxPending: number;
 }
 
 /** Pixels of the canvas the page covers with its own controls; the floor is framed inside. */
 export interface SceneInsets {
   top: number;
   bottom: number;
-}
-
-/** Words painted onto signs and floor markings. Built once per scene, in the page's language. */
-export interface SceneLabels {
-  canvas: string;
-  mainCirculation: string;
-  entry: string;
-  reception: [string, string];
-  lounge: [string, string];
-  pod: (letter: string) => [string, string];
-  podFloor: (letter: string) => string;
-  clinic: (beds: number, waiting: number) => [string, string];
-  patron: (queue: number) => [string, string];
-  approvalQueue: string;
 }
 
 export type HoverState = { id: string; x: number; y: number } | null;
@@ -100,17 +98,6 @@ function token(name: string, alpha = 1): string {
 
 const STATUS_TOKEN: Record<string, string> = { working: 'gold', online: 'success', idle: 'success', hung: 'danger', offline: 'faint' };
 
-function canvas2d(width: number, height: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext('2d');
-  if (!context) throw new Error('2D canvas unavailable');
-  return [canvas, context];
-}
-
-const SCENE_FONT = '"Be Vietnam Pro", Arial, sans-serif';
-
 /*
  * Tags and captions are drawn at a fixed size on screen, whatever the zoom: a name that
  * shrinks with the floor is a name nobody can read from the overview, which is the one view
@@ -120,14 +107,26 @@ const SCENE_FONT = '"Be Vietnam Pro", Arial, sans-serif';
 const TAG = { width: 512, height: 72, screen: 26 };
 const CAPTION = { width: 640, height: 72, screen: 28 };
 
+function tagKey(agent: SceneAgent, theme: string): string {
+  return `${theme}:${agent.status}:${agent.name}:${agent.role ?? ''}`;
+}
+
 function paintLabel(sprite: THREE.Sprite, agent: SceneAgent, theme: string) {
   const mat = sprite.material as THREE.SpriteMaterial;
   const canvas = mat.map!.image as HTMLCanvasElement;
   const ctx = canvas.getContext('2d')!;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.font = `700 37px ${SCENE_FONT}`;
+  const nameFont = `700 37px ${SCENE_FONT}`;
+  const roleFont = `500 27px ${SCENE_FONT}`;
   const room = TAG.width - 96;
-  const plate = Math.min(ctx.measureText(agent.name).width, room) + 84;
+  // The role rides beside the name, quieter: who this is on the team matters as much as where it sits.
+  ctx.font = roleFont;
+  const role = agent.role ?? '';
+  const roleWidth = role ? Math.min(ctx.measureText(role).width, room * 0.5) : 0;
+  const gap = role ? 20 : 0;
+  ctx.font = nameFont;
+  const nameWidth = Math.min(ctx.measureText(agent.name).width, room - roleWidth - gap);
+  const plate = nameWidth + gap + roleWidth + 84;
   const left = (TAG.width - plate) / 2;
   ctx.fillStyle = token('surface', 0.95);
   ctx.beginPath();
@@ -142,10 +141,74 @@ function paintLabel(sprite: THREE.Sprite, agent: SceneAgent, theme: string) {
   ctx.fill();
   ctx.fillStyle = token('ink-strong');
   ctx.textBaseline = 'middle';
-  ctx.fillText(agent.name, left + 52, 38, room);
+  ctx.fillText(agent.name, left + 52, 38, nameWidth);
+  if (role) {
+    ctx.font = roleFont;
+    ctx.fillStyle = token('ink-light');
+    ctx.fillText(role, left + 52 + nameWidth + gap, 39, roleWidth);
+  }
   mat.map!.needsUpdate = true;
   sprite.userData.span = plate / TAG.width;
-  sprite.userData.paintKey = `${theme}:${agent.status}:${agent.name}`;
+  sprite.userData.paintKey = tagKey(agent, theme);
+}
+
+/** The plate on a desk: whose it is, and the task they have on it. */
+function paintPlate(plate: THREE.Mesh, name: string, holding: string) {
+  const material = plate.material as THREE.MeshBasicMaterial;
+  const canvas = material.map!.image as HTMLCanvasElement;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = name ? '#f3ecd9' : '#cfc8b6';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#2a323c';
+  ctx.font = `700 40px ${SCENE_FONT}`;
+  ctx.fillText(name, 16, holding ? 30 : 50, canvas.width - 32);
+  if (holding) {
+    ctx.fillStyle = '#8a5a12';
+    ctx.font = '600 30px ui-monospace, monospace';
+    ctx.fillText(holding, 16, 72, canvas.width - 32);
+  }
+  material.map!.needsUpdate = true;
+  plate.userData.paintKey = `${name}:${holding}`;
+}
+
+/** The notice board: how many letters wait for the patron, as a number and as envelopes. */
+function paintBoard(board: THREE.Mesh, count: number, [heading, line]: [string, string]) {
+  const material = board.material as THREE.MeshBasicMaterial;
+  const canvas = material.map!.image as HTMLCanvasElement;
+  const ctx = canvas.getContext('2d')!;
+  const waiting = count > 0;
+  ctx.fillStyle = '#16212c';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#9fb0c4';
+  ctx.font = `600 34px ${SCENE_FONT}`;
+  ctx.fillText(heading.toUpperCase(), 36, 64, 568);
+  ctx.fillStyle = waiting ? '#f0c869' : '#5d6c7d';
+  ctx.font = `700 170px ${SCENE_FONT}`;
+  ctx.fillText(String(count), 36, 238, 260);
+  ctx.fillStyle = waiting ? '#f3efe5' : '#8494a6';
+  ctx.font = `500 34px ${SCENE_FONT}`;
+  ctx.fillText(line, 36, 312, 568);
+  // Up to six envelopes; the rest is the number's job.
+  const shown = Math.max(1, Math.min(6, count));
+  for (let index = 0; index < shown; index++) {
+    const x = 330 + (index % 3) * 96;
+    const y = 104 + Math.floor(index / 3) * 78;
+    ctx.fillStyle = waiting ? '#f0c869' : '#33424f';
+    ctx.beginPath();
+    ctx.roundRect(x, y, 80, 58, 8);
+    ctx.fill();
+    ctx.strokeStyle = '#16212c';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(x + 5, y + 7);
+    ctx.lineTo(x + 40, y + 34);
+    ctx.lineTo(x + 75, y + 7);
+    ctx.stroke();
+  }
+  material.map!.needsUpdate = true;
+  board.userData.paintKey = `${count}:${heading}:${line}`;
 }
 
 function labelSprite(agent: SceneAgent, theme: string): THREE.Sprite {
@@ -187,312 +250,6 @@ function captionSprite(): THREE.Sprite {
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, toneMapped: false, fog: false }));
   sprite.renderOrder = 3;
   return sprite;
-}
-
-// ─── Architecture ────────────────────────────────────────────────────────────
-
-/** A physical sign on a wall: always dark enamel with light lettering, in both themes. */
-function zoneSign(parent: THREE.Object3D, [title, subtitle]: [string, string], position: [number, number, number], accent: string) {
-  const [canvas, ctx] = canvas2d(768, 160);
-  ctx.fillStyle = 'rgba(20,29,42,.88)';
-  ctx.beginPath();
-  ctx.roundRect(4, 4, 760, 152, 18);
-  ctx.fill();
-  ctx.fillStyle = accent;
-  ctx.fillRect(4, 4, 9, 152);
-  ctx.fillStyle = '#f3efe5';
-  ctx.font = `600 42px ${SCENE_FONT}`;
-  ctx.fillText(title.toUpperCase(), 40, 67, 700);
-  ctx.fillStyle = '#acb8ca';
-  ctx.font = '24px ui-monospace, monospace';
-  ctx.fillText(subtitle.toUpperCase(), 40, 116, 700);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: true }));
-  sprite.position.set(...position);
-  sprite.scale.set(3.5, 0.73, 1);
-  parent.add(sprite);
-}
-
-function floorWayfinding(parent: THREE.Object3D, title: string, position: [number, number], color: string) {
-  const [canvas, ctx] = canvas2d(512, 128);
-  ctx.fillStyle = color;
-  ctx.font = `600 43px ${SCENE_FONT}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(title.toUpperCase(), 256, 64, 490);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, opacity: 0.72 });
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 0.95), mat);
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.position.set(position[0], 0.075, position[1]);
-  parent.add(mesh);
-}
-
-function workstation(parent: THREE.Object3D, index: number, screenMaterial: THREE.Material) {
-  const wood = index % 2 ? '#876e52' : '#967a58';
-  box(parent, [1.75, 0.12, 0.86], [0, 0.83, 0], wood, 0.045);
-  for (const x of [-0.72, 0.72]) for (const z of [-0.3, 0.3]) rod(parent, [x, 0.05, z], [x, 0.78, z], 0.035, '#3e4148');
-  box(parent, [0.7, 0.43, 0.055], [0, 1.19, -0.18], '#242c35', 0.035);
-  box(parent, [0.62, 0.35, 0.012], [0, 1.19, -0.145], screenMaterial, 0.015);
-  for (let line = 0; line < 4; line++) box(parent, [0.36 - line * 0.035, 0.012, 0.008], [-0.06, 1.28 - line * 0.06, -0.134], line === 0 ? '#e0bd68' : '#b8c8ee', 0);
-  rod(parent, [0, 0.85, -0.18], [0, 0.98, -0.18], 0.028, '#3e4148');
-  box(parent, [0.62, 0.025, 0.21], [0, 0.91, 0.18], '#b9b7ae', 0.015);
-  chair(parent, [0, 0, 0.72], Math.PI, index % 2 ? '#4f5e72' : '#695c68');
-}
-
-function zoneFloor(parent: THREE.Object3D, center: [number, number], size: [number, number], color: string) {
-  return box(parent, [size[0], 0.035, size[1]], [center[0], 0.035, center[1]], color, 0.06);
-}
-
-/** Back wall, a solid side, a glazed side (optionally with a door) and a glazed front with a door. */
-function roomShell(parent: THREE.Object3D, center: [number, number], size: [number, number], wallColor: string, glass: THREE.Material, sideDoor = false) {
-  const [cx, cz] = center;
-  const [width, depth] = size;
-  const back = cz - depth / 2;
-  const front = cz + depth / 2;
-  const left = cx - width / 2;
-  const right = cx + width / 2;
-  box(parent, [width, 2.35, 0.13], [cx, 1.18, back], wallColor, 0.025);
-  box(parent, [0.13, 1.55, depth], [left, 0.78, cz], wallColor, 0.025);
-  if (sideDoor) {
-    const sideSegment = (depth - 1.8) / 2;
-    for (const side of [-1, 1]) {
-      const z = cz + side * (0.9 + sideSegment / 2);
-      box(parent, [0.13, 0.68, sideSegment], [right, 0.34, z], wallColor, 0.025);
-      box(parent, [0.055, 0.82, Math.max(0.1, sideSegment - 0.12)], [right, 1.08, z], glass, 0.01);
-      box(parent, [0.16, 1.92, 0.09], [right, 0.96, cz + side * 0.95], '#6d777c', 0.015);
-    }
-    box(parent, [0.16, 0.09, 1.99], [right, 1.89, cz], '#6d777c', 0.015);
-  } else {
-    box(parent, [0.13, 0.68, depth], [right, 0.34, cz], wallColor, 0.025);
-    box(parent, [0.055, 0.82, depth - 0.3], [right, 1.08, cz], glass, 0.01);
-  }
-  const segment = (width - 1.85) / 2;
-  for (const side of [-1, 1]) {
-    const x = cx + side * (1.85 / 2 + segment / 2);
-    box(parent, [segment, 0.42, 0.13], [x, 0.21, front], wallColor, 0.02);
-    box(parent, [segment - 0.12, 0.66, 0.045], [x, 0.78, front], glass, 0.008);
-    box(parent, [0.09, 1.92, 0.16], [cx + side * 0.97, 0.96, front], '#6d777c', 0.015);
-  }
-  box(parent, [2.03, 0.09, 0.16], [cx, 1.89, front], '#6d777c', 0.015);
-  box(parent, [width, 0.09, 0.18], [cx, 0.08, back + 0.08], '#766858', 0.01);
-}
-
-/** A six-person team studio: low partitions, an open front and a storage wall. */
-function podShell(parent: THREE.Object3D, center: [number, number], accent: string) {
-  const [cx, cz] = center;
-  const width = 7.45;
-  const depth = 7.45;
-  box(parent, [width, 1.5, 0.11], [cx, 0.75, cz - depth / 2], '#929c9c', 0.02);
-  box(parent, [0.11, 0.85, depth], [cx - width / 2, 0.43, cz], '#8e9999', 0.02);
-  box(parent, [0.11, 0.48, depth], [cx + width / 2, 0.24, cz], '#8e9999', 0.02);
-  for (const x of [cx - width / 2, cx + width / 2]) box(parent, [0.12, 1.85, 0.12], [x, 0.93, cz + depth / 2], '#69777b', 0.015);
-  box(parent, [width, 0.08, 0.14], [cx, 0.09, cz + depth / 2], accent, 0.01);
-  for (let index = 0; index < 3; index++) {
-    box(parent, [1.55, 0.62, 0.48], [cx - 2.2 + index * 2.2, 0.31, cz - 3.35], '#6f7c80', 0.035);
-    box(parent, [1.48, 0.055, 0.52], [cx - 2.2 + index * 2.2, 0.65, cz - 3.35], '#c1b18f', 0.02);
-  }
-}
-
-function buildCompany(scene: THREE.Scene, plan: OfficePlan, labels: SceneLabels) {
-  const root = group();
-  scene.add(root);
-  const floorMaterial = new THREE.MeshStandardMaterial({ map: woodTexture(), color: '#b7a889', roughness: 0.86 });
-  const windowMaterial = new THREE.MeshStandardMaterial({ color: '#c6d2de', emissive: '#bcd9f0', emissiveIntensity: 0.65, roughness: 0.25 });
-  const glassMaterial = new THREE.MeshStandardMaterial({ color: '#a9c0c9', transparent: true, opacity: 0.24, roughness: 0.18, depthWrite: false });
-  const screenMaterial = new THREE.MeshStandardMaterial({ color: '#8ea7ce', emissive: '#5079cb', emissiveIntensity: 0.45, roughness: 0.35 });
-  const left = -plan.floorWidth / 2;
-  const back = -plan.floorDepth / 2;
-  const front = plan.floorDepth / 2;
-  const right = plan.floorWidth / 2;
-
-  // Shell: floor slab, back wall with windows, side walls and an entrance gap on the left.
-  box(root, [plan.floorWidth, 0.28, plan.floorDepth], [0, -0.14, 0], floorMaterial, 0.08);
-  box(root, [plan.floorWidth, 3.55, 0.16], [0, 1.77, back + 0.08], '#b9c5cd', 0.03);
-  box(root, [0.16, 2.75, -9.1 - back], [left + 0.08, 1.37, (back - 9.1) / 2], '#aebdc6', 0.03);
-  box(root, [0.16, 2.75, front + 6.9], [left + 0.08, 1.37, (front - 6.9) / 2], '#aebdc6', 0.03);
-  box(root, [0.16, 1.05, plan.floorDepth], [right - 0.08, 0.52, 0], '#aebdc6', 0.03);
-  box(root, [plan.floorWidth, 0.24, 0.12], [0, -0.05, front - 0.08], '#766858', 0.015);
-  box(root, [plan.floorWidth, 0.12, 0.12], [0, 0.1, back + 0.18], '#73644f', 0.015);
-  const windowCount = Math.ceil(plan.floorWidth / 6.4);
-  for (let index = 0; index < windowCount; index++) {
-    const x = left + 3.2 + index * ((plan.floorWidth - 6.4) / Math.max(1, windowCount - 1));
-    box(root, [4.7, 1.62, 0.025], [x, 2.15, back + 0.18], windowMaterial, 0.012);
-    box(root, [4.86, 0.07, 0.07], [x, 3.0, back + 0.22], '#766a56', 0.01);
-    box(root, [4.86, 0.07, 0.07], [x, 1.3, back + 0.22], '#766a56', 0.01);
-    box(root, [0.06, 1.75, 0.07], [x, 2.15, back + 0.22], '#766a56', 0.01);
-  }
-
-  // Stars in the windows: visible only at night.
-  const starCount = Math.round(plan.floorWidth * 11);
-  const starsGeometry = new THREE.BufferGeometry();
-  const starPositions = new Float32Array(starCount * 3);
-  for (let index = 0; index < starCount; index++) {
-    starPositions[index * 3] = left + 1 + ((index * 2.37) % (plan.floorWidth - 2));
-    starPositions[index * 3 + 1] = 1.42 + ((index * 1.61) % 1.45);
-    starPositions[index * 3 + 2] = back + 0.21;
-  }
-  starsGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
-  const starsMaterial = new THREE.PointsMaterial({ color: '#ffe6a6', size: 0.035, transparent: true, opacity: 0 });
-  root.add(new THREE.Points(starsGeometry, starsMaterial));
-
-  // A continuous circulation spine and cross-corridor make the plan readable before furniture.
-  const spineX = plan.large ? -7.72 : -4.35;
-  zoneFloor(root, [0, -0.85], [plan.floorWidth - 0.7, 1.55], '#77878a');
-  zoneFloor(root, [spineX, 0], [1.28, plan.floorDepth - 0.8], '#77878a');
-  box(root, [plan.floorWidth - 1.2, 0.018, 0.035], [0, 0.075, -0.85], '#d4b972', 0);
-  box(root, [0.035, 0.018, plan.floorDepth - 1.2], [spineX, 0.075, 0], '#d4b972', 0);
-  for (const z of [-10.5, -4.8, 3.0, 10.4]) {
-    box(root, [0.34, 0.018, 0.055], [spineX, 0.078, z], '#d9c78e', 0).rotation.y = Math.PI / 4;
-    box(root, [0.34, 0.018, 0.055], [spineX, 0.078, z], '#d9c78e', 0).rotation.y = -Math.PI / 4;
-  }
-  floorWayfinding(root, labels.mainCirculation, [spineX + (plan.large ? 2.2 : 2.5), -0.82], '#e5dcc4');
-
-  // Reception: a room with an exterior entrance, a check-in desk and an interior queue.
-  zoneFloor(root, [plan.setupX, -8], [7.45, 7.45], '#9eabb0');
-  roomShell(root, [plan.setupX, -8], [7.45, 7.45], '#a5b2b6', glassMaterial, true);
-  const reception = group(root, [plan.setupX, 0, -9.55]);
-  box(reception, [4.1, 1.05, 1.05], [0, 0.54, 0], '#687e88', 0.08);
-  box(reception, [4.35, 0.12, 1.25], [0, 1.09, 0], '#d2c2a2', 0.045);
-  box(reception, [1.25, 0.06, 0.65], [0.9, 1.2, 0], '#263744', 0.025).rotation.x = -0.18;
-  box(reception, [1.1, 0.025, 0.5], [0.9, 1.235, -0.015], '#88b9d5', 0.015).rotation.x = -0.18;
-  zoneSign(root, labels.reception, [plan.setupX, 2.75, -11.52], '#8fc4e8');
-  for (const z of [-8.7, -7.45, -6.2]) {
-    cylinder(root, 0.055, 0.075, 0.85, [plan.setupX - 2.25, 0.44, z], '#596a74', 12);
-    cylinder(root, 0.055, 0.075, 0.85, [plan.setupX - 0.35, 0.44, z], '#596a74', 12);
-    if (z < -6.3) rod(root, [plan.setupX - 2.25, 0.77, z], [plan.setupX - 2.25, 0.77, z + 1.25], 0.018, '#d2b568');
-  }
-  const setupStation = group(root, [plan.setupX + 2.2, 0, -7.0]);
-  setupStation.scale.setScalar(0.82);
-  workstation(setupStation, 0, screenMaterial);
-  const hologram = group(root, [plan.setupX + 2.0, 1.05, -5.7]);
-  const holoMaterial = new THREE.MeshBasicMaterial({ color: '#9fb7ff', transparent: true, opacity: 0.52, depthWrite: false });
-  for (let index = 0; index < 3; index++) {
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.48 + index * 0.16, 0.012, 6, 48), holoMaterial);
-    ring.rotation.set(Math.PI / 2.6 + index * 0.33, index * 0.7, 0);
-    hologram.add(ring);
-  }
-  sphere(hologram, [0, 0, 0], [0.14, 0.14, 0.14], new THREE.MeshBasicMaterial({ color: '#ffe6a0' }), 20);
-  cylinder(root, 0.8, 0.95, 0.12, [plan.setupX + 2.0, 0.16, -5.7], '#63747f', 32);
-  const entryX = left + 0.18;
-  box(root, [0.12, 2.45, 0.12], [entryX, 1.22, -9.1], '#57676f', 0.015);
-  box(root, [0.12, 2.45, 0.12], [entryX, 1.22, -6.9], '#57676f', 0.015);
-  box(root, [0.12, 0.12, 2.32], [entryX, 2.4, -8.0], '#57676f', 0.015);
-  box(root, [0.035, 2.15, 1.85], [entryX + 0.03, 1.18, -8.0], glassMaterial, 0.005);
-  floorWayfinding(root, labels.entry, [plan.setupX - 2.2, -10.75], '#e5eef2');
-
-  // Lounge: architectural separation, not a rug dropped on the workfloor.
-  zoneFloor(root, [plan.loungeX, 0], [7.45, 7.45], '#82928d');
-  roomShell(root, [plan.loungeX, 0], [7.45, 7.45], '#8f9e99', glassMaterial, true);
-  const lounge = group(root, [plan.loungeX, 0, 0]);
-  const rug = makeFurniture('rug', '#58656e');
-  rug.scale.set(1.9, 1, 1.75);
-  lounge.add(rug);
-  const sofa = makeFurniture('sofa', '#7b7180');
-  sofa.position.set(-0.4, 0, 1.25);
-  sofa.rotation.y = Math.PI;
-  sofa.scale.setScalar(0.88);
-  lounge.add(sofa);
-  const armchair = makeFurniture('armchair', '#6c7d78');
-  armchair.position.set(2.05, 0, -0.25);
-  armchair.rotation.y = -Math.PI / 2;
-  lounge.add(armchair);
-  coffeeTable(lounge, [-0.25, 0, -0.15]);
-  plant(lounge, 0.9, '#9c7658', true).position.set(-2.7, 0, -1.45);
-  const sideboard = makeFurniture('stereo', '#657a72');
-  sideboard.position.set(-1.7, 0, -2.95);
-  lounge.add(sideboard);
-  zoneSign(root, labels.lounge, [plan.loungeX, 2.75, -3.52], '#a8d5bd');
-
-  // Each studio is a defined six-person team room with a clear entry and storage wall.
-  plan.workCenters.forEach((center, pod) => {
-    const row = plan.workRows[pod];
-    zoneFloor(root, [center, row], [7.45, 7.45], pod % 2 ? '#a6977f' : '#aa9b7d');
-    podShell(root, [center, row], pod % 2 ? '#c5a767' : '#d0b779');
-    for (let local = 0; local < 6; local++) {
-      const seat = workSeat(pod * 6 + local, plan);
-      workstation(group(root, [seat.x, 0, seat.z]), pod * 6 + local, screenMaterial);
-    }
-    zoneSign(root, labels.pod(podLetter(pod)), [center, 2.1, row - 3.5], '#e7c27f');
-    floorWayfinding(root, labels.podFloor(podLetter(pod)), [center, row + 3.05], '#f0e4c8');
-    plant(root, 0.85, '#8d7156').position.set(center - 3.05, 0, row + 2.85);
-  });
-
-  // Clinic: a private room with beds, medical storage and a bench by its own door.
-  zoneFloor(root, [plan.clinicX, plan.clinicZ], [7.45, 7.45], '#b8c9ca');
-  roomShell(root, [plan.clinicX, plan.clinicZ], [7.45, 7.45], '#a3b6b9', glassMaterial, true);
-  for (let index = 0; index < plan.clinicBeds; index++) {
-    const position = clinicBed(index, plan);
-    const bed = makeFurniture('bed', index % 2 ? '#8aa6b0' : '#91a99c');
-    bed.scale.setScalar(0.72);
-    bed.position.set(position.x, 0, position.z);
-    root.add(bed);
-    box(root, [0.42, 0.62, 0.42], [position.x + 1.05, 0.32, position.z - 0.68], '#d4dbd7', 0.04);
-    box(root, [0.34, 0.45, 0.04], [position.x + 1.05, 1.0, position.z - 0.7], '#5f7580', 0.025);
-    box(root, [0.25, 0.06, 0.015], [position.x + 1.05, 1.03, position.z - 0.675], '#9fe0ca', 0.005);
-  }
-  const waitingBench = makeFurniture('bench', '#7d9395');
-  waitingBench.scale.setScalar(0.78);
-  waitingBench.position.set(plan.clinicX - 0.6, 0, plan.clinicZ - 3.05);
-  root.add(waitingBench);
-  zoneSign(root, labels.clinic(plan.clinicBeds, plan.clinicWaiting), [plan.clinicX, 2.75, plan.clinicZ - 3.52], '#a8d5bd');
-  const cross = group(root, [plan.clinicX + 2.9, 1.75, plan.clinicZ - 3.38]);
-  box(cross, [0.12, 0.85, 0.28], [0, 0, 0], '#d9eee6', 0.02);
-  box(cross, [0.12, 0.28, 0.85], [0, 0, 0], '#d9eee6', 0.02);
-
-  // CEO office: three readable walls, glazed front, private desk and an exterior approval queue.
-  zoneFloor(root, [plan.patronX, plan.patronZ], [7.45, 7.45], '#8e7c70');
-  roomShell(root, [plan.patronX, plan.patronZ], [7.45, 7.45], '#8d817b', glassMaterial);
-  const ceo = group(root, [plan.patronX, 0, plan.patronZ]);
-  const ceoRug = makeFurniture('rug', '#6d5d59');
-  ceoRug.scale.set(2.15, 1, 2.25);
-  ceo.add(ceoRug);
-  const ceoDesk = group(ceo, [0, 0, 1.3]);
-  box(ceoDesk, [3.25, 0.16, 1.3], [0, 0.91, 0], '#6e5545', 0.05);
-  for (const x of [-1.35, 1.35]) box(ceoDesk, [0.18, 0.86, 1.08], [x, 0.45, 0], '#564238', 0.035);
-  box(ceoDesk, [0.72, 0.04, 0.48], [0, 1.02, 0.05], '#d6c6a5', 0.015);
-  box(ceoDesk, [0.46, 0.055, 0.32], [0.12, 1.07, 0.02], '#f0e5ca', 0.01).rotation.y = -0.1;
-  chair(ceo, [0, 0, 2.45], Math.PI, '#625563');
-  const shelf = makeFurniture('bookshelf', '#675443');
-  shelf.position.set(2.5, 0, -2.65);
-  shelf.scale.setScalar(1.25);
-  ceo.add(shelf);
-  plant(ceo, 1.05, '#987556', true).position.set(-2.55, 0, 2.65);
-  const approvalLamp = new THREE.MeshStandardMaterial({ color: '#e0bd68', emissive: '#e0bd68', emissiveIntensity: 0.8 });
-  cylinder(ceo, 0.28, 0.28, 0.035, [0, 0.06, -0.3], approvalLamp, 32);
-  const queueLength = Math.max(0, plan.reviewCount - 1);
-  zoneSign(root, labels.patron(queueLength), [plan.patronX, 2.75, plan.patronZ - 3.52], '#e7c27f');
-  for (let index = 0; index < Math.max(1, queueLength); index++) {
-    const x = plan.patronX - 2.25 + index * 1.1;
-    cylinder(root, 0.05, 0.065, 0.72, [x, 0.37, plan.patronZ + 4.45], '#756552', 12);
-    if (index < plan.reviewCount - 2) rod(root, [x, 0.68, plan.patronZ + 4.45], [x + 1.1, 0.68, plan.patronZ + 4.45], 0.016, '#d2b568');
-  }
-  floorWayfinding(root, labels.approvalQueue, [plan.patronX, plan.patronZ + 5.35], '#eadbbe');
-  const patronTarget = box(root, [7.45, 3.35, 7.45], [plan.patronX, 1.67, plan.patronZ], new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }), 0);
-  patronTarget.castShadow = false;
-  patronTarget.receiveShadow = false;
-
-  // One pendant lamp per room; lit only at night (DESIGN §4).
-  const lampMaterial = new THREE.MeshStandardMaterial({ color: '#c7a962', emissive: '#ffd77e', emissiveIntensity: 0, roughness: 0.45 });
-  const lights: THREE.PointLight[] = [];
-  const lightPositions: [number, number][] = [
-    [plan.setupX, -8],
-    [plan.loungeX, 0],
-    [plan.clinicX, plan.clinicZ],
-    [plan.patronX, plan.patronZ],
-    ...plan.workCenters.map((x, index): [number, number] => [x, plan.workRows[index]]),
-  ];
-  for (const [x, z] of lightPositions) {
-    rod(root, [x, 3.65, z], [x, 3.05, z], 0.012, '#4b4842');
-    cylinder(root, 0.14, 0.32, 0.25, [x, 2.95, z], lampMaterial, 20);
-    const light = new THREE.PointLight('#ffd58a', 0, 9.2, 1.6);
-    light.position.set(x, 2.7, z);
-    root.add(light);
-    lights.push(light);
-  }
-  return { root, windowMaterial, starsMaterial, lights, lampMaterial, hologram, patronTarget };
 }
 
 /** Batch static furniture by shared material; articulated agents and interactive targets stay separate. */
@@ -559,7 +316,45 @@ function toLightweightMaterials(root: THREE.Object3D, preserved: Set<THREE.Mater
 const DAY = { background: '#edf4f6', ground: '#f4f6f5', groundEmissive: '#dce8ec', groundGlow: 0.85, sun: '#fff0d2', sunPower: 3.15, sky: '#f5f8ff', skyGround: '#d9cbb4', hemi: 2.05, window: '#e8f6ff', windowGlow: '#dcf2ff', windowPower: 0.65, stars: 0, lamp: 0, light: 0, exposure: 1.04 };
 const NIGHT = { background: '#101a24', ground: '#111b26', groundEmissive: '#000000', groundGlow: 0, sun: '#8fa9df', sunPower: 0.24, sky: '#8fa9c9', skyGround: '#273647', hemi: 0.52, window: '#102642', windowGlow: '#102642', windowPower: 0.8, stars: 0.9, lamp: 2.2, light: 12, exposure: 0.9 };
 
-type Motion = { moving: boolean; typing: boolean; pose: Placement['pose'] };
+/** A figure's walk across the floor, and what it carries. */
+interface Walker {
+  /** The spot it is at or heading for; a new key is a new walk. */
+  key: string;
+  steps: Step[];
+  /** The way from where it is out onto the walkways: back out of its spot, or the rest of its current step. */
+  out: Point[];
+  settled: boolean;
+  zone: AgentZone;
+  /** It reached the lounge from another zone, or from the patron's desk, while the scene was open. */
+  cameOffWork: boolean;
+  /** Seconds it has stood at the patron's desk with a report. */
+  handover: number;
+  cup: THREE.Mesh;
+  paper: THREE.Mesh;
+  paddle: THREE.Mesh;
+}
+
+/*
+ * Where the overview looks from: nearly straight on from the front and well above, like the
+ * open side of a model. The floor is wide and shallow, the gallery is at the back, and seen
+ * this way the three bands — patron above, desks in the middle, lounge in front — read at a
+ * glance and fill a wide screen; the old corner-on view drew a diamond with four empty corners.
+ */
+const OVERVIEW_TURN = 0.21;
+const OVERVIEW_TILT = 0.7;
+const OVERVIEW = new THREE.Vector3(Math.sin(OVERVIEW_TURN) * Math.cos(OVERVIEW_TILT), Math.sin(OVERVIEW_TILT), Math.cos(OVERVIEW_TURN) * Math.cos(OVERVIEW_TILT)).multiplyScalar(52);
+
+/** Floor units a figure covers in a second: at a walk, and hurrying up to the patron with a report. */
+const WALK_SPEED = 2;
+const RUN_SPEED = 3.8;
+/** How long handing a report over takes, and when in it the paper changes hands. */
+const HANDOVER_SECONDS = 2.6;
+const HANDOVER_GIVEN = 1.4;
+
+/** Turn an angle toward another by the short way round. */
+function turnToward(from: number, to: number, blend: number): number {
+  return from + Math.atan2(Math.sin(to - from), Math.cos(to - from)) * blend;
+}
 
 const MIN_ZOOM = 0.8;
 const MAX_ZOOM = 3.2;
@@ -580,6 +375,18 @@ export class OfficeEngine {
   private office: ReturnType<typeof buildCompany>;
   private ground: THREE.Mesh;
   private rigs = new Map<string, CharacterRig>();
+  private walkers = new Map<string, Walker>();
+  private life: LoungeLife;
+  /** Which desks have someone typing at them this frame. */
+  private lit: boolean[] = [];
+  /** Seconds left of the notice board calling for attention after a new letter. */
+  private boardPulse = 0;
+  private boardCount = -1;
+  /** Agents on their way to the patron with a report, or waiting their turn, in order. */
+  private errands: string[] = [];
+  /** The tasks each agent is known to have handed in, so a new one can be told from an old one. */
+  private handed = new Map<string, Set<string>>();
+  private labelsOnSigns: SceneLabels;
   private labels = new Map<string, THREE.Sprite>();
   private captions = new Map<AgentZone, THREE.Sprite>();
   /** The floor's own level, where a drag takes hold of it. */
@@ -620,7 +427,9 @@ export class OfficeEngine {
     this.callbacks = callbacks;
     const initial = state();
     this.plan = initial.layout.plan;
-    this.overview = new THREE.Vector3(this.plan.centerX + 19, 39 + this.plan.workPods * 0.5, 29 + this.plan.workPods * 0.7);
+    this.overview = new THREE.Vector3(this.plan.centerX + OVERVIEW.x, OVERVIEW.y, OVERVIEW.z);
+    this.life = new LoungeLife(this.plan.loungeSpots);
+    this.labelsOnSigns = labels;
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     // From here on the scene draws with the shared caches; `dispose()` gives the hold back.
     retainCaches();
@@ -679,7 +488,7 @@ export class OfficeEngine {
     this.sun.position.set(-15, 24, 17);
     this.sun.castShadow = !this.software;
     this.sun.shadow.mapSize.set(2048, 2048);
-    Object.assign(this.sun.shadow.camera, { left: -this.plan.floorWidth * 0.65, right: this.plan.floorWidth * 0.65, top: 24, bottom: -22, near: 0.5, far: 120 });
+    Object.assign(this.sun.shadow.camera, { left: -this.plan.floorWidth * 0.65, right: this.plan.floorWidth * 0.65, top: Math.max(24, this.plan.floorDepth * 0.85), bottom: -Math.max(22, this.plan.floorDepth * 0.8), near: 0.5, far: 140 });
     this.sun.shadow.normalBias = 0.025;
     this.scene.add(this.sun);
     this.ground = box(this.scene, [200, 0.08, 200], [0, -0.42, 0], new THREE.MeshStandardMaterial({ color: look.ground, emissive: look.groundEmissive, emissiveIntensity: look.groundGlow }), 0);
@@ -687,25 +496,24 @@ export class OfficeEngine {
     this.office = buildCompany(this.scene, this.plan, labels);
     // Each zone is named just outside the wall it shares with the outside of the building,
     // where no agent ever stands: a caption over the room itself lands on its name tags.
-    const mid = (values: number[]) => (Math.min(...values) + Math.max(...values)) / 2;
     const west = this.plan.centerX - this.plan.floorWidth / 2 - 0.7;
     const east = this.plan.centerX + this.plan.floorWidth / 2 + 0.7;
-    const zoneSpots: Record<AgentZone, [x: number, z: number, outward: number]> = {
-      setup: [west, -8, -1],
-      lounge: [west, 0, -1],
-      clinic: [west, this.plan.clinicZ, -1],
-      work: [east, mid(this.plan.workRows), 1],
-      patron: [east, this.plan.patronZ, 1],
+    const zoneSpots: Record<AgentZone, [x: number, y: number, z: number, outward: number]> = {
+      setup: [west, 0.6, this.plan.reception.z, -1],
+      lounge: [east, 0.6, this.plan.lounge.z, 1],
+      clinic: [west, 0.6, this.plan.clinic.z, -1],
+      work: [east, 0.6, this.plan.work.z, 1],
+      patron: [east, 0.6, this.plan.patron.z, 1],
     };
     (Object.keys(zoneSpots) as AgentZone[]).forEach((zone) => {
-      const [x, z, outward] = zoneSpots[zone];
+      const [x, y, z, outward] = zoneSpots[zone];
       const caption = captionSprite();
-      caption.position.set(x, 0.6, z);
+      caption.position.set(x, y, z);
       caption.userData.outward = outward;
       this.scene.add(caption);
       this.captions.set(zone, caption);
     });
-    optimizeOffice(this.office.root, [this.office.hologram, this.office.patronTarget]);
+    optimizeOffice(this.office.root, [this.office.hologram, this.office.patronTarget, this.office.live]);
     this.applyLook(1);
     this.syncAgents(true);
     if (this.software) {
@@ -744,29 +552,15 @@ export class OfficeEngine {
 
   focusZone(zone: AgentZone) {
     const plan = this.plan;
-    let x = 0;
-    let z = 0;
-    let zoom = 2.05;
-    if (zone === 'setup') [x, z] = [plan.setupX, -8];
-    if (zone === 'lounge') [x, z] = [plan.loungeX, 0];
-    if (zone === 'clinic') [x, z] = [plan.clinicX, plan.clinicZ];
-    if (zone === 'patron') [x, z] = [plan.patronX, plan.patronZ];
-    if (zone === 'work') {
-      x = (Math.min(...plan.workCenters) + Math.max(...plan.workCenters)) / 2;
-      z = (Math.min(...plan.workRows) + Math.max(...plan.workRows)) / 2;
-      zoom = plan.large ? 1.05 : 1.7;
-    }
-    this.lookAt(x, z, zoom);
-  }
-
-  focusWorkPod(index: number) {
-    const safe = THREE.MathUtils.clamp(index, 0, this.plan.workCenters.length - 1);
-    this.lookAt(this.plan.workCenters[safe], this.plan.workRows[safe], 2.15);
+    const room = { setup: plan.reception, lounge: plan.lounge, clinic: plan.clinic, work: plan.work, patron: plan.patron }[zone];
+    // Close enough to read the room, never closer than the room is wide.
+    const zoom = THREE.MathUtils.clamp(15 / Math.max(room.width, room.depth * 1.4), 1.15, 2.2);
+    this.lookAt(room.x, room.z, zoom);
   }
 
   focusAgent(id: string) {
-    const placement = this.state().layout.placements.get(id);
-    if (placement) this.lookAt(placement.x, placement.z, 2.4);
+    const rig = this.rigs.get(id);
+    if (rig) this.lookAt(rig.root.position.x, rig.root.position.z, 2.4);
   }
 
   reset() {
@@ -839,7 +633,7 @@ export class OfficeEngine {
     if (!force && state === this.lastState) return;
     this.lastState = state;
     const { agents, layout, selectedId, theme } = state;
-    const signature = JSON.stringify([agents.map((agent) => [agent.id, agent.name, agent.status, layout.placements.get(agent.id)]), selectedId, theme, state.captions]);
+    const signature = JSON.stringify([agents.map((agent) => [agent.id, agent.name, agent.status, agent.role, agent.holding, agent.reviewing, layout.placements.get(agent.id)]), selectedId, theme, state.captions, state.inboxPending]);
     if (!force && signature === this.signature) return;
     this.signature = signature;
     this.captions.forEach((caption, zone) => {
@@ -853,7 +647,36 @@ export class OfficeEngine {
       rig.root.removeFromParent();
       this.rigs.delete(id);
       this.labels.delete(id);
+      this.walkers.delete(id);
+      this.handed.delete(id);
+      this.errands = this.errands.filter((other) => other !== id);
     }
+    // A task that has just gone up for review sends its agent to the patron with the report.
+    // Only a change seen while the scene is open counts: what was already waiting when the
+    // page opened was handed in long ago.
+    for (const agent of agents) {
+      const now = new Set(agent.reviewing ?? []);
+      const before = this.handed.get(agent.id);
+      if (before && !this.reduced && !this.errands.includes(agent.id) && [...now].some((task) => !before.has(task))) this.errands.push(agent.id);
+      this.handed.set(agent.id, now);
+    }
+    // The notice board: repainted when the count changes, and it calls out when it goes up.
+    if (state.inboxPending !== this.boardCount) {
+      if (this.boardCount >= 0 && state.inboxPending > this.boardCount) this.boardPulse = 4;
+      this.boardCount = state.inboxPending;
+      paintBoard(this.office.parts.board, state.inboxPending, this.labelsOnSigns.noticeBoard(state.inboxPending));
+    }
+    // Desk plates: a desk is its owner's wherever the owner happens to be.
+    const owners = new Map<number, SceneAgent>();
+    for (const agent of agents) {
+      const desk = layout.desks.get(agent.id);
+      if (desk !== undefined) owners.set(desk, agent);
+    }
+    this.office.parts.plates.forEach((plate, index) => {
+      const owner = owners.get(index);
+      const holding = owner && layout.placements.get(owner.id)?.zone === 'work' ? owner.holding ?? '' : '';
+      if (plate.userData.paintKey !== `${owner?.name ?? ''}:${holding}`) paintPlate(plate, owner?.name ?? '', holding);
+    });
     for (const agent of agents) {
       const placement = layout.placements.get(agent.id);
       if (!placement) continue;
@@ -867,14 +690,22 @@ export class OfficeEngine {
         rig.root.add(label);
         this.labels.set(agent.id, label);
         (rig.ring.material as THREE.MeshStandardMaterial).color.set(accentOf(agent.id));
+        // What it may be holding: a cup at the snack bar, a page when reading or presenting,
+        // a paddle at the table. Each sits in the right hand and is shown only when it applies.
+        const cup = cylinder(rig.rightArm, 0.04, 0.032, 0.085, [0, -0.4, 0.07], '#f3ead7', 10);
+        const paper = box(rig.rightArm, [0.21, 0.012, 0.27], [0, -0.41, 0.13], '#f4efe2', 0);
+        const paddle = cylinder(rig.rightArm, 0.085, 0.085, 0.016, [0, -0.47, 0.07], '#c9483f', 14);
+        paddle.rotation.x = Math.PI / 2;
+        for (const prop of [cup, paper, paddle]) prop.visible = false;
         if (this.software) toLightweightMaterials(rig.root, new Set());
         this.scene.add(rig.root);
         this.rigs.set(agent.id, rig);
+        // A figure found on the floor starts where it belongs; only later changes are walked.
+        this.walkers.set(agent.id, { key: '', steps: [], out: wayOut(placement), settled: false, zone: placement.zone, cameOffWork: false, handover: 0, cup, paper, paddle });
       }
       const label = this.labels.get(agent.id);
-      if (label && label.userData.paintKey !== `${theme}:${agent.status}:${agent.name}`) paintLabel(label, agent, theme);
+      if (label && label.userData.paintKey !== tagKey(agent, theme)) paintLabel(label, agent, theme);
       rig.ring.visible = selectedId === agent.id;
-      rig.routineDial.visible = placement.pose !== 'lying' && (this.plan.large ? selectedId === agent.id : placement.zone === 'work' || selectedId === agent.id);
     }
   }
 
@@ -882,46 +713,185 @@ export class OfficeEngine {
     return hash(id) % 97;
   }
 
-  /** Where a figure wants to be this frame, inside its assigned resource (DESIGN §6.3). */
-  private desired(placement: Placement, id: string, target: THREE.Vector3, presenterId: string | undefined): Motion {
-    target.set(placement.x, placement.y, placement.z);
-    const still: Motion = { moving: false, typing: false, pose: placement.pose };
-    if (this.reduced) return { ...still, typing: placement.zone === 'work' && placement.pose === 'sitting' };
+  /** The spot a figure is at or heading for: its seat, or wherever the lounge has it right now. */
+  private goalOf(id: string, placement: Placement): { key: string; spot: Spot } {
+    const turn = this.errands.indexOf(id);
+    if (turn >= 0) return { key: `report:${turn}`, spot: reportSpot(this.plan, turn) };
+    if (placement.zone === 'lounge' && !this.reduced) {
+      const index = this.life.spotOf(id);
+      if (index !== undefined) return { key: `lounge:${index}`, spot: this.plan.loungeSpots[index] };
+    }
+    return { key: `${placement.zone}:${placement.x.toFixed(2)}:${placement.y.toFixed(2)}:${placement.z.toFixed(2)}`, spot: placement };
+  }
+
+  /**
+   * Move one figure for this frame: along its walk if it has one, else settled at its spot and
+   * doing what that spot is for. A figure never slides to a new place: when its spot changes it
+   * walks there by the aisle and the doors, from wherever it is — even mid-walk.
+   */
+  private move(id: string, rig: CharacterRig, walker: Walker, placement: Placement, delta: number, blend: number) {
+    const { key, spot } = this.goalOf(id, placement);
+    const reporting = key.startsWith('report:');
+    const position = rig.root.position;
+    const target = this.scratch.desired;
+    if (walker.key !== key) {
+      const first = walker.key === '';
+      walker.key = key;
+      walker.settled = false;
+      if (first || this.reduced) {
+        walker.steps = [];
+        position.set(spot.x, spot.y, spot.z);
+        rig.root.rotation.y = spot.rotation;
+      } else {
+        // Mid-walk it finishes the stretch it is on, then turns for the new place.
+        const here: Point = [position.x, position.y, position.z];
+        walker.steps = walkTo(this.plan, here, walker.steps[0]?.out ?? walker.out, spot);
+      }
+    }
+
+    let moving = false;
+    let facing = spot.rotation;
+    if (walker.steps.length) {
+      const [x, y, z] = walker.steps[0].point;
+      target.set(x, y, z);
+      const dx = x - position.x;
+      const dz = z - position.z;
+      const stride = (reporting ? RUN_SPEED : WALK_SPEED) * delta;
+      if (position.distanceTo(target) <= stride) {
+        position.copy(target);
+        walker.out = walker.steps[0].out;
+        walker.steps.shift();
+      } else {
+        position.addScaledVector(target.sub(position).normalize(), stride);
+      }
+      if (Math.hypot(dx, dz) > 0.01) facing = Math.atan2(dx, dz);
+      moving = walker.steps.length > 0;
+    }
+    if (!moving && !walker.settled) {
+      walker.settled = true;
+      walker.out = wayOut(spot);
+      if (placement.zone === 'lounge') this.life.arrived(id, this.elapsed);
+    }
+
+    // What the body does. Angles are radians about the shoulder or hip; negative reaches forward.
+    const calm = this.reduced;
     const seed = this.seed(id);
-    if (placement.zone === 'lounge' && placement.pose === 'standing') {
-      const angle = this.elapsed * 0.18 + seed;
-      target.x += Math.cos(angle) * 0.28;
-      target.z += Math.sin(angle) * 0.24;
-      return { moving: true, typing: false, pose: 'standing' };
-    }
-    if (placement.zone === 'work') {
-      // 24-second routine: type, stand, push back, walk to the break spot, pause, return, sit.
-      const cycle = (this.elapsed + seed * 0.31) % 24;
-      const away = this.scratch.away.set(placement.x + 0.85, 0.02, placement.z + 1.35);
-      if (cycle < 12) return { moving: false, typing: true, pose: 'sitting' };
-      if (cycle < 13) return { moving: false, typing: false, pose: 'standing' };
-      if (cycle < 16) {
-        target.lerp(away, THREE.MathUtils.smoothstep(cycle, 13, 16));
-        target.y = 0.02;
-        return { moving: true, typing: false, pose: 'standing' };
+    const t = this.elapsed;
+    const phase = t * (reporting ? 13 : 8) + seed;
+    const activity: Activity | 'walk' = moving ? 'walk' : spot.activity;
+    const pose = moving ? 'standing' : spot.pose;
+    let swing = moving ? Math.sin(phase) * 0.48 : 0;
+    let leftArm = -swing * 0.65;
+    let rightArm = swing * 0.65;
+    let headX = 0;
+    let headY = 0;
+    let held: THREE.Mesh | null = null;
+    if (!moving) target.set(spot.x, spot.y, spot.z);
+    switch (activity) {
+      case 'walk':
+        // Someone hurrying up to the patron carries the report they are about to hand in.
+        if (reporting) {
+          held = walker.paper;
+          rightArm = -0.75;
+        }
+        break;
+      case 'type':
+        leftArm = calm ? -0.7 : -0.68 + Math.cos(t * 6.4 + seed) * 0.1;
+        rightArm = calm ? -0.72 : -0.72 + Math.sin(t * 7 + seed) * 0.12;
+        headX = 0.08;
+        this.lit[placement.assignment.kind === 'desk' ? placement.assignment.desk - 1 : -1] = true;
+        break;
+      case 'think': {
+        // Holding a task with no run going: reading the screen, now and then a hand to the chin.
+        const cycle = (t + seed * 0.7) % 16;
+        leftArm = -0.42;
+        rightArm = !calm && cycle > 12.5 ? -1.8 : -0.42;
+        headX = 0.14;
+        headY = calm ? 0 : Math.sin(t * 0.4 + seed) * 0.12;
+        break;
       }
-      if (cycle < 18) {
-        target.copy(away);
-        return { moving: false, typing: false, pose: 'standing' };
+      case 'relax':
+        leftArm = rightArm = -0.18;
+        headY = calm ? 0 : Math.sin(t * 0.3 + seed) * 0.42;
+        break;
+      case 'snack': {
+        const sip = !calm && (t + seed * 0.9) % 6.5 < 1.3;
+        held = walker.cup;
+        rightArm = sip ? -1.95 : -0.62;
+        headX = sip ? -0.16 : 0;
+        headY = calm || sip ? 0 : Math.sin(t * 0.5 + seed) * 0.32;
+        break;
       }
-      if (cycle < 21) {
-        const progress = THREE.MathUtils.smoothstep(cycle, 18, 21);
-        target.set(away.x + (placement.x - away.x) * progress, 0.02, away.z + (placement.z - away.z) * progress);
-        return { moving: true, typing: false, pose: 'standing' };
+      case 'play': {
+        held = walker.paddle;
+        const station = 'station' in spot ? (spot as { station: number }).station : -1;
+        if (!calm && this.life.rallyAt(station)) {
+          rightArm = -0.95 + Math.sin(t * 7.5 + seed) * 0.6;
+          leftArm = -0.25;
+          target.z += Math.sin(t * 2.1 + seed) * 0.3;
+          swing = Math.sin(phase) * 0.22;
+        } else {
+          // Nobody across the table yet: paddle down, looking round for a partner.
+          rightArm = -0.35;
+          headY = calm ? 0 : Math.sin(t * 0.8 + seed) * 0.6;
+        }
+        break;
       }
-      return { moving: false, typing: false, pose: cycle > 22.5 ? 'sitting' : 'standing' };
+      case 'read':
+        held = walker.paper;
+        leftArm = rightArm = -0.95;
+        headX = 0.32;
+        break;
+      case 'present': {
+        // At the patron's desk: hold the report out, let go of it, step back. Then the trip
+        // is over and the figure goes wherever it belongs — its desk, or the lounge.
+        walker.handover += delta;
+        const given = walker.handover > HANDOVER_GIVEN;
+        held = given ? null : walker.paper;
+        rightArm = given ? -0.2 : -1.3;
+        headX = given ? 0.12 : 0;
+        if (walker.handover > HANDOVER_SECONDS) {
+          walker.handover = 0;
+          walker.cameOffWork = true;
+          this.errands = this.errands.filter((other) => other !== id);
+        }
+        break;
+      }
+      case 'queue':
+        // In line behind someone at the patron's desk: still holding the report.
+        if (reporting) {
+          held = walker.paper;
+          rightArm = -0.75;
+        }
+        headY = calm ? 0 : Math.sin(t * 0.45 + seed) * 0.3;
+        break;
+      case 'wait':
+        headX = 0.2;
+        break;
+      case 'rest':
+        leftArm = 0.18;
+        rightArm = -0.18;
+        break;
     }
-    if (placement.zone === 'patron' && id === presenterId) {
-      const cycle = (this.elapsed + seed * 0.2) % 16;
-      target.z += THREE.MathUtils.smoothstep(cycle, 3, 6) * 0.38 - THREE.MathUtils.smoothstep(cycle, 11, 14) * 0.38;
-      return { moving: (cycle > 3 && cycle < 6) || (cycle > 11 && cycle < 14), typing: false, pose: 'standing' };
-    }
-    return still;
+    if (!moving) position.lerp(target, blend);
+    rig.root.rotation.y = turnToward(rig.root.rotation.y, facing, blend);
+    const lerp = THREE.MathUtils.lerp;
+    const sitting = pose === 'sitting';
+    const lying = pose === 'lying';
+    rig.leftLeg.rotation.x = lerp(rig.leftLeg.rotation.x, lying ? 0 : sitting ? -1.22 : swing, blend);
+    rig.rightLeg.rotation.x = lerp(rig.rightLeg.rotation.x, lying ? 0 : sitting ? -1.22 : -swing, blend);
+    rig.leftArm.rotation.x = lerp(rig.leftArm.rotation.x, leftArm, blend);
+    rig.rightArm.rotation.x = lerp(rig.rightArm.rotation.x, rightArm, blend);
+    rig.head.rotation.x = lerp(rig.head.rotation.x, headX, blend);
+    rig.head.rotation.y = lerp(rig.head.rotation.y, headY, blend);
+    rig.body.position.y = calm || lying || sitting ? 0 : Math.sin(phase) * (moving ? 0.025 : 0.008);
+    rig.body.rotation.x = lerp(rig.body.rotation.x, lying ? -Math.PI / 2 : 0, blend);
+    walker.cup.visible = held === walker.cup;
+    walker.paper.visible = held === walker.paper;
+    walker.paddle.visible = held === walker.paddle;
+    // The dial over a head means one thing: a run is going right now.
+    rig.routineDial.visible = activity === 'type';
+    return lying;
   }
 
   // ─── Theme ───
@@ -965,10 +935,8 @@ export class OfficeEngine {
     this.elapsed += delta;
     this.syncAgents();
     const { layout, selectedId } = this.state();
-    const presenterId = [...layout.placements.entries()].find(([, placement]) => placement.assignment.kind === 'presenting')?.[0];
     const blend = this.reduced ? 1 : Math.min(delta * 4.2, 1);
     const lerp = THREE.MathUtils.lerp;
-    const desired = this.scratch.desired;
     if (this.flight) {
       const flight = this.flight;
       flight.progress = Math.min(1, flight.progress + delta / FLIGHT_SECONDS);
@@ -997,27 +965,24 @@ export class OfficeEngine {
       caption.material.opacity = captionOpacity;
       caption.visible = this.roomForCaptions && captionOpacity > 0.02;
     });
+    // Who is idle, for the lounge to decide what each of them is up to.
+    const idle: IdleAgent[] = [];
+    layout.placements.forEach((placement, id) => {
+      const walker = this.walkers.get(id);
+      if (walker && walker.zone !== placement.zone) {
+        walker.cameOffWork = placement.zone === 'lounge';
+        walker.zone = placement.zone;
+      }
+      // Someone up at the patron's desk has left the lounge, and their seat with it.
+      if (placement.zone === 'lounge' && !this.errands.includes(id)) idle.push({ id, start: placement.start ?? 0, cameOffWork: walker?.cameOffWork ?? false });
+    });
+    if (!this.reduced) this.life.step(this.elapsed, idle);
+    this.lit.fill(false);
     this.rigs.forEach((rig, id) => {
       const placement = layout.placements.get(id);
-      if (!placement) return;
-      const motion = this.desired(placement, id, desired, presenterId);
-      const dx = desired.x - rig.root.position.x;
-      const dz = desired.z - rig.root.position.z;
-      rig.root.position.lerp(desired, blend);
-      const facing = motion.moving && Math.hypot(dx, dz) > 0.015 ? Math.atan2(dx, dz) : placement.rotation;
-      rig.root.rotation.y = lerp(rig.root.rotation.y, facing, blend);
-      const phase = this.elapsed * 8 + this.seed(id);
-      const swing = !this.reduced && motion.moving ? Math.sin(phase) * 0.48 : 0;
-      const sitting = motion.pose === 'sitting';
-      const lying = motion.pose === 'lying';
-      rig.leftLeg.rotation.x = lerp(rig.leftLeg.rotation.x, lying ? 0 : sitting ? -1.22 : swing, blend);
-      rig.rightLeg.rotation.x = lerp(rig.rightLeg.rotation.x, lying ? 0 : sitting ? -1.22 : -swing, blend);
-      const typingLeft = this.reduced ? -0.7 : -0.68 + Math.cos(this.elapsed * 6.4) * 0.1;
-      const typingRight = this.reduced ? -0.72 : -0.72 + Math.sin(this.elapsed * 7) * 0.12;
-      rig.leftArm.rotation.x = lerp(rig.leftArm.rotation.x, motion.typing ? typingLeft : lying ? 0.18 : -swing * 0.65, blend);
-      rig.rightArm.rotation.x = lerp(rig.rightArm.rotation.x, motion.typing ? typingRight : lying ? -0.18 : swing * 0.65, blend);
-      rig.body.position.y = this.reduced || lying || sitting ? 0 : Math.sin(phase) * (motion.moving ? 0.025 : 0.008);
-      rig.body.rotation.x = lerp(rig.body.rotation.x, lying ? -Math.PI / 2 : 0, blend);
+      const walker = this.walkers.get(id);
+      if (!placement || !walker) return;
+      const lying = this.move(id, rig, walker, placement, delta, blend);
       const label = this.labels.get(id);
       if (label) {
         const scale = rig.root.scale.y || 1;
@@ -1026,11 +991,36 @@ export class OfficeEngine {
         // A crowded floor only names the agent in focus (DESIGN §7).
         label.visible = !this.plan.large || selectedId === id || this.hoveredId === id;
       }
-      if (!this.reduced) {
-        rig.routineDial.rotation.y += delta * 0.65;
+      if (!this.reduced && rig.routineDial.visible) {
+        rig.routineDial.rotation.y += delta * 2.4;
         rig.routineDial.position.y = 1.73 + Math.sin(this.elapsed * 2) * 0.04;
       }
     });
+    // A monitor is lit only while its owner has a run going.
+    const parts = this.office.parts;
+    parts.screens.forEach((screen, index) => {
+      const color = (screen.material as THREE.MeshBasicMaterial).color;
+      color.lerp(this.scratch.color.set(this.lit[index] ? (Math.sin(this.elapsed * 5 + index) > 0.6 ? '#b9d2ff' : '#8fb4ff') : '#27303a'), Math.min(1, delta * 6));
+    });
+    // The stack on the patron's desk: every report waiting for an answer, less those still on their way.
+    const waiting = Math.max(0, layout.plan.reviewCount - this.errands.length);
+    parts.reports.forEach((report, index) => {
+      report.visible = index < waiting;
+    });
+    // A ball crosses each table that has a player on both sides.
+    parts.balls.forEach((ball, station) => {
+      const rally = !this.reduced && this.life.rallyAt(station);
+      ball.mesh.visible = rally;
+      if (!rally) return;
+      const swing = this.elapsed * 3.4 + station;
+      ball.mesh.position.set(ball.x + Math.sin(swing) * 1.15, 0.84 + Math.abs(Math.sin(swing * 2)) * 0.3, ball.z + Math.sin(swing * 0.37) * 0.3);
+    });
+    // The notice board glows while letters wait, and flashes for a few seconds when one arrives.
+    this.boardPulse = Math.max(0, this.boardPulse - delta);
+    const flash = this.boardPulse > 0 && !this.reduced ? Math.abs(Math.sin(this.boardPulse * 5)) : 0;
+    const frame = (parts.boardFrame.material as THREE.MeshBasicMaterial).color;
+    frame.set(this.boardCount > 0 ? '#d2b568' : '#6d6456').lerp(this.scratch.color.set('#fff1c2'), this.boardCount > 0 ? Math.max(flash, this.reduced ? 0 : 0.25 + Math.sin(this.elapsed * 2) * 0.25) : 0);
+    parts.boardFrame.scale.setScalar(1 + flash * 0.035);
     this.spreadTags(unitsPerPixel, blend);
     this.applyLook(this.reduced ? 1 : Math.min(delta * 3.5, 1));
     if (!this.reduced) {
@@ -1103,11 +1093,14 @@ export class OfficeEngine {
     // The floor is fitted to the part of the canvas the page leaves uncovered, and centred there.
     const clear = Math.max(120, height - this.insets.top - this.insets.bottom);
     const aspect = width / clear;
-    // Seen from the overview the floor is a diamond, wider than either of its sides; the zone
-    // captions stand outside it and need their own room where there is a canvas wide enough.
+    // How much of the view the floor takes from the overview, across and up, with the walls'
+    // height and a margin; the zone captions stand outside it and need room of their own
+    // where the canvas is wide enough to have them.
     this.roomForCaptions = width >= CAPTION_MIN_WIDTH;
-    const across = this.plan.floorWidth * 0.84 + this.plan.floorDepth * 0.55 + (this.roomForCaptions ? 13 : 3);
-    const viewHeight = Math.max(25, across / aspect, this.plan.floorWidth * 0.36 + this.plan.floorDepth * 0.58 + 7);
+    const { floorWidth, floorDepth } = this.plan;
+    const across = floorWidth * Math.cos(OVERVIEW_TURN) + floorDepth * Math.sin(OVERVIEW_TURN) + (this.roomForCaptions ? 12 : 2.5);
+    const tall = (floorWidth * Math.sin(OVERVIEW_TURN) + floorDepth * Math.cos(OVERVIEW_TURN)) * Math.sin(OVERVIEW_TILT) + 3.6 * Math.cos(OVERVIEW_TILT) + 2.6;
+    const viewHeight = Math.max(14, across / aspect, tall);
     const unitsPerPixel = viewHeight / clear;
     this.camera.left = (-viewHeight * aspect) / 2;
     this.camera.right = (viewHeight * aspect) / 2;
