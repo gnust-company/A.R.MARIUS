@@ -8,7 +8,7 @@ nhận việc được thì làm gì**.
 ## daemon là gì
 
 Armarius không nuôi agent. Agent của bạn là những **agent CLI** bạn đã cài trên máy mình —
-`claude`, `codex`, `gemini` — đang đăng nhập bằng tài khoản của bạn. Nhưng Armarius chạy ở
+`claude`, `codex`, `gemini`, `kimi` — đang đăng nhập bằng tài khoản của bạn. Nhưng Armarius chạy ở
 một nơi khác và không thể với tay vào máy bạn được.
 
 **daemon là cái bắc cầu.** Một chương trình nhỏ chạy nền trên máy bạn, tự đi hỏi Armarius có
@@ -280,7 +280,8 @@ Tắt `auto_update` khi server Armarius của bạn chưa lên bản mới mà b
 ## Runtime là gì, và vì sao nó chứ không phải cái máy
 
 Một **runtime** là một cặp (agent CLI có trên máy đó × không gian làm việc). Máy bạn có cả
-`claude`, `codex` và `gemini` thì màn hình **Máy** sẽ hiện một cái máy với **ba** runtime.
+`claude`, `codex` và `gemini` thì màn hình **Máy** sẽ hiện một cái máy với **ba** runtime; cài thêm
+`kimi` thì thành bốn.
 
 Nhận việc là **runtime**, không phải cái máy. Nên `claude` cạn hạn mức không kéo theo `codex`
 trên cùng máy ấy — hai runtime khác nhau, hai tài khoản khác nhau.

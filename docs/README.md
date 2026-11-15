@@ -8,7 +8,7 @@
 **Agent không chạy trên máy chủ của chúng tôi. Chúng chạy trên máy của bạn.**
 
 Armarius không nuôi một con agent nào. Nó giao việc, còn thứ thật sự làm việc là **agent CLI
-bạn đã cài sẵn trên máy mình** — Claude Code, Codex, Gemini CLI — đang đăng nhập bằng tài
+bạn đã cài sẵn trên máy mình** — Claude Code, Codex, Gemini CLI, Kimi Code — đang đăng nhập bằng tài
 khoản của bạn. Một chương trình nhỏ tên là **daemon** chạy trên máy đó, tự đi hỏi Armarius
 "có việc gì cho tôi không", rồi bật agent CLI lên ngay tại chỗ.
 
@@ -16,7 +16,7 @@ khoản của bạn. Một chương trình nhỏ tên là **daemon** chạy trê
 flowchart LR
     P["👤 Bạn<br/>(patron)"] -->|"giao việc"| S["🏛️ Armarius<br/>máy chủ"]
     S -->|"có việc, đến lấy đi"| D["⚙️ daemon<br/>trên máy của bạn"]
-    D -->|"bật lên, đưa đề bài"| C["🤖 agent CLI<br/>claude / codex / gemini"]
+    D -->|"bật lên, đưa đề bài"| C["🤖 agent CLI<br/>claude / codex / gemini / kimi"]
     C -->|"diễn biến + thành phẩm"| D
     D -->|"báo về"| S
     S -->|"bạn xem và duyệt"| P
