@@ -465,6 +465,23 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
     hồi máy cũ khi đăng nhập lại; daemon tự đọc lại file cấu hình mà không cần khởi động lại.
 - **FR-002**: Daemon PHẢI tự dò các agent CLI có trên máy và đăng ký mỗi cái tìm được thành một **chỗ làm**
   gắn với workspace đó.
+- **FR-002a**: Một agent CLI **không nằm trên PATH của daemon** nhưng nằm trên PATH mà shell của người vận
+  hành dựng lên thì vẫn PHẢI được tìm thấy *(thêm 2026-11-15)*. Daemon hỏi PATH của chính nó trước; những
+  tên còn thiếu thì hỏi **login shell của người vận hành** (`$SHELL -ilc`, hỏi bằng `command -v`), **một
+  lần cho mọi tên còn thiếu** trong một lượt dò. Cách làm lấy từ Multica Daemon (FR-039b). Bốn điều buộc:
+  - Chỉ nhận câu trả lời là **đường dẫn tuyệt đối** mà daemon **chạy được ngay lúc ấy**. Alias và hàm shell
+    được gỡ khỏi tên trước khi hỏi, vì chúng trả lời bằng định nghĩa của chính chúng.
+  - Chỉ đưa vào script những tên gồm chữ, số, chấm, gạch ngang, gạch dưới.
+  - Không có `$SHELL`, shell không thuộc nhóm đã biết (bash, zsh, sh, dash, ksh), shell chạy quá 3 giây hay
+    thoát lỗi: đều là **không tìm thấy gì thêm**, daemon chạy tiếp với những CLI PATH của nó có.
+  - Script KHÔNG ĐƯỢC dựa vào chương trình ngoài (`dirname`, `basename`): daemon bật với PATH gần như rỗng
+    sẽ đưa cho shell một PATH không có chúng.
+
+  *(Đo 2026-11-15: bộ cài Kimi Code đặt binary ở `~/.kimi-code/bin` và thêm thư mục ấy vào PATH bằng một
+  dòng trong `~/.bashrc`. Mọi terminal trên máy gọi được `kimi`, còn daemon bật với PATH của hệ thống thì
+  không thấy nó. Hỏi login shell từ một PATH chỉ có `/usr/local/bin:/usr/bin:/bin` thì ra đúng
+  `~/.kimi-code/bin/kimi`. Bản script đầu dùng `dirname`: với PATH rỗng nó tìm ra tên rồi đánh rơi ở đúng
+  dòng ấy.)*
 - **FR-003**: Mỗi chỗ làm PHẢI mang tên máy đọc được, để người dùng phân biệt được hai máy khác nhau của
   cùng một người.
 - **FR-004**: Daemon PHẢI phát tín hiệu sống theo nhịp đều. Mất tín hiệu quá ngưỡng thì mọi chỗ làm của nó
@@ -860,6 +877,24 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
     CLI tự gia hạn thật** giữa lượt chạy, vì token còn hạn suốt buổi đo. Nghi phạm thứ hai của ngày
     2026-11-11 (daemon bật từ phiên desktop nên agent thừa hưởng biến môi trường của phiên) vẫn chưa bị
     loại.
+- **FR-007t**: CLI nào **không có lệnh** để hỏi đăng nhập nhưng trả lời được câu ấy **qua chính giao thức
+  của nó** thì daemon hỏi bằng đường đó, và câu trả lời đi tiếp y như ở FR-007r *(thêm 2026-11-15)*. Với họ
+  ACP: mở cuộc hội thoại như một lần dò khả năng, rồi gửi `authenticate` kèm mã phương thức mà dòng của CLI
+  ấy khai. Kết quả rỗng là *có người đăng nhập*; lỗi `-32000` (mã `auth_required` của chính giao thức) là
+  *không*; mọi thứ khác là *không biết*. Hai điều KHÔNG ĐƯỢC làm:
+  - **Không gửi `authenticate` cho một CLI chưa đo.** Trên agent khác, cùng lời gọi ấy có thể *bắt đầu* một
+    lần đăng nhập. Phương thức nào được hỏi là một dòng khai trong bảng của từng CLI, và chỉ khai sau khi đã
+    đo trên binary thật.
+  - **Không gửi khi lời bắt tay của chính binary không liệt kê phương thức ấy ở dạng đăng nhập tại
+    terminal** (`type: "terminal"`). Đây là cái chốt tương ứng với "phải có trong `--help`" của FR-007r:
+    agent đã bảo người dùng ra terminal mà đăng nhập thì `authenticate` chỉ còn việc nói họ đã làm chưa.
+    Bản CLI nào thôi liệt kê thì không bị hỏi, và được báo là *không biết*.
+
+  *(Đo 2026-11-15 trên kimi 2.5.3: `kimi --help` có `login` mà không có lệnh nào báo trạng thái. Qua ACP,
+  `authenticate` với `methodId: "login"` trả `{}` sau 0,07 giây ở thư mục nhà đã đăng nhập, và trả `-32000
+  Authentication required` sau 0,05 giây ở một thư mục nhà chưa ai đăng nhập. Không phiên nào được mở, không
+  tệp nào trong thư mục nhà đổi, không gọi tới nhà cung cấp. Câu trả lời là "trên máy này có một đăng nhập
+  CLI coi là dùng được", giống `claude auth status`: nó không kiểm với nhà cung cấp.)*
 - **FR-007d**: Hệ thống PHẢI bảo đảm **một lượt chạy chỉ được đúng một máy nhận**. Khi một lượt chạy bị
   tuyên là hỏng, **token của lượt chạy ấy** PHẢI bị thu hồi ngay, để một tiến trình ngủ dậy muộn không ghi
   thêm được gì vào đầu việc.
@@ -1373,7 +1408,72 @@ dòng ấy hiện dần lên màn hình mà không phải tải lại.
   ít chỗ hỏng hơn. Công cụ gọi ngược tới agent qua **mặt lệnh** (FR-013): gemini chạy-một-phát không có cờ
   nạp một file khai MCP cho riêng lượt chạy, và lệnh shell thì giữ nguyên môi trường theo mặc định của
   gemini. Đăng nhập là việc của người vận hành: hệ thống **giả định** gemini trên máy đã đăng nhập và dùng
-  được. Họ ACP **vẫn ở lại** trong daemon cho CLI sau này; hôm nay không CLI nào dùng nó.
+  được. Họ ACP **vẫn ở lại** trong daemon cho CLI sau này; hôm nay không CLI nào dùng nó. *(Từ 2026-11-15 Kimi Code
+  chạy trên họ này: FR-039g.)*
+- **FR-039g**: **Kimi Code là loại agent CLI thứ tư, chạy qua họ ACP** *(thêm 2026-11-15, người chủ ra
+  lệnh "support cho Kimi")*. Daemon bật `kimi acp` rồi nói ACP qua luồng chuẩn, theo cách Multica Daemon lái
+  Kimi (FR-039b). `cli_kind` là `kimi`. Mọi dòng dưới đây **đo trên binary thật** (kimi 2.5.3, một tài khoản
+  đã đăng nhập, một lượt chạy thật trong thư mục nhà dựng đúng như mô tả), không chép từ tài liệu:
+  - **Brief** ghi vào `AGENTS.md` ở thư mục làm việc. Một từ khoá chỉ có trong `AGENTS.md` đã xuất hiện trong
+    câu trả lời của agent, kể cả khi không đánh dấu thư mục là tin cậy.
+  - **Kỹ năng** đặt ở `.kimi-code/skills` trong thư mục làm việc. Bản 2.5.3 dò `.kimi-code/skills` và
+    `.agents/skills`; kỹ năng đặt ở `.kimi/skills` không tới được agent.
+  - **Công cụ gọi ngược** khai ngay lúc mở phiên, đủ bốn trường (FR-013a). Kimi bật MCP server với **nguyên
+    môi trường** của lượt chạy, token của lượt chạy còn đủ, nên mặt công cụ dùng được; đây là chỗ Gemini
+    trên ACP hỏng (FR-039f) và Kimi không hỏng.
+  - **Lời xin phép**: Kimi hỏi từng lệnh với ba lựa chọn (một lần, cả phiên, từ chối) và nhận câu trả lời
+    *một lần* theo FR-013b. Cờ `--yolo` và `--auto` là của lệnh gốc, không có tác dụng với `kimi acp`.
+  - **Thư mục nhà của lượt chạy** mượn của người vận hành đúng **bốn thứ làm nên một đăng nhập** trong
+    `~/.kimi-code`: `config.toml`, thư mục `credentials`, thư mục `oauth`, `device_id`. Phiên trò chuyện
+    (`sessions`) thuộc về đầu việc (FR-023, FR-027). Biến `HOME` và `KIMI_CODE_HOME` cùng trỏ về thư mục
+    nhà của lượt chạy, để một `KIMI_CODE_HOME` daemon thừa hưởng không kéo lượt chạy về thư mục thật.
+  - **Thư mục `credentials` được liên kết nguyên cả thư mục, không liên kết từng tệp.** Kimi gia hạn đăng
+    nhập bằng cách ghi tệp tạm rồi đổi tên đè lên tên, đúng kiểu ghi làm hỏng một liên kết *tệp* (FR-007s).
+    Trong một liên kết *thư mục*, phép đổi tên ấy rơi vào thư mục thật của người vận hành. Vì vậy Kimi
+    **không khai tệp nào cần mang về**; tên tệp cũng không biết trước được (`kimi-code-env-<mã>.json`).
+    Thư mục `oauth` chứa khoá mà hai tiến trình Kimi giành nhau trước khi gia hạn, nên cũng phải là thư mục
+    thật: token gia hạn dùng một lần, lượt chạy và terminal của người vận hành phải xếp hàng.
+  - **Không liên kết cả `~/.kimi-code` kiểu từng-con-một** như với `.claude` và `.gemini`. Kimi **ghi xuyên
+    qua liên kết** vào `session_index.jsonl` (ghi nối) và `cache/query-store` (một cơ sở dữ liệu), nên làm
+    vậy thì mỗi lượt chạy để lại trong cài đặt của người vận hành một dòng về một phiên họ chưa từng có.
+
+  **Bằng chứng** (2026-11-15): token truy cập của Kimi sống 15 phút và lúc đo đã hết hạn. Lượt chạy trong
+  thư mục nhà dựng như trên **tự gia hạn**, và tệp mới nằm trong `credentials` thật của người vận hành,
+  liên kết trong thư mục nhà của lượt chạy vẫn là liên kết. Lượt chạy thứ hai, ở một thư mục nhà mới tinh
+  chỉ giữ lại `sessions`, nối đúng phiên cũ: agent nhớ lệnh nó chạy ở lượt trước. Trong cả hai lượt, ngoài
+  `credentials` và `oauth`, không tệp nào trong `~/.kimi-code` thật đổi.
+
+  **Ba chỗ lệch Multica, mỗi chỗ một lý do đã chốt:** (1) thư mục kỹ năng là `.kimi-code/skills` chứ không
+  phải `.kimi/skills`, vì binary đang cài không đọc tên cũ (FR-039a: đo trên binary, không đoán); (2) Kimi
+  chạy trong thư mục nhà của lượt chạy chứ không phải thư mục nhà thật, vì phiên phải thuộc về đầu việc và
+  bị dọn theo hạn (FR-023, FR-027); (3) không chép brief vào đầu prompt như Multica làm cho Kimi, vì ở
+  Armarius thông điệp của server **chính là** prompt và daemon không được soạn phần nào của nó (FR-011a).
+
+  **Chưa làm, ghi thẳng:** chọn model và mức suy luận cho từng agent (Kimi khai danh mục trong câu trả lời
+  mở phiên và nhận `session/set_model`; chưa nối vào FR-007k, nên agent chạy bằng model mặc định trong
+  `config.toml` của người vận hành); số token của lượt chạy (Kimi không gửi qua ACP, Multica đọc từ nhật
+  ký phiên); nhận ra *cạn hạn mức* (chưa ai thấy Kimi 2.5.3 chạm trần, nên không có câu nào để đọc).
+- **FR-039h**: Họ ACP PHẢI theo bốn điều sau, đo ra khi nối Kimi Code và đúng cho mọi peer của họ này
+  *(thêm 2026-11-15)*:
+  - **Nối phiên bằng đúng từ agent tự khai.** Agent khai `session/resume` trong lời bắt tay thì daemon gọi
+    `session/resume`; không khai thì gọi `session/load`. Khai một trong hai là đủ để chỗ làm được coi là
+    nối lại được phiên (FR-017). Một mã phiên agent không nhận thì mở phiên mới kèm câu báo (FR-025), như
+    cũ.
+  - **Những gì agent nói trước khi prompt của lượt này được gửi đi không phải việc của lượt này**, và KHÔNG
+    ĐƯỢC ghi vào nhật ký lượt chạy. *(Đo: `session/load` trên kimi 2.5.3 đọc lại toàn bộ lượt trước, từng
+    câu và từng lời gọi công cụ, bằng đúng loại thông báo của một lượt đang chạy. Ghi lại thì việc của lượt
+    trước thành việc của lượt này lần nữa.)*
+  - **Lời gọi công cụ được ghi cùng tham số của nó, kể cả khi tham số tới sau.** Agent báo một lời gọi mà
+    chưa kèm tham số thì daemon giữ lại, ghi khi tham số tới (`rawInput` ở một thông báo sau), chậm nhất là
+    khi lời gọi kết thúc hoặc lượt kết thúc. Tới lúc ấy vẫn không có `rawInput` thì đọc phần chữ agent đã
+    viết ra cho lời gọi: là một đối tượng JSON thì đó là tham số; không phải thì ghi *CLI không cho biết*
+    (FR-047). *(Đo: kimi 2.5.3 báo mọi lời gọi ở trạng thái `pending` với phần chữ rỗng, viết tham số ra
+    từng khúc, rồi mới gửi `rawInput` khi lời gọi được phép chạy. Trường `content` của một lời gọi công cụ
+    là một danh sách, còn của một câu nói là một khối đơn; đọc cả hai bằng một hình dạng thì mọi lời gọi
+    công cụ bị bỏ sót nguyên cả thông báo.)*
+  - **Lỗi `-32000` khi mở phiên, nối phiên hay nhận lượt là `credential_rejected`** (FR-032a, FR-007c). Đọc
+    **mã**, không đọc câu chữ đi kèm. Mọi lỗi khác để nguyên không phân loại. *(Đo: `session/new` trên kimi
+    2.5.3 ở một thư mục nhà chưa ai đăng nhập trả `-32000 Authentication required` sau 0,06 giây.)*
 - **FR-039c**: Đặc tính của một loại agent CLI — tệp bối cảnh, thư mục kỹ năng, hình dạng nhà giả, biến
   môi trường trỏ về nhà ấy, binary để dò, họ giao thức — PHẢI khai ở **một chỗ duy nhất**, và PHẢI khai
   **trọn hoặc không khai gì**. Nửa vời là hỏng kiểu im lặng: chỗ làm vẫn đăng ký, vẫn nhận việc, vẫn bật
