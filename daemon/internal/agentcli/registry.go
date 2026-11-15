@@ -34,6 +34,10 @@ const (
 	Codex      Kind = "codex"
 )
 
+// Kimi is Kimi Code CLI, added 2026-11-15 (FR-039g): the first kind of the ACP family since
+// Gemini CLI left it.
+const Kimi Kind = "kimi"
+
 // Family is how the daemon talks to a CLI once it runs one.
 type Family string
 
@@ -210,6 +214,17 @@ type CLI struct {
 	// words, it takes them as something a person typed — and a daemon that asks every few
 	// minutes would be starting a turn every few minutes on somebody's account.
 	SignInCommand string
+	// SignInMethod is the other way of asking the same question: over the CLI's own protocol
+	// rather than with a command (FR-007t). It names the ACP authentication method this CLI
+	// answers `authenticate` for by **saying whether somebody is signed in** — an empty result
+	// when somebody is, the protocol's own `auth_required` error when nobody is — and nothing
+	// else. Empty for every CLI that has no such method or whose `authenticate` was never
+	// measured: on another agent the same call may well *start* a sign-in.
+	//
+	// The guard is the handshake, the way `--help` is the guard for SignInArgs: the question is
+	// only put to a binary whose own `initialize` lists this method, and lists it as one a
+	// person completes in a terminal.
+	SignInMethod string
 
 	// Refreshed names the files inside the home, linked out to the operator's own, that this
 	// CLI **replaces** rather than writes through (FR-007s). Same relative path on both sides.
@@ -238,7 +253,7 @@ type CLI struct {
 	// feature some CLIs happen to have, not a concept Armarius provides: a CLI that has one
 	// declares a PerAgent entry and gets a directory under its own name, and a CLI that has
 	// none causes no directory to exist at all. Building one memory store for every CLI would
-	// take one vendor's feature and make it a law of the platform. Of the three kinds below,
+	// take one vendor's feature and make it a law of the platform. Of the kinds below,
 	// **none declares long-term memory**, which is the expected answer rather than a gap.
 	Home []Entry
 
@@ -406,6 +421,71 @@ var rows = []CLI{
 			{Path: ".codex/skills", Lifetime: PerRun},
 		},
 		HomeVars: []HomeVar{{Variable: "HOME"}, {Variable: "CODEX_HOME", Path: ".codex"}},
+	},
+
+	// Kimi Code CLI over ACP — `kimi acp`, the way Multica's daemon drives it
+	// (`server/pkg/agent/kimi.go`). **Every line below was measured on the binary installed on a
+	// machine** — `kimi 2.5.3`, 2026-11-15, a signed-in account, one real turn in a home built
+	// exactly like this row describes (FR-039g) — and where that binary disagrees with what
+	// Multica writes for an older Kimi, the binary wins (FR-039a).
+	{
+		Kind:   Kimi,
+		Family: FamilyACP,
+		Binary: "kimi",
+		// `acp` alone: "Run kimi-code as an Agent Client Protocol (ACP) server over stdio". Its
+		// `--yolo` and `--auto` are flags of the root command and do nothing here, which is why
+		// permission is answered request by request (FR-013b).
+		ProtocolArgs: []string{"acp"},
+		VersionArgs:  []string{"--version"},
+		// No command answers whether anybody is signed in — `kimi --help` lists `login` and
+		// nothing that reports. Its ACP `authenticate` does: `{}` in a signed-in home in 0.07s,
+		// `-32000 Authentication required` in an empty one in 0.05s, no session opened, no file
+		// touched, no call to the provider.
+		SignInMethod: "login",
+		// Read natively from the working directory over ACP: a canary written only into
+		// AGENTS.md came back in the agent's answer, with and without the workspace being
+		// marked trusted. Multica sends its brief inline as well because it did not trust this
+		// path on an older Kimi; here the message is the prompt already (FR-011a).
+		ContextFile: "AGENTS.md",
+		// The project-level directory, as in Multica — but under the name this binary reads.
+		// Its skill roots are `.kimi-code/skills` and `.agents/skills`; a skill placed in
+		// Multica's `.kimi/skills` was not offered to the agent, while the other two were.
+		Skills: Skills{Path: ".kimi-code/skills"},
+		Home: []Entry{
+			// The four names a sign-in is made of, and nothing else of the operator's. Named
+			// one by one rather than linking the whole directory child by child, because of
+			// what this CLI writes *through* a link: `session_index.jsonl` is appended to and
+			// `cache/query-store` is a database, so a run in a home that linked them left a
+			// line and an index entry in the operator's own about a session they never had.
+			{Path: ".kimi-code/config.toml", Lifetime: Operator, Source: ".kimi-code/config.toml"},
+			// **The directory, not the files in it** — and this is the whole of how a run does
+			// not sign the operator out (FR-007s). Kimi renews by staging
+			// `<name>.json.tmp.<pid>.<rand>` and renaming it over the name (its
+			// `FileTokenStorage.save`), exactly the write that replaces a linked *file*. Inside
+			// a linked *directory* the same rename lands in the operator's real one. Measured:
+			// the access token lives 15 minutes and had lapsed; the run renewed it, and the new
+			// file was in the operator's own `credentials/` with this link still a link. So
+			// there is nothing to carry back, and `Refreshed` is empty on purpose — the file
+			// names are also not knowable here (`kimi-code-env-<hash>.json`).
+			{Path: ".kimi-code/credentials", Lifetime: Operator, Source: ".kimi-code/credentials"},
+			// Where the lock two Kimi processes take before renewing lives
+			// (`oauth/<name>.lock`). Shared with the operator's own for the reason it exists: a
+			// renewal token is spent by using it, so a run and the operator's terminal renewing
+			// at once must be made to queue.
+			{Path: ".kimi-code/oauth", Lifetime: Operator, Source: ".kimi-code/oauth"},
+			// Sent with every call to the sign-in service. A home without it mints a new one,
+			// and a renewal arriving from a device the token was not issued to is not a thing
+			// to try on somebody's only sign-in.
+			{Path: ".kimi-code/device_id", Lifetime: Operator, Source: ".kimi-code/device_id"},
+			// `sessions/wd_<dir>_<hash>/<session id>/` is where a conversation lives. Resumed
+			// from a fresh home holding only this directory: the agent still knew what it had
+			// run the turn before (FR-023).
+			{Path: ".kimi-code/sessions", Lifetime: PerTask},
+		},
+		// HOME is enough for the binary — its data directory is `KIMI_CODE_HOME`, else
+		// `~/.kimi-code`. The second variable is here so that one exported in the daemon's own
+		// environment cannot send a run back to the operator's real directory.
+		HomeVars: []HomeVar{{Variable: "HOME"}, {Variable: "KIMI_CODE_HOME", Path: ".kimi-code"}},
 	},
 }
 

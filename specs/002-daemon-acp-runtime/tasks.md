@@ -678,3 +678,56 @@ mất là cơ chế này trượt.
 **Còn hở:** chỗ làm đóng vì *cạn hạn mức* vẫn chỉ mở lại khi daemon khởi động lại. Không có cách nào hỏi CLI
 "hạn mức đã hồi chưa" mà không chạy một lượt, nên vòng hỏi lại ở T204 không giúp được ca này; màn hình nay
 nói đúng điều ấy thay vì hứa runtime tự sống lại.
+
+## Phase 16: Kimi Code, loại agent CLI thứ tư (2026-11-15)
+
+*Người chủ ra lệnh "support cho Kimi". Làm theo cách Multica Daemon lái Kimi (`kimi acp`), đo từng dòng trên
+binary đang cài (kimi 2.5.3) trước khi khai. Họ ACP có lại một CLI sau khi Gemini rời đi ở FR-039f.*
+
+- [x] T207 **Dòng Kimi trong bảng CLI** per FR-039g. Họ ACP, bật bằng `acp`; brief ở `AGENTS.md`; kỹ năng ở
+  `.kimi-code/skills` của thư mục làm việc; thư mục nhà mượn `config.toml`, `credentials`, `oauth`,
+  `device_id` và giữ `sessions` theo đầu việc; `HOME` và `KIMI_CODE_HOME` cùng trỏ về thư mục nhà của lượt
+  chạy. Không khai tệp nào cần mang về: `credentials` là liên kết thư mục. Test giữ từng dòng, kể cả ca
+  "ghi tệp tạm rồi đổi tên" rơi đúng vào thư mục của người vận hành.
+- [x] T208 **Họ ACP theo đúng những gì Kimi nói** per FR-039h. Nối phiên bằng `session/resume` khi agent
+  khai, không thì `session/load`; bỏ mọi thứ agent nói trước khi prompt đi; giữ lời gọi công cụ chờ tham số;
+  `-32000` thành `credential_rejected`. Bên dò khả năng coi `session/resume` cũng là nối lại được phiên.
+  Test dùng đúng những thông báo kimi 2.5.3 đã gửi.
+- [x] T209 **Tìm CLI nằm ngoài PATH của daemon** per FR-002a. Hỏi login shell một lần cho mọi tên còn thiếu.
+  Test của `start` tắt `$SHELL` để không dò CLI thật trên máy chạy test.
+- [x] T210 **Hỏi đăng nhập qua giao thức** per FR-007t. Trường mới trong bảng CLI khai phương thức; Kimi khai
+  `login`. Chỉ hỏi khi lời bắt tay liệt kê phương thức ấy ở dạng đăng nhập tại terminal.
+- [x] T211 **Màn hình và tài liệu nhắc tới Kimi.** Câu "không tìm thấy agent CLI nào" ở màn Máy, hai thứ
+  tiếng; `docs/README.md`, `docs/concepts.md`, `docs/machines-and-daemon.md`. Backend và phần còn lại của
+  frontend không đổi: `cli_kind` là một chuỗi tự do và được hiện nguyên văn.
+- [x] T212 **Đo trên binary thật** per FR-039a. Hai test chỉ chạy khi bật biến môi trường:
+  `ARMARIUS_LIVE_KIMI=1` (dò, hỏi khả năng, hỏi đăng nhập; không chạy lượt nào) và
+  `ARMARIUS_LIVE_KIMI_BINARY=<đường dẫn kimi>` (hai lượt chạy thật, dựng bằng đúng các bước một lượt chạy
+  của daemon dùng).
+- [ ] T213 **Chọn model và mức suy luận cho agent Kimi** per FR-007k. Kimi trả danh mục trong câu trả lời mở
+  phiên (`configOptions`: `model`, `thinking`) và nhận `session/set_model`, `session/set_config_option`;
+  `kimi provider list --json` cho danh mục mà không mở phiên. Chưa nối: agent Kimi chạy bằng model mặc định
+  của người vận hành.
+- [ ] T214 **Số token của lượt chạy Kimi.** Kimi không gửi số token qua ACP; Multica đọc bản ghi
+  `usage.record` trong nhật ký phiên (`sessions/<thư mục>/<mã phiên>/agents/*/wire.jsonl`). Chưa đo hình
+  dạng bản ghi ấy trên 2.5.3.
+- [ ] T215 **Nhận ra Kimi cạn hạn mức** per FR-032a. Chưa ai thấy kimi 2.5.3 chạm trần, nên chưa có câu hay
+  mã nào để đọc; hôm nay ca ấy kết thúc là một lượt hỏng không phân loại và được thử lại.
+
+**Xong 2026-11-15** (T207–T212). `make check` và `go test -race ./...` sạch. **Đo trên máy thật**, kimi 2.5.3
+đã đăng nhập:
+- Từ một PATH chỉ có `/usr/local/bin:/usr/bin:/bin`, daemon tìm ra `~/.kimi-code/bin/kimi` qua login shell,
+  đọc bản 2.5.3, nhận lời khai *nối lại được phiên*, và nhận câu trả lời *đã đăng nhập*.
+- Một lượt chạy thật dựng bằng đúng các bước của daemon: agent đọc tên kỹ năng đặt cho lượt chạy, chạy
+  `echo hello-from-kimi` (lời gọi được ghi kèm tham số và kết quả), và thấy công cụ gọi ngược
+  `mcp__armarius__whoami`. Lượt thứ hai, thư mục nhà mới, nối đúng phiên và nhớ lệnh của lượt trước.
+- Token truy cập đã hết hạn lúc đo: lượt chạy tự gia hạn, tệp mới nằm trong `credentials` thật của người vận
+  hành. Sau các lượt chạy, `session_index.jsonl` thật không dài thêm byte nào.
+
+**Chưa đo được:** daemon thật nhận một lượt chạy Kimi từ server (chưa bật daemon dựng từ nhánh này, chưa
+gắn agent nào vào runtime `kimi`); `authenticate` trên một tài khoản bị nhà cung cấp thu hồi (mới đo hai ca
+*có đăng nhập* và *thư mục nhà trống*); Kimi trên Windows và macOS.
+**Một việc phép đo đã làm với cài đặt của người chủ, và đã gỡ:** lần đo đầu liên kết cả `~/.kimi-code`
+kiểu từng-con-một, nên Kimi ghi một dòng vào `session_index.jsonl` thật và chạm vào `cache/query-store`. Dòng
+ấy đã được cắt đi (tệp trở lại 4 dòng như trước); `cache/query-store` là bộ đệm tìm kiếm, không sửa tay.
+Chính lần ấy là lý do dòng Kimi chỉ mượn bốn thứ.

@@ -298,7 +298,7 @@ export const en = {
     notReadyChip: 'Cannot take work',
     noWorkplaces: 'This machine has reported no agent CLI.',
     neverStarted: 'This machine is linked but the daemon has never run. On that machine, run `armarius-daemon start` — it discovers the agent CLIs and registers them as runtimes.',
-    noCliFound: 'The daemon is running but found no agent CLI on this machine. Install `claude`, `codex` or `gemini`, then restart the daemon.',
+    noCliFound: 'The daemon is running but found no agent CLI on this machine. Install `claude`, `codex`, `gemini` or `kimi`, then restart the daemon.',
     noAgentsHere: 'No agent runs on this runtime yet.',
     ceilingLabel: 'Concurrent runs',
     ceilingHint: 'Takes effect the next time this machine asks for work.',

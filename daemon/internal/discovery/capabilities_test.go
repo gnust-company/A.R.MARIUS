@@ -402,8 +402,9 @@ func (w *capturingWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// anACPCLI is the kind the ACP probe is exercised under. No row of this release is ACP, so the
-// flag it is started with travels on the Found, as it would for a row that was.
+// anACPCLI is the kind the ACP probe is exercised under: a peer with no row of its own, so that
+// what is tested is the family and not one CLI's row. The flag it is started with travels on the
+// Found, as it does for a row.
 const anACPCLI Kind = "an-acp-cli"
 
 func acpPeerFound() Found {

@@ -56,7 +56,7 @@ func introductionFromProbe(t *testing.T) map[string]any {
 		return err
 	}
 
-	// No row of this release is ACP (FR-039f), so the peer is one with no row of its own, carrying
+	// The peer is one with no row of its own, so this holds for the family and not one CLI, carrying
 	// the flag it is started with the way discovery hands a row's flag on.
 	got := discovery.Probe(context.Background(), discovery.Found{
 		Kind: "an-acp-cli", Family: agentcli.FamilyACP, Path: "/usr/local/bin/an-acp-cli",

@@ -34,7 +34,7 @@ tồn tại** — không phải *bị chặn*, mà là *không có*.
 **daemon** — chương trình chạy nền trên máy bạn. Nó nối máy ấy vào một không gian làm việc và
 bật agent CLI lên tại chỗ. Nó là bên **đi hỏi**, nên máy bạn không cần mở cổng nào.
 
-**agent CLI** — chương trình dòng lệnh của một hãng: `claude`, `codex`, `gemini`. Bạn cài và
+**agent CLI** — chương trình dòng lệnh của một hãng: `claude`, `codex`, `gemini`, `kimi`. Bạn cài và
 đăng nhập nó bằng tài khoản của mình; Armarius chỉ bật nó lên.
 
 **Runtime** (trong mã và trong cơ sở dữ liệu vẫn là *workplace*) — một cặp (agent CLI có trên máy đó × không gian làm việc). **Đây
