@@ -27,22 +27,120 @@ func TestEveryKindIsNamedOnceAndSpelledTheServersWay(t *testing.T) {
 }
 
 // FR-039 kept more than one protocol family from the start, so the boundary between them is
-// forced to be right early rather than discovered later around a single family. ACP is no longer
-// among them: Gemini CLI, its only row, runs once per turn since 2026-09-28 (FR-039f), and the
-// family stays in the daemon for a CLI that comes later, held by the runtime's own tests.
-func TestTheFamiliesInUseAreStillMoreThanOne(t *testing.T) {
+// forced to be right early rather than discovered later around a single family. All three are in
+// use again: ACP lost its only row when Gemini CLI moved to one process per turn (FR-039f,
+// 2026-09-28) and got one back with Kimi Code (FR-039g, 2026-11-15).
+func TestEveryFamilyHasACLIThatUsesIt(t *testing.T) {
 	counted := map[Family]int{}
 	for _, row := range All() {
 		counted[row.Family]++
 	}
-	for _, family := range []Family{FamilyOneShot, FamilyAppServer} {
+	for _, family := range []Family{FamilyOneShot, FamilyAppServer, FamilyACP} {
 		if counted[family] == 0 {
 			t.Errorf("no CLI of the %s family is declared", family)
 		}
 	}
-	if counted[FamilyACP] != 0 {
-		t.Errorf("%d rows are ACP again; FR-039f moved the only one off it, so this is a decision "+
-			"somebody has to have made, and this test is where it gets written down", counted[FamilyACP])
+}
+
+// Kimi's row is pinned here as measured on `kimi 2.5.3`, 2026-11-15 (FR-039g). Each line below
+// is one a run in a real home confirmed; if a later release contradicts one, this is where the
+// correction lands, with the version it was measured on.
+func TestKimisRowSaysWhatWasMeasured(t *testing.T) {
+	row, known := Lookup(string(Kimi))
+	if !known {
+		t.Fatal("Kimi is not in the registry at all, so this machine would not even look for it")
+	}
+	if !Ready(string(Kimi)) {
+		t.Fatalf("Kimi is missing %v", row.Undeclared())
+	}
+	if row.Family != FamilyACP || strings.Join(row.ProtocolArgs, " ") != "acp" {
+		t.Errorf("Kimi is %q started with %v; it is an ACP peer started with `acp`", row.Family, row.ProtocolArgs)
+	}
+	if row.Binary != "kimi" {
+		t.Errorf("the binary looked for is %q", row.Binary)
+	}
+	if row.ContextFile != "AGENTS.md" {
+		t.Errorf("the brief goes to %q, want AGENTS.md", row.ContextFile)
+	}
+	// The project directory, under the name 2.5.3 reads: `.kimi/skills` is not one of its roots.
+	if row.Skills.Path != ".kimi-code/skills" || row.Skills.InHome {
+		t.Errorf("skills go to %+v, want .kimi-code/skills in the working directory", row.Skills)
+	}
+
+	vars := map[string]string{}
+	for _, v := range row.HomeVars {
+		vars[v.Variable] = v.Path
+	}
+	if home, set := vars["HOME"]; !set || home != "" {
+		t.Errorf("HOME is not pointed at the run's home: %v", row.HomeVars)
+	}
+	if vars["KIMI_CODE_HOME"] != ".kimi-code" {
+		t.Errorf("KIMI_CODE_HOME = %q: one inherited from the daemon would send a run to the "+
+			"operator's real directory", vars["KIMI_CODE_HOME"])
+	}
+	if len(row.Env) != 0 {
+		t.Errorf("Kimi is given %v; AGENTS.md and project skills were read without any of it", row.Env)
+	}
+}
+
+// What is linked from the operator's own is exactly what a sign-in is made of. Anything more is
+// something a run writes into their installation: the session index is appended to through a
+// link, and one measurement run left a line in it about a session the operator never had.
+func TestKimiBorrowsTheSignInAndNothingElse(t *testing.T) {
+	row, _ := Lookup(string(Kimi))
+
+	borrowed := map[string]bool{}
+	for _, e := range row.Home {
+		switch e.Lifetime {
+		case Operator:
+			if e.Source != e.Path {
+				t.Errorf("%s is linked to %s: the same name on both sides or the CLI looks elsewhere", e.Path, e.Source)
+			}
+			borrowed[e.Path] = true
+		case OperatorTree:
+			t.Errorf("%s links the operator's whole directory in; Kimi writes through such links", e.Path)
+		case PerTask:
+			if e.Path != ".kimi-code/sessions" {
+				t.Errorf("the conversation is kept at %s, want .kimi-code/sessions", e.Path)
+			}
+		}
+	}
+	want := []string{
+		".kimi-code/config.toml", ".kimi-code/credentials", ".kimi-code/oauth", ".kimi-code/device_id",
+	}
+	if len(borrowed) != len(want) {
+		t.Errorf("borrowed %v, want exactly %v", borrowed, want)
+	}
+	for _, path := range want {
+		if !borrowed[path] {
+			t.Errorf("%s is not linked from the operator's own", path)
+		}
+	}
+}
+
+// Kimi renews its sign-in by renaming a new file over the old one. Its row answers that by
+// linking the *directory*, where a rename lands in the operator's own — so there is no file to
+// carry back, and a path listed here would be one that is never a link in the first place.
+func TestKimiHasNothingToCarryBackBecauseItsCredentialsAreADirectoryLink(t *testing.T) {
+	row, _ := Lookup(string(Kimi))
+	if len(row.Refreshed) != 0 {
+		t.Errorf("Kimi lists %v to carry back; its credentials directory is linked whole", row.Refreshed)
+	}
+}
+
+// One way of asking about the sign-in per CLI. Two would be two answers, and which one the
+// server heard would depend on which was tried first.
+func TestNoRowAsksAboutSignInBothWays(t *testing.T) {
+	for _, row := range All() {
+		if row.SignInMethod != "" && (len(row.SignInArgs) != 0 || row.SignInCommand != "") {
+			t.Errorf("%s is asked with a command and over its protocol", row.Kind)
+		}
+		if row.SignInMethod != "" && row.Family != FamilyACP {
+			t.Errorf("%s names an ACP sign-in method and is not an ACP peer", row.Kind)
+		}
+	}
+	if row, _ := Lookup(string(Kimi)); row.SignInMethod != "login" {
+		t.Errorf("Kimi is asked about %q, want the `login` method its handshake lists", row.SignInMethod)
 	}
 }
 

@@ -76,6 +76,12 @@ type Result struct {
 type Options struct {
 	// LookPath finds a binary on this machine's PATH. Defaults to exec.LookPath.
 	LookPath func(binary string) (string, error)
+	// Elsewhere is asked about the binaries LookPath did not find: where the operator's own
+	// shell would find them (FR-002a). It answers with a path per name it could place and says
+	// nothing about the rest. Defaults to asking their login shell — but only when LookPath is
+	// the real one too. A caller that describes a search path of its own has described the
+	// whole machine, and must not have the real one's shell answering for it.
+	Elsewhere func(ctx context.Context, binaries []string) map[string]string
 	// Run executes a discovered binary and returns everything it wrote, on either stream.
 	// Combined on purpose: a CLI that prints its version to stderr is not a broken CLI.
 	Run func(ctx context.Context, path string, args ...string) ([]byte, error)
@@ -109,11 +115,31 @@ const defaultTimeout = 15 * time.Second
 func Discover(ctx context.Context, opts Options) Result {
 	opts = opts.withDefaults()
 
+	// Where each one is, before anything is run. The daemon's own search path first; whatever
+	// that misses is put to the operator's shell in **one** question, because that question
+	// starts their shell and runs their startup files, and once per sweep is the most it
+	// should ever cost them.
+	rows := agentcli.All()
+	at := make(map[string]string, len(rows))
+	var missing []string
+	for _, c := range rows {
+		if path, err := opts.LookPath(c.Binary); err == nil {
+			at[c.Binary] = path
+			continue
+		}
+		missing = append(missing, c.Binary)
+	}
+	if len(missing) > 0 && opts.Elsewhere != nil {
+		for binary, path := range opts.Elsewhere(ctx, missing) {
+			at[binary] = path
+		}
+	}
+
 	result := Result{}
-	for _, c := range agentcli.All() {
-		path, err := opts.LookPath(c.Binary)
-		if err != nil {
-			// Not installed here. The ordinary case for two of the three.
+	for _, c := range rows {
+		path, here := at[c.Binary]
+		if !here {
+			// Not installed here. The ordinary case for most of them.
 			continue
 		}
 		version, err := opts.version(ctx, path, c.VersionArgs)
@@ -162,6 +188,9 @@ func (o Options) version(ctx context.Context, path string, args []string) (strin
 func (o Options) withDefaults() Options {
 	if o.LookPath == nil {
 		o.LookPath = exec.LookPath
+		if o.Elsewhere == nil {
+			o.Elsewhere = askLoginShell
+		}
 	}
 	if o.Run == nil {
 		o.Run = runBinary

@@ -15,15 +15,23 @@ import (
 
 // fakeAgent is an ACP peer that is not a CLI at all.
 //
-// No CLI of this release runs over ACP — Gemini CLI, the only one that did, runs once per turn
-// since FR-039f — so a protocol tested only by running one would be a protocol nobody had tested.
+// A protocol tested only by running a real CLI is a protocol tested on the one machine that has
+// that CLI signed in. Kimi Code is the row on this road (FR-039g), and what it was measured
+// saying is replayed here by a peer anybody can run.
 type fakeAgent struct {
 	t *testing.T
 
 	// what it will do
-	loadFails     bool
-	updates       []map[string]any
-	askPermission bool
+	loadFails bool
+	// declaresResume makes the handshake say `session/resume` is available, as kimi 2.5.3 does.
+	declaresResume bool
+	// recites are the updates sent back while a session is being loaded or resumed, before the
+	// answer — the old conversation, in the shape a live turn has.
+	recites []map[string]any
+	// nobodySignedIn makes opening or resuming a session answer the protocol's `auth_required`.
+	nobodySignedIn bool
+	updates        []map[string]any
+	askPermission  bool
 	// permissionOptions are what the permission request offers, in ACP's own shape.
 	permissionOptions []map[string]any
 	silentAfter       string
@@ -32,6 +40,7 @@ type fakeAgent struct {
 	cwd              string
 	offeredTools     []map[string]any
 	loaded           string
+	resumed          string
 	prompt           string
 	permissionAnswer json.RawMessage
 	permissionError  *rpcError
@@ -64,7 +73,15 @@ func (a *fakeAgent) serve(in io.Reader, out io.Writer) {
 
 		switch msg.Method {
 		case "initialize":
-			reply(msg.ID, map[string]any{"protocolVersion": agentcli.ACPVersion})
+			said := map[string]any{"protocolVersion": agentcli.ACPVersion}
+			if a.declaresResume {
+				// The shape kimi 2.5.3 answered with on 2026-11-15, cut to what is read.
+				said["agentCapabilities"] = map[string]any{
+					"loadSession":         true,
+					"sessionCapabilities": map[string]any{"list": map[string]any{}, "resume": map[string]any{}},
+				}
+			}
+			reply(msg.ID, said)
 
 		case "session/new":
 			var params struct {
@@ -74,14 +91,37 @@ func (a *fakeAgent) serve(in io.Reader, out io.Writer) {
 			_ = json.Unmarshal(msg.Params, &params)
 			a.cwd = params.CWD
 			a.offeredTools = params.MCPServers
+			if a.nobodySignedIn {
+				_ = enc.Encode(rpcMessage{JSONRPC: "2.0", ID: msg.ID, Error: &rpcError{
+					Code: -32000, Message: "Authentication required",
+				}})
+				continue
+			}
 			reply(msg.ID, map[string]any{"sessionId": "session-just-opened"})
 
-		case "session/load":
+		case "session/load", "session/resume":
 			var params struct {
 				SessionID string `json:"sessionId"`
 			}
 			_ = json.Unmarshal(msg.Params, &params)
-			a.loaded = params.SessionID
+			if msg.Method == "session/resume" {
+				a.resumed = params.SessionID
+			} else {
+				a.loaded = params.SessionID
+			}
+			for _, update := range a.recites {
+				_ = enc.Encode(rpcMessage{
+					JSONRPC: "2.0",
+					Method:  "session/update",
+					Params:  mustRaw(map[string]any{"sessionId": params.SessionID, "update": update}),
+				})
+			}
+			if a.nobodySignedIn {
+				_ = enc.Encode(rpcMessage{JSONRPC: "2.0", ID: msg.ID, Error: &rpcError{
+					Code: -32000, Message: "Authentication required",
+				}})
+				continue
+			}
 			if a.loadFails {
 				_ = enc.Encode(rpcMessage{JSONRPC: "2.0", ID: msg.ID, Error: &rpcError{
 					Code: -32000, Message: "no such session",
@@ -414,8 +454,8 @@ func TestRunningAnACPAgentWithNothingToSayIsRefused(t *testing.T) {
 }
 
 func TestNoCLIOfThisReleaseIsStartedAsAnACPPeer(t *testing.T) {
-	// No row is ACP: Gemini CLI runs once per turn since FR-039f, Claude Code always has. Started
-	// as a peer, either would wait for a handshake that was never coming.
+	// Neither of these rows is ACP: Gemini CLI runs once per turn since FR-039f, Claude Code
+	// always has. Started as a peer, either would wait for a handshake that was never coming.
 	for _, cli := range []string{"gemini", "claude_code"} {
 		if _, err := (ACP{}).Run(context.Background(), Request{
 			CLI: cli, Binary: "/bin/true", WorkDir: t.TempDir(), Message: "hello",

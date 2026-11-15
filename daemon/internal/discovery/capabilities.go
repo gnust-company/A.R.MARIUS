@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -529,8 +530,27 @@ type acpDeclaration struct {
 	// starts refusing a version the other accepts, the difference is visible here.
 	ProtocolVersion   int `json:"protocolVersion"`
 	AgentCapabilities struct {
-		LoadSession bool `json:"loadSession"`
+		LoadSession         bool `json:"loadSession"`
+		SessionCapabilities struct {
+			// Resume is the other way an agent says it can carry a conversation on: picking it
+			// up without reciting it. Present-or-absent is the whole answer — kimi 2.5.3
+			// declares it as an empty object — and the run path asks for whichever of the two
+			// the agent declared, this one first (FR-039h).
+			Resume *json.RawMessage `json:"resume"`
+		} `json:"sessionCapabilities"`
 	} `json:"agentCapabilities"`
+	// AuthMethods are the ways somebody signs in to this agent, as it lists them itself. Read
+	// only by the sign-in question (FR-007t), which is not put to an agent that does not list
+	// the method it would be asked about.
+	AuthMethods []struct {
+		ID   string `json:"id"`
+		Type string `json:"type"`
+	} `json:"authMethods"`
+}
+
+// resumable is whether this agent declared either way of carrying a conversation on.
+func (d acpDeclaration) resumable() bool {
+	return d.AgentCapabilities.LoadSession || d.AgentCapabilities.SessionCapabilities.Resume != nil
 }
 
 // probeHandshake asks an ACP CLI what it can do by opening the conversation it was built for.
@@ -563,7 +583,7 @@ func probeHandshake(ctx context.Context, found Found, opts Options) (Capabilitie
 		return Capabilities{}, err
 	}
 	return Capabilities{
-		Resumable: declared.AgentCapabilities.LoadSession,
+		Resumable: declared.resumable(),
 		Unanswered: []Unanswered{
 			{Capability: string(capExposesToolArgs), Reason: ReasonNotInProtocol},
 			{Capability: string(capExposesToolResult), Reason: ReasonNotInProtocol},
@@ -663,30 +683,56 @@ func openAppServer(ctx context.Context, to io.Writer, from io.Reader) error {
 // its counterpart; asked as one client and then run as another, what is stored against the
 // workplace is an answer to a question nobody asks again.
 func openConversation(ctx context.Context, to io.Writer, from io.Reader, into *acpDeclaration) error {
-	const askID = 1
-	if err := json.NewEncoder(to).Encode(map[string]any{
-		"jsonrpc": "2.0",
-		"id":      askID,
-		"method":  "initialize",
-		"params": map[string]any{
-			"protocolVersion": agentcli.ACPVersion,
-			// The same words the run path opens with: this client offers the agent no file
-			// access and no terminal of its own (FR-013a).
-			"clientCapabilities": map[string]any{
-				"fs": map[string]any{"readTextFile": false, "writeTextFile": false},
-			},
-		},
-	}); err != nil {
-		return fmt.Errorf("asking the agent to introduce itself: %w", err)
-	}
+	return newACPTalk(to, from).introduce(ctx, into)
+}
 
+// acpTalk is a probe's side of one ACP conversation: where it asks, and the lines that come back.
+//
+// One reader for the whole conversation, which is why this is a type and not two functions. A
+// probe that asks a second question has to go on reading where the first answer ended, and a
+// second reader over the same pipe would start after whatever the first had already buffered.
+type acpTalk struct {
+	out   *json.Encoder
+	lines *bufio.Scanner
+	asked int
+}
+
+func newACPTalk(to io.Writer, from io.Reader) *acpTalk {
 	lines := bufio.NewScanner(from)
 	lines.Buffer(make([]byte, 0, 8<<10), maxHandshakeLine)
-	for lines.Scan() {
+	return &acpTalk{out: json.NewEncoder(to), lines: lines}
+}
+
+// acpRefusal is an agent answering a question with the protocol's own error.
+//
+// Its own type because for one question the refusal **is** the answer: an agent asked whether
+// anybody is signed in says no with a code, and a caller that saw only *the call failed* could
+// not tell that from a pipe that broke.
+type acpRefusal struct {
+	Code    int
+	Message string
+}
+
+func (r acpRefusal) Error() string { return fmt.Sprintf("%s (%d)", r.Message, r.Code) }
+
+// ask puts one question and reads until its answer arrives.
+func (t *acpTalk) ask(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	t.asked++
+	id := t.asked
+	if err := t.out.Encode(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      id,
+		"method":  method,
+		"params":  params,
+	}); err != nil {
+		return nil, fmt.Errorf("asking the agent %s: %w", method, err)
+	}
+
+	for t.lines.Scan() {
 		if err := ctx.Err(); err != nil {
-			return err
+			return nil, err
 		}
-		line := lines.Bytes()
+		line := t.lines.Bytes()
 		if len(line) == 0 || line[0] != '{' {
 			// CLIs print banners. A line that is not a JSON object cannot be the answer, and
 			// stopping at one would fail a probe over a greeting.
@@ -700,24 +746,44 @@ func openConversation(ctx context.Context, to io.Writer, from io.Reader, into *a
 				Message string `json:"message"`
 			} `json:"error"`
 		}
-		if json.Unmarshal(line, &msg) != nil || string(msg.ID) != strconv.Itoa(askID) {
+		if json.Unmarshal(line, &msg) != nil || string(msg.ID) != strconv.Itoa(id) {
 			// Notifications, and answers to questions nobody asked. An agent may say several
 			// things before it answers, and none of them is what was asked for.
 			continue
 		}
 		if msg.Error != nil {
-			return fmt.Errorf("the agent refused to introduce itself: %s (%d)",
-				msg.Error.Message, msg.Error.Code)
+			return nil, acpRefusal{Code: msg.Error.Code, Message: msg.Error.Message}
 		}
-		if err := json.Unmarshal(msg.Result, into); err != nil {
-			return fmt.Errorf("reading what the agent said about itself: %w", err)
+		return msg.Result, nil
+	}
+	if err := t.lines.Err(); err != nil {
+		return nil, fmt.Errorf("listening for the agent: %w", err)
+	}
+	return nil, fmt.Errorf("the agent stopped talking without answering %s", method)
+}
+
+// introduce opens the conversation the way the run path opens it, and keeps what the agent said
+// about itself.
+func (t *acpTalk) introduce(ctx context.Context, into *acpDeclaration) error {
+	said, err := t.ask(ctx, "initialize", map[string]any{
+		"protocolVersion": agentcli.ACPVersion,
+		// The same words the run path opens with: this client offers the agent no file
+		// access and no terminal of its own (FR-013a).
+		"clientCapabilities": map[string]any{
+			"fs": map[string]any{"readTextFile": false, "writeTextFile": false},
+		},
+	})
+	if err != nil {
+		var refused acpRefusal
+		if errors.As(err, &refused) {
+			return fmt.Errorf("the agent refused to introduce itself: %w", err)
 		}
-		return nil
+		return fmt.Errorf("asking the agent to introduce itself: %w", err)
 	}
-	if err := lines.Err(); err != nil {
-		return fmt.Errorf("listening for the agent: %w", err)
+	if err := json.Unmarshal(said, into); err != nil {
+		return fmt.Errorf("reading what the agent said about itself: %w", err)
 	}
-	return fmt.Errorf("the agent stopped talking without introducing itself")
+	return nil
 }
 
 // maxHandshakeLine bounds the one line a probe reads. Far smaller than the bound a run uses: a
