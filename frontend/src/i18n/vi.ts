@@ -298,7 +298,7 @@ export const vi = {
     notReadyChip: 'Không nhận việc được',
     noWorkplaces: 'Máy này chưa khai một agent CLI nào.',
     neverStarted: 'Máy này đã nối nhưng daemon chưa chạy lần nào. Trên máy ấy chạy `armarius-daemon start` — nó sẽ dò các agent CLI và khai thành runtime.',
-    noCliFound: 'Daemon đang chạy nhưng không tìm thấy agent CLI nào trên máy này. Cài `claude`, `codex` hoặc `gemini` rồi chạy lại daemon.',
+    noCliFound: 'Daemon đang chạy nhưng không tìm thấy agent CLI nào trên máy này. Cài `claude`, `codex`, `gemini` hoặc `kimi` rồi chạy lại daemon.',
     noAgentsHere: 'Chưa có agent nào chạy trên runtime này.',
     ceilingLabel: 'Số lượt chạy cùng lúc',
     ceilingHint: 'Có hiệu lực từ lần máy này xin việc kế tiếp.',
