@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os/exec"
 	"strings"
 
@@ -70,6 +71,9 @@ func AskSignIn(ctx context.Context, found Found, opts Options) SignIn {
 	opts = opts.withDefaults()
 
 	row, known := agentcli.Lookup(string(found.Kind))
+	if known && row.SignInMethod != "" {
+		return askOverProtocol(ctx, found, opts, row.SignInMethod)
+	}
 	if !known || len(row.SignInArgs) == 0 || row.SignInCommand == "" {
 		return SignInUnknown
 	}
@@ -100,6 +104,69 @@ func AskSignIn(ctx context.Context, found Found, opts Options) SignIn {
 		return SignedIn
 	}
 	return SignedOut
+}
+
+// acpAuthRequired is the protocol's own code for *nobody is signed in* (`auth_required`).
+const acpAuthRequired = -32000
+
+// terminalAuth is the kind of sign-in a person completes in a terminal of their own.
+const terminalAuth = "terminal"
+
+// askOverProtocol asks an ACP agent whether anybody is signed in, in the agent's own protocol
+// (FR-007t).
+//
+// For the CLIs that have no command to ask with. The conversation is opened the way a probe
+// opens it, and then the agent is sent `authenticate` for the method its row names. Measured on
+// kimi 2.5.3, 2026-11-15: an empty result in a signed-in home, `-32000 Authentication required`
+// in a home nobody had signed in to, each in under a tenth of a second, with no session opened
+// and no file written.
+//
+// **`authenticate` is not a question on every agent**, and that is what the two checks before it
+// are for. On one that signs in through this client it may well begin a sign-in. So it is sent
+// only for a method the row names — a row that names one has had this measured — and only when
+// the agent's own handshake lists that method as one a person completes in a terminal: an agent
+// that sends a person to a terminal to sign in has nothing left for `authenticate` to do but
+// say whether they did. A binary that stops listing it is not asked, and is reported as unknown.
+func askOverProtocol(ctx context.Context, found Found, opts Options, method string) SignIn {
+	if len(found.ProtocolArgs) == 0 {
+		return SignInUnknown
+	}
+	ctx, cancel := context.WithTimeout(ctx, opts.Timeout)
+	defer cancel()
+
+	answer := SignInUnknown
+	_ = opts.Handshake(ctx, found.Path, found.ProtocolArgs, func(to io.Writer, from io.Reader) error {
+		talk := newACPTalk(to, from)
+		var declared acpDeclaration
+		if err := talk.introduce(ctx, &declared); err != nil {
+			return err
+		}
+		if !declared.signsInAtATerminal(method) {
+			return nil
+		}
+		_, err := talk.ask(ctx, "authenticate", map[string]any{"methodId": method})
+		var refused acpRefusal
+		switch {
+		case err == nil:
+			answer = SignedIn
+		case errors.As(err, &refused) && refused.Code == acpAuthRequired:
+			answer = SignedOut
+		}
+		// Any other refusal, a pipe that broke, a timeout: the agent was not heard to say
+		// either thing, and *unknown* is the only answer that claims nothing.
+		return nil
+	})
+	return answer
+}
+
+// signsInAtATerminal says whether the agent itself lists this method, as a terminal sign-in.
+func (d acpDeclaration) signsInAtATerminal(method string) bool {
+	for _, listed := range d.AuthMethods {
+		if listed.ID == method && listed.Type == terminalAuth {
+			return true
+		}
+	}
+	return false
 }
 
 // listsCommand reads a CLI's help for a command of this name: a line whose first word it is.

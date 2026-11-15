@@ -184,6 +184,10 @@ echo '{"type":"result","session_id":"sess-1","subtype":"success","is_error":fals
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir)
+	// And nobody's shell to ask where else to look (FR-002a): with one set, the CLIs missing
+	// from the directory above would be looked for on whatever machine runs this test, and a
+	// real agent CLI found there would be started and questioned.
+	t.Setenv("SHELL", "")
 	return started, ended
 }
 

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -19,10 +20,10 @@ import (
 // starts the same binary with the same flag** (FR-017). Two copies of that flag would let the
 // question be put to one program and the work given to another, which nothing would report.
 //
-// No row of this release is ACP: Gemini CLI, the one that was, runs once per turn since FR-039f,
-// so this answers no for every kind today. The road stays for a CLI that comes later, and its flag
-// has to be measured the way gemini's `--acp` was (research §9.2) — a guessed one is a daemon
-// starting a CLI and then waiting forever for a handshake that was never coming.
+// Kimi Code is the row on this road today (FR-039g); Gemini CLI, the one it was built for, runs
+// once per turn since FR-039f. A flag here has to be measured the way gemini's `--acp` and kimi's
+// `acp` were — a guessed one is a daemon starting a CLI and then waiting forever for a handshake
+// that was never coming.
 func acpStart(kind string) ([]string, bool) {
 	row, known := agentcli.Lookup(kind)
 	if !known || row.Family != agentcli.FamilyACP || len(row.ProtocolArgs) == 0 {
@@ -123,7 +124,15 @@ func Converse(ctx context.Context, toAgent io.Writer, fromAgent io.Reader, req R
 	}
 
 	var handshake struct {
-		ProtocolVersion int `json:"protocolVersion"`
+		ProtocolVersion   int `json:"protocolVersion"`
+		AgentCapabilities struct {
+			SessionCapabilities struct {
+				// Present when the agent can pick a session up **without replaying it**. A
+				// pointer to raw JSON because what matters is that the agent declared the key
+				// at all — kimi 2.5.3 declares it as an empty object.
+				Resume *json.RawMessage `json:"resume"`
+			} `json:"sessionCapabilities"`
+		} `json:"agentCapabilities"`
 	}
 	if err := c.call(ctx, "initialize", map[string]any{
 		"protocolVersion": agentcli.ACPVersion,
@@ -137,12 +146,14 @@ func Converse(ctx context.Context, toAgent io.Writer, fromAgent io.Reader, req R
 	}, &handshake); err != nil {
 		return c.outcome, fmt.Errorf("opening the conversation: %w", err)
 	}
+	c.resumes = handshake.AgentCapabilities.SessionCapabilities.Resume != nil
 
 	// What the machine has to say about the conversation itself, decided before the turn: the
 	// thread aged out, or belonged to a workplace that is gone (FR-025, FR-026, FR-027).
 	notice := tell(c.journal, req.Restart)
 
 	if err := c.openSession(ctx, req); err != nil {
+		c.walledIn(err)
 		return c.outcome, err
 	}
 	// And what only became true inside it: the handle was offered and would not load. Found
@@ -158,13 +169,41 @@ func Converse(ctx context.Context, toAgent io.Writer, fromAgent io.Reader, req R
 	if c.refused != nil {
 		said = req.messageWithoutSession()
 	}
-	if err := c.call(ctx, "session/prompt", map[string]any{
+	// From here on what the agent says is this turn. Everything before it was not: an agent
+	// asked to load a session answers by reciting the whole of it, as the same updates a live
+	// turn is made of — measured on kimi 2.5.3, where `session/load` sent back every message
+	// and tool call of the turn before. Recorded, that is last turn's work written down a
+	// second time as this run's (FR-039h). The same gate Multica's daemon keeps
+	// (`streamingCurrentTurn`, `server/pkg/agent/kimi.go`).
+	c.listening = true
+	err := c.call(ctx, "session/prompt", map[string]any{
 		"sessionId": c.outcome.Session,
 		"prompt":    []any{map[string]any{"type": "text", "text": ahead(notice, said)}},
-	}, &turn); err != nil {
+	}, &turn)
+	// A call the agent began and never finished telling us about is still a call it began.
+	c.startHeld()
+	if err != nil {
+		c.walledIn(err)
 		return c.outcome, fmt.Errorf("taking the turn: %w", err)
 	}
 	return c.outcome, nil
+}
+
+// acpAuthRequired is the protocol's own code for *nobody is signed in* (`auth_required`).
+const acpAuthRequired = -32000
+
+// walledIn reads a refusal for the one ending this family states in a closed code (FR-032a).
+//
+// The code and not the sentence beside it: `-32000` is the protocol's, the same from every peer
+// that speaks it, where the words are one vendor's. Measured on kimi 2.5.3 in a home nobody had
+// signed in to — `session/new` answered `-32000 Authentication required` in 0.06s. Anything else
+// stays unclassified, which is a retry rather than a verdict; in particular nothing here reads
+// an exhausted allowance, because nobody has watched this family hit one.
+func (c *acpConn) walledIn(err error) {
+	var refused rpcError
+	if errors.As(err, &refused) && refused.Code == acpAuthRequired && c.outcome.Failure == "" {
+		c.outcome.Failure = failureCredentialRejected
+	}
 }
 
 // mcpServers is this run's callback tools, in the shape the handshake carries them (FR-013a).
@@ -214,7 +253,15 @@ func mcpServers(req Request) []map[string]any {
 func (c *acpConn) openSession(ctx context.Context, req Request) error {
 	if req.Session != "" {
 		c.outcome.Session = req.Session
-		if err := c.call(ctx, "session/load", map[string]any{
+		// `session/resume` where the agent declared it, `session/load` otherwise. Both carry a
+		// conversation on; the difference is that load also recites it, and resume is what
+		// Multica's daemon asks Kimi for. Chosen from what the binary said about itself in the
+		// handshake rather than from its name (FR-017).
+		method := "session/load"
+		if c.resumes {
+			method = "session/resume"
+		}
+		if err := c.call(ctx, method, map[string]any{
 			"sessionId":  req.Session,
 			"cwd":        c.cwd,
 			"mcpServers": mcpServers(req),
@@ -260,6 +307,24 @@ type acpConn struct {
 	// refused is set when the handle this run was given would not load — the one way of losing
 	// a thread that cannot be known until the turn has already begun (FR-039a).
 	refused *Restart
+	// resumes says the agent declared `session/resume` in its handshake.
+	resumes bool
+	// listening turns true when this turn's prompt goes out. Updates before that are an old
+	// conversation being recited, not work being done.
+	listening bool
+	// held are the tool calls announced without their arguments, waiting for them (FR-039h).
+	held map[string]*heldCall
+	// heldOrder keeps them in the order they were announced, so the ones never completed are
+	// recorded in that order at the end of the turn rather than in a map's.
+	heldOrder []string
+}
+
+// heldCall is a tool call the agent has announced and not yet given the arguments of.
+type heldCall struct {
+	name string
+	// soFar is the latest text the agent showed for the call before running it. Kimi streams
+	// the arguments there as they are written, each frame the whole of them so far.
+	soFar string
 }
 
 type rpcError struct {
@@ -338,15 +403,16 @@ func (c *acpConn) call(ctx context.Context, method string, params any, result an
 // sessionUpdate is the one notification that carries the work.
 type sessionUpdate struct {
 	Update struct {
-		Kind    string `json:"sessionUpdate"`
-		Content struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
-		ToolCallID string         `json:"toolCallId"`
-		Title      string         `json:"title"`
-		Status     string         `json:"status"`
-		RawInput   map[string]any `json:"rawInput"`
+		Kind string `json:"sessionUpdate"`
+		// Content is one block on a message chunk and a **list** of them on a tool call, so it
+		// is left raw and read by whoever knows which this is. Decoded into either shape here,
+		// every update of the other shape would fail to parse and be dropped whole — which on
+		// kimi 2.5.3 is every tool call.
+		Content    json.RawMessage `json:"content"`
+		ToolCallID string          `json:"toolCallId"`
+		Title      string          `json:"title"`
+		Status     string          `json:"status"`
+		RawInput   map[string]any  `json:"rawInput"`
 		// RawOutput is what the tool gave back. Left raw so it is read, measured and dropped
 		// here rather than carried anywhere: the whole of it never leaves this machine
 		// (FR-043a), and a field this side decoded into a struct is a field this side is
@@ -373,7 +439,7 @@ func resultIn(raw json.RawMessage) Result {
 }
 
 func (c *acpConn) notified(msg rpcMessage) {
-	if msg.Method != "session/update" {
+	if msg.Method != "session/update" || !c.listening {
 		return
 	}
 	var update sessionUpdate
@@ -381,29 +447,118 @@ func (c *acpConn) notified(msg rpcMessage) {
 		return
 	}
 
-	switch update.Update.Kind {
+	said := update.Update
+	switch said.Kind {
 	case "agent_message_chunk":
-		c.journal.Text(update.Update.Content.Text)
+		c.journal.Text(blockText(said.Content))
 	case "agent_thought_chunk":
-		c.journal.Thought(update.Update.Content.Text)
+		c.journal.Thought(blockText(said.Content))
 	case "tool_call":
-		// Arguments only when the CLI actually sent them. An empty map here would read as *the
-		// tool was called with nothing*, which is a different fact from *this CLI does not say*
-		// — and telling those two apart is the whole of FR-047.
-		c.journal.ToolStarted(
-			update.Update.ToolCallID, update.Update.Title,
-			update.Update.RawInput, update.Update.RawInput != nil,
-		)
+		if said.RawInput != nil {
+			c.journal.ToolStarted(said.ToolCallID, said.Title, said.RawInput, true)
+			return
+		}
+		// Announced without its arguments, which on kimi 2.5.3 is every call: the first frame
+		// is `status: pending` with an empty text, the arguments are then written out frame by
+		// frame, and `rawInput` arrives once the call is cleared to run. Recording the call now
+		// would record it as one whose arguments this CLI does not reveal — untrue, and the
+		// reader would be shown a gap where a command was (FR-043, FR-047). So it waits, the
+		// way Multica's daemon buffers the same frames (`handleToolCallStart`, hermes.go).
+		c.hold(said.ToolCallID, said.Title, toolCallText(said.Content))
 	case "tool_call_update":
-		switch update.Update.Status {
-		case "completed", "failed":
-			c.journal.ToolCompleted(
-				update.Update.ToolCallID,
-				update.Update.Status == "failed",
-				resultIn(update.Update.RawOutput),
-			)
+		waiting, isHeld := c.held[said.ToolCallID]
+		done := said.Status == "completed" || said.Status == "failed"
+		switch {
+		case isHeld && said.RawInput != nil:
+			c.release(said.ToolCallID)
+			c.journal.ToolStarted(said.ToolCallID, waiting.name, said.RawInput, true)
+		case isHeld && done:
+			c.start(said.ToolCallID)
+		case isHeld:
+			if text := toolCallText(said.Content); text != "" {
+				waiting.soFar = text
+			}
+		}
+		if done {
+			c.journal.ToolCompleted(said.ToolCallID, said.Status == "failed", resultIn(said.RawOutput))
 		}
 	}
+}
+
+// hold keeps a call back until its arguments are known.
+func (c *acpConn) hold(call, name, soFar string) {
+	if c.held == nil {
+		c.held = map[string]*heldCall{}
+	}
+	if _, already := c.held[call]; !already {
+		c.heldOrder = append(c.heldOrder, call)
+	}
+	c.held[call] = &heldCall{name: name, soFar: soFar}
+}
+
+// release takes a call off the waiting list without recording it.
+func (c *acpConn) release(call string) *heldCall {
+	waiting := c.held[call]
+	delete(c.held, call)
+	return waiting
+}
+
+// start records a held call with whatever is known of its arguments by now.
+//
+// `rawInput` never came, so what is left is the text the agent showed while writing the call.
+// When that is a JSON object it is the arguments — the same reading Multica's daemon makes
+// (`parseToolArgsJSON`). When it is anything else the call is recorded as one whose arguments
+// this CLI did not reveal, which is then the truth (FR-047).
+func (c *acpConn) start(call string) {
+	waiting := c.release(call)
+	if waiting == nil {
+		return
+	}
+	var args map[string]any
+	if json.Unmarshal([]byte(waiting.soFar), &args) == nil && args != nil {
+		c.journal.ToolStarted(call, waiting.name, args, true)
+		return
+	}
+	c.journal.ToolStarted(call, waiting.name, nil, false)
+}
+
+// startHeld records every call still waiting when the turn ends, in the order they were announced.
+func (c *acpConn) startHeld() {
+	for _, call := range c.heldOrder {
+		c.start(call)
+	}
+	c.heldOrder = nil
+}
+
+// blockText is the text of one content block, as a message chunk carries it.
+func blockText(raw json.RawMessage) string {
+	var block struct {
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &block) != nil {
+		return ""
+	}
+	return block.Text
+}
+
+// toolCallText is the text a tool call is showing: the `content` blocks of its list, joined.
+func toolCallText(raw json.RawMessage) string {
+	var blocks []struct {
+		Type    string `json:"type"`
+		Content struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if json.Unmarshal(raw, &blocks) != nil {
+		return ""
+	}
+	var text strings.Builder
+	for _, block := range blocks {
+		if block.Type == "content" {
+			text.WriteString(block.Content.Text)
+		}
+	}
+	return text.String()
 }
 
 // answer replies to something the agent asked of us.

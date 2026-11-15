@@ -141,19 +141,21 @@ func TestTheSweepReportsInAStableOrder(t *testing.T) {
 			"codex":  "/usr/local/bin/codex",
 			"claude": "/usr/bin/claude",
 			"gemini": "/usr/local/bin/gemini",
+			"kimi":   "/home/operator/.kimi-code/bin/kimi",
 		},
 		answers: map[string]string{
-			"/usr/local/bin/codex":  "1.0.0",
-			"/usr/bin/claude":       "2.1.226",
-			"/usr/local/bin/gemini": "0.56.0",
+			"/usr/local/bin/codex":               "1.0.0",
+			"/usr/bin/claude":                    "2.1.226",
+			"/usr/local/bin/gemini":              "0.56.0",
+			"/home/operator/.kimi-code/bin/kimi": "2.5.3",
 		},
 	}
 
 	for range 5 {
 		got := Discover(context.Background(), m.options())
-		want := []Kind{agentcli.Gemini, agentcli.ClaudeCode, agentcli.Codex}
+		want := []Kind{agentcli.Gemini, agentcli.ClaudeCode, agentcli.Codex, agentcli.Kimi}
 		if len(got.Found) != len(want) {
-			t.Fatalf("found %+v, want all three", got.Found)
+			t.Fatalf("found %+v, want all four", got.Found)
 		}
 		for i, kind := range want {
 			if got.Found[i].Kind != kind {
